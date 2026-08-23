@@ -10,8 +10,8 @@ permissions:
 
 jobs:
   validate:
-    name: Windows validation
-    runs-on: windows-latest
+    name: Local Windows validation
+    runs-on: [self-hosted, Windows, X64, sql-observer]
     timeout-minutes: 20
 
     steps:
