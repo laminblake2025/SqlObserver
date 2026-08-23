@@ -2,7 +2,7 @@
 
 SqlObserver is a clean-room, Windows-hosted monitoring and diagnostics product for Microsoft SQL Server. It is intended to collect bounded, historical evidence without installing an agent on monitored database hosts by default. PostgreSQL 18.x is the product's application repository; it is not a monitored database engine.
 
-> **Repository status:** Milestone 0 and the non-runtime scaffolding portion of Milestone 1. This repository does not yet contain a production collector, deployable monitoring service, database schema, installer, or supported release.
+> **Repository status:** Milestones 0 through 2 are implemented. The PostgreSQL 18 repository foundation is migration- and integration-tested, but SqlObserver does not yet contain a production SQL Server collector, deployable monitoring service, installer, or supported release.
 
 ## Product boundary
 
@@ -49,7 +49,7 @@ More detail is in [the architecture overview](docs/architecture/overview.md), [s
 
 ## Quick start for contributors
 
-The current quick start validates scaffolding only.
+The current quick start validates the architecture/bootstrap work and the complete M2 PostgreSQL repository slice.
 
 Prerequisites:
 
@@ -59,7 +59,7 @@ Prerequisites:
 - pnpm 11.19.0, as pinned by `web/package.json` and CI;
 - PowerShell 7 (`pwsh`);
 - Git;
-- PostgreSQL 18.x only when database integration validation is introduced.
+- Docker Desktop using Linux containers, with access to the pinned PostgreSQL 18.4 image used by the active integration suite.
 
 From the repository root, run:
 
@@ -67,18 +67,18 @@ From the repository root, run:
 pwsh ./tools/validate.ps1
 ```
 
-The validation entry point is expected to restore locked dependencies, compile with warnings treated as errors, run applicable tests, build the strict TypeScript frontend, and perform repository-policy checks. During this scaffold milestone, stages without runtime artifacts may report that they are not yet applicable; they must not silently claim runtime coverage.
+The validation entry point restores locked dependencies, compiles with warnings treated as errors, runs all active tests (including an ephemeral PostgreSQL 18.4 repository), builds the strict TypeScript frontend, and performs repository-policy checks. Test projects for later milestones remain explicitly skipped until their owning runtime slices are implemented; M2's PostgreSQL tests have no skips.
 
-Do not provision production credentials or point this scaffold at a production SQL Server. Development setup scripts are not production installers.
+Do not provision production credentials or point this repository slice at a production SQL Server. Development setup scripts are not production installers.
 
 ## Repository map
 
 | Path | Purpose |
 | --- | --- |
 | `src/` | .NET domain, application, infrastructure, feature libraries, and executable hosts |
-| `web/` | Strict React/TypeScript client skeleton |
-| `database/migrations/` | Future immutable, numbered PostgreSQL SQL migrations |
-| `database/functions/`, `database/views/` | Versioned SQL-first repository objects |
+| `web/` | Strict React/TypeScript client skeleton; feature UI begins in M3 |
+| `database/migrations/` | Immutable, numbered PostgreSQL SQL migrations and checksum manifest |
+| `database/functions/`, `database/views/` | Review indexes for SQL-first objects deployed by numbered migrations |
 | `database/seeds/`, `database/testdata/` | Non-production reference and test inputs |
 | `collectors/manifests/` | Versioned collector metadata contracts |
 | `collectors/sql/` | Future parameterized, supported SQL Server collection statements |
@@ -88,19 +88,18 @@ Do not provision production credentials or point this scaffold at a production S
 | `docs/adr/` | Architecture decision records |
 | `docs/product/` | Product vocabulary and clean-room rules |
 | `docs/runbooks/` | Future operator procedures; no runtime runbooks exist yet |
-| `tools/` | Repository validation and future local-development helpers |
+| `tools/` | Canonical repository validation and staged local-development helpers |
 | `.github/workflows/` | Continuous integration definitions |
 
 ## Milestone scope
 
-Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. The non-runtime portion of Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and CI. [BACKLOG.md](BACKLOG.md) is the requirement-to-milestone map and records what remains.
+Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and local-runner CI. Milestone 2 adds the PostgreSQL 18 compatibility check, immutable migration runner, nine-schema repository, least-privilege roles, UTC partitions, binary ingestion, protected-payload deduplication, retention preview, and fenced worker leases. See the [M2 implementation record](docs/milestones/M2-postgresql-repository.md) and [BACKLOG.md](BACKLOG.md).
 
-No production collection, ingestion, alerting, analytics, MCP tool implementation, database migration, deployment, or upgrade behavior is part of this assignment.
+No production SQL Server collection, alerting, analytics, MCP tool implementation, deployment, or upgrade behavior is claimed yet.
 
 ## Non-goals for this milestone
 
-- Monitoring a live SQL Server or collecting sample data.
-- Creating PostgreSQL application tables or applying migrations.
+- Monitoring a live SQL Server or collecting target data.
 - Shipping an MCP server or any `execute_sql`-style capability.
 - Changing Query Store, Extended Events, blocked-process settings, indexes, plans, sessions, or server configuration.
 - Shipping an installer or claiming support certification.

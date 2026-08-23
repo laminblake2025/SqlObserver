@@ -383,6 +383,7 @@
       "sqlobserver.infrastructure.postgresql": {
         "type": "Project",
         "dependencies": {
+          "Npgsql": "[10.0.3, )",
           "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
         }
@@ -458,6 +459,15 @@
           "Microsoft.Extensions.Hosting": "10.0.10",
           "Microsoft.Extensions.Logging.EventLog": "10.0.10",
           "System.ServiceProcess.ServiceController": "10.0.10"
+        }
+      },
+      "Npgsql": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
         }
       }
     }

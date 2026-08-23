@@ -1,0 +1,13 @@
+-- Review index only. Deployment authority: migrations/0006_replay_validation_functions.sql.
+-- The migration contains the authoritative definitions of:
+--   control.validate_metric_replay(
+--       timestamptz[], uuid[], uuid[], text[], double precision[], jsonb[])
+--   control.validate_diagnostic_event_replay(
+--       timestamptz[], uuid[], uuid[], text[], uuid[], timestamptz[])
+--
+-- These SECURITY DEFINER functions accept only bounded typed arrays and compare them
+-- with schema-qualified repository parents. They do not inspect caller-controlled
+-- temporary relations, accept identifiers or SQL fragments, or widen the collector's
+-- table SELECT privileges. A true result means every supplied persistence identity
+-- exists with exactly the caller-owned content; malformed arrays fail with SQLSTATE
+-- 22023. Only the collector role receives EXECUTE.

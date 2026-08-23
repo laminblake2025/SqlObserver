@@ -1,0 +1,13 @@
+-- Review mirror only. Deployment authority: migrations/0004_repository_functions.sql.
+-- The migration contains the authoritative definitions of:
+--   control.ensure_daily_metric_partition(date)
+--   control.ensure_monthly_event_partition(date)
+--
+-- These SECURITY DEFINER functions accept typed dates only, derive fixed relation
+-- names, quote identifiers with format('%I', ...), quote typed UTC bounds with
+-- format('%L', ...), serialize same-bound creation with transaction advisory locks,
+-- and fail closed on registry/catalog drift. They never accept a schema, table, SQL
+-- fragment, or arbitrary identifier from a caller. Deterministic child names are
+-- raw_metric_sample_pYYYYMMDD and diagnostic_event_pYYYYMM.
+-- Each returns (partition_relation regclass, created boolean, repository_time
+-- timestamptz), making created-vs-existing accounting authoritative under races.

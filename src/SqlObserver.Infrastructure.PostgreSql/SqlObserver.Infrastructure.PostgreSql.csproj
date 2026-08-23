@@ -4,7 +4,12 @@
     <AssemblyName>SqlObserver.Infrastructure.PostgreSql</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Npgsql" />
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../database/migrations/*.sql" Link="Migrations/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../database/migrations/checksums.sha256" Link="Migrations/checksums.sha256" />
   </ItemGroup>
 </Project>

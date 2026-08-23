@@ -6,6 +6,7 @@ Status meanings:
 
 - **Documented**: boundary or decision is captured, but runtime proof does not yet exist.
 - **Scaffolded**: non-runtime structure builds or validates; no operational support is implied.
+- **Implemented**: the milestone slice and its active acceptance tests exist; release support is not implied.
 - **Planned**: implementation has not started in this assignment.
 - **Deferred**: intentionally outside M0-M12 initial-release scope.
 
@@ -15,7 +16,7 @@ Status meanings:
 | --- | --- | --- |
 | **M0 — Product boundary and architecture** | Clean-room boundary; product terminology; modular-monolith process/module boundaries; PostgreSQL-vs-target distinction; initial/planned support matrix; security invariants; threat model; ADR-0001 through ADR-0012; milestone map | Documented and validated for the first assignment |
 | **M1 — Repository bootstrap and CI** | Complete folder map; .NET 10 solution/project skeletons; nullable/analyzers/warnings-as-errors; central NuGet management; strict React/TypeScript build skeleton; test-project skeletons; validation entry point; local-development script placeholders; GitHub Actions; contribution/security policy | Non-runtime first-assignment scope scaffolded and validated; runtime work remains planned |
-| **M2 — PostgreSQL repository, migrations, partitions, ingestion** | PostgreSQL 18.x repository; nine schemas; immutable numbered SQL migrations/checksums; repository roles; UTC storage; daily raw/monthly event partitions; BRIN and justified instance/time B-tree indexes; binary `COPY`; query-text/plan deduplication; partition/retention foundations; PostgreSQL integration/performance tests | Planned |
+| **M2 — PostgreSQL repository, migrations, partitions, ingestion** | PostgreSQL 18.x repository; nine schemas; immutable numbered SQL migrations/checksums; repository roles; UTC storage; daily raw/monthly event partitions; BRIN and justified instance/time B-tree indexes; binary `COPY`; query-text/plan deduplication; partition/retention foundations; PostgreSQL integration/performance tests | Implemented and integration-tested on pinned PostgreSQL 18.4; representative-volume release certification remains M12 |
 | **M3 — Onboarding, credentials, capability discovery, permissions** | Observation-target lifecycle; protected credentials; gMSA/integrated-auth path; version-aware least-privilege permission generator; no permanent `sysadmin`; capability/connection collector; supported/degraded states; expected-denial tests | Planned |
 | **M4 — Collector framework and core health** | Contract registry/manifests; leases and fencing; bounded scheduler; cancellation; non-overlap; retry/circuit breaker; telemetry and visible sample loss; core engine counters; databases/files collectors; ingestion vertical slice; health projections | Planned |
 | **M5 — Sessions, requests, waits, blocking** | Bounded sessions and requests, wait summaries, current blocking chains and blocking history; API/UI projections and collector-specific permission/failure/limit tests | Planned |
@@ -83,7 +84,7 @@ Order is mandatory because later capability and interpretation depend on earlier
 | 13 | Host metrics | M10 | Separate host capability/identity boundary and correlation tests |
 | 14 | Replication | M10 | Version/topology capability contract, bounded evidence and fallback behavior |
 
-No production collector or target SQL statement is authorized in the first assignment.
+M2 contains no production collector or monitored-target SQL statement. The first such work is the capability/connection collector in M3.
 
 ## MCP tool mapping
 
@@ -158,15 +159,24 @@ This is the completion checklist for the first assignment. Each item was inspect
 7. **Initial CI workflow — complete.** The least-privilege Windows workflow installs the pinned toolchains and invokes the single validation entry point.
 8. **Clean first-assignment validation — complete.** `pwsh ./tools/validate.ps1` completed locked restore, Release build with zero warnings/errors, eight test-project runs (four active scaffold suites and four explicitly skipped future-runtime suites), frozen frontend install, strict typecheck, frontend test, and production build.
 
-After the first-assignment merge, the next runtime dependency is M2 repository design and tests—not a production collector.
+## Completed M2 repository tasks
 
-## First-assignment exclusions
+1. **Immutable repository deployment — complete.** Six LF-only, gap-free migrations are embedded with a bijective SHA-256 manifest and applied one transaction at a time under a bounded PostgreSQL advisory lock. Exact-prefix drift, gaps, unknown history, and top-level transaction control fail closed.
+2. **PostgreSQL 18 repository boundary — complete.** The compatibility probe and bootstrap both require major version 18; nine schemas and four restrictive NOLOGIN group roles are created without embedded credentials.
+3. **UTC partition foundation — complete.** Native daily raw-metric and monthly diagnostic-event parents, fixed-purpose concurrency-safe creation functions, partition registry, BRIN time indexes, and instance/time B-tree indexes are implemented.
+4. **Bounded ingestion and protected content — complete.** Caller-validated batches use binary `COPY` into transaction-local staging and idempotent parent insertion under a fenced lease. Sensitive payload storage accepts ciphertext, nonce, tag, external key identifier, and opaque fingerprint only.
+5. **Coordination and retention safety — complete.** Repository-clock leases use persistent monotonic fencing; retention policy is disabled and its view is preview-only with recovery prerequisites unsatisfied.
+6. **Active evidence — complete for M2.** Unit, security, and PostgreSQL 18.4 integration suites cover contracts, boundaries, migration history, roles/schemas, partitions/indexes, ingestion/deduplication, cancellation, and stale fences without PostgreSQL-test skips. Full representative-volume and platform certification remains a release gate.
+
+The next runtime dependency is M3 onboarding, identity, capability discovery, and version-aware least-privilege permission planning.
+
+## Current post-M2 exclusions
 
 The following are explicitly incomplete and must not be represented as working:
 
 - production collector implementations or target SQL;
 - target onboarding, live credentials, permission grants, or capability discovery;
-- PostgreSQL schemas/migrations, live ingestion, partitions, retention, leases, or repository deployment;
+- automatic retention execution, repository installation/backup/restore/HA, or production repository provisioning;
 - API, SignalR, Windows service, alert, analytics, report, or MCP runtime behavior;
 - Query Store, Extended Events, blocked-process, index, plan, session, or configuration changes;
 - live environment bootstrap, seed data, installer, upgrade, uninstall, or release packaging;

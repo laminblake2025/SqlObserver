@@ -4,6 +4,7 @@
     <AssemblyName>SqlObserver.IntegrationTests.PostgreSql</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
   </ItemGroup>
 </Project>

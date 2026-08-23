@@ -1,0 +1,15 @@
+-- Review mirror only. Deployment authority: migrations/0004_repository_functions.sql.
+-- The migration contains the authoritative definitions of:
+--   control.acquire_worker_lease(text, uuid, interval)
+--   control.renew_worker_lease(text, uuid, bigint, interval)
+--   control.release_worker_lease(text, uuid, bigint)
+--   control.assert_worker_lease(text, uuid, bigint)
+--
+-- TTL input is constrained to 5 seconds through 10 minutes. Acquire is one
+-- INSERT ... ON CONFLICT operation and can replace only a released or
+-- repository-clock-expired owner. Release preserves the row so its fencing token can
+-- never reset for that work key. Assert validates and row-locks the owner/fence; the
+-- caller must invoke it inside the same transaction as every lease-protected write.
+-- Every operation first takes the same transaction-scoped advisory lock for its typed,
+-- bounded work key and only then captures clock_timestamp(), so lock wait never
+-- consumes an apparently fresh returned TTL.

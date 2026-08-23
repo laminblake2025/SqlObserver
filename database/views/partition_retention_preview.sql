@@ -1,0 +1,13 @@
+-- Review index only. Deployment authority and complete definition:
+-- migrations/0005_views_and_least_privilege_grants.sql.
+--
+-- reporting.partition_retention_preview exposes:
+--   parent/partition identity and UTC bounds;
+--   disabled policy state and unconfigured retention duration;
+--   bounded catalog row/byte estimates;
+--   repository evaluation time and minimum-partition floor;
+--   recovery_prerequisite_satisfied = false;
+--   eligible_for_retention = false and an explicit reason.
+--
+-- It is a security-barrier, owner-rights view granted only to the server and collector
+-- group roles. It is read-only and cannot detach, drop, or mutate a partition.

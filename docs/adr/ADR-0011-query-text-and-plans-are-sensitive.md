@@ -13,6 +13,15 @@ Classify query text and plans as sensitive, untrusted diagnostic content. Apply 
 
 Collect only when a product use case and target capability justify it. Deduplicate payloads, use non-semantic internal identifiers/digests, encrypt/protect storage according to deployment policy, restrict fields and targets through server-side RBAC, and apply explicit retention. Never place unrestricted content in logs, traces, metric labels, URLs, alert notifications, or audit summaries. Audit access using safe identifiers and bounded parameter metadata rather than returned content.
 
+The deduplication fingerprint is a deterministic, externally computed cryptographic
+digest of the unprotected content, scoped by payload kind. Randomized encryption may
+legitimately produce different nonce, authentication-tag, and ciphertext bytes for the
+same fingerprint. The repository therefore uses immutable first-committed-write
+semantics: a later kind/fingerprint match returns the original internal identifier and
+never overwrites its protected bytes or key metadata. The repository cannot safely
+distinguish an exact retry from a cryptographic fingerprint collision without comparing
+plaintext, so collision investigation belongs outside this persistence boundary.
+
 Treat content as inert data. Use safe XML parsers with DTDs, external entities, and network resolution disabled. Bound input bytes, decompression, depth, parse time, result rows, and response bytes. Encode for the output context, sanitize any derived visual form, prevent spreadsheet-formula execution in exports, and never use captured content as a command, template, log format, HTML, or instruction to an MCP/AI client.
 
 APIs and MCP expose only the minimum authorized projection. List/summary operations prefer metadata and identifiers; content-bearing retrieval is explicit, bounded, attributable, and separately authorized where policy requires it.

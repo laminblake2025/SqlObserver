@@ -34,6 +34,196 @@ function Invoke-CheckedCommand {
     }
 }
 
+function Test-SqlIdentifierStart {
+    param([char] $Character)
+
+    return [char]::IsLetter($Character) -or $Character -eq '_'
+}
+
+function Test-SqlIdentifierPart {
+    param([char] $Character)
+
+    return [char]::IsLetterOrDigit($Character) -or $Character -in @('_', '$')
+}
+
+function Test-SqlDollarQuoteTagPart {
+    param([char] $Character)
+
+    return [char]::IsLetterOrDigit($Character) -or $Character -eq '_'
+}
+
+function Test-SqlContainsTopLevelTransactionControl {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string] $Sql
+    )
+
+    $index = 0
+    $firstKeyword = $null
+    $isTransactionControlCandidate = $true
+
+    while ($index -lt $Sql.Length) {
+        $current = $Sql[$index]
+        if ([char]::IsWhiteSpace($current)) {
+            $index++
+            continue
+        }
+
+        if ($current -eq '-' -and $index + 1 -lt $Sql.Length -and $Sql[$index + 1] -eq '-') {
+            $index += 2
+            while ($index -lt $Sql.Length -and $Sql[$index] -ne "`n") {
+                $index++
+            }
+            continue
+        }
+
+        if ($current -eq '/' -and $index + 1 -lt $Sql.Length -and $Sql[$index + 1] -eq '*') {
+            $commentDepth = 1
+            $index += 2
+            while ($index -lt $Sql.Length -and $commentDepth -gt 0) {
+                if ($index + 1 -lt $Sql.Length -and $Sql[$index] -eq '/' -and $Sql[$index + 1] -eq '*') {
+                    $commentDepth++
+                    $index += 2
+                }
+                elseif ($index + 1 -lt $Sql.Length -and $Sql[$index] -eq '*' -and $Sql[$index + 1] -eq '/') {
+                    $commentDepth--
+                    $index += 2
+                }
+                else {
+                    $index++
+                }
+            }
+            continue
+        }
+
+        if ($current -eq ';') {
+            $index++
+            $firstKeyword = $null
+            $isTransactionControlCandidate = $true
+            continue
+        }
+
+        if ($current -eq [char] 39) {
+            $prefixIndex = $index - 1
+            $usesBackslashEscapes = $prefixIndex -ge 0 -and
+                $Sql[$prefixIndex] -in @('e', 'E') -and
+                ($prefixIndex -eq 0 -or -not (Test-SqlIdentifierPart $Sql[$prefixIndex - 1]))
+            $index++
+            while ($index -lt $Sql.Length) {
+                if ($usesBackslashEscapes -and $Sql[$index] -eq [char] 92) {
+                    $index = [Math]::Min($index + 2, $Sql.Length)
+                }
+                elseif ($Sql[$index] -ne [char] 39) {
+                    $index++
+                }
+                elseif ($index + 1 -lt $Sql.Length -and $Sql[$index + 1] -eq [char] 39) {
+                    $index += 2
+                }
+                else {
+                    $index++
+                    break
+                }
+            }
+            $firstKeyword = $null
+            $isTransactionControlCandidate = $false
+            continue
+        }
+
+        if ($current -eq [char] 34) {
+            $index++
+            while ($index -lt $Sql.Length) {
+                if ($Sql[$index] -ne [char] 34) {
+                    $index++
+                }
+                elseif ($index + 1 -lt $Sql.Length -and $Sql[$index + 1] -eq [char] 34) {
+                    $index += 2
+                }
+                else {
+                    $index++
+                    break
+                }
+            }
+            $firstKeyword = $null
+            $isTransactionControlCandidate = $false
+            continue
+        }
+
+        if ($current -eq '$') {
+            $tagEnd = $index + 1
+            $delimiter = $null
+            if ($tagEnd -lt $Sql.Length -and $Sql[$tagEnd] -eq '$') {
+                $delimiter = '$$'
+            }
+            elseif ($tagEnd -lt $Sql.Length -and (Test-SqlIdentifierStart $Sql[$tagEnd])) {
+                $tagEnd++
+                while ($tagEnd -lt $Sql.Length -and (Test-SqlDollarQuoteTagPart $Sql[$tagEnd])) {
+                    $tagEnd++
+                }
+                if ($tagEnd -lt $Sql.Length -and $Sql[$tagEnd] -eq '$') {
+                    $delimiter = $Sql.Substring($index, $tagEnd - $index + 1)
+                }
+            }
+
+            if ($null -ne $delimiter) {
+                $contentStart = $tagEnd + 1
+                $closingDelimiter = $Sql.IndexOf(
+                    $delimiter,
+                    $contentStart,
+                    [StringComparison]::Ordinal)
+                if ($closingDelimiter -lt 0) {
+                    $index = $Sql.Length
+                }
+                else {
+                    $index = $closingDelimiter + $delimiter.Length
+                }
+                $firstKeyword = $null
+                $isTransactionControlCandidate = $false
+                continue
+            }
+        }
+
+        if ($isTransactionControlCandidate -and (Test-SqlIdentifierStart $current)) {
+            $tokenStart = $index
+            $index++
+            while ($index -lt $Sql.Length -and (Test-SqlIdentifierPart $Sql[$index])) {
+                $index++
+            }
+
+            $keyword = $Sql.Substring($tokenStart, $index - $tokenStart).ToUpperInvariant()
+            if ($null -eq $firstKeyword) {
+                if ($keyword -in @('BEGIN', 'COMMIT', 'END', 'ROLLBACK', 'ABORT', 'SAVEPOINT', 'RELEASE')) {
+                    return $true
+                }
+
+                if ($keyword -in @('START', 'PREPARE', 'SET')) {
+                    $firstKeyword = $keyword
+                }
+                else {
+                    $isTransactionControlCandidate = $false
+                }
+            }
+            else {
+                if (($firstKeyword -eq 'START' -and $keyword -eq 'TRANSACTION') -or
+                    ($firstKeyword -eq 'PREPARE' -and $keyword -eq 'TRANSACTION') -or
+                    ($firstKeyword -eq 'SET' -and $keyword -eq 'TRANSACTION')) {
+                    return $true
+                }
+
+                $firstKeyword = $null
+                $isTransactionControlCandidate = $false
+            }
+            continue
+        }
+
+        $firstKeyword = $null
+        $isTransactionControlCandidate = $false
+        $index++
+    }
+
+    return $false
+}
+
 function Assert-RepositoryShape {
     $requiredFiles = @(
         'README.md',
@@ -45,6 +235,7 @@ function Assert-RepositoryShape {
         'Directory.Build.props',
         'Directory.Packages.props',
         'NuGet.Config',
+        '.gitattributes',
         '.github/workflows/validate.yml',
         'tools/dev-up.ps1',
         'tools/seed-lab.ps1',
@@ -56,7 +247,8 @@ function Assert-RepositoryShape {
         'docs/architecture/threat-model.md',
         'docs/product/clean-room-boundary.md',
         'docs/product/terminology.md',
-        'docs/runbooks/README.md'
+        'docs/runbooks/README.md',
+        'docs/milestones/M2-postgresql-repository.md'
     )
 
     foreach ($relativePath in $requiredFiles) {
@@ -192,6 +384,7 @@ function Assert-RepositoryShape {
             'Microsoft.Extensions.Hosting',
             'Microsoft.Extensions.Hosting.WindowsServices'
         )
+        'SqlObserver.Infrastructure.PostgreSql' = @('Npgsql')
         'SqlObserver.Server' = @('Microsoft.Extensions.Hosting.WindowsServices')
     }
     foreach ($sourceProject in $sourceProjects) {
@@ -254,9 +447,6 @@ function Assert-RepositoryShape {
     $placeholderOnlyDirectories = @(
         'collectors/sql',
         'collectors/manifests',
-        'database/migrations',
-        'database/functions',
-        'database/views',
         'database/seeds',
         'database/testdata',
         'installer/wix',
@@ -268,8 +458,119 @@ function Assert-RepositoryShape {
                 Where-Object { $_.Name -ne '.gitkeep' }
         )
         if ($unexpectedAssets.Count -ne 0) {
-            throw "Runtime assets are outside the authorized first-assignment scope: $relativePath"
+            throw "Runtime assets are outside the currently implemented milestone scope: $relativePath"
         }
+    }
+
+    $migrationPath = Join-Path $repositoryRoot 'database/migrations'
+    $migrationFiles = @(Get-ChildItem -LiteralPath $migrationPath -Filter '*.sql' -File | Sort-Object Name)
+    if ($migrationFiles.Count -lt 3) {
+        throw "M2 requires at least three ordered SQL migrations; found $($migrationFiles.Count)."
+    }
+
+    $expectedMigrationVersion = 1
+    foreach ($migrationFile in $migrationFiles) {
+        if ($migrationFile.Name -notmatch '^(\d{4})_[a-z0-9_]+\.sql$') {
+            throw "Migration filename is not immutable-numbered form: $($migrationFile.Name)"
+        }
+
+        if ([int] $Matches[1] -ne $expectedMigrationVersion) {
+            throw "Migration sequence has a gap at $($migrationFile.Name)."
+        }
+
+        if ([IO.File]::ReadAllBytes($migrationFile.FullName) -contains 13) {
+            throw "Migration must use deterministic LF line endings: $($migrationFile.Name)"
+        }
+
+        $migrationText = Get-Content -LiteralPath $migrationFile.FullName -Raw
+        if (Test-SqlContainsTopLevelTransactionControl $migrationText) {
+            throw "Migration contains transaction control owned by the runner: $($migrationFile.Name)"
+        }
+
+        $expectedMigrationVersion++
+    }
+
+    $checksumPath = Join-Path $migrationPath 'checksums.sha256'
+    if (-not (Test-Path -LiteralPath $checksumPath -PathType Leaf)) {
+        throw 'M2 migration checksum manifest is missing.'
+    }
+
+    $manifestEntries = @{}
+    $manifestOrder = @()
+    foreach ($line in Get-Content -LiteralPath $checksumPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) {
+            continue
+        }
+
+        if ($line -notmatch '^([0-9a-f]{64})  (\d{4}_[a-z0-9_]+\.sql)$') {
+            throw "Invalid migration checksum manifest entry: $line"
+        }
+
+        if ($manifestEntries.ContainsKey($Matches[2])) {
+            throw "Duplicate migration checksum entry: $($Matches[2])"
+        }
+
+        $manifestEntries[$Matches[2]] = $Matches[1]
+        $manifestOrder += $Matches[2]
+    }
+
+    if ($manifestEntries.Count -ne $migrationFiles.Count) {
+        throw 'Migration checksum manifest must contain exactly one entry per SQL migration.'
+    }
+
+    $expectedManifestOrder = @($migrationFiles | ForEach-Object { $_.Name })
+    if (($manifestOrder -join '|') -cne ($expectedManifestOrder -join '|')) {
+        throw 'Migration checksum manifest entries must remain in exact migration order.'
+    }
+
+    foreach ($migrationFile in $migrationFiles) {
+        $actualChecksum = (Get-FileHash -LiteralPath $migrationFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        if (-not $manifestEntries.ContainsKey($migrationFile.Name) -or
+            $manifestEntries[$migrationFile.Name] -cne $actualChecksum) {
+            throw "Migration checksum mismatch: $($migrationFile.Name)"
+        }
+    }
+
+    $migrationSql = ($migrationFiles | ForEach-Object {
+        Get-Content -LiteralPath $_.FullName -Raw
+    }) -join "`n"
+    foreach ($schemaName in @(
+        'control', 'security', 'telemetry', 'events', 'analytics',
+        'alerting', 'reporting', 'audit', 'system')) {
+        if ($migrationSql -notmatch "(?i)CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?$schemaName\b") {
+            throw "M2 repository schema is missing from migrations: $schemaName"
+        }
+    }
+
+    foreach ($requiredSqlInvariant in @(
+        'PARTITION BY RANGE',
+        'USING brin',
+        'sqlobserver_server',
+        'sqlobserver_collector',
+        'sqlobserver_migrator',
+        'sqlobserver_auditor',
+        'NOLOGIN')) {
+        if (-not $migrationSql.Contains($requiredSqlInvariant, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "M2 SQL invariant is missing: $requiredSqlInvariant"
+        }
+    }
+
+    if ($migrationSql -match '(?i)\bPASSWORD\s+' -or
+        $migrationSql -match '(?i)(?<!NO)\bSUPERUSER\b' -or
+        $migrationSql -match '(?i)timestamp\s+without\s+time\s+zone') {
+        throw 'M2 migrations must not embed passwords, create superusers, or persist non-UTC timestamp types.'
+    }
+
+    $postgresIntegrationSource = @(
+        Get-ChildItem -LiteralPath (
+            Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql') -Filter '*.cs' -File
+    )
+    $skippedPostgresTests = @(
+        $postgresIntegrationSource |
+            Select-String -Pattern '\[(Fact|Theory)\s*\(\s*Skip\s*='
+    )
+    if ($postgresIntegrationSource.Count -eq 0 -or $skippedPostgresTests.Count -ne 0) {
+        throw 'M2 PostgreSQL integration tests must be active and must not use Skip.'
     }
 
     $collectorImplementationPath = Join-Path $repositoryRoot 'src/SqlObserver.Collectors'

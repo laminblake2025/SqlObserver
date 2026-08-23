@@ -4,6 +4,11 @@
     <AssemblyName>SqlObserver.SecurityTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/SqlObserver.Security/SqlObserver.Security.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Mcp/SqlObserver.Mcp.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
   </ItemGroup>
 </Project>
