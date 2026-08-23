@@ -1,4 +1,5 @@
 {
+
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sqlobserver.invalid/schemas/collector-manifest.v1.json",
   "title": "SqlObserver collector manifest",
