@@ -235,7 +235,7 @@ function Assert-RepositoryShape {
 
     foreach ($adrFile in $adrFiles) {
         $adrContent = Get-Content -LiteralPath $adrFile.FullName -Raw
-        if ($adrContent -notmatch '(?m)^- Status: (Accepted|Proposed)$') {
+        if ($adrContent -notmatch '(?m)^- Status: (Accepted|Proposed)\r?$') {
             throw "ADR must have Accepted or Proposed status: $($adrFile.Name)"
         }
     }
