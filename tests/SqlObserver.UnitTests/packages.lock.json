@@ -93,6 +93,12 @@
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
+      "sqlobserver.collector.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.domain": {
         "type": "Project"
       }

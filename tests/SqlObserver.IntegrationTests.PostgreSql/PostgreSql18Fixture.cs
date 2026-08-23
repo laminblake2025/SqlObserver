@@ -80,22 +80,34 @@ public sealed class RepositoryTestDatabase : IAsyncDisposable
 
     public NpgsqlDataSource DataSource { get; }
 
-    public NpgsqlDataSource CreateCollectorDataSource()
+    public NpgsqlDataSource CreateCollectorDataSource() =>
+        CreateRoleDataSource("sqlobserver_collector");
+
+    public NpgsqlDataSource CreateServerDataSource() =>
+        CreateRoleDataSource("sqlobserver_server");
+
+    private NpgsqlDataSource CreateRoleDataSource(string role)
     {
+        string setRoleSql = role switch
+        {
+            "sqlobserver_collector" => "SET ROLE sqlobserver_collector;",
+            "sqlobserver_server" => "SET ROLE sqlobserver_server;",
+            _ => throw new ArgumentOutOfRangeException(nameof(role)),
+        };
         var connectionString = new NpgsqlConnectionStringBuilder(_adminConnectionString)
         {
             Pooling = false,
         };
         var builder = new NpgsqlDataSourceBuilder(connectionString.ConnectionString);
         builder.UsePhysicalConnectionInitializer(
-            static connection =>
+            connection =>
             {
-                using var command = new NpgsqlCommand("SET ROLE sqlobserver_collector;", connection);
+                using var command = new NpgsqlCommand(setRoleSql, connection);
                 command.ExecuteNonQuery();
             },
-            static async connection =>
+            async connection =>
             {
-                await using var command = new NpgsqlCommand("SET ROLE sqlobserver_collector;", connection);
+                await using var command = new NpgsqlCommand(setRoleSql, connection);
                 await command.ExecuteNonQueryAsync();
             });
         return builder.Build();

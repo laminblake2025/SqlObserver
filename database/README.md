@@ -32,10 +32,48 @@ outside these files and are granted only the appropriate group role:
 - `sqlobserver_collector` writes observations and invokes lease/partition functions;
 - `sqlobserver_auditor` reads the append-only activity audit.
 
+Deploy the Server and Collector with distinct LOGIN roles and distinct
+`ConnectionStrings:SqlObserverRepository` values: the Server login is a member only of
+`sqlobserver_server`, while the Collector login is a member only of
+`sqlobserver_collector`. Do not share one elevated repository login between processes or
+grant either runtime login `sqlobserver_migrator`/`sqlobserver_auditor`; process separation
+is part of the least-privilege boundary.
+
 None of the group roles can log in, carries a password, can create a database or role,
 bypasses row security, replicates, or is a superuser. `PUBLIC` has no repository schema
 access and receives no default object privileges. The MCP bridge has no repository
 role or credential.
+
+## M3 target and capability persistence
+
+Migration `0007` extends the M2 identity table without invalidating identity-only legacy
+rows. New registrations must provide a structured host plus exactly one named instance
+or explicit TCP port, a bounded connect timeout, optional certificate host, Windows
+integrated service identity, and mandatory validated encryption. No function accepts a
+connection string, reusable secret, password, arbitrary driver keyword, or target SQL.
+Legacy rows remain readable by identity but are excluded from discovery until explicitly
+registered through the M3 contract.
+
+Server-only functions register, update, retire, and request rediscovery under optimistic
+revision fencing. Each outcome appends its bounded administrative audit in the same
+transaction, so an audit failure rolls back the target mutation. The sanitized
+security-barrier status view supports authorization-scoped key/identifier paging; the
+runtime applies the resolved target scope before its cursor and hard limit. The generic
+audit primitive is owner-only. A separate server-only entry point can append only denied
+user-administration actions with one of the closed authorization-denial reasons; the
+collector can execute neither audit entry point directly.
+
+The collector receives only a repository-clock due list of at most sixteen configured,
+non-retired targets and a lease/revision-fenced profile recorder. Discovery attempts,
+profile identities, capability reasons, and permission evidence are append-only. The
+recorder persists bounded collector provenance, structured SQL Server identity and
+security evidence, UTC validity, and closed reason codes, then reasserts the worker fence
+before returning. Refresh timestamps must be finite, intervals are constrained to one
+minute through seven days, and expiry is anchored to repository `recorded_at`; caller
+clock skew in `checked_at`/`valid_until` cannot make work immediately overdue or defer it
+indefinitely. Single and bounded bulk readers expose the latest sanitized profile without
+widening table access. Direct mutation of capability history and all M3 access through
+`PUBLIC` are denied.
 
 ## Time, partitions, and retention
 

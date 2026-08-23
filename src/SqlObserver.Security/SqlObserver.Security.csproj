@@ -5,5 +5,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
   </ItemGroup>
 </Project>

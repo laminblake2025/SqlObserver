@@ -2,19 +2,33 @@
   "version": 2,
   "dependencies": {
     "net10.0": {
+      "Microsoft.AspNetCore.Authentication.Negotiate": {
+        "type": "Direct",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "XjvGMQ0+Y22t7jQKS8ZW3UvJNhNC0AT/Et2Mf8XZj4MmNawqpxt8Xvm4wLCkAOrqiVqGmz9b+kwi54DuyfPyCg==",
+        "dependencies": {
+          "System.DirectoryServices.Protocols": "10.0.11"
+        }
+      },
       "Microsoft.Extensions.Hosting.WindowsServices": {
         "type": "Direct",
-        "requested": "[10.0.10, )",
-        "resolved": "10.0.10",
-        "contentHash": "qY7XhE2ljtqCwDKexJf3uG4E7r0teE/DU0eEUDbFqGN2HAIz0WK7P3u4RnnnqOy/3Jz5vdTfTuDMFsrwxrcmeg==",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "OTlOHRxmt4IyYR5tBejF5ffdVMbo9n5NbPJRzCe0bnJmzTQt0kHNiDiEU96t4KkB3wE3vZqPETtXJVLujrRJnA==",
         "dependencies": {
-          "System.ServiceProcess.ServiceController": "10.0.10"
+          "System.ServiceProcess.ServiceController": "10.0.11"
         }
+      },
+      "System.DirectoryServices.Protocols": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "Q4DEPB0wfAMAM6zjCjioFQoDZGC6uCeAZMU30sdjMgVtKbSuSBjhASVlxVOTYmQKCdUqZInnDwZ3W/ZTWB4m3Q=="
       },
       "System.ServiceProcess.ServiceController": {
         "type": "Transitive",
-        "resolved": "10.0.10",
-        "contentHash": "9tI/EtlMimwJn9EEtbqFrVqGCD98VfVdnW6UekC7/YHO5Ky/LMUfXibBv9+AV8g9u7uim20oHgiOqzaeEWAhqg=="
+        "resolved": "10.0.11",
+        "contentHash": "khROyIQ3GAZy5MbCabfmlbvxf9nuvdveFP2XbRCteZ9Lq8OFEvImmrjV6acl1LegRu/9T6VMxi9Lr+KZu29VHg=="
       },
       "sqlobserver.alerting": {
         "type": "Project",
@@ -69,7 +83,8 @@
       "sqlobserver.security": {
         "type": "Project",
         "dependencies": {
-          "SqlObserver.Application": "[1.0.0, )"
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
         }
       },
       "Npgsql": {

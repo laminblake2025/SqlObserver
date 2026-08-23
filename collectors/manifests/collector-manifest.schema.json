@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/collector-manifest.v1.json",
+  "title": "SqlObserver collector manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "collectorId",
+    "collectorVersion",
+    "displayName",
+    "operationalMode",
+    "supportedTargets",
+    "requiredCapabilities",
+    "requiredPermissionsByMajor",
+    "cadence",
+    "executionBounds",
+    "estimatedCostClass",
+    "queryResources",
+    "fallback",
+    "outputSchemaVersion"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "collector-manifest.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "collectorId": {
+      "$ref": "#/$defs/collectorId"
+    },
+    "collectorVersion": {
+      "const": 1
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "operationalMode": {
+      "enum": ["passive", "enhanced-prerequisite"]
+    },
+    "supportedTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "minimumMajorVersion", "maximumMajorVersion", "platforms", "engineEditions"],
+      "properties": {
+        "product": {
+          "const": "Microsoft SQL Server"
+        },
+        "minimumMajorVersion": {
+          "const": 15
+        },
+        "maximumMajorVersion": {
+          "const": 17
+        },
+        "platforms": {
+          "type": "array",
+          "prefixItems": [{ "const": "Windows" }],
+          "items": false,
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "engineEditions": {
+          "type": "array",
+          "prefixItems": [
+            { "const": 2 },
+            { "const": 3 },
+            { "const": 4 }
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "requiredCapabilities": {
+      "type": "array",
+      "prefixItems": [
+        { "const": "connection.tds" },
+        { "const": "authentication.windows-integrated" },
+        { "const": "transport.tls-validated" },
+        { "const": "privilege.non-sysadmin" },
+        { "const": "platform.windows" }
+      ],
+      "items": false,
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "requiredPermissionsByMajor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["15", "16", "17"],
+      "properties": {
+        "15": {
+          "type": "array",
+          "prefixItems": [{ "const": "server.view-state" }],
+          "items": false,
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "16": {
+          "type": "array",
+          "prefixItems": [{ "const": "server.view-performance-state" }],
+          "items": false,
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "17": {
+          "type": "array",
+          "prefixItems": [{ "const": "server.view-performance-state" }],
+          "items": false,
+          "minItems": 1,
+          "maxItems": 1
+        }
+      }
+    },
+    "cadence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultIntervalSeconds", "minimumIntervalSeconds", "nonOverlappingPerTarget"],
+      "properties": {
+        "defaultIntervalSeconds": { "const": 300 },
+        "minimumIntervalSeconds": { "const": 60 },
+        "nonOverlappingPerTarget": { "const": true }
+      }
+    },
+    "executionBounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectTimeoutSeconds", "commandTimeoutSeconds", "maximumRows", "maximumResponseBytes"],
+      "properties": {
+        "connectTimeoutSeconds": { "const": 5 },
+        "commandTimeoutSeconds": { "const": 5 },
+        "maximumRows": { "const": 1 },
+        "maximumResponseBytes": { "const": 16384 }
+      }
+    },
+    "estimatedCostClass": {
+      "enum": ["low", "moderate", "high"]
+    },
+    "queryResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap", "supportedByMajor", "permissionFallback"],
+      "properties": {
+        "bootstrap": {
+          "const": "capability.connection.bootstrap.v1.sql"
+        },
+        "supportedByMajor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["15", "16", "17"],
+          "properties": {
+            "15": { "const": "capability.connection.sqlserver15-windows.v1.sql" },
+            "16": { "const": "capability.connection.sqlserver16-windows.v1.sql" },
+            "17": { "const": "capability.connection.sqlserver17-windows.v1.sql" }
+          }
+        },
+        "permissionFallback": {
+          "const": "capability.connection.fallback.v1.sql"
+        }
+      }
+    },
+    "fallback": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": { "const": "unsupported" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "collectorId"],
+          "properties": {
+            "mode": { "const": "alternate_collector" },
+            "collectorId": { "$ref": "#/$defs/collectorId" }
+          }
+        }
+      ]
+    },
+    "outputSchemaVersion": {
+      "const": 1
+    }
+  },
+  "$defs": {
+    "collectorId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.][a-z][a-z0-9]*)+$",
+      "maxLength": 128
+    }
+  }
+}

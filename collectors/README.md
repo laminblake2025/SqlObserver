@@ -1,9 +1,17 @@
 # Collector assets
 
-Collector SQL and manifests begin with the capability and connection slice in
-Milestone 3. The current assignment intentionally contains no production collector,
-target query, or enhanced-monitoring script.
+Collector SQL and manifests begin with the passive `capability.connection` slice in
+Milestone 3. Its checked-in statements are fixed, parameterless, one-row probes for
+SQL Server 2019, 2022, and 2025 on Windows. They discover normalized version,
+platform, transport, authentication, privilege, and permission evidence without
+mutating the monitored instance.
 
-Every future collector manifest must declare its identity, required capabilities and
+Every collector manifest must declare its identity, required capabilities and
 permissions, supported targets, cadence bounds, timeout, row ceiling, estimated cost,
-fallback, and output schema version before implementation is accepted.
+fallback, and output schema version before implementation is accepted. SQL assets are
+embedded with a checksum manifest, bounded by their adapter, and may not contain
+configuration, DDL, DML, dynamic SQL, undocumented interfaces, or arbitrary input.
+
+Least-privilege setup is deliberately outside the service execution path. Use
+`tools/generate-permissions.ps1` to create an offline DBA-reviewed grant or removal
+plan for the exact supported SQL Server major version.

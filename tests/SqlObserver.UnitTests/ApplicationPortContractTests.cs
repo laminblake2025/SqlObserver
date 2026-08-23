@@ -16,6 +16,10 @@ public sealed class ApplicationPortContractTests
         typeof(IDiagnosticEventIngestionPort),
         typeof(ISensitivePayloadPort),
         typeof(IWorkerLeasePort),
+        typeof(IObservationTargetRepositoryPort),
+        typeof(ICapabilityProfileRepositoryPort),
+        typeof(IAdministrativeAuditPort),
+        typeof(ISqlServerCapabilityDiscoveryPort),
     ];
 
     [Fact]
@@ -54,7 +58,7 @@ public sealed class ApplicationPortContractTests
     }
 
     [Fact]
-    public void EveryPortRequestCarriesAnExplicitRepositoryTimeout()
+    public void EveryPortRequestCarriesAnExplicitBoundedTimeout()
     {
         Type[] requestTypes = PortTypes
             .SelectMany(static type => type.GetMethods())
@@ -67,7 +71,9 @@ public sealed class ApplicationPortContractTests
             PropertyInfo? timeout = requestType.GetProperty("Timeout");
 
             Assert.NotNull(timeout);
-            Assert.Equal(typeof(RepositoryCallTimeout), timeout.PropertyType);
+            Assert.True(
+                timeout.PropertyType == typeof(RepositoryCallTimeout) ||
+                timeout.PropertyType == typeof(CapabilityDiscoveryTimeout));
             Assert.DoesNotContain(
                 requestType.GetProperties(),
                 static property => property.PropertyType == typeof(string));

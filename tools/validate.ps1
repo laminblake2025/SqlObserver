@@ -248,7 +248,11 @@ function Assert-RepositoryShape {
         'docs/product/clean-room-boundary.md',
         'docs/product/terminology.md',
         'docs/runbooks/README.md',
-        'docs/milestones/M2-postgresql-repository.md'
+        'docs/milestones/M2-postgresql-repository.md',
+        'docs/milestones/M3-onboarding-and-capabilities.md',
+        'collectors/manifests/collector-manifest.schema.json',
+        'collectors/manifests/capability.connection.v1.json',
+        'collectors/manifests/capability.connection.assets.sha256'
     )
 
     foreach ($relativePath in $requiredFiles) {
@@ -385,7 +389,11 @@ function Assert-RepositoryShape {
             'Microsoft.Extensions.Hosting.WindowsServices'
         )
         'SqlObserver.Infrastructure.PostgreSql' = @('Npgsql')
-        'SqlObserver.Server' = @('Microsoft.Extensions.Hosting.WindowsServices')
+        'SqlObserver.Infrastructure.SqlServer' = @('Microsoft.Data.SqlClient')
+        'SqlObserver.Server' = @(
+            'Microsoft.AspNetCore.Authentication.Negotiate',
+            'Microsoft.Extensions.Hosting.WindowsServices'
+        )
     }
     foreach ($sourceProject in $sourceProjects) {
         [xml] $projectXml = Get-Content -LiteralPath $sourceProject.FullName -Raw
@@ -445,8 +453,6 @@ function Assert-RepositoryShape {
     }
 
     $placeholderOnlyDirectories = @(
-        'collectors/sql',
-        'collectors/manifests',
         'database/seeds',
         'database/testdata',
         'installer/wix',
@@ -550,7 +556,7 @@ function Assert-RepositoryShape {
         'sqlobserver_migrator',
         'sqlobserver_auditor',
         'NOLOGIN')) {
-        if (-not $migrationSql.Contains($requiredSqlInvariant, [StringComparison]::OrdinalIgnoreCase)) {
+        if ($migrationSql.IndexOf($requiredSqlInvariant, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
             throw "M2 SQL invariant is missing: $requiredSqlInvariant"
         }
     }
@@ -573,13 +579,117 @@ function Assert-RepositoryShape {
         throw 'M2 PostgreSQL integration tests must be active and must not use Skip.'
     }
 
-    $collectorImplementationPath = Join-Path $repositoryRoot 'src/SqlObserver.Collectors'
-    $unexpectedCollectorSource = @(
-        Get-ChildItem -LiteralPath $collectorImplementationPath -File |
-            Where-Object { $_.Name -notin @('AssemblyMarker.cs', 'packages.lock.json', 'SqlObserver.Collectors.csproj') }
+    $collectorManifestPath = Join-Path $repositoryRoot 'collectors/manifests/capability.connection.v1.json'
+    $collectorManifest = Get-Content -LiteralPath $collectorManifestPath -Raw | ConvertFrom-Json
+    if ($collectorManifest.collectorId -cne 'capability.connection' -or
+        $collectorManifest.schemaVersion -ne 1 -or
+        $collectorManifest.collectorVersion -ne 1 -or
+        $collectorManifest.outputSchemaVersion -ne 1 -or
+        $collectorManifest.operationalMode -cne 'passive' -or
+        $collectorManifest.supportedTargets.minimumMajorVersion -ne 15 -or
+        $collectorManifest.supportedTargets.maximumMajorVersion -ne 17 -or
+        $collectorManifest.executionBounds.maximumRows -ne 1 -or
+        $collectorManifest.executionBounds.maximumResponseBytes -gt 16384 -or
+        $collectorManifest.executionBounds.connectTimeoutSeconds -gt 30 -or
+        $collectorManifest.executionBounds.commandTimeoutSeconds -gt 120 -or
+        -not $collectorManifest.cadence.nonOverlappingPerTarget) {
+        throw 'M3 capability.connection manifest identity, support, passive mode, version, or bounds are invalid.'
+    }
+
+    $collectorSqlPath = Join-Path $repositoryRoot 'collectors/sql'
+    $collectorSqlFiles = @(Get-ChildItem -LiteralPath $collectorSqlPath -Filter '*.sql' -File | Sort-Object Name)
+    $expectedCollectorSqlNames = @(
+        'capability.connection.bootstrap.v1.sql',
+        'capability.connection.fallback.v1.sql',
+        'capability.connection.sqlserver15-windows.v1.sql',
+        'capability.connection.sqlserver16-windows.v1.sql',
+        'capability.connection.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
+    if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
+        throw 'M3 must contain exactly the five reviewed capability.connection SQL assets.'
+    }
+
+    foreach ($collectorSqlFile in $collectorSqlFiles) {
+        if ([IO.File]::ReadAllBytes($collectorSqlFile.FullName) -contains 13) {
+            throw "Collector SQL must use deterministic LF line endings: $($collectorSqlFile.Name)"
+        }
+
+        $collectorSql = Get-Content -LiteralPath $collectorSqlFile.FullName -Raw
+        if ($collectorSql -notmatch '(?i)\bSET\s+NOCOUNT\s+ON\s*;' -or
+            $collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*\(\s*1\s*\)' -or
+            $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b' -or
+            $collectorSql -match '(?i)\b(xp_|sp_OA|sp_executesql|OPENROWSET|OPENDATASOURCE)') {
+            throw "Collector SQL must remain fixed, one-row bounded, read-only, and supported: $($collectorSqlFile.Name)"
+        }
+    }
+
+    $collectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/capability.connection.assets.sha256'
+    $collectorAssetPaths = @{
+        'collector-manifest.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.schema.json'
+        'capability.connection.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/capability.connection.v1.json'
+    }
+    foreach ($collectorSqlFile in $collectorSqlFiles) {
+        $collectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName
+    }
+    $collectorChecksums = @{}
+    foreach ($line in Get-Content -LiteralPath $collectorChecksumPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) {
+            continue
+        }
+        if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') {
+            throw "Invalid M3 collector checksum entry: $line"
+        }
+        $assetName = $Matches[2]
+        if (-not $collectorAssetPaths.ContainsKey($assetName) -or
+            $collectorChecksums.ContainsKey($assetName)) {
+            throw "Unexpected or duplicate M3 collector checksum entry: $line"
+        }
+        $collectorChecksums[$assetName] = $Matches[1]
+    }
+    if ($collectorChecksums.Count -ne $collectorAssetPaths.Count) {
+        throw 'M3 collector checksum manifest must contain exactly one entry per pinned asset.'
+    }
+    foreach ($assetName in $collectorAssetPaths.Keys) {
+        $actualChecksum = (Get-FileHash -LiteralPath $collectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant()
+        if (-not $collectorChecksums.ContainsKey($assetName) -or
+            $collectorChecksums[$assetName] -cne $actualChecksum) {
+            throw "M3 collector checksum mismatch: $assetName"
+        }
+    }
+
+    $sqlServerIntegrationSource = @(
+        Get-ChildItem -LiteralPath (
+            Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer') -Filter '*.cs' -File
     )
-    if ($unexpectedCollectorSource.Count -ne 0) {
-        throw 'Production collector source is outside the authorized first-assignment scope.'
+    $skippedSqlServerTests = @(
+        $sqlServerIntegrationSource |
+            Select-String -Pattern '\[(Fact|Theory)\s*\(\s*Skip\s*='
+    )
+    if ($sqlServerIntegrationSource.Count -eq 0 -or $skippedSqlServerTests.Count -ne 0) {
+        throw 'M3 SQL Server integration tests must be active and must not use Skip.'
+    }
+
+    foreach ($completedSuite in @('SqlObserver.ApiContractTests', 'SqlObserver.EndToEndTests', 'SqlObserver.SecurityTests')) {
+        $completedSuiteSource = @(
+            Get-ChildItem -LiteralPath (Join-Path $repositoryRoot "tests/$completedSuite") -Filter '*.cs' -File
+        )
+        $completedSuiteSkips = @(
+            $completedSuiteSource | Select-String -Pattern '\[(Fact|Theory)\s*\(\s*Skip\s*='
+        )
+        if ($completedSuiteSource.Count -eq 0 -or $completedSuiteSkips.Count -ne 0) {
+            throw "Completed M3 suite must contain active tests and no Skip attributes: $completedSuite"
+        }
+    }
+
+    $productionCSharp = @(
+        Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -Recurse -Filter '*.cs' -File |
+            Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' }
+    )
+    $forbiddenTargetSecurity = @(
+        $productionCSharp | Select-String -Pattern '(?i)TrustServerCertificate\s*=\s*true|User\s*ID\s*=|Password\s*=|SqlException\.Message'
+    )
+    if ($forbiddenTargetSecurity.Count -ne 0) {
+        throw 'Production source contains a target credential, certificate bypass, or raw SQL provider error surface.'
     }
 
     $webPackage = Get-Content -LiteralPath (Join-Path $repositoryRoot 'web/package.json') -Raw | ConvertFrom-Json

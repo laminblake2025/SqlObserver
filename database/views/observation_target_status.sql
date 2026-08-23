@@ -1,0 +1,9 @@
+-- Review index only. Deployment authority and complete definition:
+-- migrations/0007_observation_target_capabilities.sql.
+--
+-- reporting.observation_target_status is a security-barrier view over configured and
+-- legacy observation-target identities plus the latest append-only capability attempt.
+-- It exposes only structured endpoint policy, lifecycle/revision, UTC timestamps,
+-- allowlisted capability status/evidence, and repository time. It contains no password,
+-- reusable secret, connection string, arbitrary driver option, target error text, query
+-- text, or diagnostic payload. Only the server group role receives SELECT.

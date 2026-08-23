@@ -6,7 +6,7 @@
 - **Planned**: intended future coverage; no current support claim.
 - **Development only**: tooling used to build or test, not a monitored production platform.
 
-No platform is production-supported at Milestone 0/Milestone 1 scaffolding. A platform becomes supported only after its compatibility, security, installation, upgrade, performance, and recovery gates are complete and release documentation says so.
+No platform is production-supported before M12 certification. A platform becomes supported only after its compatibility, security, installation, upgrade, performance, and recovery gates are complete and release documentation says so. M2/M3 integration tests are development evidence, not a support claim.
 
 ## Initial-release scope
 
@@ -55,6 +55,6 @@ Promotion to supported requires evidence across:
 
 All storage and protocol timestamps remain UTC regardless of host or browser time zone.
 
-## Explicit exclusions in the current assignment
+## Explicit exclusions before release certification
 
-The first assignment supplies documentation and non-runtime build scaffolding. It does not certify any entry above, deploy PostgreSQL, connect to SQL Server, configure authentication, expose MCP, install a Windows service, or create a production database. Passing scaffold validation is not support certification.
+M3 can discover a bounded capability profile with Windows integrated authentication and validated TLS, but it does not certify any entry above, install a gMSA-backed Windows service, provision trusted certificates/SPNs, expose MCP, or create a production database. Passing milestone validation is not support certification.

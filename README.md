@@ -2,7 +2,7 @@
 
 SqlObserver is a clean-room, Windows-hosted monitoring and diagnostics product for Microsoft SQL Server. It is intended to collect bounded, historical evidence without installing an agent on monitored database hosts by default. PostgreSQL 18.x is the product's application repository; it is not a monitored database engine.
 
-> **Repository status:** Milestones 0 through 2 are implemented. The PostgreSQL 18 repository foundation is migration- and integration-tested, but SqlObserver does not yet contain a production SQL Server collector, deployable monitoring service, installer, or supported release.
+> **Repository status:** Milestones 0 through 3 are implemented. The PostgreSQL 18 repository foundation and the bounded SQL Server onboarding/capability slice are integration-tested, but SqlObserver is not yet a supported release. General health collection, diagnostics, analytics, MCP, installers, and release certification remain later milestones.
 
 ## Product boundary
 
@@ -49,7 +49,7 @@ More detail is in [the architecture overview](docs/architecture/overview.md), [s
 
 ## Quick start for contributors
 
-The current quick start validates the architecture/bootstrap work and the complete M2 PostgreSQL repository slice.
+The current quick start validates the architecture/bootstrap work, the M2 PostgreSQL repository, and the M3 onboarding/capability slice.
 
 Prerequisites:
 
@@ -67,7 +67,7 @@ From the repository root, run:
 pwsh ./tools/validate.ps1
 ```
 
-The validation entry point restores locked dependencies, compiles with warnings treated as errors, runs all active tests (including an ephemeral PostgreSQL 18.4 repository), builds the strict TypeScript frontend, and performs repository-policy checks. Test projects for later milestones remain explicitly skipped until their owning runtime slices are implemented; M2's PostgreSQL tests have no skips.
+The validation entry point restores locked dependencies, compiles with warnings treated as errors, runs all active tests (including an ephemeral PostgreSQL 18.4 repository and the available SQL Server development lab), builds the strict TypeScript frontend, and performs repository-policy checks. Test projects for later milestones remain explicitly skipped until their owning runtime slices are implemented; completed-milestone suites have no skips.
 
 Do not provision production credentials or point this repository slice at a production SQL Server. Development setup scripts are not production installers.
 
@@ -81,7 +81,7 @@ Do not provision production credentials or point this repository slice at a prod
 | `database/functions/`, `database/views/` | Review indexes for SQL-first objects deployed by numbered migrations |
 | `database/seeds/`, `database/testdata/` | Non-production reference and test inputs |
 | `collectors/manifests/` | Versioned collector metadata contracts |
-| `collectors/sql/` | Future parameterized, supported SQL Server collection statements |
+| `collectors/sql/` | Versioned, fixed, bounded SQL Server collection statements |
 | `installer/wix/`, `installer/postgres/` | Future Windows and PostgreSQL packaging |
 | `tests/` | Unit, integration, contract, security, performance, and end-to-end suites |
 | `docs/architecture/` | Architecture, support policy, and threat model |
@@ -93,13 +93,13 @@ Do not provision production credentials or point this repository slice at a prod
 
 ## Milestone scope
 
-Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and local-runner CI. Milestone 2 adds the PostgreSQL 18 compatibility check, immutable migration runner, nine-schema repository, least-privilege roles, UTC partitions, binary ingestion, protected-payload deduplication, retention preview, and fenced worker leases. See the [M2 implementation record](docs/milestones/M2-postgresql-repository.md) and [BACKLOG.md](BACKLOG.md).
+Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and local-runner CI. Milestone 2 adds the PostgreSQL 18 repository foundation. Milestone 3 adds credential-free target onboarding, SID-based RBAC, integrated identity, bounded capability discovery, and offline least-privilege permission plans. See the [M2 implementation record](docs/milestones/M2-postgresql-repository.md), [M3 implementation record](docs/milestones/M3-onboarding-and-capabilities.md), and [BACKLOG.md](BACKLOG.md).
 
-No production SQL Server collection, alerting, analytics, MCP tool implementation, deployment, or upgrade behavior is claimed yet.
+Only the passive capability/connection SQL Server collector exists at M3. General telemetry, alerting, analytics, MCP tools, deployment, and upgrade behavior are not claimed yet.
 
 ## Non-goals for this milestone
 
-- Monitoring a live SQL Server or collecting target data.
+- Collecting target data beyond bounded connection and capability evidence.
 - Shipping an MCP server or any `execute_sql`-style capability.
 - Changing Query Store, Extended Events, blocked-process settings, indexes, plans, sessions, or server configuration.
 - Shipping an installer or claiming support certification.

@@ -1,0 +1,14 @@
+-- Review index only. Deployment authority:
+-- migrations/0007_observation_target_capabilities.sql.
+--
+-- The authoritative migration defines bounded SECURITY DEFINER entry points for:
+--   atomic audited register/update/retire/rediscovery target mutations;
+--   repository-clock capability due-list selection (maximum sixteen);
+--   lease- and revision-fenced append-only capability profile recording;
+--   single and bulk latest-profile reads with allowlisted evidence arrays;
+--   a server-only wrapper for bounded user-administration denial receipts.
+--
+-- All functions use fixed search paths, typed values, closed status/reason vocabularies,
+-- repository timestamps, explicit role grants, and PUBLIC revocation. The generic audit
+-- primitive is owner-only; neither runtime role can execute it, and the collector cannot
+-- execute the denial wrapper. The review index duplicates no deployable function body.

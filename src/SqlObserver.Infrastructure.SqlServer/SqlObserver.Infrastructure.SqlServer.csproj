@@ -5,6 +5,36 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
     <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.collector-manifest.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.assets.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.bootstrap.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.bootstrap.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.fallback.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.fallback.v1.sql</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

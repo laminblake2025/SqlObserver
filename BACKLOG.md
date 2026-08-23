@@ -17,7 +17,7 @@ Status meanings:
 | **M0 — Product boundary and architecture** | Clean-room boundary; product terminology; modular-monolith process/module boundaries; PostgreSQL-vs-target distinction; initial/planned support matrix; security invariants; threat model; ADR-0001 through ADR-0012; milestone map | Documented and validated for the first assignment |
 | **M1 — Repository bootstrap and CI** | Complete folder map; .NET 10 solution/project skeletons; nullable/analyzers/warnings-as-errors; central NuGet management; strict React/TypeScript build skeleton; test-project skeletons; validation entry point; local-development script placeholders; GitHub Actions; contribution/security policy | Non-runtime first-assignment scope scaffolded and validated; runtime work remains planned |
 | **M2 — PostgreSQL repository, migrations, partitions, ingestion** | PostgreSQL 18.x repository; nine schemas; immutable numbered SQL migrations/checksums; repository roles; UTC storage; daily raw/monthly event partitions; BRIN and justified instance/time B-tree indexes; binary `COPY`; query-text/plan deduplication; partition/retention foundations; PostgreSQL integration/performance tests | Implemented and integration-tested on pinned PostgreSQL 18.4; representative-volume release certification remains M12 |
-| **M3 — Onboarding, credentials, capability discovery, permissions** | Observation-target lifecycle; protected credentials; gMSA/integrated-auth path; version-aware least-privilege permission generator; no permanent `sysadmin`; capability/connection collector; supported/degraded states; expected-denial tests | Planned |
+| **M3 — Onboarding, credentials, capability discovery, permissions** | Observation-target lifecycle; protected credentials; gMSA/integrated-auth path; version-aware least-privilege permission generator; no permanent `sysadmin`; capability/connection collector; supported/degraded states; expected-denial tests | Implemented and integration-tested; platform certification remains M12 |
 | **M4 — Collector framework and core health** | Contract registry/manifests; leases and fencing; bounded scheduler; cancellation; non-overlap; retry/circuit breaker; telemetry and visible sample loss; core engine counters; databases/files collectors; ingestion vertical slice; health projections | Planned |
 | **M5 — Sessions, requests, waits, blocking** | Bounded sessions and requests, wait summaries, current blocking chains and blocking history; API/UI projections and collector-specific permission/failure/limit tests | Planned |
 | **M6 — Deadlocks and Extended Events** | Passive bounded reading of deadlocks from `system_health`; safe XML handling; event persistence/search; separately packaged DBA-reviewed enhanced script where justified; never automatic XE/blocked-process changes | Planned |
@@ -168,16 +168,17 @@ This is the completion checklist for the first assignment. Each item was inspect
 5. **Coordination and retention safety — complete.** Repository-clock leases use persistent monotonic fencing; retention policy is disabled and its view is preview-only with recovery prerequisites unsatisfied.
 6. **Active evidence — complete for M2.** Unit, security, and PostgreSQL 18.4 integration suites cover contracts, boundaries, migration history, roles/schemas, partitions/indexes, ingestion/deduplication, cancellation, and stale fences without PostgreSQL-test skips. Full representative-volume and platform certification remains a release gate.
 
-The next runtime dependency is M3 onboarding, identity, capability discovery, and version-aware least-privilege permission planning.
+The next runtime dependency is M4 bounded scheduling, resilience, core engine health, database/file discovery, and ingestion.
 
-## Current post-M2 exclusions
+## Current post-M3 exclusions
 
 The following are explicitly incomplete and must not be represented as working:
 
-- production collector implementations or target SQL;
-- target onboarding, live credentials, permission grants, or capability discovery;
+- production collector implementations or target SQL beyond `capability.connection`;
+- reusable target credentials, automatic permission grants, or target mutation;
 - automatic retention execution, repository installation/backup/restore/HA, or production repository provisioning;
-- API, SignalR, Windows service, alert, analytics, report, or MCP runtime behavior;
+- API behavior beyond the M3 target control plane; SignalR; general collector scheduling;
+  alert, analytics, report, or MCP runtime behavior;
 - Query Store, Extended Events, blocked-process, index, plan, session, or configuration changes;
 - live environment bootstrap, seed data, installer, upgrade, uninstall, or release packaging;
 - production support/certification for any platform in the support matrix.
