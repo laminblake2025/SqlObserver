@@ -299,7 +299,7 @@ function Assert-RepositoryShape {
     $workflow = Get-Content -LiteralPath (Join-Path $repositoryRoot '.github/workflows/validate.yml') -Raw
     if (-not $workflow.Contains('contents: read') -or
         -not $workflow.Contains('runs-on: [self-hosted, Windows, X64, sql-observer]') -or
-        -not $workflow.Contains('DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}\dotnet') -or
+        -not $workflow.Contains('DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet') -or
         -not $workflow.Contains('global-json-file: global.json') -or
         -not $workflow.Contains('run: ./tools/validate.ps1')) {
         throw 'CI must use the labeled local runner, least permissions, the pinned SDK, and the canonical validator.'
