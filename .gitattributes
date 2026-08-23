@@ -2,3 +2,5 @@
 
 *.sql text eol=lf
 database/migrations/checksums.sha256 text eol=lf
+collectors/manifests/*.json text eol=lf
+collectors/manifests/*.sha256 text eol=lf
