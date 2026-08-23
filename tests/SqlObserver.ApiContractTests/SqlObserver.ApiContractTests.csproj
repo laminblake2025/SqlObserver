@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.ApiContractTests</RootNamespace>
+    <AssemblyName>SqlObserver.ApiContractTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
+  </ItemGroup>
+</Project>

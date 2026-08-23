@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.Application</RootNamespace>
+    <AssemblyName>SqlObserver.Application</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SqlObserver.Cli</RootNamespace>
+    <AssemblyName>SqlObserver.Cli</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+  </ItemGroup>
+</Project>

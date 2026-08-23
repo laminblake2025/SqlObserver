@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.EndToEndTests</RootNamespace>
+    <AssemblyName>SqlObserver.EndToEndTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
+  </ItemGroup>
+</Project>

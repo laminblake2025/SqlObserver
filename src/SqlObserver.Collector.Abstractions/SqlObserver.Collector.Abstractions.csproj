@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.Collector.Abstractions</RootNamespace>
+    <AssemblyName>SqlObserver.Collector.Abstractions</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
+  </ItemGroup>
+</Project>

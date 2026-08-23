@@ -1,0 +1,1 @@
+return SqlObserver.McpStdio.StdioBridgeScaffold.SuccessExitCode;

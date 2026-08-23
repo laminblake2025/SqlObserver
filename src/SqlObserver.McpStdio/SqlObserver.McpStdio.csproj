@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SqlObserver.McpStdio</RootNamespace>
+    <AssemblyName>SqlObserver.McpStdio</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Mcp/SqlObserver.Mcp.csproj" />
+  </ItemGroup>
+</Project>

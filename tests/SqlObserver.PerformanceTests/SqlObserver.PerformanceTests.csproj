@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.PerformanceTests</RootNamespace>
+    <AssemblyName>SqlObserver.PerformanceTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SqlObserver.Analytics/SqlObserver.Analytics.csproj" />
+  </ItemGroup>
+</Project>

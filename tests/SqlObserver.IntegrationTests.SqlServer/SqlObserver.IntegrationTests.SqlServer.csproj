@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.IntegrationTests.SqlServer</RootNamespace>
+    <AssemblyName>SqlObserver.IntegrationTests.SqlServer</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
+  </ItemGroup>
+</Project>

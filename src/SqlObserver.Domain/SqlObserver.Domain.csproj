@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.Domain</RootNamespace>
+    <AssemblyName>SqlObserver.Domain</AssemblyName>
+  </PropertyGroup>
+</Project>

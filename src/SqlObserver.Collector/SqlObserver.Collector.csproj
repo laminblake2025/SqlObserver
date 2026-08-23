@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SqlObserver.Collector</RootNamespace>
+    <AssemblyName>SqlObserver.Collector</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
+    <ProjectReference Include="../SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
+    <ProjectReference Include="../SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
+    <ProjectReference Include="../SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
+    <ProjectReference Include="../SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />
+  </ItemGroup>
+</Project>

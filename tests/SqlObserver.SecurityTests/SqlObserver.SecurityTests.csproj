@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.SecurityTests</RootNamespace>
+    <AssemblyName>SqlObserver.SecurityTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SqlObserver.Security/SqlObserver.Security.csproj" />
+  </ItemGroup>
+</Project>

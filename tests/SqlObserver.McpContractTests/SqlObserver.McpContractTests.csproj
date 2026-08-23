@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.McpContractTests</RootNamespace>
+    <AssemblyName>SqlObserver.McpContractTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SqlObserver.Mcp/SqlObserver.Mcp.csproj" />
+  </ItemGroup>
+</Project>

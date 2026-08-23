@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.Alerting</RootNamespace>
+    <AssemblyName>SqlObserver.Alerting</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
+  </ItemGroup>
+</Project>

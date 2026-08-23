@@ -1,0 +1,30 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SqlObserver.Alerting/SqlObserver.Alerting.csproj" />
+    <Project Path="src/SqlObserver.Analytics/SqlObserver.Analytics.csproj" />
+    <Project Path="src/SqlObserver.Application/SqlObserver.Application.csproj" />
+    <Project Path="src/SqlObserver.Audit/SqlObserver.Audit.csproj" />
+    <Project Path="src/SqlObserver.Cli/SqlObserver.Cli.csproj" />
+    <Project Path="src/SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
+    <Project Path="src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
+    <Project Path="src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
+    <Project Path="src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
+    <Project Path="src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
+    <Project Path="src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
+    <Project Path="src/SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />
+    <Project Path="src/SqlObserver.Mcp/SqlObserver.Mcp.csproj" />
+    <Project Path="src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj" />
+    <Project Path="src/SqlObserver.Security/SqlObserver.Security.csproj" />
+    <Project Path="src/SqlObserver.Server/SqlObserver.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj" />
+    <Project Path="tests/SqlObserver.EndToEndTests/SqlObserver.EndToEndTests.csproj" />
+    <Project Path="tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj" />
+    <Project Path="tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj" />
+    <Project Path="tests/SqlObserver.McpContractTests/SqlObserver.McpContractTests.csproj" />
+    <Project Path="tests/SqlObserver.PerformanceTests/SqlObserver.PerformanceTests.csproj" />
+    <Project Path="tests/SqlObserver.SecurityTests/SqlObserver.SecurityTests.csproj" />
+    <Project Path="tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj" />
+  </Folder>
+</Solution>

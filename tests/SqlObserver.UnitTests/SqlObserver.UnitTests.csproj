@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.UnitTests</RootNamespace>
+    <AssemblyName>SqlObserver.UnitTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
+  </ItemGroup>
+</Project>
