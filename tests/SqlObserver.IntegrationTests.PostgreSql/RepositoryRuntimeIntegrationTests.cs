@@ -382,8 +382,19 @@ public sealed class RepositoryRuntimeIntegrationTests
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO control.observation_target (instance_id, instance_key, display_name)
-            VALUES (@instance_id, @instance_key, @display_name);
+            WITH repository_clock AS
+            (
+                SELECT clock_timestamp() AS captured_at
+            )
+            INSERT INTO control.observation_target
+            (
+                instance_id, instance_key, display_name,
+                created_at, updated_at, discovery_requested_at
+            )
+            SELECT
+                @instance_id, @instance_key, @display_name,
+                captured_at, captured_at, captured_at
+            FROM repository_clock;
             """,
             connection);
         command.Parameters.AddWithValue("instance_id", instanceId);
