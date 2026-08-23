@@ -13,6 +13,8 @@ jobs:
     name: Local Windows validation
     runs-on: [self-hosted, Windows, X64, sql-observer]
     timeout-minutes: 20
+    env:
+      DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}\dotnet
 
     steps:
       - name: Check out source
