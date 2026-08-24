@@ -245,6 +245,7 @@
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },

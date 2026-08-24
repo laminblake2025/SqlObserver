@@ -27,6 +27,13 @@
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.collector.abstractions": {
+        "type": "Project",
+        "dependencies": {
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },

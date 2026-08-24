@@ -87,16 +87,24 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
-      "sqlobserver.analytics": {
-        "type": "Project",
-        "dependencies": {
-          "SqlObserver.Application": "[1.0.0, )",
-          "SqlObserver.Domain": "[1.0.0, )"
-        }
-      },
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.collector.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.collectors": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
