@@ -35,7 +35,7 @@ public sealed class CollectorCompositionEndToEndTests
         Assert.IsType<CollectorScheduler>(provider.GetRequiredService<CollectorScheduler>());
         Assert.Equal(
             ["engine.core", "database.inventory", "database.files", "activity.sessions",
-                "activity.requests", "waits.server", "blocking.current", "deadlocks.system-health"],
+                "activity.requests", "waits.server", "blocking.current", "deadlocks.system-health", "queries.performance"],
             provider.GetRequiredService<CollectorRegistry>()
                 .Registrations
                 .Select(static registration => registration.Manifest.Id.Value));

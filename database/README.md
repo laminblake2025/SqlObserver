@@ -1,5 +1,10 @@
 # PostgreSQL repository assets
 
+Migration `0011_query_performance.sql` adds M7’s append-only, target-scoped Query
+Store/plan-cache evidence tables, cache baselines, protected-content links, and
+bounded status/top/history/plan projections. Runtime collection commits require
+the target claim and completion digest; content remains unavailable until M12.
+
 This directory contains the SQL-first repository definition for PostgreSQL 18.x.
 PostgreSQL is SqlObserver's application repository; it is not a monitored target.
 

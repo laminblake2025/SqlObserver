@@ -26,3 +26,9 @@ rollover pattern; it reads only `xml_deadlock_report` rows through
 path and never changes blocked-process settings. XML is bounded and parsed with
 DTD/entity resolution disabled; only typed participant/relation evidence and an
 opaque fingerprint leave the adapter.
+## M7 query performance
+
+`queries.performance` is a checksum-pinned, metadata-only passive bundle for
+SQL Server 15–17 Windows. Query Store is preferred per online user database;
+fallback state and metric semantics are explicit. No asset selects
+`sys.dm_exec_sql_text`, plan XML, raw handles, or content columns.

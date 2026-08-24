@@ -12,8 +12,8 @@ namespace SqlObserver.Infrastructure.SqlServer;
 /// <summary>Base for the checksum-pinned, passive and bounded M5 SQL Server activity collectors.</summary>
 public abstract class SqlServerActivityCollectorBase : ISqlServerCollector
 {
-    private readonly ISqlServerConnectionFactory _connectionFactory;
-    private readonly SqlServerCollectorAsset _asset;
+    private protected readonly ISqlServerConnectionFactory ConnectionFactory;
+    private protected readonly SqlServerCollectorAsset Asset;
 
     private protected SqlServerActivityCollectorBase(
         string collectorId,
@@ -28,13 +28,13 @@ public abstract class SqlServerActivityCollectorBase : ISqlServerCollector
         ISqlServerConnectionFactory connectionFactory)
     {
         ArgumentNullException.ThrowIfNull(asset);
-        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-        _asset = asset;
+        ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        Asset = asset;
     }
 
-    public CollectorManifest Manifest => _asset.Manifest;
+    public CollectorManifest Manifest => Asset.Manifest;
 
-    public async ValueTask<CollectorExecutionResult> CollectAsync(
+    public virtual async ValueTask<CollectorExecutionResult> CollectAsync(
         CollectorExecutionRequest request,
         CancellationToken cancellationToken)
     {
@@ -65,10 +65,10 @@ public abstract class SqlServerActivityCollectorBase : ISqlServerCollector
 
         try
         {
-            await using SqlConnection connection = await _connectionFactory
+            await using SqlConnection connection = await ConnectionFactory
                 .OpenConnectionAsync(request.ConnectionPolicy, deadline.Token)
                 .ConfigureAwait(false);
-            await using var command = new SqlCommand(_asset.GetQuery(majorVersion), connection)
+            await using var command = new SqlCommand(Asset.GetQuery(majorVersion), connection)
             {
                 CommandTimeout = Math.Max(1, checked((int)Math.Ceiling(operationBudget.TotalSeconds))),
             };

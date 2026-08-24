@@ -646,11 +646,16 @@ function Assert-RepositoryShape {
         'deadlocks.system-health.sqlserver16-windows.v1.sql',
         'deadlocks.system-health.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $activeM7CollectorSqlNames = @(
+        'queries.performance.sqlserver15-windows.v1.sql',
+        'queries.performance.sqlserver16-windows.v1.sql',
+        'queries.performance.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
-        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and active M5/M6 assets.'
+        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and active M5/M6/M7 assets.'
     }
 
     foreach ($collectorSqlFile in $collectorSqlFiles) {
@@ -703,6 +708,13 @@ function Assert-RepositoryShape {
              $collectorSql -notmatch '(?i)fn_xe_file_target_read_file\([^\r\n]*,\s*NULL\)' -or
              $collectorSql -match '(?i)\b(CREATE|ALTER|DROP|START|STOP)\s+(EVENT\s+SESSION|SESSION)')) {
             throw "M6 collector SQL must be passive system_health reads with fixed bounds and deterministic order: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -in $activeM7CollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*@probe_rows\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
+             $collectorSql -notmatch '(?i)query_store' -or
+             $collectorSql -match '(?i)\b(sql_handle|plan_handle|sys\.dm_exec_sql_text|query_plan|EXEC(?:UTE)?|ALTER|UPDATE|DELETE|INSERT)\b')) {
+            throw "M7 collector SQL must be bounded, metadata-only, and passive: $($collectorSqlFile.Name)"
         }
     }
 
@@ -835,6 +847,21 @@ function Assert-RepositoryShape {
         if ($m6CollectorChecksums[$assetName] -cne $actualChecksum) { throw "M6 collector checksum mismatch: $assetName" }
     }
 
+    $m7CollectorAssetPaths = @{
+        'collector-manifest.v4.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v4.schema.json'
+        'queries.performance.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/queries.performance.v1.json'
+    }
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $activeM7CollectorSqlNames }) { $m7CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName }
+    $m7CollectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/m7-query-performance.assets.sha256'; $m7CollectorChecksums = @{}
+    foreach ($line in Get-Content -LiteralPath $m7CollectorChecksumPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) { continue }
+        if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') { throw "Invalid M7 collector checksum entry: $line" }
+        $assetName = $Matches[2]; if (-not $m7CollectorAssetPaths.ContainsKey($assetName) -or $m7CollectorChecksums.ContainsKey($assetName)) { throw "Unexpected or duplicate M7 collector checksum entry: $line" }; $m7CollectorChecksums[$assetName] = $Matches[1]
+    }
+    if ($m7CollectorChecksums.Count -ne $m7CollectorAssetPaths.Count) { throw 'M7 collector checksum manifest must contain exactly one entry per pinned asset.' }
+    foreach ($assetName in $m7CollectorAssetPaths.Keys) { $actualChecksum = (Get-FileHash -LiteralPath $m7CollectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant(); if ($m7CollectorChecksums[$assetName] -cne $actualChecksum) { throw "M7 collector checksum mismatch: $assetName" } }
+    $m7MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M7-query-store-query-performance.md'; if (-not (Test-Path -LiteralPath $m7MilestoneDoc -PathType Leaf)) { throw 'M7 requires its Query Store milestone document.' }
+
     $m6MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M6-deadlocks-and-extended-events.md'
     if (-not (Test-Path -LiteralPath $m6MilestoneDoc -PathType Leaf)) { throw 'M6 requires its passive system_health milestone document.' }
     foreach ($forbiddenXeMutation in @('CREATE EVENT SESSION', 'ALTER EVENT SESSION', 'START EVENT SESSION', 'STOP EVENT SESSION', 'blocked process threshold')) {
@@ -888,10 +915,23 @@ function Assert-RepositoryShape {
             throw "M6 focused test asset is missing: $requiredM6TestAsset"
         }
     }
+    foreach ($requiredM7TestAsset in @(
+        'tests/SqlObserver.UnitTests/M7QueryPerformanceContractTests.cs',
+        'tests/SqlObserver.ApiContractTests/M7QueryPerformanceApiContractTests.cs',
+        'tests/SqlObserver.SecurityTests/M7QueryPerformanceSecurityPolicyTests.cs',
+        'tests/SqlObserver.PerformanceTests/M7QueryPerformanceBoundaryPerformanceTests.cs',
+        'tests/SqlObserver.IntegrationTests.SqlServer/M7QueryPerformanceIntegrationTests.cs',
+        'tests/SqlObserver.IntegrationTests.PostgreSql/M7QueryPerformancePostgreSqlIntegrationTests.cs',
+        'tests/SqlObserver.EndToEndTests/M7QueryPerformanceCompositionEndToEndTests.cs',
+        'web/tests/query-performance-contract.test.mjs',
+        'web/src/features/queries/TargetQueryPerformancePanel.tsx')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM7TestAsset) -PathType Leaf)) { throw "M7 focused test asset is missing: $requiredM7TestAsset" }
+    }
     $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
-    if ($readmeStatus -notmatch 'Milestones 0 through 6 are implemented' -or
+    if ($readmeStatus -notmatch 'Milestones 0 through 7 are implemented' -or
         $readmeStatus -notmatch '(?i)M5 activity' -or
         $readmeStatus -notmatch '(?i)M6.*(?:system_health|deadlock)' -or
+        $readmeStatus -notmatch '(?i)M7.*(?:Query Store|query-performance)' -or
         $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
         throw 'README repository status must explicitly identify M0-M6 and the bounded M5/M6 activity/deadlock scope.'
     }

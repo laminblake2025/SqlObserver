@@ -16,7 +16,7 @@ export async function getPage(url, parseItem, expectedInstanceId, signal) {
   return parsePage(value, parseItem, expectedInstanceId);
 }
 
-export async function readBoundedBody(response, signal) {
+export async function readBoundedBody(response, signal, maximumBytes = maximumResponseBytes) {
   if (response.body === null) throw invalidResponse();
   const reader = response.body.getReader();
   const chunks = []; let total = 0;
@@ -26,7 +26,7 @@ export async function readBoundedBody(response, signal) {
       const next = await reader.read();
       if (next.done) break;
       total += next.value.byteLength;
-      if (total > maximumResponseBytes) throw invalidResponse();
+      if (total > maximumBytes) throw invalidResponse();
       chunks.push(next.value);
     }
   } finally { await reader.cancel().catch(() => {}); }

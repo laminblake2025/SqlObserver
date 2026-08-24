@@ -207,6 +207,8 @@ public enum CollectorFallbackMode
 {
     Unsupported = 1,
     AlternateCollector = 2,
+    /// <summary>The same collector executes its explicitly declared bounded alternate source.</summary>
+    AlternateSource = 3,
 }
 
 public sealed class CollectorFallbackPolicy
@@ -253,6 +255,7 @@ public enum CollectorOutputKind
     ServerWaits = 7,
     CurrentBlocking = 8,
     Deadlocks = 9,
+    QueryPerformance = 10,
 }
 
 public sealed class CollectorResiliencePolicy

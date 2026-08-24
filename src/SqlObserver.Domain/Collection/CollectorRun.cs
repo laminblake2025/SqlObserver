@@ -57,6 +57,7 @@ public enum CollectorRunReason
     TargetPlatformUnsupported = 16,
     TargetEditionUnsupported = 17,
     BlockingGraphLimit = 18,
+    OverlapDeduplicated = 19,
 }
 
 public enum CollectorLossKind
@@ -67,6 +68,7 @@ public enum CollectorLossKind
     OutputValidationFailure = 4,
     IngestionRejection = 5,
     BlockingGraphLimit = 6,
+    DuplicateOverlap = 7,
 }
 
 /// <summary>Visible, conservative evidence whenever collection cannot claim a complete sample.</summary>

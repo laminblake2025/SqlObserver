@@ -198,6 +198,24 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             @deadlock_fingerprints,@deadlock_participant_counts,@deadlock_relation_counts,@deadlock_parse_truncated,
             @deadlock_participant_json,@deadlock_relation_json,@deadlock_sizes);
         """;
+    private const string CommitQueryPerformanceSql = """
+        SELECT control.commit_query_performance_collection_run(
+          @run_id,@instance_id,@target_revision,@completion_digest,@window_start,@window_end,
+          @query_source::events.query_performance_source,@query_source_state,@query_coverage,@query_freshness,@query_truncated,
+          @fencing_token,@query_payload);
+        """;
+
+    private const string CommitQueryPerformanceCanonicalSql = """
+        SELECT result_status, inserted_count, duplicate_count, rejected_count, persisted_bytes, committed_at
+        FROM control.commit_query_performance_collection_run_canonical(
+          @run_id,@instance_id,@target_revision,@collector_version,@output_schema_version,
+          @schedule_revision,@scheduled_at,@work_key,@owner_execution_id,@fencing_token,
+          @request_digest,@outcome,@reason_code,@duration_ms,@attempt_count,@source_row_count,
+          @output_item_count,@response_bytes,@output_bytes,@loss_kind,@minimum_lost_items,
+          @loss_count_is_exact,@minimum_lost_bytes,@next_circuit_state,@next_consecutive_failures,
+          @completion_digest,@window_start,@window_end,@query_source::events.query_performance_source,
+          @query_source_state,@query_coverage,@query_freshness,@query_truncated,@query_payload);
+        """;
 
     private static readonly string[] RequiredCollectorIds =
     [
@@ -209,6 +227,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "waits.server",
         "blocking.current",
         "deadlocks.system-health",
+        "queries.performance",
     ];
 
     private static readonly string[] RequiredManifestDigests =
@@ -221,6 +240,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "aeae9d3d2a2f373b9b66b0e68a0c2d51dcc548dad3fc175a118ba3a5cd007da9",
         "2470cbe3d16e3825a8c30ed0fde6d84e0eced0124f93ef8ff268f93b4523c59b",
         "5f3b0a9fef5a7d06f37cea5063e39a8b1b7e20dbec7c8234f84f521d41ca0a60",
+        "d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69",
     ];
 
     private static readonly string[] RequiredBundleDigests =
@@ -233,7 +253,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
         "72570fba287327e1dec64a56d6211b9c24a7d597b35010c9b9ac765615d2963f",
+        "da915ffb11e60bc0f1f019cb3e3e81ccafabc2c3ff94b26520378574562855eb",
     ];
+    private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgreSqlCapabilityProfilePort _capabilityProfiles;
@@ -268,7 +290,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
-            await using var command = new NpgsqlCommand(request.Entries.Count == 8 ? ReconcileM6Sql : ReconcileSql, connection)
+            await using var command = new NpgsqlCommand(request.Entries.Count switch { 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
@@ -481,14 +503,19 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
                 .ConfigureAwait(false);
             bool activityCollector = IsActivityCollector(request.Work.CollectorId);
             bool deadlockCollector = request.Work.CollectorId.Value == "deadlocks.system-health";
+            bool queryPerformanceCollector = request.Work.CollectorId.Value == "queries.performance";
+            if (queryPerformanceCollector)
+            {
+                return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
+            }
             await using var command = new NpgsqlCommand(
-                deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : CommitCoreSql,
+                queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : CommitCoreSql,
                 connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
             AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
-            AddCommitParameters(command, request, activityCollector, deadlockCollector);
+            if (queryPerformanceCollector) AddQueryPerformanceCommitParameters(command, request); else AddCommitParameters(command, request, activityCollector, deadlockCollector);
             await using NpgsqlDataReader reader = await command
                 .ExecuteReaderAsync(timeout.Token)
                 .ConfigureAwait(false);
@@ -532,6 +559,74 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         {
             throw PostgreSqlRuntimeSupport.CreateTimeoutException("collection-run commit", exception);
         }
+    }
+
+    private static async ValueTask<CollectorRunCommitResult> CommitQueryPerformanceWithCanonicalLifecycleAsync(
+        NpgsqlConnection connection,
+        CommitCollectorRunRequest request,
+        byte[] requestDigest,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection, transaction))
+        {
+            scope.Parameters.AddWithValue("scope", request.Work.TargetId.Value.ToString());
+            await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        await using var canonical = new NpgsqlCommand(CommitQueryPerformanceCanonicalSql, connection, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+        AddRunIdentity(canonical, request.Work, request.Summary.RunId, request.Lease, requestDigest);
+        AddQueryPerformanceCanonicalParameters(canonical, request);
+        AddQueryPerformanceCommitParameters(canonical, request);
+        CollectorRunCommitResult commit;
+        await using (NpgsqlDataReader reader = await canonical.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) throw new InvalidDataException("PostgreSQL canonical collection-run commit returned no result row.");
+            CollectorRunCommitStatus status = reader.GetString(0) switch
+            {
+                "committed" => CollectorRunCommitStatus.Committed,
+                "replayed" => CollectorRunCommitStatus.Replayed,
+                "target_not_found" => CollectorRunCommitStatus.TargetNotFound,
+                "target_inactive" => CollectorRunCommitStatus.TargetInactive,
+                "target_revision_conflict" => CollectorRunCommitStatus.TargetRevisionConflict,
+                "schedule_conflict" => CollectorRunCommitStatus.ScheduleConflict,
+                "lease_lost" => CollectorRunCommitStatus.LeaseLost,
+                _ => throw new InvalidDataException("PostgreSQL returned an unknown canonical collection-run commit status."),
+            };
+            commit = new CollectorRunCommitResult(status, reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.IsDBNull(5) ? null : PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 5));
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidDataException("PostgreSQL canonical collection-run commit returned multiple result rows.");
+        }
+        // Evidence is staged in this transaction. Any canonical lifecycle rejection must roll it back;
+        // only a committed or idempotent replay may make the M7 rows visible.
+        if (commit.Status is not (CollectorRunCommitStatus.Committed or CollectorRunCommitStatus.Replayed))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return commit;
+        }
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return commit;
+    }
+
+    private static void AddQueryPerformanceCanonicalParameters(NpgsqlCommand command, CommitCollectorRunRequest request)
+    {
+        command.Parameters.AddWithValue("collector_version", request.Work.CollectorManifestVersion);
+        command.Parameters.AddWithValue("output_schema_version", request.Work.OutputSchemaVersion);
+        command.Parameters.AddWithValue("schedule_revision", request.Work.ScheduleRevision.Value);
+        command.Parameters.AddWithValue("scheduled_at", request.Work.ScheduledAtUtc);
+        command.Parameters.AddWithValue("outcome", MapOutcome(request.Summary.Outcome));
+        command.Parameters.AddWithValue("reason_code", MapReason(request.Summary.Reason));
+        command.Parameters.AddWithValue("duration_ms", checked((long)request.Summary.Duration.TotalMilliseconds));
+        command.Parameters.AddWithValue("attempt_count", request.Summary.AttemptCount);
+        command.Parameters.AddWithValue("source_row_count", request.Summary.Accounting.SourceRowsRead);
+        command.Parameters.AddWithValue("output_item_count", request.Summary.Accounting.OutputItemsProduced);
+        command.Parameters.AddWithValue("response_bytes", (long)request.Summary.Accounting.ResponseBytes);
+        command.Parameters.AddWithValue("output_bytes", (long)request.Summary.Accounting.OutputBytes);
+        command.Parameters.AddWithValue("loss_kind", MapLoss(request.Summary.Loss.Kind));
+        command.Parameters.AddWithValue("minimum_lost_items", request.Summary.Loss.MinimumLostItems);
+        command.Parameters.AddWithValue("loss_count_is_exact", request.Summary.Loss.CountIsExact);
+        command.Parameters.AddWithValue("minimum_lost_bytes", request.Summary.Loss.MinimumLostBytes);
+        command.Parameters.AddWithValue("next_circuit_state", MapCircuit(request.NextCircuit.State));
+        command.Parameters.AddWithValue("next_consecutive_failures", request.NextCircuit.ConsecutiveFailures);
     }
 
     private static DueRow ReadDueRow(NpgsqlDataReader reader)
@@ -677,6 +772,63 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddArray(command, "file_sizes", NpgsqlDbType.Integer, files.Select(static item => item.EstimatedSizeBytes).ToArray());
     }
 
+    private static void AddQueryPerformanceCommitParameters(NpgsqlCommand command, CommitCollectorRunRequest request)
+    {
+        CollectorPayload payload = request.Payload;
+        var statusByDatabaseForObservations = payload.QueryPerformanceStatuses.ToDictionary(static status => status.DatabaseId);
+        QueryPerformanceAggregateMetadata aggregate = QueryPerformanceAggregateMetadata.Create(payload.QueryPerformance.Items, payload.QueryPerformanceStatuses);
+        var observations = payload.QueryPerformance.Items.Select(x => new { databaseId = x.Query.DatabaseId, queryFingerprint = x.Query.QueryFingerprint, planFingerprint = x.Plan?.PlanFingerprint, source = MapQuerySource(x.Source), sourceState = statusByDatabaseForObservations.TryGetValue(x.Query.DatabaseId, out QueryPerformanceDatabaseStatus? databaseStatus) && databaseStatus.SourceState is not null ? MapQueryStoreState(databaseStatus.SourceState.Value) : MapQueryStoreState(x.SourceState), semantics = MapQuerySemantics(x.Semantics), intervalStartUtc = x.IntervalStartUtc, intervalEndUtc = x.IntervalEndUtc, observedAtUtc = x.ObservedAtUtc, cpuMs = x.Metrics.CpuMilliseconds, durationMs = x.Metrics.DurationMilliseconds, executions = x.Metrics.Executions, logicalReads = x.Metrics.LogicalReads, writes = x.Metrics.Writes, rows = x.Metrics.Rows, coverage = MapQueryCoverage(x.Coverage), fresh = x.Fresh, truncated = x.Truncated }).ToArray();
+        DateTimeOffset scheduledAt = request.Work.ScheduledAtUtc.ToUniversalTime();
+        DateTimeOffset windowStart = observations.Length == 0 ? scheduledAt.AddHours(-24) : observations.Min(x => x.intervalStartUtc);
+        DateTimeOffset windowEnd = observations.Length == 0 ? scheduledAt : observations.Max(x => x.intervalEndUtc);
+        QueryPerformanceTargetStatus? targetStatus = payload.QueryPerformanceTargetStatus ?? TargetStatusForOutcome(request.Summary.Outcome, request.Summary.Reason);
+        string source = targetStatus is not null || request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial) ? "unavailable" : aggregate.Source switch { QueryPerformanceSource.QueryStore => "query_store", QueryPerformanceSource.PlanCache => "plan_cache", QueryPerformanceSource.Unavailable => "unavailable", _ => "mixed" };
+        string sourceState = targetStatus is not null || request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial) ? "unavailable" : aggregate.SourceState;
+        bool summaryLoss = request.Summary.Loss.HasLoss;
+        bool unavailableOutcome = request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial);
+        bool hasUnavailableStatus = payload.QueryPerformanceStatuses.Any(x => IsUnavailableStatus(x.Status));
+        bool allUnavailable = payload.QueryPerformanceStatuses.Count > 0 && payload.QueryPerformanceStatuses.All(x => IsUnavailableStatus(x.Status));
+        string coverage = unavailableOutcome || allUnavailable ? "unavailable" : observations.Any(x => x.truncated) || payload.QueryPerformanceStatuses.Any(x => x.Truncated) || summaryLoss || hasUnavailableStatus ? "truncated" : observations.Length == 0 ? "no_activity" : "complete";
+        bool fresh = targetStatus is null && (request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial) && !hasUnavailableStatus && !payload.QueryPerformanceStatuses.Any(x => x.Truncated) && observations.All(x => x.fresh);
+        // An unavailable/failing run is represented by coverage=unavailable.  It is
+        // not a row/byte truncation unless the scheduler supplied loss evidence.
+        bool truncated = observations.Any(x => x.truncated) || payload.QueryPerformanceStatuses.Any(x => x.Truncated) || summaryLoss;
+        var statuses = payload.QueryPerformanceStatuses.Select(x => new { databaseId = x.DatabaseId, status = MapQueryReadStatus(x.Status), sourceState = MapQueryStoreState(x.SourceState ?? StatusSourceState(x.Status)), reason = x.Reason, fallbackAttempted = x.FallbackAttempted, truncated = x.Truncated, lossKind = MapLoss(x.LossKind), sourceRowsRead = x.SourceRowsRead, responseBytes = x.ResponseBytes, minimumLostItems = x.MinimumLostItems, lossCountIsExact = x.LossCountIsExact, minimumLostBytes = x.MinimumLostBytes }).ToArray();
+        var targetStatusJson = targetStatus is null ? null : new { status = targetStatus.Status, reason = targetStatus.Reason };
+        byte[] persistenceJson = QueryPerformancePersistencePayload.Serialize(payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, targetStatus);
+        if (persistenceJson.Length > QueryPerformancePersistencePayload.MaximumSerializedBytes) throw new InvalidDataException("Query performance persistence payload exceeds the accepted response bound.");
+        var json = new { observations, databaseStatuses = statuses, targetStatus = targetStatusJson };
+        var digestEnvelope = new { runId = request.Summary.RunId.Value, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, windowStartUtc = windowStart, windowEndUtc = windowEnd, source, sourceState, coverage, fresh, truncated, targetStatus = targetStatusJson, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), durationMs = request.Summary.Duration.TotalMilliseconds, attemptCount = request.Summary.AttemptCount, sourceRows = request.Summary.Accounting.SourceRowsRead, outputItems = request.Summary.Accounting.OutputItemsProduced, responseBytes = request.Summary.Accounting.ResponseBytes, outputBytes = request.Summary.Accounting.OutputBytes, lossKind = MapLoss(request.Summary.Loss.Kind), minimumLostItems = request.Summary.Loss.MinimumLostItems, lossCountIsExact = request.Summary.Loss.CountIsExact, minimumLostBytes = request.Summary.Loss.MinimumLostBytes, nextCircuitState = MapCircuit(request.NextCircuit.State), nextConsecutiveFailures = request.NextCircuit.ConsecutiveFailures, observations, databaseStatuses = statuses };
+        command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(digestEnvelope)));
+        command.Parameters.AddWithValue("window_start", windowStart);
+        command.Parameters.AddWithValue("window_end", windowEnd);
+        command.Parameters.AddWithValue("query_source", source);
+        command.Parameters.AddWithValue("query_source_state", sourceState);
+        command.Parameters.AddWithValue("query_coverage", coverage);
+        command.Parameters.AddWithValue("query_freshness", fresh);
+        command.Parameters.AddWithValue("query_truncated", truncated);
+        command.Parameters.AddWithValue("fencing_token", request.Lease.FencingToken.Value);
+        command.Parameters.AddWithValue("query_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(persistenceJson));
+    }
+
+    private static string MapQuerySource(QueryPerformanceSource value) => value switch { QueryPerformanceSource.QueryStore => "query_store", QueryPerformanceSource.PlanCache => "plan_cache", _ => throw new InvalidDataException("Mixed is a run summary only.") };
+    private static QueryPerformanceTargetStatus? TargetStatusForOutcome(CollectorRunOutcome outcome, CollectorRunReason reason) => outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial ? null : outcome switch
+    {
+        CollectorRunOutcome.CircuitOpen => new QueryPerformanceTargetStatus("circuit_open", "circuit_currently_open"),
+        CollectorRunOutcome.TimedOut => new QueryPerformanceTargetStatus("deadline_exceeded", "deadline_exceeded"),
+        CollectorRunOutcome.Unsupported => new QueryPerformanceTargetStatus("unsupported", reason switch { CollectorRunReason.TargetVersionUnsupported => "target_version_unsupported", CollectorRunReason.TargetPlatformUnsupported => "target_platform_unsupported", CollectorRunReason.TargetEditionUnsupported => "target_edition_unsupported", CollectorRunReason.CapabilityMissing => "capability_missing", CollectorRunReason.CapabilityProfileMissing => "capability_profile_missing", CollectorRunReason.CapabilityProfileStale => "capability_profile_stale", _ => "target_unsupported" }),
+        CollectorRunOutcome.OutputInvalid => new QueryPerformanceTargetStatus("output_invalid", "output_validation_failed"),
+        CollectorRunOutcome.LeaseLost => new QueryPerformanceTargetStatus("lease_lost", "lease_ownership_lost"),
+        CollectorRunOutcome.PermissionDenied => new QueryPerformanceTargetStatus("connection_failure", "required_permission_missing"),
+        _ => new QueryPerformanceTargetStatus("connection_failure", outcome == CollectorRunOutcome.TransientFailure ? "transient_target_failure" : "permanent_target_failure"),
+    };
+    private static bool IsUnavailableStatus(QueryPerformanceReadStatus status) => status is QueryPerformanceReadStatus.QueryStoreDisabled or QueryPerformanceReadStatus.QueryStoreUnsupported or QueryPerformanceReadStatus.QueryStorePermissionDenied or QueryPerformanceReadStatus.QueryStoreReadFailure or QueryPerformanceReadStatus.QueryStoreTimedOut or QueryPerformanceReadStatus.PlanCachePermissionDenied or QueryPerformanceReadStatus.PlanCacheReadFailure or QueryPerformanceReadStatus.PlanCacheTimedOut;
+    private static string MapQueryStoreState(QueryStoreState value) => value switch { QueryStoreState.ReadWrite => "read_write", QueryStoreState.ReadOnly => "read_only", QueryStoreState.Disabled => "disabled", QueryStoreState.Unsupported => "unsupported", QueryStoreState.PermissionDenied => "permission_denied", QueryStoreState.ReadFailure => "read_failure", QueryStoreState.TimedOut => "timed_out", _ => throw new InvalidDataException("Unknown Query Store state.") };
+    private static string MapQuerySemantics(QueryMetricSemantics value) => value switch { QueryMetricSemantics.QueryStoreInterval => "query_store_interval", QueryMetricSemantics.PlanCacheCumulative => "plan_cache_cumulative", QueryMetricSemantics.PlanCacheDelta => "plan_cache_delta", QueryMetricSemantics.PlanCacheBaseline => "plan_cache_baseline", QueryMetricSemantics.Reset => "reset", _ => throw new InvalidDataException("Unknown query metric semantics.") };
+    private static string MapQueryCoverage(QueryCoverage value) => value switch { QueryCoverage.Complete => "complete", QueryCoverage.Truncated => "truncated", QueryCoverage.Unavailable => "unavailable", QueryCoverage.NoActivity => "no_activity", _ => throw new InvalidDataException("Unknown query coverage.") };
+    private static string MapQueryReadStatus(QueryPerformanceReadStatus value) => value switch { QueryPerformanceReadStatus.QueryStoreEmpty => "query_store_empty", QueryPerformanceReadStatus.QueryStoreRows => "query_store_rows", QueryPerformanceReadStatus.QueryStoreDisabled => "query_store_disabled", QueryPerformanceReadStatus.QueryStoreUnsupported => "query_store_unsupported", QueryPerformanceReadStatus.QueryStorePermissionDenied => "query_store_permission_denied", QueryPerformanceReadStatus.QueryStoreReadFailure => "query_store_read_failure", QueryPerformanceReadStatus.QueryStoreTimedOut => "query_store_timed_out", QueryPerformanceReadStatus.PlanCacheRows => "plan_cache_rows", QueryPerformanceReadStatus.PlanCacheEmpty => "plan_cache_empty", QueryPerformanceReadStatus.PlanCachePermissionDenied => "plan_cache_permission_denied", QueryPerformanceReadStatus.PlanCacheReadFailure => "plan_cache_read_failure", QueryPerformanceReadStatus.PlanCacheTimedOut => "plan_cache_timed_out", QueryPerformanceReadStatus.OutputCapped => "output_capped", _ => throw new InvalidDataException("Unknown query performance read status.") };
+    private static QueryStoreState StatusSourceState(QueryPerformanceReadStatus value) => value switch { QueryPerformanceReadStatus.QueryStoreRows or QueryPerformanceReadStatus.QueryStoreEmpty => QueryStoreState.ReadWrite, QueryPerformanceReadStatus.QueryStoreDisabled => QueryStoreState.Disabled, QueryPerformanceReadStatus.QueryStorePermissionDenied or QueryPerformanceReadStatus.PlanCachePermissionDenied => QueryStoreState.PermissionDenied, QueryPerformanceReadStatus.QueryStoreTimedOut or QueryPerformanceReadStatus.PlanCacheTimedOut => QueryStoreState.TimedOut, QueryPerformanceReadStatus.QueryStoreReadFailure or QueryPerformanceReadStatus.PlanCacheReadFailure or QueryPerformanceReadStatus.PlanCacheRows or QueryPerformanceReadStatus.PlanCacheEmpty => QueryStoreState.ReadFailure, _ => QueryStoreState.Unsupported };
+
     private static void AddActivityCommitParameters(NpgsqlCommand command, CollectorPayload payload)
     {
         ActivitySessionObservation[] sessions = payload.ActivitySessions.Items.ToArray();
@@ -776,9 +928,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCatalog(IReadOnlyList<CollectorCatalogEntry> entries)
     {
-        if (entries.Count is not (3 or 7 or 8))
+        if (entries.Count is not (3 or 7 or 8 or 9))
         {
-            throw new InvalidDataException("PostgreSQL accepts only an exact reviewed M4 or M5 collector catalog.");
+                throw new InvalidDataException("PostgreSQL accepts only an exact reviewed M4-M7 collector catalog.");
         }
 
         for (int index = 0; index < entries.Count; index++)
@@ -840,6 +992,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             request.Payload.BlockingEdges.Items.Any(item =>
                 item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
             request.Payload.Deadlocks.Items.Any(item =>
+                item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
+            request.Payload.QueryPerformance.Items.Any(item =>
                 item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision))
         {
             throw new InvalidDataException("Collector snapshot payload identities do not match the exact due-work target revision.");
@@ -853,21 +1007,57 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         int waitCount = request.Payload.ServerWaits.Items.Count;
         int blockingCount = request.Payload.BlockingEdges.Items.Count;
         int deadlockCount = request.Payload.Deadlocks.Items.Count;
+        int queryPerformanceCount = request.Payload.QueryPerformance.Items.Count;
+        int queryPerformanceStatusCount = request.Payload.QueryPerformanceStatuses.Count;
+        if (request.Payload.QueryPerformance.Items.Any(item =>
+                item.Source == QueryPerformanceSource.Mixed ||
+                item.Query.DatabaseId <= 0 ||
+                item.IntervalEndUtc <= item.IntervalStartUtc ||
+                item.IntervalEndUtc - item.IntervalStartUtc > QueryPerformanceBounds.MaximumWindow))
+        {
+            throw new InvalidDataException("Query performance observations must carry a concrete source and bounded interval.");
+        }
+        if (request.Payload.QueryPerformanceStatuses.Any(status => status.DatabaseId <= 0 || status.DatabaseId > 32767))
+        {
+            throw new InvalidDataException("Query performance database statuses must match the due-work target and database bounds.");
+        }
+        if (request.Payload.QueryPerformance.Items.Count > 0 && request.Payload.QueryPerformanceStatuses.Count == 0) throw new InvalidDataException("Non-empty query performance output requires database statuses.");
+        if (request.Payload.QueryPerformanceStatuses.Count > 0)
+        {
+            var statusByDatabase = request.Payload.QueryPerformanceStatuses.ToDictionary(static status => status.DatabaseId);
+            foreach (QueryPerformanceObservation item in request.Payload.QueryPerformance.Items)
+            {
+                if (!statusByDatabase.TryGetValue(item.Query.DatabaseId, out QueryPerformanceDatabaseStatus? status)) throw new InvalidDataException("Every query performance observation must have a database status.");
+                if (status.Status == QueryPerformanceReadStatus.QueryStoreRows && (item.Source != QueryPerformanceSource.QueryStore || item.SourceState is not (QueryStoreState.ReadWrite or QueryStoreState.ReadOnly)) || status.Status == QueryPerformanceReadStatus.PlanCacheRows && (item.Source != QueryPerformanceSource.PlanCache || !status.FallbackAttempted)) throw new InvalidDataException("Query performance observation source does not match its database status.");
+            }
+            foreach (QueryPerformanceDatabaseStatus status in request.Payload.QueryPerformanceStatuses)
+            {
+                QueryPerformanceObservation[] databaseObservations = request.Payload.QueryPerformance.Items.Where(item => item.Query.DatabaseId == status.DatabaseId).ToArray();
+                bool rowStatus = status.Status is QueryPerformanceReadStatus.QueryStoreRows or QueryPerformanceReadStatus.PlanCacheRows;
+                if (rowStatus != (databaseObservations.Length > 0)) throw new InvalidDataException("Query performance status and observations must agree in both directions.");
+                if (databaseObservations.Any(item => status.Status == QueryPerformanceReadStatus.QueryStoreRows && item.Source != QueryPerformanceSource.QueryStore || status.Status == QueryPerformanceReadStatus.PlanCacheRows && item.Source != QueryPerformanceSource.PlanCache)) throw new InvalidDataException("A row status cannot contain mixed source observations.");
+            }
+        }
         bool exactKind = request.Work.CollectorId.Value switch
         {
-            "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
-            "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
-            "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
-            "activity.sessions" => metricCount + databaseCount + fileCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
-            "activity.requests" => metricCount + databaseCount + fileCount + sessionCount + waitCount + blockingCount + deadlockCount == 0,
-            "waits.server" => metricCount + databaseCount + fileCount + sessionCount + requestCount + blockingCount + deadlockCount == 0,
-            "blocking.current" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + deadlockCount == 0,
-            "deadlocks.system-health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount == 0,
+            "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
+            "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
+            "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
+            "activity.sessions" => metricCount + databaseCount + fileCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
+            "activity.requests" => metricCount + databaseCount + fileCount + sessionCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
+            "waits.server" => metricCount + databaseCount + fileCount + sessionCount + requestCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
+            "blocking.current" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + deadlockCount + queryPerformanceCount == 0,
+            "deadlocks.system-health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + queryPerformanceCount == 0,
+            "queries.performance" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
             _ => false,
         };
         if (!exactKind)
         {
             throw new InvalidDataException("Collector payload does not match the exact collector output kind.");
+        }
+        if (request.Work.CollectorId.Value != "queries.performance" && queryPerformanceStatusCount != 0)
+        {
+            throw new InvalidDataException("Query performance database statuses are only valid for queries.performance.");
         }
     }
 
@@ -939,6 +1129,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         CollectorRunReason.TargetPlatformUnsupported => "target_platform_unsupported",
         CollectorRunReason.TargetEditionUnsupported => "target_edition_unsupported",
         CollectorRunReason.BlockingGraphLimit => "blocking_graph_limit",
+        CollectorRunReason.OverlapDeduplicated => "duplicate_overlap",
         _ => throw new ArgumentOutOfRangeException(nameof(value)),
     };
 
@@ -950,6 +1141,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         CollectorLossKind.OutputValidationFailure => "output_validation_failure",
         CollectorLossKind.IngestionRejection => "ingestion_rejection",
         CollectorLossKind.BlockingGraphLimit => "blocking_graph_limit",
+        CollectorLossKind.DuplicateOverlap => "duplicate_overlap",
         _ => throw new ArgumentOutOfRangeException(nameof(value)),
     };
 

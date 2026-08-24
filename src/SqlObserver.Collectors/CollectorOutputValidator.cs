@@ -36,7 +36,10 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             throw new InvalidDataException("Collector output identity or contract version is invalid.");
         }
 
-        if (result.Accounting.SourceRowsRead > manifest.Limits.MaxRows ||
+        int sourceRowBound = manifest.Id.Value == "queries.performance"
+            ? QueryPerformanceBounds.MaximumDatabases * QueryPerformanceBounds.ProbeRows
+            : manifest.Limits.MaxRows;
+        if (result.Accounting.SourceRowsRead > sourceRowBound ||
             result.Accounting.ResponseBytes > manifest.Limits.MaxResponseBytes ||
             result.Accounting.OutputBytes > manifest.Limits.MaxResponseBytes)
         {
@@ -54,7 +57,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.ActivityRequests.Items.Count > Contract.MaxActivityRequestObservations ||
             payload.ServerWaits.Items.Count > Contract.MaxServerWaitObservations ||
             payload.BlockingEdges.Items.Count > Contract.MaxBlockingEdgeObservations ||
-            payload.Deadlocks.Items.Count > Contract.MaxDeadlockObservations)
+            payload.Deadlocks.Items.Count > Contract.MaxDeadlockObservations ||
+            payload.QueryPerformance.Items.Count > Contract.MaxQueryPerformanceObservations)
         {
             throw new InvalidDataException("Collector output exceeded its registered output cardinality.");
         }
@@ -94,6 +98,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.BlockingEdges.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
             payload.Deadlocks.Items.Any(item =>
+                item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
+            payload.QueryPerformance.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision))
         {
             throw new InvalidDataException("Collector inventory output belongs to a different target revision.");
@@ -103,6 +109,63 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             result.Outcome == CollectorRunOutcome.Partial && !result.Loss.HasLoss)
         {
             throw new InvalidDataException("Collector outcome does not expose sample loss consistently.");
+        }
+
+        if (manifest.Id.Value == "queries.performance")
+        {
+            ValidateQueryPerformanceBoundsAndStatuses(payload, result);
+        }
+    }
+
+    private static void ValidateQueryPerformanceBoundsAndStatuses(CollectorPayload payload, CollectorExecutionResult result)
+    {
+        IReadOnlyList<QueryPerformanceDatabaseStatus> statuses = payload.QueryPerformanceStatuses;
+        if (statuses.Count > QueryPerformanceBounds.MaximumDatabases ||
+            statuses.Select(static status => status.DatabaseId).Distinct().Count() != statuses.Count ||
+            statuses.Sum(static status => status.SourceRowsRead) > QueryPerformanceBounds.MaximumDatabases * QueryPerformanceBounds.ProbeRows)
+        {
+            throw new InvalidDataException("Query performance database status accounting exceeded its bounded contract.");
+        }
+
+        var observationsByDatabase = payload.QueryPerformance.Items
+            .GroupBy(static observation => observation.Query.DatabaseId)
+            .ToDictionary(static group => group.Key, static group => group.ToArray());
+        var statusByDatabase = statuses.ToDictionary(static status => status.DatabaseId);
+        foreach (QueryPerformanceObservation observation in payload.QueryPerformance.Items)
+        {
+            if (!statusByDatabase.ContainsKey(observation.Query.DatabaseId))
+            {
+                throw new InvalidDataException("Every query performance observation must have one database source status.");
+            }
+        }
+
+        foreach (QueryPerformanceDatabaseStatus status in statuses)
+        {
+            observationsByDatabase.TryGetValue(status.DatabaseId, out QueryPerformanceObservation[]? observations);
+            int count = observations?.Length ?? 0;
+            bool rowStatus = status.Status is QueryPerformanceReadStatus.QueryStoreRows or QueryPerformanceReadStatus.PlanCacheRows;
+            if (rowStatus != (count > 0))
+            {
+                throw new InvalidDataException("Query performance source status and observations are not bidirectionally consistent.");
+            }
+
+            if (status.Status == QueryPerformanceReadStatus.QueryStoreRows &&
+                observations!.Any(static item => item.Source != QueryPerformanceSource.QueryStore || item.SourceState is not (QueryStoreState.ReadWrite or QueryStoreState.ReadOnly)))
+            {
+                throw new InvalidDataException("Query Store row status contains a non-Query Store observation.");
+            }
+
+            if (status.Status == QueryPerformanceReadStatus.PlanCacheRows &&
+                observations!.Any(static item => item.Source != QueryPerformanceSource.PlanCache))
+            {
+                throw new InvalidDataException("Plan-cache row status contains a non-plan-cache observation.");
+            }
+        }
+
+        if (payload.QueryPerformance.Items.Count > QueryPerformanceObservationBatch.MaximumItems ||
+            result.Accounting.OutputItemsProduced < payload.QueryPerformance.Items.Count)
+        {
+            throw new InvalidDataException("Query performance emitted observation accounting is invalid.");
         }
     }
 

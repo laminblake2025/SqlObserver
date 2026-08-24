@@ -5,6 +5,7 @@ using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.SqlServer;
+using SqlObserver.Domain.SensitiveData;
 
 namespace SqlObserver.Collector;
 
@@ -32,6 +33,7 @@ public static class CollectorServiceRegistration
         services.AddSingleton<ISqlServerCapabilityDiscoveryPort, SqlServerCapabilityDiscoveryPort>();
         services.AddSingleton<ICapabilityDiscoveryService, CapabilityDiscoveryService>();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IQuerySensitiveContentProtector, UnavailableQuerySensitiveContentProtector>();
         services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
         services.AddSingleton(static _ => SqlServerCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerCoreEngineCollector(
@@ -42,6 +44,7 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
         services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerActivitySessionsCollector(
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerActivityRequestsCollector(
@@ -52,6 +55,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerDeadlockCollector(
             provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>()));
+        services.AddSingleton(static provider => new SqlServerQueryPerformanceCollector(
+            provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>()));
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
         services.AddSingleton(static provider => new CollectorScheduler(
@@ -86,6 +91,7 @@ public static class CollectorServiceRegistration
         SqlServerCollectorAsset waitsAsset = activityCatalog.Get(new CollectorId("waits.server"));
         SqlServerCollectorAsset blockingAsset = activityCatalog.Get(new CollectorId("blocking.current"));
         SqlServerDeadlockCollectorAssetCatalog deadlockCatalog = provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>();
+        SqlServerQueryPerformanceCollectorAssetCatalog queryCatalog = provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>();
         return new CollectorRegistry(
         [
             new CollectorRegistration(
@@ -136,6 +142,12 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerDeadlockCollector.OutputContract),
                 new CollectorSha256Digest(deadlockCatalog.Asset.ManifestChecksum),
                 new CollectorSha256Digest(deadlockCatalog.BundleChecksum)),
+            new CollectorRegistration(
+                executionOrder: 9,
+                provider.GetRequiredService<SqlServerQueryPerformanceCollector>(),
+                new CollectorOutputValidator(SqlServerQueryPerformanceCollector.OutputContract),
+                new CollectorSha256Digest(queryCatalog.Asset.ManifestChecksum),
+                new CollectorSha256Digest(queryCatalog.BundleChecksum)),
         ]);
     }
 }

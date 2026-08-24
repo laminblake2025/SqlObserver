@@ -2,7 +2,7 @@
 
 SqlObserver is a clean-room, Windows-hosted monitoring and diagnostics product for Microsoft SQL Server. It is intended to collect bounded, historical evidence without installing an agent on monitored database hosts by default. PostgreSQL 18.x is the product's application repository; it is not a monitored database engine.
 
-> **Repository status:** Milestones 0 through 6 are implemented locally. M6 adds bounded passive `system_health` deadlock evidence, safe XML parsing, typed fenced persistence, target-scoped API projections, and the deadlock web surface. PostgreSQL integration execution requires Docker/PostgreSQL 18.4 and SQL Server lab execution requires the configured Windows/SSPI environment; SqlObserver is not yet a supported release, and M7+ features, installers, and release/platform certification remain later milestones.
+> **Repository status:** Milestones 0 through 7 are implemented locally. M7 adds bounded passive Query Store/query-performance evidence with explicit plan-cache fallback, typed source/metric semantics, fenced metadata-only persistence, target-scoped API projections, and a read-only web panel. PostgreSQL integration execution requires Docker/PostgreSQL 18.4 and SQL Server lab execution requires the configured Windows/SSPI environment; SqlObserver is not yet a supported release, and installers/release/platform certification remain later milestones.
 
 ## Product boundary
 
@@ -49,7 +49,7 @@ More detail is in [the architecture overview](docs/architecture/overview.md), [s
 
 ## Quick start for contributors
 
-The current quick start validates the architecture/bootstrap work, the M2 PostgreSQL repository, the M3 onboarding/capability slice, the M4 collector/core-health vertical slice, the M5 sessions/requests/waits/blocking activity slice, and the M6 passive system-health deadlock slice.
+The current quick start validates the architecture/bootstrap work, the M2 PostgreSQL repository, the M3 onboarding/capability slice, the M4 collector/core-health vertical slice, the M5 sessions/requests/waits/blocking activity slice, the M6 passive system-health deadlock slice, and the M7 passive Query Store/query-performance slice.
 
 Prerequisites:
 
@@ -93,13 +93,13 @@ Do not provision production credentials or point this repository slice at a prod
 
 ## Milestone scope
 
-Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and local-runner CI. Milestone 2 adds the PostgreSQL 18 repository foundation. Milestone 3 adds credential-free target onboarding, SID-based RBAC, integrated identity, bounded capability discovery, and offline least-privilege permission plans. Milestone 4 adds the fenced scheduler, retry/circuit/loss accounting, three passive core-health collectors, atomic ingestion, and scoped health projections. Milestone 5 adds bounded sessions, requests, waits, current blocking, blocking history, and the target activity surface. Milestone 6 adds passive system-health deadlock evidence with privacy-minimized typed projections. See the [M2 implementation record](docs/milestones/M2-postgresql-repository.md), [M3 implementation record](docs/milestones/M3-onboarding-and-capabilities.md), [M4 implementation record](docs/milestones/M4-collector-framework-and-core-health.md), [M5 implementation record](docs/milestones/M5-sessions-requests-waits-blocking.md), [M6 implementation record](docs/milestones/M6-deadlocks-and-extended-events.md), and [BACKLOG.md](BACKLOG.md).
+Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and local-runner CI. Milestone 2 adds the PostgreSQL 18 repository foundation. Milestone 3 adds credential-free target onboarding, SID-based RBAC, integrated identity, bounded capability discovery, and offline least-privilege permission plans. Milestone 4 adds the fenced scheduler, retry/circuit/loss accounting, three passive core-health collectors, atomic ingestion, and scoped health projections. Milestone 5 adds bounded sessions, requests, waits, current blocking, blocking history, and the target activity surface. Milestone 6 adds passive system-health deadlock evidence with privacy-minimized typed projections. Milestone 7 adds bounded passive Query Store/query-performance evidence, explicit plan-cache fallback, history/top/plan metadata projections, and the read-only target panel. See the [M2 implementation record](docs/milestones/M2-postgresql-repository.md), [M3 implementation record](docs/milestones/M3-onboarding-and-capabilities.md), [M4 implementation record](docs/milestones/M4-collector-framework-and-core-health.md), [M5 implementation record](docs/milestones/M5-sessions-requests-waits-blocking.md), [M6 implementation record](docs/milestones/M6-deadlocks-and-extended-events.md), [M7 implementation record](docs/milestones/M7-query-store-query-performance.md), and [BACKLOG.md](BACKLOG.md).
 
-The implemented and runtime-registered target collectors are `capability.connection`, `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, and `deadlocks.system-health`. M5 activity and M6 deadlock evidence are bounded, passive, target-scoped, and expose explicit freshness/loss evidence. Alerting, analytics, MCP tools, deployment, upgrade behavior, and release/platform certification remain incomplete.
+The implemented and runtime-registered target collectors are `capability.connection`, `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, and `queries.performance`. M5 activity, M6 deadlock, and M7 query-performance evidence are bounded, passive, target-scoped, and expose explicit freshness/loss evidence. Alerting, analytics, MCP tools, deployment, upgrade behavior, and release/platform certification remain incomplete.
 
 ## Non-goals through this milestone
 
-- Collecting target data beyond the implemented bounded passive capability, core, database/files, activity, waits/blocking, and system-health deadlock collectors.
+- Collecting target data beyond the implemented bounded passive capability, core, database/files, activity, waits/blocking, system-health deadlock, and query-performance collectors.
 - Shipping an MCP server or any `execute_sql`-style capability.
 - Changing Query Store, Extended Events, blocked-process settings, indexes, plans, sessions, or server configuration.
 - Shipping an installer or claiming support certification.

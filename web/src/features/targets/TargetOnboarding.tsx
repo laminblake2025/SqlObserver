@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { TargetHealthPanel } from "../health/TargetHealthPanel";
 import { TargetActivityPanel } from "../activity/TargetActivityPanel";
 import { TargetDeadlockPanel } from "../deadlocks/TargetDeadlockPanel";
+import { TargetQueryPerformancePanel } from "../queries/TargetQueryPerformancePanel";
 import { listObservationTargets, registerObservationTarget } from "./targetApi";
 import type {
   CapabilityStatus,
@@ -42,6 +43,7 @@ export function TargetOnboarding() {
   const [selectedTargetId, setSelectedTargetId] = useState<string>();
   const [selectedActivityTargetId, setSelectedActivityTargetId] = useState<string>();
   const [selectedDeadlockTargetId, setSelectedDeadlockTargetId] = useState<string>();
+  const [selectedQueryPerformanceTargetId, setSelectedQueryPerformanceTargetId] = useState<string>();
   const [registrationInstanceId, setRegistrationInstanceId] = useState(createClientInstanceId);
   const selectedTarget = targets.find((target) => target.instanceId === selectedTargetId);
 
@@ -225,6 +227,9 @@ export function TargetOnboarding() {
               >
                 View activity
               </button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedQueryPerformanceTargetId(target.instanceId)} type="button">
+                View query performance
+              </button>
             </article>
           ))}
         </div>
@@ -255,6 +260,10 @@ export function TargetOnboarding() {
             onClose={() => setSelectedDeadlockTargetId(undefined)}
           />
         );
+      })()}
+      {selectedQueryPerformanceTargetId === undefined ? null : (() => {
+        const queryTarget = targets.find((target) => target.instanceId === selectedQueryPerformanceTargetId);
+        return queryTarget === undefined ? null : <TargetQueryPerformancePanel displayName={queryTarget.displayName} instanceId={queryTarget.instanceId} onClose={() => setSelectedQueryPerformanceTargetId(undefined)} />;
       })()}
     </section>
   );

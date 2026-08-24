@@ -11,7 +11,7 @@ declare module "*.mjs" {
   export function parseWait(value: unknown): ActivityWait;
   export function parseEdge(value: unknown): BlockingEdge;
   export function parseHistory(value: unknown): BlockingHistoryItem;
-  export function readBoundedBody(response: Response, signal: AbortSignal): Promise<string>;
+  export function readBoundedBody(response: Response, signal: AbortSignal, maximumBytes?: number): Promise<string>;
   export function safeCursor(value: unknown): string;
   export function safeStatusMessage(status: number): string;
   export function parseDeadlockPage(value: unknown, expectedTargetId?: string): import("./features/deadlocks/deadlockTypes").DeadlockPage;
