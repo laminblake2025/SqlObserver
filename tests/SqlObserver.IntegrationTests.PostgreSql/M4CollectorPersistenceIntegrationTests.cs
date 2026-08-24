@@ -17,7 +17,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 [Collection(PostgreSql18CollectionDefinition.Name)]
 public sealed class M4CollectorPersistenceIntegrationTests
 {
-    private const string BundleDigest = "c2bd727d3c2f6278cea09c37acde007244cb681452fe865cfab1aadf7c84accf";
+    private const string BundleDigest = "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e";
     private static readonly string[] EngineCoreMetricIds =
     [
         "engine.batch_requests_total",
@@ -173,11 +173,11 @@ public sealed class M4CollectorPersistenceIntegrationTests
             divergent[1].Manifest,
             new CollectorSha256Digest(new string('0', 64)),
             divergent[1].AssetBundleDigest);
-        PostgresException digestFailure = await Assert.ThrowsAsync<PostgresException>(async () =>
+        InvalidDataException digestFailure = await Assert.ThrowsAsync<InvalidDataException>(async () =>
             await runtime.ReconcileCatalogAsync(
                 new ReconcileCollectorCatalogRequest(divergent, catalogLease, DefaultTimeout),
                 CancellationToken.None));
-        Assert.Equal("55000", digestFailure.SqlState);
+        Assert.Contains("checksum-pinned", digestFailure.Message, StringComparison.Ordinal);
 
         CollectorDueWorkBatch initial = await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, DefaultTimeout),
@@ -1026,10 +1026,10 @@ public sealed class M4CollectorPersistenceIntegrationTests
             )
             VALUES
             (
-                @target_id, @target_key, 'M4 target', clock_timestamp(), 'sql01.example.test',
+                @target_id, @target_key, 'M4 target', statement_timestamp(), 'sql01.example.test',
                 1433, 'sql01.example.test', interval '5 seconds',
                 'windows_integrated_service_identity', 'mandatory_validated', 'active',
-                @revision, clock_timestamp(), clock_timestamp()
+                @revision, statement_timestamp(), statement_timestamp()
             );
             """,
             connection);

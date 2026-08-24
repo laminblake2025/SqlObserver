@@ -30,28 +30,28 @@ VALUES
 (
     'activity.sessions', 1, 4, 3, 1,
     decode('f7088bc48ab289b1923ef0cc1ba9565999e7242e0eb6cb3eb85406cd747d1ffb', 'hex'),
-    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    decode('86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e', 'hex'),
     interval '15 seconds', interval '5 seconds', interval '5 seconds',
     513, 262144, 'low', 2, 3, interval '5 minutes'
 ),
 (
     'activity.requests', 1, 5, 3, 1,
     decode('6490b8aaa503d5f96e52c4aacdb5e94a52965cc1bed0f0d0502f3e663cc88ee1', 'hex'),
-    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    decode('86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e', 'hex'),
     interval '10 seconds', interval '5 seconds', interval '5 seconds',
     513, 393216, 'moderate', 2, 3, interval '5 minutes'
 ),
 (
     'waits.server', 1, 6, 3, 1,
     decode('aeae9d3d2a2f373b9b66b0e68a0c2d51dcc548dad3fc175a118ba3a5cd007da9', 'hex'),
-    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    decode('86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e', 'hex'),
     interval '30 seconds', interval '10 seconds', interval '5 seconds',
     2049, 524288, 'low', 2, 3, interval '5 minutes'
 ),
 (
     'blocking.current', 1, 7, 3, 1,
     decode('2470cbe3d16e3825a8c30ed0fde6d84e0eced0124f93ef8ff268f93b4523c59b', 'hex'),
-    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    decode('86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e', 'hex'),
     interval '10 seconds', interval '5 seconds', interval '5 seconds',
     1025, 393216, 'moderate', 2, 3, interval '5 minutes'
 );

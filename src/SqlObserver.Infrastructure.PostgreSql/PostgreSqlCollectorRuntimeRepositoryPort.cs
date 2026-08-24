@@ -210,13 +210,13 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static readonly string[] RequiredBundleDigests =
     [
-        "c2bd727d3c2f6278cea09c37acde007244cb681452fe865cfab1aadf7c84accf",
-        "c2bd727d3c2f6278cea09c37acde007244cb681452fe865cfab1aadf7c84accf",
-        "c2bd727d3c2f6278cea09c37acde007244cb681452fe865cfab1aadf7c84accf",
-        "dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff",
-        "dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff",
-        "dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff",
-        "dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff",
+        "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
+        "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
+        "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
+        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
+        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
+        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
+        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
     ];
 
     private readonly NpgsqlDataSource _dataSource;

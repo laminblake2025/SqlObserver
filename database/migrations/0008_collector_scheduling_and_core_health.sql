@@ -93,7 +93,7 @@ VALUES
     2,
     1,
     decode('f062ab816cdbb56e7ea9f77ed0042bf00df2bb9b0e6c08b907710f468d8755a1', 'hex'),
-    decode('c2bd727d3c2f6278cea09c37acde007244cb681452fe865cfab1aadf7c84accf', 'hex'),
+    decode('1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e', 'hex'),
     interval '30 seconds',
     interval '10 seconds',
     interval '5 seconds',
@@ -111,7 +111,7 @@ VALUES
     2,
     1,
     decode('ec1cbfea68854d111d11aab48b476addbf2416e99e639bf97ea58545d78af484', 'hex'),
-    decode('c2bd727d3c2f6278cea09c37acde007244cb681452fe865cfab1aadf7c84accf', 'hex'),
+    decode('1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e', 'hex'),
     interval '1 minute',
     interval '30 seconds',
     interval '5 seconds',
@@ -129,7 +129,7 @@ VALUES
     2,
     1,
     decode('06c9353fe554f737f933c0fa4938fef19f5c6c0dd6af8832c4671160f5af0dcd', 'hex'),
-    decode('c2bd727d3c2f6278cea09c37acde007244cb681452fe865cfab1aadf7c84accf', 'hex'),
+    decode('1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e', 'hex'),
     interval '1 minute',
     interval '30 seconds',
     interval '5 seconds',
@@ -194,7 +194,13 @@ CREATE TABLE control.collector_schedule
         AND (last_completed_at IS NULL OR isfinite(last_completed_at))
         AND (last_succeeded_at IS NULL OR isfinite(last_succeeded_at))
         AND (last_contention_at IS NULL OR isfinite(last_contention_at))
-        AND (last_completed_at IS NULL OR last_started_at IS NULL OR last_completed_at >= last_started_at)
+        AND
+        (
+            active_run_id IS NOT NULL
+            OR last_completed_at IS NULL
+            OR last_started_at IS NULL
+            OR last_completed_at >= last_started_at
+        )
         AND (last_succeeded_at IS NULL OR last_completed_at IS NULL OR last_succeeded_at <= last_completed_at)
     ),
     CONSTRAINT ck_collector_schedule_last_outcome CHECK

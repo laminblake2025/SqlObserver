@@ -4,35 +4,35 @@ WITH metric_values AS
 (
     SELECT N'engine.batch_requests_total' AS metric_id, CONVERT(float, MAX(pc.cntr_value)) AS metric_value
     FROM sys.dm_os_performance_counters AS pc
-    WHERE pc.object_name LIKE N'%:SQL Statistics'
+    WHERE RTRIM(pc.object_name) LIKE N'%:SQL Statistics'
       AND RTRIM(pc.counter_name) = N'Batch Requests/sec'
 
     UNION ALL
 
     SELECT N'engine.sql_compilations_total', CONVERT(float, MAX(pc.cntr_value))
     FROM sys.dm_os_performance_counters AS pc
-    WHERE pc.object_name LIKE N'%:SQL Statistics'
+    WHERE RTRIM(pc.object_name) LIKE N'%:SQL Statistics'
       AND RTRIM(pc.counter_name) = N'SQL Compilations/sec'
 
     UNION ALL
 
     SELECT N'engine.sql_recompilations_total', CONVERT(float, MAX(pc.cntr_value))
     FROM sys.dm_os_performance_counters AS pc
-    WHERE pc.object_name LIKE N'%:SQL Statistics'
+    WHERE RTRIM(pc.object_name) LIKE N'%:SQL Statistics'
       AND RTRIM(pc.counter_name) = N'SQL Re-Compilations/sec'
 
     UNION ALL
 
     SELECT N'engine.page_life_expectancy_seconds', CONVERT(float, MAX(pc.cntr_value))
     FROM sys.dm_os_performance_counters AS pc
-    WHERE pc.object_name LIKE N'%:Buffer Manager'
+    WHERE RTRIM(pc.object_name) LIKE N'%:Buffer Manager'
       AND RTRIM(pc.counter_name) = N'Page life expectancy'
 
     UNION ALL
 
     SELECT N'engine.user_connections', CONVERT(float, MAX(pc.cntr_value))
     FROM sys.dm_os_performance_counters AS pc
-    WHERE pc.object_name LIKE N'%:General Statistics'
+    WHERE RTRIM(pc.object_name) LIKE N'%:General Statistics'
       AND RTRIM(pc.counter_name) = N'User Connections'
 
     UNION ALL

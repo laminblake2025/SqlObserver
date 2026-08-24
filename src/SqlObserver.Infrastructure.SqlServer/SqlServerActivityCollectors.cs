@@ -401,6 +401,8 @@ public sealed class SqlServerActivityRequestsCollector : SqlServerActivityCollec
                 }
 
                 DateTimeOffset observedAt = ReadUtcMicrosecond(reader, 0);
+                int sessionId = reader.GetInt32(1);
+                int requestId = reader.GetInt32(2);
                 string status = reader.GetString(3);
                 string command = reader.GetString(4);
                 int rowBytes = checked(224 + Utf8Bytes(status) + Utf8Bytes(command));
@@ -412,8 +414,8 @@ public sealed class SqlServerActivityRequestsCollector : SqlServerActivityCollec
                 observations.Add(new ActivityRequestObservation(
                     request.TargetId,
                     request.TargetRevision,
-                    reader.GetInt32(1),
-                    reader.GetInt32(2),
+                    sessionId,
+                    requestId,
                     ParseRequestStatus(status),
                     ParseRequestCommand(command),
                     reader.IsDBNull(5) ? null : reader.GetInt32(5),
@@ -629,6 +631,8 @@ public sealed class SqlServerCurrentBlockingCollector : SqlServerActivityCollect
                 }
 
                 DateTimeOffset observedAt = ReadUtcMicrosecond(reader, 0);
+                int blockedSessionId = reader.GetInt32(1);
+                int rawBlocker = reader.GetInt32(2);
                 string waitTypeValue = reader.GetString(3);
                 int rowBytes = checked(160 + Utf8Bytes(waitTypeValue));
                 if (!budget.TryAcceptResponseBytes(rowBytes))
@@ -636,10 +640,9 @@ public sealed class SqlServerCurrentBlockingCollector : SqlServerActivityCollect
                     break;
                 }
 
-                int rawBlocker = reader.GetInt32(2);
                 (BlockingBlockerKind kind, int? blockerSessionId) = ParseBlocker(rawBlocker);
                 sources.Add(new BlockingSourceEdge(
-                    reader.GetInt32(1),
+                    blockedSessionId,
                     kind,
                     blockerSessionId,
                     new SqlServerWaitType(waitTypeValue),
