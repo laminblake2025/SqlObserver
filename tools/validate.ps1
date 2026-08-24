@@ -1,5 +1,10 @@
 [CmdletBinding()]
-param()
+param(
+    # Retained for the canonical desktop validation invocation. The repository
+    # validation gate does not require Godot; accepting the path keeps the command
+    # stable across milestone slices.
+    [string] $GodotPath
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -622,7 +627,7 @@ function Assert-RepositoryShape {
         'database.files.sqlserver16-windows.v1.sql',
         'database.files.sqlserver17-windows.v1.sql'
     ) | Sort-Object
-    $stagedM5CollectorSqlNames = @(
+    $activeM5CollectorSqlNames = @(
         'activity.sessions.sqlserver15-windows.v1.sql',
         'activity.sessions.sqlserver16-windows.v1.sql',
         'activity.sessions.sqlserver17-windows.v1.sql',
@@ -637,10 +642,10 @@ function Assert-RepositoryShape {
         'blocking.current.sqlserver17-windows.v1.sql'
     ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $stagedM5CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
-        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and the explicitly staged M5 groundwork.'
+        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and active M5 assets.'
     }
 
     foreach ($collectorSqlFile in $collectorSqlFiles) {
@@ -667,11 +672,11 @@ function Assert-RepositoryShape {
             throw "M4 collector SQL must use the typed row bound, deterministic order, and exclude physical paths: $($collectorSqlFile.Name)"
         }
 
-        if ($collectorSqlFile.Name -in $stagedM5CollectorSqlNames -and
+        if ($collectorSqlFile.Name -in $activeM5CollectorSqlNames -and
             ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*@maximum_rows\s*\)' -or
              $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
              $collectorSql -match '(?i)\b(sql_handle|plan_handle|query_hash|query_plan_hash|wait_resource|resource_description|login_name|host_name|program_name|client_interface_name|local_net_address|client_net_address)\b')) {
-            throw "Staged M5 collector SQL must remain bounded, ordered, and exclude sensitive identity/query/resource fields: $($collectorSqlFile.Name)"
+            throw "M5 collector SQL must remain bounded, ordered, and exclude sensitive identity/query/resource fields: $($collectorSqlFile.Name)"
         }
     }
 
@@ -752,7 +757,7 @@ function Assert-RepositoryShape {
         'waits.server.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/waits.server.v1.json'
         'blocking.current.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/blocking.current.v1.json'
     }
-    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $stagedM5CollectorSqlNames }) {
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $activeM5CollectorSqlNames }) {
         $m5CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName
     }
     $m5CollectorChecksums = @{}
@@ -762,23 +767,69 @@ function Assert-RepositoryShape {
             continue
         }
         if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') {
-            throw "Invalid staged M5 collector checksum entry: $line"
+            throw "Invalid M5 collector checksum entry: $line"
         }
         $assetName = $Matches[2]
         if (-not $m5CollectorAssetPaths.ContainsKey($assetName) -or
             $m5CollectorChecksums.ContainsKey($assetName)) {
-            throw "Unexpected or duplicate staged M5 collector checksum entry: $line"
+            throw "Unexpected or duplicate M5 collector checksum entry: $line"
         }
         $m5CollectorChecksums[$assetName] = $Matches[1]
     }
     if ($m5CollectorChecksums.Count -ne $m5CollectorAssetPaths.Count) {
-        throw 'Staged M5 collector checksum manifest must contain exactly one entry per pinned groundwork asset.'
+        throw 'M5 collector checksum manifest must contain exactly one entry per pinned asset.'
     }
     foreach ($assetName in $m5CollectorAssetPaths.Keys) {
         $actualChecksum = (Get-FileHash -LiteralPath $m5CollectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant()
         if (-not $m5CollectorChecksums.ContainsKey($assetName) -or
             $m5CollectorChecksums[$assetName] -cne $actualChecksum) {
-            throw "Staged M5 collector checksum mismatch: $assetName"
+            throw "M5 collector checksum mismatch: $assetName"
+        }
+    }
+
+    $m5MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M5-sessions-requests-waits-blocking.md'
+    if (-not (Test-Path -LiteralPath $m5MilestoneDoc -PathType Leaf) -or
+        (Test-Path -LiteralPath (Join-Path $repositoryRoot 'docs/milestones/M5-activity-migration.sql.wip') -PathType Leaf)) {
+        throw 'M5 requires the immutable milestone document and must retire the WIP migration file.'
+    }
+    foreach ($requiredM5WebAsset in @(
+        'web/src/features/activity/activityApi.ts',
+        'web/src/features/activity/activityParser.mjs',
+        'web/src/features/activity/activityTypes.ts',
+        'web/src/features/activity/TargetActivityPanel.tsx',
+        'web/tests/activity-contract.test.mjs',
+        'web/tests/activity-parser-runtime.test.mjs')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM5WebAsset) -PathType Leaf)) {
+            throw "M5 web contract asset is missing: $requiredM5WebAsset"
+        }
+    }
+    $parserRuntime = Get-Content -LiteralPath (Join-Path $repositoryRoot 'web/tests/activity-parser-runtime.test.mjs') -Raw
+    if ($parserRuntime -notmatch 'activityParser\.mjs' -or $parserRuntime -match 'const\s+(?:text|counter|timestamp|object)\s*=') {
+        throw 'M5 parser runtime tests must import the production parser without duplicated validation helpers.'
+    }
+    foreach ($requiredM5TestAsset in @(
+        'tests/SqlObserver.ApiContractTests/M5ActivityApiContractTests.cs',
+        'tests/SqlObserver.ApiContractTests/M5ActivityHttpContractTests.cs',
+        'tests/SqlObserver.SecurityTests/M5ActivitySecurityPolicyTests.cs',
+        'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerActivityIntegrationTests.cs',
+        'tests/SqlObserver.IntegrationTests.PostgreSql/M5ActivityPostgreSqlIntegrationTests.cs',
+        'tests/SqlObserver.PerformanceTests/M5ActivityBoundaryPerformanceTests.cs')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM5TestAsset) -PathType Leaf)) {
+            throw "M5 focused test asset is missing: $requiredM5TestAsset"
+        }
+    }
+    $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
+    if ($readmeStatus -notmatch 'Milestones 0 through 5 are implemented' -or
+        $readmeStatus -notmatch '(?i)M5 activity' -or
+        $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
+        throw 'README repository status must explicitly identify M0-M5 and the bounded M5 activity scope.'
+    }
+    foreach ($staleText in @('dormant M5', 'M5-activity-migration.sql.wip', 'no M5 migration', 'no M5 activity')) {
+        $staleMatches = @(Get-ChildItem -LiteralPath $repositoryRoot -File -Force |
+            Where-Object { $_.Name -in @('README.md', 'BACKLOG.md') } |
+            Select-String -SimpleMatch $staleText)
+        if ($staleMatches.Count -ne 0) {
+            throw "M5 documentation contains stale dormant wording: $staleText"
         }
     }
 

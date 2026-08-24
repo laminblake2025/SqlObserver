@@ -19,7 +19,7 @@ Status meanings:
 | **M2 — PostgreSQL repository, migrations, partitions, ingestion** | PostgreSQL 18.x repository; nine schemas; immutable numbered SQL migrations/checksums; repository roles; UTC storage; daily raw/monthly event partitions; BRIN and justified instance/time B-tree indexes; binary `COPY`; query-text/plan deduplication; partition/retention foundations; PostgreSQL integration/performance tests | Implemented and integration-tested on pinned PostgreSQL 18.4; representative-volume release certification remains M12 |
 | **M3 — Onboarding, credentials, capability discovery, permissions** | Observation-target lifecycle; protected credentials; gMSA/integrated-auth path; version-aware least-privilege permission generator; no permanent `sysadmin`; capability/connection collector; supported/degraded states; expected-denial tests | Implemented and integration-tested; platform certification remains M12 |
 | **M4 — Collector framework and core health** | Contract registry/manifests; leases and fencing; bounded scheduler; cancellation; non-overlap; retry/circuit breaker; telemetry and visible sample loss; core engine counters; databases/files collectors; ingestion vertical slice; health projections | Implemented and integration-tested; platform and sustained-load certification remain M12 |
-| **M5 — Sessions, requests, waits, blocking** | Bounded sessions and requests, wait summaries, current blocking chains and blocking history; API/UI projections and collector-specific permission/failure/limit tests | Planned |
+| **M5 — Sessions, requests, waits, blocking** | Bounded sessions and requests, wait summaries, current blocking chains and blocking history; API/UI projections and collector-specific permission/failure/limit tests | Implemented |
 | **M6 — Deadlocks and Extended Events** | Passive bounded reading of deadlocks from `system_health`; safe XML handling; event persistence/search; separately packaged DBA-reviewed enhanced script where justified; never automatic XE/blocked-process changes | Planned |
 | **M7 — Query Store and query performance** | Capability-aware Query Store reads; plan-cache fallback; query history/top queries/plan metadata; sensitive-content controls and deduplication; no automatic Query Store change or plan forcing | Planned |
 | **M8 — Alerts, maintenance, notifications** | Rule evaluation/state, maintenance suppression, delivery adapters, audited administrative writes, active-alert projection; MCP remains unable to acknowledge or notify | Planned |
@@ -168,7 +168,7 @@ This is the completion checklist for the first assignment. Each item was inspect
 5. **Coordination and retention safety — complete.** Repository-clock leases use persistent monotonic fencing; retention policy is disabled and its view is preview-only with recovery prerequisites unsatisfied.
 6. **Active evidence — complete for M2.** Unit, security, and PostgreSQL 18.4 integration suites cover contracts, boundaries, migration history, roles/schemas, partitions/indexes, ingestion/deduplication, cancellation, and stale fences without PostgreSQL-test skips. Full representative-volume and platform certification remains a release gate.
 
-The next runtime dependency is M5 bounded sessions, requests, waits, blocking chains, and blocking history.
+The next runtime dependency is M6 bounded deadlock and Extended Events evidence.
 
 ## Completed M4 collector and core-health tasks
 
@@ -179,17 +179,24 @@ The next runtime dependency is M5 bounded sessions, requests, waits, blocking ch
 5. **Scoped health surface — complete.** Application services, API DTOs, and React views expose bounded freshness, accounting, loss, circuit, metric, database, and file evidence without secrets, provider messages, raw SQL, or physical paths.
 6. **Active evidence — complete for M4.** Unit, PostgreSQL, SQL Server, API, security, performance, web, and end-to-end suites remain active; support-platform, gMSA/Kerberos, trusted-TLS, and long-duration certification remain M12 gates.
 
-## Current post-M4 exclusions
+## Completed M5 activity tasks
+
+1. **Active collector bundle — complete.** Four checksum-pinned passive collectors run at mandatory orders 4–7 with SQL Server 2019/2022/2025 Windows contracts, bounded rows/bytes/time, cancellation, permission-denial mapping, and explicit loss accounting.
+2. **Repository and API — complete.** Migration 0009 persists activity snapshots and reporting functions; target-scoped application services and Windows/RBAC API routes expose stable bounded cursors and safe DTOs.
+3. **Activity UI — complete.** The target workflow exposes sessions, active requests, waits with reset/baseline semantics, current blocking, and bounded one-hour blocking history with freshness and truncation evidence.
+4. **Active evidence — implementation slice verified where runnable.** M5-focused SQL Server, end-to-end composition, API DTO, and web contract tests are active; PostgreSQL integration execution is pending the Docker PostgreSQL environment. Support-platform, gMSA/Kerberos, trusted-TLS, sustained-load, installer, and release certification remain M12 exclusions.
+
+## Current post-M5 exclusions
 
 The following are explicitly incomplete and must not be represented as working:
 
-- dormant M5 activity contracts and checksum-pinned collector-resource groundwork are not registered by the collector host, have no active repository migration, API route, or web surface, and do not constitute M5 behavior; the interrupted migration draft is parked as `docs/milestones/M5-activity-migration.sql.wip` for the next implementation workflow;
+- M6 deadlocks/Extended Events, M7 Query Store, M8 alerts, and later analytics/reporting/MCP behavior remain outside the implemented runtime slice;
 
-- production collector implementations or target SQL beyond `capability.connection`, `engine.core`, `database.inventory`, and `database.files`;
+- production collector implementations or target SQL beyond the active M5 bundle (`activity.sessions`, `activity.requests`, `waits.server`, and `blocking.current`) plus the M3/M4 collectors;
 - reusable target credentials, automatic permission grants, or target mutation;
 - automatic retention execution, repository installation/backup/restore/HA, or production repository provisioning;
-- API behavior beyond target management and M4 health projections; SignalR; session, wait, blocking,
-  alert, analytics, report, or MCP runtime behavior;
+- API behavior beyond target management, M4 health, and M5 activity projections; SignalR; alert,
+  analytics, report, or MCP runtime behavior;
 - Query Store, Extended Events, blocked-process, index, plan, session, or configuration changes;
 - live environment bootstrap, seed data, installer, upgrade, uninstall, or release packaging;
 - production support/certification for any platform in the support matrix.

@@ -717,7 +717,8 @@ CREATE TABLE telemetry.activity_request_snapshot
     (
         cpu_ms >= 0 AND total_elapsed_ms >= 0 AND reads >= 0 AND writes >= 0
         AND logical_reads >= 0 AND row_count >= 0
-        AND isfinite(percent_complete) AND percent_complete BETWEEN 0 AND 100
+        AND percent_complete BETWEEN 0 AND 100
+        AND percent_complete NOT IN ('NaN'::double precision, 'Infinity'::double precision, '-Infinity'::double precision)
     ),
     CONSTRAINT ck_activity_request_times CHECK
         (isfinite(observed_at) AND isfinite(collected_at))
@@ -1212,7 +1213,8 @@ BEGIN
               OR (item.database_id IS NOT NULL AND item.database_id NOT BETWEEN 1 AND 32767)
               OR item.cpu_ms < 0 OR item.elapsed_ms < 0 OR item.reads < 0 OR item.writes < 0
               OR item.logical_reads < 0 OR item.row_count < 0
-              OR NOT isfinite(item.percent_complete) OR item.percent_complete NOT BETWEEN 0 AND 100
+              OR item.percent_complete NOT BETWEEN 0 AND 100
+              OR item.percent_complete IN ('NaN'::double precision, 'Infinity'::double precision, '-Infinity'::double precision)
        )
        OR EXISTS
        (
@@ -1677,6 +1679,8 @@ BEGIN
             WHERE candidate.instance_id = target.instance_id
               AND candidate.target_revision = target.revision
               AND candidate.collector_id = 'activity.sessions'
+              AND (p_snapshot_run_id IS NULL OR
+                   (candidate.run_id = p_snapshot_run_id AND candidate.target_revision = p_snapshot_target_revision))
             ORDER BY candidate.completed_at DESC, candidate.run_id DESC
             LIMIT 1
         ) AS evidence ON true
@@ -1815,6 +1819,8 @@ BEGIN
             WHERE candidate.instance_id = target.instance_id
               AND candidate.target_revision = target.revision
               AND candidate.collector_id = 'activity.requests'
+              AND (p_snapshot_run_id IS NULL OR
+                   (candidate.run_id = p_snapshot_run_id AND candidate.target_revision = p_snapshot_target_revision))
             ORDER BY candidate.completed_at DESC, candidate.run_id DESC
             LIMIT 1
         ) AS evidence ON true
@@ -1947,8 +1953,13 @@ BEGIN
             END AS cursor_valid
         FROM target_state AS target
         CROSS JOIN repository_clock
-        LEFT JOIN ranked AS current_run ON current_run.position = 1
-        LEFT JOIN ranked AS baseline ON baseline.position = 2
+        LEFT JOIN ranked AS current_run
+            ON ((p_snapshot_run_id IS NULL AND current_run.position = 1)
+                OR (p_snapshot_run_id IS NOT NULL AND current_run.run_id = p_snapshot_run_id
+                    AND current_run.target_revision = p_snapshot_target_revision))
+        LEFT JOIN ranked AS baseline
+            ON ((p_snapshot_run_id IS NULL AND baseline.position = 2)
+                OR (p_snapshot_run_id IS NOT NULL AND baseline.position = current_run.position + 1))
     ),
     page AS MATERIALIZED
     (
@@ -2093,6 +2104,8 @@ BEGIN
             WHERE candidate.instance_id = target.instance_id
               AND candidate.target_revision = target.revision
               AND candidate.collector_id = 'blocking.current'
+              AND (p_snapshot_run_id IS NULL OR
+                   (candidate.run_id = p_snapshot_run_id AND candidate.target_revision = p_snapshot_target_revision))
             ORDER BY candidate.completed_at DESC, candidate.run_id DESC
             LIMIT 1
         ) AS evidence ON true

@@ -99,6 +99,28 @@ public sealed class SqlServerActivityIntegrationTests
     }
 
     [Fact]
+    public async Task ActivityCollectorsHonorCancellationBeforeOpeningTargetConnections()
+    {
+        SqlServerActivityCollectorAssetCatalog catalog = SqlServerActivityCollectorAssetCatalog.LoadEmbedded();
+        var collector = new SqlServerActivitySessionsCollector(catalog, new LabSqlServerConnectionFactory());
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await collector.CollectAsync(CreateRequest(), cancellation.Token));
+    }
+
+    [Fact]
+    public void ActivityManifestsDeclareVersionAwareReadPermissions()
+    {
+        SqlServerActivityCollectorAssetCatalog catalog = SqlServerActivityCollectorAssetCatalog.LoadEmbedded();
+        Assert.All(catalog.Collectors, static asset =>
+        {
+            Assert.NotEmpty(asset.Manifest.RequiredPermissions);
+        });
+    }
+
+    [Fact]
     public void BlockingChainsAreCycleAndDepthSafeAndEnforceTheNodeLimit()
     {
         var waitType = new SqlServerWaitType("LCK_M_S");

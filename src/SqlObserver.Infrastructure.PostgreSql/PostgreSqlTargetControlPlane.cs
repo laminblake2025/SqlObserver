@@ -18,6 +18,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         AdministrativeAudit = new PostgreSqlAdministrativeAuditPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         HealthProjections = new PostgreSqlHealthProjectionPort(dataSource);
+        ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
         CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource);
     }
 
@@ -30,6 +31,8 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IWorkerLeasePort WorkerLeases { get; }
 
     public IHealthProjectionRepositoryPort HealthProjections { get; }
+
+    public IActivityProjectionRepositoryPort ActivityProjections { get; }
 
     public ICollectorRuntimeRepositoryPort CollectorRuntime { get; }
 

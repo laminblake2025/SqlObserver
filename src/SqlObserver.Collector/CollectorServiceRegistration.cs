@@ -1,6 +1,7 @@
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Collectors;
+using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.SqlServer;
@@ -39,6 +40,15 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerDatabaseFilesCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
+        services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static provider => new SqlServerActivitySessionsCollector(
+            provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
+        services.AddSingleton(static provider => new SqlServerActivityRequestsCollector(
+            provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
+        services.AddSingleton(static provider => new SqlServerServerWaitsCollector(
+            provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
+        services.AddSingleton(static provider => new SqlServerCurrentBlockingCollector(
+            provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
         services.AddSingleton(static provider => new CollectorScheduler(
@@ -65,6 +75,13 @@ public static class CollectorServiceRegistration
         SqlServerCollectorAsset coreAsset = catalog.Get(CollectorCatalogIds.EngineCore);
         SqlServerCollectorAsset inventoryAsset = catalog.Get(CollectorCatalogIds.DatabaseInventory);
         SqlServerCollectorAsset filesAsset = catalog.Get(CollectorCatalogIds.DatabaseFiles);
+        SqlServerActivityCollectorAssetCatalog activityCatalog =
+            provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>();
+        var activityBundleDigest = new CollectorSha256Digest(activityCatalog.BundleChecksum);
+        SqlServerCollectorAsset sessionsAsset = activityCatalog.Get(new CollectorId("activity.sessions"));
+        SqlServerCollectorAsset requestsAsset = activityCatalog.Get(new CollectorId("activity.requests"));
+        SqlServerCollectorAsset waitsAsset = activityCatalog.Get(new CollectorId("waits.server"));
+        SqlServerCollectorAsset blockingAsset = activityCatalog.Get(new CollectorId("blocking.current"));
         return new CollectorRegistry(
         [
             new CollectorRegistration(
@@ -85,6 +102,30 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerDatabaseFilesCollector.OutputContract),
                 new CollectorSha256Digest(filesAsset.ManifestChecksum),
                 bundleDigest),
+            new CollectorRegistration(
+                executionOrder: 4,
+                provider.GetRequiredService<SqlServerActivitySessionsCollector>(),
+                new CollectorOutputValidator(SqlServerActivitySessionsCollector.OutputContract),
+                new CollectorSha256Digest(sessionsAsset.ManifestChecksum),
+                activityBundleDigest),
+            new CollectorRegistration(
+                executionOrder: 5,
+                provider.GetRequiredService<SqlServerActivityRequestsCollector>(),
+                new CollectorOutputValidator(SqlServerActivityRequestsCollector.OutputContract),
+                new CollectorSha256Digest(requestsAsset.ManifestChecksum),
+                activityBundleDigest),
+            new CollectorRegistration(
+                executionOrder: 6,
+                provider.GetRequiredService<SqlServerServerWaitsCollector>(),
+                new CollectorOutputValidator(SqlServerServerWaitsCollector.OutputContract),
+                new CollectorSha256Digest(waitsAsset.ManifestChecksum),
+                activityBundleDigest),
+            new CollectorRegistration(
+                executionOrder: 7,
+                provider.GetRequiredService<SqlServerCurrentBlockingCollector>(),
+                new CollectorOutputValidator(SqlServerCurrentBlockingCollector.OutputContract),
+                new CollectorSha256Digest(blockingAsset.ManifestChecksum),
+                activityBundleDigest),
         ]);
     }
 }

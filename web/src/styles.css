@@ -183,6 +183,24 @@ h2 {
   gap: 1rem;
 }
 
+.activity-panel {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid rgb(142 201 207 / 25%);
+  border-radius: 1rem;
+  background: rgb(13 36 51 / 78%);
+}
+
+.activity-evidence { margin: 0; color: #b8cbd8; line-height: 1.5; }
+.activity-section { overflow-x: auto; }
+.activity-section h4 { margin: 0 0 0.5rem; color: #8ee3d3; }
+.activity-table { min-width: 36rem; border: 1px solid #416075; border-radius: 0.5rem; }
+.activity-row { display: grid; grid-template-columns: repeat(5, minmax(7rem, 1fr)); gap: 0.5rem; padding: 0.55rem 0.7rem; border-top: 1px solid rgb(65 96 117 / 60%); color: #c9d8e1; font-size: 0.86rem; }
+.activity-row:first-child { border-top: 0; }
+.activity-header { color: #8ee3d3; font-weight: 700; background: rgb(8 23 34 / 55%); }
+
 .target-card {
   display: grid;
   grid-template-columns: 1fr auto;

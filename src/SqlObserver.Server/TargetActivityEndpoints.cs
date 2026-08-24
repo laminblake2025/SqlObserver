@@ -388,7 +388,7 @@ public static class TargetActivityEndpoints
         ActivitySessionCursor? requestedCursor,
         string expectedCollectorId)
     {
-        Validate(page, requestedLimit, requestedCursor, expectedCollectorId);
+        ValidateSnapshot(page, requestedLimit, requestedCursor, expectedCollectorId);
         int previous = requestedCursor?.SessionId ?? 0;
         foreach (ActivitySessionSnapshotItem item in page.Items)
         {
@@ -413,7 +413,7 @@ public static class TargetActivityEndpoints
         ActivityRequestCursor? requestedCursor,
         string expectedCollectorId)
     {
-        Validate(page, requestedLimit, requestedCursor, expectedCollectorId);
+        ValidateSnapshot(page, requestedLimit, requestedCursor, expectedCollectorId);
         (int SessionId, int RequestId) previous = requestedCursor is null
             ? (0, -1)
             : (requestedCursor.SessionId, requestedCursor.RequestId);
@@ -443,7 +443,7 @@ public static class TargetActivityEndpoints
         ServerWaitSummaryCursor? requestedCursor,
         string expectedCollectorId)
     {
-        Validate(page, requestedLimit, requestedCursor, expectedCollectorId);
+        ValidateSnapshot(page, requestedLimit, requestedCursor, expectedCollectorId);
         string? previous = requestedCursor?.WaitType.Value;
         foreach (ServerWaitSummaryItem item in page.Items)
         {
@@ -470,7 +470,7 @@ public static class TargetActivityEndpoints
         BlockingEdgeCursor? requestedCursor,
         string expectedCollectorId)
     {
-        Validate(page, requestedLimit, requestedCursor, expectedCollectorId);
+        ValidateSnapshot(page, requestedLimit, requestedCursor, expectedCollectorId);
         BlockingKey? previous = requestedCursor is null ? null : BlockingKey.From(requestedCursor);
         foreach (BlockingEdgeSnapshotItem item in page.Items)
         {
@@ -490,7 +490,7 @@ public static class TargetActivityEndpoints
         }
     }
 
-    private static void Validate<TItem, TCursor>(
+    private static void ValidateSnapshot<TItem, TCursor>(
         ActivityPage<TItem, TCursor> page,
         int requestedLimit,
         TCursor? requestedCursor,

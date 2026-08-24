@@ -62,6 +62,9 @@ builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTa
 builder.Services.AddSingleton<IObservationTargetQueryService, ObservationTargetQueryService>();
 builder.Services.AddSingleton<IObservationTargetStatusQueryService, ObservationTargetStatusQueryService>();
 builder.Services.AddSingleton<IHealthProjectionQueryService, HealthProjectionQueryService>();
+builder.Services.AddSingleton<IActivityProjectionRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);
+builder.Services.AddSingleton<IActivityProjectionQueryService, ActivityProjectionQueryService>();
 
 WebApplication app = builder.Build();
 
@@ -74,6 +77,7 @@ app.UseRateLimiter();
 app.MapSqlObserverScaffoldEndpoints();
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
+app.MapTargetActivityEndpoints();
 
 await app.RunAsync();
 
