@@ -29,6 +29,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             @owner_execution_id,
             @fencing_token);
         """;
+    private static readonly string ReconcileM6Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m6(", StringComparison.Ordinal);
     private const string ListDueSql = "SELECT * FROM control.list_due_collector_work(@max_items);";
     private const string BeginSql = """
         SELECT result_status, started_at, repository_time
@@ -186,6 +187,18 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             @blocking_sizes);
         """;
 
+    private const string CommitDeadlockSql = """
+        SELECT result_status, inserted_count, duplicate_count, rejected_count, persisted_bytes, committed_at
+        FROM control.commit_deadlock_collection_run(
+            @run_id,@instance_id,@target_revision,@collector_id,@collector_version,@output_schema_version,
+            @schedule_revision,@scheduled_at,@work_key,@owner_execution_id,@fencing_token,@request_digest,
+            @outcome,@reason_code,@duration_ms,@attempt_count,@source_row_count,@output_item_count,
+            @response_bytes,@output_bytes,@loss_kind,@minimum_lost_items,@loss_count_is_exact,@minimum_lost_bytes,
+            @next_circuit_state,@next_consecutive_failures,@deadlock_occurred_ats,@deadlock_event_ids,
+            @deadlock_fingerprints,@deadlock_participant_counts,@deadlock_relation_counts,@deadlock_parse_truncated,
+            @deadlock_participant_json,@deadlock_relation_json,@deadlock_sizes);
+        """;
+
     private static readonly string[] RequiredCollectorIds =
     [
         "engine.core",
@@ -195,6 +208,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "activity.requests",
         "waits.server",
         "blocking.current",
+        "deadlocks.system-health",
     ];
 
     private static readonly string[] RequiredManifestDigests =
@@ -206,6 +220,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "6490b8aaa503d5f96e52c4aacdb5e94a52965cc1bed0f0d0502f3e663cc88ee1",
         "aeae9d3d2a2f373b9b66b0e68a0c2d51dcc548dad3fc175a118ba3a5cd007da9",
         "2470cbe3d16e3825a8c30ed0fde6d84e0eced0124f93ef8ff268f93b4523c59b",
+        "5f3b0a9fef5a7d06f37cea5063e39a8b1b7e20dbec7c8234f84f521d41ca0a60",
     ];
 
     private static readonly string[] RequiredBundleDigests =
@@ -217,6 +232,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
+        "72570fba287327e1dec64a56d6211b9c24a7d597b35010c9b9ac765615d2963f",
     ];
 
     private readonly NpgsqlDataSource _dataSource;
@@ -252,7 +268,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
-            await using var command = new NpgsqlCommand(ReconcileSql, connection)
+            await using var command = new NpgsqlCommand(request.Entries.Count == 8 ? ReconcileM6Sql : ReconcileSql, connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
@@ -464,14 +480,15 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
             bool activityCollector = IsActivityCollector(request.Work.CollectorId);
+            bool deadlockCollector = request.Work.CollectorId.Value == "deadlocks.system-health";
             await using var command = new NpgsqlCommand(
-                activityCollector ? CommitActivitySql : CommitCoreSql,
+                deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : CommitCoreSql,
                 connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
             AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
-            AddCommitParameters(command, request, activityCollector);
+            AddCommitParameters(command, request, activityCollector, deadlockCollector);
             await using NpgsqlDataReader reader = await command
                 .ExecuteReaderAsync(timeout.Token)
                 .ConfigureAwait(false);
@@ -590,7 +607,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static void AddCommitParameters(
         NpgsqlCommand command,
         CommitCollectorRunRequest request,
-        bool activityCollector)
+        bool activityCollector,
+        bool deadlockCollector)
     {
         CollectorRunSummary summary = request.Summary;
         CollectorPayload payload = request.Payload;
@@ -612,6 +630,12 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         if (activityCollector)
         {
             AddActivityCommitParameters(command, payload);
+            return;
+        }
+
+        if (deadlockCollector)
+        {
+            AddDeadlockCommitParameters(command, payload);
             return;
         }
 
@@ -709,6 +733,30 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddArray(command, "blocking_sizes", NpgsqlDbType.Integer, blocking.Select(static item => item.EstimatedSizeBytes).ToArray());
     }
 
+    private static void AddDeadlockCommitParameters(NpgsqlCommand command, CollectorPayload payload)
+    {
+        DeadlockObservation[] deadlocks = payload.Deadlocks.Items.ToArray();
+        AddArray(command, "deadlock_occurred_ats", NpgsqlDbType.TimestampTz, deadlocks.Select(static item => item.OccurredAtUtc).ToArray());
+        AddArray(command, "deadlock_event_ids", NpgsqlDbType.Uuid, deadlocks.Select(static item => item.EventId).ToArray());
+        AddArray(command, "deadlock_fingerprints", NpgsqlDbType.Bytea, deadlocks.Select(static item => Convert.FromHexString(item.Fingerprint.Value)).ToArray());
+        AddArray(command, "deadlock_participant_counts", NpgsqlDbType.Integer, deadlocks.Select(static item => item.ParticipantCount).ToArray());
+        AddArray(command, "deadlock_relation_counts", NpgsqlDbType.Integer, deadlocks.Select(static item => item.RelationCount).ToArray());
+        AddArray(command, "deadlock_parse_truncated", NpgsqlDbType.Boolean, deadlocks.Select(static item => item.ParseTruncated).ToArray());
+        AddArray(command, "deadlock_participant_json", NpgsqlDbType.Jsonb, deadlocks.Select(static item => JsonSerializer.Serialize(item.Participants.Select(participant => new { sessionId = participant.SessionId, victim = participant.IsVictim }))).ToArray());
+        AddArray(command, "deadlock_relation_json", NpgsqlDbType.Jsonb, deadlocks.Select(static item => JsonSerializer.Serialize(item.Relations.Select(relation => new { blockerSessionId = relation.BlockerSessionId, waiterSessionId = relation.WaiterSessionId, resourceCategory = MapDeadlockResourceCategory(relation.ResourceCategory), lockMode = relation.LockMode }))).ToArray());
+        AddArray(command, "deadlock_sizes", NpgsqlDbType.Integer, deadlocks.Select(static item => item.EstimatedSizeBytes).ToArray());
+    }
+
+    private static string MapDeadlockResourceCategory(DeadlockResourceCategory category) => category switch
+    {
+        DeadlockResourceCategory.Key => "key",
+        DeadlockResourceCategory.Page => "page",
+        DeadlockResourceCategory.ObjectLock => "object_lock",
+        DeadlockResourceCategory.Metadata => "metadata",
+        DeadlockResourceCategory.Exchange => "exchange",
+        _ => "other",
+    };
+
     private static void AddArray<T>(NpgsqlCommand command, string name, NpgsqlDbType elementType, T[] values) =>
         command.Parameters.Add(new NpgsqlParameter<T[]>(name, NpgsqlDbType.Array | elementType)
         {
@@ -728,7 +776,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCatalog(IReadOnlyList<CollectorCatalogEntry> entries)
     {
-        if (entries.Count is not (3 or 7))
+        if (entries.Count is not (3 or 7 or 8))
         {
             throw new InvalidDataException("PostgreSQL accepts only an exact reviewed M4 or M5 collector catalog.");
         }
@@ -790,6 +838,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             request.Payload.ServerWaits.Items.Any(item =>
                 item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
             request.Payload.BlockingEdges.Items.Any(item =>
+                item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
+            request.Payload.Deadlocks.Items.Any(item =>
                 item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision))
         {
             throw new InvalidDataException("Collector snapshot payload identities do not match the exact due-work target revision.");
@@ -802,15 +852,17 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         int requestCount = request.Payload.ActivityRequests.Items.Count;
         int waitCount = request.Payload.ServerWaits.Items.Count;
         int blockingCount = request.Payload.BlockingEdges.Items.Count;
+        int deadlockCount = request.Payload.Deadlocks.Items.Count;
         bool exactKind = request.Work.CollectorId.Value switch
         {
-            "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount == 0,
-            "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount == 0,
-            "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount == 0,
-            "activity.sessions" => metricCount + databaseCount + fileCount + requestCount + waitCount + blockingCount == 0,
-            "activity.requests" => metricCount + databaseCount + fileCount + sessionCount + waitCount + blockingCount == 0,
-            "waits.server" => metricCount + databaseCount + fileCount + sessionCount + requestCount + blockingCount == 0,
-            "blocking.current" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount == 0,
+            "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
+            "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
+            "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
+            "activity.sessions" => metricCount + databaseCount + fileCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
+            "activity.requests" => metricCount + databaseCount + fileCount + sessionCount + waitCount + blockingCount + deadlockCount == 0,
+            "waits.server" => metricCount + databaseCount + fileCount + sessionCount + requestCount + blockingCount + deadlockCount == 0,
+            "blocking.current" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + deadlockCount == 0,
+            "deadlocks.system-health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount == 0,
             _ => false,
         };
         if (!exactKind)

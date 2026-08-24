@@ -95,7 +95,8 @@ public sealed class CollectorPayload
         ActivitySessionObservationBatch? activitySessions = null,
         ActivityRequestObservationBatch? activityRequests = null,
         ServerWaitObservationBatch? serverWaits = null,
-        BlockingEdgeObservationBatch? blockingEdges = null)
+        BlockingEdgeObservationBatch? blockingEdges = null,
+        DeadlockObservationBatch? deadlocks = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -120,6 +121,7 @@ public sealed class CollectorPayload
         ActivityRequests = activityRequests ?? new ActivityRequestObservationBatch([]);
         ServerWaits = serverWaits ?? new ServerWaitObservationBatch([]);
         BlockingEdges = blockingEdges ?? new BlockingEdgeObservationBatch([]);
+        Deadlocks = deadlocks ?? new DeadlockObservationBatch([]);
     }
 
     public IReadOnlyList<MetricSample> Metrics => _metrics;
@@ -129,6 +131,7 @@ public sealed class CollectorPayload
     public ActivityRequestObservationBatch ActivityRequests { get; }
     public ServerWaitObservationBatch ServerWaits { get; }
     public BlockingEdgeObservationBatch BlockingEdges { get; }
+    public DeadlockObservationBatch Deadlocks { get; }
     public int ItemCount => checked(
         Metrics.Count +
         Databases.Items.Count +
@@ -136,7 +139,8 @@ public sealed class CollectorPayload
         ActivitySessions.Items.Count +
         ActivityRequests.Items.Count +
         ServerWaits.Items.Count +
-        BlockingEdges.Items.Count);
+        BlockingEdges.Items.Count +
+        Deadlocks.Items.Count);
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
         Databases.Items.Sum(static item => item.EstimatedSizeBytes) +
@@ -144,7 +148,8 @@ public sealed class CollectorPayload
         ActivitySessions.Items.Sum(static item => item.EstimatedSizeBytes) +
         ActivityRequests.Items.Sum(static item => item.EstimatedSizeBytes) +
         ServerWaits.Items.Sum(static item => item.EstimatedSizeBytes) +
-        BlockingEdges.Items.Sum(static item => item.EstimatedSizeBytes));
+        BlockingEdges.Items.Sum(static item => item.EstimatedSizeBytes) +
+        Deadlocks.Items.Sum(static item => item.EstimatedSizeBytes));
 
     public static CollectorPayload Empty { get; } = new();
 }
@@ -290,7 +295,8 @@ public sealed class CollectorOutputContract
         int maxActivitySessionObservations = 0,
         int maxActivityRequestObservations = 0,
         int maxServerWaitObservations = 0,
-        int maxBlockingEdgeObservations = 0)
+        int maxBlockingEdgeObservations = 0,
+        int maxDeadlockObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -328,6 +334,10 @@ public sealed class CollectorOutputContract
         {
             throw new ArgumentOutOfRangeException(nameof(maxBlockingEdgeObservations));
         }
+        if (maxDeadlockObservations is < 0 or > DeadlockObservationBatch.MaximumItems)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxDeadlockObservations));
+        }
 
         var copy = new CollectorMetricOutputContract[metrics.Count];
         var metricIds = new HashSet<string>(StringComparer.Ordinal);
@@ -358,6 +368,7 @@ public sealed class CollectorOutputContract
         MaxActivityRequestObservations = maxActivityRequestObservations;
         MaxServerWaitObservations = maxServerWaitObservations;
         MaxBlockingEdgeObservations = maxBlockingEdgeObservations;
+        MaxDeadlockObservations = maxDeadlockObservations;
     }
 
     public CollectorOutputSchemaVersion SchemaVersion { get; }
@@ -369,6 +380,7 @@ public sealed class CollectorOutputContract
     public int MaxActivityRequestObservations { get; }
     public int MaxServerWaitObservations { get; }
     public int MaxBlockingEdgeObservations { get; }
+    public int MaxDeadlockObservations { get; }
 }
 
 public interface ICollectorOutputValidator

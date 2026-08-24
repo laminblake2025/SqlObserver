@@ -20,7 +20,7 @@ Status meanings:
 | **M3 — Onboarding, credentials, capability discovery, permissions** | Observation-target lifecycle; protected credentials; gMSA/integrated-auth path; version-aware least-privilege permission generator; no permanent `sysadmin`; capability/connection collector; supported/degraded states; expected-denial tests | Implemented and integration-tested; platform certification remains M12 |
 | **M4 — Collector framework and core health** | Contract registry/manifests; leases and fencing; bounded scheduler; cancellation; non-overlap; retry/circuit breaker; telemetry and visible sample loss; core engine counters; databases/files collectors; ingestion vertical slice; health projections | Implemented and integration-tested; platform and sustained-load certification remain M12 |
 | **M5 — Sessions, requests, waits, blocking** | Bounded sessions and requests, wait summaries, current blocking chains and blocking history; API/UI projections and collector-specific permission/failure/limit tests | Implemented |
-| **M6 — Deadlocks and Extended Events** | Passive bounded reading of deadlocks from `system_health`; safe XML handling; event persistence/search; separately packaged DBA-reviewed enhanced script where justified; never automatic XE/blocked-process changes | Planned |
+| **M6 — Deadlocks and Extended Events** | Passive bounded reading of deadlocks from `system_health`; safe XML handling; typed event persistence/search; no enhanced script because system_health is the selected source; never automatic XE/blocked-process changes | Implemented locally; Docker/PostgreSQL and SQL Server lab certification remain required |
 | **M7 — Query Store and query performance** | Capability-aware Query Store reads; plan-cache fallback; query history/top queries/plan metadata; sensitive-content controls and deduplication; no automatic Query Store change or plan forcing | Planned |
 | **M8 — Alerts, maintenance, notifications** | Rule evaluation/state, maintenance suppression, delivery adapters, audited administrative writes, active-alert projection; MCP remains unable to acknowledge or notify | Planned |
 | **M9 — Backups, jobs, TempDB, Availability Groups** | Ordered collectors and bounded projections for backup status, SQL Agent failures, TempDB health, and Availability Group health | Planned |
@@ -75,14 +75,14 @@ Order is mandatory because later capability and interpretation depend on earlier
 | 4 | Sessions and requests | M5 | Sensitive field controls, cancellation, truncation and expected-denial tests |
 | 5 | Waits | M5 | Counter/reset semantics and UTC window interpretation tests |
 | 6 | Blocking | M5 | Current-chain and historical evidence with bounded traversal/output |
-| 7 | Deadlocks from `system_health` | M6 | Passive read, deduplication, safe XML parsing and event bounds |
-| 8 | Query Store and plan-cache fallback | M7 | Explicit capability/fallback state; no Query Store mutation; sensitive text/plan controls |
-| 9 | Backups | M9 | Version/edition-aware backup freshness and permission tests |
-| 10 | SQL Agent | M9 | Job-failure projection with job steps treated as sensitive/untrusted |
-| 11 | TempDB | M9 | Bounded health evidence and version-aware counters |
-| 12 | Availability Groups | M9 | Topology/replica health with unsupported/degraded states |
-| 13 | Host metrics | M10 | Separate host capability/identity boundary and correlation tests |
-| 14 | Replication | M10 | Version/topology capability contract, bounded evidence and fallback behavior |
+| 8 | Deadlocks from `system_health` | M6 | Passive read, deduplication, safe XML parsing and event bounds |
+| 9 | Query Store and plan-cache fallback | M7 | Explicit capability/fallback state; no Query Store mutation; sensitive text/plan controls |
+| 10 | Backups | M9 | Version/edition-aware backup freshness and permission tests |
+| 11 | SQL Agent | M9 | Job-failure projection with job steps treated as sensitive/untrusted |
+| 12 | TempDB | M9 | Bounded health evidence and version-aware counters |
+| 13 | Availability Groups | M9 | Topology/replica health with unsupported/degraded states |
+| 14 | Host metrics | M10 | Separate host capability/identity boundary and correlation tests |
+| 15 | Replication | M10 | Version/topology capability contract, bounded evidence and fallback behavior |
 
 M2 contains no production collector or monitored-target SQL statement. The first such work is the capability/connection collector in M3.
 
@@ -168,7 +168,7 @@ This is the completion checklist for the first assignment. Each item was inspect
 5. **Coordination and retention safety — complete.** Repository-clock leases use persistent monotonic fencing; retention policy is disabled and its view is preview-only with recovery prerequisites unsatisfied.
 6. **Active evidence — complete for M2.** Unit, security, and PostgreSQL 18.4 integration suites cover contracts, boundaries, migration history, roles/schemas, partitions/indexes, ingestion/deduplication, cancellation, and stale fences without PostgreSQL-test skips. Full representative-volume and platform certification remains a release gate.
 
-The next runtime dependency is M6 bounded deadlock and Extended Events evidence.
+The next runtime dependency is M7 Query Store and plan-cache evidence.
 
 ## Completed M4 collector and core-health tasks
 
@@ -190,7 +190,7 @@ The next runtime dependency is M6 bounded deadlock and Extended Events evidence.
 
 The following are explicitly incomplete and must not be represented as working:
 
-- M6 deadlocks/Extended Events, M7 Query Store, M8 alerts, and later analytics/reporting/MCP behavior remain outside the implemented runtime slice;
+- M7 Query Store, M8 alerts, and later analytics/reporting/MCP behavior remain outside the implemented runtime slice;
 
 - production collector implementations or target SQL beyond the active M5 bundle (`activity.sessions`, `activity.requests`, `waits.server`, and `blocking.current`) plus the M3/M4 collectors;
 - reusable target credentials, automatic permission grants, or target mutation;

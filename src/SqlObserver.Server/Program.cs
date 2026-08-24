@@ -65,6 +65,8 @@ builder.Services.AddSingleton<IHealthProjectionQueryService, HealthProjectionQue
 builder.Services.AddSingleton<IActivityProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);
 builder.Services.AddSingleton<IActivityProjectionQueryService, ActivityProjectionQueryService>();
+builder.Services.AddSingleton<IDeadlockProjectionRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().DeadlockProjections);
+builder.Services.AddSingleton<IDeadlockProjectionQueryService, DeadlockProjectionQueryService>();
 
 WebApplication app = builder.Build();
 
@@ -78,6 +80,7 @@ app.MapSqlObserverScaffoldEndpoints();
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
 app.MapTargetActivityEndpoints();
+app.MapTargetDeadlockEndpoints();
 
 await app.RunAsync();
 

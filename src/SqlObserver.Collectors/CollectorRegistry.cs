@@ -15,6 +15,7 @@ public static class CollectorCatalogIds
     public static readonly CollectorId ActivityRequests = new("activity.requests");
     public static readonly CollectorId ServerWaits = new("waits.server");
     public static readonly CollectorId CurrentBlocking = new("blocking.current");
+    public static readonly CollectorId Deadlocks = new("deadlocks.system-health");
 }
 
 public sealed class CollectorRegistration
@@ -60,7 +61,8 @@ public sealed class CollectorRegistration
             (output.MaxActivitySessionObservations > 0 ? 1 : 0) +
             (output.MaxActivityRequestObservations > 0 ? 1 : 0) +
             (output.MaxServerWaitObservations > 0 ? 1 : 0) +
-            (output.MaxBlockingEdgeObservations > 0 ? 1 : 0);
+            (output.MaxBlockingEdgeObservations > 0 ? 1 : 0) +
+            (output.MaxDeadlockObservations > 0 ? 1 : 0);
         bool valid = populatedKinds == 1 && manifest.OutputKind switch
         {
             CollectorOutputKind.Metrics => output.MaxMetricSamples > 0,
@@ -70,6 +72,7 @@ public sealed class CollectorRegistration
             CollectorOutputKind.ActivityRequests => output.MaxActivityRequestObservations > 0,
             CollectorOutputKind.ServerWaits => output.MaxServerWaitObservations > 0,
             CollectorOutputKind.CurrentBlocking => output.MaxBlockingEdgeObservations > 0,
+            CollectorOutputKind.Deadlocks => output.MaxDeadlockObservations > 0,
             CollectorOutputKind.CapabilityProfile => false,
             _ => false,
         };
@@ -96,6 +99,7 @@ public sealed class CollectorRegistry
                 [CollectorCatalogIds.ActivityRequests.Value] = (5, CollectorOutputKind.ActivityRequests),
                 [CollectorCatalogIds.ServerWaits.Value] = (6, CollectorOutputKind.ServerWaits),
                 [CollectorCatalogIds.CurrentBlocking.Value] = (7, CollectorOutputKind.CurrentBlocking),
+                [CollectorCatalogIds.Deadlocks.Value] = (8, CollectorOutputKind.Deadlocks),
             });
 
     private readonly ReadOnlyCollection<CollectorRegistration> _registrations;

@@ -53,7 +53,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.ActivitySessions.Items.Count > Contract.MaxActivitySessionObservations ||
             payload.ActivityRequests.Items.Count > Contract.MaxActivityRequestObservations ||
             payload.ServerWaits.Items.Count > Contract.MaxServerWaitObservations ||
-            payload.BlockingEdges.Items.Count > Contract.MaxBlockingEdgeObservations)
+            payload.BlockingEdges.Items.Count > Contract.MaxBlockingEdgeObservations ||
+            payload.Deadlocks.Items.Count > Contract.MaxDeadlockObservations)
         {
             throw new InvalidDataException("Collector output exceeded its registered output cardinality.");
         }
@@ -91,6 +92,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.ServerWaits.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
             payload.BlockingEdges.Items.Any(item =>
+                item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
+            payload.Deadlocks.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision))
         {
             throw new InvalidDataException("Collector inventory output belongs to a different target revision.");

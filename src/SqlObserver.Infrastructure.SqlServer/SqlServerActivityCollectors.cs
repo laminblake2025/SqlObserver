@@ -19,10 +19,17 @@ public abstract class SqlServerActivityCollectorBase : ISqlServerCollector
         string collectorId,
         SqlServerActivityCollectorAssetCatalog catalog,
         ISqlServerConnectionFactory connectionFactory)
+        : this(catalog.Get(new CollectorId(collectorId)), connectionFactory)
     {
-        ArgumentNullException.ThrowIfNull(catalog);
+    }
+
+    private protected SqlServerActivityCollectorBase(
+        SqlServerCollectorAsset asset,
+        ISqlServerConnectionFactory connectionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-        _asset = catalog.Get(new CollectorId(collectorId));
+        _asset = asset;
     }
 
     public CollectorManifest Manifest => _asset.Manifest;

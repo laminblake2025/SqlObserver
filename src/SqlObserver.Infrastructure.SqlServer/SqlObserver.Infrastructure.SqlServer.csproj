@@ -132,5 +132,23 @@
     <EmbeddedResource Include="../../collectors/sql/blocking.current.sqlserver17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.blocking.current.sqlserver17-windows.v1.sql</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/deadlocks.system-health.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.deadlocks.system-health.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v4.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.collector-manifest.v4.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m6-deadlocks.assets.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.m6-deadlocks.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/deadlocks.system-health.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.deadlocks.system-health.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/deadlocks.system-health.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.deadlocks.system-health.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/deadlocks.system-health.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.deadlocks.system-health.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

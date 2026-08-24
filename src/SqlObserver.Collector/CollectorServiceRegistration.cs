@@ -41,6 +41,7 @@ public static class CollectorServiceRegistration
         services.AddSingleton(static provider => new SqlServerDatabaseFilesCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
         services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerActivitySessionsCollector(
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerActivityRequestsCollector(
@@ -49,6 +50,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerCurrentBlockingCollector(
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
+        services.AddSingleton(static provider => new SqlServerDeadlockCollector(
+            provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>()));
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
         services.AddSingleton(static provider => new CollectorScheduler(
@@ -82,6 +85,7 @@ public static class CollectorServiceRegistration
         SqlServerCollectorAsset requestsAsset = activityCatalog.Get(new CollectorId("activity.requests"));
         SqlServerCollectorAsset waitsAsset = activityCatalog.Get(new CollectorId("waits.server"));
         SqlServerCollectorAsset blockingAsset = activityCatalog.Get(new CollectorId("blocking.current"));
+        SqlServerDeadlockCollectorAssetCatalog deadlockCatalog = provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>();
         return new CollectorRegistry(
         [
             new CollectorRegistration(
@@ -126,6 +130,12 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerCurrentBlockingCollector.OutputContract),
                 new CollectorSha256Digest(blockingAsset.ManifestChecksum),
                 activityBundleDigest),
+            new CollectorRegistration(
+                executionOrder: 8,
+                provider.GetRequiredService<SqlServerDeadlockCollector>(),
+                new CollectorOutputValidator(SqlServerDeadlockCollector.OutputContract),
+                new CollectorSha256Digest(deadlockCatalog.Asset.ManifestChecksum),
+                new CollectorSha256Digest(deadlockCatalog.BundleChecksum)),
         ]);
     }
 }

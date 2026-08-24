@@ -14,4 +14,6 @@ declare module "*.mjs" {
   export function readBoundedBody(response: Response, signal: AbortSignal): Promise<string>;
   export function safeCursor(value: unknown): string;
   export function safeStatusMessage(status: number): string;
+  export function parseDeadlockPage(value: unknown, expectedTargetId?: string): import("./features/deadlocks/deadlockTypes").DeadlockPage;
+  export function parseDeadlockDetail(value: unknown, expectedTargetId: string, expectedEventId: string): import("./features/deadlocks/deadlockTypes").DeadlockDetail;
 }

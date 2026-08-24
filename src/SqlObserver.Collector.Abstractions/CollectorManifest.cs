@@ -252,6 +252,7 @@ public enum CollectorOutputKind
     ActivityRequests = 6,
     ServerWaits = 7,
     CurrentBlocking = 8,
+    Deadlocks = 9,
 }
 
 public sealed class CollectorResiliencePolicy

@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import { TargetHealthPanel } from "../health/TargetHealthPanel";
 import { TargetActivityPanel } from "../activity/TargetActivityPanel";
+import { TargetDeadlockPanel } from "../deadlocks/TargetDeadlockPanel";
 import { listObservationTargets, registerObservationTarget } from "./targetApi";
 import type {
   CapabilityStatus,
@@ -40,6 +41,7 @@ export function TargetOnboarding() {
   const [message, setMessage] = useState<string>();
   const [selectedTargetId, setSelectedTargetId] = useState<string>();
   const [selectedActivityTargetId, setSelectedActivityTargetId] = useState<string>();
+  const [selectedDeadlockTargetId, setSelectedDeadlockTargetId] = useState<string>();
   const [registrationInstanceId, setRegistrationInstanceId] = useState(createClientInstanceId);
   const selectedTarget = targets.find((target) => target.instanceId === selectedTargetId);
 
@@ -211,6 +213,13 @@ export function TargetOnboarding() {
               </button>
               <button
                 className="secondary-button target-health-button"
+                onClick={() => setSelectedDeadlockTargetId(target.instanceId)}
+                type="button"
+              >
+                View deadlock evidence
+              </button>
+              <button
+                className="secondary-button target-health-button"
                 onClick={() => setSelectedActivityTargetId(target.instanceId)}
                 type="button"
               >
@@ -234,6 +243,16 @@ export function TargetOnboarding() {
             displayName={activityTarget.displayName}
             instanceId={activityTarget.instanceId}
             onClose={() => setSelectedActivityTargetId(undefined)}
+          />
+        );
+      })()}
+      {selectedDeadlockTargetId === undefined ? null : (() => {
+        const deadlockTarget = targets.find((target) => target.instanceId === selectedDeadlockTargetId);
+        return deadlockTarget === undefined ? null : (
+          <TargetDeadlockPanel
+            displayName={deadlockTarget.displayName}
+            instanceId={deadlockTarget.instanceId}
+            onClose={() => setSelectedDeadlockTargetId(undefined)}
           />
         );
       })()}

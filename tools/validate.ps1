@@ -641,11 +641,16 @@ function Assert-RepositoryShape {
         'blocking.current.sqlserver16-windows.v1.sql',
         'blocking.current.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $activeM6CollectorSqlNames = @(
+        'deadlocks.system-health.sqlserver15-windows.v1.sql',
+        'deadlocks.system-health.sqlserver16-windows.v1.sql',
+        'deadlocks.system-health.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
-        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and active M5 assets.'
+        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and active M5/M6 assets.'
     }
 
     foreach ($collectorSqlFile in $collectorSqlFiles) {
@@ -677,6 +682,27 @@ function Assert-RepositoryShape {
              $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
              $collectorSql -match '(?i)\b(sql_handle|plan_handle|query_hash|query_plan_hash|wait_resource|resource_description|login_name|host_name|program_name|client_interface_name|local_net_address|client_net_address)\b')) {
             throw "M5 collector SQL must remain bounded, ordered, and exclude sensitive identity/query/resource fields: $($collectorSqlFile.Name)"
+        }
+
+        if ($collectorSqlFile.Name -in $activeM6CollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*@maximum_rows\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
+             $collectorSql -notmatch '(?i)sys\.fn_xe_file_target_read_file' -or
+             $collectorSql -notmatch '(?i)system_health' -or
+             $collectorSql -notmatch '(?i)system_health\*\.xel' -or
+             $collectorSql -notmatch '(?i)CHARINDEX\s*\(' -or
+             $collectorSql -notmatch '(?i)REVERSE\s*\(' -or
+             $collectorSql -notmatch '(?i)DATEADD\s*\(\s*day\s*,\s*-33' -or
+             $collectorSql -notmatch '(?i)source_window\.start_utc' -or
+             $collectorSql -notmatch '(?i)occurred_at_utc\s+IS\s+NULL' -or
+             $collectorSql -notmatch '(?i)DATALENGTH\s*\(' -or
+             $collectorSql -notmatch '(?i)server_event_session_fields' -or
+             $collectorSql -notmatch '(?i)max_rollover_files\s+BETWEEN\s+1\s+AND\s+10' -or
+             $collectorSql -notmatch '(?i)max_file_size_mb\s+BETWEEN\s+1\s+AND\s+100' -or
+             $collectorSql -notmatch '(?i)config_invalid' -or
+             $collectorSql -notmatch '(?i)fn_xe_file_target_read_file\([^\r\n]*,\s*NULL\)' -or
+             $collectorSql -match '(?i)\b(CREATE|ALTER|DROP|START|STOP)\s+(EVENT\s+SESSION|SESSION)')) {
+            throw "M6 collector SQL must be passive system_health reads with fixed bounds and deterministic order: $($collectorSqlFile.Name)"
         }
     }
 
@@ -787,6 +813,34 @@ function Assert-RepositoryShape {
         }
     }
 
+    $m6CollectorAssetPaths = @{
+        'collector-manifest.v4.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v4.schema.json'
+        'deadlocks.system-health.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/deadlocks.system-health.v1.json'
+    }
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $activeM6CollectorSqlNames }) {
+        $m6CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName
+    }
+    $m6CollectorChecksums = @{}
+    $m6CollectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/m6-deadlocks.assets.sha256'
+    foreach ($line in Get-Content -LiteralPath $m6CollectorChecksumPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) { continue }
+        if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') { throw "Invalid M6 collector checksum entry: $line" }
+        $assetName = $Matches[2]
+        if (-not $m6CollectorAssetPaths.ContainsKey($assetName) -or $m6CollectorChecksums.ContainsKey($assetName)) { throw "Unexpected or duplicate M6 collector checksum entry: $line" }
+        $m6CollectorChecksums[$assetName] = $Matches[1]
+    }
+    if ($m6CollectorChecksums.Count -ne $m6CollectorAssetPaths.Count) { throw 'M6 collector checksum manifest must contain exactly one entry per pinned asset.' }
+    foreach ($assetName in $m6CollectorAssetPaths.Keys) {
+        $actualChecksum = (Get-FileHash -LiteralPath $m6CollectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($m6CollectorChecksums[$assetName] -cne $actualChecksum) { throw "M6 collector checksum mismatch: $assetName" }
+    }
+
+    $m6MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M6-deadlocks-and-extended-events.md'
+    if (-not (Test-Path -LiteralPath $m6MilestoneDoc -PathType Leaf)) { throw 'M6 requires its passive system_health milestone document.' }
+    foreach ($forbiddenXeMutation in @('CREATE EVENT SESSION', 'ALTER EVENT SESSION', 'START EVENT SESSION', 'STOP EVENT SESSION', 'blocked process threshold')) {
+        if ((Get-Content -LiteralPath $m6MilestoneDoc -Raw).IndexOf($forbiddenXeMutation, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $forbiddenXeMutation -ne 'blocked process threshold') { throw "M6 documentation must not ship an XE mutation command: $forbiddenXeMutation" }
+    }
+
     $m5MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M5-sessions-requests-waits-blocking.md'
     if (-not (Test-Path -LiteralPath $m5MilestoneDoc -PathType Leaf) -or
         (Test-Path -LiteralPath (Join-Path $repositoryRoot 'docs/milestones/M5-activity-migration.sql.wip') -PathType Leaf)) {
@@ -818,13 +872,30 @@ function Assert-RepositoryShape {
             throw "M5 focused test asset is missing: $requiredM5TestAsset"
         }
     }
-    $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
-    if ($readmeStatus -notmatch 'Milestones 0 through 5 are implemented' -or
-        $readmeStatus -notmatch '(?i)M5 activity' -or
-        $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
-        throw 'README repository status must explicitly identify M0-M5 and the bounded M5 activity scope.'
+    foreach ($requiredM6TestAsset in @(
+        'tests/SqlObserver.UnitTests/M6DeadlockContractTests.cs',
+        'tests/SqlObserver.ApiContractTests/M6DeadlockApiContractTests.cs',
+        'tests/SqlObserver.SecurityTests/M6DeadlockSecurityPolicyTests.cs',
+        'tests/SqlObserver.PerformanceTests/M6DeadlockBoundaryPerformanceTests.cs',
+        'tests/SqlObserver.EndToEndTests/CollectorCompositionEndToEndTests.cs',
+        'tests/SqlObserver.IntegrationTests.SqlServer/M6DeadlockIntegrationTests.cs',
+        'tests/SqlObserver.IntegrationTests.PostgreSql/M6DeadlockPostgreSqlIntegrationTests.cs',
+        'web/src/features/deadlocks/deadlockApi.ts',
+        'web/src/features/deadlocks/TargetDeadlockPanel.tsx',
+        'web/src/features/deadlocks/deadlockParser.mjs',
+        'web/tests/deadlock-parser.test.mjs')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM6TestAsset) -PathType Leaf)) {
+            throw "M6 focused test asset is missing: $requiredM6TestAsset"
+        }
     }
-    foreach ($staleText in @('dormant M5', 'M5-activity-migration.sql.wip', 'no M5 migration', 'no M5 activity')) {
+    $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
+    if ($readmeStatus -notmatch 'Milestones 0 through 6 are implemented' -or
+        $readmeStatus -notmatch '(?i)M5 activity' -or
+        $readmeStatus -notmatch '(?i)M6.*(?:system_health|deadlock)' -or
+        $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
+        throw 'README repository status must explicitly identify M0-M6 and the bounded M5/M6 activity/deadlock scope.'
+    }
+    foreach ($staleText in @('dormant M5', 'M5-activity-migration.sql.wip', 'no M5 migration', 'no M5 activity', 'M6 remains incomplete', 'M6 deadlocks/Extended Events remain outside')) {
         $staleMatches = @(Get-ChildItem -LiteralPath $repositoryRoot -File -Force |
             Where-Object { $_.Name -in @('README.md', 'BACKLOG.md') } |
             Select-String -SimpleMatch $staleText)

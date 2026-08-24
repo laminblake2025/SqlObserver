@@ -35,10 +35,13 @@ public sealed class CollectorCompositionEndToEndTests
         Assert.IsType<CollectorScheduler>(provider.GetRequiredService<CollectorScheduler>());
         Assert.Equal(
             ["engine.core", "database.inventory", "database.files", "activity.sessions",
-                "activity.requests", "waits.server", "blocking.current"],
+                "activity.requests", "waits.server", "blocking.current", "deadlocks.system-health"],
             provider.GetRequiredService<CollectorRegistry>()
                 .Registrations
                 .Select(static registration => registration.Manifest.Id.Value));
+        Assert.Equal(1, provider.GetRequiredService<CollectorRegistry>()
+            .Registrations.Single(static registration => registration.Manifest.Id.Value == "deadlocks.system-health")
+            .Manifest.ManifestVersion.Value);
         Assert.Equal(2, provider.GetServices<IHostedService>().Count());
         Assert.DoesNotContain(
             services,

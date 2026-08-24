@@ -1,0 +1,3 @@
+export interface DeadlockSummary { readonly eventId: string; readonly occurredAtUtc: string; readonly fingerprint: string; readonly participantCount: number; readonly relationCount: number; readonly parseTruncated: boolean; readonly collectedAtUtc: string; }
+export interface DeadlockDetail { readonly summary: DeadlockSummary; readonly participants: readonly { readonly sessionId: number; readonly isVictim: boolean }[]; readonly relations: readonly { readonly blockerSessionId: number; readonly waiterSessionId: number; readonly resourceCategory: string; readonly lockMode: string }[]; }
+export interface DeadlockPage { readonly targetId: string; readonly repositoryTimeUtc: string; readonly items: readonly DeadlockSummary[]; readonly nextCursor?: string; }

@@ -1,0 +1,6 @@
+import { parseDeadlockDetail, parseDeadlockPage } from "./deadlockParser.mjs";
+import { readBoundedBody } from "../activity/activityParser.mjs";
+import type { DeadlockDetail, DeadlockPage } from "./deadlockTypes";
+function boundedSignal(signal?: AbortSignal): AbortSignal { return signal ?? new AbortController().signal; }
+export async function getDeadlocks(instanceId: string, signal?: AbortSignal): Promise<DeadlockPage> { const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/deadlocks?limit=25`, { signal, headers: { Accept: "application/json" } }); if (!response.ok) throw new Error("Deadlock evidence is unavailable."); return parseDeadlockPage(await readBoundedBody(response, boundedSignal(signal)), instanceId); }
+export async function getDeadlock(instanceId: string, eventId: string, signal?: AbortSignal): Promise<DeadlockDetail> { const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/deadlocks/${encodeURIComponent(eventId)}`, { signal, headers: { Accept: "application/json" } }); if (!response.ok) throw new Error("Deadlock detail is unavailable."); return parseDeadlockDetail(await readBoundedBody(response, boundedSignal(signal)), instanceId, eventId); }
