@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
+import { TargetHealthPanel } from "../health/TargetHealthPanel";
 import { listObservationTargets, registerObservationTarget } from "./targetApi";
 import type {
   CapabilityStatus,
@@ -36,7 +37,9 @@ export function TargetOnboarding() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [selectedTargetId, setSelectedTargetId] = useState<string>();
   const [registrationInstanceId, setRegistrationInstanceId] = useState(createClientInstanceId);
+  const selectedTarget = targets.find((target) => target.instanceId === selectedTargetId);
 
   const refresh = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
@@ -197,10 +200,24 @@ export function TargetOnboarding() {
                   ))}
                 </ul>
               )}
+              <button
+                className="secondary-button target-health-button"
+                onClick={() => setSelectedTargetId(target.instanceId)}
+                type="button"
+              >
+                View health evidence
+              </button>
             </article>
           ))}
         </div>
       </div>
+      {selectedTarget === undefined ? null : (
+        <TargetHealthPanel
+          displayName={selectedTarget.displayName}
+          instanceId={selectedTarget.instanceId}
+          onClose={() => setSelectedTargetId(undefined)}
+        />
+      )}
     </section>
   );
 }

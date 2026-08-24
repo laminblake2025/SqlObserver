@@ -5,6 +5,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <ProjectReference Include="../../src/SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
   </ItemGroup>
 </Project>

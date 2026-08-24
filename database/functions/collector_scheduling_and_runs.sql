@@ -1,0 +1,13 @@
+-- Review index only. Deployment authority:
+-- migrations/0008_collector_scheduling_and_core_health.sql.
+--
+-- The authoritative migration defines bounded SECURITY DEFINER entry points for:
+--   exact digest-bound catalog reconciliation;
+--   repository-clock dependency-aware due selection (maximum sixteen);
+--   pre-target-I/O run start with revision, due-time, replay, and lease fencing;
+--   atomic metric/inventory/file ingestion, repository-derived completion digests,
+--   terminal accounting, visibility gaps, schedule advancement, and circuit state.
+--
+-- Runtime roles receive only the required entry points. New M4 base tables are forced
+-- through owner-only RLS policies and carry no direct runtime grants. The M2 generic
+-- metric path remains compatible but cannot populate collection_run_id.

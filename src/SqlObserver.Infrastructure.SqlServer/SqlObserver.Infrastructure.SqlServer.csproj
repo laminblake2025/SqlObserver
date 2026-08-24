@@ -36,5 +36,101 @@
     <EmbeddedResource Include="../../collectors/sql/capability.connection.fallback.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.CollectorAssets.capability.connection.fallback.v1.sql</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v2.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.collector-manifest.v2.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/engine.core.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.engine.core.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/database.inventory.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/database.files.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m4-core-health.assets.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.m4-core-health.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.core.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.engine.core.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.core.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.engine.core.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.core.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.engine.core.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v3.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.collector-manifest.v3.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/activity.sessions.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.sessions.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/activity.requests.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.requests.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/waits.server.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.waits.server.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/blocking.current.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.blocking.current.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m5-activity.assets.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.m5-activity.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/activity.sessions.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.sessions.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/activity.sessions.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.sessions.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/activity.sessions.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.sessions.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/activity.requests.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.requests.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/activity.requests.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.requests.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/activity.requests.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.activity.requests.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/waits.server.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.waits.server.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/waits.server.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.waits.server.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/waits.server.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.waits.server.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/blocking.current.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.blocking.current.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/blocking.current.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.blocking.current.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/blocking.current.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.blocking.current.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

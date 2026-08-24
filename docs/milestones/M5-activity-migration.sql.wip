@@ -1,0 +1,2221 @@
+-- Transactional: the migration runner executes this entire file and its ledger write
+-- in one transaction. Do not run this file as independent autocommit statements.
+
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '5min';
+SET LOCAL idle_in_transaction_session_timeout = '5min';
+SET LOCAL TIME ZONE 'UTC';
+SET LOCAL ROLE sqlobserver_migrator;
+
+INSERT INTO control.collector_contract
+(
+    collector_id,
+    collector_version,
+    execution_order,
+    manifest_schema_version,
+    output_schema_version,
+    manifest_sha256,
+    asset_bundle_sha256,
+    default_interval,
+    minimum_interval,
+    execution_timeout,
+    maximum_rows,
+    maximum_response_bytes,
+    estimated_cost,
+    maximum_attempts,
+    circuit_failure_threshold,
+    circuit_open_interval
+)
+VALUES
+(
+    'activity.sessions', 1, 4, 3, 1,
+    decode('f7088bc48ab289b1923ef0cc1ba9565999e7242e0eb6cb3eb85406cd747d1ffb', 'hex'),
+    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    interval '15 seconds', interval '5 seconds', interval '5 seconds',
+    513, 262144, 'low', 2, 3, interval '5 minutes'
+),
+(
+    'activity.requests', 1, 5, 3, 1,
+    decode('6490b8aaa503d5f96e52c4aacdb5e94a52965cc1bed0f0d0502f3e663cc88ee1', 'hex'),
+    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    interval '10 seconds', interval '5 seconds', interval '5 seconds',
+    513, 393216, 'moderate', 2, 3, interval '5 minutes'
+),
+(
+    'waits.server', 1, 6, 3, 1,
+    decode('aeae9d3d2a2f373b9b66b0e68a0c2d51dcc548dad3fc175a118ba3a5cd007da9', 'hex'),
+    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    interval '30 seconds', interval '10 seconds', interval '5 seconds',
+    2049, 524288, 'low', 2, 3, interval '5 minutes'
+),
+(
+    'blocking.current', 1, 7, 3, 1,
+    decode('2470cbe3d16e3825a8c30ed0fde6d84e0eced0124f93ef8ff268f93b4523c59b', 'hex'),
+    decode('dbd280ef6db0f16a300e53aadf951ebc837ba0dc79837398264bdd82a802e9ff', 'hex'),
+    interval '10 seconds', interval '5 seconds', interval '5 seconds',
+    1025, 393216, 'moderate', 2, 3, interval '5 minutes'
+);
+
+CREATE TABLE control.collector_dependency
+(
+    collector_id text NOT NULL,
+    collector_version integer NOT NULL,
+    prerequisite_collector_id text NOT NULL,
+    prerequisite_collector_version integer NOT NULL,
+    CONSTRAINT pk_collector_dependency PRIMARY KEY
+        (collector_id, collector_version, prerequisite_collector_id, prerequisite_collector_version),
+    CONSTRAINT fk_collector_dependency_collector FOREIGN KEY (collector_id, collector_version)
+        REFERENCES control.collector_contract (collector_id, collector_version),
+    CONSTRAINT fk_collector_dependency_prerequisite FOREIGN KEY
+        (prerequisite_collector_id, prerequisite_collector_version)
+        REFERENCES control.collector_contract (collector_id, collector_version),
+    CONSTRAINT ck_collector_dependency_not_self CHECK
+        ((collector_id, collector_version) <> (prerequisite_collector_id, prerequisite_collector_version))
+);
+
+COMMENT ON TABLE control.collector_dependency IS
+    'Reviewed collector-to-collector prerequisites used by repository-clock due-work eligibility.';
+
+INSERT INTO control.collector_dependency
+    (collector_id, collector_version, prerequisite_collector_id, prerequisite_collector_version)
+VALUES
+    ('database.inventory', 1, 'engine.core', 1),
+    ('database.files', 1, 'engine.core', 1),
+    ('database.files', 1, 'database.inventory', 1),
+    ('activity.sessions', 1, 'engine.core', 1),
+    ('activity.requests', 1, 'engine.core', 1),
+    ('activity.requests', 1, 'activity.sessions', 1),
+    ('waits.server', 1, 'engine.core', 1),
+    ('waits.server', 1, 'activity.sessions', 1),
+    ('waits.server', 1, 'activity.requests', 1),
+    ('blocking.current', 1, 'engine.core', 1),
+    ('blocking.current', 1, 'activity.sessions', 1),
+    ('blocking.current', 1, 'activity.requests', 1),
+    ('blocking.current', 1, 'waits.server', 1);
+
+CREATE TRIGGER collector_dependency_append_only
+BEFORE UPDATE OR DELETE ON control.collector_dependency
+FOR EACH STATEMENT EXECUTE FUNCTION control.reject_collector_history_mutation();
+
+ALTER TABLE control.collector_dependency ENABLE ROW LEVEL SECURITY;
+ALTER TABLE control.collector_dependency FORCE ROW LEVEL SECURITY;
+CREATE POLICY collector_dependency_owner_only
+    ON control.collector_dependency
+    FOR ALL
+    TO sqlobserver_migrator
+    USING (true)
+    WITH CHECK (true);
+
+INSERT INTO control.collector_schedule
+(
+    instance_id,
+    collector_id,
+    collector_version,
+    target_revision,
+    schedule_revision,
+    enabled,
+    collection_interval,
+    next_due_at,
+    circuit_state,
+    consecutive_failure_count,
+    created_at,
+    updated_at
+)
+SELECT
+    target.instance_id,
+    contract.collector_id,
+    contract.collector_version,
+    target.revision,
+    1,
+    true,
+    contract.default_interval,
+    statement_timestamp(),
+    'closed',
+    0,
+    statement_timestamp(),
+    statement_timestamp()
+FROM control.observation_target AS target
+CROSS JOIN control.collector_contract AS contract
+WHERE target.lifecycle_state = 'active'
+  AND target.host_name IS NOT NULL
+  AND contract.execution_order BETWEEN 4 AND 7
+ON CONFLICT (instance_id, collector_id) DO NOTHING;
+
+CREATE OR REPLACE FUNCTION control.reconcile_collector_catalog
+(
+    p_collector_ids text[],
+    p_collector_versions integer[],
+    p_manifest_sha256 bytea[],
+    p_asset_bundle_sha256 bytea[],
+    p_execution_orders integer[],
+    p_work_key text,
+    p_owner_execution_id uuid,
+    p_fencing_token bigint
+)
+RETURNS TABLE
+(
+    inserted_count integer,
+    updated_count integer,
+    unchanged_count integer,
+    repository_time timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+DECLARE
+    captured_repository_time timestamptz;
+    catalog_count integer;
+    matched_count integer;
+    is_m4_catalog boolean;
+    is_m5_catalog boolean;
+BEGIN
+    catalog_count := cardinality(p_collector_ids);
+    is_m4_catalog :=
+        catalog_count = 3
+        AND p_collector_ids IS NOT DISTINCT FROM ARRAY[
+            'engine.core', 'database.inventory', 'database.files']::text[]
+        AND p_collector_versions IS NOT DISTINCT FROM ARRAY[1, 1, 1]::integer[]
+        AND p_execution_orders IS NOT DISTINCT FROM ARRAY[1, 2, 3]::integer[];
+    is_m5_catalog :=
+        catalog_count = 7
+        AND p_collector_ids IS NOT DISTINCT FROM ARRAY[
+            'engine.core', 'database.inventory', 'database.files',
+            'activity.sessions', 'activity.requests', 'waits.server', 'blocking.current']::text[]
+        AND p_collector_versions IS NOT DISTINCT FROM ARRAY[1, 1, 1, 1, 1, 1, 1]::integer[]
+        AND p_execution_orders IS NOT DISTINCT FROM ARRAY[1, 2, 3, 4, 5, 6, 7]::integer[];
+
+    IF p_work_key IS DISTINCT FROM 'collector/catalog/reconcile'
+       OR NOT (is_m4_catalog OR is_m5_catalog)
+       OR cardinality(p_manifest_sha256) IS DISTINCT FROM catalog_count
+       OR cardinality(p_asset_bundle_sha256) IS DISTINCT FROM catalog_count
+       OR EXISTS
+       (
+           SELECT 1
+           FROM unnest(p_manifest_sha256, p_asset_bundle_sha256)
+               AS digest(manifest_digest, bundle_digest)
+           WHERE octet_length(digest.manifest_digest) <> 32
+              OR octet_length(digest.bundle_digest) <> 32
+       ) THEN
+        RAISE EXCEPTION 'collector catalog must contain an exact ordered reviewed contract set'
+            USING ERRCODE = '22023';
+    END IF;
+
+    PERFORM control.assert_worker_lease(
+        p_work_key,
+        p_owner_execution_id,
+        p_fencing_token);
+
+    SELECT count(*)::integer
+    INTO matched_count
+    FROM unnest(
+        p_collector_ids,
+        p_collector_versions,
+        p_manifest_sha256,
+        p_asset_bundle_sha256,
+        p_execution_orders
+    ) AS supplied(collector_id, collector_version, manifest_digest, bundle_digest, execution_order)
+    INNER JOIN control.collector_contract AS contract
+        ON contract.collector_id = supplied.collector_id
+       AND contract.collector_version = supplied.collector_version
+       AND contract.manifest_sha256 = supplied.manifest_digest
+       AND contract.asset_bundle_sha256 = supplied.bundle_digest
+       AND contract.execution_order = supplied.execution_order;
+
+    IF matched_count <> catalog_count THEN
+        RAISE EXCEPTION 'collector catalog differs from the immutable repository contract registry'
+            USING ERRCODE = '55000';
+    END IF;
+
+    captured_repository_time := clock_timestamp();
+    INSERT INTO control.collector_schedule
+    (
+        instance_id, collector_id, collector_version, target_revision,
+        schedule_revision, enabled, collection_interval, next_due_at,
+        circuit_state, consecutive_failure_count, created_at, updated_at
+    )
+    SELECT
+        target.instance_id, contract.collector_id, contract.collector_version,
+        target.revision, 1, true, contract.default_interval,
+        captured_repository_time, 'closed', 0,
+        captured_repository_time, captured_repository_time
+    FROM control.observation_target AS target
+    INNER JOIN control.collector_contract AS contract
+        ON contract.collector_id = ANY(p_collector_ids)
+    WHERE target.host_name IS NOT NULL
+      AND target.lifecycle_state = 'active'
+    ON CONFLICT (instance_id, collector_id) DO NOTHING;
+
+    PERFORM control.assert_worker_lease(
+        p_work_key,
+        p_owner_execution_id,
+        p_fencing_token);
+
+    RETURN QUERY SELECT 0, 0, catalog_count, captured_repository_time;
+END
+$sqlobserver$;
+
+CREATE FUNCTION reporting.list_blocking_history
+(
+    p_instance_id uuid,
+    p_from_utc timestamptz,
+    p_to_utc timestamptz,
+    p_after_observed_at timestamptz,
+    p_after_run_id uuid,
+    p_after_blocked_session_id integer,
+    p_after_blocker_kind text,
+    p_after_blocker_session_id integer,
+    p_after_wait_type text,
+    p_max_results integer
+)
+RETURNS TABLE
+(
+    target_instance_id uuid,
+    observed_at timestamptz,
+    snapshot_run_id uuid,
+    snapshot_target_revision bigint,
+    outcome text,
+    reason_code text,
+    loss_kind text,
+    loss_count_exact boolean,
+    lost_row_count bigint,
+    lost_byte_count bigint,
+    snapshot_completed_at timestamptz,
+    blocked_session_id integer,
+    blocker_kind text,
+    blocker_session_id integer,
+    wait_type text,
+    waiting_task_count bigint,
+    wait_duration_ms bigint,
+    root_blocker_session_id integer,
+    chain_depth integer,
+    chain_state text,
+    has_more boolean,
+    repository_time timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+BEGIN
+    IF p_instance_id IS NULL OR p_from_utc IS NULL OR p_to_utc IS NULL
+       OR NOT isfinite(p_from_utc) OR NOT isfinite(p_to_utc)
+       OR p_to_utc <= p_from_utc OR p_to_utc - p_from_utc > interval '24 hours'
+       OR p_max_results NOT BETWEEN 1 AND 100
+       OR NOT
+       (
+           (p_after_observed_at IS NULL AND p_after_run_id IS NULL
+            AND p_after_blocked_session_id IS NULL AND p_after_blocker_kind IS NULL
+            AND p_after_blocker_session_id IS NULL AND p_after_wait_type IS NULL)
+           OR
+           (p_after_observed_at IS NOT NULL AND p_after_run_id IS NOT NULL
+            AND p_after_blocked_session_id IS NOT NULL AND p_after_blocker_kind IS NOT NULL
+            AND p_after_wait_type IS NOT NULL)
+       ) THEN
+        RAISE EXCEPTION 'blocking-history query bounds or cursor are invalid'
+            USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH repository_clock AS MATERIALIZED (SELECT clock_timestamp() AS value),
+    target_state AS MATERIALIZED
+    (
+        SELECT target.instance_id
+        FROM control.observation_target AS target
+        WHERE target.instance_id = p_instance_id
+    ),
+    page AS MATERIALIZED
+    (
+        SELECT edge.*, evidence.outcome, evidence.reason_code,
+               evidence.loss_kind, evidence.loss_count_exact,
+               evidence.lost_row_count, evidence.lost_byte_count,
+               evidence.completed_at
+        FROM events.blocking_edge AS edge
+        INNER JOIN reporting.activity_snapshot_evidence AS evidence
+            ON evidence.instance_id = edge.instance_id
+           AND evidence.run_id = edge.collection_run_id
+           AND evidence.target_revision = edge.target_revision
+           AND evidence.collector_id = 'blocking.current'
+        INNER JOIN target_state AS target
+            ON target.instance_id = edge.instance_id
+        WHERE edge.observed_at >= p_from_utc
+          AND edge.observed_at < p_to_utc
+          AND
+          (
+              p_after_observed_at IS NULL
+              OR (edge.observed_at, edge.collection_run_id, edge.blocked_session_id,
+                  edge.blocker_kind, coalesce(edge.blocker_session_id, 0), edge.wait_type)
+                 < (p_after_observed_at, p_after_run_id, p_after_blocked_session_id,
+                    p_after_blocker_kind, coalesce(p_after_blocker_session_id, 0), p_after_wait_type)
+          )
+        ORDER BY edge.observed_at DESC, edge.collection_run_id DESC,
+                 edge.blocked_session_id DESC, edge.blocker_kind DESC,
+                 coalesce(edge.blocker_session_id, 0) DESC, edge.wait_type DESC
+        LIMIT p_max_results + 1
+    )
+    SELECT
+        target.instance_id, page.observed_at, page.collection_run_id,
+        page.target_revision, page.outcome, page.reason_code, page.loss_kind,
+        page.loss_count_exact, page.lost_row_count, page.lost_byte_count,
+        page.completed_at, page.blocked_session_id, page.blocker_kind,
+        page.blocker_session_id, page.wait_type, page.waiting_task_count,
+        page.wait_duration_ms, page.root_blocker_session_id, page.chain_depth,
+        page.chain_state, (SELECT count(*) > p_max_results FROM page),
+        repository_clock.value
+    FROM target_state AS target
+    CROSS JOIN repository_clock
+    LEFT JOIN page ON true
+    ORDER BY page.observed_at DESC NULLS LAST, page.collection_run_id DESC NULLS LAST,
+             page.blocked_session_id DESC NULLS LAST, page.blocker_kind DESC NULLS LAST,
+             coalesce(page.blocker_session_id, 0) DESC, page.wait_type DESC NULLS LAST
+    LIMIT p_max_results;
+END
+$sqlobserver$;
+
+COMMENT ON FUNCTION reporting.list_blocking_history(
+    uuid, timestamptz, timestamptz, timestamptz, uuid, integer, text, integer, text, integer) IS
+    'Returns a target-scoped newest-first keyset page from a UTC window no wider than twenty-four hours.';
+REVOKE ALL ON FUNCTION reporting.list_blocking_history(
+    uuid, timestamptz, timestamptz, timestamptz, uuid, integer, text, integer, text, integer)
+    FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION reporting.list_blocking_history(
+    uuid, timestamptz, timestamptz, timestamptz, uuid, integer, text, integer, text, integer)
+    TO sqlobserver_server;
+
+CREATE OR REPLACE FUNCTION control.list_due_collector_work(p_max_items integer)
+RETURNS TABLE
+(
+    target_instance_id uuid,
+    target_revision bigint,
+    target_host_name text,
+    target_instance_name text,
+    target_tcp_port integer,
+    target_certificate_host_name text,
+    target_connect_timeout interval,
+    target_authentication_mode text,
+    target_transport_security_mode text,
+    collector_id text,
+    collector_version integer,
+    output_schema_version integer,
+    schedule_revision bigint,
+    scheduled_at timestamptz,
+    circuit_state text,
+    consecutive_failure_count integer,
+    circuit_open_until timestamptz,
+    has_more boolean,
+    repository_time timestamptz
+)
+LANGUAGE sql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+    WITH repository_clock AS MATERIALIZED
+    (
+        SELECT clock_timestamp() AS value
+    ),
+    due AS MATERIALIZED
+    (
+        SELECT
+            target.instance_id,
+            target.revision,
+            target.host_name,
+            target.instance_name,
+            target.tcp_port,
+            target.certificate_host_name,
+            target.connect_timeout,
+            target.authentication_mode,
+            target.transport_security_mode,
+            schedule.collector_id,
+            schedule.collector_version,
+            contract.output_schema_version,
+            schedule.schedule_revision,
+            schedule.next_due_at,
+            CASE
+                WHEN schedule.circuit_state = 'open'
+                    AND schedule.circuit_open_until <= repository_clock.value
+                    THEN 'half_open'
+                ELSE schedule.circuit_state
+            END AS effective_circuit_state,
+            schedule.consecutive_failure_count,
+            CASE
+                WHEN schedule.circuit_state = 'open'
+                    AND schedule.circuit_open_until <= repository_clock.value
+                    THEN NULL::timestamptz
+                ELSE schedule.circuit_open_until
+            END AS effective_circuit_open_until,
+            contract.execution_order,
+            repository_clock.value AS repository_time
+        FROM control.collector_schedule AS schedule
+        INNER JOIN control.collector_contract AS contract
+            ON contract.collector_id = schedule.collector_id
+           AND contract.collector_version = schedule.collector_version
+        INNER JOIN control.observation_target AS target
+            ON target.instance_id = schedule.instance_id
+        CROSS JOIN repository_clock
+        LEFT JOIN telemetry.collection_run AS active_run
+            ON active_run.run_id = schedule.active_run_id
+        LEFT JOIN control.worker_lease AS active_lease
+            ON active_lease.work_key = active_run.work_key
+           AND active_lease.owner_execution_id = active_run.owner_execution_id
+           AND active_lease.fencing_token = active_run.fencing_token
+           AND active_lease.released_at IS NULL
+           AND active_lease.expires_at > repository_clock.value
+        WHERE p_max_items BETWEEN 1 AND 16
+          AND target.host_name IS NOT NULL
+          AND target.lifecycle_state = 'active'
+          AND schedule.target_revision = target.revision
+          AND schedule.enabled
+          AND schedule.next_due_at <= repository_clock.value
+          AND (schedule.circuit_state <> 'open' OR schedule.circuit_open_until <= repository_clock.value)
+          AND (schedule.active_run_id IS NULL OR active_lease.work_key IS NULL)
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM control.collector_dependency AS dependency
+              LEFT JOIN control.collector_schedule AS prerequisite
+                  ON prerequisite.instance_id = schedule.instance_id
+                 AND prerequisite.collector_id = dependency.prerequisite_collector_id
+                 AND prerequisite.collector_version = dependency.prerequisite_collector_version
+                 AND prerequisite.target_revision = schedule.target_revision
+                 AND prerequisite.enabled
+                 AND prerequisite.last_outcome IN ('succeeded', 'partial')
+              WHERE dependency.collector_id = schedule.collector_id
+                AND dependency.collector_version = schedule.collector_version
+                AND prerequisite.instance_id IS NULL
+          )
+        ORDER BY schedule.next_due_at, contract.execution_order, target.instance_id
+        LIMIT p_max_items + 1
+    )
+    SELECT
+        due.instance_id,
+        due.revision,
+        due.host_name,
+        due.instance_name,
+        due.tcp_port,
+        due.certificate_host_name,
+        due.connect_timeout,
+        due.authentication_mode,
+        due.transport_security_mode,
+        due.collector_id,
+        due.collector_version,
+        due.output_schema_version,
+        due.schedule_revision,
+        due.next_due_at,
+        due.effective_circuit_state,
+        due.consecutive_failure_count,
+        due.effective_circuit_open_until,
+        (SELECT count(*) > p_max_items FROM due),
+        due.repository_time
+    FROM due
+    ORDER BY due.next_due_at, due.execution_order, due.instance_id
+    LIMIT p_max_items;
+$sqlobserver$;
+
+ALTER TABLE telemetry.collection_run_outcome
+    DROP CONSTRAINT ck_collection_outcome_reason;
+ALTER TABLE telemetry.collection_run_outcome
+    ADD CONSTRAINT ck_collection_outcome_reason CHECK
+    (
+        reason_code IN
+        (
+            'completed', 'source_row_limit', 'response_byte_limit',
+            'deadline_exceeded', 'transient_target_failure',
+            'permanent_target_failure', 'required_permission_missing',
+            'target_unsupported', 'output_validation_failed',
+            'lease_ownership_lost', 'circuit_currently_open',
+            'capability_profile_missing', 'capability_profile_stale',
+            'capability_missing', 'target_version_unsupported',
+            'target_platform_unsupported', 'target_edition_unsupported',
+            'target_revision_changed', 'blocking_graph_limit'
+        )
+    );
+
+ALTER TABLE telemetry.collection_run_outcome
+    DROP CONSTRAINT ck_collection_outcome_reason_matrix;
+ALTER TABLE telemetry.collection_run_outcome
+    ADD CONSTRAINT ck_collection_outcome_reason_matrix CHECK
+    (
+        (outcome = 'succeeded' AND reason_code = 'completed' AND loss_kind = 'none')
+        OR
+        (
+            outcome = 'partial'
+            AND
+            (
+                (reason_code = 'source_row_limit' AND loss_kind = 'source_row_limit')
+                OR (reason_code = 'response_byte_limit' AND loss_kind = 'response_byte_limit')
+                OR (reason_code = 'blocking_graph_limit' AND loss_kind = 'blocking_graph_limit')
+            )
+        )
+        OR (outcome = 'timed_out' AND reason_code = 'deadline_exceeded' AND loss_kind = 'none')
+        OR (outcome = 'transient_failure' AND reason_code = 'transient_target_failure' AND loss_kind = 'none')
+        OR
+        (
+            outcome = 'permanent_failure'
+            AND reason_code IN ('permanent_target_failure', 'target_revision_changed')
+            AND loss_kind = 'none'
+        )
+        OR (outcome = 'permission_denied' AND reason_code = 'required_permission_missing' AND loss_kind = 'none')
+        OR
+        (
+            outcome = 'unsupported'
+            AND reason_code IN
+            (
+                'target_unsupported', 'capability_profile_missing',
+                'capability_profile_stale', 'capability_missing',
+                'target_version_unsupported', 'target_platform_unsupported',
+                'target_edition_unsupported'
+            )
+            AND loss_kind = 'none'
+        )
+        OR (outcome = 'output_invalid' AND reason_code = 'output_validation_failed' AND loss_kind = 'output_validation_failure')
+        OR (outcome = 'lease_lost' AND reason_code = 'lease_ownership_lost' AND loss_kind = 'none')
+        OR (outcome = 'circuit_open' AND reason_code = 'circuit_currently_open' AND loss_kind = 'none')
+    );
+
+ALTER TABLE telemetry.collection_run_outcome
+    DROP CONSTRAINT ck_collection_outcome_loss;
+ALTER TABLE telemetry.collection_run_outcome
+    ADD CONSTRAINT ck_collection_outcome_loss CHECK
+    (
+        loss_kind IN
+        (
+            'none', 'source_row_limit', 'response_byte_limit',
+            'output_validation_failure', 'ingestion_rejection', 'blocking_graph_limit'
+        )
+        AND ((loss_kind = 'none') = (NOT loss_detected))
+        AND (loss_detected OR (NOT truncated AND rejected_item_count = 0))
+        AND lost_row_count >= 0
+        AND lost_byte_count >= 0
+        AND
+        (
+            (loss_detected AND (lost_row_count > 0 OR lost_byte_count > 0))
+            OR
+            (
+                NOT loss_detected
+                AND lost_row_count = 0
+                AND lost_byte_count = 0
+                AND loss_count_exact
+            )
+        )
+        AND
+        (
+            outcome <> 'succeeded'
+            OR
+            (
+                reason_code = 'completed'
+                AND NOT truncated
+                AND NOT loss_detected
+                AND rejected_item_count = 0
+            )
+        )
+    );
+
+ALTER TABLE telemetry.visibility_gap
+    DROP CONSTRAINT ck_visibility_gap_reason;
+ALTER TABLE telemetry.visibility_gap
+    ADD CONSTRAINT ck_visibility_gap_reason CHECK
+    (
+        reason_code IN
+        (
+            'source_row_limit', 'response_byte_limit', 'deadline_exceeded',
+            'transient_target_failure', 'permanent_target_failure',
+            'required_permission_missing', 'target_unsupported',
+            'output_validation_failed', 'lease_ownership_lost',
+            'circuit_currently_open', 'capability_profile_missing',
+            'capability_profile_stale', 'capability_missing',
+            'target_version_unsupported', 'target_platform_unsupported',
+            'target_edition_unsupported', 'target_revision_changed',
+            'ingestion_rejection', 'blocking_graph_limit'
+        )
+    );
+
+CREATE TABLE telemetry.activity_session_snapshot
+(
+    observed_at timestamptz NOT NULL,
+    collection_run_id uuid NOT NULL,
+    instance_id uuid NOT NULL,
+    target_revision bigint NOT NULL,
+    session_id integer NOT NULL,
+    status_code text NOT NULL,
+    is_user_process boolean NOT NULL,
+    database_id integer,
+    open_transaction_count integer NOT NULL,
+    cpu_ms bigint NOT NULL,
+    memory_usage_pages bigint NOT NULL,
+    reads bigint NOT NULL,
+    writes bigint NOT NULL,
+    logical_reads bigint NOT NULL,
+    total_elapsed_ms bigint NOT NULL,
+    collected_at timestamptz NOT NULL,
+    CONSTRAINT pk_activity_session_snapshot PRIMARY KEY (observed_at, collection_run_id, session_id),
+    CONSTRAINT fk_activity_session_run FOREIGN KEY (collection_run_id)
+        REFERENCES telemetry.collection_run (run_id),
+    CONSTRAINT fk_activity_session_target FOREIGN KEY (instance_id)
+        REFERENCES control.observation_target (instance_id),
+    CONSTRAINT ck_activity_session_identity CHECK
+        (target_revision > 0 AND session_id BETWEEN 1 AND 32767 AND (database_id IS NULL OR database_id BETWEEN 1 AND 32767)),
+    CONSTRAINT ck_activity_session_status CHECK
+        (status_code IN ('running', 'sleeping', 'dormant', 'preconnect', 'other')),
+    CONSTRAINT ck_activity_session_counters CHECK
+    (
+        open_transaction_count >= 0 AND cpu_ms >= 0 AND memory_usage_pages >= 0
+        AND reads >= 0 AND writes >= 0 AND logical_reads >= 0 AND total_elapsed_ms >= 0
+    ),
+    CONSTRAINT ck_activity_session_times CHECK
+        (isfinite(observed_at) AND isfinite(collected_at))
+) PARTITION BY RANGE (observed_at);
+
+CREATE INDEX ix_activity_session_target_run
+    ON telemetry.activity_session_snapshot (instance_id, collection_run_id, session_id);
+CREATE INDEX ix_activity_session_time_brin
+    ON telemetry.activity_session_snapshot USING brin (observed_at);
+
+CREATE TABLE telemetry.activity_request_snapshot
+(
+    observed_at timestamptz NOT NULL,
+    collection_run_id uuid NOT NULL,
+    instance_id uuid NOT NULL,
+    target_revision bigint NOT NULL,
+    session_id integer NOT NULL,
+    request_id integer NOT NULL,
+    status_code text NOT NULL,
+    command_code text NOT NULL,
+    database_id integer,
+    cpu_ms bigint NOT NULL,
+    total_elapsed_ms bigint NOT NULL,
+    reads bigint NOT NULL,
+    writes bigint NOT NULL,
+    logical_reads bigint NOT NULL,
+    row_count bigint NOT NULL,
+    percent_complete double precision NOT NULL,
+    collected_at timestamptz NOT NULL,
+    CONSTRAINT pk_activity_request_snapshot PRIMARY KEY
+        (observed_at, collection_run_id, session_id, request_id),
+    CONSTRAINT fk_activity_request_run FOREIGN KEY (collection_run_id)
+        REFERENCES telemetry.collection_run (run_id),
+    CONSTRAINT fk_activity_request_target FOREIGN KEY (instance_id)
+        REFERENCES control.observation_target (instance_id),
+    CONSTRAINT ck_activity_request_identity CHECK
+    (
+        target_revision > 0 AND session_id BETWEEN 1 AND 32767 AND request_id >= 0
+        AND (database_id IS NULL OR database_id BETWEEN 1 AND 32767)
+    ),
+    CONSTRAINT ck_activity_request_status CHECK
+        (status_code IN ('background', 'running', 'runnable', 'sleeping', 'suspended', 'other')),
+    CONSTRAINT ck_activity_request_command CHECK
+        (command_code IN ('select', 'insert', 'update', 'delete', 'merge', 'backup', 'restore', 'dbcc', 'other')),
+    CONSTRAINT ck_activity_request_counters CHECK
+    (
+        cpu_ms >= 0 AND total_elapsed_ms >= 0 AND reads >= 0 AND writes >= 0
+        AND logical_reads >= 0 AND row_count >= 0
+        AND isfinite(percent_complete) AND percent_complete BETWEEN 0 AND 100
+    ),
+    CONSTRAINT ck_activity_request_times CHECK
+        (isfinite(observed_at) AND isfinite(collected_at))
+) PARTITION BY RANGE (observed_at);
+
+CREATE INDEX ix_activity_request_target_run
+    ON telemetry.activity_request_snapshot (instance_id, collection_run_id, session_id, request_id);
+CREATE INDEX ix_activity_request_time_brin
+    ON telemetry.activity_request_snapshot USING brin (observed_at);
+
+CREATE TABLE telemetry.server_wait_snapshot
+(
+    observed_at timestamptz NOT NULL,
+    collection_run_id uuid NOT NULL,
+    instance_id uuid NOT NULL,
+    target_revision bigint NOT NULL,
+    wait_type text NOT NULL,
+    waiting_tasks_count bigint NOT NULL,
+    wait_time_ms bigint NOT NULL,
+    maximum_wait_time_ms bigint NOT NULL,
+    signal_wait_time_ms bigint NOT NULL,
+    collected_at timestamptz NOT NULL,
+    CONSTRAINT pk_server_wait_snapshot PRIMARY KEY (observed_at, collection_run_id, wait_type),
+    CONSTRAINT fk_server_wait_run FOREIGN KEY (collection_run_id)
+        REFERENCES telemetry.collection_run (run_id),
+    CONSTRAINT fk_server_wait_target FOREIGN KEY (instance_id)
+        REFERENCES control.observation_target (instance_id),
+    CONSTRAINT ck_server_wait_identity CHECK
+    (
+        target_revision > 0 AND octet_length(wait_type) BETWEEN 1 AND 120
+        AND wait_type ~ '^[A-Z][A-Z0-9_]*$'
+    ),
+    CONSTRAINT ck_server_wait_counters CHECK
+    (
+        waiting_tasks_count >= 0 AND wait_time_ms >= 0 AND maximum_wait_time_ms >= 0
+        AND signal_wait_time_ms >= 0 AND maximum_wait_time_ms <= wait_time_ms
+        AND signal_wait_time_ms <= wait_time_ms
+    ),
+    CONSTRAINT ck_server_wait_times CHECK
+        (isfinite(observed_at) AND isfinite(collected_at))
+) PARTITION BY RANGE (observed_at);
+
+CREATE INDEX ix_server_wait_target_run
+    ON telemetry.server_wait_snapshot (instance_id, collection_run_id, wait_type);
+CREATE INDEX ix_server_wait_time_brin
+    ON telemetry.server_wait_snapshot USING brin (observed_at);
+
+CREATE TABLE events.blocking_edge
+(
+    observed_at timestamptz NOT NULL,
+    edge_id uuid NOT NULL,
+    collection_run_id uuid NOT NULL,
+    instance_id uuid NOT NULL,
+    target_revision bigint NOT NULL,
+    blocked_session_id integer NOT NULL,
+    blocker_kind text NOT NULL,
+    blocker_session_id integer,
+    wait_type text NOT NULL,
+    waiting_task_count bigint NOT NULL,
+    wait_duration_ms bigint NOT NULL,
+    root_blocker_session_id integer,
+    chain_depth integer NOT NULL,
+    chain_state text NOT NULL,
+    collected_at timestamptz NOT NULL,
+    CONSTRAINT pk_blocking_edge PRIMARY KEY (observed_at, edge_id),
+    CONSTRAINT uq_blocking_edge_run_identity UNIQUE NULLS NOT DISTINCT
+        (observed_at, collection_run_id, blocked_session_id, blocker_kind, blocker_session_id, wait_type),
+    CONSTRAINT fk_blocking_edge_run FOREIGN KEY (collection_run_id)
+        REFERENCES telemetry.collection_run (run_id),
+    CONSTRAINT fk_blocking_edge_target FOREIGN KEY (instance_id)
+        REFERENCES control.observation_target (instance_id),
+    CONSTRAINT ck_blocking_edge_identity CHECK
+    (
+        target_revision > 0 AND blocked_session_id BETWEEN 1 AND 32767
+        AND (blocker_session_id IS NULL OR blocker_session_id BETWEEN 1 AND 32767)
+        AND (root_blocker_session_id IS NULL OR root_blocker_session_id BETWEEN 1 AND 32767)
+        AND octet_length(wait_type) BETWEEN 1 AND 120
+        AND wait_type ~ '^[A-Z][A-Z0-9_]*$'
+    ),
+    CONSTRAINT ck_blocking_edge_blocker CHECK
+    (
+        blocker_kind IN ('session', 'orphaned_distributed_transaction', 'deferred_recovery', 'undetermined', 'async_latch', 'other')
+        AND ((blocker_kind = 'session') = (blocker_session_id IS NOT NULL))
+    ),
+    CONSTRAINT ck_blocking_edge_chain CHECK
+    (
+        waiting_task_count > 0 AND wait_duration_ms >= 0
+        AND chain_depth BETWEEN 1 AND 32
+        AND chain_state IN ('resolved', 'cycle', 'depth_limit', 'external_blocker')
+    ),
+    CONSTRAINT ck_blocking_edge_times CHECK
+        (isfinite(observed_at) AND isfinite(collected_at))
+) PARTITION BY RANGE (observed_at);
+
+CREATE INDEX ix_blocking_edge_target_run
+    ON events.blocking_edge
+    (instance_id, collection_run_id, blocked_session_id, blocker_kind, blocker_session_id, wait_type);
+CREATE INDEX ix_blocking_edge_time_brin
+    ON events.blocking_edge USING brin (observed_at);
+
+CREATE FUNCTION control.ensure_activity_daily_partitions(p_partition_day date)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+DECLARE
+    table_name text;
+    partition_name text;
+BEGIN
+    IF p_partition_day IS NULL
+       OR p_partition_day < (current_date - 2)
+       OR p_partition_day > (current_date + 2) THEN
+        RAISE EXCEPTION 'activity partition day is outside the bounded collection window'
+            USING ERRCODE = '22023';
+    END IF;
+
+    FOREACH table_name IN ARRAY ARRAY[
+        'activity_session_snapshot',
+        'activity_request_snapshot',
+        'server_wait_snapshot']::text[]
+    LOOP
+        partition_name := format('%s_%s', table_name, to_char(p_partition_day, 'YYYYMMDD'));
+        EXECUTE format(
+            'CREATE TABLE IF NOT EXISTS telemetry.%I PARTITION OF telemetry.%I FOR VALUES FROM (%L) TO (%L)',
+            partition_name,
+            table_name,
+            p_partition_day::timestamptz,
+            (p_partition_day + 1)::timestamptz);
+        EXECUTE format('REVOKE ALL ON TABLE telemetry.%I FROM PUBLIC', partition_name);
+    END LOOP;
+END
+$sqlobserver$;
+
+CREATE FUNCTION control.ensure_blocking_monthly_partition(p_partition_month date)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+DECLARE
+    month_start date;
+    partition_name text;
+BEGIN
+    month_start := date_trunc('month', p_partition_month)::date;
+    IF p_partition_month IS NULL
+       OR month_start < date_trunc('month', current_date - 32)::date
+       OR month_start > date_trunc('month', current_date + 32)::date THEN
+        RAISE EXCEPTION 'blocking partition month is outside the bounded collection window'
+            USING ERRCODE = '22023';
+    END IF;
+
+    partition_name := format('blocking_edge_%s', to_char(month_start, 'YYYYMM'));
+    EXECUTE format(
+        'CREATE TABLE IF NOT EXISTS events.%I PARTITION OF events.blocking_edge FOR VALUES FROM (%L) TO (%L)',
+        partition_name,
+        month_start::timestamptz,
+        (month_start + interval '1 month')::timestamptz);
+    EXECUTE format('REVOKE ALL ON TABLE events.%I FROM PUBLIC', partition_name);
+END
+$sqlobserver$;
+
+SELECT control.ensure_activity_daily_partitions(current_date - 1);
+SELECT control.ensure_activity_daily_partitions(current_date);
+SELECT control.ensure_activity_daily_partitions(current_date + 1);
+SELECT control.ensure_blocking_monthly_partition(current_date);
+SELECT control.ensure_blocking_monthly_partition((current_date + interval '1 month')::date);
+
+ALTER TABLE telemetry.activity_session_snapshot ENABLE ROW LEVEL SECURITY;
+ALTER TABLE telemetry.activity_session_snapshot FORCE ROW LEVEL SECURITY;
+CREATE POLICY activity_session_snapshot_owner_only
+    ON telemetry.activity_session_snapshot
+    FOR ALL TO sqlobserver_migrator USING (true) WITH CHECK (true);
+
+ALTER TABLE telemetry.activity_request_snapshot ENABLE ROW LEVEL SECURITY;
+ALTER TABLE telemetry.activity_request_snapshot FORCE ROW LEVEL SECURITY;
+CREATE POLICY activity_request_snapshot_owner_only
+    ON telemetry.activity_request_snapshot
+    FOR ALL TO sqlobserver_migrator USING (true) WITH CHECK (true);
+
+ALTER TABLE telemetry.server_wait_snapshot ENABLE ROW LEVEL SECURITY;
+ALTER TABLE telemetry.server_wait_snapshot FORCE ROW LEVEL SECURITY;
+CREATE POLICY server_wait_snapshot_owner_only
+    ON telemetry.server_wait_snapshot
+    FOR ALL TO sqlobserver_migrator USING (true) WITH CHECK (true);
+
+ALTER TABLE events.blocking_edge ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events.blocking_edge FORCE ROW LEVEL SECURITY;
+CREATE POLICY blocking_edge_owner_only
+    ON events.blocking_edge
+    FOR ALL TO sqlobserver_migrator USING (true) WITH CHECK (true);
+
+CREATE TRIGGER activity_session_snapshot_append_only
+BEFORE UPDATE OR DELETE ON telemetry.activity_session_snapshot
+FOR EACH STATEMENT EXECUTE FUNCTION control.reject_collector_history_mutation();
+CREATE TRIGGER activity_request_snapshot_append_only
+BEFORE UPDATE OR DELETE ON telemetry.activity_request_snapshot
+FOR EACH STATEMENT EXECUTE FUNCTION control.reject_collector_history_mutation();
+CREATE TRIGGER server_wait_snapshot_append_only
+BEFORE UPDATE OR DELETE ON telemetry.server_wait_snapshot
+FOR EACH STATEMENT EXECUTE FUNCTION control.reject_collector_history_mutation();
+CREATE TRIGGER blocking_edge_append_only
+BEFORE UPDATE OR DELETE ON events.blocking_edge
+FOR EACH STATEMENT EXECUTE FUNCTION control.reject_collector_history_mutation();
+
+CREATE FUNCTION control.commit_activity_collection_run
+(
+    p_run_id uuid,
+    p_instance_id uuid,
+    p_target_revision bigint,
+    p_collector_id text,
+    p_collector_version integer,
+    p_output_schema_version integer,
+    p_schedule_revision bigint,
+    p_scheduled_at timestamptz,
+    p_work_key text,
+    p_owner_execution_id uuid,
+    p_fencing_token bigint,
+    p_request_digest bytea,
+    p_outcome text,
+    p_reason_code text,
+    p_duration_ms bigint,
+    p_attempt_count integer,
+    p_source_row_count integer,
+    p_output_item_count integer,
+    p_response_bytes bigint,
+    p_output_bytes bigint,
+    p_loss_kind text,
+    p_minimum_lost_items integer,
+    p_loss_count_is_exact boolean,
+    p_minimum_lost_bytes integer,
+    p_next_circuit_state text,
+    p_next_consecutive_failures integer,
+    p_session_observed_ats timestamptz[],
+    p_session_ids integer[],
+    p_session_statuses text[],
+    p_session_is_user_process boolean[],
+    p_session_database_ids integer[],
+    p_session_open_transaction_counts integer[],
+    p_session_cpu_ms bigint[],
+    p_session_memory_usage_pages bigint[],
+    p_session_reads bigint[],
+    p_session_writes bigint[],
+    p_session_logical_reads bigint[],
+    p_session_total_elapsed_ms bigint[],
+    p_session_sizes integer[],
+    p_request_observed_ats timestamptz[],
+    p_request_session_ids integer[],
+    p_request_ids integer[],
+    p_request_statuses text[],
+    p_request_commands text[],
+    p_request_database_ids integer[],
+    p_request_cpu_ms bigint[],
+    p_request_total_elapsed_ms bigint[],
+    p_request_reads bigint[],
+    p_request_writes bigint[],
+    p_request_logical_reads bigint[],
+    p_request_row_counts bigint[],
+    p_request_percent_complete double precision[],
+    p_request_sizes integer[],
+    p_wait_observed_ats timestamptz[],
+    p_wait_types text[],
+    p_waiting_tasks_counts bigint[],
+    p_wait_time_ms bigint[],
+    p_maximum_wait_time_ms bigint[],
+    p_signal_wait_time_ms bigint[],
+    p_wait_sizes integer[],
+    p_blocking_observed_ats timestamptz[],
+    p_blocked_session_ids integer[],
+    p_blocker_kinds text[],
+    p_blocker_session_ids integer[],
+    p_blocking_wait_types text[],
+    p_waiting_task_counts bigint[],
+    p_wait_duration_ms bigint[],
+    p_root_blocker_session_ids integer[],
+    p_chain_depths integer[],
+    p_chain_states text[],
+    p_blocking_sizes integer[]
+)
+RETURNS TABLE
+(
+    result_status text,
+    inserted_count integer,
+    duplicate_count integer,
+    rejected_count integer,
+    persisted_bytes integer,
+    committed_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+DECLARE
+    selected_contract control.collector_contract%ROWTYPE;
+    selected_schedule control.collector_schedule%ROWTYPE;
+    existing_outcome telemetry.collection_run_outcome%ROWTYPE;
+    session_count integer := coalesce(cardinality(p_session_observed_ats), -1);
+    request_count integer := coalesce(cardinality(p_request_observed_ats), -1);
+    wait_count integer := coalesce(cardinality(p_wait_observed_ats), -1);
+    blocking_count integer := coalesce(cardinality(p_blocking_observed_ats), -1);
+    payload_count integer;
+    payload_bytes bigint;
+    expected_payload_limit integer;
+    begin_status text;
+    begin_started_at timestamptz;
+    captured_repository_time timestamptz;
+    effective_completion_digest bytea;
+    effective_loss_detected boolean;
+    effective_truncated boolean;
+    effective_gap_reason text;
+    effective_gap_lost_items bigint;
+    effective_gap_lost_bytes bigint;
+    effective_gap_exact boolean;
+    total_inserted integer;
+    total_duplicates integer := 0;
+    total_rejected integer;
+    total_persisted_bytes bigint;
+    next_open_until timestamptz;
+BEGIN
+    -- Cheap cardinality and scalar preflight precedes JSON construction and hashing.
+    IF session_count < 0 OR request_count < 0 OR wait_count < 0 OR blocking_count < 0
+       OR session_count > 512 OR request_count > 512 OR wait_count > 2048 OR blocking_count > 1024
+       OR p_output_item_count NOT BETWEEN 0 AND 100000
+       OR p_source_row_count NOT BETWEEN 0 AND 100000
+       OR p_response_bytes NOT BETWEEN 0 AND 33554432
+       OR p_output_bytes NOT BETWEEN 0 AND 33554432
+       OR p_duration_ms NOT BETWEEN 0 AND 3600000
+       OR p_attempt_count NOT BETWEEN 0 AND 2
+       OR p_minimum_lost_items < 0 OR p_minimum_lost_bytes < 0
+       OR p_next_consecutive_failures NOT BETWEEN 0 AND 1000000
+       OR cardinality(p_session_ids) IS DISTINCT FROM session_count
+       OR cardinality(p_session_statuses) IS DISTINCT FROM session_count
+       OR cardinality(p_session_is_user_process) IS DISTINCT FROM session_count
+       OR cardinality(p_session_database_ids) IS DISTINCT FROM session_count
+       OR cardinality(p_session_open_transaction_counts) IS DISTINCT FROM session_count
+       OR cardinality(p_session_cpu_ms) IS DISTINCT FROM session_count
+       OR cardinality(p_session_memory_usage_pages) IS DISTINCT FROM session_count
+       OR cardinality(p_session_reads) IS DISTINCT FROM session_count
+       OR cardinality(p_session_writes) IS DISTINCT FROM session_count
+       OR cardinality(p_session_logical_reads) IS DISTINCT FROM session_count
+       OR cardinality(p_session_total_elapsed_ms) IS DISTINCT FROM session_count
+       OR cardinality(p_session_sizes) IS DISTINCT FROM session_count
+       OR cardinality(p_request_session_ids) IS DISTINCT FROM request_count
+       OR cardinality(p_request_ids) IS DISTINCT FROM request_count
+       OR cardinality(p_request_statuses) IS DISTINCT FROM request_count
+       OR cardinality(p_request_commands) IS DISTINCT FROM request_count
+       OR cardinality(p_request_database_ids) IS DISTINCT FROM request_count
+       OR cardinality(p_request_cpu_ms) IS DISTINCT FROM request_count
+       OR cardinality(p_request_total_elapsed_ms) IS DISTINCT FROM request_count
+       OR cardinality(p_request_reads) IS DISTINCT FROM request_count
+       OR cardinality(p_request_writes) IS DISTINCT FROM request_count
+       OR cardinality(p_request_logical_reads) IS DISTINCT FROM request_count
+       OR cardinality(p_request_row_counts) IS DISTINCT FROM request_count
+       OR cardinality(p_request_percent_complete) IS DISTINCT FROM request_count
+       OR cardinality(p_request_sizes) IS DISTINCT FROM request_count
+       OR cardinality(p_wait_types) IS DISTINCT FROM wait_count
+       OR cardinality(p_waiting_tasks_counts) IS DISTINCT FROM wait_count
+       OR cardinality(p_wait_time_ms) IS DISTINCT FROM wait_count
+       OR cardinality(p_maximum_wait_time_ms) IS DISTINCT FROM wait_count
+       OR cardinality(p_signal_wait_time_ms) IS DISTINCT FROM wait_count
+       OR cardinality(p_wait_sizes) IS DISTINCT FROM wait_count
+       OR cardinality(p_blocked_session_ids) IS DISTINCT FROM blocking_count
+       OR cardinality(p_blocker_kinds) IS DISTINCT FROM blocking_count
+       OR cardinality(p_blocker_session_ids) IS DISTINCT FROM blocking_count
+       OR cardinality(p_blocking_wait_types) IS DISTINCT FROM blocking_count
+       OR cardinality(p_waiting_task_counts) IS DISTINCT FROM blocking_count
+       OR cardinality(p_wait_duration_ms) IS DISTINCT FROM blocking_count
+       OR cardinality(p_root_blocker_session_ids) IS DISTINCT FROM blocking_count
+       OR cardinality(p_chain_depths) IS DISTINCT FROM blocking_count
+       OR cardinality(p_chain_states) IS DISTINCT FROM blocking_count
+       OR cardinality(p_blocking_sizes) IS DISTINCT FROM blocking_count THEN
+        RAISE EXCEPTION 'activity collector payload failed bounded array preflight'
+            USING ERRCODE = '22023';
+    END IF;
+
+    payload_count := session_count + request_count + wait_count + blocking_count;
+    SELECT contract.*
+    INTO selected_contract
+    FROM control.collector_contract AS contract
+    WHERE contract.collector_id = p_collector_id
+      AND contract.collector_version = p_collector_version;
+
+    expected_payload_limit := CASE p_collector_id
+        WHEN 'activity.sessions' THEN 512
+        WHEN 'activity.requests' THEN 512
+        WHEN 'waits.server' THEN 2048
+        WHEN 'blocking.current' THEN 1024
+        ELSE NULL
+    END;
+    IF NOT FOUND
+       OR expected_payload_limit IS NULL
+       OR selected_contract.output_schema_version <> p_output_schema_version
+       OR p_source_row_count > selected_contract.maximum_rows
+       OR p_response_bytes > selected_contract.maximum_response_bytes
+       OR p_output_bytes > selected_contract.maximum_response_bytes
+       OR p_attempt_count > selected_contract.maximum_attempts
+       OR payload_count > expected_payload_limit
+       OR (p_collector_id = 'activity.sessions' AND payload_count <> session_count)
+       OR (p_collector_id = 'activity.requests' AND payload_count <> request_count)
+       OR (p_collector_id = 'waits.server' AND payload_count <> wait_count)
+       OR (p_collector_id = 'blocking.current' AND payload_count <> blocking_count) THEN
+        RAISE EXCEPTION 'activity collector payload does not match the immutable contract'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT
+        coalesce((SELECT sum(value) FROM unnest(p_session_sizes) AS size(value)), 0)
+        + coalesce((SELECT sum(value) FROM unnest(p_request_sizes) AS size(value)), 0)
+        + coalesce((SELECT sum(value) FROM unnest(p_wait_sizes) AS size(value)), 0)
+        + coalesce((SELECT sum(value) FROM unnest(p_blocking_sizes) AS size(value)), 0)
+    INTO payload_bytes;
+
+    IF EXISTS (SELECT 1 FROM unnest(p_session_sizes) AS value WHERE value <> 160)
+       OR EXISTS (SELECT 1 FROM unnest(p_request_sizes) AS value WHERE value <> 176)
+       OR EXISTS
+       (
+           SELECT 1 FROM unnest(p_wait_types, p_wait_sizes) AS item(wait_type, item_size)
+           WHERE item.item_size IS DISTINCT FROM 112 + octet_length(item.wait_type)
+       )
+       OR EXISTS
+       (
+           SELECT 1 FROM unnest(p_blocking_wait_types, p_blocking_sizes) AS item(wait_type, item_size)
+           WHERE item.item_size IS DISTINCT FROM 128 + octet_length(item.wait_type)
+       )
+       OR (p_outcome = 'output_invalid' AND payload_count <> 0)
+       OR (p_outcome <> 'output_invalid' AND
+           (payload_count <> p_output_item_count OR payload_bytes <> p_output_bytes)) THEN
+        RAISE EXCEPTION 'activity collector payload and accounting do not match'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF p_outcome NOT IN
+       ('succeeded', 'partial', 'timed_out', 'transient_failure', 'permanent_failure',
+        'permission_denied', 'unsupported', 'output_invalid', 'lease_lost', 'circuit_open')
+       OR p_next_circuit_state NOT IN ('closed', 'open', 'half_open')
+       OR p_loss_kind NOT IN
+          ('none', 'source_row_limit', 'response_byte_limit', 'output_validation_failure',
+           'ingestion_rejection', 'blocking_graph_limit')
+       OR ((p_loss_kind = 'none') <> (p_minimum_lost_items = 0 AND p_minimum_lost_bytes = 0 AND p_loss_count_is_exact))
+       OR (p_loss_kind <> 'none' AND p_minimum_lost_items = 0 AND p_minimum_lost_bytes = 0)
+       OR (p_outcome = 'succeeded' AND
+           (p_reason_code <> 'completed' OR p_loss_kind <> 'none'))
+       OR (p_outcome = 'partial' AND NOT
+           ((p_reason_code = 'source_row_limit' AND p_loss_kind = 'source_row_limit')
+            OR (p_reason_code = 'response_byte_limit' AND p_loss_kind = 'response_byte_limit')
+            OR (p_reason_code = 'blocking_graph_limit' AND p_loss_kind = 'blocking_graph_limit')))
+       OR (p_reason_code = 'blocking_graph_limit' AND p_collector_id <> 'blocking.current')
+       OR (p_outcome NOT IN ('succeeded', 'partial', 'output_invalid') AND payload_count <> 0)
+       OR (p_outcome = 'output_invalid' AND p_loss_kind <> 'output_validation_failure') THEN
+        RAISE EXCEPTION 'activity collector outcome and loss matrix is invalid'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF EXISTS
+       (
+           SELECT 1
+           FROM unnest(
+               p_session_ids, p_session_statuses, p_session_database_ids,
+               p_session_open_transaction_counts, p_session_cpu_ms,
+               p_session_memory_usage_pages, p_session_reads, p_session_writes,
+               p_session_logical_reads, p_session_total_elapsed_ms)
+               AS item(session_id, status_code, database_id, open_transactions,
+                       cpu_ms, memory_pages, reads, writes, logical_reads, elapsed_ms)
+           WHERE item.session_id NOT BETWEEN 1 AND 32767
+              OR item.status_code NOT IN ('running', 'sleeping', 'dormant', 'preconnect', 'other')
+              OR (item.database_id IS NOT NULL AND item.database_id NOT BETWEEN 1 AND 32767)
+              OR item.open_transactions < 0 OR item.cpu_ms < 0 OR item.memory_pages < 0
+              OR item.reads < 0 OR item.writes < 0 OR item.logical_reads < 0 OR item.elapsed_ms < 0
+       )
+       OR EXISTS
+       (
+           SELECT 1
+           FROM unnest(
+               p_request_session_ids, p_request_ids, p_request_statuses, p_request_commands,
+               p_request_database_ids, p_request_cpu_ms, p_request_total_elapsed_ms,
+               p_request_reads, p_request_writes, p_request_logical_reads,
+               p_request_row_counts, p_request_percent_complete)
+               AS item(session_id, request_id, status_code, command_code, database_id,
+                       cpu_ms, elapsed_ms, reads, writes, logical_reads, row_count, percent_complete)
+           WHERE item.session_id NOT BETWEEN 1 AND 32767 OR item.request_id < 0
+              OR item.status_code NOT IN ('background', 'running', 'runnable', 'sleeping', 'suspended', 'other')
+              OR item.command_code NOT IN ('select', 'insert', 'update', 'delete', 'merge', 'backup', 'restore', 'dbcc', 'other')
+              OR (item.database_id IS NOT NULL AND item.database_id NOT BETWEEN 1 AND 32767)
+              OR item.cpu_ms < 0 OR item.elapsed_ms < 0 OR item.reads < 0 OR item.writes < 0
+              OR item.logical_reads < 0 OR item.row_count < 0
+              OR NOT isfinite(item.percent_complete) OR item.percent_complete NOT BETWEEN 0 AND 100
+       )
+       OR EXISTS
+       (
+           SELECT 1
+           FROM unnest(p_wait_types, p_waiting_tasks_counts, p_wait_time_ms,
+                       p_maximum_wait_time_ms, p_signal_wait_time_ms)
+               AS item(wait_type, tasks, wait_ms, maximum_ms, signal_ms)
+           WHERE item.wait_type !~ '^[A-Z][A-Z0-9_]{0,119}$'
+              OR item.tasks < 0 OR item.wait_ms < 0 OR item.maximum_ms < 0 OR item.signal_ms < 0
+              OR item.maximum_ms > item.wait_ms OR item.signal_ms > item.wait_ms
+       )
+       OR EXISTS
+       (
+           SELECT 1
+           FROM unnest(
+               p_blocked_session_ids, p_blocker_kinds, p_blocker_session_ids,
+               p_blocking_wait_types, p_waiting_task_counts, p_wait_duration_ms,
+               p_root_blocker_session_ids, p_chain_depths, p_chain_states)
+               AS item(blocked_id, blocker_kind, blocker_id, wait_type, task_count,
+                       duration_ms, root_id, chain_depth, chain_state)
+           WHERE item.blocked_id NOT BETWEEN 1 AND 32767
+              OR item.blocker_kind NOT IN
+                 ('session', 'orphaned_distributed_transaction', 'deferred_recovery',
+                  'undetermined', 'async_latch', 'other')
+              OR ((item.blocker_kind = 'session') <> (item.blocker_id IS NOT NULL))
+              OR (item.blocker_id IS NOT NULL AND item.blocker_id NOT BETWEEN 1 AND 32767)
+              OR item.wait_type !~ '^[A-Z][A-Z0-9_]{0,119}$'
+              OR item.task_count <= 0 OR item.duration_ms < 0
+              OR (item.root_id IS NOT NULL AND item.root_id NOT BETWEEN 1 AND 32767)
+              OR item.chain_depth NOT BETWEEN 1 AND 32
+              OR item.chain_state NOT IN ('resolved', 'cycle', 'depth_limit', 'external_blocker')
+       ) THEN
+        RAISE EXCEPTION 'activity collector payload contains an invalid bounded value'
+            USING ERRCODE = '22023';
+    END IF;
+
+    effective_completion_digest := sha256(convert_to(jsonb_build_object(
+        'contract', 'sqlobserver.activity-completion.v1',
+        'run', p_run_id, 'target', p_instance_id, 'revision', p_target_revision,
+        'collector', p_collector_id, 'collectorVersion', p_collector_version,
+        'outputVersion', p_output_schema_version, 'scheduleRevision', p_schedule_revision,
+        'scheduledAt', p_scheduled_at, 'requestDigest', encode(p_request_digest, 'hex'),
+        'outcome', p_outcome, 'reason', p_reason_code, 'durationMs', p_duration_ms,
+        'attempts', p_attempt_count, 'sourceRows', p_source_row_count,
+        'outputItems', p_output_item_count, 'responseBytes', p_response_bytes,
+        'outputBytes', p_output_bytes, 'lossKind', p_loss_kind,
+        'minimumLostItems', p_minimum_lost_items, 'lossExact', p_loss_count_is_exact,
+        'minimumLostBytes', p_minimum_lost_bytes, 'nextCircuit', p_next_circuit_state,
+        'nextFailures', p_next_consecutive_failures,
+        'sessions', jsonb_build_array(
+            p_session_observed_ats, p_session_ids, p_session_statuses,
+            p_session_is_user_process, p_session_database_ids,
+            p_session_open_transaction_counts, p_session_cpu_ms,
+            p_session_memory_usage_pages, p_session_reads, p_session_writes,
+            p_session_logical_reads, p_session_total_elapsed_ms, p_session_sizes),
+        'requests', jsonb_build_array(
+            p_request_observed_ats, p_request_session_ids, p_request_ids,
+            p_request_statuses, p_request_commands, p_request_database_ids,
+            p_request_cpu_ms, p_request_total_elapsed_ms, p_request_reads,
+            p_request_writes, p_request_logical_reads, p_request_row_counts,
+            p_request_percent_complete, p_request_sizes),
+        'waits', jsonb_build_array(
+            p_wait_observed_ats, p_wait_types, p_waiting_tasks_counts,
+            p_wait_time_ms, p_maximum_wait_time_ms, p_signal_wait_time_ms, p_wait_sizes),
+        'blocking', jsonb_build_array(
+            p_blocking_observed_ats, p_blocked_session_ids, p_blocker_kinds,
+            p_blocker_session_ids, p_blocking_wait_types, p_waiting_task_counts,
+            p_wait_duration_ms, p_root_blocker_session_ids, p_chain_depths,
+            p_chain_states, p_blocking_sizes))::text, 'UTF8'));
+
+    SELECT result.result_status, result.started_at, result.repository_time
+    INTO begin_status, begin_started_at, captured_repository_time
+    FROM control.begin_collection_run
+    (
+        p_run_id, p_instance_id, p_target_revision, p_collector_id,
+        p_collector_version, p_output_schema_version, p_schedule_revision,
+        p_scheduled_at, p_work_key, p_owner_execution_id, p_fencing_token,
+        p_request_digest
+    ) AS result;
+
+    IF begin_status = 'replayed' THEN
+        SELECT outcome.* INTO existing_outcome
+        FROM telemetry.collection_run_outcome AS outcome
+        WHERE outcome.run_id = p_run_id;
+        IF existing_outcome.completion_digest <> effective_completion_digest THEN
+            RAISE EXCEPTION 'activity collector replay differs from the committed payload'
+                USING ERRCODE = '22023';
+        END IF;
+
+        RETURN QUERY SELECT
+            'replayed', existing_outcome.inserted_item_count,
+            existing_outcome.duplicate_item_count, existing_outcome.rejected_item_count,
+            existing_outcome.persisted_bytes::integer, existing_outcome.completed_at;
+        RETURN;
+    ELSIF begin_status NOT IN ('started', 'running_replay') THEN
+        RETURN QUERY SELECT begin_status, 0, 0, 0, 0, NULL::timestamptz;
+        RETURN;
+    END IF;
+
+    captured_repository_time := clock_timestamp();
+    IF EXISTS
+       (
+           SELECT 1
+           FROM unnest(
+               p_session_observed_ats || p_request_observed_ats ||
+               p_wait_observed_ats || p_blocking_observed_ats) AS item(observed_at)
+           WHERE item.observed_at IS NULL OR NOT isfinite(item.observed_at)
+              OR item.observed_at < begin_started_at - interval '5 minutes'
+              OR item.observed_at > captured_repository_time + interval '5 minutes'
+       ) THEN
+        RAISE EXCEPTION 'activity observation timestamp exceeds the allowed run-clock skew window'
+            USING ERRCODE = '22023';
+    END IF;
+
+    PERFORM control.ensure_activity_daily_partitions(partition_day)
+    FROM
+    (
+        SELECT DISTINCT (observed_at AT TIME ZONE 'UTC')::date AS partition_day
+        FROM unnest(p_session_observed_ats || p_request_observed_ats || p_wait_observed_ats)
+            AS item(observed_at)
+    ) AS requested;
+    PERFORM control.ensure_blocking_monthly_partition(partition_month)
+    FROM
+    (
+        SELECT DISTINCT date_trunc('month', observed_at AT TIME ZONE 'UTC')::date AS partition_month
+        FROM unnest(p_blocking_observed_ats) AS item(observed_at)
+    ) AS requested;
+
+    INSERT INTO telemetry.activity_session_snapshot
+    (
+        observed_at, collection_run_id, instance_id, target_revision, session_id,
+        status_code, is_user_process, database_id, open_transaction_count,
+        cpu_ms, memory_usage_pages, reads, writes, logical_reads,
+        total_elapsed_ms, collected_at
+    )
+    SELECT
+        item.observed_at, p_run_id, p_instance_id, p_target_revision, item.session_id,
+        item.status_code, item.is_user, item.database_id, item.open_transactions,
+        item.cpu_ms, item.memory_pages, item.reads, item.writes, item.logical_reads,
+        item.elapsed_ms, captured_repository_time
+    FROM unnest(
+        p_session_observed_ats, p_session_ids, p_session_statuses,
+        p_session_is_user_process, p_session_database_ids,
+        p_session_open_transaction_counts, p_session_cpu_ms,
+        p_session_memory_usage_pages, p_session_reads, p_session_writes,
+        p_session_logical_reads, p_session_total_elapsed_ms)
+        AS item(observed_at, session_id, status_code, is_user, database_id,
+                open_transactions, cpu_ms, memory_pages, reads, writes,
+                logical_reads, elapsed_ms);
+
+    INSERT INTO telemetry.activity_request_snapshot
+    (
+        observed_at, collection_run_id, instance_id, target_revision,
+        session_id, request_id, status_code, command_code, database_id,
+        cpu_ms, total_elapsed_ms, reads, writes, logical_reads, row_count,
+        percent_complete, collected_at
+    )
+    SELECT
+        item.observed_at, p_run_id, p_instance_id, p_target_revision,
+        item.session_id, item.request_id, item.status_code, item.command_code,
+        item.database_id, item.cpu_ms, item.elapsed_ms, item.reads, item.writes,
+        item.logical_reads, item.row_count, item.percent_complete,
+        captured_repository_time
+    FROM unnest(
+        p_request_observed_ats, p_request_session_ids, p_request_ids,
+        p_request_statuses, p_request_commands, p_request_database_ids,
+        p_request_cpu_ms, p_request_total_elapsed_ms, p_request_reads,
+        p_request_writes, p_request_logical_reads, p_request_row_counts,
+        p_request_percent_complete)
+        AS item(observed_at, session_id, request_id, status_code, command_code,
+                database_id, cpu_ms, elapsed_ms, reads, writes, logical_reads,
+                row_count, percent_complete);
+
+    INSERT INTO telemetry.server_wait_snapshot
+    (
+        observed_at, collection_run_id, instance_id, target_revision,
+        wait_type, waiting_tasks_count, wait_time_ms, maximum_wait_time_ms,
+        signal_wait_time_ms, collected_at
+    )
+    SELECT
+        item.observed_at, p_run_id, p_instance_id, p_target_revision,
+        item.wait_type, item.tasks, item.wait_ms, item.maximum_ms,
+        item.signal_ms, captured_repository_time
+    FROM unnest(
+        p_wait_observed_ats, p_wait_types, p_waiting_tasks_counts,
+        p_wait_time_ms, p_maximum_wait_time_ms, p_signal_wait_time_ms)
+        AS item(observed_at, wait_type, tasks, wait_ms, maximum_ms, signal_ms);
+
+    INSERT INTO events.blocking_edge
+    (
+        observed_at, edge_id, collection_run_id, instance_id, target_revision,
+        blocked_session_id, blocker_kind, blocker_session_id, wait_type,
+        waiting_task_count, wait_duration_ms, root_blocker_session_id,
+        chain_depth, chain_state, collected_at
+    )
+    SELECT
+        item.observed_at, gen_random_uuid(), p_run_id, p_instance_id, p_target_revision,
+        item.blocked_id, item.blocker_kind, item.blocker_id, item.wait_type,
+        item.task_count, item.duration_ms, item.root_id, item.chain_depth,
+        item.chain_state, captured_repository_time
+    FROM unnest(
+        p_blocking_observed_ats, p_blocked_session_ids, p_blocker_kinds,
+        p_blocker_session_ids, p_blocking_wait_types, p_waiting_task_counts,
+        p_wait_duration_ms, p_root_blocker_session_ids, p_chain_depths,
+        p_chain_states)
+        AS item(observed_at, blocked_id, blocker_kind, blocker_id, wait_type,
+                task_count, duration_ms, root_id, chain_depth, chain_state);
+
+    total_inserted := payload_count;
+    total_rejected := p_output_item_count - total_inserted;
+    IF total_rejected < 0 THEN
+        RAISE EXCEPTION 'activity collector output accounting underflowed after persistence'
+            USING ERRCODE = '22023';
+    END IF;
+    total_persisted_bytes := payload_bytes;
+    effective_loss_detected := p_loss_kind <> 'none';
+    effective_truncated := p_loss_kind IN ('source_row_limit', 'response_byte_limit', 'blocking_graph_limit');
+
+    PERFORM control.assert_worker_lease(p_work_key, p_owner_execution_id, p_fencing_token);
+    SELECT schedule.* INTO selected_schedule
+    FROM control.collector_schedule AS schedule
+    WHERE schedule.instance_id = p_instance_id
+      AND schedule.collector_id = p_collector_id
+    FOR UPDATE;
+
+    IF selected_schedule.active_run_id <> p_run_id
+       OR selected_schedule.schedule_revision <> p_schedule_revision THEN
+        RAISE EXCEPTION 'activity collector schedule changed before commit'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF
+    (
+        p_outcome IN ('succeeded', 'partial')
+        AND (p_next_circuit_state <> 'closed' OR p_next_consecutive_failures <> 0)
+    )
+    OR
+    (
+        p_outcome IN ('transient_failure', 'timed_out')
+        AND
+        (
+            p_next_consecutive_failures <> selected_schedule.consecutive_failure_count + 1
+            OR p_next_circuit_state <> CASE
+                WHEN selected_schedule.circuit_state = 'half_open'
+                     OR selected_schedule.consecutive_failure_count + 1 >= selected_contract.circuit_failure_threshold
+                    THEN 'open'
+                ELSE 'closed'
+            END
+        )
+    )
+    OR
+    (
+        p_outcome NOT IN ('succeeded', 'partial', 'transient_failure', 'timed_out')
+        AND
+        (
+            p_next_circuit_state <> selected_schedule.circuit_state
+            OR p_next_consecutive_failures <> selected_schedule.consecutive_failure_count
+        )
+    ) THEN
+        RAISE EXCEPTION 'activity collector circuit transition differs from the authoritative schedule state'
+            USING ERRCODE = '22023';
+    END IF;
+
+    next_open_until := CASE
+        WHEN p_next_circuit_state = 'open'
+            THEN captured_repository_time + selected_contract.circuit_open_interval
+        ELSE NULL
+    END;
+
+    INSERT INTO telemetry.collection_run_outcome
+    (
+        run_id, outcome, reason_code, attempt_count, retry_count, duration_ms,
+        source_row_count, output_item_count, inserted_item_count,
+        duplicate_item_count, rejected_item_count, response_bytes, output_bytes,
+        persisted_bytes, truncated, loss_detected, loss_kind, loss_count_exact,
+        lost_row_count, lost_byte_count, completion_digest, completed_at
+    )
+    VALUES
+    (
+        p_run_id, p_outcome, p_reason_code, p_attempt_count,
+        greatest(p_attempt_count - 1, 0), p_duration_ms, p_source_row_count,
+        p_output_item_count, total_inserted, total_duplicates, total_rejected,
+        p_response_bytes, p_output_bytes, total_persisted_bytes,
+        effective_truncated, effective_loss_detected, p_loss_kind,
+        p_loss_count_is_exact, p_minimum_lost_items, p_minimum_lost_bytes,
+        effective_completion_digest, captured_repository_time
+    );
+
+    IF p_outcome <> 'succeeded' OR effective_loss_detected THEN
+        effective_gap_reason := CASE
+            WHEN p_loss_kind = 'ingestion_rejection' THEN 'ingestion_rejection'
+            WHEN p_loss_kind = 'output_validation_failure' THEN 'output_validation_failed'
+            WHEN p_loss_kind = 'source_row_limit' THEN 'source_row_limit'
+            WHEN p_loss_kind = 'response_byte_limit' THEN 'response_byte_limit'
+            WHEN p_loss_kind = 'blocking_graph_limit' THEN 'blocking_graph_limit'
+            ELSE p_reason_code
+        END;
+        effective_gap_lost_items := CASE WHEN effective_loss_detected THEN p_minimum_lost_items ELSE 1 END;
+        effective_gap_lost_bytes := CASE WHEN effective_loss_detected THEN p_minimum_lost_bytes ELSE 0 END;
+        effective_gap_exact := CASE WHEN effective_loss_detected THEN p_loss_count_is_exact ELSE false END;
+        INSERT INTO telemetry.visibility_gap
+        (
+            gap_id, run_id, instance_id, collector_id, reason_code,
+            gap_started_at, gap_ended_at, lost_row_count, lost_byte_count,
+            count_is_exact, recorded_at
+        )
+        VALUES
+        (
+            gen_random_uuid(), p_run_id, p_instance_id, p_collector_id,
+            effective_gap_reason, p_scheduled_at, captured_repository_time,
+            effective_gap_lost_items, effective_gap_lost_bytes,
+            effective_gap_exact, captured_repository_time
+        );
+    END IF;
+
+    UPDATE control.collector_schedule AS schedule
+    SET
+        active_run_id = NULL,
+        next_due_at = CASE
+            WHEN p_next_circuit_state = 'open' THEN next_open_until
+            ELSE captured_repository_time + schedule.collection_interval
+        END,
+        circuit_state = p_next_circuit_state,
+        consecutive_failure_count = p_next_consecutive_failures,
+        circuit_open_until = next_open_until,
+        last_completed_at = captured_repository_time,
+        last_succeeded_at = CASE
+            WHEN p_outcome IN ('succeeded', 'partial') THEN captured_repository_time
+            ELSE schedule.last_succeeded_at
+        END,
+        last_outcome = p_outcome,
+        updated_at = captured_repository_time
+    WHERE schedule.instance_id = p_instance_id
+      AND schedule.collector_id = p_collector_id;
+
+    PERFORM control.assert_worker_lease(p_work_key, p_owner_execution_id, p_fencing_token);
+    RETURN QUERY SELECT
+        'committed', total_inserted, total_duplicates, total_rejected,
+        total_persisted_bytes::integer, captured_repository_time;
+END
+$sqlobserver$;
+
+CREATE VIEW reporting.activity_snapshot_evidence
+WITH (security_barrier = true)
+AS
+SELECT
+    run.instance_id,
+    run.run_id,
+    run.target_revision,
+    run.collector_id,
+    outcome.outcome,
+    outcome.reason_code,
+    outcome.loss_kind,
+    outcome.loss_count_exact,
+    outcome.lost_row_count,
+    outcome.lost_byte_count,
+    outcome.completed_at
+FROM telemetry.collection_run AS run
+INNER JOIN telemetry.collection_run_outcome AS outcome
+    ON outcome.run_id = run.run_id
+WHERE outcome.outcome IN ('succeeded', 'partial')
+  AND run.collector_id IN
+      ('activity.sessions', 'activity.requests', 'waits.server', 'blocking.current');
+
+COMMENT ON VIEW reporting.activity_snapshot_evidence IS
+    'Internal run-bound M5 data-snapshot evidence; callers use bounded target-scoped reporting functions.';
+
+CREATE FUNCTION reporting.list_activity_sessions
+(
+    p_instance_id uuid,
+    p_snapshot_run_id uuid,
+    p_snapshot_target_revision bigint,
+    p_after_session_id integer,
+    p_max_results integer
+)
+RETURNS TABLE
+(
+    target_instance_id uuid,
+    snapshot_run_id uuid,
+    snapshot_target_revision bigint,
+    collector_id text,
+    outcome text,
+    reason_code text,
+    loss_kind text,
+    loss_count_exact boolean,
+    lost_row_count bigint,
+    lost_byte_count bigint,
+    snapshot_completed_at timestamptz,
+    observed_at timestamptz,
+    session_id integer,
+    status_code text,
+    is_user_process boolean,
+    database_id integer,
+    open_transaction_count integer,
+    cpu_ms bigint,
+    memory_usage_pages bigint,
+    reads bigint,
+    writes bigint,
+    logical_reads bigint,
+    total_elapsed_ms bigint,
+    has_more boolean,
+    cursor_valid boolean,
+    repository_time timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+BEGIN
+    IF p_instance_id IS NULL OR p_max_results NOT BETWEEN 1 AND 100 THEN
+        RAISE EXCEPTION 'activity-session query bounds are invalid' USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH repository_clock AS MATERIALIZED
+    (
+        SELECT clock_timestamp() AS value
+    ),
+    target_state AS MATERIALIZED
+    (
+        SELECT target.instance_id, target.revision
+        FROM control.observation_target AS target
+        WHERE target.instance_id = p_instance_id
+          AND target.lifecycle_state = 'active'
+          AND target.host_name IS NOT NULL
+    ),
+    scope AS MATERIALIZED
+    (
+        SELECT
+            target.instance_id,
+            target.revision,
+            evidence.run_id,
+            evidence.collector_id,
+            evidence.outcome,
+            evidence.reason_code,
+            evidence.loss_kind,
+            evidence.loss_count_exact,
+            evidence.lost_row_count,
+            evidence.lost_byte_count,
+            evidence.completed_at,
+            repository_clock.value AS repository_time,
+            CASE
+                WHEN p_snapshot_run_id IS NULL
+                 AND p_snapshot_target_revision IS NULL
+                 AND p_after_session_id IS NULL THEN true
+                WHEN p_snapshot_run_id IS NOT NULL
+                 AND p_snapshot_target_revision IS NOT NULL
+                 AND p_after_session_id IS NOT NULL
+                 AND evidence.run_id = p_snapshot_run_id
+                 AND target.revision = p_snapshot_target_revision THEN true
+                ELSE false
+            END AS cursor_valid
+        FROM target_state AS target
+        CROSS JOIN repository_clock
+        LEFT JOIN LATERAL
+        (
+            SELECT candidate.*
+            FROM reporting.activity_snapshot_evidence AS candidate
+            WHERE candidate.instance_id = target.instance_id
+              AND candidate.target_revision = target.revision
+              AND candidate.collector_id = 'activity.sessions'
+            ORDER BY candidate.completed_at DESC, candidate.run_id DESC
+            LIMIT 1
+        ) AS evidence ON true
+    ),
+    page AS MATERIALIZED
+    (
+        SELECT item.*
+        FROM telemetry.activity_session_snapshot AS item
+        CROSS JOIN scope
+        WHERE scope.cursor_valid
+          AND item.instance_id = scope.instance_id
+          AND item.target_revision = scope.revision
+          AND item.collection_run_id = scope.run_id
+          AND (p_after_session_id IS NULL OR item.session_id > p_after_session_id)
+        ORDER BY item.session_id
+        LIMIT p_max_results + 1
+    )
+    SELECT
+        scope.instance_id,
+        scope.run_id,
+        CASE WHEN scope.run_id IS NULL THEN NULL::bigint ELSE scope.revision END,
+        scope.collector_id,
+        scope.outcome,
+        scope.reason_code,
+        scope.loss_kind,
+        scope.loss_count_exact,
+        scope.lost_row_count,
+        scope.lost_byte_count,
+        scope.completed_at,
+        page.observed_at,
+        page.session_id,
+        page.status_code,
+        page.is_user_process,
+        page.database_id,
+        page.open_transaction_count,
+        page.cpu_ms,
+        page.memory_usage_pages,
+        page.reads,
+        page.writes,
+        page.logical_reads,
+        page.total_elapsed_ms,
+        (SELECT count(*) > p_max_results FROM page),
+        scope.cursor_valid,
+        scope.repository_time
+    FROM scope
+    LEFT JOIN page ON true
+    ORDER BY page.session_id NULLS LAST
+    LIMIT p_max_results;
+END
+$sqlobserver$;
+
+CREATE FUNCTION reporting.list_activity_requests
+(
+    p_instance_id uuid,
+    p_snapshot_run_id uuid,
+    p_snapshot_target_revision bigint,
+    p_after_session_id integer,
+    p_after_request_id integer,
+    p_max_results integer
+)
+RETURNS TABLE
+(
+    target_instance_id uuid,
+    snapshot_run_id uuid,
+    snapshot_target_revision bigint,
+    collector_id text,
+    outcome text,
+    reason_code text,
+    loss_kind text,
+    loss_count_exact boolean,
+    lost_row_count bigint,
+    lost_byte_count bigint,
+    snapshot_completed_at timestamptz,
+    observed_at timestamptz,
+    session_id integer,
+    request_id integer,
+    status_code text,
+    command_code text,
+    database_id integer,
+    cpu_ms bigint,
+    total_elapsed_ms bigint,
+    reads bigint,
+    writes bigint,
+    logical_reads bigint,
+    row_count bigint,
+    percent_complete double precision,
+    has_more boolean,
+    cursor_valid boolean,
+    repository_time timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+BEGIN
+    IF p_instance_id IS NULL OR p_max_results NOT BETWEEN 1 AND 100 THEN
+        RAISE EXCEPTION 'activity-request query bounds are invalid' USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH repository_clock AS MATERIALIZED (SELECT clock_timestamp() AS value),
+    target_state AS MATERIALIZED
+    (
+        SELECT target.instance_id, target.revision
+        FROM control.observation_target AS target
+        WHERE target.instance_id = p_instance_id
+          AND target.lifecycle_state = 'active'
+          AND target.host_name IS NOT NULL
+    ),
+    scope AS MATERIALIZED
+    (
+        SELECT
+            target.instance_id, target.revision, evidence.run_id,
+            evidence.collector_id, evidence.outcome, evidence.reason_code,
+            evidence.loss_kind, evidence.loss_count_exact, evidence.lost_row_count,
+            evidence.lost_byte_count, evidence.completed_at,
+            repository_clock.value AS repository_time,
+            CASE
+                WHEN p_snapshot_run_id IS NULL AND p_snapshot_target_revision IS NULL
+                 AND p_after_session_id IS NULL AND p_after_request_id IS NULL THEN true
+                WHEN p_snapshot_run_id IS NOT NULL AND p_snapshot_target_revision IS NOT NULL
+                 AND p_after_session_id IS NOT NULL AND p_after_request_id IS NOT NULL
+                 AND evidence.run_id = p_snapshot_run_id
+                 AND target.revision = p_snapshot_target_revision THEN true
+                ELSE false
+            END AS cursor_valid
+        FROM target_state AS target
+        CROSS JOIN repository_clock
+        LEFT JOIN LATERAL
+        (
+            SELECT candidate.*
+            FROM reporting.activity_snapshot_evidence AS candidate
+            WHERE candidate.instance_id = target.instance_id
+              AND candidate.target_revision = target.revision
+              AND candidate.collector_id = 'activity.requests'
+            ORDER BY candidate.completed_at DESC, candidate.run_id DESC
+            LIMIT 1
+        ) AS evidence ON true
+    ),
+    page AS MATERIALIZED
+    (
+        SELECT item.*
+        FROM telemetry.activity_request_snapshot AS item
+        CROSS JOIN scope
+        WHERE scope.cursor_valid
+          AND item.instance_id = scope.instance_id
+          AND item.target_revision = scope.revision
+          AND item.collection_run_id = scope.run_id
+          AND
+          (
+              p_after_session_id IS NULL
+              OR (item.session_id, item.request_id) > (p_after_session_id, p_after_request_id)
+          )
+        ORDER BY item.session_id, item.request_id
+        LIMIT p_max_results + 1
+    )
+    SELECT
+        scope.instance_id, scope.run_id,
+        CASE WHEN scope.run_id IS NULL THEN NULL::bigint ELSE scope.revision END,
+        scope.collector_id, scope.outcome, scope.reason_code, scope.loss_kind,
+        scope.loss_count_exact, scope.lost_row_count, scope.lost_byte_count,
+        scope.completed_at, page.observed_at, page.session_id, page.request_id,
+        page.status_code, page.command_code, page.database_id, page.cpu_ms,
+        page.total_elapsed_ms, page.reads, page.writes, page.logical_reads,
+        page.row_count, page.percent_complete,
+        (SELECT count(*) > p_max_results FROM page), scope.cursor_valid,
+        scope.repository_time
+    FROM scope
+    LEFT JOIN page ON true
+    ORDER BY page.session_id NULLS LAST, page.request_id NULLS LAST
+    LIMIT p_max_results;
+END
+$sqlobserver$;
+
+CREATE FUNCTION reporting.list_server_wait_summary
+(
+    p_instance_id uuid,
+    p_snapshot_run_id uuid,
+    p_baseline_run_id uuid,
+    p_snapshot_target_revision bigint,
+    p_after_wait_type text,
+    p_max_results integer
+)
+RETURNS TABLE
+(
+    target_instance_id uuid,
+    snapshot_run_id uuid,
+    baseline_run_id uuid,
+    snapshot_target_revision bigint,
+    collector_id text,
+    outcome text,
+    reason_code text,
+    loss_kind text,
+    loss_count_exact boolean,
+    lost_row_count bigint,
+    lost_byte_count bigint,
+    snapshot_completed_at timestamptz,
+    observed_at timestamptz,
+    wait_type text,
+    waiting_tasks_count bigint,
+    wait_time_ms bigint,
+    maximum_wait_time_ms bigint,
+    signal_wait_time_ms bigint,
+    baseline_available boolean,
+    reset_detected boolean,
+    waiting_tasks_delta bigint,
+    wait_time_ms_delta bigint,
+    signal_wait_time_ms_delta bigint,
+    has_more boolean,
+    cursor_valid boolean,
+    repository_time timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+BEGIN
+    IF p_instance_id IS NULL OR p_max_results NOT BETWEEN 1 AND 100
+       OR (p_after_wait_type IS NOT NULL AND p_after_wait_type !~ '^[A-Z][A-Z0-9_]{0,119}$') THEN
+        RAISE EXCEPTION 'server-wait query bounds are invalid' USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH repository_clock AS MATERIALIZED (SELECT clock_timestamp() AS value),
+    target_state AS MATERIALIZED
+    (
+        SELECT target.instance_id, target.revision
+        FROM control.observation_target AS target
+        WHERE target.instance_id = p_instance_id
+          AND target.lifecycle_state = 'active'
+          AND target.host_name IS NOT NULL
+    ),
+    ranked AS MATERIALIZED
+    (
+        SELECT evidence.*,
+               row_number() OVER (ORDER BY evidence.completed_at DESC, evidence.run_id DESC) AS position
+        FROM reporting.activity_snapshot_evidence AS evidence
+        INNER JOIN target_state AS target
+            ON target.instance_id = evidence.instance_id
+           AND target.revision = evidence.target_revision
+        WHERE evidence.collector_id = 'waits.server'
+    ),
+    scope AS MATERIALIZED
+    (
+        SELECT
+            target.instance_id, target.revision,
+            current_run.run_id, baseline.run_id AS baseline_run_id,
+            current_run.collector_id, current_run.outcome, current_run.reason_code,
+            current_run.loss_kind, current_run.loss_count_exact,
+            current_run.lost_row_count, current_run.lost_byte_count,
+            current_run.completed_at, repository_clock.value AS repository_time,
+            CASE
+                WHEN p_snapshot_run_id IS NULL AND p_baseline_run_id IS NULL
+                 AND p_snapshot_target_revision IS NULL AND p_after_wait_type IS NULL THEN true
+                WHEN p_snapshot_run_id IS NOT NULL
+                 AND p_snapshot_target_revision IS NOT NULL
+                 AND p_after_wait_type IS NOT NULL
+                 AND current_run.run_id = p_snapshot_run_id
+                 AND baseline.run_id IS NOT DISTINCT FROM p_baseline_run_id
+                 AND target.revision = p_snapshot_target_revision THEN true
+                ELSE false
+            END AS cursor_valid
+        FROM target_state AS target
+        CROSS JOIN repository_clock
+        LEFT JOIN ranked AS current_run ON current_run.position = 1
+        LEFT JOIN ranked AS baseline ON baseline.position = 2
+    ),
+    page AS MATERIALIZED
+    (
+        SELECT
+            current_wait.*,
+            previous_wait.wait_type IS NOT NULL AS baseline_available,
+            previous_wait.wait_type IS NOT NULL
+            AND
+            (
+                current_wait.waiting_tasks_count < previous_wait.waiting_tasks_count
+                OR current_wait.wait_time_ms < previous_wait.wait_time_ms
+                OR current_wait.maximum_wait_time_ms < previous_wait.maximum_wait_time_ms
+                OR current_wait.signal_wait_time_ms < previous_wait.signal_wait_time_ms
+            ) AS reset_detected,
+            previous_wait.waiting_tasks_count AS previous_tasks,
+            previous_wait.wait_time_ms AS previous_wait_ms,
+            previous_wait.signal_wait_time_ms AS previous_signal_ms
+        FROM telemetry.server_wait_snapshot AS current_wait
+        CROSS JOIN scope
+        LEFT JOIN telemetry.server_wait_snapshot AS previous_wait
+            ON previous_wait.instance_id = scope.instance_id
+           AND previous_wait.target_revision = scope.revision
+           AND previous_wait.collection_run_id = scope.baseline_run_id
+           AND previous_wait.wait_type = current_wait.wait_type
+        WHERE scope.cursor_valid
+          AND current_wait.instance_id = scope.instance_id
+          AND current_wait.target_revision = scope.revision
+          AND current_wait.collection_run_id = scope.run_id
+          AND (p_after_wait_type IS NULL OR current_wait.wait_type > p_after_wait_type)
+        ORDER BY current_wait.wait_type
+        LIMIT p_max_results + 1
+    )
+    SELECT
+        scope.instance_id, scope.run_id, scope.baseline_run_id,
+        CASE WHEN scope.run_id IS NULL THEN NULL::bigint ELSE scope.revision END,
+        scope.collector_id, scope.outcome, scope.reason_code, scope.loss_kind,
+        scope.loss_count_exact, scope.lost_row_count, scope.lost_byte_count,
+        scope.completed_at, page.observed_at, page.wait_type,
+        page.waiting_tasks_count, page.wait_time_ms, page.maximum_wait_time_ms,
+        page.signal_wait_time_ms, page.baseline_available,
+        coalesce(page.reset_detected, false),
+        CASE WHEN page.baseline_available AND NOT page.reset_detected
+            THEN page.waiting_tasks_count - page.previous_tasks ELSE NULL END,
+        CASE WHEN page.baseline_available AND NOT page.reset_detected
+            THEN page.wait_time_ms - page.previous_wait_ms ELSE NULL END,
+        CASE WHEN page.baseline_available AND NOT page.reset_detected
+            THEN page.signal_wait_time_ms - page.previous_signal_ms ELSE NULL END,
+        (SELECT count(*) > p_max_results FROM page), scope.cursor_valid,
+        scope.repository_time
+    FROM scope
+    LEFT JOIN page ON true
+    ORDER BY page.wait_type NULLS LAST
+    LIMIT p_max_results;
+END
+$sqlobserver$;
+
+CREATE FUNCTION reporting.list_current_blocking
+(
+    p_instance_id uuid,
+    p_snapshot_run_id uuid,
+    p_snapshot_target_revision bigint,
+    p_after_blocked_session_id integer,
+    p_after_blocker_kind text,
+    p_after_blocker_session_id integer,
+    p_after_wait_type text,
+    p_max_results integer
+)
+RETURNS TABLE
+(
+    target_instance_id uuid,
+    snapshot_run_id uuid,
+    snapshot_target_revision bigint,
+    collector_id text,
+    outcome text,
+    reason_code text,
+    loss_kind text,
+    loss_count_exact boolean,
+    lost_row_count bigint,
+    lost_byte_count bigint,
+    snapshot_completed_at timestamptz,
+    observed_at timestamptz,
+    blocked_session_id integer,
+    blocker_kind text,
+    blocker_session_id integer,
+    wait_type text,
+    waiting_task_count bigint,
+    wait_duration_ms bigint,
+    root_blocker_session_id integer,
+    chain_depth integer,
+    chain_state text,
+    has_more boolean,
+    cursor_valid boolean,
+    repository_time timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+VOLATILE
+PARALLEL UNSAFE
+SET search_path = pg_catalog
+SET TimeZone = 'UTC'
+AS $sqlobserver$
+BEGIN
+    IF p_instance_id IS NULL OR p_max_results NOT BETWEEN 1 AND 256 THEN
+        RAISE EXCEPTION 'current-blocking query bounds are invalid' USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH repository_clock AS MATERIALIZED (SELECT clock_timestamp() AS value),
+    target_state AS MATERIALIZED
+    (
+        SELECT target.instance_id, target.revision
+        FROM control.observation_target AS target
+        WHERE target.instance_id = p_instance_id
+          AND target.lifecycle_state = 'active'
+          AND target.host_name IS NOT NULL
+    ),
+    scope AS MATERIALIZED
+    (
+        SELECT
+            target.instance_id, target.revision, evidence.run_id,
+            evidence.collector_id, evidence.outcome, evidence.reason_code,
+            evidence.loss_kind, evidence.loss_count_exact, evidence.lost_row_count,
+            evidence.lost_byte_count, evidence.completed_at,
+            repository_clock.value AS repository_time,
+            CASE
+                WHEN p_snapshot_run_id IS NULL AND p_snapshot_target_revision IS NULL
+                 AND p_after_blocked_session_id IS NULL AND p_after_blocker_kind IS NULL
+                 AND p_after_blocker_session_id IS NULL AND p_after_wait_type IS NULL THEN true
+                WHEN p_snapshot_run_id IS NOT NULL AND p_snapshot_target_revision IS NOT NULL
+                 AND p_after_blocked_session_id IS NOT NULL AND p_after_blocker_kind IS NOT NULL
+                 AND p_after_wait_type IS NOT NULL
+                 AND evidence.run_id = p_snapshot_run_id
+                 AND target.revision = p_snapshot_target_revision THEN true
+                ELSE false
+            END AS cursor_valid
+        FROM target_state AS target
+        CROSS JOIN repository_clock
+        LEFT JOIN LATERAL
+        (
+            SELECT candidate.*
+            FROM reporting.activity_snapshot_evidence AS candidate
+            WHERE candidate.instance_id = target.instance_id
+              AND candidate.target_revision = target.revision
+              AND candidate.collector_id = 'blocking.current'
+            ORDER BY candidate.completed_at DESC, candidate.run_id DESC
+            LIMIT 1
+        ) AS evidence ON true
+    ),
+    page AS MATERIALIZED
+    (
+        SELECT item.*
+        FROM events.blocking_edge AS item
+        CROSS JOIN scope
+        WHERE scope.cursor_valid
+          AND item.instance_id = scope.instance_id
+          AND item.target_revision = scope.revision
+          AND item.collection_run_id = scope.run_id
+          AND
+          (
+              p_after_blocked_session_id IS NULL
+              OR (item.blocked_session_id, item.blocker_kind,
+                  coalesce(item.blocker_session_id, 0), item.wait_type)
+                 > (p_after_blocked_session_id, p_after_blocker_kind,
+                    coalesce(p_after_blocker_session_id, 0), p_after_wait_type)
+          )
+        ORDER BY item.blocked_session_id, item.blocker_kind,
+                 coalesce(item.blocker_session_id, 0), item.wait_type
+        LIMIT p_max_results + 1
+    )
+    SELECT
+        scope.instance_id, scope.run_id,
+        CASE WHEN scope.run_id IS NULL THEN NULL::bigint ELSE scope.revision END,
+        scope.collector_id, scope.outcome, scope.reason_code, scope.loss_kind,
+        scope.loss_count_exact, scope.lost_row_count, scope.lost_byte_count,
+        scope.completed_at, page.observed_at, page.blocked_session_id,
+        page.blocker_kind, page.blocker_session_id, page.wait_type,
+        page.waiting_task_count, page.wait_duration_ms,
+        page.root_blocker_session_id, page.chain_depth, page.chain_state,
+        (SELECT count(*) > p_max_results FROM page), scope.cursor_valid,
+        scope.repository_time
+    FROM scope
+    LEFT JOIN page ON true
+    ORDER BY page.blocked_session_id NULLS LAST, page.blocker_kind NULLS LAST,
+             coalesce(page.blocker_session_id, 0), page.wait_type NULLS LAST
+    LIMIT p_max_results;
+END
+$sqlobserver$;
+
+COMMENT ON FUNCTION control.commit_activity_collection_run(
+    uuid, uuid, bigint, text, integer, integer, bigint, timestamptz,
+    text, uuid, bigint, bytea, text, text, bigint, integer, integer,
+    integer, bigint, bigint, text, integer, boolean, integer, text,
+    integer, timestamptz[], integer[], text[], boolean[], integer[],
+    integer[], bigint[], bigint[], bigint[], bigint[], bigint[], bigint[],
+    integer[], timestamptz[], integer[], integer[], text[], text[], integer[],
+    bigint[], bigint[], bigint[], bigint[], bigint[], bigint[], double precision[],
+    integer[], timestamptz[], text[], bigint[], bigint[], bigint[], bigint[],
+    integer[], timestamptz[], integer[], text[], integer[], text[], bigint[],
+    bigint[], integer[], integer[], text[], integer[]) IS
+    'Atomically persists one fenced, digest-bound M5 activity snapshot and its explicit accounting/loss evidence.';
+COMMENT ON FUNCTION reporting.list_activity_sessions(uuid, uuid, bigint, integer, integer) IS
+    'Returns a target/revision/run-bound page of current session activity without sensitive identity fields.';
+COMMENT ON FUNCTION reporting.list_activity_requests(uuid, uuid, bigint, integer, integer, integer) IS
+    'Returns a target/revision/run-bound page of current requests without query text, handles, plans, or client identity.';
+COMMENT ON FUNCTION reporting.list_server_wait_summary(uuid, uuid, uuid, bigint, text, integer) IS
+    'Returns bounded current cumulative waits and reset-safe deltas against the preceding successful data snapshot.';
+COMMENT ON FUNCTION reporting.list_current_blocking(uuid, uuid, bigint, integer, text, integer, text, integer) IS
+    'Returns at most 256 nodes worth of cycle/depth-bounded current blocking evidence.';
+
+REVOKE ALL ON TABLE
+    control.collector_dependency,
+    telemetry.activity_session_snapshot,
+    telemetry.activity_request_snapshot,
+    telemetry.server_wait_snapshot,
+    events.blocking_edge,
+    reporting.activity_snapshot_evidence
+    FROM PUBLIC, sqlobserver_server, sqlobserver_collector, sqlobserver_auditor;
+
+DO $sqlobserver$
+DECLARE
+    function_signature regprocedure;
+BEGIN
+    FOR function_signature IN
+        SELECT procedure.oid::regprocedure
+        FROM pg_catalog.pg_proc AS procedure
+        INNER JOIN pg_catalog.pg_namespace AS namespace
+            ON namespace.oid = procedure.pronamespace
+        WHERE
+        (
+            namespace.nspname = 'control'
+            AND procedure.proname IN
+                ('ensure_activity_daily_partitions', 'ensure_blocking_monthly_partition',
+                 'commit_activity_collection_run')
+        )
+        OR
+        (
+            namespace.nspname = 'reporting'
+            AND procedure.proname IN
+                ('list_activity_sessions', 'list_activity_requests',
+                 'list_server_wait_summary', 'list_current_blocking')
+        )
+    LOOP
+        EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', function_signature);
+    END LOOP;
+
+    FOR function_signature IN
+        SELECT procedure.oid::regprocedure
+        FROM pg_catalog.pg_proc AS procedure
+        INNER JOIN pg_catalog.pg_namespace AS namespace
+            ON namespace.oid = procedure.pronamespace
+        WHERE namespace.nspname = 'control'
+          AND procedure.proname = 'commit_activity_collection_run'
+    LOOP
+        EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO sqlobserver_collector', function_signature);
+    END LOOP;
+
+    FOR function_signature IN
+        SELECT procedure.oid::regprocedure
+        FROM pg_catalog.pg_proc AS procedure
+        INNER JOIN pg_catalog.pg_namespace AS namespace
+            ON namespace.oid = procedure.pronamespace
+        WHERE namespace.nspname = 'reporting'
+          AND procedure.proname IN
+              ('list_activity_sessions', 'list_activity_requests',
+               'list_server_wait_summary', 'list_current_blocking')
+    LOOP
+        EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO sqlobserver_server', function_signature);
+    END LOOP;
+END
+$sqlobserver$;

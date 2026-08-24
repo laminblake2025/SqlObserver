@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/collector-manifest.v3.json",
+  "title": "SqlObserver activity collector manifest v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "collectorId",
+    "collectorVersion",
+    "displayName",
+    "operationalMode",
+    "dependsOn",
+    "supportedTargets",
+    "requiredCapabilities",
+    "requiredPermissionsByMajor",
+    "cadence",
+    "executionBounds",
+    "resilience",
+    "estimatedCostClass",
+    "queryResources",
+    "fallback",
+    "outputSchemaVersion",
+    "outputKind"
+  ],
+  "properties": {
+    "$schema": { "const": "collector-manifest.v3.schema.json" },
+    "schemaVersion": { "const": 3 },
+    "collectorId": { "$ref": "#/$defs/collectorId" },
+    "collectorVersion": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "operationalMode": { "const": "passive" },
+    "dependsOn": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/collectorId" },
+      "uniqueItems": true,
+      "maxItems": 16
+    },
+    "supportedTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "minimumMajorVersion", "maximumMajorVersion", "platforms", "engineEditions"],
+      "properties": {
+        "product": { "const": "Microsoft SQL Server" },
+        "minimumMajorVersion": { "const": 15 },
+        "maximumMajorVersion": { "const": 17 },
+        "platforms": { "const": ["Windows"] },
+        "engineEditions": {
+          "type": "array",
+          "items": { "enum": [2, 3, 4] },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 3
+        }
+      }
+    },
+    "requiredCapabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asciiToken" },
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "requiredPermissionsByMajor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["15", "16", "17"],
+      "properties": {
+        "15": { "$ref": "#/$defs/permissionList" },
+        "16": { "$ref": "#/$defs/permissionList" },
+        "17": { "$ref": "#/$defs/permissionList" }
+      }
+    },
+    "cadence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultIntervalSeconds", "minimumIntervalSeconds", "nonOverlappingPerTarget"],
+      "properties": {
+        "defaultIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "minimumIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "nonOverlappingPerTarget": { "const": true }
+      }
+    },
+    "executionBounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectTimeoutSeconds", "commandTimeoutSeconds", "maximumRows", "maximumResponseBytes"],
+      "properties": {
+        "connectTimeoutSeconds": { "const": 5 },
+        "commandTimeoutSeconds": { "const": 5 },
+        "maximumRows": { "type": "integer", "minimum": 2, "maximum": 100000 },
+        "maximumResponseBytes": { "type": "integer", "minimum": 1, "maximum": 33554432 }
+      }
+    },
+    "resilience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumAttempts", "transientRetryDelayMilliseconds", "circuitFailureThreshold", "circuitOpenSeconds"],
+      "properties": {
+        "maximumAttempts": { "const": 2 },
+        "transientRetryDelayMilliseconds": { "type": "integer", "minimum": 0, "maximum": 5000 },
+        "circuitFailureThreshold": { "const": 3 },
+        "circuitOpenSeconds": { "const": 300 }
+      }
+    },
+    "estimatedCostClass": { "enum": ["low", "moderate"] },
+    "queryResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supportedByMajor"],
+      "properties": {
+        "supportedByMajor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["15", "16", "17"],
+          "properties": {
+            "15": { "$ref": "#/$defs/resourceName" },
+            "16": { "$ref": "#/$defs/resourceName" },
+            "17": { "$ref": "#/$defs/resourceName" }
+          }
+        }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": { "mode": { "const": "unsupported" } }
+    },
+    "outputSchemaVersion": { "const": 1 },
+    "outputKind": { "enum": ["activity_sessions", "activity_requests", "server_waits", "current_blocking"] }
+  },
+  "$defs": {
+    "collectorId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.][a-z][a-z0-9]*)+$",
+      "maxLength": 128
+    },
+    "asciiToken": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "maxLength": 128
+    },
+    "permissionList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asciiToken" },
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "resourceName": {
+      "type": "string",
+      "pattern": "^[a-z0-9.-]+[.]sql$",
+      "maxLength": 192
+    }
+  }
+}

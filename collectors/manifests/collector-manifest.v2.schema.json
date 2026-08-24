@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/collector-manifest.v2.json",
+  "title": "SqlObserver collector manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "collectorId",
+    "collectorVersion",
+    "displayName",
+    "operationalMode",
+    "dependsOn",
+    "supportedTargets",
+    "requiredCapabilities",
+    "requiredPermissionsByMajor",
+    "cadence",
+    "executionBounds",
+    "resilience",
+    "estimatedCostClass",
+    "queryResources",
+    "fallback",
+    "outputSchemaVersion",
+    "outputKind"
+  ],
+  "properties": {
+    "$schema": { "const": "collector-manifest.v2.schema.json" },
+    "schemaVersion": { "const": 2 },
+    "collectorId": { "$ref": "#/$defs/collectorId" },
+    "collectorVersion": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "operationalMode": { "enum": ["passive", "enhanced-prerequisite"] },
+    "dependsOn": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/collectorId" },
+      "uniqueItems": true,
+      "maxItems": 16
+    },
+    "supportedTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "minimumMajorVersion", "maximumMajorVersion", "platforms", "engineEditions"],
+      "properties": {
+        "product": { "const": "Microsoft SQL Server" },
+        "minimumMajorVersion": { "type": "integer", "minimum": 15, "maximum": 17 },
+        "maximumMajorVersion": { "type": "integer", "minimum": 15, "maximum": 17 },
+        "platforms": {
+          "type": "array",
+          "items": { "enum": ["Windows"] },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "engineEditions": {
+          "type": "array",
+          "items": { "enum": [2, 3, 4] },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 3
+        }
+      }
+    },
+    "requiredCapabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asciiToken" },
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "requiredPermissionsByMajor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["15", "16", "17"],
+      "properties": {
+        "15": { "$ref": "#/$defs/permissionList" },
+        "16": { "$ref": "#/$defs/permissionList" },
+        "17": { "$ref": "#/$defs/permissionList" }
+      }
+    },
+    "cadence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultIntervalSeconds", "minimumIntervalSeconds", "nonOverlappingPerTarget"],
+      "properties": {
+        "defaultIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "minimumIntervalSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "nonOverlappingPerTarget": { "const": true }
+      }
+    },
+    "executionBounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectTimeoutSeconds", "commandTimeoutSeconds", "maximumRows", "maximumResponseBytes"],
+      "properties": {
+        "connectTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "commandTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "maximumRows": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "maximumResponseBytes": { "type": "integer", "minimum": 1, "maximum": 33554432 }
+      }
+    },
+    "resilience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumAttempts", "transientRetryDelayMilliseconds", "circuitFailureThreshold", "circuitOpenSeconds"],
+      "properties": {
+        "maximumAttempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "transientRetryDelayMilliseconds": { "type": "integer", "minimum": 0, "maximum": 5000 },
+        "circuitFailureThreshold": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "circuitOpenSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      }
+    },
+    "estimatedCostClass": { "enum": ["low", "moderate", "high"] },
+    "queryResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supportedByMajor"],
+      "properties": {
+        "supportedByMajor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["15", "16", "17"],
+          "properties": {
+            "15": { "$ref": "#/$defs/resourceName" },
+            "16": { "$ref": "#/$defs/resourceName" },
+            "17": { "$ref": "#/$defs/resourceName" }
+          }
+        }
+      }
+    },
+    "fallback": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": { "mode": { "const": "unsupported" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "collectorId"],
+          "properties": {
+            "mode": { "const": "alternate_collector" },
+            "collectorId": { "$ref": "#/$defs/collectorId" }
+          }
+        }
+      ]
+    },
+    "outputSchemaVersion": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "outputKind": { "enum": ["metrics", "database_inventory", "database_files"] }
+  },
+  "$defs": {
+    "collectorId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.][a-z][a-z0-9]*)+$",
+      "maxLength": 128
+    },
+    "asciiToken": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "maxLength": 128
+    },
+    "permissionList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asciiToken" },
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "resourceName": {
+      "type": "string",
+      "pattern": "^[a-z0-9.-]+[.]sql$",
+      "maxLength": 192
+    }
+  }
+}

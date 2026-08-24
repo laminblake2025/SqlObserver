@@ -250,9 +250,15 @@ function Assert-RepositoryShape {
         'docs/runbooks/README.md',
         'docs/milestones/M2-postgresql-repository.md',
         'docs/milestones/M3-onboarding-and-capabilities.md',
+        'docs/milestones/M4-collector-framework-and-core-health.md',
         'collectors/manifests/collector-manifest.schema.json',
         'collectors/manifests/capability.connection.v1.json',
-        'collectors/manifests/capability.connection.assets.sha256'
+        'collectors/manifests/capability.connection.assets.sha256',
+        'collectors/manifests/collector-manifest.v2.schema.json',
+        'collectors/manifests/engine.core.v1.json',
+        'collectors/manifests/database.inventory.v1.json',
+        'collectors/manifests/database.files.v1.json',
+        'collectors/manifests/m4-core-health.assets.sha256'
     )
 
     foreach ($relativePath in $requiredFiles) {
@@ -598,15 +604,43 @@ function Assert-RepositoryShape {
 
     $collectorSqlPath = Join-Path $repositoryRoot 'collectors/sql'
     $collectorSqlFiles = @(Get-ChildItem -LiteralPath $collectorSqlPath -Filter '*.sql' -File | Sort-Object Name)
-    $expectedCollectorSqlNames = @(
+    $expectedM3CollectorSqlNames = @(
         'capability.connection.bootstrap.v1.sql',
         'capability.connection.fallback.v1.sql',
         'capability.connection.sqlserver15-windows.v1.sql',
         'capability.connection.sqlserver16-windows.v1.sql',
         'capability.connection.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $expectedM4CollectorSqlNames = @(
+        'engine.core.sqlserver15-windows.v1.sql',
+        'engine.core.sqlserver16-windows.v1.sql',
+        'engine.core.sqlserver17-windows.v1.sql',
+        'database.inventory.sqlserver15-windows.v1.sql',
+        'database.inventory.sqlserver16-windows.v1.sql',
+        'database.inventory.sqlserver17-windows.v1.sql',
+        'database.files.sqlserver15-windows.v1.sql',
+        'database.files.sqlserver16-windows.v1.sql',
+        'database.files.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
+    $stagedM5CollectorSqlNames = @(
+        'activity.sessions.sqlserver15-windows.v1.sql',
+        'activity.sessions.sqlserver16-windows.v1.sql',
+        'activity.sessions.sqlserver17-windows.v1.sql',
+        'activity.requests.sqlserver15-windows.v1.sql',
+        'activity.requests.sqlserver16-windows.v1.sql',
+        'activity.requests.sqlserver17-windows.v1.sql',
+        'waits.server.sqlserver15-windows.v1.sql',
+        'waits.server.sqlserver16-windows.v1.sql',
+        'waits.server.sqlserver17-windows.v1.sql',
+        'blocking.current.sqlserver15-windows.v1.sql',
+        'blocking.current.sqlserver16-windows.v1.sql',
+        'blocking.current.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
+    $expectedCollectorSqlNames = @(
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $stagedM5CollectorSqlNames
+    ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
-        throw 'M3 must contain exactly the five reviewed capability.connection SQL assets.'
+        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and the explicitly staged M5 groundwork.'
     }
 
     foreach ($collectorSqlFile in $collectorSqlFiles) {
@@ -616,10 +650,28 @@ function Assert-RepositoryShape {
 
         $collectorSql = Get-Content -LiteralPath $collectorSqlFile.FullName -Raw
         if ($collectorSql -notmatch '(?i)\bSET\s+NOCOUNT\s+ON\s*;' -or
-            $collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*\(\s*1\s*\)' -or
             $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b' -or
             $collectorSql -match '(?i)\b(xp_|sp_OA|sp_executesql|OPENROWSET|OPENDATASOURCE)') {
-            throw "Collector SQL must remain fixed, one-row bounded, read-only, and supported: $($collectorSqlFile.Name)"
+            throw "Collector SQL must remain fixed, bounded, read-only, and supported: $($collectorSqlFile.Name)"
+        }
+
+        if ($collectorSqlFile.Name -in $expectedM3CollectorSqlNames -and
+            $collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*\(\s*1\s*\)') {
+            throw "M3 capability SQL must remain one-row bounded: $($collectorSqlFile.Name)"
+        }
+
+        if ($collectorSqlFile.Name -in $expectedM4CollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*@maximum_rows\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
+             $collectorSql -match '(?i)\bphysical_name\b')) {
+            throw "M4 collector SQL must use the typed row bound, deterministic order, and exclude physical paths: $($collectorSqlFile.Name)"
+        }
+
+        if ($collectorSqlFile.Name -in $stagedM5CollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*@maximum_rows\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
+             $collectorSql -match '(?i)\b(sql_handle|plan_handle|query_hash|query_plan_hash|wait_resource|resource_description|login_name|host_name|program_name|client_interface_name|local_net_address|client_net_address)\b')) {
+            throw "Staged M5 collector SQL must remain bounded, ordered, and exclude sensitive identity/query/resource fields: $($collectorSqlFile.Name)"
         }
     }
 
@@ -628,7 +680,7 @@ function Assert-RepositoryShape {
         'collector-manifest.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.schema.json'
         'capability.connection.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/capability.connection.v1.json'
     }
-    foreach ($collectorSqlFile in $collectorSqlFiles) {
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $expectedM3CollectorSqlNames }) {
         $collectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName
     }
     $collectorChecksums = @{}
@@ -657,6 +709,79 @@ function Assert-RepositoryShape {
         }
     }
 
+    $m4CollectorAssetPaths = @{
+        'collector-manifest.v2.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v2.schema.json'
+        'engine.core.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/engine.core.v1.json'
+        'database.inventory.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/database.inventory.v1.json'
+        'database.files.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/database.files.v1.json'
+    }
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $expectedM4CollectorSqlNames }) {
+        $m4CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName
+    }
+    $m4CollectorChecksums = @{}
+    $m4CollectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/m4-core-health.assets.sha256'
+    foreach ($line in Get-Content -LiteralPath $m4CollectorChecksumPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) {
+            continue
+        }
+        if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') {
+            throw "Invalid M4 collector checksum entry: $line"
+        }
+        $assetName = $Matches[2]
+        if (-not $m4CollectorAssetPaths.ContainsKey($assetName) -or
+            $m4CollectorChecksums.ContainsKey($assetName)) {
+            throw "Unexpected or duplicate M4 collector checksum entry: $line"
+        }
+        $m4CollectorChecksums[$assetName] = $Matches[1]
+    }
+    if ($m4CollectorChecksums.Count -ne $m4CollectorAssetPaths.Count) {
+        throw 'M4 collector checksum manifest must contain exactly one entry per pinned asset.'
+    }
+    foreach ($assetName in $m4CollectorAssetPaths.Keys) {
+        $actualChecksum = (Get-FileHash -LiteralPath $m4CollectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant()
+        if (-not $m4CollectorChecksums.ContainsKey($assetName) -or
+            $m4CollectorChecksums[$assetName] -cne $actualChecksum) {
+            throw "M4 collector checksum mismatch: $assetName"
+        }
+    }
+
+    $m5CollectorAssetPaths = @{
+        'collector-manifest.v3.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v3.schema.json'
+        'activity.sessions.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/activity.sessions.v1.json'
+        'activity.requests.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/activity.requests.v1.json'
+        'waits.server.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/waits.server.v1.json'
+        'blocking.current.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/blocking.current.v1.json'
+    }
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $stagedM5CollectorSqlNames }) {
+        $m5CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName
+    }
+    $m5CollectorChecksums = @{}
+    $m5CollectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/m5-activity.assets.sha256'
+    foreach ($line in Get-Content -LiteralPath $m5CollectorChecksumPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) {
+            continue
+        }
+        if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') {
+            throw "Invalid staged M5 collector checksum entry: $line"
+        }
+        $assetName = $Matches[2]
+        if (-not $m5CollectorAssetPaths.ContainsKey($assetName) -or
+            $m5CollectorChecksums.ContainsKey($assetName)) {
+            throw "Unexpected or duplicate staged M5 collector checksum entry: $line"
+        }
+        $m5CollectorChecksums[$assetName] = $Matches[1]
+    }
+    if ($m5CollectorChecksums.Count -ne $m5CollectorAssetPaths.Count) {
+        throw 'Staged M5 collector checksum manifest must contain exactly one entry per pinned groundwork asset.'
+    }
+    foreach ($assetName in $m5CollectorAssetPaths.Keys) {
+        $actualChecksum = (Get-FileHash -LiteralPath $m5CollectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant()
+        if (-not $m5CollectorChecksums.ContainsKey($assetName) -or
+            $m5CollectorChecksums[$assetName] -cne $actualChecksum) {
+            throw "Staged M5 collector checksum mismatch: $assetName"
+        }
+    }
+
     $sqlServerIntegrationSource = @(
         Get-ChildItem -LiteralPath (
             Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer') -Filter '*.cs' -File
@@ -669,7 +794,11 @@ function Assert-RepositoryShape {
         throw 'M3 SQL Server integration tests must be active and must not use Skip.'
     }
 
-    foreach ($completedSuite in @('SqlObserver.ApiContractTests', 'SqlObserver.EndToEndTests', 'SqlObserver.SecurityTests')) {
+    foreach ($completedSuite in @(
+        'SqlObserver.ApiContractTests',
+        'SqlObserver.EndToEndTests',
+        'SqlObserver.PerformanceTests',
+        'SqlObserver.SecurityTests')) {
         $completedSuiteSource = @(
             Get-ChildItem -LiteralPath (Join-Path $repositoryRoot "tests/$completedSuite") -Filter '*.cs' -File
         )
@@ -677,7 +806,7 @@ function Assert-RepositoryShape {
             $completedSuiteSource | Select-String -Pattern '\[(Fact|Theory)\s*\(\s*Skip\s*='
         )
         if ($completedSuiteSource.Count -eq 0 -or $completedSuiteSkips.Count -ne 0) {
-            throw "Completed M3 suite must contain active tests and no Skip attributes: $completedSuite"
+            throw "Completed runtime suite must contain active tests and no Skip attributes: $completedSuite"
         }
     }
 

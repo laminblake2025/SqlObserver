@@ -3,11 +3,12 @@ namespace SqlObserver.ApiContractTests;
 public sealed class ScaffoldEndpointContractTests
 {
     [Fact]
-    public void HealthDescriptorExposesTheScaffoldStatus()
+    public void HealthDescriptorExposesLivenessWithoutClaimingDependencyHealth()
     {
-        var descriptor = new Server.ScaffoldEndpoints.HealthDescriptor("healthy");
+        var descriptor = new Server.ScaffoldEndpoints.HealthDescriptor("alive");
 
-        Assert.Equal("healthy", descriptor.Status);
+        Assert.Equal("alive", descriptor.Status);
+        Assert.NotEqual("healthy", descriptor.Status);
     }
 
     [Fact]

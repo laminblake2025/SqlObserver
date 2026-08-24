@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This document fixes the Milestone 0 architecture for SqlObserver. The current repository contains design and non-runtime scaffolding only; components described here are intended boundaries, not claims of implemented behavior.
+This document fixes the product architecture and records the implementation boundary through Milestone 4. Target onboarding, capability discovery, the PostgreSQL repository, fenced collection runtime, passive core/database/file collectors, and scoped health projections have active evidence. Later diagnostics, alerts, analytics, MCP, reports, packaging, and support certification remain planned and must not be inferred from this topology.
 
 SqlObserver is a Windows Server-hosted, agentless-by-default diagnostics application for Microsoft SQL Server. PostgreSQL 18.x is the application repository. The design is a modular monolith: modules share domain and application contracts, while independently hosted processes have narrow responsibilities and can be deployed separately.
 
@@ -98,12 +98,13 @@ Domain code has no dependency on database drivers, HTTP, Windows services, UI fr
 ## Collection lifecycle
 
 1. The worker obtains a short, renewable PostgreSQL lease for a scheduled target/collector key.
-2. Capability data and the collector manifest determine whether execution is supported and which documented fallback, if any, applies.
-3. The worker opens a least-privilege target connection, applies statement/execution bounds, and runs a parameterized read-only query.
-4. It validates and versions the output, records visible truncation or loss, and ingests a bounded batch.
-5. Alert/analysis work consumes committed observations, not an unbounded in-memory side channel.
-6. Outcome, duration, rows, bytes, retries, circuit state, and safe diagnostics are instrumented.
-7. The worker releases or lets the lease expire; stale owners cannot commit work protected by a newer fencing value.
+2. It begins an append-only, revision- and fence-bound run before target I/O; the next valid owner closes an abandoned run as a visible lease-loss gap.
+3. Capability data and the collector manifest determine whether execution is supported and which documented fallback, if any, applies.
+4. The worker opens a least-privilege target connection, applies statement/execution bounds, and runs a parameterized read-only query.
+5. It validates and versions the output, records visible truncation or loss, and atomically ingests the bounded batch with its outcome and next schedule/circuit state.
+6. Alert/analysis work consumes committed observations, not an unbounded in-memory side channel.
+7. Outcome, duration, rows, bytes, retries, circuit state, and safe diagnostics are instrumented.
+8. The worker releases or lets the lease expire; stale owners cannot commit work protected by a newer fencing value.
 
 Failures degrade one collector or target without blocking unrelated schedules. Cancellation propagates through every I/O operation. Retry and circuit-breaker behavior is constrained by collector cost and deadline.
 

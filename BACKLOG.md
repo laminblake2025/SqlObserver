@@ -18,7 +18,7 @@ Status meanings:
 | **M1 — Repository bootstrap and CI** | Complete folder map; .NET 10 solution/project skeletons; nullable/analyzers/warnings-as-errors; central NuGet management; strict React/TypeScript build skeleton; test-project skeletons; validation entry point; local-development script placeholders; GitHub Actions; contribution/security policy | Non-runtime first-assignment scope scaffolded and validated; runtime work remains planned |
 | **M2 — PostgreSQL repository, migrations, partitions, ingestion** | PostgreSQL 18.x repository; nine schemas; immutable numbered SQL migrations/checksums; repository roles; UTC storage; daily raw/monthly event partitions; BRIN and justified instance/time B-tree indexes; binary `COPY`; query-text/plan deduplication; partition/retention foundations; PostgreSQL integration/performance tests | Implemented and integration-tested on pinned PostgreSQL 18.4; representative-volume release certification remains M12 |
 | **M3 — Onboarding, credentials, capability discovery, permissions** | Observation-target lifecycle; protected credentials; gMSA/integrated-auth path; version-aware least-privilege permission generator; no permanent `sysadmin`; capability/connection collector; supported/degraded states; expected-denial tests | Implemented and integration-tested; platform certification remains M12 |
-| **M4 — Collector framework and core health** | Contract registry/manifests; leases and fencing; bounded scheduler; cancellation; non-overlap; retry/circuit breaker; telemetry and visible sample loss; core engine counters; databases/files collectors; ingestion vertical slice; health projections | Planned |
+| **M4 — Collector framework and core health** | Contract registry/manifests; leases and fencing; bounded scheduler; cancellation; non-overlap; retry/circuit breaker; telemetry and visible sample loss; core engine counters; databases/files collectors; ingestion vertical slice; health projections | Implemented and integration-tested; platform and sustained-load certification remain M12 |
 | **M5 — Sessions, requests, waits, blocking** | Bounded sessions and requests, wait summaries, current blocking chains and blocking history; API/UI projections and collector-specific permission/failure/limit tests | Planned |
 | **M6 — Deadlocks and Extended Events** | Passive bounded reading of deadlocks from `system_health`; safe XML handling; event persistence/search; separately packaged DBA-reviewed enhanced script where justified; never automatic XE/blocked-process changes | Planned |
 | **M7 — Query Store and query performance** | Capability-aware Query Store reads; plan-cache fallback; query history/top queries/plan metadata; sensitive-content controls and deduplication; no automatic Query Store change or plan forcing | Planned |
@@ -168,16 +168,27 @@ This is the completion checklist for the first assignment. Each item was inspect
 5. **Coordination and retention safety — complete.** Repository-clock leases use persistent monotonic fencing; retention policy is disabled and its view is preview-only with recovery prerequisites unsatisfied.
 6. **Active evidence — complete for M2.** Unit, security, and PostgreSQL 18.4 integration suites cover contracts, boundaries, migration history, roles/schemas, partitions/indexes, ingestion/deduplication, cancellation, and stale fences without PostgreSQL-test skips. Full representative-volume and platform certification remains a release gate.
 
-The next runtime dependency is M4 bounded scheduling, resilience, core engine health, database/file discovery, and ingestion.
+The next runtime dependency is M5 bounded sessions, requests, waits, blocking chains, and blocking history.
 
-## Current post-M3 exclusions
+## Completed M4 collector and core-health tasks
+
+1. **Immutable collector registry — complete.** Three versioned v2 manifests, nine supported-version SQL assets, exact SHA-256 pins, closed output contracts, and deterministic dependency order are enforced at startup and repository reconciliation.
+2. **Bounded execution and scheduling — complete.** Repository-clock due work, renewable fenced leases, local non-overlap, cancellation, original-deadline retry, durable circuit state, and bounded concurrency have active unit and performance evidence.
+3. **Core target evidence — complete.** Core cumulative counters, database inventory, and logical-file capacity/I/O collectors are parameterized, row/byte bounded, integrated-authenticated, TLS-validated, and passive in the available SQL Server development lab.
+4. **Atomic repository data plane — complete.** Collection run/outcome history, exact replay, schedule/revision conflicts, output snapshots, circuit transitions, and explicit visibility gaps commit through bounded PostgreSQL functions with direct base-table access denied.
+5. **Scoped health surface — complete.** Application services, API DTOs, and React views expose bounded freshness, accounting, loss, circuit, metric, database, and file evidence without secrets, provider messages, raw SQL, or physical paths.
+6. **Active evidence — complete for M4.** Unit, PostgreSQL, SQL Server, API, security, performance, web, and end-to-end suites remain active; support-platform, gMSA/Kerberos, trusted-TLS, and long-duration certification remain M12 gates.
+
+## Current post-M4 exclusions
 
 The following are explicitly incomplete and must not be represented as working:
 
-- production collector implementations or target SQL beyond `capability.connection`;
+- dormant M5 activity contracts and checksum-pinned collector-resource groundwork are not registered by the collector host, have no active repository migration, API route, or web surface, and do not constitute M5 behavior; the interrupted migration draft is parked as `docs/milestones/M5-activity-migration.sql.wip` for the next implementation workflow;
+
+- production collector implementations or target SQL beyond `capability.connection`, `engine.core`, `database.inventory`, and `database.files`;
 - reusable target credentials, automatic permission grants, or target mutation;
 - automatic retention execution, repository installation/backup/restore/HA, or production repository provisioning;
-- API behavior beyond the M3 target control plane; SignalR; general collector scheduling;
+- API behavior beyond target management and M4 health projections; SignalR; session, wait, blocking,
   alert, analytics, report, or MCP runtime behavior;
 - Query Store, Extended Events, blocked-process, index, plan, session, or configuration changes;
 - live environment bootstrap, seed data, installer, upgrade, uninstall, or release packaging;

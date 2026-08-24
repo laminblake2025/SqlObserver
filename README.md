@@ -2,7 +2,7 @@
 
 SqlObserver is a clean-room, Windows-hosted monitoring and diagnostics product for Microsoft SQL Server. It is intended to collect bounded, historical evidence without installing an agent on monitored database hosts by default. PostgreSQL 18.x is the product's application repository; it is not a monitored database engine.
 
-> **Repository status:** Milestones 0 through 3 are implemented. The PostgreSQL 18 repository foundation and the bounded SQL Server onboarding/capability slice are integration-tested, but SqlObserver is not yet a supported release. General health collection, diagnostics, analytics, MCP, installers, and release certification remain later milestones.
+> **Repository status:** Milestones 0 through 4 are implemented. The PostgreSQL 18 repository foundation, bounded SQL Server onboarding/capability path, collector runtime, and core/database/file health slice are integration-tested, but SqlObserver is not yet a supported release. Sessions, diagnostic events, analytics, MCP, installers, and release certification remain later milestones.
 
 ## Product boundary
 
@@ -49,7 +49,7 @@ More detail is in [the architecture overview](docs/architecture/overview.md), [s
 
 ## Quick start for contributors
 
-The current quick start validates the architecture/bootstrap work, the M2 PostgreSQL repository, and the M3 onboarding/capability slice.
+The current quick start validates the architecture/bootstrap work, the M2 PostgreSQL repository, the M3 onboarding/capability slice, and the M4 collector/core-health vertical slice.
 
 Prerequisites:
 
@@ -93,13 +93,13 @@ Do not provision production credentials or point this repository slice at a prod
 
 ## Milestone scope
 
-Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and local-runner CI. Milestone 2 adds the PostgreSQL 18 repository foundation. Milestone 3 adds credential-free target onboarding, SID-based RBAC, integrated identity, bounded capability discovery, and offline least-privilege permission plans. See the [M2 implementation record](docs/milestones/M2-postgresql-repository.md), [M3 implementation record](docs/milestones/M3-onboarding-and-capabilities.md), and [BACKLOG.md](BACKLOG.md).
+Milestone 0 establishes the product boundary, architecture, support posture, threat model, terminology, and decisions. Milestone 1 adds compilable/buildable skeletons, validation plumbing, directory placeholders, and local-runner CI. Milestone 2 adds the PostgreSQL 18 repository foundation. Milestone 3 adds credential-free target onboarding, SID-based RBAC, integrated identity, bounded capability discovery, and offline least-privilege permission plans. Milestone 4 adds the fenced scheduler, retry/circuit/loss accounting, three passive core-health collectors, atomic ingestion, and scoped health projections. See the [M2 implementation record](docs/milestones/M2-postgresql-repository.md), [M3 implementation record](docs/milestones/M3-onboarding-and-capabilities.md), [M4 implementation record](docs/milestones/M4-collector-framework-and-core-health.md), and [BACKLOG.md](BACKLOG.md).
 
-Only the passive capability/connection SQL Server collector exists at M3. General telemetry, alerting, analytics, MCP tools, deployment, and upgrade behavior are not claimed yet.
+The implemented and runtime-registered target collectors are `capability.connection`, `engine.core`, `database.inventory`, and `database.files`. Dormant M5 activity contracts/resources may be present as handoff groundwork, but no M5 migration, runtime registration, API route, or web behavior is claimed. Sessions, requests, waits, blocking, diagnostic events, alerting, analytics, MCP tools, deployment, and upgrade behavior remain incomplete.
 
-## Non-goals for this milestone
+## Non-goals through this milestone
 
-- Collecting target data beyond bounded connection and capability evidence.
+- Collecting target data beyond bounded capability, core counter, database, and logical-file evidence.
 - Shipping an MCP server or any `execute_sql`-style capability.
 - Changing Query Store, Extended Events, blocked-process settings, indexes, plans, sessions, or server configuration.
 - Shipping an installer or claiming support certification.

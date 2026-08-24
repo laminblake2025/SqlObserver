@@ -15,7 +15,7 @@ public static class ScaffoldEndpoints
             static () => Results.Ok(new ServiceDescriptor("SqlObserver", "scaffold")));
         endpoints.MapGet(
             "/health",
-            static () => Results.Ok(new HealthDescriptor("healthy")));
+            static () => Results.Ok(new HealthDescriptor("alive")));
 
         return endpoints;
     }
@@ -23,6 +23,6 @@ public static class ScaffoldEndpoints
     /// <summary>Describes the scaffold service.</summary>
     public sealed record ServiceDescriptor(string Name, string Status);
 
-    /// <summary>Describes the health of the scaffold process.</summary>
+    /// <summary>Describes process liveness only; it makes no dependency or target-health claim.</summary>
     public sealed record HealthDescriptor(string Status);
 }

@@ -238,7 +238,6 @@ public sealed class RepositorySchemaCompletionIntegrationTests
             RoleSqlCheck[] allowed =
             [
                 new("sqlobserver_server", "SELECT instance_id FROM control.observation_target LIMIT 0;"),
-                new("sqlobserver_server", "SELECT metric_value FROM telemetry.raw_metric_sample LIMIT 0;"),
                 new("sqlobserver_server", "SELECT event_kind FROM events.diagnostic_event LIMIT 0;"),
                 new("sqlobserver_server", "SELECT partition_name FROM reporting.partition_retention_preview LIMIT 0;"),
                 new("sqlobserver_collector", "SELECT instance_id FROM control.observation_target LIMIT 0;"),
@@ -260,6 +259,7 @@ public sealed class RepositorySchemaCompletionIntegrationTests
             [
                 new("sqlobserver_server", "SELECT payload_id FROM security.protected_diagnostic_payload LIMIT 0;"),
                 new("sqlobserver_server", "SELECT activity_id FROM audit.activity LIMIT 0;"),
+                new("sqlobserver_server", "SELECT metric_value FROM telemetry.raw_metric_sample LIMIT 0;"),
                 new("sqlobserver_server", ValidateMetricReplaySql),
                 new("sqlobserver_server", "CREATE TEMPORARY TABLE sqlobserver_server_temp_probe (value integer);"),
                 new("sqlobserver_collector", "SELECT metric_value FROM telemetry.raw_metric_sample LIMIT 0;"),

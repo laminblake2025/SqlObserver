@@ -55,10 +55,13 @@ builder.Services.AddSingleton<ICapabilityProfileRepositoryPort>(static services 
     services.GetRequiredService<PostgreSqlTargetControlPlane>().CapabilityProfiles);
 builder.Services.AddSingleton<IAdministrativeAuditPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().AdministrativeAudit);
+builder.Services.AddSingleton<IHealthProjectionRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().HealthProjections);
 builder.Services.AddSingleton<IObservationTargetOnboardingService, ObservationTargetOnboardingService>();
 builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTargetManagementService>();
 builder.Services.AddSingleton<IObservationTargetQueryService, ObservationTargetQueryService>();
 builder.Services.AddSingleton<IObservationTargetStatusQueryService, ObservationTargetStatusQueryService>();
+builder.Services.AddSingleton<IHealthProjectionQueryService, HealthProjectionQueryService>();
 
 WebApplication app = builder.Build();
 
@@ -70,6 +73,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.MapSqlObserverScaffoldEndpoints();
 app.MapObservationTargetEndpoints();
+app.MapTargetHealthEndpoints();
 
 await app.RunAsync();
 

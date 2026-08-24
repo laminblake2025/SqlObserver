@@ -32,7 +32,7 @@ public sealed class SafeApiExceptionMiddleware
                     "The request is invalid.")
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (Exception exception) when (exception is OperationCanceledException or TimeoutException)
         {
             await WriteFailureAsync(
                     context,

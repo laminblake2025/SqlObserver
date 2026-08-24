@@ -4,6 +4,7 @@
     <AssemblyName>SqlObserver.Collectors</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
     <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
   </ItemGroup>

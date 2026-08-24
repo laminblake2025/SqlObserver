@@ -1,0 +1,56 @@
+{
+  "$schema": "collector-manifest.v3.schema.json",
+  "schemaVersion": 3,
+  "collectorId": "activity.sessions",
+  "collectorVersion": 1,
+  "displayName": "SQL Server session activity",
+  "operationalMode": "passive",
+  "dependsOn": ["capability.connection", "engine.core"],
+  "supportedTargets": {
+    "product": "Microsoft SQL Server",
+    "minimumMajorVersion": 15,
+    "maximumMajorVersion": 17,
+    "platforms": ["Windows"],
+    "engineEditions": [2, 3, 4]
+  },
+  "requiredCapabilities": [
+    "connection.tds",
+    "authentication.windows-integrated",
+    "transport.tls-validated",
+    "privilege.non-sysadmin",
+    "platform.windows"
+  ],
+  "requiredPermissionsByMajor": {
+    "15": ["server.view-state"],
+    "16": ["server.view-performance-state"],
+    "17": ["server.view-performance-state"]
+  },
+  "cadence": {
+    "defaultIntervalSeconds": 15,
+    "minimumIntervalSeconds": 5,
+    "nonOverlappingPerTarget": true
+  },
+  "executionBounds": {
+    "connectTimeoutSeconds": 5,
+    "commandTimeoutSeconds": 5,
+    "maximumRows": 513,
+    "maximumResponseBytes": 262144
+  },
+  "resilience": {
+    "maximumAttempts": 2,
+    "transientRetryDelayMilliseconds": 100,
+    "circuitFailureThreshold": 3,
+    "circuitOpenSeconds": 300
+  },
+  "estimatedCostClass": "low",
+  "queryResources": {
+    "supportedByMajor": {
+      "15": "activity.sessions.sqlserver15-windows.v1.sql",
+      "16": "activity.sessions.sqlserver16-windows.v1.sql",
+      "17": "activity.sessions.sqlserver17-windows.v1.sql"
+    }
+  },
+  "fallback": { "mode": "unsupported" },
+  "outputSchemaVersion": 1,
+  "outputKind": "activity_sessions"
+}

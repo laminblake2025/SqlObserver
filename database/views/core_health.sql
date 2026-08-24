@@ -1,0 +1,12 @@
+-- Review index only. Deployment authority:
+-- migrations/0008_collector_scheduling_and_core_health.sql.
+--
+-- reporting.collector_health_projection is an internal security-barrier view scoped to
+-- the active target revision and current schedule revision. Public Server reads use only:
+--   reporting.get_instance_health(uuid);
+--   reporting.list_database_health(uuid, integer, integer);
+--   reporting.list_database_file_health(uuid, integer, integer, integer).
+--
+-- Target filters precede every limit. Database/file pages always carry a collector-health
+-- header, including empty samples, and snapshots bind to the latest successful or partial
+-- run for the current schedule so removed entities cannot persist across full snapshots.

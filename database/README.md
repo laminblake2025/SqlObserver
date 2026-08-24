@@ -75,6 +75,28 @@ indefinitely. Single and bounded bulk readers expose the latest sanitized profil
 widening table access. Direct mutation of capability history and all M3 access through
 `PUBLIC` are denied.
 
+## M4 collector runtime and core health
+
+Migration `0008` installs the exact three-contract M4 registry, per-target schedules,
+durable circuits, append-only run/outcome and visibility-gap history, and database/file
+snapshots. The registry stores only reviewed digests and bounds; target SQL remains in the
+checksum-pinned Collector assembly. Reconciliation, due-work selection, run start, and
+atomic completion are exposed only through collector-role functions with fixed search
+paths, bounded arguments, repository-clock timestamps, target-revision checks, and worker
+lease fencing.
+
+A completion transaction persists output, exact accounting, a closed outcome/reason,
+explicit loss evidence, schedule advancement, and circuit transition together. Exact
+replay is idempotent; divergent identities, stale schedule revisions, stale target
+revisions, and lost fences fail closed. Non-success and partial runs create append-only
+visibility gaps so absence is never treated as health. Direct runtime-role access to M4
+base tables and the internal health view is denied.
+
+Server-role security-definer readers return one target's core health or bounded keyset
+pages of database/file health. They expose logical names and normalized evidence only;
+physical file paths, target connection details, provider messages, arbitrary SQL, and
+secrets are outside the schema and function contracts.
+
 ## Time, partitions, and retention
 
 All persisted instants use `timestamptz`; migrations and programmable objects set UTC

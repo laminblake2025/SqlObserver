@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
   </ItemGroup>
 </Project>

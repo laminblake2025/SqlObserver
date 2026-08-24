@@ -1,0 +1,60 @@
+SET NOCOUNT ON;
+
+WITH metric_values AS
+(
+    SELECT N'engine.batch_requests_total' AS metric_id, CONVERT(float, MAX(pc.cntr_value)) AS metric_value
+    FROM sys.dm_os_performance_counters AS pc
+    WHERE pc.object_name LIKE N'%:SQL Statistics'
+      AND RTRIM(pc.counter_name) = N'Batch Requests/sec'
+
+    UNION ALL
+
+    SELECT N'engine.sql_compilations_total', CONVERT(float, MAX(pc.cntr_value))
+    FROM sys.dm_os_performance_counters AS pc
+    WHERE pc.object_name LIKE N'%:SQL Statistics'
+      AND RTRIM(pc.counter_name) = N'SQL Compilations/sec'
+
+    UNION ALL
+
+    SELECT N'engine.sql_recompilations_total', CONVERT(float, MAX(pc.cntr_value))
+    FROM sys.dm_os_performance_counters AS pc
+    WHERE pc.object_name LIKE N'%:SQL Statistics'
+      AND RTRIM(pc.counter_name) = N'SQL Re-Compilations/sec'
+
+    UNION ALL
+
+    SELECT N'engine.page_life_expectancy_seconds', CONVERT(float, MAX(pc.cntr_value))
+    FROM sys.dm_os_performance_counters AS pc
+    WHERE pc.object_name LIKE N'%:Buffer Manager'
+      AND RTRIM(pc.counter_name) = N'Page life expectancy'
+
+    UNION ALL
+
+    SELECT N'engine.user_connections', CONVERT(float, MAX(pc.cntr_value))
+    FROM sys.dm_os_performance_counters AS pc
+    WHERE pc.object_name LIKE N'%:General Statistics'
+      AND RTRIM(pc.counter_name) = N'User Connections'
+
+    UNION ALL
+
+    SELECT N'engine.process_physical_memory_bytes', CONVERT(float, memory.physical_memory_in_use_kb) * 1024.0
+    FROM sys.dm_os_process_memory AS memory
+
+    UNION ALL
+
+    SELECT N'engine.committed_memory_bytes', CONVERT(float, info.committed_kb) * 1024.0
+    FROM sys.dm_os_sys_info AS info
+
+    UNION ALL
+
+    SELECT N'engine.target_memory_bytes', CONVERT(float, info.committed_target_kb) * 1024.0
+    FROM sys.dm_os_sys_info AS info
+)
+SELECT TOP (@maximum_rows)
+    SYSUTCDATETIME() AS observed_at_utc,
+    metric_id,
+    metric_value
+FROM metric_values
+WHERE metric_value IS NOT NULL
+  AND metric_value >= 0
+ORDER BY metric_id;

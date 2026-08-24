@@ -1,0 +1,189 @@
+using SqlObserver.Application.Ports;
+using SqlObserver.Collectors;
+using SqlObserver.Domain.Coordination;
+
+namespace SqlObserver.Collector;
+
+/// <summary>Reconciles the immutable collector catalog and runs bounded due-work cycles.</summary>
+public sealed partial class CollectionWorker : BackgroundService
+{
+    private static readonly WorkerLeaseKey CatalogLeaseKey = new("collector/catalog/reconcile");
+    private static readonly WorkerLeaseDuration CatalogLeaseDuration = new(TimeSpan.FromSeconds(30));
+    private static readonly RepositoryCallTimeout RepositoryTimeout = new(TimeSpan.FromSeconds(5));
+    private static readonly TimeSpan ActiveCycleDelay = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan IdleCycleDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan ReconcileInterval = TimeSpan.FromSeconds(30);
+
+    private readonly CollectorScheduler _scheduler;
+    private readonly IWorkerLeasePort _leases;
+    private readonly WorkerExecutionId _executionId;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<CollectionWorker> _logger;
+
+    public CollectionWorker(
+        CollectorScheduler scheduler,
+        IWorkerLeasePort leases,
+        WorkerExecutionId executionId,
+        TimeProvider timeProvider,
+        ILogger<CollectionWorker> logger)
+    {
+        _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
+        _leases = leases ?? throw new ArgumentNullException(nameof(leases));
+        _executionId = executionId ?? throw new ArgumentNullException(nameof(executionId));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        long lastReconcileTimestamp = 0;
+        bool catalogReady = false;
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            if (!catalogReady ||
+                _timeProvider.GetElapsedTime(lastReconcileTimestamp) >= ReconcileInterval)
+            {
+                catalogReady = await ReconcileCatalogSafelyAsync(stoppingToken).ConfigureAwait(false);
+                lastReconcileTimestamp = _timeProvider.GetTimestamp();
+            }
+
+            CollectorSchedulerCycleResult? result = catalogReady
+                ? await RunCycleSafelyAsync(stoppingToken).ConfigureAwait(false)
+                : null;
+            TimeSpan delay = result is { HasMore: true, DueCount: > 0 }
+                ? ActiveCycleDelay
+                : IdleCycleDelay;
+            await Task.Delay(delay, _timeProvider, stoppingToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<bool> ReconcileCatalogSafelyAsync(CancellationToken cancellationToken)
+    {
+        WorkerLeaseIdentity? identity = null;
+        try
+        {
+            LeaseAcquisitionResult acquisition = await _leases.AcquireAsync(
+                    new AcquireWorkerLeaseRequest(
+                        CatalogLeaseKey,
+                        _executionId,
+                        CatalogLeaseDuration,
+                        RepositoryTimeout),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (acquisition.Status != LeaseAcquisitionStatus.Acquired || acquisition.Lease is null)
+            {
+                return false;
+            }
+
+            identity = acquisition.Lease.Identity;
+            CollectorCatalogReconcileResult result = await _scheduler.ReconcileCatalogAsync(
+                    identity,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            LogCatalogReconciled(
+                _logger,
+                result.InsertedCount,
+                result.UpdatedCount,
+                result.UnchangedCount);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LogCatalogFailure(_logger, exception.GetType().Name);
+            return false;
+        }
+        finally
+        {
+            if (identity is not null)
+            {
+                await ReleaseWithoutMaskingAsync(identity).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<CollectorSchedulerCycleResult?> RunCycleSafelyAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            CollectorSchedulerCycleResult result = await _scheduler.RunCycleAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (result.DueCount > 0)
+            {
+                LogCycleCompleted(
+                    _logger,
+                    result.DueCount,
+                    result.CommittedCount,
+                    result.HasMore);
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LogCycleFailure(_logger, exception.GetType().Name);
+            return null;
+        }
+    }
+
+    private async ValueTask ReleaseWithoutMaskingAsync(WorkerLeaseIdentity identity)
+    {
+        try
+        {
+            await _leases.ReleaseAsync(
+                    new ReleaseWorkerLeaseRequest(identity, RepositoryTimeout),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            LogLeaseReleaseFailure(_logger, exception.GetType().Name);
+        }
+    }
+
+    [LoggerMessage(
+        EventId = 3101,
+        Level = LogLevel.Information,
+        Message = "Collector catalog reconciled. Inserted={InsertedCount} Updated={UpdatedCount} Unchanged={UnchangedCount}")]
+    private static partial void LogCatalogReconciled(
+        ILogger logger,
+        int insertedCount,
+        int updatedCount,
+        int unchangedCount);
+
+    [LoggerMessage(
+        EventId = 3102,
+        Level = LogLevel.Information,
+        Message = "Collector cycle completed. Due={DueCount} Committed={CommittedCount} HasMore={HasMore}")]
+    private static partial void LogCycleCompleted(
+        ILogger logger,
+        int dueCount,
+        int committedCount,
+        bool hasMore);
+
+    [LoggerMessage(
+        EventId = 3103,
+        Level = LogLevel.Warning,
+        Message = "Collector catalog reconciliation failed safely. FailureType={FailureType}")]
+    private static partial void LogCatalogFailure(ILogger logger, string failureType);
+
+    [LoggerMessage(
+        EventId = 3104,
+        Level = LogLevel.Warning,
+        Message = "Collector due-work cycle failed safely. FailureType={FailureType}")]
+    private static partial void LogCycleFailure(ILogger logger, string failureType);
+
+    [LoggerMessage(
+        EventId = 3105,
+        Level = LogLevel.Warning,
+        Message = "Collector catalog lease release failed safely. FailureType={FailureType}")]
+    private static partial void LogLeaseReleaseFailure(ILogger logger, string failureType);
+}

@@ -15,12 +15,26 @@ internal interface ISqlServerConnectionFactory
 internal sealed class SqlServerIntegratedConnectionFactory : ISqlServerConnectionFactory
 {
     internal const string ApplicationName = "SqlObserver.CapabilityDiscovery";
+    internal const string CollectionApplicationName = "SqlObserver.CollectionEngine";
+
+    private readonly string _applicationName;
+
+    public SqlServerIntegratedConnectionFactory()
+        : this(ApplicationName)
+    {
+    }
+
+    internal SqlServerIntegratedConnectionFactory(string applicationName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
+        _applicationName = applicationName;
+    }
 
     public async ValueTask<SqlConnection> OpenConnectionAsync(
         SqlServerConnectionPolicy policy,
         CancellationToken cancellationToken)
     {
-        SqlConnection connection = CreateConnection(policy);
+        SqlConnection connection = CreateConnection(policy, _applicationName);
         try
         {
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -33,9 +47,15 @@ internal sealed class SqlServerIntegratedConnectionFactory : ISqlServerConnectio
         }
     }
 
-    internal static SqlConnection CreateConnection(SqlServerConnectionPolicy policy)
+    internal static SqlConnection CreateConnection(SqlServerConnectionPolicy policy) =>
+        CreateConnection(policy, ApplicationName);
+
+    internal static SqlConnection CreateConnection(
+        SqlServerConnectionPolicy policy,
+        string applicationName)
     {
         ArgumentNullException.ThrowIfNull(policy);
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
 
         SqlServerEndpoint endpoint = policy.Endpoint;
         string dataSource = endpoint switch
@@ -56,7 +76,7 @@ internal sealed class SqlServerIntegratedConnectionFactory : ISqlServerConnectio
             IntegratedSecurity = true,
             Encrypt = SqlConnectionEncryptOption.Mandatory,
             TrustServerCertificate = false,
-            ApplicationName = ApplicationName,
+            ApplicationName = applicationName,
             ConnectTimeout = Math.Min(
                 SqlServerCapabilityAssetCatalog.ConnectTimeoutSeconds,
                 checked((int)Math.Floor(policy.ConnectTimeout.Value.TotalSeconds))),

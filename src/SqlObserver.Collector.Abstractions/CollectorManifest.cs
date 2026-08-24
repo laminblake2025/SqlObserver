@@ -118,10 +118,25 @@ public sealed class CollectorExecutionLimits
         int maxRows,
         int maxResponseBytes,
         CollectorEstimatedCost estimatedCost)
+        : this(timeout, timeout, maxRows, maxResponseBytes, estimatedCost)
     {
-        if (timeout < MinimumTimeout || timeout > MaximumTimeout)
+    }
+
+    public CollectorExecutionLimits(
+        TimeSpan connectTimeout,
+        TimeSpan commandTimeout,
+        int maxRows,
+        int maxResponseBytes,
+        CollectorEstimatedCost estimatedCost)
+    {
+        if (connectTimeout < MinimumTimeout || connectTimeout > MaximumTimeout)
         {
-            throw new ArgumentOutOfRangeException(nameof(timeout));
+            throw new ArgumentOutOfRangeException(nameof(connectTimeout));
+        }
+
+        if (commandTimeout < MinimumTimeout || commandTimeout > MaximumTimeout)
+        {
+            throw new ArgumentOutOfRangeException(nameof(commandTimeout));
         }
 
         if (maxRows is <= 0 or > MaximumRows)
@@ -139,13 +154,19 @@ public sealed class CollectorExecutionLimits
             throw new ArgumentOutOfRangeException(nameof(estimatedCost));
         }
 
-        Timeout = timeout;
+        ConnectTimeout = connectTimeout;
+        CommandTimeout = commandTimeout;
         MaxRows = maxRows;
         MaxResponseBytes = maxResponseBytes;
         EstimatedCost = estimatedCost;
     }
 
-    public TimeSpan Timeout { get; }
+    public TimeSpan ConnectTimeout { get; }
+
+    public TimeSpan CommandTimeout { get; }
+
+    /// <summary>Backward-compatible alias for the command/overall collector deadline.</summary>
+    public TimeSpan Timeout => CommandTimeout;
 
     public int MaxRows { get; }
 
@@ -221,16 +242,77 @@ public enum CollectorOperationalMode
     EnhancedPrerequisite = 2,
 }
 
+public enum CollectorOutputKind
+{
+    CapabilityProfile = 1,
+    Metrics = 2,
+    DatabaseInventory = 3,
+    DatabaseFiles = 4,
+    ActivitySessions = 5,
+    ActivityRequests = 6,
+    ServerWaits = 7,
+    CurrentBlocking = 8,
+}
+
+public sealed class CollectorResiliencePolicy
+{
+    public static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan MinimumCircuitOpenDuration = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan MaximumCircuitOpenDuration = TimeSpan.FromDays(1);
+
+    public CollectorResiliencePolicy(
+        int maximumAttempts,
+        TimeSpan transientRetryDelay,
+        int circuitFailureThreshold,
+        TimeSpan circuitOpenDuration)
+    {
+        if (maximumAttempts is <= 0 or > CollectorAttemptNumber.Maximum)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumAttempts));
+        }
+
+        if (transientRetryDelay < TimeSpan.Zero || transientRetryDelay > MaximumRetryDelay)
+        {
+            throw new ArgumentOutOfRangeException(nameof(transientRetryDelay));
+        }
+
+        if (circuitFailureThreshold is <= 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(circuitFailureThreshold));
+        }
+
+        if (circuitOpenDuration < MinimumCircuitOpenDuration ||
+            circuitOpenDuration > MaximumCircuitOpenDuration)
+        {
+            throw new ArgumentOutOfRangeException(nameof(circuitOpenDuration));
+        }
+
+        MaximumAttempts = maximumAttempts;
+        TransientRetryDelay = transientRetryDelay;
+        CircuitFailureThreshold = circuitFailureThreshold;
+        CircuitOpenDuration = circuitOpenDuration;
+    }
+
+    public int MaximumAttempts { get; }
+    public TimeSpan TransientRetryDelay { get; }
+    public int CircuitFailureThreshold { get; }
+    public TimeSpan CircuitOpenDuration { get; }
+}
+
 /// <summary>The complete versioned, bounded, inspectable collector contract from ADR-0005.</summary>
 public sealed class CollectorManifest
 {
     public const int MaximumRequiredCapabilities = 64;
     public const int MaximumRequiredPermissions = 64;
     public const int MaximumSupportedPlatforms = 4;
+    public const int MaximumSupportedEngineEditions = 16;
+    public const int MaximumDependencies = 16;
 
     private readonly ReadOnlyCollection<CapabilityId> _requiredCapabilities;
     private readonly ReadOnlyCollection<CollectorPermissionRequirement> _requiredPermissions;
     private readonly ReadOnlyCollection<SqlServerPlatform> _supportedPlatforms;
+    private readonly ReadOnlyCollection<SqlServerEngineEdition> _supportedEngineEditions;
+    private readonly ReadOnlyCollection<CollectorId> _dependsOn;
 
     public CollectorManifest(
         CollectorId id,
@@ -244,7 +326,11 @@ public sealed class CollectorManifest
         CollectorExecutionLimits limits,
         CollectorFallbackPolicy fallback,
         CollectorOutputSchemaVersion outputSchemaVersion,
-        CollectorOperationalMode operationalMode)
+        CollectorOperationalMode operationalMode,
+        IReadOnlyList<SqlServerEngineEdition>? supportedEngineEditions = null,
+        IReadOnlyList<CollectorId>? dependsOn = null,
+        CollectorResiliencePolicy? resilience = null,
+        CollectorOutputKind outputKind = CollectorOutputKind.CapabilityProfile)
     {
         ArgumentNullException.ThrowIfNull(id);
         ArgumentNullException.ThrowIfNull(displayName);
@@ -263,11 +349,24 @@ public sealed class CollectorManifest
             throw new ArgumentOutOfRangeException(nameof(operationalMode));
         }
 
+        if (!Enum.IsDefined(outputKind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(outputKind));
+        }
+
         CapabilityId[] capabilityCopy = CopyCapabilities(requiredCapabilities);
         CollectorPermissionRequirement[] permissionCopy = CopyPermissions(
             requiredPermissions,
             supportedVersions);
         SqlServerPlatform[] platformCopy = CopyPlatforms(supportedPlatforms);
+        SqlServerEngineEdition[] engineEditionCopy = CopyEngineEditions(
+            supportedEngineEditions ??
+            [
+                SqlServerEngineEdition.Standard,
+                SqlServerEngineEdition.Enterprise,
+                SqlServerEngineEdition.Express,
+            ]);
+        CollectorId[] dependencyCopy = CopyDependencies(dependsOn ?? Array.Empty<CollectorId>(), id);
 
         if (fallback.AlternateCollectorId == id)
         {
@@ -281,11 +380,19 @@ public sealed class CollectorManifest
         _requiredPermissions = Array.AsReadOnly(permissionCopy);
         SupportedVersions = supportedVersions;
         _supportedPlatforms = Array.AsReadOnly(platformCopy);
+        _supportedEngineEditions = Array.AsReadOnly(engineEditionCopy);
+        _dependsOn = Array.AsReadOnly(dependencyCopy);
         Intervals = intervals;
         Limits = limits;
         Fallback = fallback;
         OutputSchemaVersion = outputSchemaVersion;
         OperationalMode = operationalMode;
+        Resilience = resilience ?? new CollectorResiliencePolicy(
+            maximumAttempts: 1,
+            transientRetryDelay: TimeSpan.Zero,
+            circuitFailureThreshold: 3,
+            circuitOpenDuration: TimeSpan.FromMinutes(5));
+        OutputKind = outputKind;
     }
 
     public CollectorId Id { get; }
@@ -302,6 +409,10 @@ public sealed class CollectorManifest
 
     public IReadOnlyList<SqlServerPlatform> SupportedPlatforms => _supportedPlatforms;
 
+    public IReadOnlyList<SqlServerEngineEdition> SupportedEngineEditions => _supportedEngineEditions;
+
+    public IReadOnlyList<CollectorId> DependsOn => _dependsOn;
+
     public CollectorIntervalPolicy Intervals { get; }
 
     public CollectorExecutionLimits Limits { get; }
@@ -311,6 +422,10 @@ public sealed class CollectorManifest
     public CollectorOutputSchemaVersion OutputSchemaVersion { get; }
 
     public CollectorOperationalMode OperationalMode { get; }
+
+    public CollectorResiliencePolicy Resilience { get; }
+
+    public CollectorOutputKind OutputKind { get; }
 
     private static CapabilityId[] CopyCapabilities(IReadOnlyList<CapabilityId> capabilities)
     {
@@ -413,6 +528,71 @@ public sealed class CollectorManifest
             }
 
             copy[index] = platform;
+        }
+
+        return copy;
+    }
+
+    private static SqlServerEngineEdition[] CopyEngineEditions(
+        IReadOnlyList<SqlServerEngineEdition> engineEditions)
+    {
+        if (engineEditions.Count is 0 or > MaximumSupportedEngineEditions)
+        {
+            throw new ArgumentException(
+                $"A collector must support between 1 and {MaximumSupportedEngineEditions} engine editions.",
+                nameof(engineEditions));
+        }
+
+        var copy = new SqlServerEngineEdition[engineEditions.Count];
+        var values = new HashSet<SqlServerEngineEdition>();
+        for (int index = 0; index < engineEditions.Count; index++)
+        {
+            SqlServerEngineEdition edition = engineEditions[index];
+            if (!Enum.IsDefined(edition) || edition == SqlServerEngineEdition.Other)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(engineEditions),
+                    "A supported engine edition must be an explicit product edition.");
+            }
+
+            if (!values.Add(edition))
+            {
+                throw new ArgumentException("Supported engine editions must be unique.", nameof(engineEditions));
+            }
+
+            copy[index] = edition;
+        }
+
+        return copy;
+    }
+
+    private static CollectorId[] CopyDependencies(IReadOnlyList<CollectorId> dependencies, CollectorId self)
+    {
+        if (dependencies.Count > MaximumDependencies)
+        {
+            throw new ArgumentException(
+                $"A collector cannot depend on more than {MaximumDependencies} collectors.",
+                nameof(dependencies));
+        }
+
+        var copy = new CollectorId[dependencies.Count];
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        for (int index = 0; index < dependencies.Count; index++)
+        {
+            CollectorId dependency = dependencies[index] ?? throw new ArgumentException(
+                "Collector dependencies cannot contain null entries.",
+                nameof(dependencies));
+            if (dependency == self)
+            {
+                throw new ArgumentException("A collector cannot depend on itself.", nameof(dependencies));
+            }
+
+            if (!ids.Add(dependency.Value))
+            {
+                throw new ArgumentException("Collector dependencies must be unique.", nameof(dependencies));
+            }
+
+            copy[index] = dependency;
         }
 
         return copy;
