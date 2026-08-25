@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Infrastructure.Windows;
 using SqlObserver.Security;
 using SqlObserver.Server;
 
@@ -69,6 +70,12 @@ builder.Services.AddSingleton<IDeadlockProjectionRepositoryPort>(static services
 builder.Services.AddSingleton<IDeadlockProjectionQueryService, DeadlockProjectionQueryService>();
 builder.Services.AddSingleton<IQueryPerformanceApiRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryPerformanceApiProjections);
 builder.Services.AddSingleton<IQueryPerformanceApiQueryService, QueryPerformanceApiQueryService>();
+builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
+builder.Services.AddSingleton<IAlertQueryService, AlertQueryService>();
+builder.Services.AddSingleton<IAlertDestinationApprovalPort, ConfiguredAlertDestinationApproval>();
+builder.Services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
+builder.Services.AddSingleton<IEventLogAlertWriter, WindowsEventLogAlertWriter>();
+builder.Services.AddSingleton<IAlertAdministrationService, AlertAdministrationService>();
 
 WebApplication app = builder.Build();
 
@@ -84,6 +91,7 @@ app.MapTargetHealthEndpoints();
 app.MapTargetActivityEndpoints();
 app.MapTargetDeadlockEndpoints();
 app.MapTargetQueryPerformanceApiEndpoints();
+app.MapAlertEndpoints();
 
 await app.RunAsync();
 

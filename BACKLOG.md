@@ -22,7 +22,7 @@ Status meanings:
 | **M5 — Sessions, requests, waits, blocking** | Bounded sessions and requests, wait summaries, current blocking chains and blocking history; API/UI projections and collector-specific permission/failure/limit tests | Implemented |
 | **M6 — Deadlocks and Extended Events** | Passive bounded reading of deadlocks from `system_health`; safe XML handling; typed event persistence/search; no enhanced script because system_health is the selected source; never automatic XE/blocked-process changes | Implemented locally; Docker/PostgreSQL and SQL Server lab certification remain required |
 | **M7 — Query Store and query performance** | Capability-aware Query Store reads; plan-cache fallback; query history/top queries/plan metadata; sensitive-content controls and deduplication; no automatic Query Store change or plan forcing | Implemented locally |
-| **M8 — Alerts, maintenance, notifications** | Rule evaluation/state, maintenance suppression, delivery adapters, audited administrative writes, active-alert projection; MCP remains unable to acknowledge or notify | Planned |
+| **M8 — Alerts, maintenance, notifications** | Rule evaluation/state, maintenance suppression, delivery adapters, audited administrative writes, active-alert projection; MCP remains unable to acknowledge or notify | Implemented locally; Docker/live Event Log gates remain environmental |
 | **M9 — Backups, jobs, TempDB, Availability Groups** | Ordered collectors and bounded projections for backup status, SQL Agent failures, TempDB health, and Availability Group health | Planned |
 | **M10 — Rollups, baselines, forecasts, incident correlation** | Rollups, baselines, metric-window comparison, storage forecasts, host metrics, replication evidence, evidence packets, incident threads, retention/partition production hardening | Planned |
 | **M11 — MCP** | Official stable C# SDK selection at implementation time behind adapter; stdio-to-server authentication; all and only allowlisted read-only tools; service-layer RBAC; UTC/bounds/pagination; audit every call; stable/current-protocol compatibility suite | Planned |
@@ -168,7 +168,7 @@ This is the completion checklist for the first assignment. Each item was inspect
 5. **Coordination and retention safety — complete.** Repository-clock leases use persistent monotonic fencing; retention policy is disabled and its view is preview-only with recovery prerequisites unsatisfied.
 6. **Active evidence — complete for M2.** Unit, security, and PostgreSQL 18.4 integration suites cover contracts, boundaries, migration history, roles/schemas, partitions/indexes, ingestion/deduplication, cancellation, and stale fences without PostgreSQL-test skips. Full representative-volume and platform certification remains a release gate.
 
-M7 Query Store and plan-cache evidence is implemented locally; the next runtime dependency is M8 alerting.
+M7 Query Store and plan-cache evidence and M8 alert evaluation/delivery are implemented locally; the next runtime dependency is later analytics/reporting.
 
 ## Completed M4 collector and core-health tasks
 
@@ -190,7 +190,7 @@ M7 Query Store and plan-cache evidence is implemented locally; the next runtime 
 
 The following are explicitly incomplete and must not be represented as working:
 
-- M8 alerts and later analytics/reporting/MCP behavior remain outside the implemented runtime slice;
+- Later analytics/reporting/MCP behavior remains outside the implemented runtime slice;
 
 - production collector implementations or target SQL beyond the active M7 bundle (`queries.performance`, `deadlocks.system-health`, `activity.sessions`, `activity.requests`, `waits.server`, and `blocking.current`) plus the M3/M4 collectors;
 - reusable target credentials, automatic permission grants, or target mutation;

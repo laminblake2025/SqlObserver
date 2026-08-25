@@ -4,6 +4,7 @@
     <AssemblyName>SqlObserver.SecurityTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <None Update="Fixtures\m8-alert-observation.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
@@ -11,5 +12,6 @@
     <ProjectReference Include="../../src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Security/SqlObserver.Security.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
   </ItemGroup>
 </Project>

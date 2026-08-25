@@ -14,11 +14,13 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         Runtime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
+        Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
     }
 
     public ICollectorRuntimeRepositoryPort Runtime { get; }
     public IWorkerLeasePort WorkerLeases { get; }
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
+    public IAlertRepositoryPort Alerts { get; }
 
     public static PostgreSqlCollectorDataPlane Create(
         string repositoryConfiguration,

@@ -4,7 +4,16 @@
     <AssemblyName>SqlObserver.IntegrationTests.PostgreSql</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions">
+      <HintPath>$(NuGetPackageRoot)\microsoft.extensions.logging.abstractions\8.0.3\lib\net8.0\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Content Include="$(NuGetPackageRoot)\microsoft.extensions.logging.abstractions\8.0.3\lib\net8.0\Microsoft.Extensions.Logging.Abstractions.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <ProjectReference Include="../../src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />

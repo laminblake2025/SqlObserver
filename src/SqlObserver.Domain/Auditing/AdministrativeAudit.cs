@@ -69,6 +69,18 @@ public enum AdministrativeAuditAction
     RetireObservationTarget = 3,
     RequestCapabilityRediscovery = 4,
     RecordCapabilityProfile = 5,
+    CreateAlertRule = 6,
+    UpdateAlertRule = 7,
+    RetireAlertRule = 8,
+    CreateMaintenanceWindow = 9,
+    AcknowledgeAlert = 10,
+    ConfigureAlertDestination = 11,
+    UpdateMaintenanceWindow = 12,
+    RetireMaintenanceWindow = 13,
+    UpdateAlertDestination = 14,
+    RetireAlertDestination = 15,
+    CancelAlertDelivery = 16,
+    ApproveAlertDestination = 17,
 }
 
 public enum AdministrativeAuthorizationDecision
@@ -97,6 +109,8 @@ public enum AdministrativeAuditReason
     TargetRetired = 8,
     DiscoveryFailed = 9,
     RepositoryFailure = 10,
+    InvalidRequest = 11,
+    IdempotentReplay = 12,
 }
 
 /// <summary>Safe context carried into an atomic repository mutation.</summary>
@@ -139,7 +153,9 @@ public sealed class AdministrativeAuditRecord
         AdministrativeAuditEnvelope envelope,
         AdministrativeAuthorizationDecision authorizationDecision,
         AdministrativeOperationOutcome outcome,
-        AdministrativeAuditReason reason)
+        AdministrativeAuditReason reason,
+        Guid? operationId = null,
+        string? safeDetails = null)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
@@ -164,10 +180,22 @@ public sealed class AdministrativeAuditRecord
             throw new ArgumentException("A denied authorization decision must have a denied outcome, and vice versa.");
         }
 
+        if (operationId == Guid.Empty)
+        {
+            throw new ArgumentException("An audit operation identifier cannot be empty.", nameof(operationId));
+        }
+
+        if (safeDetails is not null && (safeDetails.Length > 1024 || safeDetails.Any(char.IsControl)))
+        {
+            throw new ArgumentException("Audit details are outside their bounded safe envelope.", nameof(safeDetails));
+        }
+
         Envelope = envelope;
         AuthorizationDecision = authorizationDecision;
         Outcome = outcome;
         Reason = reason;
+        OperationId = operationId;
+        SafeDetails = safeDetails ?? string.Empty;
     }
 
     public AdministrativeAuditEnvelope Envelope { get; }
@@ -177,6 +205,12 @@ public sealed class AdministrativeAuditRecord
     public AdministrativeOperationOutcome Outcome { get; }
 
     public AdministrativeAuditReason Reason { get; }
+
+    /// <summary>Canonical operation identity for M8 mutation outcomes.</summary>
+    public Guid? OperationId { get; }
+
+    /// <summary>Bounded, non-secret detail token; SQL wraps it in an allowlisted JSON object.</summary>
+    public string SafeDetails { get; }
 }
 
 public sealed class AdministrativeAuditReceipt

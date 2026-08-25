@@ -1,4 +1,5 @@
 using System.Globalization;
+using SqlObserver.Application.Ports;
 
 namespace SqlObserver.Server;
 
@@ -32,11 +33,46 @@ public sealed class SafeApiExceptionMiddleware
                     "The request is invalid.")
                 .ConfigureAwait(false);
         }
+        catch (AlertRepositoryOperationException exception)
+        {
+            await WriteFailureAsync(context, exception.StatusCode, exception.Code, exception.Message).ConfigureAwait(false);
+        }
+        catch (AlertDestinationValidationException exception)
+        {
+            await WriteFailureAsync(context, exception.StatusCode, exception.StatusCode == StatusCodes.Status503ServiceUnavailable ? "destination_provider_unavailable" : "invalid_request", exception.StatusCode == StatusCodes.Status503ServiceUnavailable ? "The destination provider is unavailable." : "The destination configuration is invalid.").ConfigureAwait(false);
+        }
+        catch (InvalidDataException)
+        {
+            await WriteFailureAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "invalid_request",
+                    "The request is invalid.")
+                .ConfigureAwait(false);
+        }
+        catch (ArgumentException)
+        {
+            await WriteFailureAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "invalid_request",
+                    "The request is invalid.")
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            await WriteFailureAsync(
+                    context,
+                    StatusCodes.Status409Conflict,
+                    "operation_conflict",
+                    "The operation conflicts with current state.")
+                .ConfigureAwait(false);
+        }
         catch (Exception exception) when (exception is OperationCanceledException or TimeoutException)
         {
             await WriteFailureAsync(
                     context,
-                    StatusCodes.Status504GatewayTimeout,
+                    StatusCodes.Status503ServiceUnavailable,
                     "request_timed_out",
                     "The request exceeded its execution limit.")
                 .ConfigureAwait(false);

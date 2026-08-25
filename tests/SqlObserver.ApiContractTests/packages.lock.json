@@ -351,11 +351,6 @@
           "Microsoft.TestPlatform.ObjectModel": "18.8.1"
         }
       },
-      "System.Diagnostics.EventLog": {
-        "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
-      },
       "System.DirectoryServices.Protocols": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -450,6 +445,7 @@
         "type": "Project",
         "dependencies": {
           "Npgsql": "[10.0.3, )",
+          "SqlObserver.Alerting": "[1.0.0, )",
           "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
@@ -458,7 +454,8 @@
       "sqlobserver.infrastructure.windows": {
         "type": "Project",
         "dependencies": {
-          "SqlObserver.Application": "[1.0.0, )"
+          "SqlObserver.Application": "[1.0.0, )",
+          "System.Diagnostics.EventLog": "[10.0.11, )"
         }
       },
       "sqlobserver.mcp": {
@@ -549,6 +546,12 @@
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
         }
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       }
     }
   }

@@ -5,6 +5,8 @@
     <AssemblyName>SqlObserver.Collector</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Alerting/SqlObserver.Alerting.csproj" />
+    <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />

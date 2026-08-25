@@ -10,7 +10,7 @@ namespace SqlObserver.SecurityTests;
 public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
 {
     [Fact]
-    public void AdapterUsesOnlyTheFiveParameterDeniedAuditWrapper()
+    public void AdapterUsesOnlyTheFiveParameterM8DeniedAuditWrapper()
     {
         FieldInfo? sqlField = typeof(PostgreSqlAdministrativeAuditPort).GetField(
             "AppendSql",
@@ -18,7 +18,7 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
         string sql = Assert.IsType<string>(sqlField?.GetRawConstantValue());
         const string expected = """
             SELECT audit_activity_id, repository_time
-            FROM audit.append_denied_administrative_activity(
+            FROM audit.append_denied_m8_administrative_activity(
                 @actor_identifier,
                 @correlation_id,
                 @audit_action,
@@ -34,6 +34,17 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
         Assert.DoesNotContain("operation_outcome", sql, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AdapterHasSeparateBoundedM8OutcomeWrapperWithOperationAndDetails()
+    {
+        FieldInfo? sqlField = typeof(PostgreSqlAdministrativeAuditPort).GetField("AppendOutcomeSql", BindingFlags.NonPublic | BindingFlags.Static);
+        string sql = Assert.IsType<string>(sqlField?.GetRawConstantValue());
+        Assert.Contains("audit.append_m8_administrative_activity", sql, StringComparison.Ordinal);
+        Assert.Contains("@operation_id", sql, StringComparison.Ordinal);
+        Assert.Contains("@operation_outcome", sql, StringComparison.Ordinal);
+        Assert.Contains("@safe_details", sql, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(AdministrativeAuditAction.RegisterObservationTarget)]
     [InlineData(AdministrativeAuditAction.UpdateObservationTarget)]
@@ -47,6 +58,24 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
             AdministrativeAuthorizationDecision.Denied,
             AdministrativeOperationOutcome.Denied,
             AdministrativeAuditReason.PrincipalDisabled));
+    }
+
+    [Theory]
+    [InlineData(AdministrativeAuditAction.CreateAlertRule)]
+    [InlineData(AdministrativeAuditAction.UpdateAlertRule)]
+    [InlineData(AdministrativeAuditAction.RetireAlertRule)]
+    [InlineData(AdministrativeAuditAction.CreateMaintenanceWindow)]
+    [InlineData(AdministrativeAuditAction.UpdateMaintenanceWindow)]
+    [InlineData(AdministrativeAuditAction.RetireMaintenanceWindow)]
+    [InlineData(AdministrativeAuditAction.AcknowledgeAlert)]
+    [InlineData(AdministrativeAuditAction.ConfigureAlertDestination)]
+    [InlineData(AdministrativeAuditAction.UpdateAlertDestination)]
+    [InlineData(AdministrativeAuditAction.RetireAlertDestination)]
+    [InlineData(AdministrativeAuditAction.CancelAlertDelivery)]
+    [InlineData(AdministrativeAuditAction.ApproveAlertDestination)]
+    public async Task M8DeniedActionsReachCancellationBoundary(AdministrativeAuditAction action)
+    {
+        await AssertAcceptedUntilCancellationAsync(CreateRecord(action, AdministrativeAuthorizationDecision.Denied, AdministrativeOperationOutcome.Denied, AdministrativeAuditReason.InvalidRequest, Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc")));
     }
 
     [Theory]
@@ -67,16 +96,17 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
     [InlineData(AdministrativeOperationOutcome.Succeeded)]
     [InlineData(AdministrativeOperationOutcome.Failed)]
     [InlineData(AdministrativeOperationOutcome.Conflict)]
-    public async Task NonDeniedRecordsFailClosedBeforeCancellationOrIo(
+    public async Task M8OutcomeRecordsReachCancellationBoundaryBeforeIo(
         AdministrativeOperationOutcome outcome)
     {
         AdministrativeAuditRecord record = CreateRecord(
-            AdministrativeAuditAction.RegisterObservationTarget,
+            AdministrativeAuditAction.CreateAlertRule,
             AdministrativeAuthorizationDecision.Granted,
             outcome,
-            AdministrativeAuditReason.PrincipalDisabled);
+            AdministrativeAuditReason.InvalidRequest,
+            Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"));
 
-        await AssertRejectedBeforeIoAsync(record);
+        await AssertAcceptedUntilCancellationAsync(record);
     }
 
     [Fact]
@@ -148,7 +178,8 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
         AdministrativeAuditAction action,
         AdministrativeAuthorizationDecision decision,
         AdministrativeOperationOutcome outcome,
-        AdministrativeAuditReason reason) =>
+        AdministrativeAuditReason reason,
+        Guid? operationId = null) =>
         new(
             new AdministrativeAuditEnvelope(
                 new ActorSecurityIdentifier("S-1-5-21-1000"),
@@ -157,5 +188,7 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
                 new MonitoredInstanceId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))),
             decision,
             outcome,
-            reason);
+            reason,
+            operationId ?? Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+            "security-test");
 }

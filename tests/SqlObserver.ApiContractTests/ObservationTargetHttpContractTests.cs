@@ -362,10 +362,10 @@ public sealed class ObservationTargetHttpContractTests : IClassFixture<Observati
             "/api/v1/observation-targets?limit=50");
         string body = await response.Content.ReadAsStringAsync();
 
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.DoesNotContain("supersecret", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("connection string", body, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("request_failed", body, StringComparison.Ordinal);
+            Assert.Contains("operation_conflict", body, StringComparison.Ordinal);
     }
 
     private HttpClient CreateClient(string? identity = null)

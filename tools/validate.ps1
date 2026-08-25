@@ -401,6 +401,7 @@ function Assert-RepositoryShape {
         )
         'SqlObserver.Infrastructure.PostgreSql' = @('Npgsql')
         'SqlObserver.Infrastructure.SqlServer' = @('Microsoft.Data.SqlClient')
+        'SqlObserver.Infrastructure.Windows' = @('System.Diagnostics.EventLog')
         'SqlObserver.Server' = @(
             'Microsoft.AspNetCore.Authentication.Negotiate',
             'Microsoft.Extensions.Hosting.WindowsServices'
@@ -928,7 +929,7 @@ function Assert-RepositoryShape {
         if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM7TestAsset) -PathType Leaf)) { throw "M7 focused test asset is missing: $requiredM7TestAsset" }
     }
     $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
-    if ($readmeStatus -notmatch 'Milestones 0 through 7 are implemented' -or
+    if ($readmeStatus -notmatch 'Milestones 0 through (?:7|8) are implemented' -or
         $readmeStatus -notmatch '(?i)M5 activity' -or
         $readmeStatus -notmatch '(?i)M6.*(?:system_health|deadlock)' -or
         $readmeStatus -notmatch '(?i)M7.*(?:Query Store|query-performance)' -or

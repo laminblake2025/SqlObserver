@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "sqlobserver.m8.alerts",
+  "contractVersion": 1,
+  "rules": [
+    { "name": "metric.threshold", "kind": "metric_threshold", "metric": "engine.user_connections", "sourceCollector": "engine.core", "sourceSchemaVersion": 1, "unit": "count", "comparison": "greater_than_or_equal", "threshold": 1, "hysteresis": 0, "confirmationCount": 1, "confirmationWindowSeconds": 0, "evaluationIntervalSeconds": 15, "enabled": true },
+    { "name": "collector.health", "kind": "collector_health", "metric": null, "sourceCollector": "engine.core", "sourceSchemaVersion": 1, "unit": "count", "comparison": "less_than", "threshold": 1, "hysteresis": 0, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 30, "enabled": true }
+  ]
+}

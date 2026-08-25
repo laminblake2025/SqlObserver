@@ -414,11 +414,6 @@
           "System.Security.Cryptography.ProtectedData": "9.0.13"
         }
       },
-      "System.Diagnostics.EventLog": {
-        "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
-      },
       "System.DirectoryServices.Protocols": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -524,6 +519,8 @@
         "dependencies": {
           "Microsoft.Extensions.Hosting": "[10.0.11, )",
           "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.11, )",
+          "SqlObserver.Alerting": "[1.0.0, )",
+          "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Collectors": "[1.0.0, )",
           "SqlObserver.Infrastructure.PostgreSql": "[1.0.0, )",
@@ -552,6 +549,7 @@
         "type": "Project",
         "dependencies": {
           "Npgsql": "[10.0.3, )",
+          "SqlObserver.Alerting": "[1.0.0, )",
           "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
@@ -569,7 +567,8 @@
       "sqlobserver.infrastructure.windows": {
         "type": "Project",
         "dependencies": {
-          "SqlObserver.Application": "[1.0.0, )"
+          "SqlObserver.Application": "[1.0.0, )",
+          "System.Diagnostics.EventLog": "[10.0.11, )"
         }
       },
       "sqlobserver.mcp": {
@@ -678,6 +677,12 @@
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
         }
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       }
     }
   }

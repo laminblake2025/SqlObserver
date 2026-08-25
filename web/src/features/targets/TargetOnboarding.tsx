@@ -4,6 +4,7 @@ import { TargetHealthPanel } from "../health/TargetHealthPanel";
 import { TargetActivityPanel } from "../activity/TargetActivityPanel";
 import { TargetDeadlockPanel } from "../deadlocks/TargetDeadlockPanel";
 import { TargetQueryPerformancePanel } from "../queries/TargetQueryPerformancePanel";
+import { TargetAlertsPanel } from "../alerts/TargetAlertsPanel";
 import { listObservationTargets, registerObservationTarget } from "./targetApi";
 import type {
   CapabilityStatus,
@@ -44,6 +45,7 @@ export function TargetOnboarding() {
   const [selectedActivityTargetId, setSelectedActivityTargetId] = useState<string>();
   const [selectedDeadlockTargetId, setSelectedDeadlockTargetId] = useState<string>();
   const [selectedQueryPerformanceTargetId, setSelectedQueryPerformanceTargetId] = useState<string>();
+  const [selectedAlertsTargetId, setSelectedAlertsTargetId] = useState<string>();
   const [registrationInstanceId, setRegistrationInstanceId] = useState(createClientInstanceId);
   const selectedTarget = targets.find((target) => target.instanceId === selectedTargetId);
 
@@ -230,6 +232,7 @@ export function TargetOnboarding() {
               <button className="secondary-button target-health-button" onClick={() => setSelectedQueryPerformanceTargetId(target.instanceId)} type="button">
                 View query performance
               </button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedAlertsTargetId(target.instanceId)} type="button">View alerts</button>
             </article>
           ))}
         </div>
@@ -264,6 +267,10 @@ export function TargetOnboarding() {
       {selectedQueryPerformanceTargetId === undefined ? null : (() => {
         const queryTarget = targets.find((target) => target.instanceId === selectedQueryPerformanceTargetId);
         return queryTarget === undefined ? null : <TargetQueryPerformancePanel displayName={queryTarget.displayName} instanceId={queryTarget.instanceId} onClose={() => setSelectedQueryPerformanceTargetId(undefined)} />;
+      })()}
+      {selectedAlertsTargetId === undefined ? null : (() => {
+        const alertTarget = targets.find((target) => target.instanceId === selectedAlertsTargetId);
+        return alertTarget === undefined ? null : <TargetAlertsPanel displayName={alertTarget.displayName} instanceId={alertTarget.instanceId} onClose={() => setSelectedAlertsTargetId(undefined)} />;
       })()}
     </section>
   );

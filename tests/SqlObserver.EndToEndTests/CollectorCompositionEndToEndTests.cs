@@ -42,7 +42,7 @@ public sealed class CollectorCompositionEndToEndTests
         Assert.Equal(1, provider.GetRequiredService<CollectorRegistry>()
             .Registrations.Single(static registration => registration.Manifest.Id.Value == "deadlocks.system-health")
             .Manifest.ManifestVersion.Value);
-        Assert.Equal(2, provider.GetServices<IHostedService>().Count());
+        Assert.Equal(4, provider.GetServices<IHostedService>().Count());
         Assert.DoesNotContain(
             services,
             static descriptor => descriptor.ServiceType == typeof(PostgreSqlTargetControlPlane));

@@ -5,6 +5,7 @@ using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.SqlServer;
+using SqlObserver.Infrastructure.Windows;
 using SqlObserver.Domain.SensitiveData;
 
 namespace SqlObserver.Collector;
@@ -30,6 +31,16 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().CapabilityProfiles);
         services.AddSingleton<ICollectorRuntimeRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Runtime);
+        services.AddSingleton<IAlertRepositoryPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Alerts);
+        services.AddSingleton<IAlertEvaluationSource, PostgreSqlAlertEvaluationSource>();
+        services.AddSingleton<IAlertDestinationConfigurationResolver>(_ => new ConfigurationAlertDestinationResolver(key => configuration[key]));
+        services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
+        services.AddSingleton<IAlertDestinationHttpClientFactory, AddressBoundAlertDestinationHttpClientFactory>();
+        services.AddSingleton(static provider => new HttpClient(AddressBoundConnectHandler.Create(provider.GetRequiredService<IAlertDnsResolver>(), AlertNetworkPolicy.IsApprovedAddress)));
+        services.AddSingleton<HttpsWebhookAlertDestination>();
+        services.AddSingleton<WindowsEventLogAlertDestination>();
+        services.AddSingleton<IAlertDestinationPort, AlertDestinationDispatcher>();
         services.AddSingleton<ISqlServerCapabilityDiscoveryPort, SqlServerCapabilityDiscoveryPort>();
         services.AddSingleton<ICapabilityDiscoveryService, CapabilityDiscoveryService>();
         services.AddSingleton(TimeProvider.System);
@@ -72,6 +83,8 @@ public static class CollectorServiceRegistration
                 new RepositoryCallTimeout(TimeSpan.FromSeconds(5)))));
         services.AddHostedService<CapabilityDiscoveryWorker>();
         services.AddHostedService<CollectionWorker>();
+        services.AddHostedService<AlertEvaluationWorker>();
+        services.AddHostedService<AlertDeliveryWorker>();
         return services;
     }
 

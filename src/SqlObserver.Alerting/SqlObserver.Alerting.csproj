@@ -4,6 +4,7 @@
     <AssemblyName>SqlObserver.Alerting</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Assets/alert-catalog.json" />
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
   </ItemGroup>

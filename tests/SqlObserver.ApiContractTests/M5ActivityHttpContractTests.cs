@@ -64,7 +64,7 @@ public sealed class M5ActivityHttpContractTests : IClassFixture<M5ActivityApiFac
         {
             using HttpClient client = CreateClient("viewer");
             HttpResponseMessage response = await client.GetAsync($"/api/v1/observation-targets/{M5ActivityApiFactory.TargetId:D}/activity/sessions");
-            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             Assert.DoesNotContain("StackOverflow", await response.Content.ReadAsStringAsync());
             Assert.DoesNotContain("provider", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
         }
