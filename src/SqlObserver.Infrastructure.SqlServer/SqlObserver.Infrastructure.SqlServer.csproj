@@ -4,6 +4,34 @@
     <AssemblyName>SqlObserver.Infrastructure.SqlServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.v2.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV2Assets.capability.connection.v2.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.v2.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV2Assets.capability.connection.v2.schema.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.assets-v2.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV2Assets.capability.connection.assets-v2.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver15-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV2Assets.capability.connection.sqlserver15-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver16-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV2Assets.capability.connection.sqlserver16-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver17-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV2Assets.capability.connection.sqlserver17-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v5.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.collector-manifest.v5.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m9-operational-health.assets.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.m9-operational-health.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/backups.status.v1.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.backups.status.v1.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/sql-agent.failures.v1.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.sql-agent.failures.v1.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/tempdb.health.v1.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.tempdb.health.v1.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/availability-groups.health.v1.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.v1.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.backups.status.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.backups.status.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.backups.status.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.failures.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.sql-agent.failures.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.failures.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.sql-agent.failures.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.failures.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.sql-agent.failures.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/tempdb.health.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.tempdb.health.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/tempdb.health.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.tempdb.health.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/tempdb.health.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.tempdb.health.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/queries.performance.v1.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.v1.json</LogicalName>
     </EmbeddedResource>

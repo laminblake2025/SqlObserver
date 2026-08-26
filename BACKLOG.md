@@ -23,7 +23,7 @@ Status meanings:
 | **M6 — Deadlocks and Extended Events** | Passive bounded reading of deadlocks from `system_health`; safe XML handling; typed event persistence/search; no enhanced script because system_health is the selected source; never automatic XE/blocked-process changes | Implemented locally; Docker/PostgreSQL and SQL Server lab certification remain required |
 | **M7 — Query Store and query performance** | Capability-aware Query Store reads; plan-cache fallback; query history/top queries/plan metadata; sensitive-content controls and deduplication; no automatic Query Store change or plan forcing | Implemented locally |
 | **M8 — Alerts, maintenance, notifications** | Rule evaluation/state, maintenance suppression, delivery adapters, audited administrative writes, active-alert projection; MCP remains unable to acknowledge or notify | Implemented locally; Docker/live Event Log gates remain environmental |
-| **M9 — Backups, jobs, TempDB, Availability Groups** | Ordered collectors and bounded projections for backup status, SQL Agent failures, TempDB health, and Availability Group health | Planned |
+| **M9 — Backups, jobs, TempDB, Availability Groups** | Ordered collectors and bounded projections for backup status, SQL Agent failures, TempDB health, and Availability Group health | Implemented locally; Docker/live SQL certification pending |
 | **M10 — Rollups, baselines, forecasts, incident correlation** | Rollups, baselines, metric-window comparison, storage forecasts, host metrics, replication evidence, evidence packets, incident threads, retention/partition production hardening | Planned |
 | **M11 — MCP** | Official stable C# SDK selection at implementation time behind adapter; stdio-to-server authentication; all and only allowlisted read-only tools; service-layer RBAC; UTC/bounds/pagination; audit every call; stable/current-protocol compatibility suite | Planned |
 | **M12 — Reports, installer, upgrades, release hardening** | Reports/exports; WiX and PostgreSQL packaging; Windows Service/gMSA/TLS configuration; install/upgrade/recovery/uninstall; initial-release certification; security/performance/end-to-end gates; release and runbooks | Planned |
@@ -186,16 +186,16 @@ M7 Query Store and plan-cache evidence and M8 alert evaluation/delivery are impl
 3. **Activity UI — complete.** The target workflow exposes sessions, active requests, waits with reset/baseline semantics, current blocking, and bounded one-hour blocking history with freshness and truncation evidence.
 4. **Active evidence — implementation slice verified where runnable.** M5-focused SQL Server, end-to-end composition, API DTO, and web contract tests are active; PostgreSQL integration execution is pending the Docker PostgreSQL environment. Support-platform, gMSA/Kerberos, trusted-TLS, sustained-load, installer, and release certification remain M12 exclusions.
 
-## Current post-M7 exclusions
+## Current post-M9 exclusions
 
 The following are explicitly incomplete and must not be represented as working:
 
 - Later analytics/reporting/MCP behavior remains outside the implemented runtime slice;
 
-- production collector implementations or target SQL beyond the active M7 bundle (`queries.performance`, `deadlocks.system-health`, `activity.sessions`, `activity.requests`, `waits.server`, and `blocking.current`) plus the M3/M4 collectors;
+- production collector implementations or target SQL beyond the active M9 bundle (`capability.connection`, `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `backups.status`, `sql-agent.failures`, `tempdb.health`, and `availability-groups.health`); query-performance remains a separate bounded projection;
 - reusable target credentials, automatic permission grants, or target mutation;
 - automatic retention execution, repository installation/backup/restore/HA, or production repository provisioning;
-- API behavior beyond target management, M4 health, M5 activity, M6 deadlock, and M7 query-performance projections; SignalR; alert,
+- API behavior beyond target management, M4 health, M5 activity, M6 deadlock, M7 query-performance, and M9 operational-health projections; SignalR; alert,
   analytics, report, or MCP runtime behavior;
 - Query Store configuration/change, Extended Events, blocked-process, index, plan-forcing, session, or configuration changes;
 - live environment bootstrap, seed data, installer, upgrade, uninstall, or release packaging;
@@ -204,3 +204,6 @@ The following are explicitly incomplete and must not be represented as working:
 ## Cross-cutting release gates
 
 Each implementation milestone must inspect preceding ADRs, state scope/assumptions/risks, deliver the smallest complete vertical slice with tests, run `pwsh ./tools/validate.ps1`, update documentation, and identify the next dependency. M12 cannot claim release readiness until the completion evidence above covers permissions, failure, timeout, cancellation, payload limits, security, performance, installation, upgrade/recovery, and supported-platform behavior without hidden skips.
+## M9 operational health
+
+Implemented locally; certification pending. Backups, SQL Agent failure history, TempDB, and Availability Group health are bounded and read-only. Live SQL Server edition/AG and PostgreSQL integration certification remain environment-dependent.

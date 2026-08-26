@@ -1,6 +1,7 @@
 using SqlObserver.Application.Ports;
 using SqlObserver.Collectors;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.Collector;
 
@@ -16,6 +17,7 @@ public sealed partial class CollectionWorker : BackgroundService
 
     private readonly CollectorScheduler _scheduler;
     private readonly IWorkerLeasePort _leases;
+    private readonly PostgreSqlPartitionMaintenancePort _partitionMaintenance;
     private readonly WorkerExecutionId _executionId;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CollectionWorker> _logger;
@@ -23,12 +25,14 @@ public sealed partial class CollectionWorker : BackgroundService
     public CollectionWorker(
         CollectorScheduler scheduler,
         IWorkerLeasePort leases,
+        PostgreSqlPartitionMaintenancePort partitionMaintenance,
         WorkerExecutionId executionId,
         TimeProvider timeProvider,
         ILogger<CollectionWorker> logger)
     {
         _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
         _leases = leases ?? throw new ArgumentNullException(nameof(leases));
+        _partitionMaintenance = partitionMaintenance ?? throw new ArgumentNullException(nameof(partitionMaintenance));
         _executionId = executionId ?? throw new ArgumentNullException(nameof(executionId));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -76,6 +80,11 @@ public sealed partial class CollectionWorker : BackgroundService
             }
 
             identity = acquisition.Lease.Identity;
+            await _partitionMaintenance.EnsureM9DailyPartitionsAsync(
+                    identity,
+                    RepositoryTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
             CollectorCatalogReconcileResult result = await _scheduler.ReconcileCatalogAsync(
                     identity,
                     cancellationToken)

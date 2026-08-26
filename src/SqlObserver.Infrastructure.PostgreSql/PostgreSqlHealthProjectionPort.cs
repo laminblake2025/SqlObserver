@@ -453,6 +453,7 @@ public sealed class PostgreSqlHealthProjectionPort : IHealthProjectionRepository
             "response_byte_limit" => CollectorLossKind.ResponseByteLimit,
             "output_validation_failure" => CollectorLossKind.OutputValidationFailure,
             "ingestion_rejection" => CollectorLossKind.IngestionRejection,
+            "visibility_incomplete" => CollectorLossKind.VisibilityIncomplete,
             _ => throw new InvalidDataException("PostgreSQL returned an unknown collector-loss kind."),
         };
         return kind == CollectorLossKind.None
@@ -546,6 +547,8 @@ public sealed class PostgreSqlHealthProjectionPort : IHealthProjectionRepository
         "target_version_unsupported" => CollectorRunReason.TargetVersionUnsupported,
         "target_platform_unsupported" => CollectorRunReason.TargetPlatformUnsupported,
         "target_edition_unsupported" => CollectorRunReason.TargetEditionUnsupported,
+        "degraded" => CollectorRunReason.Degraded,
+        "visibility_incomplete" => CollectorRunReason.VisibilityIncomplete,
         _ => throw new InvalidDataException("PostgreSQL returned an unknown collector reason."),
     };
 

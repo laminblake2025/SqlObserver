@@ -1,0 +1,5 @@
+# M9 operational health
+
+M9 adds four passive fixed-query collectors in execution order 10–13: `backups.status`, `sql-agent.failures`, `tempdb.health`, and `availability-groups.health`. SQL Server 15–17 Windows assets are checksum-pinned and bounded. SQL Agent results intentionally expose only GUIDs and numeric/status metadata; job names, steps, commands, messages, and source-local timestamps remain unavailable. No collector performs backup, job, TempDB, or Availability Group mutation.
+
+Repository snapshots are append-only and target-revision scoped. Four fenced SECURITY DEFINER commit entry points validate the collector contract and request digest. The operational API exposes six bounded target-scoped pages, with opaque cursors bound to target/run/revision and a maximum size of 1 KiB. SQL Agent pages filter by a UTC first-observed window (default 24 hours, maximum seven days). Responses are capped at 1 MiB and expose explicit unsupported, permission-denied, degraded, empty, and unresolved-time states. Certification against live SQL Server editions, AG configurations, and PostgreSQL deployment remains pending.

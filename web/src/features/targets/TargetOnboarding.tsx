@@ -5,6 +5,7 @@ import { TargetActivityPanel } from "../activity/TargetActivityPanel";
 import { TargetDeadlockPanel } from "../deadlocks/TargetDeadlockPanel";
 import { TargetQueryPerformancePanel } from "../queries/TargetQueryPerformancePanel";
 import { TargetAlertsPanel } from "../alerts/TargetAlertsPanel";
+import { OperationsPanel } from "../operations/OperationsPanel";
 import { listObservationTargets, registerObservationTarget } from "./targetApi";
 import type {
   CapabilityStatus,
@@ -46,6 +47,7 @@ export function TargetOnboarding() {
   const [selectedDeadlockTargetId, setSelectedDeadlockTargetId] = useState<string>();
   const [selectedQueryPerformanceTargetId, setSelectedQueryPerformanceTargetId] = useState<string>();
   const [selectedAlertsTargetId, setSelectedAlertsTargetId] = useState<string>();
+  const [selectedOperationsTargetId, setSelectedOperationsTargetId] = useState<string>();
   const [registrationInstanceId, setRegistrationInstanceId] = useState(createClientInstanceId);
   const selectedTarget = targets.find((target) => target.instanceId === selectedTargetId);
 
@@ -233,6 +235,7 @@ export function TargetOnboarding() {
                 View query performance
               </button>
               <button className="secondary-button target-health-button" onClick={() => setSelectedAlertsTargetId(target.instanceId)} type="button">View alerts</button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedOperationsTargetId(target.instanceId)} type="button">View operations</button>
             </article>
           ))}
         </div>
@@ -272,6 +275,7 @@ export function TargetOnboarding() {
         const alertTarget = targets.find((target) => target.instanceId === selectedAlertsTargetId);
         return alertTarget === undefined ? null : <TargetAlertsPanel displayName={alertTarget.displayName} instanceId={alertTarget.instanceId} onClose={() => setSelectedAlertsTargetId(undefined)} />;
       })()}
+      {selectedOperationsTargetId === undefined ? null : <OperationsPanel instanceId={selectedOperationsTargetId} />}
     </section>
   );
 }

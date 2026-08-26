@@ -1,5 +1,6 @@
 using Npgsql;
 using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Repository;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
@@ -17,6 +18,29 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
     private const string EnsureMonthlySql = """
         SELECT created, repository_time
         FROM control.ensure_monthly_event_partition(@partition_date);
+        """;
+    private const string EnsureM9DailySql = """
+        SELECT control.ensure_m9_daily_partitions((clock_timestamp() AT TIME ZONE 'UTC')::date, 3);
+        """;
+    private const string EnsureM9SetDailySql = """
+        SELECT (control.ensure_m9_daily_partitions(@partition_date, 3) > 0), clock_timestamp();
+        """;
+    private const string PreviewM9DailySql = """
+        SELECT
+            range_start,
+            range_end,
+            estimated_rows,
+            estimated_bytes,
+            repository_time,
+            policy_enabled,
+            recovery_prerequisite_satisfied,
+            eligible_for_retention,
+            retention_reason
+        FROM reporting.partition_retention_preview
+        WHERE parent_schema = 'telemetry'::name
+          AND parent_table = @parent_table::name
+        ORDER BY range_start
+        LIMIT @max_entries;
         """;
     private const string PreviewDailySql = """
         SELECT
@@ -59,6 +83,37 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
     public PostgreSqlPartitionMaintenancePort(NpgsqlDataSource dataSource)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+    }
+
+    /// <summary>Rolls M9 occurrence/scan partitions through UTC D-1/D/D+1 under the catalog lease.</summary>
+    public async ValueTask<int> EnsureM9DailyPartitionsAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(timeout);
+        using CancellationTokenSource timeoutScope = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(timeoutScope.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(timeoutScope.Token).ConfigureAwait(false);
+        try
+        {
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, timeoutScope.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, timeoutScope.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand(EnsureM9DailySql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            object? result = await command.ExecuteScalarAsync(timeoutScope.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, timeoutScope.Token).ConfigureAwait(false);
+            await transaction.CommitAsync(timeoutScope.Token).ConfigureAwait(false);
+            return result is int count ? count : throw new InvalidDataException("M9 partition maintenance returned an invalid count.");
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
     }
 
     public async ValueTask<PartitionCareResult> EnsurePartitionsAsync(
@@ -181,6 +236,10 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
             command.Parameters.AddWithValue("max_entries", request.MaxEntries);
+            if (target.ParentTable is not null)
+            {
+                command.Parameters.AddWithValue("parent_table", target.ParentTable);
+            }
             await using NpgsqlDataReader reader = await command
                 .ExecuteReaderAsync(timeout.Token)
                 .ConfigureAwait(false);
@@ -260,11 +319,24 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
             "raw_metric_sample" => new PartitionTarget(
                 PartitionGranularity.Daily,
                 EnsureDailySql,
-                PreviewDailySql),
+                PreviewDailySql,
+                null),
             "diagnostic_event" => new PartitionTarget(
                 PartitionGranularity.Monthly,
                 EnsureMonthlySql,
-                PreviewMonthlySql),
+                PreviewMonthlySql,
+                null),
+            "backup_status_snapshot" or
+            "sql_agent_failure_scan_snapshot" or
+            "sql_agent_failure_occurrence" or
+            "tempdb_snapshot" or
+            "tempdb_file_snapshot" or
+            "availability_group_replica_snapshot" or
+            "availability_group_database_snapshot" => new PartitionTarget(
+                PartitionGranularity.Daily,
+                EnsureM9SetDailySql,
+                PreviewM9DailySql,
+                setName.Value),
             _ => throw new ArgumentException("The partition set is not allowlisted.", nameof(setName)),
         };
 
@@ -328,5 +400,6 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
     private sealed record PartitionTarget(
         PartitionGranularity Granularity,
         string EnsureSql,
-        string PreviewSql);
+        string PreviewSql,
+        string? ParentTable);
 }

@@ -27,6 +27,8 @@ public static class CollectorServiceRegistration
             "SqlObserver.Collector"));
         services.AddSingleton<IWorkerLeasePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().WorkerLeases);
+        services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().PartitionMaintenance);
         services.AddSingleton<ICapabilityProfileRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().CapabilityProfiles);
         services.AddSingleton<ICollectorRuntimeRepositoryPort>(static provider =>
@@ -56,6 +58,11 @@ public static class CollectorServiceRegistration
         services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerBackupsStatusCollector>();
+        services.AddSingleton<SqlServerSqlAgentFailuresCollector>();
+        services.AddSingleton<SqlServerTempDbHealthCollector>();
+        services.AddSingleton<SqlServerAvailabilityGroupsHealthCollector>();
         services.AddSingleton(static provider => new SqlServerActivitySessionsCollector(
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerActivityRequestsCollector(
@@ -105,6 +112,9 @@ public static class CollectorServiceRegistration
         SqlServerCollectorAsset blockingAsset = activityCatalog.Get(new CollectorId("blocking.current"));
         SqlServerDeadlockCollectorAssetCatalog deadlockCatalog = provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>();
         SqlServerQueryPerformanceCollectorAssetCatalog queryCatalog = provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>();
+        SqlServerOperationalHealthAssetCatalog m9Catalog = provider.GetRequiredService<SqlServerOperationalHealthAssetCatalog>();
+        var m9Bundle = new CollectorSha256Digest(m9Catalog.BundleChecksum);
+        static CollectorSha256Digest Digest(string json) => new(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant());
         return new CollectorRegistry(
         [
             new CollectorRegistration(
@@ -161,6 +171,10 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerQueryPerformanceCollector.OutputContract),
                 new CollectorSha256Digest(queryCatalog.Asset.ManifestChecksum),
                 new CollectorSha256Digest(queryCatalog.BundleChecksum)),
+            new CollectorRegistration(10, provider.GetRequiredService<SqlServerBackupsStatusCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(1537)), Digest(m9Catalog.Get("backups.status.v1.json")), m9Bundle),
+            new CollectorRegistration(11, provider.GetRequiredService<SqlServerSqlAgentFailuresCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(512)), Digest(m9Catalog.Get("sql-agent.failures.v1.json")), m9Bundle),
+            new CollectorRegistration(12, provider.GetRequiredService<SqlServerTempDbHealthCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(128)), Digest(m9Catalog.Get("tempdb.health.v1.json")), m9Bundle),
+            new CollectorRegistration(13, provider.GetRequiredService<SqlServerAvailabilityGroupsHealthCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(2048)), Digest(m9Catalog.Get("availability-groups.health.v1.json")), m9Bundle),
         ]);
     }
 }

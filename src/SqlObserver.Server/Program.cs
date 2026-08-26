@@ -22,6 +22,7 @@ builder.Services.AddAuthorizationBuilder().SetFallbackPolicy(
         .RequireAuthenticatedUser()
         .Build());
 builder.Services.AddProblemDetails();
+builder.Services.AddOptions<OperationalHealthServerOptions>().Validate(options => options.RequestTimeout > TimeSpan.Zero && options.RequestTimeout <= TimeSpan.FromMinutes(2), "Operational health timeout must be positive and bounded.").ValidateOnStart();
 builder.Services.AddRequestTimeouts(options =>
     options.DefaultPolicy = new Microsoft.AspNetCore.Http.Timeouts.RequestTimeoutPolicy
     {
@@ -71,6 +72,8 @@ builder.Services.AddSingleton<IDeadlockProjectionQueryService, DeadlockProjectio
 builder.Services.AddSingleton<IQueryPerformanceApiRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryPerformanceApiProjections);
 builder.Services.AddSingleton<IQueryPerformanceApiQueryService, QueryPerformanceApiQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
+builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OperationalHealth);
+builder.Services.AddSingleton<IOperationalHealthQueryService, OperationalHealthQueryService>();
 builder.Services.AddSingleton<IAlertQueryService, AlertQueryService>();
 builder.Services.AddSingleton<IAlertDestinationApprovalPort, ConfiguredAlertDestinationApproval>();
 builder.Services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
@@ -92,6 +95,7 @@ app.MapTargetActivityEndpoints();
 app.MapTargetDeadlockEndpoints();
 app.MapTargetQueryPerformanceApiEndpoints();
 app.MapAlertEndpoints();
+app.MapOperationalHealthEndpoints();
 
 await app.RunAsync();
 

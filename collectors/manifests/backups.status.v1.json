@@ -1,0 +1,10 @@
+{
+  "$schema":"collector-manifest.v5.schema.json","schemaVersion":5,"collectorId":"backups.status","collectorVersion":1,
+  "displayName":"SQL Server backup status","operationalMode":"passive","dependsOn":["capability.connection","engine.core"],
+  "supportedTargets":{"product":"Microsoft SQL Server","minimumMajorVersion":15,"maximumMajorVersion":17,"platforms":["Windows"],"engineEditions":[2,3,4]},
+  "requiredCapabilities":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"],
+  "requiredPermissionsByMajor":{"15":["server.view-state","msdb.backupset.select"],"16":["server.view-performance-state","msdb.backupset.select"],"17":["server.view-performance-state","msdb.backupset.select"]},
+  "cadence":{"defaultIntervalSeconds":300,"minimumIntervalSeconds":60,"nonOverlappingPerTarget":true},
+  "executionBounds":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":10,"maximumRows":1537,"maximumResponseBytes":1048576},"estimatedCostClass":"moderate",
+  "queryResources":{"supportedByMajor":{"15":"backups.status.sqlserver15-windows.v1.sql","16":"backups.status.sqlserver16-windows.v1.sql","17":"backups.status.sqlserver17-windows.v1.sql"}},"fallback":{"mode":"unsupported"},"outputSchemaVersion":1,"outputKind":"backups_status"
+}

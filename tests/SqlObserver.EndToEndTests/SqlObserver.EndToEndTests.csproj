@@ -4,7 +4,9 @@
     <AssemblyName>SqlObserver.EndToEndTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
   </ItemGroup>
 </Project>

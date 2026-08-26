@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.local/collector-manifest.v5.schema.json",
+  "title": "SqlObserver passive collector manifest v5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "collectorId", "collectorVersion", "displayName", "operationalMode", "dependsOn", "supportedTargets", "requiredCapabilities", "requiredPermissionsByMajor", "cadence", "executionBounds", "estimatedCostClass", "queryResources", "fallback", "outputSchemaVersion", "outputKind"],
+  "properties": {
+    "$schema": { "const": "collector-manifest.v5.schema.json" },
+    "schemaVersion": { "const": 5 },
+    "collectorId": { "enum": ["backups.status", "sql-agent.failures", "tempdb.health", "availability-groups.health"] },
+    "collectorVersion": { "const": 1 },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "operationalMode": { "const": "passive" },
+    "dependsOn": { "type": "array", "const": ["capability.connection", "engine.core"], "minItems": 2, "maxItems": 2 },
+    "supportedTargets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["product", "minimumMajorVersion", "maximumMajorVersion", "platforms", "engineEditions"],
+      "properties": {
+        "product": { "const": "Microsoft SQL Server" },
+        "minimumMajorVersion": { "const": 15 },
+        "maximumMajorVersion": { "const": 17 },
+        "platforms": { "type": "array", "const": ["Windows"], "minItems": 1, "maxItems": 1 },
+        "engineEditions": { "type": "array", "items": { "enum": [2, 3, 4] }, "minItems": 2, "maxItems": 3, "uniqueItems": true }
+      }
+    },
+    "requiredCapabilities": {
+      "type": "array", "items": { "enum": ["connection.tds", "authentication.windows-integrated", "transport.tls-validated", "privilege.non-sysadmin", "platform.windows", "feature.sql-agent-history", "feature.availability-groups"] }, "minItems": 5, "maxItems": 7, "uniqueItems": true
+    },
+    "requiredPermissionsByMajor": {
+      "type": "object", "additionalProperties": false, "required": ["15", "16", "17"],
+      "properties": {
+        "15": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
+        "16": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
+        "17": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true }
+      }
+    },
+    "cadence": {
+      "type": "object", "additionalProperties": false, "required": ["defaultIntervalSeconds", "minimumIntervalSeconds", "nonOverlappingPerTarget"],
+      "properties": {
+        "defaultIntervalSeconds": { "type": "integer", "minimum": 30, "maximum": 300 },
+        "minimumIntervalSeconds": { "type": "integer", "minimum": 10, "maximum": 60 },
+        "nonOverlappingPerTarget": { "const": true }
+      }
+    },
+    "executionBounds": {
+      "type": "object", "additionalProperties": false, "required": ["connectTimeoutSeconds", "commandTimeoutSeconds", "maximumRows", "maximumResponseBytes"],
+      "properties": {
+        "connectTimeoutSeconds": { "const": 5 },
+        "commandTimeoutSeconds": { "type": "integer", "enum": [5, 10] },
+        "maximumRows": { "type": "integer", "minimum": 1, "maximum": 2048 },
+        "maximumResponseBytes": { "type": "integer", "minimum": 262144, "maximum": 2097152 }
+      }
+    },
+    "estimatedCostClass": { "enum": ["low", "moderate"] },
+    "queryResources": {
+      "type": "object", "additionalProperties": false, "required": ["supportedByMajor"],
+      "properties": {
+        "supportedByMajor": {
+          "type": "object", "additionalProperties": false, "required": ["15", "16", "17"],
+          "properties": {
+            "15": { "type": "string", "pattern": "^(backups\\.status|sql-agent\\.failures|tempdb\\.health|availability-groups\\.health)\\.sqlserver15-windows\\.v1\\.sql$" },
+            "16": { "type": "string", "pattern": "^(backups\\.status|sql-agent\\.failures|tempdb\\.health|availability-groups\\.health)\\.sqlserver16-windows\\.v1\\.sql$" },
+            "17": { "type": "string", "pattern": "^(backups\\.status|sql-agent\\.failures|tempdb\\.health|availability-groups\\.health)\\.sqlserver17-windows\\.v1\\.sql$" }
+          }
+        }
+      }
+    },
+    "fallback": { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "const": "unsupported" } } },
+    "outputSchemaVersion": { "const": 1 },
+    "outputKind": { "enum": ["backups_status", "sql_agent_failures", "tempdb_health", "availability_groups_health"] }
+  }
+}

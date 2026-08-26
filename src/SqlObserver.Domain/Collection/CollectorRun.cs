@@ -58,6 +58,8 @@ public enum CollectorRunReason
     TargetEditionUnsupported = 17,
     BlockingGraphLimit = 18,
     OverlapDeduplicated = 19,
+    Degraded = 20,
+    VisibilityIncomplete = 21,
 }
 
 public enum CollectorLossKind
@@ -69,6 +71,7 @@ public enum CollectorLossKind
     IngestionRejection = 5,
     BlockingGraphLimit = 6,
     DuplicateOverlap = 7,
+    VisibilityIncomplete = 8,
 }
 
 /// <summary>Visible, conservative evidence whenever collection cannot claim a complete sample.</summary>

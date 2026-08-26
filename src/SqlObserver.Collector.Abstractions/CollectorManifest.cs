@@ -256,6 +256,10 @@ public enum CollectorOutputKind
     CurrentBlocking = 8,
     Deadlocks = 9,
     QueryPerformance = 10,
+    BackupsStatus = 11,
+    SqlAgentFailures = 12,
+    TempDbHealth = 13,
+    AvailabilityGroupsHealth = 14,
 }
 
 public sealed class CollectorResiliencePolicy

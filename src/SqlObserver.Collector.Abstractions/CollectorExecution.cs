@@ -99,7 +99,8 @@ public sealed class CollectorPayload
         DeadlockObservationBatch? deadlocks = null,
         QueryPerformanceObservationBatch? queryPerformance = null,
         IReadOnlyList<QueryPerformanceDatabaseStatus>? queryPerformanceStatuses = null,
-        QueryPerformanceTargetStatus? queryPerformanceTargetStatus = null)
+        QueryPerformanceTargetStatus? queryPerformanceTargetStatus = null,
+        OperationalHealthPayload? operationalHealth = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -129,6 +130,7 @@ public sealed class CollectorPayload
         QueryPerformanceStatuses = new ReadOnlyCollection<QueryPerformanceDatabaseStatus>((queryPerformanceStatuses ?? Array.Empty<QueryPerformanceDatabaseStatus>()).ToArray());
         if (QueryPerformanceStatuses.Count > 256 || QueryPerformanceStatuses.Select(static x => x.DatabaseId).Distinct().Count() != QueryPerformanceStatuses.Count) throw new ArgumentException("Query performance database statuses must be bounded and unique.", nameof(queryPerformanceStatuses));
         QueryPerformanceTargetStatus = queryPerformanceTargetStatus;
+        OperationalHealth = operationalHealth;
     }
 
     public IReadOnlyList<MetricSample> Metrics => _metrics;
@@ -142,6 +144,7 @@ public sealed class CollectorPayload
     public QueryPerformanceObservationBatch QueryPerformance { get; }
     public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
     public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
+    public OperationalHealthPayload? OperationalHealth { get; }
     public int ItemCount => checked(
         Metrics.Count +
         Databases.Items.Count +
@@ -151,7 +154,8 @@ public sealed class CollectorPayload
         ServerWaits.Items.Count +
         BlockingEdges.Items.Count +
         Deadlocks.Items.Count +
-        QueryPerformance.Items.Count);
+        QueryPerformance.Items.Count +
+        (OperationalHealth?.ItemCount ?? 0));
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
         Databases.Items.Sum(static item => item.EstimatedSizeBytes) +
@@ -161,7 +165,8 @@ public sealed class CollectorPayload
         ServerWaits.Items.Sum(static item => item.EstimatedSizeBytes) +
         BlockingEdges.Items.Sum(static item => item.EstimatedSizeBytes) +
         Deadlocks.Items.Sum(static item => item.EstimatedSizeBytes) +
-        QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes));
+        QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes) +
+        (OperationalHealth?.EstimatedSizeBytes ?? 0));
 
     public static CollectorPayload Empty { get; } = new();
 }
@@ -309,7 +314,8 @@ public sealed class CollectorOutputContract
         int maxServerWaitObservations = 0,
         int maxBlockingEdgeObservations = 0,
         int maxDeadlockObservations = 0,
-        int maxQueryPerformanceObservations = 0)
+        int maxQueryPerformanceObservations = 0,
+        int maxOperationalHealthObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -355,6 +361,10 @@ public sealed class CollectorOutputContract
         {
             throw new ArgumentOutOfRangeException(nameof(maxQueryPerformanceObservations));
         }
+        if (maxOperationalHealthObservations is < 0 or > IngestionLimits.MaximumItemCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxOperationalHealthObservations));
+        }
 
         var copy = new CollectorMetricOutputContract[metrics.Count];
         var metricIds = new HashSet<string>(StringComparer.Ordinal);
@@ -387,6 +397,7 @@ public sealed class CollectorOutputContract
         MaxBlockingEdgeObservations = maxBlockingEdgeObservations;
         MaxDeadlockObservations = maxDeadlockObservations;
         MaxQueryPerformanceObservations = maxQueryPerformanceObservations;
+        MaxOperationalHealthObservations = maxOperationalHealthObservations;
     }
 
     public CollectorOutputSchemaVersion SchemaVersion { get; }
@@ -400,6 +411,21 @@ public sealed class CollectorOutputContract
     public int MaxBlockingEdgeObservations { get; }
     public int MaxDeadlockObservations { get; }
     public int MaxQueryPerformanceObservations { get; }
+    public int MaxOperationalHealthObservations { get; }
+}
+
+/// <summary>Typed M9 payload; snapshots are immutable and contain no provider text.</summary>
+public sealed class OperationalHealthPayload
+{
+    public OperationalHealthPayload(IOperationalHealthSnapshot snapshot, int itemCount, int estimatedSizeBytes)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (itemCount is < 0 or > 2048 || estimatedSizeBytes is < 0 or > 2 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(itemCount));
+        Snapshot = snapshot; ItemCount = itemCount; EstimatedSizeBytes = estimatedSizeBytes;
+    }
+    public object Snapshot { get; }
+    public int ItemCount { get; }
+    public int EstimatedSizeBytes { get; }
 }
 
 public interface ICollectorOutputValidator

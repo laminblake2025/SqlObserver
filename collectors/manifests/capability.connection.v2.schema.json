@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.local/capability.connection.v2.schema.json",
+  "title": "SqlObserver passive capability discovery manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "collectorId", "collectorVersion", "displayName", "operationalMode", "supportedTargets", "requiredCapabilities", "requiredPermissionsByMajor", "features", "queryResources", "fallback", "outputSchemaVersion"],
+  "properties": {
+    "$schema": { "const": "capability.connection.v2.schema.json" },
+    "schemaVersion": { "const": 2 },
+    "collectorId": { "const": "capability.connection" },
+    "collectorVersion": { "const": 2 },
+    "displayName": { "type": "string", "const": "SQL Server capability and connection v2" },
+    "operationalMode": { "const": "passive" },
+    "supportedTargets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["product", "minimumMajorVersion", "maximumMajorVersion", "platforms", "engineEditions"],
+      "properties": {
+        "product": { "const": "Microsoft SQL Server" },
+        "minimumMajorVersion": { "const": 15 },
+        "maximumMajorVersion": { "const": 17 },
+        "platforms": { "type": "array", "const": ["Windows"] },
+        "engineEditions": { "type": "array", "items": { "enum": [2, 3, 4] }, "const": [2, 3, 4], "uniqueItems": true }
+      }
+    },
+    "requiredCapabilities": {
+      "type": "array", "const": ["connection.tds", "authentication.windows-integrated", "transport.tls-validated", "privilege.non-sysadmin", "platform.windows"], "uniqueItems": true
+    },
+    "requiredPermissionsByMajor": {
+      "type": "object", "additionalProperties": false, "required": ["15", "16", "17"],
+      "properties": {
+        "15": { "type": "array", "const": ["server.view-state", "msdb.backupset.select", "msdb.sysjobhistory.select"], "uniqueItems": true },
+        "16": { "type": "array", "const": ["server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"], "uniqueItems": true },
+        "17": { "type": "array", "const": ["server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"], "uniqueItems": true }
+      }
+    },
+    "features": { "type": "array", "const": ["feature.sql-agent-history"], "uniqueItems": true },
+    "queryResources": {
+      "type": "object", "additionalProperties": false, "required": ["supportedByMajor"],
+      "properties": {
+        "supportedByMajor": {
+          "type": "object", "additionalProperties": false, "required": ["15", "16", "17"],
+          "properties": {
+            "15": { "const": "capability.connection.sqlserver15-windows.v2.sql" },
+            "16": { "const": "capability.connection.sqlserver16-windows.v2.sql" },
+            "17": { "const": "capability.connection.sqlserver17-windows.v2.sql" }
+          }
+        }
+      }
+    },
+    "fallback": { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "const": "unsupported" } } },
+    "outputSchemaVersion": { "const": 2 }
+  }
+}

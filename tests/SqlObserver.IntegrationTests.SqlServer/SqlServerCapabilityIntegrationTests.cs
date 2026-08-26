@@ -180,6 +180,36 @@ public sealed class SqlServerCapabilityIntegrationTests
     }
 
     [Fact]
+    public void V2EvidenceDistinguishesDeniedPermissionFromUnsupportedEdition()
+    {
+        (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) denied =
+            SqlServerCapabilityDiscoveryPort.ClassifyConnectedEvidence(
+                productMajorVersion: 16,
+                engineEdition: 3,
+                SqlServerPlatform.Windows,
+                SqlServerAuthenticationScheme.Kerberos,
+                transportEncrypted: true,
+                isSysAdmin: false,
+                hasRequiredPermission: false,
+                usedPermissionFallback: false);
+        Assert.Equal(CapabilityDiscoveryOutcome.Degraded, denied.Outcome);
+        Assert.Equal(CapabilityDiscoveryReason.RequiredPermissionMissing, denied.Reason);
+
+        (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) unsupportedEdition =
+            SqlServerCapabilityDiscoveryPort.ClassifyConnectedEvidence(
+                productMajorVersion: 16,
+                engineEdition: 5,
+                SqlServerPlatform.Windows,
+                SqlServerAuthenticationScheme.Kerberos,
+                transportEncrypted: true,
+                isSysAdmin: false,
+                hasRequiredPermission: true,
+                usedPermissionFallback: false);
+        Assert.Equal(CapabilityDiscoveryOutcome.Unsupported, unsupportedEdition.Outcome);
+        Assert.Equal(CapabilityDiscoveryReason.UnsupportedEdition, unsupportedEdition.Reason);
+    }
+
+    [Fact]
     public async Task LocalSqlServerDiscoveryIsBoundedSecurityAwareAndNonMutating()
     {
         var connectionFactory = new LabSqlServerConnectionFactory();

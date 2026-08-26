@@ -229,6 +229,84 @@ function Test-SqlContainsTopLevelTransactionControl {
     return $false
 }
 
+function ConvertTo-JsonContractValue {
+    param([AllowNull()] $Value)
+
+    if ($null -eq $Value) { return 'null' }
+    return ($Value | ConvertTo-Json -Compress -Depth 100)
+}
+
+function Assert-JsonSchemaValue {
+    param(
+        [AllowNull()] $Value,
+        [Parameter(Mandatory = $true)] $Schema,
+        [Parameter(Mandatory = $true)] [string] $Path
+    )
+
+    if ($Schema.PSObject.Properties.Name -contains 'const' -and
+        (ConvertTo-JsonContractValue $Value) -cne (ConvertTo-JsonContractValue $Schema.const)) {
+        throw "JSON schema const mismatch at $Path"
+    }
+    if ($Schema.PSObject.Properties.Name -contains 'enum') {
+        $valueJson = ConvertTo-JsonContractValue $Value
+        if (-not (@($Schema.enum) | Where-Object { (ConvertTo-JsonContractValue $_) -ceq $valueJson })) {
+            throw "JSON schema enum mismatch at $Path"
+        }
+    }
+
+    if ($Schema.PSObject.Properties.Name -contains 'type') {
+        $type = [string]$Schema.type
+        $actual = if ($null -eq $Value) { 'null' }
+            elseif ($Value -is [System.Management.Automation.PSCustomObject]) { 'object' }
+            elseif ($Value -is [System.Array]) { 'array' }
+            elseif ($Value -is [bool]) { 'boolean' }
+            elseif ($Value -is [string]) { 'string' }
+            elseif ($Value -is [int] -or $Value -is [long] -or $Value -is [decimal] -or $Value -is [double]) { 'number' }
+            else { 'unknown' }
+        if ($type -eq 'integer' -and $actual -eq 'number' -and ([double]$Value % 1 -eq 0)) { $actual = 'integer' }
+        if ($actual -cne $type) { throw "JSON schema type mismatch at $Path (expected $type, got $actual)" }
+    }
+
+    if ($null -eq $Value) { return }
+    if ($Value -is [System.Management.Automation.PSCustomObject]) {
+        if ($Schema.PSObject.Properties.Name -contains 'required') {
+            foreach ($requiredName in @($Schema.required)) {
+                if ($Value.PSObject.Properties.Name -notcontains [string]$requiredName) {
+                    throw "JSON schema required field is missing at $Path.$requiredName"
+                }
+            }
+        }
+        $declared = @()
+        if ($Schema.PSObject.Properties.Name -contains 'properties' -and $null -ne $Schema.properties) {
+            $declared = @($Schema.properties.PSObject.Properties.Name)
+        }
+        $closed = $Schema.PSObject.Properties.Name -contains 'additionalProperties' -and $Schema.additionalProperties -eq $false
+        foreach ($property in @($Value.PSObject.Properties)) {
+            if ($declared -notcontains $property.Name) {
+                if ($closed) { throw "JSON schema rejects unknown field at $Path.$($property.Name)" }
+                continue
+            }
+            $propertySchema = $Schema.properties.PSObject.Properties[$property.Name].Value
+            Assert-JsonSchemaValue $property.Value $propertySchema "$Path.$($property.Name)"
+        }
+    }
+    elseif ($Value -is [System.Array]) {
+        if ($Schema.PSObject.Properties.Name -contains 'uniqueItems' -and $Schema.uniqueItems -eq $true) {
+            $seen = @{}
+            foreach ($item in @($Value)) {
+                $itemJson = ConvertTo-JsonContractValue $item
+                if ($seen.ContainsKey($itemJson)) { throw "JSON schema rejects duplicate array item at $Path" }
+                $seen[$itemJson] = $true
+            }
+        }
+        if ($Schema.PSObject.Properties.Name -contains 'items') {
+            for ($index = 0; $index -lt $Value.Count; $index++) {
+                Assert-JsonSchemaValue $Value[$index] $Schema.items "$Path[$index]"
+            }
+        }
+    }
+}
+
 function Assert-RepositoryShape {
     $requiredFiles = @(
         'README.md',
@@ -652,8 +730,25 @@ function Assert-RepositoryShape {
         'queries.performance.sqlserver16-windows.v1.sql',
         'queries.performance.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $expectedM9CollectorSqlNames = @(
+        'capability.connection.sqlserver15-windows.v2.sql',
+        'capability.connection.sqlserver16-windows.v2.sql',
+        'capability.connection.sqlserver17-windows.v2.sql',
+        'backups.status.sqlserver15-windows.v1.sql',
+        'backups.status.sqlserver16-windows.v1.sql',
+        'backups.status.sqlserver17-windows.v1.sql',
+        'sql-agent.failures.sqlserver15-windows.v1.sql',
+        'sql-agent.failures.sqlserver16-windows.v1.sql',
+        'sql-agent.failures.sqlserver17-windows.v1.sql',
+        'tempdb.health.sqlserver15-windows.v1.sql',
+        'tempdb.health.sqlserver16-windows.v1.sql',
+        'tempdb.health.sqlserver17-windows.v1.sql',
+        'availability-groups.health.sqlserver15-windows.v1.sql',
+        'availability-groups.health.sqlserver16-windows.v1.sql',
+        'availability-groups.health.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $expectedM9CollectorSqlNames
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
         throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and active M5/M6/M7 assets.'
@@ -716,6 +811,28 @@ function Assert-RepositoryShape {
              $collectorSql -notmatch '(?i)query_store' -or
              $collectorSql -match '(?i)\b(sql_handle|plan_handle|sys\.dm_exec_sql_text|query_plan|EXEC(?:UTE)?|ALTER|UPDATE|DELETE|INSERT)\b')) {
             throw "M7 collector SQL must be bounded, metadata-only, and passive: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -in $expectedM9CollectorSqlNames -and
+            $collectorSqlFile.Name -notlike 'capability.connection.*.v2.sql' -and
+            ($collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*(?:\(\s*@(?:maximum_rows|scan_rows)\s*\)|\(\s*1\s*\))' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
+             $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b')) {
+            throw "M9 collector SQL must remain bounded, ordered, and passive: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -in @('capability.connection.sqlserver15-windows.v2.sql','capability.connection.sqlserver16-windows.v2.sql','capability.connection.sqlserver17-windows.v2.sql') -and
+            ($collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*\(\s*1\s*\)' -or
+             $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b')) {
+            throw "Capability v2 SQL must remain bounded and passive: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -like 'availability-groups.health.*' -and
+            ($collectorSql -notmatch '(?i)sys\.dm_hadr_availability_replica_states\s+AS\s+ars' -or
+             $collectorSql -notmatch '(?i)ars\.replica_id\s*=\s*ar\.replica_id' -or
+             $collectorSql -match '(?i)\bar\.(?:role_desc|operational_state_desc|connected_state_desc)')) {
+            throw "Availability-group assets must source state descriptions from the DMF for local/remote semantics: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -like 'sql-agent.failures.*' -and
+            $collectorSql -match '(?i)SELECT[\s\S]*\b(run_date|run_time)\b') {
+            throw "SQL Agent source-local timestamps must not be emitted: $($collectorSqlFile.Name)"
         }
     }
 
@@ -863,6 +980,107 @@ function Assert-RepositoryShape {
     foreach ($assetName in $m7CollectorAssetPaths.Keys) { $actualChecksum = (Get-FileHash -LiteralPath $m7CollectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant(); if ($m7CollectorChecksums[$assetName] -cne $actualChecksum) { throw "M7 collector checksum mismatch: $assetName" } }
     $m7MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M7-query-store-query-performance.md'; if (-not (Test-Path -LiteralPath $m7MilestoneDoc -PathType Leaf)) { throw 'M7 requires its Query Store milestone document.' }
 
+    $m9CollectorAssetPaths = @{
+        'collector-manifest.v5.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v5.schema.json'
+        'backups.status.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/backups.status.v1.json'
+        'sql-agent.failures.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/sql-agent.failures.v1.json'
+        'tempdb.health.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/tempdb.health.v1.json'
+        'availability-groups.health.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/availability-groups.health.v1.json'
+    }
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $expectedM9CollectorSqlNames -and $_.Name -notlike 'capability.connection.*.v2.sql' }) { $m9CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName }
+    $m9CollectorChecksums = @{}
+    $m9CollectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/m9-operational-health.assets.sha256'
+    foreach ($line in Get-Content -LiteralPath $m9CollectorChecksumPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) { continue }
+        if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') { throw "Invalid M9 collector checksum entry: $line" }
+        $assetName = $Matches[2]
+        if (-not $m9CollectorAssetPaths.ContainsKey($assetName) -or $m9CollectorChecksums.ContainsKey($assetName)) { throw "Unexpected or duplicate M9 collector checksum entry: $line" }
+        $m9CollectorChecksums[$assetName] = $Matches[1]
+    }
+    if ($m9CollectorChecksums.Count -ne $m9CollectorAssetPaths.Count) { throw 'M9 collector checksum manifest must contain exactly one entry per pinned asset.' }
+    foreach ($assetName in $m9CollectorAssetPaths.Keys) {
+        $actualChecksum = (Get-FileHash -LiteralPath $m9CollectorAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($m9CollectorChecksums[$assetName] -cne $actualChecksum) { throw "M9 collector checksum mismatch: $assetName" }
+    }
+    $m9CapabilityAssetPaths = @{
+        'capability.connection.v2.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/capability.connection.v2.schema.json'
+        'capability.connection.v2.json' = Join-Path $repositoryRoot 'collectors/manifests/capability.connection.v2.json'
+        'capability.connection.sqlserver15-windows.v2.sql' = Join-Path $repositoryRoot 'collectors/sql/capability.connection.sqlserver15-windows.v2.sql'
+        'capability.connection.sqlserver16-windows.v2.sql' = Join-Path $repositoryRoot 'collectors/sql/capability.connection.sqlserver16-windows.v2.sql'
+        'capability.connection.sqlserver17-windows.v2.sql' = Join-Path $repositoryRoot 'collectors/sql/capability.connection.sqlserver17-windows.v2.sql'
+    }
+    $m9CapabilityChecksums = @{}
+    foreach ($line in Get-Content -LiteralPath (Join-Path $repositoryRoot 'collectors/manifests/capability.connection.assets-v2.sha256')) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) { continue }
+        if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') { throw "Invalid capability v2 checksum entry: $line" }
+        $assetName = $Matches[2]
+        if (-not $m9CapabilityAssetPaths.ContainsKey($assetName) -or $m9CapabilityChecksums.ContainsKey($assetName)) { throw "Unexpected or duplicate capability v2 checksum entry: $line" }
+        $m9CapabilityChecksums[$assetName] = $Matches[1]
+    }
+    if ($m9CapabilityChecksums.Count -ne $m9CapabilityAssetPaths.Count) { throw 'Capability v2 checksum manifest must contain exactly one entry per pinned asset.' }
+    foreach ($assetName in $m9CapabilityAssetPaths.Keys) {
+        $actualChecksum = (Get-FileHash -LiteralPath $m9CapabilityAssetPaths[$assetName] -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($m9CapabilityChecksums[$assetName] -cne $actualChecksum) { throw "Capability v2 checksum mismatch: $assetName" }
+    }
+
+    $capabilityV2Schema = Get-Content -LiteralPath $m9CapabilityAssetPaths['capability.connection.v2.schema.json'] -Raw | ConvertFrom-Json
+    $capabilityV2Manifest = Get-Content -LiteralPath $m9CapabilityAssetPaths['capability.connection.v2.json'] -Raw | ConvertFrom-Json
+    Assert-JsonSchemaValue $capabilityV2Manifest $capabilityV2Schema '$manifest'
+    $capabilityRuntimeSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Infrastructure.SqlServer/SqlServerCapabilityDiscoveryPort.cs') -Raw
+    $capabilityPermissionIds = @('15','16','17') | ForEach-Object { @($capabilityV2Manifest.requiredPermissionsByMajor.$_) } | Select-Object -Unique
+    foreach ($permissionId in $capabilityPermissionIds) {
+        if ($capabilityRuntimeSource -notmatch [regex]::Escape([string]$permissionId)) {
+            throw "Capability v2 permission is not represented by runtime discovery: $permissionId"
+        }
+    }
+    foreach ($capabilitySqlPath in @($m9CapabilityAssetPaths['capability.connection.sqlserver15-windows.v2.sql'], $m9CapabilityAssetPaths['capability.connection.sqlserver16-windows.v2.sql'], $m9CapabilityAssetPaths['capability.connection.sqlserver17-windows.v2.sql'])) {
+        $capabilitySql = Get-Content -LiteralPath $capabilitySqlPath -Raw
+        if ($capabilitySql -notmatch 'IS_SRVROLEMEMBER\(N''##MS_ServerPerformanceStateReader##''\)' -or
+            $capabilitySql -notmatch 'SERVERPROPERTY\(N''EngineEdition''\)' -or
+            $capabilitySql -match 'OBJECT_ID\(N''msdb\.dbo\.sysjobhistory''\)') {
+            throw "Capability v2 SQL does not use stable feature/role evidence: $capabilitySqlPath"
+        }
+    }
+
+    $m9SchemaPath = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v5.schema.json'
+    $m9Schema = Get-Content -LiteralPath $m9SchemaPath -Raw | ConvertFrom-Json
+    $m9SchemaRootNames = @($m9Schema.properties.psobject.Properties.Name) | Sort-Object
+    foreach ($manifestId in @('backups.status','sql-agent.failures','tempdb.health','availability-groups.health')) {
+        $manifestPath = Join-Path $repositoryRoot "collectors/manifests/$manifestId.v1.json"
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        if ((@($manifest.psobject.Properties.Name) | Sort-Object) -join '|' -cne ($m9SchemaRootNames -join '|') -or
+            $manifest.'$schema' -cne 'collector-manifest.v5.schema.json' -or $manifest.schemaVersion -ne 5 -or
+            $manifest.collectorId -cne $manifestId -or $manifest.collectorVersion -ne 1 -or $manifest.operationalMode -cne 'passive' -or
+            (@($manifest.dependsOn) -join '|') -cne 'capability.connection|engine.core' -or
+            $manifest.supportedTargets.product -cne 'Microsoft SQL Server' -or $manifest.supportedTargets.minimumMajorVersion -ne 15 -or
+            $manifest.supportedTargets.maximumMajorVersion -ne 17 -or (@($manifest.supportedTargets.platforms) -join '|') -cne 'Windows' -or
+            (@($manifest.requiredPermissionsByMajor.psobject.Properties.Name) | Sort-Object) -join '|' -cne '15|16|17' -or
+            (@($manifest.queryResources.supportedByMajor.psobject.Properties.Name) | Sort-Object) -join '|' -cne '15|16|17' -or
+            $manifest.fallback.mode -cne 'unsupported' -or $manifest.outputSchemaVersion -ne 1) {
+            throw "M9 manifest does not conform to the strict v5 schema: $manifestId"
+        }
+        foreach ($major in @('15','16','17')) {
+            if (@($manifest.requiredPermissionsByMajor.$major).Count -lt 1 -or @($manifest.requiredPermissionsByMajor.$major).Count -gt 2) { throw "M9 manifest permission bounds are invalid: $manifestId/$major" }
+            if ($manifest.queryResources.supportedByMajor.$major -notmatch "^$([regex]::Escape($manifestId)).sqlserver$major-windows.v1.sql$") { throw "M9 manifest query resource is invalid: $manifestId/$major" }
+        }
+        if ($manifest.cadence.defaultIntervalSeconds -lt 30 -or $manifest.cadence.defaultIntervalSeconds -gt 300 -or
+            $manifest.cadence.minimumIntervalSeconds -lt 10 -or $manifest.cadence.minimumIntervalSeconds -gt 60 -or
+            -not $manifest.cadence.nonOverlappingPerTarget -or $manifest.executionBounds.connectTimeoutSeconds -ne 5 -or
+            $manifest.executionBounds.commandTimeoutSeconds -notin @(5,10) -or $manifest.executionBounds.maximumRows -lt 1 -or
+            $manifest.executionBounds.maximumRows -gt 2048 -or $manifest.executionBounds.maximumResponseBytes -lt 262144 -or
+            $manifest.executionBounds.maximumResponseBytes -gt 2097152 -or $manifest.estimatedCostClass -notin @('low','moderate') -or
+            $manifest.outputKind -notin @('backups_status','sql_agent_failures','tempdb_health','availability_groups_health')) {
+            throw "M9 manifest bounds or enum is invalid: $manifestId"
+        }
+    }
+    $m9BundleDigest = (Get-FileHash -LiteralPath $m9CollectorChecksumPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $runtimeRepositorySource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorRuntimeRepositoryPort.cs') -Raw
+    $m9MigrationSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0013_backups_jobs_tempdb_availability_groups.sql') -Raw
+    if (([regex]::Matches($runtimeRepositorySource, [regex]::Escape('"' + $m9BundleDigest + '"'))).Count -ne 4 -or
+        ([regex]::Matches($m9MigrationSource, [regex]::Escape("'$m9BundleDigest'"))).Count -ne 4) {
+        throw "M9 bundle digest does not match the checksum manifest: $m9BundleDigest"
+    }
+
     $m6MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M6-deadlocks-and-extended-events.md'
     if (-not (Test-Path -LiteralPath $m6MilestoneDoc -PathType Leaf)) { throw 'M6 requires its passive system_health milestone document.' }
     foreach ($forbiddenXeMutation in @('CREATE EVENT SESSION', 'ALTER EVENT SESSION', 'START EVENT SESSION', 'STOP EVENT SESSION', 'blocked process threshold')) {
@@ -929,12 +1147,40 @@ function Assert-RepositoryShape {
         if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM7TestAsset) -PathType Leaf)) { throw "M7 focused test asset is missing: $requiredM7TestAsset" }
     }
     $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
-    if ($readmeStatus -notmatch 'Milestones 0 through (?:7|8) are implemented' -or
+    if ($readmeStatus -notmatch 'Milestones 0 through (?:8|9) are implemented' -or
         $readmeStatus -notmatch '(?i)M5 activity' -or
         $readmeStatus -notmatch '(?i)M6.*(?:system_health|deadlock)' -or
-        $readmeStatus -notmatch '(?i)M7.*(?:Query Store|query-performance)' -or
+         $readmeStatus -notmatch '(?i)M7.*(?:Query Store|query-performance)' -or
+         $readmeStatus -notmatch '(?i)M9.*operational-health' -or
         $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
-        throw 'README repository status must explicitly identify M0-M6 and the bounded M5/M6 activity/deadlock scope.'
+         throw 'README repository status must explicitly identify M0-M9 and the bounded M5-M9 activity/operational-health scope.'
+    }
+    $registeredSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Collector/CollectorServiceRegistration.cs') -Raw
+    $registeredOrderPatterns = @(
+        'new CollectorRegistration\(\s*executionOrder:\s*1,.*?SqlServerCoreEngineCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*2,.*?SqlServerDatabaseInventoryCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*3,.*?SqlServerDatabaseFilesCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*4,.*?SqlServerActivitySessionsCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*5,.*?SqlServerActivityRequestsCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*6,.*?SqlServerServerWaitsCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*7,.*?SqlServerCurrentBlockingCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*8,.*?SqlServerDeadlockCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*9,.*?SqlServerQueryPerformanceCollector',
+        'new CollectorRegistration\(\s*10,.*?SqlServerBackupsStatusCollector',
+        'new CollectorRegistration\(\s*11,.*?SqlServerSqlAgentFailuresCollector',
+        'new CollectorRegistration\(\s*12,.*?SqlServerTempDbHealthCollector',
+        'new CollectorRegistration\(\s*13,.*?SqlServerAvailabilityGroupsHealthCollector'
+    )
+    $registrationOffset = 0
+    foreach ($pattern in $registeredOrderPatterns) {
+        $match = [regex]::Match($registeredSource.Substring($registrationOffset), $pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
+        if (-not $match.Success) { throw "CollectorServiceRegistration.cs does not preserve the exact ordered 13-collector runtime catalog: $pattern" }
+        $registrationOffset += $match.Index + $match.Length
+    }
+    if ($registeredSource -match 'new CollectorRegistration\([^\r\n]*capability\.connection') { throw 'capability.connection is control-plane discovery and must not be registered as a scheduled collector.' }
+    $exactReadmeCollectors = '`engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, and `availability-groups.health`'
+    if ($readmeStatus.IndexOf($exactReadmeCollectors, [StringComparison]::Ordinal) -lt 0 -or $readmeStatus.IndexOf('`capability.connection` is control-plane discovery', [StringComparison]::Ordinal) -lt 0) {
+        throw 'README must list the exact ordered 1-13 registered collectors and identify capability.connection as control-plane discovery.'
     }
     foreach ($staleText in @('dormant M5', 'M5-activity-migration.sql.wip', 'no M5 migration', 'no M5 activity', 'M6 remains incomplete', 'M6 deadlocks/Extended Events remain outside')) {
         $staleMatches = @(Get-ChildItem -LiteralPath $repositoryRoot -File -Force |

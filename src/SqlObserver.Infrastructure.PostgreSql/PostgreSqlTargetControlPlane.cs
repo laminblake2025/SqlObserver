@@ -23,6 +23,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         QueryPerformanceApiProjections = new PostgreSqlQueryPerformanceApiProjectionPort(dataSource);
         CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
+        OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
@@ -42,6 +43,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
 
     public ICollectorRuntimeRepositoryPort CollectorRuntime { get; }
     public IAlertRepositoryPort Alerts { get; }
+    public IOperationalHealthRepositoryPort OperationalHealth { get; }
 
     public static PostgreSqlTargetControlPlane Create(
         string repositoryConfiguration,

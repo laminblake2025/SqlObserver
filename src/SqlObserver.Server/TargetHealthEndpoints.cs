@@ -314,6 +314,7 @@ public static class TargetHealthEndpoints
         CollectorLossKind.OutputValidationFailure => "output_validation_failure",
         CollectorLossKind.IngestionRejection => "ingestion_rejection",
         CollectorLossKind.DuplicateOverlap => "duplicate_overlap",
+        CollectorLossKind.VisibilityIncomplete => "visibility_incomplete",
         _ => throw new InvalidDataException("The health repository returned an unknown loss kind."),
     };
 

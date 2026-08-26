@@ -17,6 +17,10 @@ public static class CollectorCatalogIds
     public static readonly CollectorId CurrentBlocking = new("blocking.current");
     public static readonly CollectorId Deadlocks = new("deadlocks.system-health");
     public static readonly CollectorId QueryPerformance = new("queries.performance");
+    public static readonly CollectorId BackupsStatus = new("backups.status");
+    public static readonly CollectorId SqlAgentFailures = new("sql-agent.failures");
+    public static readonly CollectorId TempDbHealth = new("tempdb.health");
+    public static readonly CollectorId AvailabilityGroupsHealth = new("availability-groups.health");
 }
 
 public sealed class CollectorRegistration
@@ -65,6 +69,7 @@ public sealed class CollectorRegistration
             (output.MaxBlockingEdgeObservations > 0 ? 1 : 0) +
             (output.MaxDeadlockObservations > 0 ? 1 : 0) +
             (output.MaxQueryPerformanceObservations > 0 ? 1 : 0);
+            populatedKinds += output.MaxOperationalHealthObservations > 0 ? 1 : 0;
         bool valid = populatedKinds == 1 && manifest.OutputKind switch
         {
             CollectorOutputKind.Metrics => output.MaxMetricSamples > 0,
@@ -76,6 +81,7 @@ public sealed class CollectorRegistration
             CollectorOutputKind.CurrentBlocking => output.MaxBlockingEdgeObservations > 0,
             CollectorOutputKind.Deadlocks => output.MaxDeadlockObservations > 0,
             CollectorOutputKind.QueryPerformance => output.MaxQueryPerformanceObservations > 0,
+            CollectorOutputKind.BackupsStatus or CollectorOutputKind.SqlAgentFailures or CollectorOutputKind.TempDbHealth or CollectorOutputKind.AvailabilityGroupsHealth => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.CapabilityProfile => false,
             _ => false,
         };
@@ -104,6 +110,10 @@ public sealed class CollectorRegistry
                 [CollectorCatalogIds.CurrentBlocking.Value] = (7, CollectorOutputKind.CurrentBlocking),
                 [CollectorCatalogIds.Deadlocks.Value] = (8, CollectorOutputKind.Deadlocks),
                 [CollectorCatalogIds.QueryPerformance.Value] = (9, CollectorOutputKind.QueryPerformance),
+                [CollectorCatalogIds.BackupsStatus.Value] = (10, CollectorOutputKind.BackupsStatus),
+                [CollectorCatalogIds.SqlAgentFailures.Value] = (11, CollectorOutputKind.SqlAgentFailures),
+                [CollectorCatalogIds.TempDbHealth.Value] = (12, CollectorOutputKind.TempDbHealth),
+                [CollectorCatalogIds.AvailabilityGroupsHealth.Value] = (13, CollectorOutputKind.AvailabilityGroupsHealth),
             });
 
     private readonly ReadOnlyCollection<CollectorRegistration> _registrations;

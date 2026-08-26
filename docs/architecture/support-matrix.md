@@ -58,3 +58,6 @@ All storage and protocol timestamps remain UTC regardless of host or browser tim
 ## Explicit exclusions before release certification
 
 M3 can discover a bounded capability profile with Windows integrated authentication and validated TLS, but it does not certify any entry above, install a gMSA-backed Windows service, provision trusted certificates/SPNs, expose MCP, or create a production database. Passing milestone validation is not support certification.
+## M9 operational health
+
+Backups, SQL Agent history, TempDB, and Availability Groups use passive read-only SQL with fixed execution bounds. SQL Server Agent is unsupported on Express; Availability Groups require HADR and non-Express editions. Live SQL Server and PostgreSQL certification is environment-dependent.

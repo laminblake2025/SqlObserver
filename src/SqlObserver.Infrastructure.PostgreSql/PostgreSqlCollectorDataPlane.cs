@@ -15,12 +15,14 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
+        PartitionMaintenance = new PostgreSqlPartitionMaintenancePort(dataSource);
     }
 
     public ICollectorRuntimeRepositoryPort Runtime { get; }
     public IWorkerLeasePort WorkerLeases { get; }
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
     public IAlertRepositoryPort Alerts { get; }
+    public PostgreSqlPartitionMaintenancePort PartitionMaintenance { get; }
 
     public static PostgreSqlCollectorDataPlane Create(
         string repositoryConfiguration,

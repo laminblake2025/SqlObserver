@@ -172,11 +172,59 @@ IF @sqlobserver_operation = N'Grant'
 BEGIN
     -- Grant section: $permissionName
 $grantStatement
+    -- M9 read-only history permissions; this plan never adds an Agent server role.
+    -- The database principal is created only when it is absent and must map to
+    -- the already-provisioned Windows login.  No login or server role is created.
+    USE [msdb];
+    IF DB_ID(N'msdb') IS NULL
+    BEGIN
+        THROW 51001, 'The msdb database is unavailable for the M9 history grant.', 1;
+    END;
+    IF EXISTS
+    (
+        SELECT 1
+        FROM sys.database_principals AS database_principal
+        WHERE database_principal.name = @sqlobserver_principal
+          AND database_principal.authentication_type_desc NOT IN (N'INSTANCE', N'NONE')
+    )
+    BEGIN
+        THROW 51001, 'The existing msdb principal is not an instance-mapped user.', 1;
+    END;
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM sys.database_principals AS database_principal
+        WHERE database_principal.name = @sqlobserver_principal
+          AND SUSER_SNAME(database_principal.sid) = @sqlobserver_principal
+    )
+    BEGIN
+        DECLARE @sqlobserver_create_user nvarchar(776) =
+            N'CREATE USER ' + QUOTENAME(@sqlobserver_principal) +
+            N' FOR LOGIN ' + QUOTENAME(@sqlobserver_principal) + N';';
+        EXEC sys.sp_executesql @sqlobserver_create_user;
+    END;
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM sys.database_principals AS database_principal
+        WHERE database_principal.name = @sqlobserver_principal
+          AND SUSER_SNAME(database_principal.sid) = @sqlobserver_principal
+    )
+    BEGIN
+        THROW 51001, 'The msdb principal could not be verified as mapped to the intended login.', 1;
+    END;
+    GRANT SELECT ON OBJECT::[dbo].[backupset] TO [$principalIdentifier];
+    IF CONVERT(int, SERVERPROPERTY(N'EngineEdition')) IN (2, 3)
+    BEGIN
+        GRANT SELECT ON OBJECT::[dbo].[sysjobhistory] TO [$principalIdentifier];
+    END;
 END
 ELSE IF @sqlobserver_operation = N'Remove'
 BEGIN
     -- Removal section: undo only the M3 capability.connection permission.
 $removeStatement
+    -- M9 grants are intentionally not revoked: without deployment provenance a
+    -- generator must never remove a pre-existing DBA grant.
 END
 ELSE
 BEGIN

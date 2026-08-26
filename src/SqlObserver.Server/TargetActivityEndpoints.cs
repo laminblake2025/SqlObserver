@@ -652,6 +652,7 @@ public static class TargetActivityEndpoints
         CollectorLossKind.IngestionRejection => "ingestion_rejection",
         CollectorLossKind.BlockingGraphLimit => "blocking_graph_limit",
         CollectorLossKind.DuplicateOverlap => "duplicate_overlap",
+        CollectorLossKind.VisibilityIncomplete => "visibility_incomplete",
         _ => throw new InvalidDataException("Activity snapshot evidence has an invalid loss kind."),
     };
 

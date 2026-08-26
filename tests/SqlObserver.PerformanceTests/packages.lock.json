@@ -47,6 +47,16 @@
           "Microsoft.TestPlatform.ObjectModel": "18.8.1"
         }
       },
+      "System.DirectoryServices.Protocols": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "Q4DEPB0wfAMAM6zjCjioFQoDZGC6uCeAZMU30sdjMgVtKbSuSBjhASVlxVOTYmQKCdUqZInnDwZ3W/ZTWB4m3Q=="
+      },
+      "System.ServiceProcess.ServiceController": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "khROyIQ3GAZy5MbCabfmlbvxf9nuvdveFP2XbRCteZ9Lq8OFEvImmrjV6acl1LegRu/9T6VMxi9Lr+KZu29VHg=="
+      },
       "xunit.abstractions": {
         "type": "Transitive",
         "resolved": "2.0.3",
@@ -87,10 +97,31 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
+      "sqlobserver.alerting": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.analytics": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.audit": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
@@ -110,6 +141,74 @@
       },
       "sqlobserver.domain": {
         "type": "Project"
+      },
+      "sqlobserver.infrastructure.postgresql": {
+        "type": "Project",
+        "dependencies": {
+          "Npgsql": "[10.0.3, )",
+          "SqlObserver.Alerting": "[1.0.0, )",
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.infrastructure.windows": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.mcp": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.security": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.server": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.AspNetCore.Authentication.Negotiate": "[10.0.11, )",
+          "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.11, )",
+          "SqlObserver.Alerting": "[1.0.0, )",
+          "SqlObserver.Analytics": "[1.0.0, )",
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Audit": "[1.0.0, )",
+          "SqlObserver.Infrastructure.PostgreSql": "[1.0.0, )",
+          "SqlObserver.Infrastructure.Windows": "[1.0.0, )",
+          "SqlObserver.Mcp": "[1.0.0, )",
+          "SqlObserver.Security": "[1.0.0, )"
+        }
+      },
+      "Microsoft.AspNetCore.Authentication.Negotiate": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "XjvGMQ0+Y22t7jQKS8ZW3UvJNhNC0AT/Et2Mf8XZj4MmNawqpxt8Xvm4wLCkAOrqiVqGmz9b+kwi54DuyfPyCg==",
+        "dependencies": {
+          "System.DirectoryServices.Protocols": "10.0.11"
+        }
+      },
+      "Microsoft.Extensions.Hosting.WindowsServices": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "OTlOHRxmt4IyYR5tBejF5ffdVMbo9n5NbPJRzCe0bnJmzTQt0kHNiDiEU96t4KkB3wE3vZqPETtXJVLujrRJnA==",
+        "dependencies": {
+          "System.ServiceProcess.ServiceController": "10.0.11"
+        }
+      },
+      "Npgsql": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w=="
       }
     }
   }

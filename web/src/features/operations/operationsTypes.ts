@@ -1,0 +1,4 @@
+export type OperationalState = "Complete" | "Partial" | "Degraded" | "Unsupported" | "PermissionDenied" | "NoData";
+export type OperationalKind = "backups" | "agent" | "tempdb-summary" | "tempdb-files" | "ag-replicas" | "ag-databases";
+export interface OperationalPage { readonly targetId: string; readonly targetRevision: number; readonly runId: string | null; readonly evidence?: Record<string, unknown> | null; readonly observedAtUtc: string; readonly state: OperationalState; readonly items: readonly Record<string, unknown>[]; readonly hasMore: boolean; readonly nextCursor: string | null; readonly truncated: boolean; readonly coverageFromUtc?: string | null; readonly coverageToUtc?: string | null; readonly totalBytes?: number | null; readonly usedBytes?: number | null; readonly logTotalBytes?: number | null; readonly logUsedBytes?: number | null; readonly visibilityScope?: string | null; }
+export type OperationalSnapshot = OperationalPage;
