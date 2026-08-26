@@ -25,7 +25,7 @@ Status meanings:
 | **M8 — Alerts, maintenance, notifications** | Rule evaluation/state, maintenance suppression, delivery adapters, audited administrative writes, active-alert projection; MCP remains unable to acknowledge or notify | Implemented locally; Docker/live Event Log gates remain environmental |
 | **M9 — Backups, jobs, TempDB, Availability Groups** | Ordered collectors and bounded projections for backup status, SQL Agent failures, TempDB health, and Availability Group health | Implemented locally; Docker/live SQL certification pending |
 | **M10 — Rollups, baselines, forecasts, incident correlation** | Rollups, baselines, metric-window comparison, storage forecasts, host metrics, replication evidence, evidence packets, incident threads, retention/partition production hardening | Implemented locally; Docker/live target and release certification remain pending |
-| **M11 — MCP** | Official stable C# SDK selection at implementation time behind adapter; stdio-to-server authentication; all and only allowlisted read-only tools; service-layer RBAC; UTC/bounds/pagination; audit every call; stable/current-protocol compatibility suite | Planned |
+| **M11 — MCP** | Official stable C# SDK selection at implementation time behind adapter; stdio-to-server authentication; all and only allowlisted read-only tools; service-layer RBAC; UTC/bounds/pagination; audit every call; stable/current-protocol compatibility suite | Implemented locally; live Kerberos/TLS and release certification remain M12 gates |
 | **M12 — Reports, installer, upgrades, release hardening** | Reports/exports; WiX and PostgreSQL packaging; Windows Service/gMSA/TLS configuration; install/upgrade/recovery/uninstall; initial-release certification; security/performance/end-to-end gates; release and runbooks | Planned |
 
 ## High-level requirement traceability
@@ -168,7 +168,7 @@ This is the completion checklist for the first assignment. Each item was inspect
 5. **Coordination and retention safety — complete.** Repository-clock leases use persistent monotonic fencing; retention policy is disabled and its view is preview-only with recovery prerequisites unsatisfied.
 6. **Active evidence — complete for M2.** Unit, security, and PostgreSQL 18.4 integration suites cover contracts, boundaries, migration history, roles/schemas, partitions/indexes, ingestion/deduplication, cancellation, and stale fences without PostgreSQL-test skips. Full representative-volume and platform certification remains a release gate.
 
-M7 Query Store and plan-cache evidence, M8 alert evaluation/delivery, M9 operational health, and the M10 analytics/host/replication slice are implemented locally. M11 MCP is the next runtime dependency; Docker/live target and release certification remain explicit environmental gates.
+M7 Query Store and plan-cache evidence, M8 alert evaluation/delivery, M9 operational health, M10 analytics/host/replication, and the M11 read-only MCP slice are implemented locally. M12 reports, packaging, deployment, and release certification are the remaining initial-release milestone; Docker/live target and platform certification remain explicit environmental gates.
 
 ## Completed M4 collector and core-health tasks
 
@@ -186,16 +186,16 @@ M7 Query Store and plan-cache evidence, M8 alert evaluation/delivery, M9 operati
 3. **Activity UI — complete.** The target workflow exposes sessions, active requests, waits with reset/baseline semantics, current blocking, and bounded one-hour blocking history with freshness and truncation evidence.
 4. **Active evidence — implementation slice verified where runnable.** M5-focused SQL Server, end-to-end composition, API DTO, and web contract tests are active; PostgreSQL integration execution is pending the Docker PostgreSQL environment. Support-platform, gMSA/Kerberos, trusted-TLS, sustained-load, installer, and release certification remain M12 exclusions.
 
-## Current post-M10 exclusions
+## Current post-M11 exclusions
 
 The following are explicitly incomplete and must not be represented as working:
 
-- MCP, reports, and exports remain outside the implemented runtime slice; M10 analytics/reporting projections are bounded and locally runtime-tested;
+- reports and exports remain outside the implemented runtime slice; M10 analytics/reporting projections and the M11 read-only MCP projections are bounded and locally runtime-tested;
 
 - production collector implementations or target SQL beyond the active M10 bundle (the bundle is `capability.connection`, `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`);
 - reusable target credentials, automatic permission grants, or target mutation;
 - automatic retention execution, repository installation/backup/restore/HA, or production repository provisioning;
-- API behavior beyond target management, M4 health, M5 activity, M6 deadlock, M7 query-performance, M8 alerts, M9 operational-health, and M10 analytics projections; SignalR, reports, exports, and MCP runtime behavior;
+- API behavior beyond target management, M4 health, M5 activity, M6 deadlock, M7 query-performance, M8 alerts, M9 operational-health, M10 analytics, and the fixed M11 MCP surface; SignalR, reports, and exports;
 - Query Store configuration/change, Extended Events, blocked-process, index, plan-forcing, session, or configuration changes;
 - live environment bootstrap, seed data, installer, upgrade, uninstall, or release packaging;
 - production support/certification for any platform in the support matrix.
@@ -205,6 +205,13 @@ The following are explicitly incomplete and must not be represented as working:
 1. **Bounded analytics API — locally runtime-verified.** Target-scoped series, rollups, comparisons, baselines, forecasts, incidents, host/replication surfaces, jobs, and retention routes are mapped through the Server API. In-process contract tests cover authorization and target scope, malformed windows/limits/cursors, cursor terminal pages, cancellation propagation, and 1 MiB response rejection.
 2. **Collector ownership — locally runtime-verified.** The Collector composition owns the analytics derivation and backfill workers and wires both to the restricted PostgreSQL analytics ports. Contract-testing composition deliberately excludes those hosted workers; no target connection is introduced by the analytics workers.
 3. **Analytics evidence — implemented locally.** Deterministic rollup, baseline, forecast, evidence, incident, host, replication, and retention contracts have focused unit/security/performance coverage. PostgreSQL migration/integration, Docker, live SQL Server, sustained-load, and release/platform certification remain environmental or M12 gates.
+
+## Completed M11 MCP tasks
+
+1. **Fixed protocol surface — locally runtime-verified.** The official stable C# SDK 2.2.0 is isolated behind the MCP adapter and exposes exactly the 25 ADR/BACKLOG tools with closed schemas, read-only annotations, an authenticated stateless HTTP endpoint, and a catalog-verified stdio proxy.
+2. **Normal authorization and bounded reads — locally runtime-verified.** Every handler resolves the Server principal and calls target-scoped Application query services with UTC windows, opaque bounded cursors, fixed repository/tool deadlines, four-per-actor and 32-global no-queue admission, and a 1 MiB response ceiling. The bridge has no repository, target, collector, or administrative path.
+3. **Terminal audit — locally runtime-verified.** Success and bounded failure outcomes append one safe repository-time audit record before disclosure. Server, Auditor, and Collector permissions are separated; raw parameters, results, diagnostic content, tokens, connection data, and exception text are not persisted.
+4. **Compatibility evidence — active where runnable.** Exact inventory, stable/current and down-level protocol, authorization, denial-before-I/O, limit, cancellation, audit, process-boundary, and equal-timestamp pagination tests are active. Docker PostgreSQL execution and live Kerberos/SPN/trusted-TLS certification remain environmental or M12 gates.
 
 ## Cross-cutting release gates
 

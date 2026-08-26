@@ -336,6 +336,7 @@ function Assert-RepositoryShape {
         'docs/milestones/M4-collector-framework-and-core-health.md',
         'docs/milestones/M10-rollups-host-replication-retention.md',
         'docs/milestones/M10-analytics-contracts.md',
+        'docs/milestones/M11-mcp.md',
         'docs/adr/ADR-0013-host-observation-boundary.md',
         'docs/adr/ADR-0014-analytics-retention-boundary.md',
         'docs/architecture/host-observation-threat-notes.md',
@@ -498,6 +499,14 @@ function Assert-RepositoryShape {
             'Microsoft.AspNetCore.Authentication.Negotiate',
             'Microsoft.Extensions.Hosting.WindowsServices'
         )
+        'SqlObserver.Mcp' = @(
+            'ModelContextProtocol',
+            'ModelContextProtocol.AspNetCore'
+        )
+        'SqlObserver.McpStdio' = @(
+            'Microsoft.Extensions.Hosting',
+            'Microsoft.Extensions.Logging.Console'
+        )
     }
     foreach ($sourceProject in $sourceProjects) {
         [xml] $projectXml = Get-Content -LiteralPath $sourceProject.FullName -Raw
@@ -568,6 +577,66 @@ function Assert-RepositoryShape {
         if ($null -ne $forbiddenTool) {
             throw 'The forbidden execute_sql MCP tool name appears in production source.'
         }
+    }
+
+    foreach ($mcpPackage in @('ModelContextProtocol', 'ModelContextProtocol.AspNetCore', 'ModelContextProtocol.Core')) {
+        if ($centralPackages -notmatch ('<PackageVersion Include="' + [regex]::Escape($mcpPackage) + '" Version="2\.2\.0"\s*/>')) {
+            throw "M11 must pin the official stable $mcpPackage package to 2.2.0."
+        }
+    }
+    $mcpRuntimeSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Mcp/McpRuntime.cs') -Raw
+    foreach ($requiredMcpBoundary in @('McpCursorSigner', 'McpOutputProjection', 'StructuredContent', 'OutputSchema', 'McpApplicationResponseOversizeException', 'FixedTimeEquals', 'RequestDigest')) {
+        if (-not $mcpRuntimeSource.Contains($requiredMcpBoundary)) {
+            throw "M11 MCP boundary asset is missing: $requiredMcpBoundary"
+        }
+    }
+    $mcpForecastMigration = Join-Path $repositoryRoot 'database/migrations/0017_mcp_forecast_limit.sql'
+    if (-not (Test-Path -LiteralPath $mcpForecastMigration -PathType Leaf)) {
+        throw 'M11 forecast limit migration 0017 is required and immutable migrations must not be edited in place.'
+    }
+    $mcpForecastSql = Get-Content -LiteralPath $mcpForecastMigration -Raw
+    if ($mcpRuntimeSource -match 'Convert\.ToBase64String\(bytes\)') {
+        throw 'M11 cursors must use signed envelopes rather than bare base64 payloads.'
+    }
+    if ($mcpForecastSql -notmatch 'get_m10_forecast_scoped[\s\S]*p_limit integer' -or
+        $mcpForecastSql -notmatch 'LIMIT p_limit' -or
+        $mcpForecastSql -notmatch 'GRANT EXECUTE') {
+        throw 'M11 forecast migration must expose a bounded server-only limit overload.'
+    }
+    $mcpMigrationDirectory = Join-Path $repositoryRoot 'database/migrations'
+    foreach ($mcpMigrationNumber in 15..20) {
+        $mcpMigration = @(Get-ChildItem -LiteralPath $mcpMigrationDirectory -Filter ("{0:D4}_*.sql" -f $mcpMigrationNumber) -File)
+        if ($mcpMigration.Count -ne 1) { throw "M11 migration $mcpMigrationNumber is missing or ambiguous." }
+        $mcpMigrationText = Get-Content -LiteralPath $mcpMigration[0].FullName -Raw
+        foreach ($mcpBoundary in @('SECURITY DEFINER', 'search_path', 'TimeZone', 'REVOKE', 'PUBLIC', 'sqlobserver_collector', 'sqlobserver_auditor', 'GRANT EXECUTE', 'sqlobserver_server')) {
+            if ($mcpMigrationText -notmatch [regex]::Escape($mcpBoundary)) { throw "M11 migration $($mcpMigration[0].Name) lacks required boundary: $mcpBoundary" }
+        }
+    }
+    $mcpForecastCursorMigration = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0019_mcp_forecast_cursor.sql') -Raw
+    $mcpForecastSignature = 'get_m10_forecast_scoped\s*\(\s*p_instance_id\s+uuid\s*,\s*p_target_revision\s+bigint\s*,\s*p_metric_key\s+text\s*,\s*p_dimensions\s+jsonb\s*,\s*p_horizon\s+interval\s*,\s*p_snapshot_utc\s+timestamptz\s*,\s*p_limit\s+integer\s*,\s*p_cursor_horizon_start\s+timestamptz\s*,\s*p_cursor_forecast_id\s+uuid\s*\)'
+    if ($mcpForecastCursorMigration -notmatch $mcpForecastSignature -or
+        $mcpForecastCursorMigration -notmatch 'p_limit\s+BETWEEN\s+1\s+AND\s+201' -or
+        $mcpForecastCursorMigration -notmatch 'p_cursor_horizon_start\s+IS\s+NULL\s+AND\s+p_cursor_forecast_id\s+IS\s+NULL' -or
+        $mcpForecastCursorMigration -notmatch 'p_cursor_horizon_start\s+IS\s+NOT\s+NULL\s+AND\s+p_cursor_forecast_id\s+IS\s+NOT\s+NULL' -or
+        $mcpForecastCursorMigration -notmatch '\(f\.horizon_start\s*,\s*f\.forecast_id\)\s*>\s*\(p_cursor_horizon_start\s*,\s*p_cursor_forecast_id\)' -or
+        $mcpForecastCursorMigration -notmatch 'ORDER\s+BY\s+f\.horizon_start\s*,\s*f\.forecast_id' -or
+        $mcpForecastCursorMigration -notmatch 'LANGUAGE\s+sql\s+STABLE\s+SECURITY\s+DEFINER' -or
+        $mcpForecastCursorMigration -notmatch 'SET\s+search_path\s*=\s*pg_catalog,analytics,control' -or
+        $mcpForecastCursorMigration -notmatch "SET\s+TimeZone\s*=\s*'UTC'" -or
+        $mcpForecastCursorMigration -notmatch 'REVOKE\s+ALL\s+ON\s+FUNCTION[\s\S]*FROM\s+PUBLIC,sqlobserver_collector,sqlobserver_auditor' -or
+        $mcpForecastCursorMigration -notmatch 'GRANT\s+EXECUTE\s+ON\s+FUNCTION[\s\S]*TO\s+sqlobserver_server') {
+        throw 'M11 migration 0019 must expose the exact bounded 9-argument, secure, complete-tuple forecast contract.'
+    }
+    $mcpSnapshotMigration = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0020_mcp_snapshot_and_incident_cursor.sql') -Raw
+    foreach ($mcpSnapshotClause in @('h\.observed_at<=p_snapshot_utc', 'h\.collected_at<=p_snapshot_utc', 'f\.computed_at<=p_snapshot_utc', 'd\.collected_at<=p_snapshot_utc', 'p_cursor_occurred_at', 'p_cursor_packet_id', 'p_cursor_generation', 'ORDER BY e\.occurred_at,e\.packet_id', 'ORDER BY g\.generation')) {
+        if ($mcpSnapshotMigration -notmatch $mcpSnapshotClause) { throw "M11 migration 0020 is missing snapshot/cursor clause: $mcpSnapshotClause" }
+    }
+    $mcpProjects = @(
+        Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -Recurse -Filter '*.csproj' -File |
+            Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match 'ModelContextProtocol' }
+    )
+    if ($mcpProjects.Count -ne 1 -or $mcpProjects[0].BaseName -cne 'SqlObserver.Mcp') {
+        throw 'Official MCP SDK references must remain confined to SqlObserver.Mcp.'
     }
 
     $placeholderOnlyDirectories = @(
@@ -1254,13 +1323,14 @@ function Assert-RepositoryShape {
         if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM7TestAsset) -PathType Leaf)) { throw "M7 focused test asset is missing: $requiredM7TestAsset" }
     }
     $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
-    if ($readmeStatus -notmatch 'Milestones 0 through (?:8|9|10) are implemented' -or
+    if ($readmeStatus -notmatch 'Milestones 0 through 11 are implemented' -or
         $readmeStatus -notmatch '(?i)M5 activity' -or
         $readmeStatus -notmatch '(?i)M6.*(?:system_health|deadlock)' -or
          $readmeStatus -notmatch '(?i)M7.*(?:Query Store|query-performance)' -or
          $readmeStatus -notmatch '(?i)M9.*operational-health' -or
-        $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
-         throw 'README repository status must explicitly identify M0-M10 and the bounded M5-M10 activity/operational-health/analytics scope.'
+         $readmeStatus -notmatch '(?i)M11.*(?:MCP|read-only)' -or
+         $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
+        throw 'README repository status must explicitly identify M0-M11 and the bounded diagnostic, analytics, and MCP scope.'
     }
     $registeredSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Collector/CollectorServiceRegistration.cs') -Raw
     $registeredOrderPatterns = @(
@@ -1316,7 +1386,8 @@ function Assert-RepositoryShape {
         'SqlObserver.ApiContractTests',
         'SqlObserver.EndToEndTests',
         'SqlObserver.PerformanceTests',
-        'SqlObserver.SecurityTests')) {
+        'SqlObserver.SecurityTests',
+        'SqlObserver.McpContractTests')) {
         $completedSuiteSource = @(
             Get-ChildItem -LiteralPath (Join-Path $repositoryRoot "tests/$completedSuite") -Filter '*.cs' -File
         )

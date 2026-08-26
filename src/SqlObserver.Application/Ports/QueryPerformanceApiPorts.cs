@@ -9,8 +9,16 @@ public sealed record QueryPerformanceStatusRequest(MonitoredInstanceId TargetId,
 public sealed record TopQueryRequest(MonitoredInstanceId TargetId, DateTimeOffset FromUtc, DateTimeOffset ToUtc, QueryPerformanceMetric Metric, int Limit, QueryPerformanceCursorEnvelope? Cursor, RepositoryCallTimeout Timeout);
 public sealed record QueryHistoryRequest(MonitoredInstanceId TargetId, QueryOpaqueIdentity Query, DateTimeOffset FromUtc, DateTimeOffset ToUtc, int Limit, QueryPerformanceCursorEnvelope? Cursor, RepositoryCallTimeout Timeout);
 public sealed record QueryPlanMetadataRequest(MonitoredInstanceId TargetId, PlanOpaqueIdentity Plan, RepositoryCallTimeout Timeout);
-public sealed record TopQueryPage(IReadOnlyList<TopQueryDto> Items, bool HasMore, DateTimeOffset SnapshotUtc);
-public sealed record QueryHistoryPage(IReadOnlyList<QueryHistoryDto> Items, bool HasMore, DateTimeOffset SnapshotUtc);
+public sealed record TopQueryPage(IReadOnlyList<TopQueryDto> Items, bool HasMore, DateTimeOffset SnapshotUtc)
+{
+    /// <summary>Complete typed continuation; the MCP adapter encodes this as an opaque string.</summary>
+    public QueryPerformanceCursorEnvelope? NextCursor { get; init; }
+}
+public sealed record QueryHistoryPage(IReadOnlyList<QueryHistoryDto> Items, bool HasMore, DateTimeOffset SnapshotUtc)
+{
+    /// <summary>Complete typed continuation; the MCP adapter encodes this as an opaque string.</summary>
+    public QueryPerformanceCursorEnvelope? NextCursor { get; init; }
+}
 public interface IQueryPerformanceApiRepositoryPort
 {
     ValueTask<QueryPerformanceStatusDto?> GetStatusAsync(QueryPerformanceStatusRequest request, CancellationToken cancellationToken);

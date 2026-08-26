@@ -98,34 +98,51 @@ public sealed class PostgreSqlOperationalHealthProjectionPort : IOperationalHeal
         if (includeReplicas && includeDatabases && request.Cursor is not null)
             throw new ArgumentException("Combined availability-group summaries use child cursors.", nameof(request));
         PageCursor? cursor = includeReplicas && includeDatabases ? null : ReadPageCursor(request, header, cursorKind, null, null);
+        // The combined MCP view has no single ordering across the two child
+        // streams. Split the bounded page budget between them and mark any
+        // omitted tail as truncation; child routes retain independent cursors.
+        bool combined = includeReplicas && includeDatabases;
+        int streamLimit = combined ? Math.Max(1, request.Limit / 2) : request.Limit;
         if (!header.HasValue) return new AvailabilityGroupsSnapshot(request.TargetId, header.Revision, header.RunId, header.ObservedAtUtc, ParseState(header.State), AvailabilityVisibilityScope.ResolvingLocalOnly, [], [], false);
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await SetScopeAsync(connection, request.TargetId, cancellationToken).ConfigureAwait(false);
         var replicas = new List<AvailabilityReplicaObservation>();
         if (includeReplicas) await using (var replicaCommand = new NpgsqlCommand("SELECT * FROM reporting.list_availability_group_replicas(@instance_id,@run_id,@target_revision,@after_group,@after_key,@limit);", connection) { CommandTimeout = 5 })
         {
-            replicaCommand.Parameters.AddWithValue("instance_id", request.TargetId.Value); replicaCommand.Parameters.AddWithValue("run_id", header.RunId!.Value); replicaCommand.Parameters.AddWithValue("target_revision", header.Revision.Value); replicaCommand.Parameters.AddWithValue("after_group", cursor?.A is null or "" ? DBNull.Value : Convert.FromHexString(cursor.A)); replicaCommand.Parameters.AddWithValue("after_key", cursor?.B is null or "" ? DBNull.Value : Convert.FromHexString(cursor.B)); replicaCommand.Parameters.AddWithValue("limit", request.Limit + 1);
+            replicaCommand.Parameters.AddWithValue("instance_id", request.TargetId.Value); replicaCommand.Parameters.AddWithValue("run_id", header.RunId!.Value); replicaCommand.Parameters.AddWithValue("target_revision", header.Revision.Value); replicaCommand.Parameters.AddWithValue("after_group", cursor?.A is null or "" ? DBNull.Value : Convert.FromHexString(cursor.A)); replicaCommand.Parameters.AddWithValue("after_key", cursor?.B is null or "" ? DBNull.Value : Convert.FromHexString(cursor.B)); replicaCommand.Parameters.AddWithValue("limit", streamLimit + 1);
             await using NpgsqlDataReader reader = await replicaCommand.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) replicas.Add(new AvailabilityReplicaObservation(request.TargetId, header.Revision, Convert.ToHexString((byte[])reader[0]).ToLowerInvariant(), Convert.ToHexString((byte[])reader[1]).ToLowerInvariant(), reader.GetString(2), reader.GetString(3), reader.GetString(4), (AvailabilityVisibilityScope)reader.GetInt16(5), reader.GetBoolean(6)));
         }
         var databases = new List<AvailabilityDatabaseObservation>();
         if (includeDatabases) await using (var databaseCommand = new NpgsqlCommand("SELECT * FROM reporting.list_availability_group_databases(@instance_id,@run_id,@target_revision,@after_group,@after_key,@limit);", connection) { CommandTimeout = 5 })
         {
-            databaseCommand.Parameters.AddWithValue("instance_id", request.TargetId.Value); databaseCommand.Parameters.AddWithValue("run_id", header.RunId!.Value); databaseCommand.Parameters.AddWithValue("target_revision", header.Revision.Value); databaseCommand.Parameters.AddWithValue("after_group", cursor?.A is null or "" ? DBNull.Value : Convert.FromHexString(cursor.A)); databaseCommand.Parameters.AddWithValue("after_key", cursor?.B is null or "" ? DBNull.Value : Convert.FromHexString(cursor.B)); databaseCommand.Parameters.AddWithValue("limit", request.Limit + 1);
+            databaseCommand.Parameters.AddWithValue("instance_id", request.TargetId.Value); databaseCommand.Parameters.AddWithValue("run_id", header.RunId!.Value); databaseCommand.Parameters.AddWithValue("target_revision", header.Revision.Value); databaseCommand.Parameters.AddWithValue("after_group", cursor?.A is null or "" ? DBNull.Value : Convert.FromHexString(cursor.A)); databaseCommand.Parameters.AddWithValue("after_key", cursor?.B is null or "" ? DBNull.Value : Convert.FromHexString(cursor.B)); databaseCommand.Parameters.AddWithValue("limit", streamLimit + 1);
             await using NpgsqlDataReader reader = await databaseCommand.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) databases.Add(new AvailabilityDatabaseObservation(request.TargetId, header.Revision, Convert.ToHexString((byte[])reader[0]).ToLowerInvariant(), Convert.ToHexString((byte[])reader[1]).ToLowerInvariant(), reader.GetString(2), reader.GetString(3), (AvailabilityVisibilityScope)reader.GetInt16(4), reader.GetBoolean(5)));
         }
-        bool replicasMore = replicas.Count > request.Limit;
-        bool databasesMore = databases.Count > request.Limit;
+        // Both SQL functions use streamLimit + 1 so the adapter can distinguish
+        // an exact page from a page with a lookahead row.  The old comparison
+        // against request.Limit left the lookahead in combined pages because
+        // each child is intentionally capped at half the total budget.
+        bool replicasMore = replicas.Count > streamLimit;
+        bool databasesMore = databases.Count > streamLimit;
         if (replicasMore) replicas.RemoveAt(replicas.Count - 1);
         if (databasesMore) databases.RemoveAt(databases.Count - 1);
+        bool combinedTrimmed = false;
+        if (combined && replicas.Count + databases.Count > request.Limit)
+        {
+            combinedTrimmed = true;
+            int excess = replicas.Count + databases.Count - request.Limit;
+            while (excess > 0 && databases.Count > 0) { databases.RemoveAt(databases.Count - 1); excess--; }
+            while (excess > 0 && replicas.Count > 0) { replicas.RemoveAt(replicas.Count - 1); excess--; }
+        }
         string? replicasNext = replicasMore && replicas.Count > 0
             ? EncodePageCursor(request.TargetId, header, new PageCursor("ag.replicas", header.RunId!.Value, header.Revision.Value, null, null, replicas[^1].GroupFingerprint, replicas[^1].ReplicaFingerprint, "", ""))
             : null;
         string? databasesNext = databasesMore && databases.Count > 0
             ? EncodePageCursor(request.TargetId, header, new PageCursor("ag.databases", header.RunId!.Value, header.Revision.Value, null, null, databases[^1].GroupFingerprint, databases[^1].DatabaseFingerprint, "", ""))
             : null;
-        bool more = includeReplicas ? replicasMore : databasesMore;
+        bool more = combined ? replicasMore || databasesMore || combinedTrimmed : includeReplicas ? replicasMore : databasesMore;
         string? next = includeReplicas && !includeDatabases ? replicasNext : includeDatabases && !includeReplicas ? databasesNext : null;
         AvailabilityVisibilityScope visibility = replicas.Select(static x => x.VisibilityScope).Concat(databases.Select(static x => x.VisibilityScope)).DefaultIfEmpty(AvailabilityVisibilityScope.ResolvingLocalOnly).First();
         return new AvailabilityGroupsSnapshot(request.TargetId, header.Revision, header.RunId, header.ObservedAtUtc, ParseState(header.State), visibility, replicas, databases, more)

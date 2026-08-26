@@ -238,6 +238,13 @@ public sealed class M9OperationalHealthContractTests
         Assert.Contains("new PageCursor(\"ag.databases\"", source, StringComparison.Ordinal);
         Assert.Contains("ReplicasNextCursor", File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Domain/Collection/OperationalHealthObservations.cs"))), StringComparison.Ordinal);
         Assert.Contains("DatabasesNextCursor", File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Domain/Collection/OperationalHealthObservations.cs"))), StringComparison.Ordinal);
+        // The combined view allocates a half-budget to each child, trims each
+        // child lookahead, and applies a final total-budget guard (including
+        // the limit=1 edge case where both children receive one row).
+        Assert.Contains("replicas.Count > streamLimit", source, StringComparison.Ordinal);
+        Assert.Contains("databases.Count > streamLimit", source, StringComparison.Ordinal);
+        Assert.Contains("replicas.Count + databases.Count > request.Limit", source, StringComparison.Ordinal);
+        Assert.Contains("combinedTrimmed", source, StringComparison.Ordinal);
     }
 
     [Fact]

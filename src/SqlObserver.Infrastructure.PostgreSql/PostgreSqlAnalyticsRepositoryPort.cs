@@ -15,7 +15,7 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>Target-scoped analytics persistence. Every command runs in a short transaction with local UTC/scope settings.</summary>
-public sealed class PostgreSqlAnalyticsRepositoryPort : IAnalyticsRepositoryPort, IAnalyticsSurfaceRepositoryPort, IRetentionRepositoryPort, IRetentionPolicyRepositoryPort, IAnalyticsDerivationStore
+public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsRepositoryPort, IAnalyticsSurfaceRepositoryPort, IRetentionRepositoryPort, IRetentionPolicyRepositoryPort, IAnalyticsDerivationStore, IMetricSeriesProjectionRepositoryPort, IStorageForecastProjectionRepositoryPort, IDiagnosticEventProjectionRepositoryPort, IIncidentEvidenceProjectionRepositoryPort
 {
     private static readonly RepositoryCallTimeout FiveSecondTimeout = new(TimeSpan.FromSeconds(5));
     private readonly NpgsqlDataSource dataSource;

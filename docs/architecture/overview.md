@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This document fixes the product architecture and records the implementation boundary through Milestone 4. Target onboarding, capability discovery, the PostgreSQL repository, fenced collection runtime, passive core/database/file collectors, and scoped health projections have active evidence. Later diagnostics, alerts, analytics, MCP, reports, packaging, and support certification remain planned and must not be inferred from this topology.
+This document fixes the product architecture and records the implementation boundary through Milestone 11. Repository, onboarding, collection, diagnostic, alerting, analytics, and the fixed read-only MCP surface have local evidence. Reports, packaging, deployment lifecycle, and support certification remain M12 work and must not be inferred from this topology.
 
 SqlObserver is a Windows Server-hosted, agentless-by-default diagnostics application for Microsoft SQL Server. PostgreSQL 18.x is the application repository. The design is a modular monolith: modules share domain and application contracts, while independently hosted processes have narrow responsibilities and can be deployed separately.
 

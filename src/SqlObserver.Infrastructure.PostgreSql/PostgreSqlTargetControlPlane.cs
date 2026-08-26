@@ -18,6 +18,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         Targets = new PostgreSqlObservationTargetPort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         AdministrativeAudit = new PostgreSqlAdministrativeAuditPort(dataSource);
+        McpInvocationAudit = new PostgreSqlMcpInvocationAuditPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         HealthProjections = new PostgreSqlHealthProjectionPort(dataSource);
         ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
@@ -38,6 +39,11 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
 
     public IAdministrativeAuditPort AdministrativeAudit { get; }
 
+    /// <summary>Append-only terminal audit for MCP calls; compose into the MCP adapter.</summary>
+    public IMcpInvocationAuditPort McpInvocationAudit { get; }
+
+    public IMcpAuditPort McpAudit => (IMcpAuditPort)McpInvocationAudit;
+
     public IWorkerLeasePort WorkerLeases { get; }
 
     public IHealthProjectionRepositoryPort HealthProjections { get; }
@@ -52,6 +58,14 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IOperationalHealthRepositoryPort OperationalHealth { get; }
 
     public IAnalyticsRepositoryPort Analytics { get; }
+
+    // Narrow MCP read projections share the analytics data source but remain
+    // separate application ports so the composition root cannot accidentally
+    // expose an arbitrary analytics repository to a tool.
+    public IMetricSeriesProjectionRepositoryPort MetricSeriesProjections => (IMetricSeriesProjectionRepositoryPort)Analytics;
+    public IStorageForecastProjectionRepositoryPort StorageForecastProjections => (IStorageForecastProjectionRepositoryPort)Analytics;
+    public IDiagnosticEventProjectionRepositoryPort DiagnosticEventProjections => (IDiagnosticEventProjectionRepositoryPort)Analytics;
+    public IIncidentEvidenceProjectionRepositoryPort IncidentEvidenceProjections => (IIncidentEvidenceProjectionRepositoryPort)Analytics;
 
     public IAnalyticsDerivationStore AnalyticsDerivation { get; }
 

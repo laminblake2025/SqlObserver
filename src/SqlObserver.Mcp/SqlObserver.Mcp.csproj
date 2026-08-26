@@ -4,6 +4,10 @@
     <AssemblyName>SqlObserver.Mcp</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../SqlObserver.Audit/SqlObserver.Audit.csproj" />
+    <ProjectReference Include="../SqlObserver.Security/SqlObserver.Security.csproj" />
   </ItemGroup>
 </Project>

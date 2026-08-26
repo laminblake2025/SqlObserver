@@ -255,18 +255,6 @@
           "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.11"
         }
       },
-      "Microsoft.Extensions.Logging.Console": {
-        "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "dFc0yDudyD1iIg6z9XT7ofsT3hVO7Y4ylrxGHIVRR0GaZ4CUk4ujOrMoy7wWEdNHZhvJooySg6hZpOxyS8zEVA==",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11",
-          "Microsoft.Extensions.Logging": "10.0.11",
-          "Microsoft.Extensions.Logging.Abstractions": "10.0.11",
-          "Microsoft.Extensions.Logging.Configuration": "10.0.11",
-          "Microsoft.Extensions.Options": "10.0.11"
-        }
-      },
       "Microsoft.Extensions.Logging.Debug": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -489,6 +477,13 @@
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
+      "sqlobserver.audit": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.collector": {
         "type": "Project",
         "dependencies": {
@@ -606,6 +601,19 @@
           "Microsoft.Extensions.Hosting": "10.0.11",
           "Microsoft.Extensions.Logging.EventLog": "10.0.11",
           "System.ServiceProcess.ServiceController": "10.0.11"
+        }
+      },
+      "Microsoft.Extensions.Logging.Console": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "dFc0yDudyD1iIg6z9XT7ofsT3hVO7Y4ylrxGHIVRR0GaZ4CUk4ujOrMoy7wWEdNHZhvJooySg6hZpOxyS8zEVA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.11",
+          "Microsoft.Extensions.Logging": "10.0.11",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.11",
+          "Microsoft.Extensions.Logging.Configuration": "10.0.11",
+          "Microsoft.Extensions.Options": "10.0.11"
         }
       },
       "Npgsql": {

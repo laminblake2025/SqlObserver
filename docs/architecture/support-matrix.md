@@ -57,11 +57,12 @@ All storage and protocol timestamps remain UTC regardless of host or browser tim
 
 ## Explicit exclusions before release certification
 
-M10 analytics is locally implemented with target-scoped repository reads/writes,
-passive host/replication evidence, and disabled-by-default retention. It is not
-live-target, SSPI/WMI, Docker, sustained-load, upgrade, or release certification.
+M10 analytics and M11 read-only MCP are locally implemented with target-scoped
+application-service reads, repository-time pagination, and terminal audit. They
+are not live Kerberos/SPN delegation, trusted production TLS, Docker,
+sustained-load, upgrade, installer, or release certification.
 
-M3 can discover a bounded capability profile with Windows integrated authentication and validated TLS, but it does not certify any entry above, install a gMSA-backed Windows service, provision trusted certificates/SPNs, expose MCP, or create a production database. Passing milestone validation is not support certification.
+M3 can discover a bounded capability profile with Windows integrated authentication and validated TLS, but it does not certify any entry above, install a gMSA-backed Windows service, provision trusted certificates/SPNs, or create a production database. M11 exposes MCP locally, but live identity delegation and transport qualification remain M12. Passing milestone validation is not support certification.
 ## M9 operational health
 
 Backups, SQL Agent history, TempDB, and Availability Groups use passive read-only SQL with fixed execution bounds. SQL Server Agent is unsupported on Express; Availability Groups require HADR and non-Express editions. Live SQL Server and PostgreSQL certification is environment-dependent.

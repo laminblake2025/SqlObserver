@@ -8,6 +8,7 @@ using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Security;
 using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.Windows;
+using SqlObserver.Mcp;
 using SqlObserver.Security;
 using SqlObserver.Server;
 
@@ -63,6 +64,16 @@ builder.Services.AddSingleton<ICapabilityProfileRepositoryPort>(static services 
     services.GetRequiredService<PostgreSqlTargetControlPlane>().CapabilityProfiles);
 builder.Services.AddSingleton<IAdministrativeAuditPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().AdministrativeAudit);
+builder.Services.AddSingleton<IMcpInvocationAuditPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().McpInvocationAudit);
+builder.Services.AddSingleton<IMetricSeriesProjectionRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().MetricSeriesProjections);
+builder.Services.AddSingleton<IStorageForecastProjectionRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().StorageForecastProjections);
+builder.Services.AddSingleton<IDiagnosticEventProjectionRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().DiagnosticEventProjections);
+builder.Services.AddSingleton<IIncidentEvidenceProjectionRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().IncidentEvidenceProjections);
 builder.Services.AddSingleton<IWorkerLeasePort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().WorkerLeases);
 builder.Services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
@@ -96,6 +107,11 @@ builder.Services.AddSingleton<IAlertDestinationApprovalPort, ConfiguredAlertDest
 builder.Services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
 builder.Services.AddSingleton<IEventLogAlertWriter, WindowsEventLogAlertWriter>();
 builder.Services.AddSingleton<IAlertAdministrationService, AlertAdministrationService>();
+builder.Services.AddSingleton<IMetricSeriesQueryService, MetricSeriesQueryService>();
+builder.Services.AddSingleton<IStorageForecastQueryService, StorageForecastQueryService>();
+builder.Services.AddSingleton<IDiagnosticEventQueryService, DiagnosticEventQueryService>();
+builder.Services.AddSingleton<IIncidentEvidenceQueryService, IncidentEvidenceQueryService>();
+builder.Services.AddSqlObserverMcp();
 // Contract-test hosts intentionally do not configure (or open) the production
 // PostgreSQL control plane.  Resolving the hosted worker in that environment
 // would eagerly construct its repository/lease dependencies and can turn an
@@ -104,9 +120,10 @@ builder.Services.AddSingleton<IAlertAdministrationService, AlertAdministrationSe
 WebApplication app = builder.Build();
 
 app.UseMiddleware<SafeApiExceptionMiddleware>();
-app.UseMiddleware<RequestBodyLimitMiddleware>();
 app.UseRequestTimeouts();
 app.UseAuthentication();
+app.UseMiddleware<McpHttpAuditBoundaryMiddleware>();
+app.UseMiddleware<RequestBodyLimitMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapSqlObserverScaffoldEndpoints();
@@ -118,6 +135,7 @@ app.MapTargetQueryPerformanceApiEndpoints();
 app.MapAlertEndpoints();
 app.MapOperationalHealthEndpoints();
 app.MapAnalyticsEndpoints();
+app.MapSqlObserverMcp().RequireAuthorization();
 
 await app.RunAsync();
 

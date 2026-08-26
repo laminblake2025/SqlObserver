@@ -89,9 +89,13 @@ There is intentionally no Server-to-target, MCP-to-repository, or MCP-to-target 
 ## Security invariants
 
 M10 analytics adds target/revision/generation and replay-digest fences to
-rollups, evidence, incidents, and retention jobs. Host identity is hashed and
-retention remains disabled until an administrator supplies an attestation;
-Docker, SSPI/WMI, and live-target certification are residual environment risks.
+rollups, evidence, incidents, and retention jobs. M11 confines official MCP SDK
+types to the adapter, fixes the tool inventory, routes every read through normal
+RBAC services, applies time/row/byte/concurrency bounds, and withholds results
+until a safe append-only terminal audit succeeds. The stdio bridge accepts only
+the configured authenticated HTTPS Server endpoint and has no database or target
+path. Docker, Kerberos/SPN, trusted TLS, SSPI/WMI, and live-target certification
+remain residual environment risks for M12.
 
 - Passive monitoring causes no target state change.
 - Target access never depends on permanent `sysadmin`.
