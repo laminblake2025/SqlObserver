@@ -10,7 +10,9 @@
     <ProjectReference Include="../../src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Analytics/SqlObserver.Analytics.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
   </ItemGroup>
 </Project>

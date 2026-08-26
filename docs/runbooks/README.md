@@ -4,6 +4,10 @@ No production runbook exists in the Milestone 0/Milestone 1 scaffold because the
 
 Future runbooks are expected to cover:
 
+- M10 analytics rollup/backfill status, host binding, replication visibility,
+  incident evidence, and retention preview/attestation/execution. These remain
+  bounded repository operations; no live destructive certification is claimed.
+
 - supported installation, gMSA and SPN setup, TLS, Windows Integrated Authentication, RBAC bootstrap, and uninstall;
 - PostgreSQL 18.x provisioning, least privilege, backup/restore, migration, partition care, retention, capacity, and disaster recovery;
 - target onboarding, capability discovery, generated permission review, credential rotation, and offboarding;

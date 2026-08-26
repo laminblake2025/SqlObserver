@@ -334,6 +334,11 @@ function Assert-RepositoryShape {
         'docs/milestones/M2-postgresql-repository.md',
         'docs/milestones/M3-onboarding-and-capabilities.md',
         'docs/milestones/M4-collector-framework-and-core-health.md',
+        'docs/milestones/M10-rollups-host-replication-retention.md',
+        'docs/milestones/M10-analytics-contracts.md',
+        'docs/adr/ADR-0013-host-observation-boundary.md',
+        'docs/adr/ADR-0014-analytics-retention-boundary.md',
+        'docs/architecture/host-observation-threat-notes.md',
         'collectors/manifests/collector-manifest.schema.json',
         'collectors/manifests/capability.connection.v1.json',
         'collectors/manifests/capability.connection.assets.sha256',
@@ -341,7 +346,16 @@ function Assert-RepositoryShape {
         'collectors/manifests/engine.core.v1.json',
         'collectors/manifests/database.inventory.v1.json',
         'collectors/manifests/database.files.v1.json',
-        'collectors/manifests/m4-core-health.assets.sha256'
+        'collectors/manifests/m4-core-health.assets.sha256',
+        'collectors/manifests/host.metrics.v1.json',
+        'collectors/manifests/host.metrics.v1.schema.json',
+        'collectors/manifests/m10-host.assets.sha256',
+        'collectors/manifests/replication.health.v1.json',
+        'collectors/manifests/replication.health.v1.schema.json',
+        'collectors/manifests/m10-replication.assets.sha256',
+        'collectors/manifests/capability.connection.v3.json',
+        'collectors/manifests/capability.connection.v3.schema.json',
+        'collectors/manifests/capability.connection.assets-v3.sha256'
     )
 
     foreach ($relativePath in $requiredFiles) {
@@ -519,9 +533,23 @@ function Assert-RepositoryShape {
     }
 
     $adrPath = Join-Path $repositoryRoot 'docs/adr'
-    $adrFiles = @(Get-ChildItem -LiteralPath $adrPath -Filter 'ADR-*.md' -File)
-    if ($adrFiles.Count -ne 12) {
-        throw "Expected exactly 12 ADR files, found $($adrFiles.Count)."
+    # ADR inventory is a canonical ordered contract.  A loose count lets a
+    # stale/renamed decision silently pass, which in turn makes the validator
+    # disagree with the checked-in architecture index.  Keep this list in
+    # numeric order and compare both names and count.
+    $expectedAdrNames = @(
+        'ADR-0001-modular-monolith.md', 'ADR-0002-postgresql-repository.md',
+        'ADR-0003-windows-services.md', 'ADR-0004-sql-first-migrations.md',
+        'ADR-0005-collector-contract.md', 'ADR-0006-read-only-mcp.md',
+        'ADR-0007-authentication.md', 'ADR-0008-partitioning-and-retention.md',
+        'ADR-0009-clean-room-boundary.md', 'ADR-0010-passive-versus-enhanced-monitoring.md',
+        'ADR-0011-query-text-and-plans-are-sensitive.md', 'ADR-0012-postgresql-worker-leases.md',
+        'ADR-0013-host-observation-boundary.md', 'ADR-0014-analytics-retention-boundary.md'
+    )
+    $adrFiles = @(Get-ChildItem -LiteralPath $adrPath -Filter 'ADR-*.md' -File | Sort-Object Name)
+    $actualAdrNames = @($adrFiles | ForEach-Object { $_.Name })
+    if (($actualAdrNames -join '|') -cne ($expectedAdrNames -join '|')) {
+        throw "ADR inventory is not the canonical ordered set. Expected $($expectedAdrNames.Count) files, found $($adrFiles.Count): $($actualAdrNames -join ', ')"
     }
 
     foreach ($adrFile in $adrFiles) {
@@ -747,11 +775,24 @@ function Assert-RepositoryShape {
         'availability-groups.health.sqlserver16-windows.v1.sql',
         'availability-groups.health.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $expectedM10CollectorSqlNames = @(
+        'capability.connection.sqlserver15-windows.v3.sql',
+        'capability.connection.sqlserver16-windows.v3.sql',
+        'capability.connection.sqlserver17-windows.v3.sql',
+        'replication.health.sqlserver15-windows.v1.sql',
+        'replication.health.sqlserver16-windows.v1.sql',
+        'replication.health.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
+    $expectedM10ReplicationSqlNames = @(
+        'replication.health.sqlserver15-windows.v1.sql',
+        'replication.health.sqlserver16-windows.v1.sql',
+        'replication.health.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $expectedM9CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $expectedM9CollectorSqlNames + $expectedM10CollectorSqlNames
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
-        throw 'Collector SQL must contain exactly the reviewed M3/M4 assets and active M5/M6/M7 assets.'
+        throw 'Collector SQL must contain exactly the reviewed M3/M4/M5/M6/M7/M9/M10 assets.'
     }
 
     foreach ($collectorSqlFile in $collectorSqlFiles) {
@@ -818,6 +859,13 @@ function Assert-RepositoryShape {
              $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
              $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b')) {
             throw "M9 collector SQL must remain bounded, ordered, and passive: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -in $expectedM10ReplicationSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*@maximum_rows\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
+             $collectorSql -notmatch '(?i)@distribution_database' -or
+             $collectorSql -match '(?i)\b(LSN|EXEC(?:UTE)?|INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE)\b')) {
+            throw "M10 replication SQL must remain bounded, passive, and visibility-safe: $($collectorSqlFile.Name)"
         }
         if ($collectorSqlFile.Name -in @('capability.connection.sqlserver15-windows.v2.sql','capability.connection.sqlserver16-windows.v2.sql','capability.connection.sqlserver17-windows.v2.sql') -and
             ($collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*\(\s*1\s*\)' -or
@@ -1081,6 +1129,65 @@ function Assert-RepositoryShape {
         throw "M9 bundle digest does not match the checksum manifest: $m9BundleDigest"
     }
 
+    # M10 source-neutral host and passive replication bundles are independently
+    # pinned.  Keep this gate separate from the immutable M3/M4/M9 manifests.
+    foreach ($bundle in @(
+        @{ Manifest = 'host.metrics.v1.json'; Schema = 'host.metrics.v1.schema.json'; Checksums = 'm10-host.assets.sha256' },
+        @{ Manifest = 'replication.health.v1.json'; Schema = 'replication.health.v1.schema.json'; Checksums = 'm10-replication.assets.sha256' },
+        @{ Manifest = 'capability.connection.v3.json'; Schema = 'capability.connection.v3.schema.json'; Checksums = 'capability.connection.assets-v3.sha256' }
+    )) {
+        $checksumFile = Join-Path $repositoryRoot "collectors/manifests/$($bundle.Checksums)"
+        $checksumLines = @(Get-Content -LiteralPath $checksumFile | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        foreach ($line in $checksumLines) {
+            if ($line -notmatch '^([0-9a-f]{64})  ([A-Za-z0-9.-]+)$') { throw "Invalid M10 asset checksum entry: $line" }
+            $asset = Join-Path $repositoryRoot "collectors/manifests/$($Matches[2])"
+            if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { $asset = Join-Path $repositoryRoot "collectors/sql/$($Matches[2])" }
+            if (-not (Test-Path -LiteralPath $asset -PathType Leaf) -or (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Matches[1]) { throw "M10 asset checksum mismatch: $($Matches[2])" }
+        }
+        $manifest = Get-Content -LiteralPath (Join-Path $repositoryRoot "collectors/manifests/$($bundle.Manifest)") -Raw | ConvertFrom-Json
+        if ($manifest.collectorId -notin @('host.metrics','replication.health','capability.connection') -or $manifest.outputSchemaVersion -ne 1 -and $manifest.outputSchemaVersion -ne 3) { throw "M10 manifest identity/version is invalid: $($bundle.Manifest)" }
+        if ($manifest.collectorId -eq 'replication.health' -and
+            (@($manifest.requiredCapabilities) -contains 'feature.host-binding' -or
+             @($manifest.requiredCapabilities) -notcontains 'feature.replication')) {
+            throw 'Replication manifest must require feature.replication only; host binding is a separate capability.'
+        }
+    }
+    $m10MigrationStatic = Join-Path $repositoryRoot 'database/tests/m10_migration_static.ps1'
+    if (-not (Test-Path -LiteralPath $m10MigrationStatic -PathType Leaf)) { throw 'M10 migration static gate is missing.' }
+    & $m10MigrationStatic -RepositoryRoot $repositoryRoot
+    if (-not $?) { throw 'M10 migration static gate failed.' }
+    $m10MigrationSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0014_analytics_host_replication_retention.sql') -Raw
+    if ($m10MigrationSource -match '(?is)CREATE OR REPLACE FUNCTION telemetry\.commit_m10_host_metrics.*?gen_random_uuid') {
+        throw 'M10 host commit must persist the supplied stable host identity; random host IDs are forbidden.'
+    }
+    # Normalize SQL whitespace before checking the exact seed rows.  Regexes
+    # over the raw source are formatting-sensitive (and `.` does not cross
+    # newlines in PowerShell), which previously let a wrapped/misaligned seed
+    # evade this contract gate.
+    $m10Normalized = [regex]::Replace($m10MigrationSource.ToLowerInvariant(), '\s+', ' ')
+    $hostSeed = [regex]::Match($m10Normalized, "(?is)\('host\.metrics'\s*,\s*1\s*,\s*14\s*,\s*5\s*,\s*1\s*,.*?interval\s*'1 minute'\s*,\s*interval\s*'30 seconds'\s*,\s*interval\s*'5 seconds'\s*,\s*256\s*,\s*262144\s*,")
+    $replicationSeed = [regex]::Match($m10Normalized, "(?is)\('replication\.health'\s*,\s*1\s*,\s*15\s*,\s*5\s*,\s*1\s*,.*?interval\s*'1 minute'\s*,\s*interval\s*'30 seconds'\s*,\s*interval\s*'10 seconds'\s*,\s*2048\s*,\s*2097152\s*,")
+    if (-not $hostSeed.Success -or -not $replicationSeed.Success) {
+        throw 'M10 host/replication database bounds must be exactly 256/256KiB/5s and 2048/2MiB/10s.'
+    }
+    if ($m10MigrationSource -match 'USING \(true\) WITH CHECK \(true\)' -and
+        $m10MigrationSource -match 'm10_host_profile_scope ON control\.host_profile USING \(true\)') {
+        throw 'M10 host profile RLS must be target-scoped; USING(true) is forbidden.'
+    }
+    foreach ($requiredM10Asset in @(
+        'web/src/features/analytics/analyticsApi.ts',
+        'web/src/features/analytics/analyticsParser.ts',
+        'web/src/features/analytics/analyticsState.ts',
+        'web/src/features/analytics/AnalyticsPanel.tsx',
+        'tests/SqlObserver.UnitTests/M10AnalyticsContractTests.cs',
+        'tests/SqlObserver.UnitTests/M10HostObservationTests.cs',
+        'tests/SqlObserver.UnitTests/M10ReplicationContractTests.cs',
+        'tests/SqlObserver.ApiContractTests/M10AnalyticsApiContractTests.cs',
+        'tests/SqlObserver.SecurityTests/M10AnalyticsSecurityTests.cs',
+        'tests/SqlObserver.PerformanceTests/M10AnalyticsPerformanceTests.cs')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM10Asset) -PathType Leaf)) { throw "M10 contract asset is missing: $requiredM10Asset" }
+    }
+
     $m6MilestoneDoc = Join-Path $repositoryRoot 'docs/milestones/M6-deadlocks-and-extended-events.md'
     if (-not (Test-Path -LiteralPath $m6MilestoneDoc -PathType Leaf)) { throw 'M6 requires its passive system_health milestone document.' }
     foreach ($forbiddenXeMutation in @('CREATE EVENT SESSION', 'ALTER EVENT SESSION', 'START EVENT SESSION', 'STOP EVENT SESSION', 'blocked process threshold')) {
@@ -1147,13 +1254,13 @@ function Assert-RepositoryShape {
         if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM7TestAsset) -PathType Leaf)) { throw "M7 focused test asset is missing: $requiredM7TestAsset" }
     }
     $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
-    if ($readmeStatus -notmatch 'Milestones 0 through (?:8|9) are implemented' -or
+    if ($readmeStatus -notmatch 'Milestones 0 through (?:8|9|10) are implemented' -or
         $readmeStatus -notmatch '(?i)M5 activity' -or
         $readmeStatus -notmatch '(?i)M6.*(?:system_health|deadlock)' -or
          $readmeStatus -notmatch '(?i)M7.*(?:Query Store|query-performance)' -or
          $readmeStatus -notmatch '(?i)M9.*operational-health' -or
         $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
-         throw 'README repository status must explicitly identify M0-M9 and the bounded M5-M9 activity/operational-health scope.'
+         throw 'README repository status must explicitly identify M0-M10 and the bounded M5-M10 activity/operational-health/analytics scope.'
     }
     $registeredSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Collector/CollectorServiceRegistration.cs') -Raw
     $registeredOrderPatterns = @(
@@ -1169,18 +1276,20 @@ function Assert-RepositoryShape {
         'new CollectorRegistration\(\s*10,.*?SqlServerBackupsStatusCollector',
         'new CollectorRegistration\(\s*11,.*?SqlServerSqlAgentFailuresCollector',
         'new CollectorRegistration\(\s*12,.*?SqlServerTempDbHealthCollector',
-        'new CollectorRegistration\(\s*13,.*?SqlServerAvailabilityGroupsHealthCollector'
+        'new CollectorRegistration\(\s*13,.*?SqlServerAvailabilityGroupsHealthCollector',
+        'new CollectorRegistration\(\s*14,.*?HostMetricsCollectorAdapter',
+        'new CollectorRegistration\(\s*15,.*?SqlServerReplicationCollector'
     )
     $registrationOffset = 0
     foreach ($pattern in $registeredOrderPatterns) {
         $match = [regex]::Match($registeredSource.Substring($registrationOffset), $pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
-        if (-not $match.Success) { throw "CollectorServiceRegistration.cs does not preserve the exact ordered 13-collector runtime catalog: $pattern" }
+        if (-not $match.Success) { throw "CollectorServiceRegistration.cs does not preserve the exact ordered 15-collector runtime catalog: $pattern" }
         $registrationOffset += $match.Index + $match.Length
     }
     if ($registeredSource -match 'new CollectorRegistration\([^\r\n]*capability\.connection') { throw 'capability.connection is control-plane discovery and must not be registered as a scheduled collector.' }
-    $exactReadmeCollectors = '`engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, and `availability-groups.health`'
+    $exactReadmeCollectors = '`engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`'
     if ($readmeStatus.IndexOf($exactReadmeCollectors, [StringComparison]::Ordinal) -lt 0 -or $readmeStatus.IndexOf('`capability.connection` is control-plane discovery', [StringComparison]::Ordinal) -lt 0) {
-        throw 'README must list the exact ordered 1-13 registered collectors and identify capability.connection as control-plane discovery.'
+        throw 'README must list the exact ordered 1-15 registered collectors and identify capability.connection as control-plane discovery.'
     }
     foreach ($staleText in @('dormant M5', 'M5-activity-migration.sql.wip', 'no M5 migration', 'no M5 activity', 'M6 remains incomplete', 'M6 deadlocks/Extended Events remain outside')) {
         $staleMatches = @(Get-ChildItem -LiteralPath $repositoryRoot -File -Force |

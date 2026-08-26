@@ -431,6 +431,13 @@
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
+      "sqlobserver.analytics": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
@@ -460,6 +467,7 @@
         "dependencies": {
           "Npgsql": "[10.0.3, )",
           "SqlObserver.Alerting": "[1.0.0, )",
+          "SqlObserver.Analytics": "[1.0.0, )",
           "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
@@ -478,6 +486,7 @@
         "type": "Project",
         "dependencies": {
           "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "System.Diagnostics.EventLog": "[10.0.11, )"
         }
       },

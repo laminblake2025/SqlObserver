@@ -81,8 +81,9 @@ public sealed class M9OperationalHealthContractTests
 
         FieldInfo field = typeof(PostgreSqlCollectorRuntimeRepositoryPort).GetField("RequiredBundleDigests", BindingFlags.NonPublic | BindingFlags.Static)!;
         string[] runtime = (string[])field.GetValue(null)!;
-        Assert.Equal(13, runtime.Length);
-        Assert.All(runtime.Skip(9), digest => Assert.Equal(expected, digest));
+        Assert.Equal(15, runtime.Length);
+        Assert.All(runtime.Skip(9).Take(4), digest => Assert.Equal(expected, digest));
+        Assert.DoesNotContain(runtime.Skip(13), digest => digest == expected);
 
         string migration = File.ReadAllText(Path.Combine(root, "database/migrations/0013_backups_jobs_tempdb_availability_groups.sql"));
         Assert.Equal(4, Regex.Count(migration, $"'{Regex.Escape(expected)}'"));

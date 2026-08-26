@@ -88,6 +88,11 @@ There is intentionally no Server-to-target, MCP-to-repository, or MCP-to-target 
 
 ## Security invariants
 
+M10 analytics adds target/revision/generation and replay-digest fences to
+rollups, evidence, incidents, and retention jobs. Host identity is hashed and
+retention remains disabled until an administrator supplies an attestation;
+Docker, SSPI/WMI, and live-target certification are residual environment risks.
+
 - Passive monitoring causes no target state change.
 - Target access never depends on permanent `sysadmin`.
 - Query Store, Extended Events, and blocked-process configuration are never changed automatically.

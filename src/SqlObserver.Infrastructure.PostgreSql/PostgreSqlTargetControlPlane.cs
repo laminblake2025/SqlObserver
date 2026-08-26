@@ -1,5 +1,7 @@
 using Npgsql;
+using SqlObserver.Analytics;
 using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Security;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
@@ -10,7 +12,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
 
-    private PostgreSqlTargetControlPlane(NpgsqlDataSource dataSource)
+    private PostgreSqlTargetControlPlane(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey)
     {
         _dataSource = dataSource;
         Targets = new PostgreSqlObservationTargetPort(dataSource);
@@ -21,9 +23,13 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
         DeadlockProjections = new PostgreSqlDeadlockProjectionPort(dataSource);
         QueryPerformanceApiProjections = new PostgreSqlQueryPerformanceApiProjectionPort(dataSource);
-        CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource);
+        CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
         OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
+        Analytics = new PostgreSqlAnalyticsRepositoryPort(dataSource, fingerprintKey);
+        AnalyticsDerivation = (IAnalyticsDerivationStore)Analytics;
+        AnalyticsBackfill = new PostgreSqlAnalyticsBackfillStore(dataSource);
+        ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
@@ -45,12 +51,24 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IAlertRepositoryPort Alerts { get; }
     public IOperationalHealthRepositoryPort OperationalHealth { get; }
 
+    public IAnalyticsRepositoryPort Analytics { get; }
+
+    public IAnalyticsDerivationStore AnalyticsDerivation { get; }
+
+    public IAnalyticsBackfillStore AnalyticsBackfill { get; }
+
+    public IReplicationDistributionBindingResolver ReplicationDistributionBindings { get; }
+
+    public IRetentionRepositoryPort Retention => (IRetentionRepositoryPort)Analytics;
+
     public static PostgreSqlTargetControlPlane Create(
         string repositoryConfiguration,
-        string applicationName)
+        string applicationName,
+        IdentityFingerprintKey fingerprintKey)
     {
         return new PostgreSqlTargetControlPlane(
-            PostgreSqlDataSourceFactory.Create(repositoryConfiguration, applicationName));
+            PostgreSqlDataSourceFactory.Create(repositoryConfiguration, applicationName),
+            fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey)));
     }
 
     public ValueTask DisposeAsync() => _dataSource.DisposeAsync();

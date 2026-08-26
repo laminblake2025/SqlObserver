@@ -39,7 +39,9 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         int sourceRowBound = manifest.Id.Value == "sql-agent.failures"
             ? OperationalHealthBounds.AgentScanRows
             : manifest.Id.Value == "availability-groups.health"
-                ? OperationalHealthBounds.AvailabilityMaximumRows + 1
+            ? OperationalHealthBounds.AvailabilityMaximumRows + 1
+            : manifest.Id.Value == "replication.health"
+                ? ReplicationBounds.MaximumRows + 1
                 : manifest.Id.Value == "queries.performance"
             ? QueryPerformanceBounds.MaximumDatabases * QueryPerformanceBounds.ProbeRows
             : manifest.Limits.MaxRows;
@@ -110,13 +112,13 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             throw new InvalidDataException("Collector inventory output belongs to a different target revision.");
         }
 
-        if (manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health")
+        if (manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health" or "replication.health")
         {
             ValidateOperationalHealthPayload(manifest.Id.Value, payload.OperationalHealth, request);
         }
         else if (payload.OperationalHealth is not null)
         {
-            throw new InvalidDataException("Operational-health output is only valid for an M9 collector.");
+            throw new InvalidDataException("Operational-health output is only valid for a declared operational-health collector.");
         }
 
         if (result.Outcome == CollectorRunOutcome.Succeeded && result.Loss.HasLoss ||
@@ -125,14 +127,14 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             throw new InvalidDataException("Collector outcome does not expose sample loss consistently.");
         }
 
-        // VisibilityIncomplete is a deliberately narrow M9 exception: it is
-        // the explicit no-row-loss marker for a degraded AG observation, not a
+        // VisibilityIncomplete is a deliberately narrow topology exception: it
+        // is an explicit no-row-loss marker for a degraded observation, not a
         // generic way for another collector to manufacture Partial output.
         if (result.Loss.Kind == CollectorLossKind.VisibilityIncomplete &&
-            (manifest.Id.Value != "availability-groups.health" ||
+            (manifest.Id.Value is not ("availability-groups.health" or "replication.health") ||
              result.Outcome != CollectorRunOutcome.Partial ||
              result.Reason != CollectorRunReason.VisibilityIncomplete ||
-             payload.OperationalHealth?.Snapshot is not AvailabilityGroupsSnapshot { State: OperationalObservationState.Degraded }))
+             payload.OperationalHealth?.Snapshot is not (AvailabilityGroupsSnapshot { State: OperationalObservationState.Degraded } or ReplicationHealthSnapshot { State: OperationalObservationState.Degraded })))
         {
             throw new InvalidDataException("VisibilityIncomplete is reserved for a degraded availability-groups observation.");
         }
@@ -150,6 +152,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         if (collectorId == "sql-agent.failures" && envelope.Snapshot is SqlAgentFailureSnapshot agent && agent.TargetId == request.TargetId && agent.TargetRevision == request.TargetRevision && agent.Items.Count <= OperationalHealthBounds.AgentMaximumRows && agent.SourceRowsRead is >= 0 and <= OperationalHealthBounds.AgentScanRows) return;
         if (collectorId == "tempdb.health" && envelope.Snapshot is TempDbSnapshot tempdb && tempdb.TargetId == request.TargetId && tempdb.TargetRevision == request.TargetRevision && tempdb.Files.Count <= OperationalHealthBounds.TempDbMaximumFiles) return;
         if (collectorId == "availability-groups.health" && envelope.Snapshot is AvailabilityGroupsSnapshot groups && groups.TargetId == request.TargetId && groups.TargetRevision == request.TargetRevision && groups.Replicas.Count + groups.Databases.Count <= OperationalHealthBounds.AvailabilityMaximumRows) return;
+        if (collectorId == "replication.health" && envelope.Snapshot is ReplicationHealthSnapshot replication && replication.TargetId == request.TargetId && replication.TargetRevision == request.TargetRevision && replication.Items.Count <= ReplicationBounds.MaximumRows && replication.SourceRowsRead is >= 0 and <= ReplicationBounds.MaximumRows + 1) return;
         throw new InvalidDataException("Operational-health output kind, target revision, or bounds are invalid.");
     }
 

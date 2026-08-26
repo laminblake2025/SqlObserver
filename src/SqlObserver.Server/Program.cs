@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
+using SqlObserver.Domain.Coordination;
+using SqlObserver.Domain.Security;
 using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.Windows;
 using SqlObserver.Security;
@@ -44,12 +46,16 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddSingleton(static services =>
     WindowsAuthorizationConfiguration.CreateResolver(
         services.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton<IIdentityFingerprintKeyProvider>(_ =>
+    new ConfigurationIdentityFingerprintKeyProvider(() => builder.Configuration["SqlObserver:IdentityFingerprintKey"]));
+builder.Services.AddSingleton<IdentityFingerprintKey>(services =>
+    services.GetRequiredService<IIdentityFingerprintKeyProvider>().GetRequiredKey());
 builder.Services.AddSingleton(static services =>
 {
     IConfiguration configuration = services.GetRequiredService<IConfiguration>();
     string repositoryConfiguration = configuration.GetConnectionString("SqlObserverRepository") ??
         throw new InvalidOperationException("The SqlObserver repository is not configured.");
-    return PostgreSqlTargetControlPlane.Create(repositoryConfiguration, "SqlObserver.Server");
+    return PostgreSqlTargetControlPlane.Create(repositoryConfiguration, "SqlObserver.Server", services.GetRequiredService<IdentityFingerprintKey>());
 });
 builder.Services.AddSingleton<IObservationTargetRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().Targets);
@@ -57,6 +63,9 @@ builder.Services.AddSingleton<ICapabilityProfileRepositoryPort>(static services 
     services.GetRequiredService<PostgreSqlTargetControlPlane>().CapabilityProfiles);
 builder.Services.AddSingleton<IAdministrativeAuditPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().AdministrativeAudit);
+builder.Services.AddSingleton<IWorkerLeasePort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().WorkerLeases);
+builder.Services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
 builder.Services.AddSingleton<IHealthProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().HealthProjections);
 builder.Services.AddSingleton<IObservationTargetOnboardingService, ObservationTargetOnboardingService>();
@@ -73,13 +82,25 @@ builder.Services.AddSingleton<IQueryPerformanceApiRepositoryPort>(static service
 builder.Services.AddSingleton<IQueryPerformanceApiQueryService, QueryPerformanceApiQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OperationalHealth);
+// The Server retains read/query and administrative analytics ports for its
+// HTTP API; the derivation/backfill workers themselves are owned by Collector.
+builder.Services.AddSingleton<IAnalyticsRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
+builder.Services.AddSingleton<IAnalyticsSurfaceRepositoryPort>(static services => (IAnalyticsSurfaceRepositoryPort)services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
+builder.Services.AddSingleton<IRetentionRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Retention);
+builder.Services.AddSingleton<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddSingleton<IRetentionService, RetentionService>();
+builder.Services.AddSingleton<IRetentionPolicyService, RetentionPolicyService>();
 builder.Services.AddSingleton<IOperationalHealthQueryService, OperationalHealthQueryService>();
 builder.Services.AddSingleton<IAlertQueryService, AlertQueryService>();
 builder.Services.AddSingleton<IAlertDestinationApprovalPort, ConfiguredAlertDestinationApproval>();
 builder.Services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
 builder.Services.AddSingleton<IEventLogAlertWriter, WindowsEventLogAlertWriter>();
 builder.Services.AddSingleton<IAlertAdministrationService, AlertAdministrationService>();
-
+// Contract-test hosts intentionally do not configure (or open) the production
+// PostgreSQL control plane.  Resolving the hosted worker in that environment
+// would eagerly construct its repository/lease dependencies and can turn an
+// otherwise isolated API test into a production connection attempt.  Keep the
+// worker enabled for every real host while fencing it out of contract tests.
 WebApplication app = builder.Build();
 
 app.UseMiddleware<SafeApiExceptionMiddleware>();
@@ -96,6 +117,7 @@ app.MapTargetDeadlockEndpoints();
 app.MapTargetQueryPerformanceApiEndpoints();
 app.MapAlertEndpoints();
 app.MapOperationalHealthEndpoints();
+app.MapAnalyticsEndpoints();
 
 await app.RunAsync();
 

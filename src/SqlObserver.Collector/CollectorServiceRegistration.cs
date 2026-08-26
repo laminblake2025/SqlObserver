@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Hosting;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
+using SqlObserver.Analytics;
 using SqlObserver.Collectors;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Coordination;
@@ -7,6 +9,10 @@ using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.SqlServer;
 using SqlObserver.Infrastructure.Windows;
 using SqlObserver.Domain.SensitiveData;
+using SqlObserver.Domain.Hosts;
+using SqlObserver.Domain.Targets;
+using SqlObserver.Domain.Telemetry;
+using SqlObserver.Domain.Security;
 
 namespace SqlObserver.Collector;
 
@@ -15,7 +21,8 @@ public static class CollectorServiceRegistration
 {
     public static IServiceCollection AddSqlObserverCollectorRuntime(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHostEnvironment? environment = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -24,7 +31,8 @@ public static class CollectorServiceRegistration
 
         services.AddSingleton(_ => PostgreSqlCollectorDataPlane.Create(
             repositoryConfiguration,
-            "SqlObserver.Collector"));
+            "SqlObserver.Collector",
+            _.GetRequiredService<IdentityFingerprintKey>()));
         services.AddSingleton<IWorkerLeasePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().WorkerLeases);
         services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>
@@ -35,6 +43,12 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Runtime);
         services.AddSingleton<IAlertRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Alerts);
+        services.AddSingleton<IAnalyticsRepositoryPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Analytics);
+        services.AddSingleton<IAnalyticsDerivationStore>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().AnalyticsDerivation);
+        services.AddSingleton<IAnalyticsBackfillStore>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().AnalyticsBackfill);
         services.AddSingleton<IAlertEvaluationSource, PostgreSqlAlertEvaluationSource>();
         services.AddSingleton<IAlertDestinationConfigurationResolver>(_ => new ConfigurationAlertDestinationResolver(key => configuration[key]));
         services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
@@ -43,7 +57,10 @@ public static class CollectorServiceRegistration
         services.AddSingleton<HttpsWebhookAlertDestination>();
         services.AddSingleton<WindowsEventLogAlertDestination>();
         services.AddSingleton<IAlertDestinationPort, AlertDestinationDispatcher>();
-        services.AddSingleton<ISqlServerCapabilityDiscoveryPort, SqlServerCapabilityDiscoveryPort>();
+        services.AddSingleton<IReplicationDistributionBindingResolver>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().ReplicationDistributionBindings);
+        services.AddSingleton<ISqlServerCapabilityDiscoveryPort>(static provider =>
+            new SqlServerCapabilityDiscoveryPort(provider.GetRequiredService<IReplicationDistributionBindingResolver>()));
         services.AddSingleton<ICapabilityDiscoveryService, CapabilityDiscoveryService>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IQuerySensitiveContentProtector, UnavailableQuerySensitiveContentProtector>();
@@ -75,6 +92,40 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerQueryPerformanceCollector(
             provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>()));
+        services.AddSingleton(static _ => SqlServerReplicationAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static provider => new SqlServerReplicationCollector(
+            provider.GetRequiredService<SqlServerReplicationAssetCatalog>(),
+            provider.GetRequiredService<IReplicationDistributionBindingResolver>(),
+            provider.GetRequiredService<IdentityFingerprintKey>()));
+        services.AddSingleton(static _ => HostMetricsAssetCatalog.LoadEmbedded());
+        // Identity HMAC material is supplied by the secret-backed collector
+        // configuration. There is deliberately no process-local fallback:
+        // without the configured key the collector cannot safely establish
+        // stable host identity and startup fails closed with the provider's
+        // actionable configuration error.
+        services.AddSingleton<IIdentityFingerprintKeyProvider>(_ =>
+            new ConfigurationIdentityFingerprintKeyProvider(() => configuration["SqlObserver:IdentityFingerprintKey"]));
+        services.AddSingleton<IdentityFingerprintKey>(provider =>
+            provider.GetRequiredService<IIdentityFingerprintKeyProvider>().GetRequiredKey());
+        // Host collection runs through a real, fixed CIM/performance adapter.
+        // It inherits this Windows service identity and returns Unsupported on
+        // non-Windows hosts.  Entries are explicit persisted bindings; an
+        // absent entry never falls back to a SQL endpoint or synthetic host.
+        services.AddSingleton<IWindowsHostDataReader, WindowsIntegratedHostDataReader>();
+        // Host identity/profile is resolved from control.host_binding and
+        // control.host_profile in PostgreSQL.  Configuration is not an
+        // authority and therefore cannot silently supply a default host.
+        services.AddSingleton<IHostTargetStore>(static provider =>
+            new PostgreSqlHostTargetStore(provider.GetRequiredService<PostgreSqlCollectorDataPlane>()));
+        // Always compose the terminating operation boundary so every provider
+        // call is owned by a killable session.
+        services.AddSingleton<IWindowsHostQuerySessionFactory>(static provider =>
+            new TerminatingWindowsHostQuerySessionFactory(provider.GetRequiredService<IWindowsHostDataReader>()));
+        services.AddSingleton<WindowsHostMetricSource>(static provider =>
+            new WindowsHostMetricSource(provider.GetRequiredService<IWindowsHostQuerySessionFactory>(), provider.GetRequiredService<IdentityFingerprintKey>()));
+        services.AddSingleton<IHostMetricsCollector, HostMetricsCollector>();
+        services.AddSingleton<IHostTargetResolver, PersistedHostTargetResolver>();
+        services.AddSingleton<HostMetricsCollectorAdapter>();
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
         services.AddSingleton(static provider => new CollectorScheduler(
@@ -92,6 +143,14 @@ public static class CollectorServiceRegistration
         services.AddHostedService<CollectionWorker>();
         services.AddHostedService<AlertEvaluationWorker>();
         services.AddHostedService<AlertDeliveryWorker>();
+        bool contractTesting = environment?.IsEnvironment("ContractTesting") == true ||
+            string.Equals(configuration["DOTNET_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase);
+        if (!contractTesting)
+        {
+            services.AddHostedService<AnalyticsBackfillWorker>();
+            services.AddHostedService<AnalyticsDerivationWorker>();
+        }
         return services;
     }
 
@@ -114,6 +173,10 @@ public static class CollectorServiceRegistration
         SqlServerQueryPerformanceCollectorAssetCatalog queryCatalog = provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>();
         SqlServerOperationalHealthAssetCatalog m9Catalog = provider.GetRequiredService<SqlServerOperationalHealthAssetCatalog>();
         var m9Bundle = new CollectorSha256Digest(m9Catalog.BundleChecksum);
+        SqlServerReplicationAssetCatalog replicationCatalog = provider.GetRequiredService<SqlServerReplicationAssetCatalog>();
+        var replicationBundle = new CollectorSha256Digest(replicationCatalog.BundleChecksum);
+        HostMetricsAssetCatalog hostCatalog = provider.GetRequiredService<HostMetricsAssetCatalog>();
+        var hostBundle = new CollectorSha256Digest(hostCatalog.BundleChecksum);
         static CollectorSha256Digest Digest(string json) => new(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant());
         return new CollectorRegistry(
         [
@@ -175,6 +238,14 @@ public static class CollectorServiceRegistration
             new CollectorRegistration(11, provider.GetRequiredService<SqlServerSqlAgentFailuresCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(512)), Digest(m9Catalog.Get("sql-agent.failures.v1.json")), m9Bundle),
             new CollectorRegistration(12, provider.GetRequiredService<SqlServerTempDbHealthCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(128)), Digest(m9Catalog.Get("tempdb.health.v1.json")), m9Bundle),
             new CollectorRegistration(13, provider.GetRequiredService<SqlServerAvailabilityGroupsHealthCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(2048)), Digest(m9Catalog.Get("availability-groups.health.v1.json")), m9Bundle),
+            new CollectorRegistration(14, provider.GetRequiredService<HostMetricsCollectorAdapter>(), new CollectorOutputValidator(HostMetricsCollectorAdapter.OutputContract), Digest(hostCatalog.Get("host.metrics.v1.json")), hostBundle),
+            new CollectorRegistration(15, provider.GetRequiredService<SqlServerReplicationCollector>(), new CollectorOutputValidator(SqlServerReplicationCollector.OutputContract), Digest(replicationCatalog.Get("replication.health.v1.json")), replicationBundle),
         ]);
     }
+}
+
+internal sealed class PostgreSqlHostTargetStore(PostgreSqlCollectorDataPlane dataPlane) : IHostTargetStore
+{
+    public ValueTask<HostTarget?> ReadAsync(MonitoredInstanceId targetId, ObservationTargetRevision revision, CancellationToken cancellationToken) =>
+        dataPlane.ReadHostTargetAsync(targetId, revision, cancellationToken);
 }

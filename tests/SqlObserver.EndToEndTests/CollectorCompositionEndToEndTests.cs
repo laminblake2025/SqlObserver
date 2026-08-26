@@ -18,10 +18,12 @@ public sealed class CollectorCompositionEndToEndTests
             {
                 ["ConnectionStrings:SqlObserverRepository"] =
                     "Host=127.0.0.1;Port=1;Database=composition_only;Username=sqlobserver_collector",
+                ["SqlObserver:IdentityFingerprintKey"] = new string('a', 64),
             })
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton(configuration);
         services.AddSqlObserverCollectorRuntime(configuration);
 
         await using ServiceProvider provider = services.BuildServiceProvider(
@@ -36,14 +38,15 @@ public sealed class CollectorCompositionEndToEndTests
         Assert.Equal(
             ["engine.core", "database.inventory", "database.files", "activity.sessions",
                 "activity.requests", "waits.server", "blocking.current", "deadlocks.system-health", "queries.performance",
-                "backups.status", "sql-agent.failures", "tempdb.health", "availability-groups.health"],
+                "backups.status", "sql-agent.failures", "tempdb.health", "availability-groups.health",
+                "host.metrics", "replication.health"],
             provider.GetRequiredService<CollectorRegistry>()
                 .Registrations
                 .Select(static registration => registration.Manifest.Id.Value));
         Assert.Equal(1, provider.GetRequiredService<CollectorRegistry>()
             .Registrations.Single(static registration => registration.Manifest.Id.Value == "deadlocks.system-health")
             .Manifest.ManifestVersion.Value);
-        Assert.Equal(4, provider.GetServices<IHostedService>().Count());
+        Assert.Equal(6, provider.GetServices<IHostedService>().Count());
         Assert.DoesNotContain(
             services,
             static descriptor => descriptor.ServiceType == typeof(PostgreSqlTargetControlPlane));

@@ -13,6 +13,10 @@ param(
 
     [string] $OutputPath,
 
+    [switch] $Replication,
+
+    [string] $DistributionDatabase,
+
     [switch] $Force
 )
 
@@ -48,14 +52,53 @@ function Assert-WindowsPrincipal {
 
 Assert-WindowsPrincipal -Value $Principal
 
+if ($DistributionDatabase -and -not $Replication) {
+    throw 'DistributionDatabase requires the explicit -Replication option.'
+}
+if ($Replication -and [string]::IsNullOrWhiteSpace($DistributionDatabase)) {
+    throw 'The explicit -Replication option requires a validated DistributionDatabase.'
+}
+if ($Replication) {
+    if ($DistributionDatabase.Length -gt 128 -or $DistributionDatabase -cne $DistributionDatabase.Trim() -or $DistributionDatabase -match '[^A-Za-z0-9_-]' -or $DistributionDatabase -in @('.', '..')) {
+        throw 'DistributionDatabase must be a simple validated database identifier.'
+    }
+}
+
 $principalLiteral = $Principal.Replace("'", "''", [StringComparison]::Ordinal)
 $principalIdentifier = $Principal.Replace(']', ']]', [StringComparison]::Ordinal)
 $permissionName = if ($SqlServerMajorVersion -eq 15) {
     'VIEW SERVER STATE'
 }
+
 else {
     '##MS_ServerPerformanceStateReader##'
 }
+
+$distributionLiteral = if ($Replication) { $DistributionDatabase.Replace("'", "''") } else { '' }
+$distributionIdentifier = if ($Replication) { $DistributionDatabase.Replace(']', ']]') } else { '' }
+$replicationGrantSection = if ($Replication) {
+@"
+    -- M10 replication monitoring: only the pre-existing login is mapped.
+    -- No replication topology, agent, publication, or subscription is created or changed.
+    IF CONVERT(int, SERVERPROPERTY(N'EngineEdition')) NOT IN (2, 3)
+    BEGIN
+        THROW 51002, 'Replication monitoring permission is supported only on Standard or Enterprise editions.', 1;
+    END;
+    IF DB_ID(N'$distributionLiteral') IS NULL
+    BEGIN
+        THROW 51002, 'The explicitly registered distribution database does not exist.', 1;
+    END;
+    USE [$distributionIdentifier];
+    IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @sqlobserver_principal AND SUSER_SNAME(sid) = @sqlobserver_principal)
+    BEGIN
+        CREATE USER [$principalIdentifier] FOR LOGIN [$principalIdentifier];
+    END;
+    IF NOT EXISTS (SELECT 1 FROM sys.database_principals AS member_principal INNER JOIN sys.database_role_members AS role_members ON role_members.member_principal_id = member_principal.principal_id INNER JOIN sys.database_principals AS role_principal ON role_principal.principal_id = role_members.role_principal_id WHERE member_principal.name = @sqlobserver_principal AND role_principal.name = N'replmonitor')
+    BEGIN
+        ALTER ROLE [replmonitor] ADD MEMBER [$principalIdentifier];
+    END;
+"@
+} else { '' }
 
 $grantStatement = if ($SqlServerMajorVersion -eq 15) {
 @"
@@ -170,6 +213,7 @@ END;
 
 IF @sqlobserver_operation = N'Grant'
 BEGIN
+$replicationGrantSection
     -- Grant section: $permissionName
 $grantStatement
     -- M9 read-only history permissions; this plan never adds an Agent server role.

@@ -1,0 +1,14 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://sqlobserver.local/replication.health.v1.schema.json",
+  "title":"SqlObserver replication health v1 output","type":"object","additionalProperties":false,
+  "required":["topology","role","publicationFingerprint","subscriptionFingerprint","status","pendingCommands","latencySeconds","ratePerSecond","lastSuccessAgeSeconds","lastSuccessUnknown","coverage"],
+  "properties":{
+    "topology":{"enum":["publisher","subscriber","local_distributor","remote_distributor","transactional","merge","unsupported"]},
+    "role":{"enum":["unknown","publisher","subscriber","distributor"]},
+    "publicationFingerprint":{"type":["string","null"],"pattern":"^[0-9a-f]{64}$"},"subscriptionFingerprint":{"type":["string","null"],"pattern":"^[0-9a-f]{64}$"},
+    "status":{"enum":["unknown","healthy","warning","failed","initializing","disabled"]},"pendingCommands":{"type":["integer","null"],"minimum":0},
+    "latencySeconds":{"type":["number","null"],"minimum":0},"ratePerSecond":{"type":["number","null"],"minimum":0},
+    "lastSuccessAgeSeconds":{"type":["integer","null"],"minimum":0},"lastSuccessUnknown":{"type":"boolean"},
+    "coverage":{"enum":["complete","local_summary","visibility_gap","unknown"]}
+  }
+}

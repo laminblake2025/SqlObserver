@@ -295,6 +295,13 @@
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
+      "sqlobserver.analytics": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
@@ -307,6 +314,7 @@
         "dependencies": {
           "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.11, )",
           "SqlObserver.Alerting": "[1.0.0, )",
+          "SqlObserver.Analytics": "[1.0.0, )",
           "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Collectors": "[1.0.0, )",
@@ -337,6 +345,7 @@
         "dependencies": {
           "Npgsql": "[10.0.3, )",
           "SqlObserver.Alerting": "[1.0.0, )",
+          "SqlObserver.Analytics": "[1.0.0, )",
           "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
           "SqlObserver.Domain": "[1.0.0, )"
@@ -354,7 +363,8 @@
       "sqlobserver.infrastructure.windows": {
         "type": "Project",
         "dependencies": {
-          "SqlObserver.Application": "[1.0.0, )"
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )"
         }
       },
       "Microsoft.Data.SqlClient": {

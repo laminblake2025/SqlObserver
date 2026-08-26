@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using SqlObserver.Domain.Auditing;
 using SqlObserver.Domain.Capabilities;
+using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
@@ -440,6 +441,15 @@ public interface ISqlServerCapabilityDiscoveryPort
 {
     ValueTask<CapabilityProfile> DiscoverAsync(
         CapabilityDiscoveryRequest request,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Resolves a target/revision's explicitly registered distribution database.</summary>
+public interface IReplicationDistributionBindingResolver
+{
+    ValueTask<ReplicationDistributionBinding?> ResolveAsync(
+        MonitoredInstanceId targetId,
+        ObservationTargetRevision targetRevision,
         CancellationToken cancellationToken);
 }
 

@@ -1,0 +1,12 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://sqlobserver.local/host.metrics.v1.schema.json",
+  "title":"SqlObserver Windows host metrics v1 output","type":"object","additionalProperties":false,
+  "required":["schema","hostFingerprint","observedAtUtc","cpuPercent","availableMemoryBytes","committedMemoryBytes","volumes"],
+  "properties":{
+    "schema":{"const":1},"hostFingerprint":{"type":"string","pattern":"^[0-9a-f]{64}$"},"observedAtUtc":{"type":"string","format":"date-time"},
+    "cpuPercent":{"type":"number","minimum":0,"maximum":100},"availableMemoryBytes":{"type":"integer","minimum":0},"committedMemoryBytes":{"type":"integer","minimum":0},
+    "volumes":{"type":"array","maxItems":256,"items":{"type":"object","additionalProperties":false,"required":["volumeFingerprint","freeBytes","totalBytes","queueLength","readLatencyMilliseconds","writeLatencyMilliseconds"],"properties":{
+      "volumeFingerprint":{"type":"string","pattern":"^[0-9a-f]{64}$"},"freeBytes":{"type":"integer","minimum":0},"totalBytes":{"type":"integer","minimum":0},"queueLength":{"type":"number","minimum":0},"readLatencyMilliseconds":{"type":"number","minimum":0},"writeLatencyMilliseconds":{"type":"number","minimum":0}
+    }}}
+  }
+}

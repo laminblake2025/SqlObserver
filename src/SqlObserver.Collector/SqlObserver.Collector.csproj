@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="../SqlObserver.Alerting/SqlObserver.Alerting.csproj" />
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../SqlObserver.Analytics/SqlObserver.Analytics.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />

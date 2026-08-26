@@ -8,8 +8,10 @@ using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Domain.Hosts;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
+using SqlObserver.Domain.Security;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
@@ -32,6 +34,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         """;
     private static readonly string ReconcileM6Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m6(", StringComparison.Ordinal);
     private static readonly string ReconcileM9Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m9(", StringComparison.Ordinal);
+    private static readonly string ReconcileM10Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m10(", StringComparison.Ordinal);
     private const string ListDueSql = "SELECT * FROM control.list_due_collector_work(@max_items);";
     private const string BeginSql = """
         SELECT result_status, started_at, repository_time
@@ -127,6 +130,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string CommitAgentM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_agent_failures(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitTempDbM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_tempdb_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitAgM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
+    private const string CommitM10HostSql = "SELECT result_status, inserted_count, duplicate_count, 0 AS rejected_count, 0 AS persisted_bytes, committed_at FROM telemetry.commit_m10_host_metrics(@run_id,@instance_id,@target_revision,@work_key,@owner_execution_id,@fencing_token,@request_digest,@m10_payload,@completion_digest);";
+    private const string CommitM10ReplicationSql = "SELECT result_status, inserted_count, duplicate_count, 0 AS rejected_count, 0 AS persisted_bytes, committed_at FROM telemetry.commit_m10_replication(@run_id,@instance_id,@target_revision,@work_key,@owner_execution_id,@fencing_token,@request_digest,@m10_payload,@completion_digest);";
 
     private const string CommitActivitySql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
@@ -250,6 +255,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "sql-agent.failures",
         "tempdb.health",
         "availability-groups.health",
+        "host.metrics",
+        "replication.health",
     ];
 
     private static readonly string[] RequiredManifestDigests =
@@ -267,6 +274,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "3803245b86c5f6b8a52fe13751717a670f2dbf96779596ba40bcaa75dbe248ee",
         "a25e4b1355ca6c10706b72dc764fd0085cf7a45458121915f26692e10abd695c",
         "a560579657eb62da6e2a887169ccd4468a5ba7299de3ba61ca375e5e87e4c306",
+        "ea1cdd808a9d9245db30012beafe40ec09b148a430016281993f31a1046e8b35",
+        "a70df0e82b7a9afb54842a1e98154735f66f6071a6a17245dfbc92c76ed275e4",
     ];
 
     private static readonly string[] RequiredBundleDigests =
@@ -284,15 +293,25 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
+        "cf629310626827ea9b91baab7ef21427d20c230adfaeff472ddfd26d1ebfee26",
+        "f8f4d57e6f22ac7951a77d76b3ac5c15ee9781404ef8f40318c60c581ab16c37",
     ];
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgreSqlCapabilityProfilePort _capabilityProfiles;
+    private readonly IdentityFingerprintKey? _fingerprintKey;
 
     public PostgreSqlCollectorRuntimeRepositoryPort(NpgsqlDataSource dataSource)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+        _capabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
+    }
+
+    public PostgreSqlCollectorRuntimeRepositoryPort(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey)
+    {
+        _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+        _fingerprintKey = fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey));
         _capabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
     }
 
@@ -320,7 +339,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
-            await using var command = new NpgsqlCommand(request.Entries.Count switch { 13 => ReconcileM9Sql, 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
+            await using var command = new NpgsqlCommand(request.Entries.Count switch { 15 => ReconcileM10Sql, 13 => ReconcileM9Sql, 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
@@ -535,6 +554,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             bool deadlockCollector = request.Work.CollectorId.Value == "deadlocks.system-health";
             bool queryPerformanceCollector = request.Work.CollectorId.Value == "queries.performance";
             bool m9Collector = request.Work.CollectorId.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health";
+            bool m10HostCollector = request.Work.CollectorId.Value == "host.metrics";
+            bool m10ReplicationCollector = request.Work.CollectorId.Value == "replication.health";
+            if (m10HostCollector || m10ReplicationCollector)
+                return await CommitM10WithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, timeout.Token).ConfigureAwait(false);
             if (queryPerformanceCollector)
             {
                 return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
@@ -591,6 +614,94 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         {
             throw PostgreSqlRuntimeSupport.CreateTimeoutException("collection-run commit", exception);
         }
+    }
+
+    private async ValueTask<CollectorRunCommitResult> CommitM10WithCanonicalLifecycleAsync(
+        NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest, bool hostCollector, CancellationToken cancellationToken)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection, transaction))
+        {
+            scope.Parameters.AddWithValue("scope", request.Work.TargetId.Value.ToString());
+            await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildM10Payload(request, hostCollector), M9JsonOptions);
+        if (json.Length > 1_048_576) throw new InvalidDataException("M10 persistence payload exceeds the accepted response bound.");
+        await using var command = new NpgsqlCommand(hostCollector ? CommitM10HostSql : CommitM10ReplicationSql, connection, transaction)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+        AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
+        command.Parameters.AddWithValue("m10_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(json));
+        command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, SHA256.HashData(json));
+        CollectorRunCommitResult result;
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) throw new InvalidDataException("PostgreSQL M10 commit returned no result row.");
+            CollectorRunCommitStatus status = reader.GetString(0) switch
+            {
+                "committed" => CollectorRunCommitStatus.Committed,
+                "replayed" => CollectorRunCommitStatus.Replayed,
+                _ => throw new InvalidDataException("PostgreSQL returned an unknown M10 commit status."),
+            };
+            result = new CollectorRunCommitResult(status, reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.IsDBNull(5) ? null : PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 5));
+        }
+        if (result.Status is CollectorRunCommitStatus.Committed or CollectorRunCommitStatus.Replayed) await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        else await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    private object BuildM10Payload(CommitCollectorRunRequest request, bool hostCollector)
+    {
+        if (request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
+            return new { items = Array.Empty<object>() };
+        if (hostCollector)
+        {
+            HostMetricsPayloadContext? hostMetrics = request.Payload.HostMetricsContext;
+            return new
+            {
+                schemaVersion = 1,
+                targetId = request.Work.TargetId.Value,
+                targetRevision = request.Work.TargetRevision.Value,
+                hostId = hostMetrics?.HostId,
+                hostFingerprint = hostMetrics?.HostFingerprint.Value,
+                bindingRevision = hostMetrics?.BindingRevision.Value,
+                profileRevision = hostMetrics?.ProfileRevision.Value,
+                items = request.Payload.Metrics.Select(metric => new
+                {
+                    observedAtUtc = metric.ObservedAtUtc,
+                    metricKey = metric.MetricId.Value,
+                    value = metric.Value,
+                    dimensions = metric.Dimensions.ToDictionary(static d => d.Key, static d => d.Value, StringComparer.Ordinal),
+                }).ToArray(),
+            };
+        }
+        ReplicationHealthSnapshot? snapshot = request.Payload.OperationalHealth?.Snapshot as ReplicationHealthSnapshot;
+        return new
+        {
+            schemaVersion = 1,
+            targetId = request.Work.TargetId.Value,
+            targetRevision = request.Work.TargetRevision.Value,
+            items = snapshot?.Items.Select(item => new
+            {
+                observedAtUtc = snapshot.ObservedAtUtc,
+                topologyFingerprint = item.PublicationFingerprint ?? item.SubscriptionFingerprint ?? item.VisibilityGapFingerprint ??
+                    ReplicationIdentityFingerprint.Gap(item.TargetId.Value, item.TargetRevision.Value, (int)item.Topology, (int)item.Role, 0, _fingerprintKey ?? throw new InvalidOperationException("Replication persistence requires the configured identity fingerprint key.")),
+                databaseFingerprint = item.SubscriptionFingerprint,
+                role = item.Role.ToString().ToLowerInvariant(),
+                synchronizationState = item.Status.ToString().ToLowerInvariant(),
+                // Keep the operational compatibility field for the status
+                // surface, while persisting the catalog-v1 metric explicitly.
+                sendQueueBytes = item.PendingCommands,
+                redoQueueBytes = (long?)null,
+                pendingCommands = item.PendingCommands,
+                latencySeconds = item.LatencySeconds,
+                visibilityScope = item.Coverage switch { ReplicationCoverage.Complete => 1, ReplicationCoverage.LocalSummary => 2, _ => 3 },
+                stateAvailable = item.Status != ReplicationStatus.Unknown,
+                coverage = item.Coverage switch { ReplicationCoverage.Complete => "complete", ReplicationCoverage.LocalSummary => "local_summary", ReplicationCoverage.VisibilityGap => "visibility_gap", _ => "unknown" },
+                visibilityGap = item.Coverage == ReplicationCoverage.VisibilityGap
+                    ? new { kind = "visibility_gap", reason = "distribution_database_unbound", evidenceAvailable = false }
+                    : null,
+            }).ToArray() ?? Array.Empty<object>(),
+        };
     }
 
     private static async ValueTask<CollectorRunCommitResult> CommitQueryPerformanceWithCanonicalLifecycleAsync(
@@ -1000,7 +1111,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCatalog(IReadOnlyList<CollectorCatalogEntry> entries)
     {
-        if (entries.Count is not (3 or 7 or 8 or 9 or 13))
+        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15))
         {
                 throw new InvalidDataException("PostgreSQL accepts only an exact reviewed M4-M7 collector catalog.");
         }
@@ -1111,8 +1222,11 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             }
         }
         ValidateM9Payload(request);
+        ValidateM10Payload(request);
         bool exactKind = request.Work.CollectorId.Value switch
         {
+            "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,
+            "replication.health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,
             "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
@@ -1173,6 +1287,32 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
                 break;
             default: throw new InvalidDataException("M9 payload kind, target revision, or row bound is invalid.");
         }
+    }
+
+    private static void ValidateM10Payload(CommitCollectorRunRequest request)
+    {
+        string id = request.Work.CollectorId.Value;
+        if (id == "host.metrics")
+        {
+            if (request.Payload.Metrics.Count > 3 + (256 * 5) || request.Payload.Metrics.Any(item => item.InstanceId != request.Work.TargetId))
+                throw new InvalidDataException("Host metrics payload exceeds its bounded target contract.");
+            if (request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial)
+            {
+                HostMetricsPayloadContext? context = request.Payload.HostMetricsContext;
+                if (context is null || context.BindingRevision != context.ProfileRevision || request.Payload.Metrics.Count == 0)
+                    throw new InvalidDataException("Host metrics payload must carry stable host, binding, and profile identity.");
+            }
+            return;
+        }
+        if (id != "replication.health") return;
+        OperationalHealthPayload? envelope = request.Payload.OperationalHealth;
+        if (request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
+        {
+            if (envelope is not null) throw new InvalidDataException("Replication failure commits cannot carry evidence payload.");
+            return;
+        }
+        if (envelope?.Snapshot is not ReplicationHealthSnapshot snapshot || snapshot.TargetId != request.Work.TargetId || snapshot.TargetRevision != request.Work.TargetRevision || snapshot.Items.Count > ReplicationBounds.MaximumRows)
+            throw new InvalidDataException("Replication payload kind, target revision, or row bound is invalid.");
     }
 
     private static bool IsActivityCollector(CollectorId collectorId) => collectorId.Value is

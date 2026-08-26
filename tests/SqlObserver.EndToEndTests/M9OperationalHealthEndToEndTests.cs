@@ -23,6 +23,7 @@ using SqlObserver.Domain.Coordination;
 using SqlObserver.Security;
 using SqlObserver.Server;
 using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Domain.Security;
 
 namespace SqlObserver.EndToEndTests;
 
@@ -84,7 +85,7 @@ public sealed class M9OperationalHealthEndToEndTests
                 seed.Parameters.AddWithValue("target", target); seed.Parameters.AddWithValue("key", $"m9.e2e.{target:N}"); await seed.ExecuteNonQueryAsync();
             }
             await CommitBackupProjectionAsync(dataSource, target);
-            await using PostgreSqlTargetControlPlane controlPlane = PostgreSqlTargetControlPlane.Create(isolatedConnectionString, "SqlObserver.EndToEndTests.Host");
+            await using PostgreSqlTargetControlPlane controlPlane = PostgreSqlTargetControlPlane.Create(isolatedConnectionString, "SqlObserver.EndToEndTests.Host", new IdentityFingerprintKey(Enumerable.Repeat((byte)0xA5, IdentityFingerprintKey.RequiredLength).ToArray()));
             WebApplicationBuilder builder = WebApplication.CreateBuilder(); builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
             builder.Services.AddAuthentication(HostedAuthenticationHandler.SchemeName).AddScheme<AuthenticationSchemeOptions, HostedAuthenticationHandler>(HostedAuthenticationHandler.SchemeName, static _ => { });
             builder.Services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());

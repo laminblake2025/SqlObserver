@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Hosts;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 
@@ -100,7 +101,8 @@ public sealed class CollectorPayload
         QueryPerformanceObservationBatch? queryPerformance = null,
         IReadOnlyList<QueryPerformanceDatabaseStatus>? queryPerformanceStatuses = null,
         QueryPerformanceTargetStatus? queryPerformanceTargetStatus = null,
-        OperationalHealthPayload? operationalHealth = null)
+        OperationalHealthPayload? operationalHealth = null,
+        HostMetricsPayloadContext? hostMetricsContext = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -131,6 +133,7 @@ public sealed class CollectorPayload
         if (QueryPerformanceStatuses.Count > 256 || QueryPerformanceStatuses.Select(static x => x.DatabaseId).Distinct().Count() != QueryPerformanceStatuses.Count) throw new ArgumentException("Query performance database statuses must be bounded and unique.", nameof(queryPerformanceStatuses));
         QueryPerformanceTargetStatus = queryPerformanceTargetStatus;
         OperationalHealth = operationalHealth;
+        HostMetricsContext = hostMetricsContext;
     }
 
     public IReadOnlyList<MetricSample> Metrics => _metrics;
@@ -145,6 +148,7 @@ public sealed class CollectorPayload
     public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
     public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
     public OperationalHealthPayload? OperationalHealth { get; }
+    public HostMetricsPayloadContext? HostMetricsContext { get; }
     public int ItemCount => checked(
         Metrics.Count +
         Databases.Items.Count +
@@ -438,12 +442,23 @@ public interface ICollectorOutputValidator
         CollectorExecutionResult result);
 }
 
-/// <summary>A fixed, passive SQL Server collector selected through capability evidence.</summary>
-public interface ISqlServerCollector
+/// <summary>Source-neutral collector contract used by the execution engine.</summary>
+/// <remarks>
+/// The request/result envelope is deliberately independent of a provider.  A
+/// SQL Server adapter can continue to implement <see cref="ISqlServerCollector"/>,
+/// while host and other local adapters can participate without pretending to
+/// be SQL connections.
+/// </remarks>
+public interface ICollector
 {
     CollectorManifest Manifest { get; }
 
     ValueTask<CollectorExecutionResult> CollectAsync(
         CollectorExecutionRequest request,
         CancellationToken cancellationToken);
+}
+
+/// <summary>A fixed, passive SQL Server collector selected through capability evidence.</summary>
+public interface ISqlServerCollector : ICollector
+{
 }

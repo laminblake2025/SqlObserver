@@ -57,6 +57,10 @@ All storage and protocol timestamps remain UTC regardless of host or browser tim
 
 ## Explicit exclusions before release certification
 
+M10 analytics is locally implemented with target-scoped repository reads/writes,
+passive host/replication evidence, and disabled-by-default retention. It is not
+live-target, SSPI/WMI, Docker, sustained-load, upgrade, or release certification.
+
 M3 can discover a bounded capability profile with Windows integrated authentication and validated TLS, but it does not certify any entry above, install a gMSA-backed Windows service, provision trusted certificates/SPNs, expose MCP, or create a production database. Passing milestone validation is not support certification.
 ## M9 operational health
 

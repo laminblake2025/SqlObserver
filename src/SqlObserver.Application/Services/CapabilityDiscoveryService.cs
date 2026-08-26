@@ -118,12 +118,15 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
     private const string WindowsPlatformCapabilityId = "platform.windows";
     private const string AvailabilityGroupsCapabilityId = "feature.availability-groups";
     private const string SqlAgentHistoryCapabilityId = "feature.sql-agent-history";
+    private const string ReplicationCapabilityId = "feature.replication";
+    private const string HostBindingCapabilityId = "feature.host-binding";
     private const string BackupsetSelectPermissionId = "msdb.backupset.select";
     private const string SysjobhistorySelectPermissionId = "msdb.sysjobhistory.select";
     private const string ViewServerStatePermissionId = "server.view-state";
     private const string ViewServerPerformanceStatePermissionId = "server.view-performance-state";
     private const string PerformanceReaderMembershipPermissionId =
         "server.performance-reader-role-membership";
+    private const string ReplicationMonitorPermissionId = "replication.replmonitor";
 
     private static readonly string[] RequiredCapabilityIds =
     [
@@ -236,7 +239,8 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         }
 
         if (!((profile.CollectorManifestVersion == CapabilityConnectionManifestVersion && profile.OutputSchemaVersion == CapabilityConnectionOutputSchemaVersion) ||
-              (profile.CollectorManifestVersion == 2 && profile.OutputSchemaVersion == 2)))
+              (profile.CollectorManifestVersion == 2 && profile.OutputSchemaVersion == 2) ||
+              (profile.CollectorManifestVersion == 3 && profile.OutputSchemaVersion == 3)))
         {
             throw new InvalidDataException("Capability discovery returned an unsupported contract version.");
         }
@@ -389,6 +393,18 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
             }
         }
 
+        if (profile.OutputSchemaVersion == 3)
+        {
+            foreach (string featureId in new[] { ReplicationCapabilityId, HostBindingCapabilityId })
+            {
+                if (!capabilities.TryGetValue(featureId, out CapabilityEvidence? feature) ||
+                    !IsValidOptionalCapability(feature))
+                {
+                    throw new InvalidDataException("Capability discovery v3 omitted or corrupted M10 feature evidence.");
+                }
+            }
+        }
+
         if (profile.Outcome is CapabilityDiscoveryOutcome.Supported or CapabilityDiscoveryOutcome.Degraded &&
             RequiredCapabilityIds.Any(id =>
                 capabilities[id].Availability != CapabilityAvailability.Available))
@@ -411,8 +427,8 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         {
             string id = evidence.PermissionId.Value;
             if (!IsAllowedPermission(id) ||
-                ((id is BackupsetSelectPermissionId or SysjobhistorySelectPermissionId) && evidence.Scope != PermissionEvidenceScope.Database) ||
-                (id is not (BackupsetSelectPermissionId or SysjobhistorySelectPermissionId) && evidence.Scope != PermissionEvidenceScope.Server) ||
+                ((id is BackupsetSelectPermissionId or SysjobhistorySelectPermissionId or ReplicationMonitorPermissionId) && evidence.Scope != PermissionEvidenceScope.Database) ||
+                (id is not (BackupsetSelectPermissionId or SysjobhistorySelectPermissionId or ReplicationMonitorPermissionId) && evidence.Scope != PermissionEvidenceScope.Server) ||
                 !permissions.TryAdd(id, evidence))
             {
                 throw new InvalidDataException("Capability discovery returned unknown or duplicate permission evidence.");
@@ -426,6 +442,27 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
             {
                 throw new InvalidDataException("Capability discovery v2 omitted database-scoped msdb evidence.");
             }
+        }
+
+        if (profile.OutputSchemaVersion == 3)
+        {
+            if (permissions.Count != 2 ||
+                !permissions.TryGetValue(ReplicationMonitorPermissionId, out PermissionEvidence? replication) ||
+                replication.Outcome is not (PermissionEvidenceOutcome.Granted or PermissionEvidenceOutcome.NotApplicable))
+            {
+                throw new InvalidDataException("Capability discovery v3 omitted replication permission evidence.");
+            }
+
+            PermissionEvidence required = permissions[majorVersion == 15
+                ? ViewServerStatePermissionId
+                : ViewServerPerformanceStatePermissionId];
+            if (profile.Outcome == CapabilityDiscoveryOutcome.Supported &&
+                required.Outcome != PermissionEvidenceOutcome.Granted)
+            {
+                throw new InvalidDataException("Capability discovery returned a supported v3 profile without its required permission.");
+            }
+
+            return;
         }
 
         if (majorVersion == 15)
@@ -519,14 +556,17 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         NonSysAdminCapabilityId or
         WindowsPlatformCapabilityId or
         AvailabilityGroupsCapabilityId or
-        SqlAgentHistoryCapabilityId;
+        SqlAgentHistoryCapabilityId or
+        ReplicationCapabilityId or
+        HostBindingCapabilityId;
 
     private static bool IsAllowedPermission(string id) => id is
         ViewServerStatePermissionId or
         ViewServerPerformanceStatePermissionId or
         PerformanceReaderMembershipPermissionId or
         BackupsetSelectPermissionId or
-        SysjobhistorySelectPermissionId;
+        SysjobhistorySelectPermissionId or
+        ReplicationMonitorPermissionId;
 
     private static bool IsValidOptionalCapability(CapabilityEvidence evidence) =>
         evidence is

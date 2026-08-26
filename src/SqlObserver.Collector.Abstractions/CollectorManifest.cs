@@ -260,6 +260,7 @@ public enum CollectorOutputKind
     SqlAgentFailures = 12,
     TempDbHealth = 13,
     AvailabilityGroupsHealth = 14,
+    ReplicationHealth = 15,
 }
 
 public sealed class CollectorResiliencePolicy
