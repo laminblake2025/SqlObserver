@@ -5,6 +5,7 @@ using SqlObserver.Domain.Hosts;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Domain.Security;
+using SqlObserver.Reporting;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
@@ -30,6 +31,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         Analytics = new PostgreSqlAnalyticsRepositoryPort(dataSource, fingerprintKey);
         AnalyticsDerivation = (IAnalyticsDerivationStore)Analytics;
         AnalyticsBackfill = new PostgreSqlAnalyticsBackfillStore(dataSource);
+        Reports = new PostgreSqlReportRepository(dataSource);
     }
 
     public ICollectorRuntimeRepositoryPort Runtime { get; }
@@ -42,6 +44,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     public IAnalyticsRepositoryPort Analytics { get; }
     public IAnalyticsDerivationStore AnalyticsDerivation { get; }
     public IAnalyticsBackfillStore AnalyticsBackfill { get; }
+    public IReportExpiryRepository Reports { get; }
 
     /// <summary>Resolves the exact persisted host binding/profile; no configuration fallback is used.</summary>
     public async ValueTask<HostTarget?> ReadHostTargetAsync(MonitoredInstanceId targetId, ObservationTargetRevision revision, CancellationToken cancellationToken)

@@ -9,6 +9,7 @@
     <Project Path="src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
     <Project Path="src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <Project Path="src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
+    <Project Path="src/SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
     <Project Path="src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
     <Project Path="src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
     <Project Path="src/SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />

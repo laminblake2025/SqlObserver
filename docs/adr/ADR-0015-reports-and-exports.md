@@ -2,9 +2,11 @@
 
 ## Status
 
-- Status: Proposed
-- This record is not Accepted. Its recommendations require owner decisions and
-  implementation evidence before they can become release behavior.
+- Status: Accepted (local implementation)
+- Owner approval: the four fixed reports, inert printable HTML, UTF-8
+  per-section CSV, immutable 24-hour PostgreSQL materialization, and existing
+  WIA target-scoped Viewer/Operator/TargetAdministrator access are approved
+  for the local slice. External and release certification remain pending.
 
 ## Context
 
@@ -25,9 +27,9 @@ change the evidence represented by the original request.
   are sensitive, untrusted data. They are not placed in logs, URLs, audit
   summaries, or unrestricted exports without a later explicit policy.
 
-## Recommended defaults (not yet decisions)
+## Accepted local defaults
 
-The recommended initial catalog uses existing projections only and issues no
+The accepted local catalog uses existing projections only and issues no
 target queries:
 
 - Instance Health
@@ -44,7 +46,9 @@ bind a UTC snapshot, target revision, report-definition version, actor identity,
 and a normalized-parameter digest. Materialize canonical, sensitive-free
 section rows in PostgreSQL; do not persist a rendered binary and do not add a
 background queue for the initial slice. A 24-hour materialization retention
-period is a recommendation awaiting owner approval, not a policy decision.
+period is fixed for the local slice; the bounded collector expiry worker
+removes expired runs. Backup/restore and external retention qualification
+remain release gates.
 
 The request is for one target and a UTC half-open window. Detailed windows are
 limited to 7 days and trend windows to 31 days. Continuations are signed opaque
@@ -64,21 +68,15 @@ CSV is RFC 4180, UTF-8, deterministically UTC-formatted, and neutralizes a
 leading first non-whitespace `=`, `+`, `-`, or `@` to prevent spreadsheet
 formula execution.
 
-The proposed future migration is `0021` and may add the report-run,
-materialized-section, cursor/replay, and least-privilege repository functions
-needed by this contract. No migration is created by this ADR.
+Migration `0021` adds the report-run, materialized-section, cursor/replay, and
+least-privilege repository functions needed by this contract.
 
 ## Owner decisions still required
 
-- Approve or reject 24-hour materialization retention and define deletion,
-  backup, and restore treatment.
 - Decide which sensitive-content classes, if any, may be production-visible in
   reports and exports, and the key-management/rotation policy for protected
   content.
-- Confirm report names, definition-version ownership, retention budgets,
-  accessibility target, and capacity/SLO targets.
-- Confirm the application authentication mode and target-role mapping used by
-  the report routes.
+- Confirm the accessibility target and capacity/SLO targets.
 
 ## Alternatives and consequences
 
@@ -94,7 +92,7 @@ needed by this contract. No migration is created by this ADR.
 
 ## Downstream implementation and migration gates
 
-Application contracts must freeze report definitions, canonical parameter
+Application contracts freeze report definitions, canonical parameter
 digests, section schemas, cursor signing/expiry, and error mapping before route
 work starts. Repository work requires a reviewed immutable `0021` migration,
 security-definer functions with fixed search paths, RLS/target checks, least
@@ -104,4 +102,5 @@ cancellation, authorization, safe rendering, CSV formula neutralization,
 equal-timestamp pagination, expiry 410, audit terminals, and sensitive-content
 exclusion. Release certification must include representative-volume evidence,
 browser/accessibility evidence, and failure/recovery evidence. None of these
-gates is a release-support claim.
+gates is a release-support claim; external report evidence and release
+certification remain pending.

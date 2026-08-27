@@ -2,6 +2,7 @@ using Npgsql;
 using SqlObserver.Analytics;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Security;
+using SqlObserver.Reporting;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
@@ -31,6 +32,8 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         AnalyticsDerivation = (IAnalyticsDerivationStore)Analytics;
         AnalyticsBackfill = new PostgreSqlAnalyticsBackfillStore(dataSource);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
+        Reports = new PostgreSqlReportRepository(dataSource);
+        ReportAudit = new PostgreSqlReportAuditPort(dataSource);
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
@@ -72,6 +75,9 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IAnalyticsBackfillStore AnalyticsBackfill { get; }
 
     public IReplicationDistributionBindingResolver ReplicationDistributionBindings { get; }
+
+    public IReportRepository Reports { get; }
+    public IReportAuditPort ReportAudit { get; }
 
     public IRetentionRepositoryPort Retention => (IRetentionRepositoryPort)Analytics;
 

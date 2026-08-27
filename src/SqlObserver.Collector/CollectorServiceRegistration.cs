@@ -13,6 +13,7 @@ using SqlObserver.Domain.Hosts;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Domain.Security;
+using SqlObserver.Reporting;
 
 namespace SqlObserver.Collector;
 
@@ -49,6 +50,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().AnalyticsDerivation);
         services.AddSingleton<IAnalyticsBackfillStore>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().AnalyticsBackfill);
+        services.AddSingleton<IReportExpiryRepository>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Reports);
         services.AddSingleton<IAlertEvaluationSource, PostgreSqlAlertEvaluationSource>();
         services.AddSingleton<IAlertDestinationConfigurationResolver>(_ => new ConfigurationAlertDestinationResolver(key => configuration[key]));
         services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
@@ -143,6 +146,7 @@ public static class CollectorServiceRegistration
         services.AddHostedService<CollectionWorker>();
         services.AddHostedService<AlertEvaluationWorker>();
         services.AddHostedService<AlertDeliveryWorker>();
+        services.AddHostedService<ReportExpiryWorker>();
         bool contractTesting = environment?.IsEnvironment("ContractTesting") == true ||
             string.Equals(configuration["DOTNET_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase);

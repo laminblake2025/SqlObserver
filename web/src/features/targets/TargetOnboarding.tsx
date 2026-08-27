@@ -6,6 +6,7 @@ import { TargetDeadlockPanel } from "../deadlocks/TargetDeadlockPanel";
 import { TargetQueryPerformancePanel } from "../queries/TargetQueryPerformancePanel";
 import { TargetAlertsPanel } from "../alerts/TargetAlertsPanel";
 import { OperationsPanel } from "../operations/OperationsPanel";
+import { ReportsPanel } from "../reports/ReportsPanel";
 import { listObservationTargets, registerObservationTarget } from "./targetApi";
 import type {
   CapabilityStatus,
@@ -48,6 +49,7 @@ export function TargetOnboarding() {
   const [selectedQueryPerformanceTargetId, setSelectedQueryPerformanceTargetId] = useState<string>();
   const [selectedAlertsTargetId, setSelectedAlertsTargetId] = useState<string>();
   const [selectedOperationsTargetId, setSelectedOperationsTargetId] = useState<string>();
+  const [selectedReportsTargetId, setSelectedReportsTargetId] = useState<string>();
   const [registrationInstanceId, setRegistrationInstanceId] = useState(createClientInstanceId);
   const selectedTarget = targets.find((target) => target.instanceId === selectedTargetId);
 
@@ -236,6 +238,7 @@ export function TargetOnboarding() {
               </button>
               <button className="secondary-button target-health-button" onClick={() => setSelectedAlertsTargetId(target.instanceId)} type="button">View alerts</button>
               <button className="secondary-button target-health-button" onClick={() => setSelectedOperationsTargetId(target.instanceId)} type="button">View operations</button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedReportsTargetId(target.instanceId)} type="button">Create report</button>
             </article>
           ))}
         </div>
@@ -276,6 +279,7 @@ export function TargetOnboarding() {
         return alertTarget === undefined ? null : <TargetAlertsPanel displayName={alertTarget.displayName} instanceId={alertTarget.instanceId} onClose={() => setSelectedAlertsTargetId(undefined)} />;
       })()}
       {selectedOperationsTargetId === undefined ? null : <OperationsPanel instanceId={selectedOperationsTargetId} />}
+      {selectedReportsTargetId === undefined ? null : (() => { const reportTarget = targets.find((target) => target.instanceId === selectedReportsTargetId); return reportTarget === undefined ? null : <ReportsPanel displayName={reportTarget.displayName} instanceId={reportTarget.instanceId} onClose={() => setSelectedReportsTargetId(undefined)} />; })()}
     </section>
   );
 }

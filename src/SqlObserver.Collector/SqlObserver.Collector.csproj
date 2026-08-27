@@ -15,5 +15,6 @@
     <ProjectReference Include="../SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
     <ProjectReference Include="../SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="../SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />
+    <ProjectReference Include="../SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
   </ItemGroup>
 </Project>

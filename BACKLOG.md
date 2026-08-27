@@ -39,7 +39,7 @@ Status meanings:
 | Deadlocks | M6 | Bounded `system_health` reader, safe XML and search tests |
 | Alerts | M8 | Rule/state/delivery behavior, audit and failure tests |
 | Baselines, forecasts, incident correlation | M10 | Deterministic analytics, backfill, confidence/visibility-gap and performance tests |
-| Reports | M12 | Authorized bounded generation/export, unsafe-content and browser tests |
+| Reports | M12 | Authorized bounded generation/export, unsafe-content and browser tests (local implementation complete; external/release evidence pending) |
 | Agentless default and passive non-mutation | M0, M3-M10, M12 | Contract/query review plus target state before/after integration evidence |
 | Optional enhanced monitoring is separate and DBA-run | M0, M6, M12 | Versioned script package, review/removal docs and proof no service execution path exists |
 | Modular monolith with separately deployable Server, Collector, MCP stdio | M0, M1, M4, M11, M12 | Dependency tests, compiled hosts, process-level deployment/upgrade tests |
@@ -190,12 +190,12 @@ M7 Query Store and plan-cache evidence, M8 alert evaluation/delivery, M9 operati
 
 The following are explicitly incomplete and must not be represented as working:
 
-- reports and exports remain outside the implemented runtime slice; M10 analytics/reporting projections and the M11 read-only MCP projections are bounded and locally runtime-tested;
+- reports and exports are implemented locally through the ADR-0015 vertical slice; PostgreSQL runtime, browser, installer, and external/release certification evidence remains pending;
 
 - production collector implementations or target SQL beyond the active M10 bundle (the bundle is `capability.connection`, `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`);
 - reusable target credentials, automatic permission grants, or target mutation;
 - automatic retention execution, repository installation/backup/restore/HA, or production repository provisioning;
-- API behavior beyond target management, M4 health, M5 activity, M6 deadlock, M7 query-performance, M8 alerts, M9 operational-health, M10 analytics, and the fixed M11 MCP surface; SignalR, reports, and exports;
+- API behavior beyond target management, M4 health, M5 activity, M6 deadlock, M7 query-performance, M8 alerts, M9 operational-health, M10 analytics, and the fixed M11 MCP surface; SignalR remains excluded (reports/exports are implemented locally, with external/release certification pending);
 - Query Store configuration/change, Extended Events, blocked-process, index, plan-forcing, session, or configuration changes;
 - live environment bootstrap, seed data, installer, upgrade, uninstall, or release packaging;
 - production support/certification for any platform in the support matrix.

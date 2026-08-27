@@ -6,5 +6,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
   </ItemGroup>
 </Project>

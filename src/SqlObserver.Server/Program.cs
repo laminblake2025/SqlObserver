@@ -11,6 +11,7 @@ using SqlObserver.Infrastructure.Windows;
 using SqlObserver.Mcp;
 using SqlObserver.Security;
 using SqlObserver.Server;
+using SqlObserver.Reporting;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddWindowsService(options => options.ServiceName = "SqlObserver Server");
@@ -25,6 +26,7 @@ builder.Services.AddAuthorizationBuilder().SetFallbackPolicy(
         .RequireAuthenticatedUser()
         .Build());
 builder.Services.AddProblemDetails();
+builder.Services.AddDataProtection();
 builder.Services.AddOptions<OperationalHealthServerOptions>().Validate(options => options.RequestTimeout > TimeSpan.Zero && options.RequestTimeout <= TimeSpan.FromMinutes(2), "Operational health timeout must be positive and bounded.").ValidateOnStart();
 builder.Services.AddRequestTimeouts(options =>
     options.DefaultPolicy = new Microsoft.AspNetCore.Http.Timeouts.RequestTimeoutPolicy
@@ -43,7 +45,7 @@ builder.Services.AddRateLimiter(options => options.AddPolicy(
     AdministrativeMutationRateLimitPolicy.PolicyName,
     new AdministrativeMutationRateLimitPolicy(administrativeMutationLimits)));
 builder.WebHost.ConfigureKestrel(options =>
-    options.Limits.MaxRequestBodySize = RequestBodyLimitMiddleware.MaximumRequestBytes);
+    options.Limits.MaxRequestBodySize = RequestBodyLimitMiddleware.KestrelMaximumRequestBytes);
 builder.Services.AddSingleton(static services =>
     WindowsAuthorizationConfiguration.CreateResolver(
         services.GetRequiredService<IConfiguration>()));
@@ -111,6 +113,10 @@ builder.Services.AddSingleton<IMetricSeriesQueryService, MetricSeriesQueryServic
 builder.Services.AddSingleton<IStorageForecastQueryService, StorageForecastQueryService>();
 builder.Services.AddSingleton<IDiagnosticEventQueryService, DiagnosticEventQueryService>();
 builder.Services.AddSingleton<IIncidentEvidenceQueryService, IncidentEvidenceQueryService>();
+builder.Services.AddSingleton<IReportRepository>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Reports);
+builder.Services.AddSingleton<IReportAuditPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().ReportAudit);
+builder.Services.AddSingleton<IReportService, ReportService>();
+builder.Services.AddSingleton<ReportCursorProtector>();
 builder.Services.AddSqlObserverMcp();
 // Contract-test hosts intentionally do not configure (or open) the production
 // PostgreSQL control plane.  Resolving the hosted worker in that environment
@@ -135,6 +141,7 @@ app.MapTargetQueryPerformanceApiEndpoints();
 app.MapAlertEndpoints();
 app.MapOperationalHealthEndpoints();
 app.MapAnalyticsEndpoints();
+app.MapReportEndpoints();
 app.MapSqlObserverMcp().RequireAuthorization();
 
 await app.RunAsync();

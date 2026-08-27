@@ -3,9 +3,9 @@
 ## Status
 
 M12 is in planning and hardening. Package 1, the certification-evidence
-foundation, is locally complete and accepted at commit `f33f3a69`. The five
-M12 ADRs linked below are Proposed; none is Accepted and none creates a
-release or support claim.
+foundation, is locally complete and accepted at commit `f33f3a69`. ADR-0015 is
+Accepted for the local reports implementation; the remaining M12 ADRs are
+Proposed. No document here creates a release or support claim.
 
 ## Package 1 — certification evidence
 
@@ -18,9 +18,10 @@ the matrix.
 
 ## Remaining packages
 
-- Reports and exports: implement the bounded, target-scoped catalog and safe
-  HTML/CSV contract proposed by [ADR-0015](../adr/ADR-0015-reports-and-exports.md),
-  including a reviewed `0021` migration if needed.
+- Reports and exports: locally implemented as the bounded, target-scoped
+  catalog and safe HTML/CSV contract in [ADR-0015](../adr/ADR-0015-reports-and-exports.md),
+  including migration `0021`. External report-volume, browser/accessibility,
+  and release certification evidence remains pending.
 - Windows installer and PostgreSQL lifecycle: qualify WiX packaging, service
   identities, migration sequencing, upgrade/recovery, uninstall preservation,
   and separately authorized purge under
