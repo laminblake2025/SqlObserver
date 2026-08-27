@@ -2008,6 +2008,9 @@ foreach ($testProject in $testProjectsToRun) {
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.EndToEndTests.csproj') {
         $filter = 'Category!=RequiresPostgreSql'
     }
+    if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.McpContractTests.csproj') {
+        $filter = 'Category!=RequiresM12McpRelease'
+    }
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.IntegrationTests.PostgreSql.csproj') {
         $filter = 'Category!=RequiresPostgreSql'
     }

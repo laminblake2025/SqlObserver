@@ -16,6 +16,15 @@ test contracts. Local validation remains non-release evidence. Release
 validation still requires every lane and external environment represented by
 the matrix.
 
+The MCP certification producer is a pending-lane harness, not an
+implementation promotion: `tools/run-m12-mcp-certification.ps1` accepts only
+the canonical repository and approved Release Windows Server environment,
+executes the live HTTPS protocol and stdio child-process contract, and writes
+sanitized, hash-bound run-local evidence only after all checks pass. Local
+validation explicitly excludes the `RequiresM12McpRelease` trait; missing live
+release prerequisites are failures in the producer and remain an external
+gate.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped

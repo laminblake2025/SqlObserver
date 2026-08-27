@@ -4,3 +4,8 @@
 database/migrations/checksums.sha256 text eol=lf
 collectors/manifests/*.json text eol=lf
 collectors/manifests/*.sha256 text eol=lf
+release/contracts/*.json text eol=lf
+release/contracts/*.sha256 text eol=lf
+release/certification/m12-mcp-protocol-contract.v1.json text eol=lf
+release/certification/m12-mcp-protocol-contract.v1.schema.json text eol=lf
+release/certification/m12-mcp-protocol-contract.v1.sha256 text eol=lf

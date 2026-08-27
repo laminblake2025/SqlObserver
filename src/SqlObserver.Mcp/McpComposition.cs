@@ -25,7 +25,7 @@ public static class McpComposition
                 options.ServerInfo = new ModelContextProtocol.Protocol.Implementation
                 {
                     Name = "SqlObserver.Server",
-                    Version = "m11-2.2.0+catalog-" + McpCatalog.Digest
+                    Version = McpCatalog.ServerVersion
                 };
                 options.ServerInstructions = "Read-only SQL Observer diagnostics; all calls are authenticated, authorized, bounded, and audited.";
             })

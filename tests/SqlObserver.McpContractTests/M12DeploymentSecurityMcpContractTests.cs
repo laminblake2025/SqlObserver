@@ -31,6 +31,15 @@ public sealed class M12DeploymentSecurityMcpContractTests
         Assert.Contains("MaxReconnectionAttempts = 0", source, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C", "2026-07-28", true)]
+    [InlineData("m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C", "2025-11-25", true)]
+    [InlineData("prefix-m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C", "2026-07-28", false)]
+    [InlineData("m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C-suffix", "2026-07-28", false)]
+    [InlineData("m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C", "2026-07-28-extra", false)]
+    public void StdioBridgeRequiresExactApprovedIdentity(string version, string protocol, bool expected)
+        => Assert.Equal(expected, McpStdioBridge.HasApprovedIdentity(version, protocol));
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;

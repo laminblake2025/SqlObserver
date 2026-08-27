@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-mcp-protocol-contract.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "contractId", "currentProtocol", "downlevelProtocol", "toolCount", "catalogDigest", "serverVersion"],
+  "properties": {
+    "$schema": { "const": "m12-mcp-protocol-contract.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "m12-mcp-protocol" },
+    "currentProtocol": { "const": "2026-07-28" },
+    "downlevelProtocol": { "const": "2025-11-25" },
+    "toolCount": { "const": 25 },
+    "catalogDigest": { "const": "3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C" },
+    "serverVersion": { "const": "m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C" }
+  }
+}

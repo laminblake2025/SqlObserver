@@ -38,6 +38,10 @@ public static class McpCatalog
 {
     public const string CurrentProtocolVersion = "2026-07-28";
     public const string DownlevelProtocolVersion = "2025-11-25";
+    // Reviewed catalog approval point. Digest is re-derived below and must
+    // agree, so changing the catalog cannot silently retain this identity.
+    public const string ApprovedCatalogDigest = "3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C";
+    public const string ServerVersion = "m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {
@@ -87,8 +91,14 @@ public static class McpCatalog
         return root.ToJsonString(DigestJsonOptions);
     }
 
-    public static string Digest { get; } = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-        JsonSerializer.SerializeToUtf8Bytes(Definitions, DigestJsonOptions)));
+    public static string Digest { get; } = GetApprovedDigest();
+
+    private static string GetApprovedDigest()
+    {
+        string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            JsonSerializer.SerializeToUtf8Bytes(Definitions, DigestJsonOptions)));
+        return digest == ApprovedCatalogDigest ? digest : throw new InvalidOperationException("The MCP catalog digest is not the approved identity.");
+    }
 
     public static int LimitMaximum(string name) => name switch
     {

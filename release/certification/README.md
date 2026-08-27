@@ -43,6 +43,37 @@ claimed digest.
 Evidence must be a parsed `json`, `trx`, or `junit` result; manifest counters
 alone are never accepted.
 
+The pending `m12-mcp-protocol` case is produced only by
+`tools/run-m12-mcp-certification.ps1` on an approved Release Windows Server
+2022/2025 x64 host. The producer requires an externally supplied HTTPS `/mcp`
+endpoint and the deployed `SqlObserver.McpStdio` executable, runs the live
+protocol/process-boundary test, and atomically publishes only its sanitized
+JSON result, detail artifact, and verifier-compatible provenance sidecar under
+ignored `TestResults/m12/<run-id>/`. A producer failure leaves no candidate run
+directory and never changes the matrix or claims Release evidence. It uses
+`.pending-<UUID>` and `.verify-<UUID>` quarantine states. If safe cleanup fails,
+the producer creates no final UUID candidate; best-effort cleanup may partially
+remove or leave a `.pending-*`/`.verify-*` directory for operator review. Such
+quarantine directories are never followed through a reparse point and are not
+candidate evidence. Its
+environment contract is `SQLOBSERVER_RELEASE_MCP_ENDPOINT`,
+`SQLOBSERVER_RELEASE_MCP_ENVIRONMENT` (`release-windows-server-2022` or
+`release-windows-server-2025`). The stdio executable is always the canonical
+repository-root Release artifact; arbitrary executable paths are rejected.
+The release lab must also provide distinct existing target IDs through
+`SQLOBSERVER_RELEASE_MCP_AUTHORIZED_INSTANCE_ID`,
+`SQLOBSERVER_RELEASE_MCP_CANCELLATION_INSTANCE_ID`, plus
+`SQLOBSERVER_RELEASE_MCP_DENIED_INSTANCE_ID`,
+`SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION` and its externally supplied
+lowercase `SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION_SHA256`. The
+attestation is a closed, bounded JSON record proving the denied target exists
+for the selected environment; target IDs are consumed only by the live test
+and never written to evidence.
+Its closed protocol identity is separately versioned in
+`m12-mcp-protocol-contract.v1.json` and authenticated by its adjacent SHA-256
+pin; this contract is intentionally outside the global matrix asset pin and
+does not promote the pending lane.
+
 The verifier requires PowerShell Core 7.5 or newer (`pwsh`); Windows
 PowerShell 5.1 and older Core hosts are rejected rather than downgraded.
 

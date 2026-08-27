@@ -10,6 +10,12 @@ namespace SqlObserver.Mcp;
 /// <summary>The only public entry point for the stdio proxy; SDK transport types stay in this adapter.</summary>
 public static class McpStdioBridge
 {
+    // This is an immutable transport approval point.  It intentionally does
+    // not derive identity from the mutable catalog object: a catalog change
+    // must fail closed until this reviewed value is changed as policy.
+    private const string ApprovedCurrentProtocol = "2026-07-28";
+    private const string ApprovedDownlevelProtocol = "2025-11-25";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C";
     public static async Task<int> RunAsync(string endpointText, string[] args, CancellationToken cancellationToken = default)
     {
         if (!TryValidateEndpoint(endpointText, out Uri? endpoint))
@@ -35,8 +41,8 @@ public static class McpStdioBridge
         IList<McpClientTool> remoteTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
         string[] expected = McpCatalog.Definitions.Select(static d => d.Name).OrderBy(static n => n, StringComparer.Ordinal).ToArray();
         string[] actual = remoteTools.Select(static t => t.Name).OrderBy(static n => n, StringComparer.Ordinal).ToArray();
-        if (!expected.SequenceEqual(actual, StringComparer.Ordinal) || !client.ServerInfo.Version.Contains(McpCatalog.Digest, StringComparison.Ordinal) ||
-            client.NegotiatedProtocolVersion is not (McpCatalog.CurrentProtocolVersion or McpCatalog.DownlevelProtocolVersion))
+        if (!expected.SequenceEqual(actual, StringComparer.Ordinal) ||
+            !HasApprovedIdentity(client.ServerInfo.Version, client.NegotiatedProtocolVersion))
         {
             Console.Error.WriteLine("MCP server catalog or digest mismatch; refusing to start.");
             return 3;
@@ -53,4 +59,9 @@ public static class McpStdioBridge
 
     public static bool TryValidateEndpoint(string endpointText, out Uri? endpoint)
         => McpEndpointValidator.TryValidate(endpointText, out endpoint);
+
+    internal static bool HasApprovedIdentity(string? serverVersion, string? protocolVersion)
+        => string.Equals(serverVersion, ApprovedServerVersion, StringComparison.Ordinal)
+            && (string.Equals(protocolVersion, ApprovedCurrentProtocol, StringComparison.Ordinal)
+                || string.Equals(protocolVersion, ApprovedDownlevelProtocol, StringComparison.Ordinal));
 }

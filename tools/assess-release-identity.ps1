@@ -313,7 +313,7 @@ function Get-AssessorOutput {
             $checksumLines[0] -ceq "$schemaHash  $AssessmentSchemaName"
     }
     catch { $schemaPinned = $false }
-    $checks.Add((New-Check 6 'schema-checksum' ($(if ($schemaPinned) { 'observed' } else { 'blocked' })) 'ASSESSMENT_SCHEMA_PINNED'))
+    $checks.Add((New-Check 6 'schema-checksum' ($(if ($schemaPinned) { 'observed' } else { 'blocked' })) ($(if ($schemaPinned) { 'ASSESSMENT_SCHEMA_PINNED' } else { 'ASSESSMENT_UNAVAILABLE' }))))
     $checks.Add((New-Check 7 'matrix-only-verification' ($(if ($matrixOnlyObserved) { 'observed' } else { 'blocked' })) 'MATRIX_ONLY_VERIFIED'))
     $checks.Add((New-Check 8 'repository-contract' ($(if ($matrixObserved) { 'observed' } else { 'blocked' })) 'REPOSITORY_CONTRACT_OBSERVED'))
 

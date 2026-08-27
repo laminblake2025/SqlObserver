@@ -11,6 +11,18 @@ namespace SqlObserver.ReleaseTests;
 
 public sealed class M12CertificationVerifierTests
 {
+    [Fact]
+    public void AcceptsClosedJsonEvidenceSuccessShapeThroughVerifier()
+    {
+        JsonObject manifest = ValidManifest();
+        JsonObject firstLane = (JsonObject)((JsonArray)manifest["lanes"]!)[0]!;
+        JsonObject firstCase = (JsonObject)((JsonArray)firstLane["cases"]!)[0]!;
+        JsonObject firstEvidence = (JsonObject)((JsonArray)firstCase["evidence"]!)[0]!;
+        string evidencePath = Path.Combine(FindRoot(), firstEvidence["path"]!.GetValue<string>().Replace('/', Path.DirectorySeparatorChar));
+        using JsonDocument evidence = JsonDocument.Parse(File.ReadAllText(evidencePath));
+        Assert.Equal(["caseId", "status", "executions", "skipped", "notRun", "failed", "runId", "commitSha", "environmentId"], evidence.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(0, Run(manifest));
+    }
     private static readonly string[] CountNames = ["skipped", "notRun", "failed"];
     [Fact] public void AcceptsCompleteLocalManifest() => Assert.Equal(0, Run(ValidManifest()));
     [Fact] public void ValidationUsesTheExplicitNineProjectListForReleaseAndLocal()

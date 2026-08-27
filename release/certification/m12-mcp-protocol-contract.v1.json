@@ -1,0 +1,10 @@
+{
+  "$schema": "m12-mcp-protocol-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "m12-mcp-protocol",
+  "currentProtocol": "2026-07-28",
+  "downlevelProtocol": "2025-11-25",
+  "toolCount": 25,
+  "catalogDigest": "3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C",
+  "serverVersion": "m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C"
+}
