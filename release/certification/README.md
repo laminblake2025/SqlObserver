@@ -52,6 +52,15 @@ evidence, signing evidence, and `SQLOBSERVER_CERTIFICATION_MANIFEST` pointing
 to the complete release manifest. These are intentionally preflight failures
 when absent; a local run cannot substitute for them.
 
+The read-only `tools/assess-release-identity.ps1` helper provides a bounded,
+decision-neutral assessment of this policy. Its closed contract is
+`release/contracts/release-identity-assessment.v1.schema.json`; it reports the
+current commit and policy identity, runs `MatrixOnly`, and preserves the
+20-lane/35-case inventory (8 implemented lanes/cases and 27 pending cases).
+It always returns `status: not_ready`, `releaseEvidence: false`, and
+`readyToRelease: false`, and emits no product, publisher, license, signing,
+environment, path, or command-error values.
+
 Evidence and provenance sidecar files are bounded, non-empty, and opened with
 a read-only handle that denies concurrent writes/deletes while hashing.
 Reparse-point ancestors are

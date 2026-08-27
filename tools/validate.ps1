@@ -46,6 +46,136 @@ function Invoke-CheckedCommand {
     }
 }
 
+function Assert-TrustedExecutablePath {
+    param([Parameter(Mandatory = $true)][string] $Path)
+
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $pathRoot = [IO.Path]::GetPathRoot($fullPath)
+    $cursor = $pathRoot
+    foreach ($component in ($fullPath.Substring($pathRoot.Length) -split '[\\/]')) {
+        if ([string]::IsNullOrEmpty($component)) { continue }
+        $cursor = Join-Path $cursor $component
+        $componentItem = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+        if (($componentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'M12 trusted executable path is untrusted.' }
+    }
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if (-not $item.PSIsContainer -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'M12 trusted executable path is untrusted.'
+    }
+    $current = if ($item.PSIsContainer) { $item } else { Get-Item -LiteralPath $item.DirectoryName -Force -ErrorAction Stop }
+    while ($null -ne $current) {
+        if (($current.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'M12 trusted executable path is untrusted.' }
+        $parent = $current.Parent
+        if ($null -eq $parent -or $parent.FullName -eq $current.FullName) { break }
+        $current = $parent
+    }
+}
+
+function Get-TrustedPowerShellPath {
+    $name = if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' }
+    $path = [IO.Path]::GetFullPath((Join-Path $PSHOME $name))
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'M12 trusted PowerShell executable is unavailable.' }
+    Assert-TrustedExecutablePath $path
+    return $path
+}
+
+function Resolve-RepositoryHeadSha {
+    param([Parameter(Mandatory = $true)][string] $Root)
+
+    try {
+        $rootCanonical = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Root -ErrorAction Stop).Path).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+        $gitEntry = Get-Item -LiteralPath (Join-Path $rootCanonical '.git') -Force -ErrorAction Stop
+        if (($gitEntry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $null }
+        $gitRoot = $gitEntry.FullName
+        $refRoot = $gitRoot
+        if (-not $gitEntry.PSIsContainer) {
+            $gitText = [IO.File]::ReadAllText($gitRoot)
+            if ($gitText.Length -gt 4096 -or $gitText -notmatch '^gitdir: ([^\r\n]+)\r?\n?$') { return $null }
+            $gitDirValue = $Matches[1]
+            if ($gitDirValue -match '[\x00-\x1f\x7f"]' -or ($gitDirValue.Contains(':', [StringComparison]::Ordinal) -and $gitDirValue -notmatch '^[A-Za-z]:[\\/]') -or ($gitDirValue -match '^[A-Za-z]:[\\/].*:')) { return $null }
+            if ([IO.Path]::IsPathRooted($gitDirValue)) { $gitRoot = [IO.Path]::GetFullPath($gitDirValue) }
+            else { $gitRoot = [IO.Path]::GetFullPath((Join-Path $rootCanonical $gitDirValue)) }
+            $rootGit = [IO.Path]::GetFullPath((Join-Path $rootCanonical '.git')).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+            $parentInfo = [System.IO.DirectoryInfo]$rootCanonical
+            $commonGit = [IO.Path]::GetFullPath((Join-Path $parentInfo.Parent.FullName '.git')).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+            $worktreesDir = ([System.IO.DirectoryInfo]$gitRoot).Parent
+            if ($null -eq $worktreesDir -or $worktreesDir.Name -cne 'worktrees' -or $null -eq $worktreesDir.Parent -or $worktreesDir.Parent.Name -cne '.git') { return $null }
+            $commonGit = [IO.Path]::GetFullPath($worktreesDir.Parent.FullName).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+            $worktreeName = ([System.IO.DirectoryInfo]$gitRoot).Name
+            if ($worktreeName -notmatch '^[A-Za-z0-9._-]+$' -or $worktreeName -ceq '.' -or $worktreeName -ceq '..' -or $worktreeName.EndsWith('.', [StringComparison]::Ordinal)) { return $null }
+            if (-not (Test-Path -LiteralPath $gitRoot -PathType Container)) { return $null }
+            $commondirPath = Join-Path $gitRoot 'commondir'
+            if (-not (Test-Path -LiteralPath $commondirPath -PathType Leaf)) { return $null }
+            Assert-TrustedExecutablePath $commondirPath
+            $commonLines = [IO.File]::ReadAllLines($commondirPath)
+            if ($commonLines.Count -ne 1 -or -not [String]::Equals($commonLines[0], '../..', [StringComparison]::Ordinal)) { return $null }
+            $commonValue = $commonLines[0]
+            $refRoot = [IO.Path]::GetFullPath((Join-Path $gitRoot $commonValue)).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+            if (-not [String]::Equals($refRoot, $commonGit, [StringComparison]::Ordinal)) { return $null }
+            if (-not (Test-Path -LiteralPath $refRoot -PathType Container)) { return $null }
+            Assert-TrustedExecutablePath $refRoot
+            $reciprocalPath = Join-Path $gitRoot 'gitdir'
+            if (-not (Test-Path -LiteralPath $reciprocalPath -PathType Leaf)) { return $null }
+            Assert-TrustedExecutablePath $reciprocalPath
+            $reciprocalText = [IO.File]::ReadAllText($reciprocalPath)
+            if ($reciprocalText.Length -gt 4096 -or $reciprocalText -notmatch '^([^\r\n]+)\r?\n?$') { return $null }
+            $reciprocalValue = $Matches[1]
+            if ($reciprocalValue -match '[\x00-\x1f\x7f"]' -or ($reciprocalValue.Contains(':', [StringComparison]::Ordinal) -and $reciprocalValue -notmatch '^[A-Za-z]:[\\/]') -or ($reciprocalValue -match '^[A-Za-z]:[\\/].*:')) { return $null }
+            $reciprocal = if ([IO.Path]::IsPathRooted($reciprocalValue)) { [IO.Path]::GetFullPath($reciprocalValue) } else { [IO.Path]::GetFullPath((Join-Path $gitRoot $reciprocalValue)) }
+            if (-not [String]::Equals($reciprocal, [IO.Path]::GetFullPath((Join-Path $rootCanonical '.git')), [StringComparison]::Ordinal)) { return $null }
+        }
+        Assert-TrustedExecutablePath $gitRoot
+        $headPath = Join-Path $gitRoot 'HEAD'
+        Assert-TrustedExecutablePath $headPath
+        $headText = [IO.File]::ReadAllText($headPath)
+        if ($headText.Length -gt 4096) { return $null }
+        $head = $headText.TrimEnd([char[]]"`r`n")
+        $shaMatch = [regex]::Match($head, '^([0-9a-f]{40})$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+        if ($shaMatch.Success) { return $shaMatch.Groups[1].Value }
+        $refMatch = [regex]::Match($head, '^ref: (refs/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+        if (-not $refMatch.Success) { return $null }
+        $refName = $refMatch.Groups[1].Value
+        foreach ($component in ($refName.Substring(5) -split '/')) { if ($component -ceq '.' -or $component -ceq '..' -or $component.EndsWith('.', [StringComparison]::Ordinal) -or $component.EndsWith('.lock', [StringComparison]::Ordinal)) { return $null } }
+        $loose = Join-Path $refRoot $refName.Replace('/', [IO.Path]::DirectorySeparatorChar)
+        $gitRootCanonical = [IO.Path]::GetFullPath($refRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+        $looseCanonical = [IO.Path]::GetFullPath($loose)
+        if (-not $looseCanonical.StartsWith($gitRootCanonical + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+        $found = [System.Collections.Generic.List[string]]::new()
+        if (Test-Path -LiteralPath $loose -PathType Leaf) {
+            Assert-TrustedExecutablePath $loose
+            $looseText = [IO.File]::ReadAllText($loose)
+            if ($looseText.Length -gt 4096) { return $null }
+            $looseSha = $looseText.TrimEnd([char[]]"`r`n")
+            if (-not [regex]::IsMatch($looseSha, '^[0-9a-f]{40}$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)) { return $null }
+            $found.Add($looseSha)
+        }
+        $packed = Join-Path $refRoot 'packed-refs'
+        if (Test-Path -LiteralPath $packed -PathType Leaf) {
+            Assert-TrustedExecutablePath $packed
+            $packedText = [IO.File]::ReadAllText($packed)
+            if ($packedText.Length -gt 1048576) { return $null }
+            $packedRefs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            $havePackedRef = $false
+            $havePeel = $false
+            foreach ($line in ($packedText -split "`r?`n")) {
+                if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) { continue }
+                if ([regex]::IsMatch($line, '^\^[0-9a-f]{40}$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)) { if (-not $havePackedRef -or $havePeel) { return $null }; $havePeel = $true; continue }
+                $packedMatch = [regex]::Match($line, '^([0-9a-f]{40}) (refs/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+                if (-not $packedMatch.Success) { return $null }
+                $packedRefName = $packedMatch.Groups[2].Value
+                foreach ($component in ($packedRefName.Substring(5) -split '/')) { if ($component -ceq '.' -or $component -ceq '..' -or $component.EndsWith('.', [StringComparison]::Ordinal) -or $component.EndsWith('.lock', [StringComparison]::Ordinal)) { return $null } }
+                if (-not $packedRefs.Add($packedRefName)) { return $null }
+                $havePackedRef = $true
+                $havePeel = $false
+                if ([String]::Equals($packedRefName, $refName, [StringComparison]::Ordinal)) { $found.Add($packedMatch.Groups[1].Value) }
+            }
+        }
+        if ($found.Count -ne 1 -or -not [regex]::IsMatch($found[0], '^[0-9a-f]{40}$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)) { return $null }
+        return $found[0]
+    }
+    catch { return $null }
+}
+
 function Test-SqlIdentifierStart {
     param([char] $Character)
 
@@ -1664,8 +1794,9 @@ function Assert-ReleasePreflight {
     }
     $matrixPath = Join-Path $repositoryRoot 'release/certification/m12-certification-matrix.v1.json'
     $matrix = Get-Content -LiteralPath $matrixPath -Raw | ConvertFrom-Json -DateKind String
+    $trustedPwshPath = Get-TrustedPowerShellPath
     try {
-        Invoke-CheckedCommand -Executable 'pwsh' -Arguments @(
+        Invoke-CheckedCommand -Executable $trustedPwshPath -Arguments @(
             '-NoProfile', '-NonInteractive', '-File', (Join-Path $repositoryRoot 'tools/verify-test-results.ps1'),
             '-MatrixOnly', '-RepositoryRoot', $repositoryRoot
         ) -WorkingDirectory $repositoryRoot
@@ -1704,10 +1835,116 @@ function Assert-ReleasePreflight {
         throw 'Release certification requires a running Docker/PostgreSQL lab.'
     }
     $manifestPath = [Environment]::GetEnvironmentVariable('SQLOBSERVER_CERTIFICATION_MANIFEST')
-    Invoke-CheckedCommand -Executable 'pwsh' -Arguments @(
+    Invoke-CheckedCommand -Executable $trustedPwshPath -Arguments @(
         '-NoProfile', '-NonInteractive', '-File', (Join-Path $repositoryRoot 'tools/verify-test-results.ps1'),
         '-ManifestPath', $manifestPath, '-Profile', 'Release', '-RepositoryRoot', $repositoryRoot
     ) -WorkingDirectory $repositoryRoot
+}
+
+function Read-CappedProcessStreams {
+    param([Diagnostics.Process] $Process, [int] $MaxOutput, [int] $MaxError, [int] $TimeoutMs)
+    $state = [pscustomobject]@{ Output = [Text.StringBuilder]::new(); Error = [Text.StringBuilder]::new(); OutputTooLarge = $false; ErrorTooLarge = $false; TimedOut = $false }
+    $outBuffer = New-Object char[] 4096; $errBuffer = New-Object char[] 4096
+    try {
+        $outDone = $false; $errDone = $false
+        $outTask = $Process.StandardOutput.ReadAsync($outBuffer, 0, $outBuffer.Length)
+        $errTask = $Process.StandardError.ReadAsync($errBuffer, 0, $errBuffer.Length)
+        $deadline = [Environment]::TickCount64 + $TimeoutMs
+        do {
+            [Threading.Tasks.Task]::Delay(25).GetAwaiter().GetResult()
+            if (-not $outDone -and $outTask.IsCompleted) { $count = $outTask.GetAwaiter().GetResult(); if ($count -eq 0) { $outDone = $true } elseif ($state.Output.Length + $count -gt $MaxOutput) { $state.OutputTooLarge = $true } else { [void]$state.Output.Append($outBuffer, 0, $count); $outTask = $Process.StandardOutput.ReadAsync($outBuffer, 0, $outBuffer.Length) } }
+            if (-not $errDone -and $errTask.IsCompleted) { $count = $errTask.GetAwaiter().GetResult(); if ($count -eq 0) { $errDone = $true } elseif ($state.Error.Length + $count -gt $MaxError) { $state.ErrorTooLarge = $true } else { [void]$state.Error.Append($errBuffer, 0, $count); $errTask = $Process.StandardError.ReadAsync($errBuffer, 0, $errBuffer.Length) } }
+            if ($state.OutputTooLarge -or $state.ErrorTooLarge) { try { $Process.Kill($true) } catch { }; break }
+            if ([Environment]::TickCount64 -ge $deadline) { $state.TimedOut = $true; try { $Process.Kill($true) } catch { }; break }
+            if ($outDone -and $errDone -and $Process.HasExited) { break }
+        } while ($true)
+        try { if (-not $Process.HasExited) { $state.TimedOut = $true; try { $Process.Kill($true) } catch { }; try { [void]$Process.WaitForExit(100) } catch { } } } catch { $state.TimedOut = $true }
+        try { if (-not $Process.HasExited) { try { $Process.Kill($true) } catch { }; try { [void]$Process.WaitForExit(100) } catch { } } } catch { $state.TimedOut = $true }
+        foreach ($pendingTask in @($outTask, $errTask)) { try { if ($pendingTask.IsCompleted) { [void]$pendingTask.GetAwaiter().GetResult() } } catch { } }
+        return $state
+    }
+    finally { }
+}
+
+function Assert-ReleaseIdentityAssessment {
+    $assessmentScript = Join-Path $repositoryRoot 'tools/assess-release-identity.ps1'
+    $assessmentSchemaPath = Join-Path $repositoryRoot 'release/contracts/release-identity-assessment.v1.schema.json'
+    $assessmentChecksumPath = Join-Path $repositoryRoot 'release/contracts/checksums.sha256'
+    foreach ($path in @($assessmentScript, $assessmentSchemaPath, $assessmentChecksumPath)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'M12 release identity assessment contract is missing.' }
+    }
+    $checksumLines = [IO.File]::ReadAllLines($assessmentChecksumPath)
+    if ($checksumLines.Count -ne 1 -or $checksumLines[0] -cnotmatch '^[0-9a-f]{64}  release-identity-assessment\.v1\.schema\.json$') { throw 'M12 release identity assessment checksum manifest is invalid.' }
+    $expectedHash = $checksumLines[0].Split(' ', [StringSplitOptions]::RemoveEmptyEntries)[0]
+    $actualHash = (Get-FileHash -LiteralPath $assessmentSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($expectedHash -cne $actualHash) { throw 'M12 release identity assessment schema checksum mismatch.' }
+
+    $pwshPath = Get-TrustedPowerShellPath
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $pwshPath
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    foreach ($argument in @('-NoProfile', '-NonInteractive', '-File', $assessmentScript, '-RepositoryRoot', $repositoryRoot)) {
+        [void]$start.ArgumentList.Add($argument)
+    }
+    $process = [Diagnostics.Process]::Start($start)
+    if ($null -eq $process) { throw 'M12 release identity assessment did not start.' }
+    try {
+        $streamState = Read-CappedProcessStreams $process 65536 4096 20000
+        if ($streamState.TimedOut) { throw 'M12 release identity assessment timed out.' }
+        $rawOutput = $streamState.Output.ToString()
+        $rawError = $streamState.Error.ToString()
+        if ($streamState.OutputTooLarge -or $streamState.ErrorTooLarge -or $rawError.Length -ne 0) { throw 'M12 release identity assessment emitted unsafe output.' }
+        $output = $rawOutput.Trim()
+        if ($process.ExitCode -ne 0 -or $output -match '\r?\n' -or [string]::IsNullOrWhiteSpace($output)) {
+            throw 'M12 release identity assessment did not produce one JSON record.'
+        }
+        $assessment = $output | ConvertFrom-Json -DateKind String
+        $expectedAssessmentProperties = '$schema', 'schemaVersion', 'assessmentId', 'assessedAtUtc', 'status', 'releaseEvidence', 'readyToRelease', 'commitSha', 'policyId', 'policyVersion', 'matrixId', 'counts', 'checks'
+        if ((@($assessment.PSObject.Properties.Name) -join '|') -cne ($expectedAssessmentProperties -join '|') -or
+            $assessment.'$schema' -cne 'release-identity-assessment.v1.schema.json' -or
+            $assessment.schemaVersion -ne 1 -or $assessment.assessmentId -cne 'm12-release-identity' -or
+            $assessment.status -cne 'not_ready' -or $assessment.releaseEvidence -ne $false -or
+            $assessment.readyToRelease -ne $false -or $assessment.policyId -cne 'sqlobserver-m12-policy-v1' -or
+            $assessment.matrixId -cne 'sqlobserver-m12' -or
+            $assessment.assessedAtUtc -notmatch '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}Z$' -or
+            $assessment.commitSha -notmatch '^[0-9a-f]{40}$' -or $assessment.policyVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$' -or
+            @($assessment.checks).Count -ne 29 -or
+            $assessment.counts.matrixLanes -ne 20 -or $assessment.counts.matrixCases -ne 35 -or
+            $assessment.counts.implementedLanes -ne 8 -or $assessment.counts.implementedCases -ne 8 -or
+            $assessment.counts.pendingLanes -ne 12 -or $assessment.counts.pendingCases -ne 27 -or $assessment.counts.checks -ne 29) {
+            throw 'M12 release identity assessment failed its closed contract.'
+        }
+        try {
+            $assessmentTime = [DateTimeOffset]::ParseExact($assessment.assessedAtUtc, "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal)
+            if ([Math]::Abs(([DateTimeOffset]::UtcNow - $assessmentTime).TotalMinutes) -gt 2) { throw 'stale' }
+        }
+        catch { throw 'M12 release identity assessment timestamp is not canonical/current.' }
+        $expectedAssessmentIds = @('head-commit','policy-identity','matrix-identity','matrix-inventory','profile-inventory','schema-checksum','matrix-only-verification','repository-contract','product-version','artifact-digests','publisher-identity','license','versioning-policy','signing-identity','key-custody','timestamping','key-rotation','revocation-response','release-approver','artifact-retention','evidence-access','canonical-build-environment','windows-certification','postgresql-certification','sqlserver-certification','browser-certification','installer-certification','sustained-load-recovery','release-manifest')
+        $expectedAssessmentCodes = @('HEAD_VERIFIED','POLICY_ID_VERIFIED','MATRIX_ID_VERIFIED','MATRIX_INVENTORY_VERIFIED','PROFILE_INVENTORY_VERIFIED','ASSESSMENT_SCHEMA_PINNED','MATRIX_ONLY_VERIFIED','REPOSITORY_CONTRACT_OBSERVED','PRODUCT_IDENTITY_PENDING','ARTIFACT_DIGESTS_PENDING') + @('OWNER_DECISION_REQUIRED') * 12 + @('MATRIX_PENDING') * 7
+        $orders = @($assessment.checks | ForEach-Object { [int]$_.order })
+        if (($orders -join ',') -cne ((1..29) -join ',')) { throw 'M12 release identity check order is invalid.' }
+        $ids = @($assessment.checks | ForEach-Object { [string]$_.checkId })
+        $codes = @($assessment.checks | ForEach-Object { [string]$_.code })
+        if (($ids -join '|') -cne ($expectedAssessmentIds -join '|') -or ($codes -join '|') -cne ($expectedAssessmentCodes -join '|')) { throw 'M12 release identity check catalog is invalid.' }
+        $expectedCountProperties = 'matrixLanes', 'matrixCases', 'implementedLanes', 'implementedCases', 'pendingLanes', 'pendingCases', 'checks'
+        if ((@($assessment.counts.PSObject.Properties.Name) -join '|') -cne ($expectedCountProperties -join '|')) { throw 'M12 release identity count shape is invalid.' }
+        foreach ($check in @($assessment.checks)) {
+            if ((@($check.PSObject.Properties.Name) -join '|') -cne 'checkId|order|status|code' -or
+                [string]$check.status -notin @('observed', 'blocked')) { throw 'M12 release identity check shape is invalid.' }
+        }
+        if (@($assessment.checks | Where-Object { $_.order -le 8 -and $_.status -ne 'observed' }).Count -ne 0 -or
+            @($assessment.checks | Where-Object { $_.order -ge 9 -and $_.status -ne 'blocked' }).Count -ne 0) {
+            throw 'M12 release identity observed or blocked status semantics are invalid.'
+        }
+        $head = Resolve-RepositoryHeadSha $repositoryRoot
+        if ($null -eq $head -or $assessment.commitSha -cne $head) { throw 'M12 release identity commit does not equal current HEAD.' }
+        if ($assessment.policyVersion -cne '1.2.0') { throw 'M12 release identity policy version is invalid.' }
+    }
+    catch [System.Text.Json.JsonException] { throw 'M12 release identity assessment JSON is invalid.' }
+    finally { $process.Dispose() }
 }
 
 function Invoke-TestProject {
@@ -1736,6 +1973,7 @@ Get-Command dotnet -ErrorAction Stop | Out-Null
 Get-Command pnpm -ErrorAction Stop | Out-Null
 
 Assert-RepositoryShape
+Assert-ReleaseIdentityAssessment
 Assert-ReleasePreflight
 
 # Child tests resolve their endpoint/connection contracts from the same profile

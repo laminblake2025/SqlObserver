@@ -13,6 +13,13 @@ substitute for Windows, PostgreSQL, SQL Server, browser, installer, signing,
 and sustained-load qualification. Release identity also has legal and supply
 chain consequences that cannot be inferred from a repository commit.
 
+The M12 implementation includes a decision-neutral, read-only release identity
+assessment under `release/contracts` and `tools/assess-release-identity.ps1`.
+It records the current commit and certification-policy identity, verifies the
+versioned matrix anchor, and reports an ordered catalog of 29 release gates.
+The assessment is deliberately not release evidence: its status is always
+`not_ready`, with `releaseEvidence` and `readyToRelease` both permanently false.
+
 ## Invariants from accepted architecture
 
 - The certification matrix and schemas are versioned source of truth, and the

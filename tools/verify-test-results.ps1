@@ -276,12 +276,17 @@ try {
     $manifestSchemaPath = Join-Path $RepositoryRoot 'release/certification/m12-certification-manifest.v1.schema.json'
     $pinPath = Join-Path $RepositoryRoot 'release/certification/m12-certification-assets.sha256'
     $pinFile = Read-SafeAsset 'release/certification/m12-certification-assets.sha256' $RepositoryRoot 65536
-    $pins = @{}
-    foreach ($line in ([Text.Encoding]::UTF8.GetString($pinFile.Bytes) -split "`r?`n" | Where-Object { $_ -ne '' })) {
-        if ($line -notmatch '^([0-9a-fA-F]{64})\s{2}([^\\/]+)$') { Reject 'SCHEMA' }
-        $pins[$Matches[2]] = $Matches[1].ToLowerInvariant()
+    $pins = [System.Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
+    $pinLines = [IO.File]::ReadAllLines($pinPath)
+    foreach ($line in $pinLines) {
+        if ($line -notmatch '^([0-9a-f]{64})  ([^\\/]+)$') { Reject 'SCHEMA' }
+        $pinName = $Matches[2]
+        if ($pins.ContainsKey($pinName)) { Reject 'SCHEMA' }
+        $pins.Add($pinName, $Matches[1])
     }
-    if ($pins.Count -ne 3 -or -not $pins.ContainsKey('m12-certification-matrix.v1.json') -or -not $pins.ContainsKey('m12-certification-matrix.v1.schema.json') -or -not $pins.ContainsKey('m12-certification-manifest.v1.schema.json')) { Reject 'SCHEMA' }
+    $expectedPinNames = @('m12-certification-matrix.v1.json', 'm12-certification-matrix.v1.schema.json', 'm12-certification-manifest.v1.schema.json')
+    if ($pinLines.Count -ne 3 -or $pins.Count -ne 3 -or
+        (@($pins.Keys | Sort-Object) -join '|') -cne (@($expectedPinNames | Sort-Object) -join '|')) { Reject 'SCHEMA' }
     foreach ($assetName in $ApprovedAssetHashes.Keys) {
         if ($ApprovedAssetHashes[$assetName] -notmatch '^[0-9a-fA-F]{64}$' -or $pins[$assetName] -cne $ApprovedAssetHashes[$assetName].ToLowerInvariant()) { Reject 'SCHEMA' }
     }

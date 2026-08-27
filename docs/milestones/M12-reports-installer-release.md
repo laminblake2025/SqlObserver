@@ -47,7 +47,10 @@ the matrix.
   under [ADR-0018](../adr/ADR-0018-web-assets-and-signalr.md) separately.
 - Release identity and evidence: complete legal/version/publisher/signing
   ownership, support-matrix qualification, and Release-profile evidence under
-  [ADR-0019](../adr/ADR-0019-release-identity-and-evidence.md).
+  [ADR-0019](../adr/ADR-0019-release-identity-and-evidence.md). The local
+  decision-neutral assessment records the exact commit, certification policy
+  identity, 20-lane/35-case matrix inventory, and 8 implemented versus 27
+  pending cases; it always remains `not_ready` and is not release evidence.
 
 ## External and owner gates
 
