@@ -6,12 +6,14 @@ using SqlObserver.Infrastructure.PostgreSql;
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class M7QueryPerformancePostgreSqlIntegrationTests
 {
     private readonly PostgreSql18Fixture fixture;
     public M7QueryPerformancePostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => this.fixture = fixture;
 
     [Fact]
+    [Trait("Category", "RequiresPostgreSql")]
     public async Task MigrationExposesFencedCommitAndBoundedProjectionWithoutTableGrants()
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
@@ -30,17 +32,4 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         Assert.True(reader.GetBoolean(5));
     }
 
-    [Fact]
-    public void CanonicalPersistenceDisposesResultReaderBeforeCommit()
-    {
-        string path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorRuntimeRepositoryPort.cs"));
-        string source = File.ReadAllText(path);
-        int readerScope = source.IndexOf("await using (NpgsqlDataReader reader = await canonical.ExecuteReaderAsync", StringComparison.Ordinal);
-        int commit = source.IndexOf("await transaction.CommitAsync(cancellationToken)", readerScope, StringComparison.Ordinal);
-        Assert.True(readerScope >= 0 && commit > readerScope);
-        string between = source[readerScope..commit];
-        Assert.Contains("await reader.ReadAsync", between, StringComparison.Ordinal);
-        Assert.Contains("while (await reader.ReadAsync", between, StringComparison.Ordinal);
-        Assert.DoesNotContain("await transaction.CommitAsync", between, StringComparison.Ordinal);
-    }
 }

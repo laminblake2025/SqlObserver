@@ -13,6 +13,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 /// roles; they are not source-text contract checks.
 /// </summary>
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class M10AnalyticsPostgreSqlIntegrationTests
 {
     private readonly PostgreSql18Fixture fixture;

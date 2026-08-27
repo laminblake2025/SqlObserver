@@ -14,10 +14,32 @@ public sealed class PostgreSql18Fixture : IAsyncLifetime
 {
     public const string Image = "postgres:18.4-bookworm@sha256:7e6103cf85f88f7a0eddb3ec0b1ba8940eba098ed118ade25a729ca9daee5568";
 
-    private readonly PostgreSqlContainer _container;
+    private readonly PostgreSqlContainer? _container;
+    private readonly string _adminConnectionString;
 
     public PostgreSql18Fixture()
     {
+        string? profile = Environment.GetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE");
+        string? releaseConnection = Environment.GetEnvironmentVariable("SQLOBSERVER_RELEASE_POSTGRES");
+        if (string.Equals(profile, "Release", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(releaseConnection))
+                throw new InvalidOperationException("SQLOBSERVER_RELEASE_POSTGRES is required for Release PostgreSQL evidence.");
+            try
+            {
+                var builder = new NpgsqlConnectionStringBuilder(releaseConnection);
+                if (string.IsNullOrWhiteSpace(builder.Host) || string.IsNullOrWhiteSpace(builder.Database))
+                    throw new InvalidOperationException("SQLOBSERVER_RELEASE_POSTGRES must specify Host and Database.");
+                builder.Pooling = false;
+                _adminConnectionString = builder.ConnectionString;
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidOperationException("SQLOBSERVER_RELEASE_POSTGRES is malformed.", exception);
+            }
+            return;
+        }
+
         string password = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         _container = new PostgreSqlBuilder(Image)
             .WithDatabase("sqlobserver_test_admin")
@@ -25,17 +47,19 @@ public sealed class PostgreSql18Fixture : IAsyncLifetime
             .WithPassword(password)
             .WithCleanUp(true)
             .Build();
+        _adminConnectionString = string.Empty;
     }
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public Task InitializeAsync() => _container is null ? Task.CompletedTask : _container.StartAsync();
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public Task DisposeAsync() => _container is null ? Task.CompletedTask : _container!.DisposeAsync().AsTask();
 
     public async Task<RepositoryTestDatabase> CreateDatabaseAsync(
         CancellationToken cancellationToken = default)
     {
         string databaseName = $"sqlobserver_{Guid.NewGuid():N}";
-        await using (var connection = new NpgsqlConnection(_container.GetConnectionString()))
+        string adminConnectionString = _container is null ? _adminConnectionString : _container!.GetConnectionString();
+        await using (var connection = new NpgsqlConnection(adminConnectionString))
         {
             await connection.OpenAsync(cancellationToken);
             await using var command = new NpgsqlCommand(
@@ -44,7 +68,7 @@ public sealed class PostgreSql18Fixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        var connectionString = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
+        var connectionString = new NpgsqlConnectionStringBuilder(adminConnectionString)
         {
             Database = databaseName,
             IncludeErrorDetail = false,
@@ -55,23 +79,27 @@ public sealed class PostgreSql18Fixture : IAsyncLifetime
             _container,
             databaseName,
             connectionString.ConnectionString,
+            adminConnectionString,
             dataSource);
     }
 }
 
 public sealed class RepositoryTestDatabase : IAsyncDisposable
 {
-    private readonly PostgreSqlContainer _container;
+    private readonly PostgreSqlContainer? _container;
     private readonly string _adminConnectionString;
+    private readonly string _cleanupConnectionString;
 
     internal RepositoryTestDatabase(
-        PostgreSqlContainer container,
+        PostgreSqlContainer? container,
         string databaseName,
         string adminConnectionString,
+        string cleanupConnectionString,
         NpgsqlDataSource dataSource)
     {
         _container = container;
         _adminConnectionString = adminConnectionString;
+        _cleanupConnectionString = cleanupConnectionString;
         DatabaseName = databaseName;
         DataSource = dataSource;
     }
@@ -117,7 +145,7 @@ public sealed class RepositoryTestDatabase : IAsyncDisposable
     {
         await DataSource.DisposeAsync();
 
-        await using var connection = new NpgsqlConnection(_container.GetConnectionString());
+        await using var connection = new NpgsqlConnection(_container is null ? _cleanupConnectionString : _container.GetConnectionString());
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             $"DROP DATABASE IF EXISTS \"{DatabaseName}\" WITH (FORCE);",

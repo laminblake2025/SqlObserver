@@ -83,6 +83,7 @@ public sealed class SqlServerCoreHealthIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresSqlServer")]
     public async Task LocalSqlServerCollectorsAreBoundedPassiveAndProduceExactOutputKinds()
     {
         SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadEmbedded();
@@ -280,9 +281,7 @@ public sealed class SqlServerCoreHealthIntegrationTests
             TargetId,
             TargetRevision,
             new SqlServerConnectionPolicy(
-                new SqlServerEndpoint(
-                    new SqlServerHostName("DESKTOP-IORRV3E"),
-                    new SqlServerInstanceName("SQLEXPRESS")),
+                new SqlServerEndpoint(new SqlServerHostName("test"), new SqlServerInstanceName("SQLEXPRESS")),
                 new SqlServerConnectTimeout(TimeSpan.FromSeconds(5))),
             profile,
             new CollectorAttemptNumber(1),
@@ -339,19 +338,7 @@ public sealed class SqlServerCoreHealthIntegrationTests
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(policy);
-            var builder = new SqlConnectionStringBuilder
-            {
-                DataSource = "DESKTOP-IORRV3E\\SQLEXPRESS",
-                InitialCatalog = "master",
-                IntegratedSecurity = true,
-                Encrypt = SqlConnectionEncryptOption.Optional,
-                TrustServerCertificate = true,
-                ApplicationName = "SqlObserver.M4IntegrationTests",
-                ConnectTimeout = 5,
-                Pooling = false,
-                Enlist = false,
-            };
-            var connection = new SqlConnection(builder.ConnectionString);
+            var connection = new SqlConnection(SqlServerLabContract.ConnectionString);
             try
             {
                 await connection.OpenAsync(cancellationToken);

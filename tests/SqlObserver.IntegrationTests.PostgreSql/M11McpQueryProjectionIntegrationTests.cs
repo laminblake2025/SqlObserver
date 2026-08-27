@@ -11,6 +11,7 @@ using SqlObserver.Infrastructure.PostgreSql;
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class M11McpQueryProjectionIntegrationTests
 {
     private readonly PostgreSql18Fixture _fixture;

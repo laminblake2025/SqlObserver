@@ -26,7 +26,7 @@ Status meanings:
 | **M9 — Backups, jobs, TempDB, Availability Groups** | Ordered collectors and bounded projections for backup status, SQL Agent failures, TempDB health, and Availability Group health | Implemented locally; Docker/live SQL certification pending |
 | **M10 — Rollups, baselines, forecasts, incident correlation** | Rollups, baselines, metric-window comparison, storage forecasts, host metrics, replication evidence, evidence packets, incident threads, retention/partition production hardening | Implemented locally; Docker/live target and release certification remain pending |
 | **M11 — MCP** | Official stable C# SDK selection at implementation time behind adapter; stdio-to-server authentication; all and only allowlisted read-only tools; service-layer RBAC; UTC/bounds/pagination; audit every call; stable/current-protocol compatibility suite | Implemented locally; live Kerberos/TLS and release certification remain M12 gates |
-| **M12 — Reports, installer, upgrades, release hardening** | Reports/exports; WiX and PostgreSQL packaging; Windows Service/gMSA/TLS configuration; install/upgrade/recovery/uninstall; initial-release certification; security/performance/end-to-end gates; release and runbooks | Planned |
+| **M12 — Reports, installer, upgrades, release hardening** | Reports/exports; WiX and PostgreSQL packaging; Windows Service/gMSA/TLS configuration; install/upgrade/recovery/uninstall; initial-release certification; security/performance/end-to-end gates; release and runbooks | Certification matrix, strict evidence verifier, explicit Local/Release validation profiles, and no-hidden-skip gates implemented; reports, packaging, deployment, and external release certification remain incomplete |
 
 ## High-level requirement traceability
 
@@ -154,10 +154,10 @@ This is the completion checklist for the first assignment. Each item was inspect
 2. **Solution and project graph — complete.** Every required source and test skeleton is in `SqlObserver.slnx`; dependencies point inward and executable hosts make only scaffold claims.
 3. **Frontend skeleton — complete.** The repository contains an original minimal React UI, strict TypeScript configuration, deterministic pnpm lock, and typecheck/test/build commands.
 4. **Non-runtime directory contracts — complete.** Database, collector-resource, installer, and test-data paths contain explanatory placeholders and no production artifacts.
-5. **Validation entry point — complete.** `tools/validate.ps1` fails on restore/build/test/frontend/policy errors, preserves honest future-test skips, and resolves the repository from its own path.
+5. **Validation entry point — complete.** `tools/validate.ps1` fails on restore/build/test/frontend/policy errors, uses explicit Local/Release lanes and fail-closed external filters, and resolves the repository from its own path.
 6. **Development helper placeholders — complete.** `dev-up.ps1`, `seed-lab.ps1`, and `generate-permissions.ps1` are safe notices that do not provision, connect, grant, or mutate.
 7. **Initial CI workflow — complete.** The least-privilege Windows workflow installs the pinned toolchains and invokes the single validation entry point.
-8. **Clean first-assignment validation — complete.** `pwsh ./tools/validate.ps1` completed locked restore, Release build with zero warnings/errors, eight test-project runs (four active scaffold suites and four explicitly skipped future-runtime suites), frozen frontend install, strict typecheck, frontend test, and production build.
+8. **Clean first-assignment validation — complete.** `pwsh ./tools/validate.ps1` completed locked restore, Release build with zero warnings/errors, all test-project runs with no hidden runtime skips, frozen frontend install, strict typecheck, frontend test, and production build.
 
 ## Completed M2 repository tasks
 

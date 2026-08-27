@@ -15,8 +15,6 @@ namespace SqlObserver.IntegrationTests.SqlServer;
 
 public sealed class SqlServerCapabilityIntegrationTests
 {
-    private const string LabDataSource = "DESKTOP-IORRV3E\\SQLEXPRESS";
-
     [Fact]
     public void EmbeddedCollectorAssetsAreChecksumVerifiedBoundedAndPassive()
     {
@@ -210,6 +208,7 @@ public sealed class SqlServerCapabilityIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresSqlServer")]
     public async Task LocalSqlServerDiscoveryIsBoundedSecurityAwareAndNonMutating()
     {
         var connectionFactory = new LabSqlServerConnectionFactory();
@@ -346,9 +345,9 @@ public sealed class SqlServerCapabilityIntegrationTests
 
     private static CapabilityDiscoveryRequest CreateLabRequest(TimeSpan timeout)
     {
-        var endpoint = new SqlServerEndpoint(
-            new SqlServerHostName("DESKTOP-IORRV3E"),
-            new SqlServerInstanceName("SQLEXPRESS"));
+        // The request is also used by cancellation-only tests; the live
+        // factory below supplies the configured endpoint when it opens SQL.
+        var endpoint = new SqlServerEndpoint(new SqlServerHostName("test"), new SqlServerInstanceName("SQLEXPRESS"));
         return new CapabilityDiscoveryRequest(
             new MonitoredInstanceId(Guid.NewGuid()),
             new ObservationTargetRevision(1),
@@ -411,19 +410,7 @@ public sealed class SqlServerCapabilityIntegrationTests
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(policy);
-            var builder = new SqlConnectionStringBuilder
-            {
-                DataSource = LabDataSource,
-                InitialCatalog = "master",
-                IntegratedSecurity = true,
-                Encrypt = SqlConnectionEncryptOption.Optional,
-                TrustServerCertificate = true,
-                ApplicationName = "SqlObserver.IntegrationTests.SqlServer",
-                ConnectTimeout = 5,
-                Pooling = false,
-                Enlist = false,
-            };
-            var connection = new SqlConnection(builder.ConnectionString);
+            var connection = new SqlConnection(SqlServerLabContract.ConnectionString);
             try
             {
                 await connection.OpenAsync(cancellationToken);

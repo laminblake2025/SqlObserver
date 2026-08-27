@@ -21,6 +21,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 /// mocks, so Docker-enabled CI exercises grants, RLS, fencing and replay.
 /// </summary>
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class M8AlertingPostgreSqlIntegrationTests
 {
     private sealed record ReplaySnapshot(string RuleState, string Outbox, string History, string Replay, string EvaluationQueue);

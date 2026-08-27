@@ -11,6 +11,7 @@ using SqlObserver.Infrastructure.PostgreSql;
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class M5ActivityPostgreSqlIntegrationTests
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));

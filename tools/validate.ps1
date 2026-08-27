@@ -3,11 +3,18 @@ param(
     # Retained for the canonical desktop validation invocation. The repository
     # validation gate does not require Godot; accepting the path keeps the command
     # stable across milestone slices.
-    [string] $GodotPath
+    [string] $GodotPath,
+
+    [ValidateSet('Local', 'Release')]
+    [string] $Profile = 'Local'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion -lt [Version]'7.5') {
+    throw 'SqlObserver validation requires PowerShell 7.5 or newer (pwsh); Windows PowerShell 5.1 and pwsh 7.4 are unsupported.'
+}
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $solutionPath = Join-Path $repositoryRoot 'SqlObserver.slnx'
@@ -423,7 +430,8 @@ function Assert-RepositoryShape {
         'SqlObserver.McpContractTests',
         'SqlObserver.SecurityTests',
         'SqlObserver.PerformanceTests',
-        'SqlObserver.EndToEndTests'
+        'SqlObserver.EndToEndTests',
+        'SqlObserver.ReleaseTests'
     )
 
     foreach ($projectName in $requiredTestProjects) {
@@ -435,14 +443,14 @@ function Assert-RepositoryShape {
 
     $sourceProjects = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -Recurse -Filter '*.csproj' -File)
     $testProjects = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.csproj' -File)
-    if ($sourceProjects.Count -ne 16 -or $testProjects.Count -ne 8) {
-        throw "Expected 16 source and 8 test projects; found $($sourceProjects.Count) source and $($testProjects.Count) test projects."
+    if ($sourceProjects.Count -ne 16 -or $testProjects.Count -ne 9) {
+        throw "Expected 16 source and 9 test projects; found $($sourceProjects.Count) source and $($testProjects.Count) test projects."
     }
 
     [xml] $solution = Get-Content -LiteralPath $solutionPath -Raw
     $solutionProjects = @($solution.SelectNodes('//Project'))
-    if ($solutionProjects.Count -ne 24) {
-        throw "Expected 24 projects in SqlObserver.slnx, found $($solutionProjects.Count)."
+    if ($solutionProjects.Count -ne 25) {
+        throw "Expected 25 projects in SqlObserver.slnx, found $($solutionProjects.Count)."
     }
 
     $expectedSolutionProjects = @(
@@ -453,8 +461,8 @@ function Assert-RepositoryShape {
         $solutionProjects | ForEach-Object { $_.GetAttribute('Path').Replace('\', '/') }
     ) | Sort-Object -Unique
     $solutionDifferences = @(Compare-Object $expectedSolutionProjects $actualSolutionProjects)
-    if ($actualSolutionProjects.Count -ne 24 -or $solutionDifferences.Count -ne 0) {
-        throw 'SqlObserver.slnx membership differs from the exact required 16 source and 8 test projects.'
+    if ($actualSolutionProjects.Count -ne 25 -or $solutionDifferences.Count -ne 0) {
+        throw 'SqlObserver.slnx membership differs from the exact required 16 source and 9 test projects.'
     }
 
     $buildProperties = Get-Content -LiteralPath (Join-Path $repositoryRoot 'Directory.Build.props') -Raw
@@ -483,8 +491,8 @@ function Assert-RepositoryShape {
         Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter 'packages.lock.json' -File |
             Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' }
     )
-    if ($packageLocks.Count -ne 24) {
-        throw "Expected one NuGet lock file per project (24), found $($packageLocks.Count)."
+    if ($packageLocks.Count -ne 25) {
+        throw "Expected one NuGet lock file per project (25), found $($packageLocks.Count)."
     }
 
     $allowedPackagesByProject = @{
@@ -1323,13 +1331,16 @@ function Assert-RepositoryShape {
         if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $requiredM7TestAsset) -PathType Leaf)) { throw "M7 focused test asset is missing: $requiredM7TestAsset" }
     }
     $readmeStatus = Get-Content -LiteralPath (Join-Path $repositoryRoot 'README.md') -Raw
+    $databaseTestReadme = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/tests/README.md') -Raw
     if ($readmeStatus -notmatch 'Milestones 0 through 11 are implemented' -or
         $readmeStatus -notmatch '(?i)M5 activity' -or
         $readmeStatus -notmatch '(?i)M6.*(?:system_health|deadlock)' -or
          $readmeStatus -notmatch '(?i)M7.*(?:Query Store|query-performance)' -or
          $readmeStatus -notmatch '(?i)M9.*operational-health' -or
          $readmeStatus -notmatch '(?i)M11.*(?:MCP|read-only)' -or
-         $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4') {
+         $readmeStatus -match '(?i)quick start[^\r\n]*(?:through|only).*M4' -or
+         $readmeStatus -notmatch 'PowerShell Core 7\.5\+' -or
+         $databaseTestReadme -notmatch 'PowerShell Core 7\.5\+') {
         throw 'README repository status must explicitly identify M0-M11 and the bounded diagnostic, analytics, and MCP scope.'
     }
     $registeredSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Collector/CollectorServiceRegistration.cs') -Raw
@@ -1430,7 +1441,8 @@ function Assert-RepositoryShape {
         -not $workflow.Contains('runs-on: [self-hosted, Windows, X64, sql-observer]') -or
         -not $workflow.Contains('DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet') -or
         -not $workflow.Contains('global-json-file: global.json') -or
-        -not $workflow.Contains('run: ./tools/validate.ps1')) {
+        -not $workflow.Contains('run: ./tools/validate.ps1') -or
+        -not $workflow.Contains('Require PowerShell 7.5+')) {
         throw 'CI must use the labeled local runner, least permissions, the pinned SDK, and the canonical validator.'
     }
 
@@ -1481,12 +1493,192 @@ function Assert-RepositoryShape {
             }
         }
     }
+
+    # M12 evidence is a versioned contract.  Keep this static gate cheap so
+    # malformed or silently replaced certification definitions fail before
+    # any build or test work starts.
+    foreach ($certificationAsset in @(
+        'release/certification/m12-certification-matrix.v1.json',
+        'release/certification/m12-certification-matrix.v1.schema.json',
+        'release/certification/m12-certification-manifest.v1.schema.json',
+        'tools/verify-test-results.ps1')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $certificationAsset) -PathType Leaf)) {
+            throw "M12 certification asset is missing: $certificationAsset"
+        }
+    }
+    $certificationMatrix = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-certification-matrix.v1.json') -Raw | ConvertFrom-Json -DateKind String
+    if ($certificationMatrix.'$schema' -cne 'm12-certification-matrix.v1.schema.json' -or
+        $certificationMatrix.schemaVersion -ne 1 -or $certificationMatrix.matrixId -cne 'sqlobserver-m12' -or
+        (@($certificationMatrix.profiles.PSObject.Properties.Name | Sort-Object) -join '|') -cne 'Local|Release') {
+        throw 'M12 certification matrix is not the expected versioned Local/Release contract.'
+    }
+    $testSource = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.cs' -File)
+    # Every test project has an explicit lane.  Environment-backed classes
+    # carry a stable trait and are selected by an explicit local filter; all
+    # untagged tests remain part of the local validation profile.
+    $testLaneMap = [ordered]@{
+        'SqlObserver.UnitTests' = 'local'
+        'SqlObserver.IntegrationTests.PostgreSql' = 'external-postgresql'
+        'SqlObserver.IntegrationTests.SqlServer' = 'local-sqlserver-lab'
+        'SqlObserver.ApiContractTests' = 'local'
+        'SqlObserver.McpContractTests' = 'local'
+        'SqlObserver.SecurityTests' = 'local'
+        'SqlObserver.PerformanceTests' = 'local'
+        'SqlObserver.EndToEndTests' = 'local-with-external-trait'
+        'SqlObserver.ReleaseTests' = 'local-contract'
+    }
+    $discoveredTestProjectNames = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.csproj' -File | ForEach-Object { $_.BaseName })
+    if ((@($testLaneMap.Keys | Sort-Object) -join '|') -cne (@($discoveredTestProjectNames | Sort-Object) -join '|')) {
+        throw 'Every test project must be assigned to exactly one Local or external validation lane.'
+    }
+    foreach ($traitFile in @(
+        'M3RepositoryIntegrationTests.cs', 'M4CollectorPersistenceIntegrationTests.cs',
+        'M5ActivityPostgreSqlIntegrationTests.cs', 'M6DeadlockPostgreSqlIntegrationTests.cs',
+        'M7QueryPerformancePostgreSqlIntegrationTests.cs',
+        'M8AlertingPostgreSqlIntegrationTests.cs', 'M9OperationalHealthPostgreSqlIntegrationTests.cs',
+        'M10AnalyticsPostgreSqlIntegrationTests.cs',
+        'M11McpAuditPostgreSqlIntegrationTests.cs', 'M11McpQueryProjectionIntegrationTests.cs',
+        'LeaseResilienceIntegrationTests.cs', 'MigrationIntegrationTests.cs',
+        'RepositoryReplaySafetyIntegrationTests.cs', 'RepositoryRuntimeIntegrationTests.cs',
+        'RepositorySecurityAndFailureIntegrationTests.cs')) {
+        $traitPath = Join-Path $repositoryRoot "tests/SqlObserver.IntegrationTests.PostgreSql/$traitFile"
+        $traitText = Get-Content -LiteralPath $traitPath -Raw
+        if ($traitText -notmatch '\[Trait\("Category",\s*"RequiresPostgreSql"\)\]') { throw "PostgreSQL environment class is missing its explicit RequiresPostgreSql trait: $traitFile" }
+    }
+    $m9ExternalText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.EndToEndTests/M9OperationalHealthEndToEndTests.cs') -Raw
+    if ($m9ExternalText -notmatch '\[Fact\]\s*\r?\n\s*\[Trait\("Category",\s*"RequiresPostgreSql"\)\]' -or $m9ExternalText -match 'PostgreSqlFact|\bSkip\s*=') {
+        throw 'M9 PostgreSQL E2E must be an ordinary active Fact with the exact RequiresPostgreSql trait and no runtime Skip.'
+    }
+    $m9ResolverStart = $m9ExternalText.IndexOf("`n    private static string? ResolvePostgreSqlContract()", [StringComparison]::Ordinal)
+    $m9ResolverEnd = if ($m9ResolverStart -ge 0) { $m9ExternalText.IndexOf('[Fact]', $m9ResolverStart, [StringComparison]::Ordinal) } else { -1 }
+    $m9ResolverText = if ($m9ResolverStart -ge 0 -and $m9ResolverEnd -gt $m9ResolverStart) { $m9ExternalText.Substring($m9ResolverStart, $m9ResolverEnd - $m9ResolverStart) } else { '' }
+    if ($m9ResolverText -match 'SQLOBSERVER_E2E_POSTGRES' -or
+        $m9ResolverText -match 'releaseProfile\s*\?\s*release\s*:\s*local\s*\?\?\s*release' -or
+        $m9ResolverText -notmatch 'NpgsqlConnectionStringBuilder' -or
+        $m9ResolverText -notmatch 'must specify Host and Database') {
+        throw 'M9 PostgreSQL resolver must never let the Release connection bleed into Local.'
+    }
+    $dynamicSkipMatches = @($testSource | Select-String -Pattern '(?i)\bSkip\s*=')
+    if ($dynamicSkipMatches.Count -ne 0) {
+        throw 'Dynamic test Skip mechanisms are forbidden; use an explicit trait and fail-fast precondition.'
+    }
+    $m10DockerScript = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/tests/m10_postgres_docker.ps1') -Raw
+    if ($m10DockerScript -match 'UNAVAILABLE[^\r\n]*exit\s+0' -or $m10DockerScript -notmatch '(?i)ON_ERROR_STOP\s*=\s*1') {
+        throw 'Docker/PostgreSQL probe cannot report unavailable as a successful certification result.'
+    }
+    foreach ($sqlServerSource in @(
+        'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerCapabilityIntegrationTests.cs',
+        'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerCoreHealthIntegrationTests.cs',
+        'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerActivityIntegrationTests.cs')) {
+        $sqlServerText = Get-Content -LiteralPath (Join-Path $repositoryRoot $sqlServerSource) -Raw
+        if ($sqlServerText -match 'DESKTOP-IORRV3E|DataSource\s*=\s*"[^$]') { throw "SQL Server lab endpoint must come from the local/release environment contract: $sqlServerSource" }
+        if ($sqlServerText -notmatch '\[Trait\("Category",\s*"RequiresSqlServer"\)\]') { throw "SQL Server live test is missing its explicit RequiresSqlServer trait: $sqlServerSource" }
+    }
+    $sqlContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerLabContract.cs') -Raw
+    if ($sqlContractText -notmatch 'SQLOBSERVER_RELEASE_SQLSERVER' -or
+        $sqlContractText -notmatch 'SqlConnectionStringBuilder' -or
+        $sqlContractText -notmatch 'IntegratedSecurity' -or
+        $sqlContractText -notmatch 'TrustServerCertificate' -or
+        $sqlContractText -notmatch 'must validate the server certificate') {
+        throw 'SQL Server local/release contract must use builder validation, Windows authentication, and reject certificate bypass.'
+    }
+    $postgresFixtureText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/PostgreSql18Fixture.cs') -Raw
+    if ($postgresFixtureText -notmatch 'SQLOBSERVER_RELEASE_POSTGRES' -or
+        $postgresFixtureText -notmatch 'string\.Equals\(profile,\s*"Release"' -or
+        $postgresFixtureText -notmatch 'new PostgreSqlBuilder') {
+        throw 'PostgreSQL fixture must explicitly switch between the validated Release connection and local Testcontainers.'
+    }
+    $releaseBranchOffset = $postgresFixtureText.IndexOf('string.Equals(profile, "Release"', [StringComparison]::Ordinal)
+    $containerOffset = $postgresFixtureText.IndexOf('new PostgreSqlBuilder', [StringComparison]::Ordinal)
+    if ($releaseBranchOffset -lt 0 -or $containerOffset -le $releaseBranchOffset -or $postgresFixtureText.Substring($releaseBranchOffset, $containerOffset - $releaseBranchOffset) -notmatch 'return;') {
+        throw 'PostgreSQL Release fixture path must return before constructing a Testcontainers container.'
+    }
+}
+
+function Assert-ReleasePreflight {
+    if ($Profile -ne 'Release') { return }
+    if (-not $IsWindows -or -not [Environment]::Is64BitOperatingSystem) {
+        throw 'Release certification requires a supported 64-bit Windows host.'
+    }
+    $matrixPath = Join-Path $repositoryRoot 'release/certification/m12-certification-matrix.v1.json'
+    $matrix = Get-Content -LiteralPath $matrixPath -Raw | ConvertFrom-Json -DateKind String
+    try {
+        Invoke-CheckedCommand -Executable 'pwsh' -Arguments @(
+            '-NoProfile', '-NonInteractive', '-File', (Join-Path $repositoryRoot 'tools/verify-test-results.ps1'),
+            '-MatrixOnly', '-RepositoryRoot', $repositoryRoot
+        ) -WorkingDirectory $repositoryRoot
+    }
+    catch {
+        throw 'Release preflight failed: pending certification producer(s): certification matrix/verifier readiness.'
+    }
+    $implementedReleaseLanes = @('repository-contract', 'release-build', 'unit', 'api', 'security', 'performance', 'end-to-end', 'frontend')
+    $pendingLanes = @($matrix.profiles.Release.requiredLanes | Where-Object { $implementedReleaseLanes -notcontains [string]$_ })
+    if ($pendingLanes.Count -ne 0) {
+        throw "Release preflight failed: pending certification producer(s): $($pendingLanes -join ', ')"
+    }
+    foreach ($requiredEnvironmentVariable in @(
+        'SQLOBSERVER_RELEASE_POSTGRES',
+        'SQLOBSERVER_RELEASE_SQLSERVER',
+        'SQLOBSERVER_RELEASE_BROWSER',
+        'SQLOBSERVER_RELEASE_INSTALLER',
+        'SQLOBSERVER_RELEASE_SIGNING',
+        'SQLOBSERVER_CERTIFICATION_MANIFEST')) {
+        if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($requiredEnvironmentVariable))) {
+            throw "Release certification preflight is missing required evidence/lab configuration: $requiredEnvironmentVariable"
+        }
+    }
+    $releasePostgreSql = [Environment]::GetEnvironmentVariable('SQLOBSERVER_RELEASE_POSTGRES')
+    if ($releasePostgreSql -notmatch '(?i)(^|;)\s*(host|server|data source)\s*=') {
+        throw 'Release PostgreSQL contract is malformed.'
+    }
+    $releaseSqlServer = [Environment]::GetEnvironmentVariable('SQLOBSERVER_RELEASE_SQLSERVER')
+    if ($releaseSqlServer -notmatch '(?i)(^|;)\s*(server|data source)\s*=') {
+        throw 'Release SQL Server contract is malformed.'
+    }
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if ($null -eq $docker) { throw 'Release certification requires a Docker/PostgreSQL lab; docker is unavailable.' }
+    $dockerInfo = & docker info --format '{{.ServerVersion}}' 2>&1
+    if ($LASTEXITCODE -ne 0 -or ($dockerInfo -match '(?i)error|access is denied|cannot connect|daemon unavailable')) {
+        throw 'Release certification requires a running Docker/PostgreSQL lab.'
+    }
+    $manifestPath = [Environment]::GetEnvironmentVariable('SQLOBSERVER_CERTIFICATION_MANIFEST')
+    Invoke-CheckedCommand -Executable 'pwsh' -Arguments @(
+        '-NoProfile', '-NonInteractive', '-File', (Join-Path $repositoryRoot 'tools/verify-test-results.ps1'),
+        '-ManifestPath', $manifestPath, '-Profile', 'Release', '-RepositoryRoot', $repositoryRoot
+    ) -WorkingDirectory $repositoryRoot
+}
+
+function Invoke-TestProject {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Project,
+        [string] $Filter
+    )
+
+    $resolved = if ([IO.Path]::IsPathRooted($Project)) { $Project } else { Join-Path $repositoryRoot $Project }
+    $listArguments = @('test', $resolved, '--configuration', 'Release', '--no-build', '--no-restore', '--list-tests')
+    if (-not [string]::IsNullOrWhiteSpace($Filter)) { $listArguments += @('--filter', $Filter) }
+    Push-Location $repositoryRoot
+    try {
+        $listed = @(& dotnet @listArguments 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw "Unable to enumerate tests for $Project." }
+        $testLines = @($listed | Where-Object { [string]$_ -match '^\s{2,}\S' -and [string]$_ -notmatch '^\s*(Test run|Passed|Failed|Total tests|\S+\.dll)' })
+        if ($testLines.Count -eq 0) { throw "Test selection produced zero tests for $Project; refusing a silent pass." }
+    }
+    finally { Pop-Location }
+    $arguments = @('test', $resolved, '--configuration', 'Release', '--no-build', '--no-restore')
+    if (-not [string]::IsNullOrWhiteSpace($Filter)) { $arguments += @('--filter', $Filter) }
+    Invoke-CheckedCommand -Executable 'dotnet' -Arguments $arguments -WorkingDirectory $repositoryRoot
 }
 
 Get-Command dotnet -ErrorAction Stop | Out-Null
 Get-Command pnpm -ErrorAction Stop | Out-Null
 
 Assert-RepositoryShape
+Assert-ReleasePreflight
+
+# Child tests resolve their endpoint/connection contracts from the same profile
+# selected by this invocation; no release value is presence-only.
+$env:SQLOBSERVER_VALIDATION_PROFILE = $Profile
 
 Invoke-CheckedCommand -Executable 'dotnet' -Arguments @(
     'restore', $solutionPath,
@@ -1500,12 +1692,30 @@ Invoke-CheckedCommand -Executable 'dotnet' -Arguments @(
     '--no-restore'
 ) -WorkingDirectory $repositoryRoot
 
-Invoke-CheckedCommand -Executable 'dotnet' -Arguments @(
-    'test', $solutionPath,
-    '--configuration', 'Release',
-    '--no-build',
-    '--no-restore'
-) -WorkingDirectory $repositoryRoot
+$testProjectsToRun = @(
+        'tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj',
+        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj',
+        'tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj',
+        'tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj',
+        'tests/SqlObserver.SecurityTests/SqlObserver.SecurityTests.csproj',
+        'tests/SqlObserver.PerformanceTests/SqlObserver.PerformanceTests.csproj',
+        'tests/SqlObserver.EndToEndTests/SqlObserver.EndToEndTests.csproj',
+        'tests/SqlObserver.McpContractTests/SqlObserver.McpContractTests.csproj',
+        'tests/SqlObserver.ReleaseTests/SqlObserver.ReleaseTests.csproj'
+    )
+foreach ($testProject in $testProjectsToRun) {
+    $filter = $null
+    if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.EndToEndTests.csproj') {
+        $filter = 'Category!=RequiresPostgreSql'
+    }
+    if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.IntegrationTests.PostgreSql.csproj') {
+        $filter = 'Category!=RequiresPostgreSql'
+    }
+    if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj' -and [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('SQLOBSERVER_LOCAL_SQLSERVER'))) {
+        $filter = 'Category!=RequiresSqlServer'
+    }
+    Invoke-TestProject -Project $testProject -Filter $filter
+}
 
 Invoke-CheckedCommand -Executable 'pnpm' -Arguments @(
     '--dir', $webPath,
@@ -1520,4 +1730,18 @@ foreach ($script in @('typecheck', 'test', 'build')) {
     ) -WorkingDirectory $repositoryRoot
 }
 
-Write-Host 'SqlObserver repository validation completed successfully.'
+if ($Profile -eq 'Local') {
+    $summaryMatrix = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-certification-matrix.v1.json') -Raw | ConvertFrom-Json -DateKind String
+    $omittedExternalLanes = @($summaryMatrix.profiles.Local.omittedExternalLanes | ForEach-Object { [string]$_ })
+    $omittedText = if ($omittedExternalLanes.Count -eq 0) { '(none)' } else { $omittedExternalLanes -join ', ' }
+    $localSqlConfigured = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('SQLOBSERVER_LOCAL_SQLSERVER'))
+    if ($localSqlConfigured) {
+        Write-Host 'Local SQL Server dev lab: attempted (a failure is fatal; no green result is emitted).'
+    } else {
+        Write-Host 'Local SQL Server dev lab: omitted because SQLOBSERVER_LOCAL_SQLSERVER is not configured; environment-independent SQL tests ran.'
+    }
+    Write-Host "Local profile omitted external lanes (from matrix): $omittedText"
+    Write-Host 'SqlObserver local validation completed successfully. This result is NOT release certification.'
+} else {
+    Write-Host 'SqlObserver Release profile checks completed. No release certification claim is made unless the verified evidence manifest covers every producer lane.'
+}

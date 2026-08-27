@@ -24,6 +24,7 @@
     <Project Path="tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj" />
     <Project Path="tests/SqlObserver.McpContractTests/SqlObserver.McpContractTests.csproj" />
     <Project Path="tests/SqlObserver.PerformanceTests/SqlObserver.PerformanceTests.csproj" />
+    <Project Path="tests/SqlObserver.ReleaseTests/SqlObserver.ReleaseTests.csproj" />
     <Project Path="tests/SqlObserver.SecurityTests/SqlObserver.SecurityTests.csproj" />
     <Project Path="tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj" />
   </Folder>

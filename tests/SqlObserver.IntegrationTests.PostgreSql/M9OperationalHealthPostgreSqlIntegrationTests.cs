@@ -91,6 +91,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationTests
 
 /// <summary>Runs a migrated M9 fixture when Docker/PostgreSQL is available in CI.</summary>
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
 {
     private readonly PostgreSql18Fixture fixture;

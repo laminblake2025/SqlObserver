@@ -67,11 +67,13 @@ public sealed class M9OperationalHealthEndToEndTests
         finally { await app.StopAsync(); }
     }
 
-    [PostgreSqlFact]
+    [Fact]
     [Trait("Category", "RequiresPostgreSql")]
     public async Task EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection()
     {
-        string connectionString = Environment.GetEnvironmentVariable("SQLOBSERVER_E2E_POSTGRES")!;
+        string? configuredConnectionString = ResolvePostgreSqlContract();
+        Assert.False(string.IsNullOrWhiteSpace(configuredConnectionString), "RequiresPostgreSql certification precondition: set SQLOBSERVER_RELEASE_POSTGRES (Release) or SQLOBSERVER_LOCAL_POSTGRES (Local).");
+        string connectionString = configuredConnectionString!;
         (string isolatedConnectionString, string databaseName) = await CreateIsolatedPostgreSqlDatabaseAsync(connectionString);
         try
         {
@@ -103,14 +105,48 @@ public sealed class M9OperationalHealthEndToEndTests
     }
 
     [Fact]
-    public void EnvironmentBackedPostgreSqlTestIsDiscoverableAndDynamicallyOptIn()
+    public void EnvironmentBackedPostgreSqlTestIsDiscoverableWithExplicitCertificationTrait()
     {
         var method = typeof(M9OperationalHealthEndToEndTests).GetMethod(nameof(EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection));
         Assert.NotNull(method);
         Assert.Contains(method!.CustomAttributes, static attribute => attribute.AttributeType == typeof(TraitAttribute) && attribute.ConstructorArguments.Count == 2 && attribute.ConstructorArguments[0].Value as string == "Category" && attribute.ConstructorArguments[1].Value as string == "RequiresPostgreSql");
         FactAttribute fact = method.GetCustomAttributes<FactAttribute>().Single();
-        Assert.IsType<PostgreSqlFactAttribute>(fact);
-        Assert.Equal(string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SQLOBSERVER_E2E_POSTGRES")), fact.Skip is not null);
+        Assert.Null(fact.Skip);
+    }
+
+    [Fact]
+    public void PostgreSqlResolverKeepsLocalAndReleaseContractsSeparate()
+    {
+        string path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/SqlObserver.EndToEndTests/M9OperationalHealthEndToEndTests.cs"));
+        string source = File.ReadAllText(path);
+        int start = source.IndexOf("\n    private static string? ResolvePostgreSqlContract()", StringComparison.Ordinal);
+        int end = source.IndexOf("[Fact]", start, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        string resolver = source[start..end];
+        Assert.Contains("SQLOBSERVER_RELEASE_POSTGRES", resolver, StringComparison.Ordinal);
+        Assert.Contains("SQLOBSERVER_LOCAL_POSTGRES", resolver, StringComparison.Ordinal);
+        Assert.DoesNotContain("SQLOBSERVER_E2E_POSTGRES", resolver, StringComparison.Ordinal);
+        Assert.Contains("string? selected = releaseProfile ? release : local;", resolver, StringComparison.Ordinal);
+    }
+
+    private static string? ResolvePostgreSqlContract()
+    {
+        string? release = Environment.GetEnvironmentVariable("SQLOBSERVER_RELEASE_POSTGRES");
+        string? local = Environment.GetEnvironmentVariable("SQLOBSERVER_LOCAL_POSTGRES");
+        bool releaseProfile = string.Equals(Environment.GetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE"), "Release", StringComparison.OrdinalIgnoreCase);
+        string? selected = releaseProfile ? release : local;
+        if (string.IsNullOrWhiteSpace(selected)) return selected;
+        try
+        {
+            var builder = new NpgsqlConnectionStringBuilder(selected) { Pooling = false };
+            if (string.IsNullOrWhiteSpace(builder.Host) || string.IsNullOrWhiteSpace(builder.Database))
+                throw new InvalidOperationException("The selected PostgreSQL contract must specify Host and Database.");
+            return builder.ConnectionString;
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidOperationException($"The selected PostgreSQL contract for {(releaseProfile ? "Release" : "Local")} is malformed.", exception);
+        }
     }
 
     [Fact]
@@ -195,16 +231,6 @@ public sealed class M9OperationalHealthEndToEndTests
         public ValueTask<AvailabilityGroupsSnapshot?> GetAvailabilityGroupsAsync(OperationalHealthRequest r, CancellationToken _) => GetAvailabilityGroupReplicasAsync(r, _);
         public ValueTask<AvailabilityGroupsSnapshot?> GetAvailabilityGroupReplicasAsync(OperationalHealthRequest r, CancellationToken _) => ValueTask.FromResult<AvailabilityGroupsSnapshot?>(new AvailabilityGroupsSnapshot(Target, Revision, Run, Observed, OperationalObservationState.Complete, AvailabilityVisibilityScope.PrimaryAllKnown, [new AvailabilityReplicaObservation(Target, Revision, new string('c', 64), new string('d', 64), "PRIMARY", "ONLINE", "CONNECTED", AvailabilityVisibilityScope.PrimaryAllKnown, true)], [], false));
         public ValueTask<AvailabilityGroupsSnapshot?> GetAvailabilityGroupDatabasesAsync(OperationalHealthRequest r, CancellationToken _) => ValueTask.FromResult<AvailabilityGroupsSnapshot?>(new AvailabilityGroupsSnapshot(Target, Revision, Run, Observed, OperationalObservationState.Complete, AvailabilityVisibilityScope.PrimaryAllKnown, [], [new AvailabilityDatabaseObservation(Target, Revision, new string('c', 64), new string('e', 64), "SYNCHRONIZED", "ONLINE", AvailabilityVisibilityScope.PrimaryAllKnown, true)], false));
-    }
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-internal sealed class PostgreSqlFactAttribute : FactAttribute
-{
-    public PostgreSqlFactAttribute()
-    {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SQLOBSERVER_E2E_POSTGRES")))
-            Skip = "RequiresPostgreSql: set SQLOBSERVER_E2E_POSTGRES to run the environment-backed E2E test.";
     }
 }
 

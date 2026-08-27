@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.ReleaseTests</RootNamespace>
+    <AssemblyName>SqlObserver.ReleaseTests</AssemblyName>
+  </PropertyGroup>
+</Project>

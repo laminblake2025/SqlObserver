@@ -1,6 +1,6 @@
 # SqlObserver
 
-M9 operational health assets (backups, SQL Agent failures, TempDB, and Availability Groups) are implemented locally with certification pending. They use passive, checksum-pinned SQL and target-scoped bounded projections; no backup, job, TempDB, or AG mutation is performed.
+M9 operational health assets (backups, SQL Agent failures, TempDB, and Availability Groups) are implemented locally with certification pending. They use passive, checksum-pinned SQL and target-scoped bounded projections; no backup, job, TempDB, or AG mutation is performed. M12 defines a versioned certification matrix and fail-closed evidence verifier: Local validation is explicitly non-release evidence, while Release validation requires every external lab and hashed run artifact.
 
 SqlObserver is a clean-room, Windows-hosted monitoring and diagnostics product for Microsoft SQL Server. It is intended to collect bounded, historical evidence without installing an agent on monitored database hosts by default. PostgreSQL 18.x is the product's application repository; it is not a monitored database engine.
 
@@ -53,13 +53,22 @@ More detail is in [the architecture overview](docs/architecture/overview.md), [s
 
 The current quick start validates the architecture/bootstrap work, M2-M4 repository/onboarding/collector foundations, the M5-M7 passive diagnostic slices, M8 alerting, M9 operational health, M10 host/replication and analytics, and the M11 read-only MCP slice.
 
+Validation uses one environment contract. Local runs may set
+`SQLOBSERVER_LOCAL_POSTGRES` and `SQLOBSERVER_LOCAL_SQLSERVER`; Release runs must
+set `SQLOBSERVER_RELEASE_POSTGRES` and `SQLOBSERVER_RELEASE_SQLSERVER` plus
+the browser, installer, signing, and certification-manifest variables checked
+by `tools/validate.ps1`. The M9 PostgreSQL E2E consumes the selected profile's
+connection value, and SQL Server lab tests consume the selected connection
+string's host/instance or port. Missing or malformed Release values fail
+preflight; Local validation is never release evidence.
+
 Prerequisites:
 
 - Windows Server 2022/2025, or a Windows development workstation used only as an uncertified build host;
 - .NET 10 SDK;
 - a Node.js release supported by the checked-in frontend toolchain and its lockfile;
 - pnpm 11.19.0, as pinned by `web/package.json` and CI;
-- PowerShell 7 (`pwsh`);
+- PowerShell Core 7.5+ (`pwsh`; Windows PowerShell 5.1 and pwsh 7.4 are unsupported);
 - Git;
 - Docker Desktop using Linux containers, with access to the pinned PostgreSQL 18.4 image used by the active integration suite.
 
@@ -69,7 +78,7 @@ From the repository root, run:
 pwsh ./tools/validate.ps1
 ```
 
-The validation entry point restores locked dependencies, compiles with warnings treated as errors, runs all active tests (including an ephemeral PostgreSQL 18.4 repository and the available SQL Server development lab), builds the strict TypeScript frontend, and performs repository-policy checks. Test projects for later milestones remain explicitly skipped until their owning runtime slices are implemented; completed-milestone suites have no skips.
+The validation entry point restores locked dependencies, compiles with warnings treated as errors, runs every local test plus environment-independent integration contracts, builds the strict TypeScript frontend, and performs repository-policy checks. Docker-backed PostgreSQL tests and certification-only cases are selected by explicit traits and run in Release only after preflight; no test is hidden by a runtime skip.
 
 Do not provision production credentials or point this repository slice at a production SQL Server. Development setup scripts are not production installers.
 

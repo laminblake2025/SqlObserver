@@ -10,6 +10,7 @@ using Testcontainers.PostgreSql;
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class LeaseResilienceIntegrationTests
 {
     private static readonly RepositoryCallTimeout DefaultTimeout = new(TimeSpan.FromSeconds(30));
