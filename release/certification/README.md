@@ -87,6 +87,30 @@ JSON files are published under the ignored run root. Ordinary validation
 explicitly excludes this trait; a missing or invalid release prerequisite is a
 producer failure, never a test skip.
 
+The pending reports lane is produced only by
+`tools/run-m12-reports-certification.ps1`. It maps the three reports cases to
+their exact release test and facts, accepts only Release Windows Server
+2022/2025 identities, and uses the validated `SQLOBSERVER_RELEASE_POSTGRES`
+connection through the existing PostgreSQL fixture. The producer uses a strict
+non-secret connection parser and rejects ambiguous host members, credentials,
+certificate bypasses, and non-`VerifyFull` TLS. The versioned
+`m12-reports-contract.v1.json` and closed schema pin the four report
+definitions, section formats, bounds (including 7-day detailed and 31-day trend
+windows), snapshot retention, concurrency, HTML encoding, RFC4180 CSV, and
+formula neutralization rules. The producer accepts only a strict-parser-validated
+multi-host PostgreSQL topology using `VerifyFull` and publishes
+only three sanitized JSON files after the selected test passes. It performs a
+fresh non-incremental Release build, requires a clean trusted Git tree before
+creating evidence, and pins the selected PostgreSQL live test source and
+project file alongside the report implementation sources. The producer script
+itself is bound by the validator's external source pin;
+the producer test is intentionally not self-pinned because changing its own
+source would necessarily change any hash embedded in that source. Raw reports
+and exports, identifiers, connection strings, SQL, and provider errors are
+never published. Local and ordinary Release validation exclude
+`RequiresM12ReportsRelease`; missing prerequisites fail the producer and leave
+the cases pending.
+
 The verifier requires PowerShell Core 7.5 or newer (`pwsh`); Windows
 PowerShell 5.1 and older Core hosts are rejected rather than downgraded.
 

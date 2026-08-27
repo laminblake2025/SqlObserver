@@ -1791,6 +1791,35 @@ function Assert-RepositoryShape {
     $actualM12SqlCollectors = @($m12SqlContract.collectors | Sort-Object executionOrder | ForEach-Object { "$($_.collectorId):$($_.executionOrder):$($_.assetVersion)" })
     if (($actualM12SqlCollectors -join '|') -cne ($expectedM12SqlCollectors -join '|') -or @($m12SqlContract.collectors).Count -ne 14) { throw 'M12 SQL Server passive collector tuple/order is not the approved closed set.' }
     if (((@($m12SqlContract.assetBundles.PSObject.Properties.Name) | Sort-Object) -join '|') -cne 'm10-replication|m4-core-health|m5-activity|m6-deadlocks|m7-query-performance|m9-operational-health') { throw 'M12 SQL Server passive asset bundle inventory is not exact.' }
+    $m12ReportsContractPath = Join-Path $repositoryRoot 'release/certification/m12-reports-contract.v1.json'
+    $m12ReportsSchemaPath = Join-Path $repositoryRoot 'release/certification/m12-reports-contract.v1.schema.json'
+    $m12ReportsPinPath = Join-Path $repositoryRoot 'release/certification/m12-reports-contract.v1.sha256'
+    $m12ReportsProducerPath = Join-Path $repositoryRoot 'tools/run-m12-reports-certification.ps1'
+    $m12ReportsTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs'
+    foreach ($m12ReportsPath in @($m12ReportsContractPath, $m12ReportsSchemaPath, $m12ReportsPinPath, $m12ReportsProducerPath, $m12ReportsTestPath)) { if (-not (Test-Path -LiteralPath $m12ReportsPath -PathType Leaf)) { throw 'M12 reports certification asset is missing.' } }
+    $m12ReportsContractHash = (Get-FileHash -LiteralPath $m12ReportsContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ReportsSchemaHash = (Get-FileHash -LiteralPath $m12ReportsSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($m12ReportsContractHash -cne 'a2fa823c314050410e92fa18df598cedf784371af8453c229716088ea15a6494' -or $m12ReportsSchemaHash -cne 'a4f1c45ba8556ad15d154b15543102f879c04bea1f727d822159aa3fa2e17351') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
+    if ([IO.File]::ReadAllText($m12ReportsPinPath) -cne "$m12ReportsContractHash  m12-reports-contract.v1.json`n$m12ReportsSchemaHash  m12-reports-contract.v1.schema.json`n") { throw 'M12 reports contract pin is not exact LF-closed.' }
+    $m12ReportsSchema = Get-Content -LiteralPath $m12ReportsSchemaPath -Raw | ConvertFrom-Json; $m12ReportsContract = Get-Content -LiteralPath $m12ReportsContractPath -Raw | ConvertFrom-Json
+    if ($m12ReportsSchema.additionalProperties -ne $false -or $m12ReportsContract.'$schema' -cne 'm12-reports-contract.v1.schema.json' -or $m12ReportsContract.producerId -cne 'm12-reports-harness') { throw 'M12 reports contract/schema must be closed and self-identifying.' }
+    $m12ReportsAssets = [ordered]@{
+        'database/migrations/0021_reports_exports.sql' = '584bd6d145c173eae60a8411b5df0a0b3905d78e5c68c5babe5ee5b83fe6b7ac'
+        'database/migrations/checksums.sha256' = '7046116f03d04b6e0948209d3ddaf77b39603b41b64cbe3104b9055bf1e6a5cd'
+        'src/SqlObserver.Reporting/ReportContracts.cs' = '95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8'
+        'src/SqlObserver.Reporting/ReportRendering.cs' = '6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '61a2b2dd0a6e7bb83e701be55967643db23c2a52c1fc666d07e9160fbb5ba557'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs' = '9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs' = '5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '47fa02b24483321bb59989757b40f9f552e4a15825968077a86e8b55794d8e0f'
+    }
+    if (((@($m12ReportsContract.assetPins.PSObject.Properties.Name) -join '|') -cne (@($m12ReportsAssets.Keys) -join '|'))) { throw 'M12 reports execution asset pin inventory is not exact.' }
+    foreach ($m12ReportsAsset in $m12ReportsAssets.Keys) {
+        if ($m12ReportsContract.assetPins.$m12ReportsAsset -cne $m12ReportsAssets[$m12ReportsAsset] -or (Get-FileHash -LiteralPath (Join-Path $repositoryRoot $m12ReportsAsset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12ReportsAssets[$m12ReportsAsset]) { throw "M12 reports asset pin mismatch: $m12ReportsAsset" }
+    }
+    $m12ReportsProducerText = Get-Content -LiteralPath $m12ReportsProducerPath -Raw; $m12ReportsTestText = Get-Content -LiteralPath $m12ReportsTestPath -Raw
+    if ((Get-FileHash -LiteralPath $m12ReportsProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '802528e8d709efd5eaf2fc4f2fdd26ee9c4d04a6e08d14901f61487125d05f51') { throw 'M12 reports producer source does not match the approved external execution pin.' }
+    foreach ($m12ReportsMarker in @('Assert-M12Contract', 'Assert-M12ContractValues', 'ContractOnly', 'ConnectionOnly', 'VerifyFull', 'Assert-ReportsConnection', 'Assert-M12CleanTree', 'Invoke-M12GitStatus', '/t:Rebuild', '--output', 'Remove-M12RawArtifactsDirectory', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_TERMINAL_PROMPT', '--no-optional-locks', 'detailedWindowDays=7', 'trendWindowDays=31', 'm12-reports-harness', 'reports-exports-evidence', 'LiveReleaseReportsExportsRepresentativeVolumeIsBounded', 'LiveReleaseReportContractIsSnapshotScopedAndAudited', 'LiveReleaseExportContractIsInertAndFormulaSafe', 'Read-M12LockedBytes', 'FileMode]::CreateNew', 'FileShare]::None', 'Assert-M12NoDescendants', 'Read-M12ReportsTrx', 'XmlResolver', 'DocumentType', 'Counters', 'expectedCounters', 'TestCount=$trxResult.TestCount', 'testCount-ne$ExpectedTestCount', 'notExecuted=0', 'warning=0', 'Assert-M12ObservedPidsExited', '[IO.Directory]::Move($build,$verify)', '[IO.Directory]::Move($verify,$final)')) { if (-not $m12ReportsProducerText.Contains($m12ReportsMarker, [StringComparison]::Ordinal)) { throw "M12 reports producer is missing invariant: $m12ReportsMarker" } }
+    if ($m12ReportsTestText -notmatch '\[Trait\("Category",\s*"RequiresM12ReportsRelease"\)\]' -or $m12ReportsTestText -notmatch 'ReportRenderer\.RenderHtml' -or $m12ReportsTestText -notmatch 'formulaNeutralization') { throw 'M12 reports release tests must be explicit release-only product-path proofs.' }
     $sqlContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerLabContract.cs') -Raw
     if ($sqlContractText -notmatch 'SQLOBSERVER_RELEASE_SQLSERVER' -or
         $sqlContractText -notmatch 'SqlConnectionStringBuilder' -or
@@ -2038,6 +2067,11 @@ foreach ($testProject in $testProjectsToRun) {
     }
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.IntegrationTests.PostgreSql.csproj') {
         $filter = 'Category!=RequiresPostgreSql'
+    }
+    if ($testProject -like '*SqlObserver.IntegrationTests.PostgreSql.csproj') {
+        # The reports producer is the sole selector for release reports
+        # evidence; ordinary Local and Release sweeps must not run it.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresM12ReportsRelease' } else { "($filter)&Category!=RequiresM12ReportsRelease" }
     }
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj' -and [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('SQLOBSERVER_LOCAL_SQLSERVER'))) {
         $filter = 'Category!=RequiresSqlServer'

@@ -190,7 +190,7 @@ M7 Query Store and plan-cache evidence, M8 alert evaluation/delivery, M9 operati
 
 The following are explicitly incomplete and must not be represented as working:
 
-- reports and exports are implemented locally through the ADR-0015 vertical slice; PostgreSQL runtime, browser, installer, and external/release certification evidence remains pending;
+- reports and exports are implemented locally through the ADR-0015 vertical slice; the versioned, source-pinned reports contract and pending-only Release producer now cover bounded report/export product-path proofs, while PostgreSQL runtime, browser, installer, and external/release certification evidence remains pending;
 
 - production collector implementations or target SQL beyond the active M10 bundle (the bundle is `capability.connection`, `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`);
 - reusable target credentials, automatic permission grants, or target mutation;

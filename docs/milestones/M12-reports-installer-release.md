@@ -33,6 +33,17 @@ and publishes only closed, sanitized evidence after equal canonical snapshots.
 Local and ordinary Release sweeps exclude `RequiresM12SqlServerRelease`; the
 producer is the only selector. This adds no support or release claim.
 
+The reports/exports certification producer is implemented as a pending-only
+release harness. It selects exactly one of three case-specific tests for a
+Release Windows Server 2022/2025 host and uses only the existing PostgreSQL
+fixture's random child database. `m12-reports-contract.v1.json` is a closed,
+source-pinned definition of report kinds, sections, inert HTML and per-section
+UTF-8 CSV, bounds, snapshot/audit behavior, and formula neutralization. Only
+sanitized JSON evidence is atomically published after success; report/export
+payloads and connection/provider details are not published. Ordinary
+validation excludes `RequiresM12ReportsRelease`, and all three matrix cases
+remain pending until external evidence is accepted.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped
