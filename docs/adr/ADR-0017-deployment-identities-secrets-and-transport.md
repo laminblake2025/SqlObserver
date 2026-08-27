@@ -6,6 +6,19 @@
 - This record is not Accepted. The defaults below cannot be treated as a
   production identity or secret policy until owners approve and labs qualify it.
 
+## Local foundation (assessment only)
+
+The M12 local foundation provides a bounded, sanitized deployment-security
+assessment with twelve fixed checks. It can classify repository transport,
+credential-keyword presence, the existing MCP endpoint policy, and the existing
+target connection policy as safe facts. It does not choose identities,
+accounts, certificate issuers, TLS floors, or secret stores; resolve secrets;
+install certificates/SPNs; enable sensitive content; or change startup,
+registration, data-source, or MCP composition behavior. Owner-policy,
+identity-topology, secret-store, and certificate-lifecycle checks remain
+blocked, and the assessment can never authorize activation. External identity,
+trusted-TLS, installer, and release evidence remains pending.
+
 ## Context
 
 The application has several trust boundaries: interactive web users, Windows

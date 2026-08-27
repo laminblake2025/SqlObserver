@@ -10,5 +10,6 @@
     <ProjectReference Include="../../src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
   </ItemGroup>
 </Project>

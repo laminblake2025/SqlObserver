@@ -34,6 +34,9 @@ the matrix.
 - Deployment identities, secrets, and transport: qualify gMSA/SSPI, SPN and
   trusted TLS, secret protection/rotation, and sensitive-content policy under
   [ADR-0017](../adr/ADR-0017-deployment-identities-secrets-and-transport.md).
+  The local slice now contains only a sanitized, twelve-check assessment and
+  PostgreSQL configuration fact inspector; identity, TLS, secret-store,
+  installer, and release evidence remain pending.
 - Web assets and invalidation: qualify immutable hashed SPA assets, browser
   caching, accessibility, and target-scoped invalidation-only SignalR under
   [ADR-0018](../adr/ADR-0018-web-assets-and-signalr.md).

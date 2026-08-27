@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using SqlObserver.Domain.Deployment;
 
 namespace SqlObserver.Mcp;
 
@@ -51,12 +52,5 @@ public static class McpStdioBridge
     }
 
     public static bool TryValidateEndpoint(string endpointText, out Uri? endpoint)
-    {
-        endpoint = null;
-        if (!Uri.TryCreate(endpointText, UriKind.Absolute, out Uri? candidate) || candidate is null || candidate.Scheme != Uri.UriSchemeHttps ||
-            !string.Equals(candidate.AbsolutePath, "/mcp", StringComparison.Ordinal) || candidate.UserInfo.Length != 0 ||
-            !string.IsNullOrEmpty(candidate.Query) || !string.IsNullOrEmpty(candidate.Fragment)) return false;
-        endpoint = candidate;
-        return true;
-    }
+        => McpEndpointValidator.TryValidate(endpointText, out endpoint);
 }

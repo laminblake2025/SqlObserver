@@ -1521,12 +1521,12 @@ function Assert-RepositoryShape {
     # explicitly assessment-only. Do not let a missing or replaced contract
     # turn into an accidental installer or migration mutation surface.
     $lifecycleContractRoot = Join-Path $repositoryRoot 'installer/contracts'
-    foreach ($contractName in @('lifecycle-assessment.v1.schema.json', 'migration-assessment.v1.schema.json', 'checksums.sha256')) {
+    foreach ($contractName in @('lifecycle-assessment.v1.schema.json', 'migration-assessment.v1.schema.json', 'deployment-security-assessment.v1.schema.json', 'checksums.sha256')) {
         if (-not (Test-Path -LiteralPath (Join-Path $lifecycleContractRoot $contractName) -PathType Leaf)) {
             throw "M12 lifecycle contract is missing: $contractName"
         }
     }
-    foreach ($schemaName in @('lifecycle-assessment.v1.schema.json', 'migration-assessment.v1.schema.json')) {
+    foreach ($schemaName in @('lifecycle-assessment.v1.schema.json', 'migration-assessment.v1.schema.json', 'deployment-security-assessment.v1.schema.json')) {
         $schemaPath = Join-Path $lifecycleContractRoot $schemaName
         $schema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json
         if ($schema.additionalProperties -ne $false -or $schema.type -cne 'object') {
