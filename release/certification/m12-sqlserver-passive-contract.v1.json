@@ -1,0 +1,34 @@
+{
+  "$schema": "m12-sqlserver-passive-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "m12-sqlserver-passive",
+  "producerId": "m12-sqlserver-harness",
+  "operationalMode": "passive",
+  "platform": "windows",
+  "supportedMajorVersions": [15, 16, 17],
+  "assetBundles": {
+    "m4-core-health": "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
+    "m5-activity": "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
+    "m6-deadlocks": "72570fba287327e1dec64a56d6211b9c24a7d597b35010c9b9ac765615d2963f",
+    "m7-query-performance": "da915ffb11e60bc0f1f019cb3e3e81ccafabc2c3ff94b26520378574562855eb",
+    "m9-operational-health": "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
+    "m10-replication": "7e06e0e3d1c71dd3c9e5a2e2acd14412984e761009921a63bf1141a5b34d18aa"
+  },
+  "collectors": [
+    { "collectorId": "engine.core", "executionOrder": 1, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "database.inventory", "executionOrder": 2, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "database.files", "executionOrder": 3, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "activity.sessions", "executionOrder": 4, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "activity.requests", "executionOrder": 5, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "waits.server", "executionOrder": 6, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "blocking.current", "executionOrder": 7, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "deadlocks.system-health", "executionOrder": 8, "assetVersion": 1, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "queries.performance", "executionOrder": 9, "assetVersion": 1, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "backups.status", "executionOrder": 10, "assetVersion": 1, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "sql-agent.failures", "executionOrder": 11, "assetVersion": 1, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "tempdb.health", "executionOrder": 12, "assetVersion": 1, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "availability-groups.health", "executionOrder": 13, "assetVersion": 1, "supportedMajorVersions": [15, 16, 17] },
+    { "collectorId": "replication.health", "executionOrder": 15, "assetVersion": 1, "supportedMajorVersions": [15, 16, 17] }
+  ],
+  "mutationPolicy": { "passiveMutation": false, "allowMutationTokens": false, "snapshotRequired": true }
+}

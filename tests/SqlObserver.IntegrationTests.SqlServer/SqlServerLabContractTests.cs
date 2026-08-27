@@ -49,6 +49,38 @@ public sealed class SqlServerLabContractTests
         Assert.DoesNotContain("TrustServerCertificate=True", value, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ReleaseContractRejectsLocalLoopbackAndWorkstationTargets()
+    {
+        string[] hosts = [
+            ".", "(local)", "localhost", "127.0.0.1", "127.20.30.40", "::1", "[::1]",
+            $"{Environment.MachineName},1433", "lpc:local", "np:local", "(localdb)\\MSSQLLocalDB"
+        ];
+        foreach (string host in hosts)
+        {
+            string value = $"Server={host};Integrated Security=true;Encrypt=true;TrustServerCertificate=false";
+            Assert.Throws<InvalidOperationException>(() => SqlServerLabContract.ValidateForTests(value, release: true));
+        }
+    }
+
+    [Fact]
+    public void ConnectionPolicyPreservesConfiguredCertificateHostName()
+    {
+        string? previousProfile = Environment.GetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE");
+        string? previousRelease = Environment.GetEnvironmentVariable("SQLOBSERVER_RELEASE_SQLSERVER");
+        try
+        {
+            Environment.SetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE", "Release");
+            Environment.SetEnvironmentVariable("SQLOBSERVER_RELEASE_SQLSERVER", "Server=sql-cert,1433;Initial Catalog=master;Integrated Security=true;Encrypt=true;TrustServerCertificate=false;HostNameInCertificate=sql-cert.example");
+            Assert.Equal("sql-cert.example", SqlServerLabContract.ConnectionPolicy.CertificateHostName?.Value);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE", previousProfile);
+            Environment.SetEnvironmentVariable("SQLOBSERVER_RELEASE_SQLSERVER", previousRelease);
+        }
+    }
+
     [Theory]
     [InlineData("Server=sql-cert,1433;User ID=sa;Password=secret;Encrypt=true;TrustServerCertificate=false")]
     [InlineData("Server=sql-cert,1433;Integrated Security=false;Encrypt=true;TrustServerCertificate=false")]

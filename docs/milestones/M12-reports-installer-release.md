@@ -25,6 +25,14 @@ validation explicitly excludes the `RequiresM12McpRelease` trait; missing live
 release prerequisites are failures in the producer and remain an external
 gate.
 
+The passive SQL Server certification producer is also implemented as a
+pending-only release harness. It maps SQL Server 2019/2022/2025 cases to
+majors 15/16/17 and Server 2022/2025 environments, runs the explicit live
+non-mutation test with a strict integrated Windows-authenticated TLS contract,
+and publishes only closed, sanitized evidence after equal canonical snapshots.
+Local and ordinary Release sweeps exclude `RequiresM12SqlServerRelease`; the
+producer is the only selector. This adds no support or release claim.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped

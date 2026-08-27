@@ -74,6 +74,19 @@ Its closed protocol identity is separately versioned in
 pin; this contract is intentionally outside the global matrix asset pin and
 does not promote the pending lane.
 
+The passive SQL Server cases are produced only by
+`tools/run-m12-sqlserver-certification.ps1`, with one of the exact case IDs
+`m12-sqlserver-2019-passive`, `m12-sqlserver-2022-passive`, or
+`m12-sqlserver-2025-passive`. The producer derives major 15/16/17 and the
+corresponding Windows Server 2022/2025 environment, requires the Release
+profile and strict integrated-security/trusted-TLS connection contract, and
+selects the explicit `RequiresM12SqlServerRelease` trait. The versioned
+14-collector passive contract is pinned by its adjacent two-line SHA-256 file.
+Before/after target snapshots must be byte-identical; only three sanitized
+JSON files are published under the ignored run root. Ordinary validation
+explicitly excludes this trait; a missing or invalid release prerequisite is a
+producer failure, never a test skip.
+
 The verifier requires PowerShell Core 7.5 or newer (`pwsh`); Windows
 PowerShell 5.1 and older Core hosts are rejected rather than downgraded.
 

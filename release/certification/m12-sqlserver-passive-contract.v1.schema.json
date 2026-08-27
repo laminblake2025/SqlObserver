@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m12-sqlserver-passive-contract.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "contractId", "producerId", "operationalMode", "platform", "supportedMajorVersions", "assetBundles", "collectors", "mutationPolicy"],
+  "properties": {
+    "$schema": { "const": "m12-sqlserver-passive-contract.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "m12-sqlserver-passive" },
+    "producerId": { "const": "m12-sqlserver-harness" },
+    "operationalMode": { "const": "passive" },
+    "platform": { "const": "windows" },
+    "supportedMajorVersions": { "type": "array", "prefixItems": [{ "const": 15 }, { "const": 16 }, { "const": 17 }], "minItems": 3, "maxItems": 3, "items": false },
+    "assetBundles": {
+      "type": "object", "additionalProperties": false,
+      "required": ["m4-core-health", "m5-activity", "m6-deadlocks", "m7-query-performance", "m9-operational-health", "m10-replication"],
+      "properties": {
+        "m4-core-health": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "m5-activity": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "m6-deadlocks": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "m7-query-performance": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "m9-operational-health": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "m10-replication": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "collectors": {
+      "type": "array", "minItems": 14, "maxItems": 14,
+      "prefixItems": [
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "engine.core" }, "executionOrder": { "const": 1 }, "assetVersion": { "const": 2 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "database.inventory" }, "executionOrder": { "const": 2 }, "assetVersion": { "const": 2 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "database.files" }, "executionOrder": { "const": 3 }, "assetVersion": { "const": 2 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "activity.sessions" }, "executionOrder": { "const": 4 }, "assetVersion": { "const": 2 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "activity.requests" }, "executionOrder": { "const": 5 }, "assetVersion": { "const": 2 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "waits.server" }, "executionOrder": { "const": 6 }, "assetVersion": { "const": 2 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "blocking.current" }, "executionOrder": { "const": 7 }, "assetVersion": { "const": 2 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "deadlocks.system-health" }, "executionOrder": { "const": 8 }, "assetVersion": { "const": 1 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "queries.performance" }, "executionOrder": { "const": 9 }, "assetVersion": { "const": 1 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "backups.status" }, "executionOrder": { "const": 10 }, "assetVersion": { "const": 1 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "sql-agent.failures" }, "executionOrder": { "const": 11 }, "assetVersion": { "const": 1 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "tempdb.health" }, "executionOrder": { "const": 12 }, "assetVersion": { "const": 1 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "availability-groups.health" }, "executionOrder": { "const": 13 }, "assetVersion": { "const": 1 }, "supportedMajorVersions": { "const": [15, 16, 17] } } },
+        { "type": "object", "additionalProperties": false, "required": ["collectorId", "executionOrder", "assetVersion", "supportedMajorVersions"], "properties": { "collectorId": { "const": "replication.health" }, "executionOrder": { "const": 15 }, "assetVersion": { "const": 1 }, "supportedMajorVersions": { "const": [15, 16, 17] } } }
+      ],
+      "items": false
+    },
+    "mutationPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["passiveMutation", "allowMutationTokens", "snapshotRequired"],
+      "properties": { "passiveMutation": { "const": false }, "allowMutationTokens": { "const": false }, "snapshotRequired": { "const": true } }
+    }
+  }
+}

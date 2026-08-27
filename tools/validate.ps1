@@ -1766,6 +1766,31 @@ function Assert-RepositoryShape {
         if ($sqlServerText -match 'DESKTOP-IORRV3E|DataSource\s*=\s*"[^$]') { throw "SQL Server lab endpoint must come from the local/release environment contract: $sqlServerSource" }
         if ($sqlServerText -notmatch '\[Trait\("Category",\s*"RequiresSqlServer"\)\]') { throw "SQL Server live test is missing its explicit RequiresSqlServer trait: $sqlServerSource" }
     }
+    $m12SqlServerText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/M12SqlServerPassiveCertificationTests.cs') -Raw
+    if ($m12SqlServerText -notmatch '\[Trait\("Category",\s*"RequiresM12SqlServerRelease"\)\]' -or
+        $m12SqlServerText -notmatch 'LiveReleaseSqlServerPassiveCertificationIsNonMutating') {
+        throw 'M12 SQL Server passive certification must be an explicit release-only trait with fail-fast live test.'
+    }
+    foreach ($m12Marker in @('SqlServerCapabilityDiscoveryPort', 'DiscoverAsync', 'SqlServerCollectorAssetCatalog.LoadEmbedded', 'SqlServerActivityCollectorAssetCatalog.LoadEmbedded', 'SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded', 'SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded', 'SqlServerOperationalHealthAssetCatalog.LoadEmbedded', 'SqlServerReplicationAssetCatalog.LoadEmbedded', 'BundleChecksum', 'CollectorOperationalMode.Passive', 'CollectorOutputValidator', 'collectorEvidence', 'ChangeDatabase', 'maxTotalRows', 'memory_partition_mode', 'msdb.dbo.sysschedules', 'unsupportedTargetCount')) { if (-not $m12SqlServerText.Contains($m12Marker, [StringComparison]::Ordinal)) { throw "M12 SQL Server producer/test is missing critical invariant: $m12Marker" } }
+    foreach ($m12ProducerMarker in @('Read-M12LockedBytes', 'Assert-M12JsonTypesBytes', 'Open-M12ExecutableHandle', 'executableHandle.Stream.Dispose()', 'ProcessIds', 'Assert-M12NoDescendants', 'Assert-M12ObservedPidsExited', '$discoveredPids', '$stableEmptySweeps', '[Collections.Generic.Queue[int]]::new()', 'WaitForZero', 'ErrorAction Stop', 'function Remove-M12SafeDescendants', 'expectedMachineNames', 'Directory]::Move($verify,$final)')) { $m12ProducerText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tools/run-m12-sqlserver-certification.ps1') -Raw; if (-not $m12ProducerText.Contains($m12ProducerMarker, [StringComparison]::Ordinal)) { throw "M12 SQL Server producer is missing publication/process hardening: $m12ProducerMarker" } }
+    foreach ($m12AssetMarker in @('SET NOCOUNT ON;\n', 'TOP (@maximum_rows)', 'TOP (@probe_rows)', 'TOP (@scan_rows)', 'RECONFIGURE', 'PHYSICAL_NAME', 'OPENROWSET', 'OPENDATASOURCE', 'OPENQUERY', 'KILL', 'four-part')) { $m12LiveText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/M12SqlServerPassiveCertificationTests.cs') -Raw; if (-not $m12LiveText.Contains($m12AssetMarker, [StringComparison]::Ordinal)) { throw "M12 SQL Server asset validation marker is missing: $m12AssetMarker" } }
+    foreach ($m12Forbidden in @('target_name FROM sys.server_event_session_targets', 'event_name FROM sys.server_event_session_events', 'column_type FROM sys.server_event_session_fields', 'next_run_date,next_run_time FROM msdb.dbo.sysjobschedules', 'notification_message_id FROM msdb.dbo.sysalerts', 'SELECT name,enabled FROM sys.server_event_sessions')) { if ($m12SqlServerText.Contains($m12Forbidden, [StringComparison]::Ordinal)) { throw "M12 SQL Server snapshot contains an invalid catalog projection: $m12Forbidden" } }
+    $m12SqlContractPath = Join-Path $repositoryRoot 'release/certification/m12-sqlserver-passive-contract.v1.json'
+    $m12SqlSchemaPath = Join-Path $repositoryRoot 'release/certification/m12-sqlserver-passive-contract.v1.schema.json'
+    $m12SqlPinPath = Join-Path $repositoryRoot 'release/certification/m12-sqlserver-passive-contract.v1.sha256'
+    foreach ($m12SqlPath in @($m12SqlContractPath,$m12SqlSchemaPath,$m12SqlPinPath)) { if (-not (Test-Path -LiteralPath $m12SqlPath -PathType Leaf)) { throw 'M12 SQL Server passive contract asset is missing.' } }
+    $m12SqlContractHash = (Get-FileHash -LiteralPath $m12SqlContractPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $m12SqlSchemaHash = (Get-FileHash -LiteralPath $m12SqlSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($m12SqlContractHash -cne 'bcee1b97f6405d48dd4ecb786c53236a85da52b158077c65057cc20847038f33' -or $m12SqlSchemaHash -cne '5539bba4fe0139b92aadbcd6203526cb3377b689d732e68c70aff60bac843406') { throw 'M12 SQL Server passive contract/schema checksum does not match the approved pin.' }
+    $m12SqlPin = Get-Content -LiteralPath $m12SqlPinPath -Raw
+    if ($m12SqlPin -cne "$m12SqlContractHash  m12-sqlserver-passive-contract.v1.json`n$m12SqlSchemaHash  m12-sqlserver-passive-contract.v1.schema.json`n") { throw 'M12 SQL Server passive contract pin is not exact LF-closed.' }
+    $m12SqlContract = Get-Content -LiteralPath $m12SqlContractPath -Raw | ConvertFrom-Json
+    $m12SqlSchema = Get-Content -LiteralPath $m12SqlSchemaPath -Raw | ConvertFrom-Json
+    if ($m12SqlSchema.additionalProperties -ne $false -or $m12SqlContract.'$schema' -cne 'm12-sqlserver-passive-contract.v1.schema.json') { throw 'M12 SQL Server passive contract/schema must be closed and self-identifying.' }
+    $expectedM12SqlCollectors = @('engine.core:1:2','database.inventory:2:2','database.files:3:2','activity.sessions:4:2','activity.requests:5:2','waits.server:6:2','blocking.current:7:2','deadlocks.system-health:8:1','queries.performance:9:1','backups.status:10:1','sql-agent.failures:11:1','tempdb.health:12:1','availability-groups.health:13:1','replication.health:15:1')
+    $actualM12SqlCollectors = @($m12SqlContract.collectors | Sort-Object executionOrder | ForEach-Object { "$($_.collectorId):$($_.executionOrder):$($_.assetVersion)" })
+    if (($actualM12SqlCollectors -join '|') -cne ($expectedM12SqlCollectors -join '|') -or @($m12SqlContract.collectors).Count -ne 14) { throw 'M12 SQL Server passive collector tuple/order is not the approved closed set.' }
+    if (((@($m12SqlContract.assetBundles.PSObject.Properties.Name) | Sort-Object) -join '|') -cne 'm10-replication|m4-core-health|m5-activity|m6-deadlocks|m7-query-performance|m9-operational-health') { throw 'M12 SQL Server passive asset bundle inventory is not exact.' }
     $sqlContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerLabContract.cs') -Raw
     if ($sqlContractText -notmatch 'SQLOBSERVER_RELEASE_SQLSERVER' -or
         $sqlContractText -notmatch 'SqlConnectionStringBuilder' -or
@@ -2016,6 +2041,12 @@ foreach ($testProject in $testProjectsToRun) {
     }
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj' -and [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('SQLOBSERVER_LOCAL_SQLSERVER'))) {
         $filter = 'Category!=RequiresSqlServer'
+    }
+    if ($testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj') {
+        # The M12 release producer is the sole selector for the live passive
+        # certification. Ordinary Local and Release sweeps must never invoke
+        # it (and must not turn a missing release lab into a skip).
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresM12SqlServerRelease' } else { "($filter)&Category!=RequiresM12SqlServerRelease" }
     }
     Invoke-TestProject -Project $testProject -Filter $filter
 }
