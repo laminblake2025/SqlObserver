@@ -12,7 +12,9 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit --pretty false",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "build": "tsc --noEmit && vite build",
+    "assets:generate": "node tools/web-asset-manifest.mjs generate",
+    "assets:verify": "node tools/web-asset-manifest.mjs verify",
+    "build": "tsc --noEmit && vite build && pnpm run assets:generate && pnpm run assets:verify",
     "preview": "vite preview"
   },
   "dependencies": {

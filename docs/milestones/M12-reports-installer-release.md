@@ -37,9 +37,14 @@ the matrix.
   The local slice now contains only a sanitized, twelve-check assessment and
   PostgreSQL configuration fact inspector; identity, TLS, secret-store,
   installer, and release evidence remain pending.
-- Web assets and invalidation: qualify immutable hashed SPA assets, browser
-  caching, accessibility, and target-scoped invalidation-only SignalR under
-  [ADR-0018](../adr/ADR-0018-web-assets-and-signalr.md).
+- Web assets and invalidation: the local identity foundation now emits a Vite 8
+  `.vite/manifest.json` and explicit hashed entry/chunk/asset names, then
+  generates and verifies a closed, SHA-256-bound catalog under ignored
+  `web/.artifacts`. The catalog checks exact bytes, safe POSIX paths, symlink
+  exclusion, manifest graph closure, and `index.html` references. This is
+  implementation evidence only; qualify immutable serving, cache policy,
+  browser/accessibility behavior, and target-scoped invalidation-only SignalR
+  under [ADR-0018](../adr/ADR-0018-web-assets-and-signalr.md) separately.
 - Release identity and evidence: complete legal/version/publisher/signing
   ownership, support-matrix qualification, and Release-profile evidence under
   [ADR-0019](../adr/ADR-0019-release-identity-and-evidence.md).

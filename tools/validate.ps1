@@ -1538,6 +1538,42 @@ function Assert-RepositoryShape {
             throw "M12 lifecycle schema checksum mismatch: $schemaName"
         }
     }
+
+    # The web identity foundation is deliberately local and decision-neutral.
+    # Keep its schema pinned and its generator/verifier present without turning
+    # this gate into a browser, hosting, cache, or SignalR qualification claim.
+    $webContractRoot = Join-Path $repositoryRoot 'web/contracts'
+    foreach ($webContractName in @('web-asset-manifest.v1.schema.json', 'checksums.sha256', 'README.md')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $webContractRoot $webContractName) -PathType Leaf)) {
+            throw "M12 web identity contract is missing: $webContractName"
+        }
+    }
+    $webSchemaPath = Join-Path $webContractRoot 'web-asset-manifest.v1.schema.json'
+    $webSchema = Get-Content -LiteralPath $webSchemaPath -Raw | ConvertFrom-Json
+    if ($webSchema.additionalProperties -ne $false -or $webSchema.type -cne 'object') {
+        throw 'M12 web identity schema must be a closed object contract.'
+    }
+    $webSchemaHash = (Get-FileHash -LiteralPath $webSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $webChecksumLines = Get-Content -LiteralPath (Join-Path $webContractRoot 'checksums.sha256')
+    if (-not ($webChecksumLines -contains "$webSchemaHash  web-asset-manifest.v1.schema.json")) {
+        throw 'M12 web identity schema checksum mismatch.'
+    }
+    $webPackageScripts = $webPackage.scripts
+    foreach ($webScriptName in @('assets:generate', 'assets:verify', 'build')) {
+        if ($webPackageScripts.PSObject.Properties.Name -notcontains $webScriptName) {
+            throw "Frontend package is missing required web identity script: $webScriptName"
+        }
+    }
+    $webGeneratorPath = Join-Path $repositoryRoot 'web/tools/web-asset-manifest.mjs'
+    if (-not (Test-Path -LiteralPath $webGeneratorPath -PathType Leaf)) {
+        throw 'M12 web identity generator/verifier is missing.'
+    }
+    $webGeneratorText = Get-Content -LiteralPath $webGeneratorPath -Raw
+    foreach ($webIdentityMarker in @('manifest.json', 'sha256', 'index.html', 'symlink', 'case-insensitive', 'unknown Vite manifest field')) {
+        if (-not $webGeneratorText.Contains($webIdentityMarker)) {
+            throw "Web identity verifier is missing required fail-closed check: $webIdentityMarker"
+        }
+    }
     $testSource = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.cs' -File)
     # Every test project has an explicit lane.  Environment-backed classes
     # carry a stable trait and are selected by an explicit local filter; all

@@ -9,6 +9,7 @@ TestResults/
 # Frontend dependencies and output
 web/node_modules/
 web/dist/
+web/.artifacts/
 .pnpm-store/
 
 # IDE and user-specific files
