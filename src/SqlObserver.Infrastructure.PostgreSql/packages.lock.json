@@ -53,6 +53,12 @@
       },
       "sqlobserver.domain": {
         "type": "Project"
+      },
+      "sqlobserver.reporting": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
       }
     }
   }

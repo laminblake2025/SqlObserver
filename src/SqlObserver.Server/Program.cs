@@ -12,6 +12,7 @@ using SqlObserver.Mcp;
 using SqlObserver.Security;
 using SqlObserver.Server;
 using SqlObserver.Reporting;
+using SqlObserver.Observability;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddWindowsService(options => options.ServiceName = "SqlObserver Server");
@@ -27,6 +28,7 @@ builder.Services.AddAuthorizationBuilder().SetFallbackPolicy(
         .Build());
 builder.Services.AddProblemDetails();
 builder.Services.AddDataProtection();
+builder.Services.AddSqlObserverServerObservability(builder.Configuration, builder.Environment);
 builder.Services.AddOptions<OperationalHealthServerOptions>().Validate(options => options.RequestTimeout > TimeSpan.Zero && options.RequestTimeout <= TimeSpan.FromMinutes(2), "Operational health timeout must be positive and bounded.").ValidateOnStart();
 builder.Services.AddRequestTimeouts(options =>
     options.DefaultPolicy = new Microsoft.AspNetCore.Http.Timeouts.RequestTimeoutPolicy
@@ -115,6 +117,8 @@ builder.Services.AddSingleton<IDiagnosticEventQueryService, DiagnosticEventQuery
 builder.Services.AddSingleton<IIncidentEvidenceQueryService, IncidentEvidenceQueryService>();
 builder.Services.AddSingleton<IReportRepository>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Reports);
 builder.Services.AddSingleton<IReportAuditPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().ReportAudit);
+builder.Services.AddSingleton<IPostgreSqlCompatibilityPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Compatibility);
+builder.Services.AddSingleton<IRepositoryReadinessMonitor, PostgreSqlRepositoryReadinessMonitor>();
 builder.Services.AddSingleton<IReportService, ReportService>();
 builder.Services.AddSingleton<ReportCursorProtector>();
 builder.Services.AddSqlObserverMcp();

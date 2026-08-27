@@ -16,6 +16,7 @@
     <Project Path="src/SqlObserver.Mcp/SqlObserver.Mcp.csproj" />
     <Project Path="src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj" />
     <Project Path="src/SqlObserver.Security/SqlObserver.Security.csproj" />
+    <Project Path="src/SqlObserver.Observability/SqlObserver.Observability.csproj" />
     <Project Path="src/SqlObserver.Server/SqlObserver.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">

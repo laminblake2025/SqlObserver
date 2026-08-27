@@ -14,6 +14,9 @@ using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Domain.Security;
 using SqlObserver.Reporting;
+using SqlObserver.Observability;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 namespace SqlObserver.Collector;
 
@@ -24,6 +27,23 @@ public static class CollectorServiceRegistration
         this IServiceCollection services,
         IConfiguration configuration,
         IHostEnvironment? environment = null)
+        => AddSqlObserverCollectorRuntimeCore(services, configuration, environment, null, null);
+
+    /// <summary>Composes the production collector registration with test-only in-process exporters.</summary>
+    public static IServiceCollection AddSqlObserverCollectorRuntime(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        IHostEnvironment environment,
+        Action<TracerProviderBuilder> configureTracing,
+        Action<MeterProviderBuilder> configureMetrics) =>
+        AddSqlObserverCollectorRuntimeCore(services, configuration, environment, configureTracing, configureMetrics);
+
+    private static IServiceCollection AddSqlObserverCollectorRuntimeCore(
+        IServiceCollection services,
+        IConfiguration configuration,
+        IHostEnvironment? environment,
+        Action<TracerProviderBuilder>? configureTracing,
+        Action<MeterProviderBuilder>? configureMetrics)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -34,6 +54,22 @@ public static class CollectorServiceRegistration
             repositoryConfiguration,
             "SqlObserver.Collector",
             _.GetRequiredService<IdentityFingerprintKey>()));
+        if (configureTracing is null && configureMetrics is null)
+        {
+            services.AddSqlObserverObservability(configuration, ObservabilityContract.CollectorServiceName, environment);
+        }
+        else
+        {
+            ArgumentNullException.ThrowIfNull(environment);
+            services.AddSqlObserverObservabilityForContractTesting(
+                configuration,
+                ObservabilityContract.CollectorServiceName,
+                environment,
+                configureTracing ?? (_ => { }),
+                configureMetrics ?? (_ => { }));
+        }
+        services.AddSingleton<IPostgreSqlCompatibilityPort>(static provider => provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Compatibility);
+        services.AddSingleton<IRepositoryReadinessMonitor, PostgreSqlRepositoryReadinessMonitor>();
         services.AddSingleton<IWorkerLeasePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().WorkerLeases);
         services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>

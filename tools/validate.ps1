@@ -543,7 +543,8 @@ function Assert-RepositoryShape {
         'SqlObserver.Collector',
         'SqlObserver.Mcp',
         'SqlObserver.McpStdio',
-        'SqlObserver.Cli'
+        'SqlObserver.Cli',
+        'SqlObserver.Observability'
     )
 
     foreach ($projectName in $requiredSourceProjects) {
@@ -574,14 +575,14 @@ function Assert-RepositoryShape {
 
     $sourceProjects = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -Recurse -Filter '*.csproj' -File)
     $testProjects = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.csproj' -File)
-    if ($sourceProjects.Count -ne 17 -or $testProjects.Count -ne 9) {
-        throw "Expected 17 source and 9 test projects; found $($sourceProjects.Count) source and $($testProjects.Count) test projects."
+    if ($sourceProjects.Count -ne 18 -or $testProjects.Count -ne 9) {
+        throw "Expected 18 source and 9 test projects; found $($sourceProjects.Count) source and $($testProjects.Count) test projects."
     }
 
     [xml] $solution = Get-Content -LiteralPath $solutionPath -Raw
     $solutionProjects = @($solution.SelectNodes('//Project'))
-    if ($solutionProjects.Count -ne 26) {
-        throw "Expected 26 projects in SqlObserver.slnx, found $($solutionProjects.Count)."
+    if ($solutionProjects.Count -ne 27) {
+        throw "Expected 27 projects in SqlObserver.slnx, found $($solutionProjects.Count)."
     }
 
     $expectedSolutionProjects = @(
@@ -592,8 +593,8 @@ function Assert-RepositoryShape {
         $solutionProjects | ForEach-Object { $_.GetAttribute('Path').Replace('\', '/') }
     ) | Sort-Object -Unique
     $solutionDifferences = @(Compare-Object $expectedSolutionProjects $actualSolutionProjects)
-    if ($actualSolutionProjects.Count -ne 26 -or $solutionDifferences.Count -ne 0) {
-        throw 'SqlObserver.slnx membership differs from the exact required 17 source and 9 test projects.'
+    if ($actualSolutionProjects.Count -ne 27 -or $solutionDifferences.Count -ne 0) {
+        throw 'SqlObserver.slnx membership differs from the exact required 18 source and 9 test projects.'
     }
 
     $buildProperties = Get-Content -LiteralPath (Join-Path $repositoryRoot 'Directory.Build.props') -Raw
@@ -622,11 +623,15 @@ function Assert-RepositoryShape {
         Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter 'packages.lock.json' -File |
             Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' }
     )
-    if ($packageLocks.Count -ne 25) {
-        throw "Expected one NuGet lock file per project (25), found $($packageLocks.Count)."
+    if ($packageLocks.Count -ne 26) {
+        throw "Expected one NuGet lock file per project except Reporting (26), found $($packageLocks.Count)."
     }
 
     $allowedPackagesByProject = @{
+        'SqlObserver.Observability' = @(
+            'OpenTelemetry.Exporter.OpenTelemetryProtocol',
+            'OpenTelemetry.Extensions.Hosting'
+        )
         'SqlObserver.Collector' = @(
             'Microsoft.Extensions.Hosting',
             'Microsoft.Extensions.Hosting.WindowsServices'
@@ -1820,6 +1825,57 @@ function Assert-RepositoryShape {
     if ((Get-FileHash -LiteralPath $m12ReportsProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '802528e8d709efd5eaf2fc4f2fdd26ee9c4d04a6e08d14901f61487125d05f51') { throw 'M12 reports producer source does not match the approved external execution pin.' }
     foreach ($m12ReportsMarker in @('Assert-M12Contract', 'Assert-M12ContractValues', 'ContractOnly', 'ConnectionOnly', 'VerifyFull', 'Assert-ReportsConnection', 'Assert-M12CleanTree', 'Invoke-M12GitStatus', '/t:Rebuild', '--output', 'Remove-M12RawArtifactsDirectory', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_TERMINAL_PROMPT', '--no-optional-locks', 'detailedWindowDays=7', 'trendWindowDays=31', 'm12-reports-harness', 'reports-exports-evidence', 'LiveReleaseReportsExportsRepresentativeVolumeIsBounded', 'LiveReleaseReportContractIsSnapshotScopedAndAudited', 'LiveReleaseExportContractIsInertAndFormulaSafe', 'Read-M12LockedBytes', 'FileMode]::CreateNew', 'FileShare]::None', 'Assert-M12NoDescendants', 'Read-M12ReportsTrx', 'XmlResolver', 'DocumentType', 'Counters', 'expectedCounters', 'TestCount=$trxResult.TestCount', 'testCount-ne$ExpectedTestCount', 'notExecuted=0', 'warning=0', 'Assert-M12ObservedPidsExited', '[IO.Directory]::Move($build,$verify)', '[IO.Directory]::Move($verify,$final)')) { if (-not $m12ReportsProducerText.Contains($m12ReportsMarker, [StringComparison]::Ordinal)) { throw "M12 reports producer is missing invariant: $m12ReportsMarker" } }
     if ($m12ReportsTestText -notmatch '\[Trait\("Category",\s*"RequiresM12ReportsRelease"\)\]' -or $m12ReportsTestText -notmatch 'ReportRenderer\.RenderHtml' -or $m12ReportsTestText -notmatch 'formulaNeutralization') { throw 'M12 reports release tests must be explicit release-only product-path proofs.' }
+    $m12ObservabilityContractPath = Join-Path $repositoryRoot 'release/certification/m12-observability-contract.v1.json'
+    $m12ObservabilitySchemaPath = Join-Path $repositoryRoot 'release/certification/m12-observability-contract.v1.schema.json'
+    $m12ObservabilityPinPath = Join-Path $repositoryRoot 'release/certification/m12-observability-contract.v1.sha256'
+    $m12ObservabilityProducerPath = Join-Path $repositoryRoot 'tools/run-m12-observability-certification.ps1'
+    $m12ObservabilityTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ObservabilityCertificationTests.cs'
+    foreach ($m12ObservabilityPath in @($m12ObservabilityContractPath, $m12ObservabilitySchemaPath, $m12ObservabilityPinPath, $m12ObservabilityProducerPath, $m12ObservabilityTestPath)) { if (-not (Test-Path -LiteralPath $m12ObservabilityPath -PathType Leaf)) { throw 'M12 observability certification asset is missing.' } }
+    $m12ObservabilityContractHash = (Get-FileHash -LiteralPath $m12ObservabilityContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ObservabilitySchemaHash = (Get-FileHash -LiteralPath $m12ObservabilitySchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($m12ObservabilityContractHash -cne '01a9c3e7bac830b1a0aaf32b24cd2b51aedf58e7f786d528ddcf6f26dac7efb7' -or $m12ObservabilitySchemaHash -cne '67bb52221c61df57b463842623f9ccd9f9770d8d7bde78017adc3067ce1b9a58') { throw 'M12 observability contract/schema checksum does not match the approved pin.' }
+    if ([IO.File]::ReadAllText($m12ObservabilityPinPath) -cne "$m12ObservabilityContractHash  m12-observability-contract.v1.json`n$m12ObservabilitySchemaHash  m12-observability-contract.v1.schema.json`n") { throw 'M12 observability contract pin is not exact LF-closed.' }
+    $m12ObservabilityContract = Get-Content -LiteralPath $m12ObservabilityContractPath -Raw | ConvertFrom-Json; $m12ObservabilitySchema = Get-Content -LiteralPath $m12ObservabilitySchemaPath -Raw | ConvertFrom-Json
+    if ($m12ObservabilitySchema.additionalProperties -ne $false -or $m12ObservabilityContract.'$schema' -cne 'm12-observability-contract.v1.schema.json' -or $m12ObservabilityContract.producerId -cne 'm12-observability-harness' -or $m12ObservabilityContract.artifactKind -cne 'observability-evidence') { throw 'M12 observability contract/schema must be closed and self-identifying.' }
+    $m12ObservabilityAssets = [ordered]@{
+        'Directory.Packages.props' = 'a4d835fbd0ee792f85ca11a80f796a43ded504b53049e04081d2cb7f8294b53c'
+        'src/SqlObserver.Observability/SqlObserver.Observability.csproj' = '60576c36aab91800264f4e35c58943fded212a53c029a90171a87e897f0828c5'
+        'src/SqlObserver.Observability/ObservabilityContracts.cs' = '7113bcc81e331cf73417d4538ac713e03b2cee8e23d2294edf123e945f544a21'
+        'src/SqlObserver.Observability/packages.lock.json' = '5155e41a59144f5b151ebf8740dd978c29ec7d014197e1ec5f5f354c6606eadb'
+        'src/SqlObserver.Server/Program.cs' = 'fa52b10205812691f9c75c302be0d34126c10c9b605b3c4f26249c64a5271695'
+        'src/SqlObserver.Server/ServerServiceRegistration.cs' = '6486f74a42216f3e8686019afe3a74f3cf991a8af8be9c125c955590560e1939'
+        'src/SqlObserver.Server/SqlObserver.Server.csproj' = '168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93'
+        'src/SqlObserver.Server/packages.lock.json' = 'c4adf567457ead21132d3f0829f2a8f79d97c2f083329287158befbf206c9324'
+        'src/SqlObserver.Collector/Program.cs' = 'a267f4428236dc0755ce31dac75576175c0190fe685865fd2cbe468726a76090'
+        'src/SqlObserver.Collector/CollectorServiceRegistration.cs' = '10bd8624b47bea787cb5794002172f1db86695fe6c6762b34188535d49675500'
+        'src/SqlObserver.Collector/SqlObserver.Collector.csproj' = '87c4794857248be281692e58b75a402e7b342e341812c2f1d28a0e02f11d1f6b'
+        'src/SqlObserver.Collector/packages.lock.json' = '4c7704a34e2f5ef8ba45605a2bc31fc5d8a85ec3a338c7bd36b96c6cc39eae51'
+        'src/SqlObserver.Collectors/CollectorExecutionEngine.cs' = '838789741108903bc74742aa8fa423bc34304d0de3b17949c8e6447d479e9883'
+        'src/SqlObserver.Collectors/CollectorScheduler.cs' = '3d32838b726234eaca4b28ac82e155cce9d94103141a787859526e90ec732369'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorDataPlane.cs' = '1d301fd91692ff77331dbecfdd050f40d1db422c25230ea659ebad7ee76c6d47'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlTargetControlPlane.cs' = 'd53c7bc7ffb310cce1324de4ff86d18db97aa42cadfec3315201e7313bf780b1'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCompatibilityPort.cs' = '41ef7ad9222fc32fde5a637fe356e5f17961766762f1fd7bcfdec9e12a0e98be'
+        'src/SqlObserver.Infrastructure.PostgreSql/packages.lock.json' = '437e112cc64f77d2ade621d52f1d89558552f2ef154c9047e4098600d87595fe'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '94d6e0ce6a6ecfdd2e074592df53c8634c5da9becd06bf5cd776253c3208a4ff'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/packages.lock.json' = '25fe7e727617c804145629c9d62fe10bf25b7ddb4c1f90f654c26467733973dd'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/M12ObservabilityCertificationTests.cs' = 'd61833c838a900174f92ad17f8a70d70cece480e70942dc3d02728015c4423f6'
+        'tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj' = '6f9c982af8bb9d2cb3613c8725a87a6d66b4fe0d3d22dc2bf117c02022111ebe'
+        'tests/SqlObserver.UnitTests/packages.lock.json' = '99408413e3db450051cf58e91a0a876d7b32810b31dfd706b79afd2c985729d6'
+        'tests/SqlObserver.UnitTests/M12ObservabilityContractTests.cs' = 'abe0e1230b848f22f534020d8795ac41771bbbcc63d9fdf686d67b979502dd5d'
+        'release/certification/m12-certification-matrix.v1.json' = 'accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330'
+    }
+    if (((@($m12ObservabilityContract.assetPins.PSObject.Properties.Name) -join '|') -cne (@($m12ObservabilityAssets.Keys) -join '|'))) { throw 'M12 observability asset pin inventory is not exact.' }
+    foreach ($m12ObservabilityAsset in $m12ObservabilityAssets.Keys) { if ($m12ObservabilityContract.assetPins.$m12ObservabilityAsset -cne $m12ObservabilityAssets[$m12ObservabilityAsset] -or (Get-FileHash -LiteralPath (Join-Path $repositoryRoot $m12ObservabilityAsset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12ObservabilityAssets[$m12ObservabilityAsset]) { throw "M12 observability asset pin mismatch: $m12ObservabilityAsset" } }
+    $m12ObservabilityProducerText = Get-Content -LiteralPath $m12ObservabilityProducerPath -Raw; $m12ObservabilityTestText = Get-Content -LiteralPath $m12ObservabilityTestPath -Raw
+    if ((Get-FileHash -LiteralPath $m12ObservabilityProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '913c7a1bac145af27400113f114a7e42f6c13709e4f41a95f8a552ad244048d9') { throw 'M12 observability producer checksum does not match the externally held release pin.' }
+    $m12ObservabilityRuntimeText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Observability/ObservabilityContracts.cs') -Raw
+    $m12ObservabilityServerRegistrationText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Server/ServerServiceRegistration.cs') -Raw
+    $m12ObservabilityCollectorRegistrationText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Collector/CollectorServiceRegistration.cs') -Raw
+    foreach ($m12ObservabilityMarker in @('ContractOnly', 'ConnectionOnly', 'Assert-M12ObservabilityConnection', 'Assert-M12NoExternalOtlp', 'Assert-M12ExactJsonShape', 'Assert-M12ObservabilityFacts', 'Assert-M12ObjectTypes', 'Get-M12LockedSnapshot', 'Assert-M12SameIdentity', 'm12-observability-harness', 'observability-evidence', 'M12SuspendedProcess', 'CreateSuspended', 'KillOnClose', 'ReadAsync', 'FileMode]::CreateNew', 'FileShare]::None', 'Flush($true)', 'Assert-M12CleanTree', 'Invoke-M12GitStatus', 'Invoke-M12GitCommand', 'Get-M12CurrentCommit', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CEILING_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_PREFIX', 'GIT_EXEC_PATH', 'GIT_SSH_COMMAND', 'GIT_CONFIG_COUNT', '/t:Rebuild', '--output', 'Read-M12ObservabilityTrx', 'passedButRunAborted', 'notRunnable', 'disconnected', 'inProgress', 'pending', '[IO.Directory]::Move($build,$verify)', '[IO.Directory]::Move($verify,$final)')) { if (-not $m12ObservabilityProducerText.Contains($m12ObservabilityMarker, [StringComparison]::Ordinal)) { throw "M12 observability producer is missing invariant: $m12ObservabilityMarker" } }
+    if ($m12ObservabilityTestText -notmatch '\[Trait\("Category",\s*"RequiresM12ObservabilityRelease"\)\]' -or
+        $m12ObservabilityRuntimeText -notmatch 'services\.AddOpenTelemetry\(\)' -or
+        $m12ObservabilityRuntimeText -notmatch 'AddOtlpExporter' -or
+        $m12ObservabilityServerRegistrationText -notmatch 'AddSqlObserverObservability' -or
+        $m12ObservabilityCollectorRegistrationText -notmatch 'AddSqlObserverObservability') { throw 'M12 observability release tests must bind to exporter-based production registrations with explicit release-only coverage.' }
     $sqlContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerLabContract.cs') -Raw
     if ($sqlContractText -notmatch 'SQLOBSERVER_RELEASE_SQLSERVER' -or
         $sqlContractText -notmatch 'SqlConnectionStringBuilder' -or
@@ -2072,6 +2128,9 @@ foreach ($testProject in $testProjectsToRun) {
         # The reports producer is the sole selector for release reports
         # evidence; ordinary Local and Release sweeps must not run it.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresM12ReportsRelease' } else { "($filter)&Category!=RequiresM12ReportsRelease" }
+        # The observability producer is the sole selector for live M12
+        # readiness/telemetry evidence; ordinary sweeps remain local-only.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresM12ObservabilityRelease' } else { "($filter)&Category!=RequiresM12ObservabilityRelease" }
     }
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj' -and [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('SQLOBSERVER_LOCAL_SQLSERVER'))) {
         $filter = 'Category!=RequiresSqlServer'

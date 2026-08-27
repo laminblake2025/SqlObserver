@@ -16,5 +16,6 @@
     <ProjectReference Include="../../src/SqlObserver.Analytics/SqlObserver.Analytics.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Observability/SqlObserver.Observability.csproj" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,7 @@
   <PropertyGroup>
     <RootNamespace>SqlObserver.IntegrationTests.PostgreSql</RootNamespace>
     <AssemblyName>SqlObserver.IntegrationTests.PostgreSql</AssemblyName>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -18,6 +19,7 @@
     <ProjectReference Include="../../src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Observability/SqlObserver.Observability.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
   </ItemGroup>
 </Project>

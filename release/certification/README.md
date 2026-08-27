@@ -111,6 +111,16 @@ never published. Local and ordinary Release validation exclude
 `RequiresM12ReportsRelease`; missing prerequisites fail the producer and leave
 the cases pending.
 
+The pending observability lane is produced only by
+`tools/run-m12-observability-certification.ps1`. It accepts Release Windows
+Server 2022/2025 identities, selects exactly one readiness or collector
+telemetry test, and validates the closed source-pinned observability contract.
+The product path checks PostgreSQL 18 readiness through the existing
+compatibility port and captures only bounded in-process OpenTelemetry signals;
+it never sends telemetry to an external endpoint for certification. Output is
+sanitized JSON evidence published atomically only after a fresh Release test,
+and the matrix cases remain pending until external evidence is accepted.
+
 The verifier requires PowerShell Core 7.5 or newer (`pwsh`); Windows
 PowerShell 5.1 and older Core hosts are rejected rather than downgraded.
 

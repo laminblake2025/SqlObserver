@@ -32,6 +32,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         AnalyticsDerivation = (IAnalyticsDerivationStore)Analytics;
         AnalyticsBackfill = new PostgreSqlAnalyticsBackfillStore(dataSource);
         Reports = new PostgreSqlReportRepository(dataSource);
+        Compatibility = new PostgreSqlCompatibilityPort(dataSource);
     }
 
     public ICollectorRuntimeRepositoryPort Runtime { get; }
@@ -45,6 +46,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     public IAnalyticsDerivationStore AnalyticsDerivation { get; }
     public IAnalyticsBackfillStore AnalyticsBackfill { get; }
     public IReportExpiryRepository Reports { get; }
+    public IPostgreSqlCompatibilityPort Compatibility { get; }
 
     /// <summary>Resolves the exact persisted host binding/profile; no configuration fallback is used.</summary>
     public async ValueTask<HostTarget?> ReadHostTargetAsync(MonitoredInstanceId targetId, ObservationTargetRevision revision, CancellationToken cancellationToken)

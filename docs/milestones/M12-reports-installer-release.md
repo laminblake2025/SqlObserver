@@ -44,6 +44,14 @@ payloads and connection/provider details are not published. Ordinary
 validation excludes `RequiresM12ReportsRelease`, and all three matrix cases
 remain pending until external evidence is accepted.
 
+The observability slice is locally implemented: both hosts register the
+versioned OpenTelemetry sources/meters, PostgreSQL readiness is checked via
+the existing compatibility port with fail-closed bounds, and collector
+activity attributes exclude target identifiers. The readiness and telemetry
+release tests and `tools/run-m12-observability-certification.ps1` are
+pending-only; they publish no evidence until an external Release Windows
+Server 2022/2025 run passes.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped

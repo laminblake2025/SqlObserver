@@ -34,6 +34,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
         Reports = new PostgreSqlReportRepository(dataSource);
         ReportAudit = new PostgreSqlReportAuditPort(dataSource);
+        Compatibility = new PostgreSqlCompatibilityPort(dataSource);
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
@@ -78,6 +79,8 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
 
     public IReportRepository Reports { get; }
     public IReportAuditPort ReportAudit { get; }
+
+    public IPostgreSqlCompatibilityPort Compatibility { get; }
 
     public IRetentionRepositoryPort Retention => (IRetentionRepositoryPort)Analytics;
 
