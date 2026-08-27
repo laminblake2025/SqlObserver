@@ -404,6 +404,7 @@ function Assert-RepositoryShape {
         'SqlObserver.Infrastructure.Windows',
         'SqlObserver.Collector.Abstractions',
         'SqlObserver.Collectors',
+        'SqlObserver.Reporting',
         'SqlObserver.Alerting',
         'SqlObserver.Analytics',
         'SqlObserver.Security',
@@ -443,14 +444,14 @@ function Assert-RepositoryShape {
 
     $sourceProjects = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -Recurse -Filter '*.csproj' -File)
     $testProjects = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.csproj' -File)
-    if ($sourceProjects.Count -ne 16 -or $testProjects.Count -ne 9) {
-        throw "Expected 16 source and 9 test projects; found $($sourceProjects.Count) source and $($testProjects.Count) test projects."
+    if ($sourceProjects.Count -ne 17 -or $testProjects.Count -ne 9) {
+        throw "Expected 17 source and 9 test projects; found $($sourceProjects.Count) source and $($testProjects.Count) test projects."
     }
 
     [xml] $solution = Get-Content -LiteralPath $solutionPath -Raw
     $solutionProjects = @($solution.SelectNodes('//Project'))
-    if ($solutionProjects.Count -ne 25) {
-        throw "Expected 25 projects in SqlObserver.slnx, found $($solutionProjects.Count)."
+    if ($solutionProjects.Count -ne 26) {
+        throw "Expected 26 projects in SqlObserver.slnx, found $($solutionProjects.Count)."
     }
 
     $expectedSolutionProjects = @(
@@ -461,8 +462,8 @@ function Assert-RepositoryShape {
         $solutionProjects | ForEach-Object { $_.GetAttribute('Path').Replace('\', '/') }
     ) | Sort-Object -Unique
     $solutionDifferences = @(Compare-Object $expectedSolutionProjects $actualSolutionProjects)
-    if ($actualSolutionProjects.Count -ne 25 -or $solutionDifferences.Count -ne 0) {
-        throw 'SqlObserver.slnx membership differs from the exact required 16 source and 9 test projects.'
+    if ($actualSolutionProjects.Count -ne 26 -or $solutionDifferences.Count -ne 0) {
+        throw 'SqlObserver.slnx membership differs from the exact required 17 source and 9 test projects.'
     }
 
     $buildProperties = Get-Content -LiteralPath (Join-Path $repositoryRoot 'Directory.Build.props') -Raw
@@ -561,7 +562,10 @@ function Assert-RepositoryShape {
         'ADR-0007-authentication.md', 'ADR-0008-partitioning-and-retention.md',
         'ADR-0009-clean-room-boundary.md', 'ADR-0010-passive-versus-enhanced-monitoring.md',
         'ADR-0011-query-text-and-plans-are-sensitive.md', 'ADR-0012-postgresql-worker-leases.md',
-        'ADR-0013-host-observation-boundary.md', 'ADR-0014-analytics-retention-boundary.md'
+        'ADR-0013-host-observation-boundary.md', 'ADR-0014-analytics-retention-boundary.md',
+        'ADR-0015-reports-and-exports.md', 'ADR-0016-windows-installer-and-postgresql-lifecycle.md',
+        'ADR-0017-deployment-identities-secrets-and-transport.md', 'ADR-0018-web-assets-and-signalr.md',
+        'ADR-0019-release-identity-and-evidence.md'
     )
     $adrFiles = @(Get-ChildItem -LiteralPath $adrPath -Filter 'ADR-*.md' -File | Sort-Object Name)
     $actualAdrNames = @($adrFiles | ForEach-Object { $_.Name })
@@ -571,7 +575,7 @@ function Assert-RepositoryShape {
 
     foreach ($adrFile in $adrFiles) {
         $adrContent = Get-Content -LiteralPath $adrFile.FullName -Raw
-        if ($adrContent -notmatch '(?m)^- Status: (Accepted|Proposed)\r?$') {
+        if ($adrContent -notmatch '(?m)^- Status: (Accepted(?: \(local implementation\))?|Proposed)\r?$') {
             throw "ADR must have Accepted or Proposed status: $($adrFile.Name)"
         }
     }
@@ -1511,6 +1515,28 @@ function Assert-RepositoryShape {
         $certificationMatrix.schemaVersion -ne 1 -or $certificationMatrix.matrixId -cne 'sqlobserver-m12' -or
         (@($certificationMatrix.profiles.PSObject.Properties.Name | Sort-Object) -join '|') -cne 'Local|Release') {
         throw 'M12 certification matrix is not the expected versioned Local/Release contract.'
+    }
+
+    # M12 lifecycle foundation contracts are closed, checksum-pinned, and
+    # explicitly assessment-only. Do not let a missing or replaced contract
+    # turn into an accidental installer or migration mutation surface.
+    $lifecycleContractRoot = Join-Path $repositoryRoot 'installer/contracts'
+    foreach ($contractName in @('lifecycle-assessment.v1.schema.json', 'migration-assessment.v1.schema.json', 'checksums.sha256')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $lifecycleContractRoot $contractName) -PathType Leaf)) {
+            throw "M12 lifecycle contract is missing: $contractName"
+        }
+    }
+    foreach ($schemaName in @('lifecycle-assessment.v1.schema.json', 'migration-assessment.v1.schema.json')) {
+        $schemaPath = Join-Path $lifecycleContractRoot $schemaName
+        $schema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json
+        if ($schema.additionalProperties -ne $false -or $schema.type -cne 'object') {
+            throw "M12 lifecycle schema must be a closed object: $schemaName"
+        }
+        $hash = (Get-FileHash -LiteralPath $schemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $checksumLines = Get-Content -LiteralPath (Join-Path $lifecycleContractRoot 'checksums.sha256')
+        if (-not ($checksumLines -contains "$hash  $schemaName")) {
+            throw "M12 lifecycle schema checksum mismatch: $schemaName"
+        }
     }
     $testSource = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.cs' -File)
     # Every test project has an explicit lane.  Environment-backed classes

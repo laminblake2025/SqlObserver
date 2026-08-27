@@ -26,6 +26,11 @@ the matrix.
   identities, migration sequencing, upgrade/recovery, uninstall preservation,
   and separately authorized purge under
   [ADR-0016](../adr/ADR-0016-windows-installer-and-postgresql-lifecycle.md).
+  The local foundation now provides only bounded, read-only lifecycle and
+  migration assessments with closed schemas and exact catalog validation. It
+  does not create WiX/MSI/Burn, mutate services or PostgreSQL, write config or
+  ACLs, uninstall/purge, or infer a PostgreSQL patch floor; ADR-0016 remains
+  Proposed and all lifecycle evidence remains pending.
 - Deployment identities, secrets, and transport: qualify gMSA/SSPI, SPN and
   trusted TLS, secret protection/rotation, and sensitive-content policy under
   [ADR-0017](../adr/ADR-0017-deployment-identities-secrets-and-transport.md).
