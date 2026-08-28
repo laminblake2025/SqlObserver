@@ -145,6 +145,14 @@ and provenance after the license-bound Release test passes. ContractOnly validat
 the independently pinned license contract and schema assets without building or
 publishing; no live Server 2022/2025 evidence is claimed locally.
 
+The producer also accepts `-CaseId m12-vulnerability-scan` for the separate
+pending vulnerability case. It binds fresh native dotnet vulnerable-package
+and production pnpm audit JSON to the exact NuGet/npm SBOM component set,
+pins dotnet 10.0.203, Node 22.22.0, and pnpm 11.19.0, and rejects all findings,
+unfixable packages, unknown advisories/severities, partial outputs, and registry
+errors. ContractOnly and generator tests are bounded; no live scan claim is
+made until approved Windows release evidence is externally accepted.
+
 Release validation also requires a supported 64-bit Windows runner, a running
 Docker PostgreSQL lab, live SQL Server configuration, browser/installer/OS
 evidence, signing evidence, and `SQLOBSERVER_CERTIFICATION_MANIFEST` pointing

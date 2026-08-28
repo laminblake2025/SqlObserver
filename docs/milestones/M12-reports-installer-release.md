@@ -72,6 +72,14 @@ license-bound Release test and deterministic three-file publication remain gated
 on genuine x64 Server 2022/2025 evidence; ContractOnly is read-only and does not
 promote the matrix case.
 
+The same producer defines a separate pending `m12-vulnerability-scan` dispatch.
+It binds fresh native `dotnet list package --vulnerable --include-transitive`
+and `pnpm audit --prod --json` responses to the exact runtime SBOM component
+set, pins dotnet 10.0.203, Node 22.22.0, and pnpm 11.19.0, and rejects every
+finding, unfixable package, unknown advisory/severity, partial response, and
+registry error. ContractOnly and deterministic generator tests are bounded and
+do not claim live release evidence.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped
