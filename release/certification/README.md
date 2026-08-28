@@ -124,6 +124,19 @@ and the matrix cases remain pending until external evidence is accepted.
 The verifier requires PowerShell Core 7.5 or newer (`pwsh`); Windows
 PowerShell 5.1 and older Core hosts are rejected rather than downgraded.
 
+The pending supply-chain SBOM case is produced only by
+`tools/run-m12-supply-chain-certification.ps1`. `m12-supply-chain-contract.v1.json`
+and its closed schemas pin a deterministic CycloneDX 1.7 subset. The Node-only
+generator consumes exactly three fresh host `.deps.json` files, a sanitized
+production `pnpm list` and the decision-neutral web asset catalog; all inputs
+are bound by the bijective `m12-sbom-inputs.v1.json` manifest. Timestamp, commit,
+run and environment are explicit inputs, and component/dependency/string/JSON
+bounds are fail-closed. ContractOnly performs no publish; live certification
+requires both supported Windows Server environments, x64, a clean trusted tree,
+fresh Release publishes and one exact release test. Only the SBOM, sanitized test
+evidence, and nine-field provenance sidecar may be published, with pending matrix
+status unchanged until external evidence is accepted.
+
 Release validation also requires a supported 64-bit Windows runner, a running
 Docker PostgreSQL lab, live SQL Server configuration, browser/installer/OS
 evidence, signing evidence, and `SQLOBSERVER_CERTIFICATION_MANIFEST` pointing

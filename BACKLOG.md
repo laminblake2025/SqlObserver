@@ -188,6 +188,8 @@ M7 Query Store and plan-cache evidence, M8 alert evaluation/delivery, M9 operati
 
 ## Current post-M11 exclusions
 
+- M12 supply-chain SBOM remains pending: the closed CycloneDX 1.7 contract, deterministic generator, and release-only producer are implemented for review, but no live release evidence is claimed.
+
 The following are explicitly incomplete and must not be represented as working:
 
 - reports and exports are implemented locally through the ADR-0015 vertical slice; the versioned, source-pinned reports contract and pending-only Release producer now cover bounded report/export product-path proofs, while PostgreSQL runtime, browser, installer, and external/release certification evidence remains pending;

@@ -1876,6 +1876,50 @@ function Assert-RepositoryShape {
         $m12ObservabilityRuntimeText -notmatch 'AddOtlpExporter' -or
         $m12ObservabilityServerRegistrationText -notmatch 'AddSqlObserverObservability' -or
         $m12ObservabilityCollectorRegistrationText -notmatch 'AddSqlObserverObservability') { throw 'M12 observability release tests must bind to exporter-based production registrations with explicit release-only coverage.' }
+    # M12 supply-chain contract is a pending-only producer: validate its closed
+    # assets and exact SBOM lane without promoting any release evidence.
+    $m12SbomContractPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.json'
+    $m12SbomSchemaPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.schema.json'
+    $m12SbomInputsPath = Join-Path $repositoryRoot 'release/certification/m12-sbom-inputs.v1.json'
+    $m12SbomInputsSchemaPath = Join-Path $repositoryRoot 'release/certification/m12-sbom-inputs.v1.schema.json'
+    $m12SbomSchema = Join-Path $repositoryRoot 'release/certification/m12-sbom.v1.schema.json'
+    $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
+    $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
+    $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
+    $m12SbomProducerSha256 = 'f6e6c5748aed120c6c483b26de1c69f59f028412e79595ea7c77f1517b32ee79'
+    $m12SbomAssetManifestSha256 = 'ec910302a570642396c3b0f97b5a2515b202fbbf8fe37aa7f0caa00cb71ded71'
+    foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
+    $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
+    $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
+    $m12SbomInputs = Get-Content -LiteralPath $m12SbomInputsPath -Raw | ConvertFrom-Json
+    if ($m12SbomContract.'$schema' -cne 'm12-supply-chain-contract.v1.schema.json' -or $m12SbomContract.producerId -cne 'm12-supply-chain-harness' -or $m12SbomContract.artifactKind -cne 'supply-chain-evidence' -or $m12SbomContract.caseId -cne 'm12-sbom' -or $m12SbomContract.bounds.components -ne 4096 -or $m12SbomContract.bounds.dependencyNodes -ne 8192 -or $m12SbomContract.bounds.jsonBytes -ne 4194304) { throw 'M12 SBOM contract is not the approved closed shape.' }
+    $m12SbomApprovedAssets = [ordered]@{
+        'release/certification/m12-supply-chain-contract.v1.json' = 'c3d057f5a572e4a68fa0bdfb4d2ca000e1585f69c1c77f2b28db3aef0c50c152'
+        'release/certification/m12-supply-chain-contract.v1.schema.json' = 'd15155d6bf41e6b5e90382595d1f2cb7d4ba30d54db293a6be5673aab4ad135d'
+        'release/certification/m12-sbom.v1.schema.json' = '1b50c743245f19202639372f1c94335442a2ab52cf5ab298b36e436f4afe6d62'
+        'release/certification/m12-sbom-inputs.v1.json' = 'a305315faed7dbe50305804ea78198afd9e878d28896a991fdcb3e96df5fdcce'
+        'release/certification/m12-sbom-inputs.v1.schema.json' = 'b01e0d97ca0190d5b814d8254a2079185e8d46792001f3424bfe10c53f0791e8'
+        'release/certification/m12-certification-matrix.v1.json' = 'accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330'
+        'BACKLOG.md' = '3c1cccc8680acc549e0635eb9fe5c5c7e227a481810983af30599be3f830583d'
+        'docs/milestones/M12-reports-installer-release.md' = '658b72cd7d7b9b81093c5f8f918f3febe389d83d7fe932a8c2678a51a3c7652a'
+        'release/certification/README.md' = 'e21b220d8ce9e19d8d3f14902e7dff7df2568bf05ea1288f480766ba32ec385d'
+        'tests/SqlObserver.ReleaseTests/M12SbomCertificationTests.cs' = '0b13d423fe513b05491bf16a36d147789ba96f90fe5b89f3e9e96d3af9093399'
+        'tools/generate-m12-sbom.mjs' = '1b7170d73531a983f2f1cf8b0e7a29c83bf9aaa54c41f35f14dc691bb9120f04'
+        'web/tests/m12-sbom-generator-contract.test.mjs' = 'ec59b9a033b239a00ef7d08e5ddc19baa32fa3d1ad18847ddf770796308f7242'
+        'web/contracts/web-asset-manifest.v1.schema.json' = '1f1e5b785dde79c492773f7298074fbf4668a1cebe75764cecdf97983fed682a'
+        'web/tools/web-asset-manifest.mjs' = '04370684e850b3cf9aaa0c5ed6db61dcdd6fb6fbbb7d0e67c8f5cb3197dcf17a'
+    }
+    $m12SbomPinText = [IO.File]::ReadAllText($m12SbomPinPath); $m12SbomExpectedPin = (($m12SbomApprovedAssets.Keys | ForEach-Object { "$($m12SbomApprovedAssets[$_])  $_" }) -join "`n") + "`n"
+    if ($m12SbomPinText -cne $m12SbomExpectedPin) { throw 'M12 SBOM contract asset pin is not exact LF-closed.' }
+    foreach ($asset in $m12SbomApprovedAssets.Keys) { if ((Get-FileHash -LiteralPath (Join-Path $repositoryRoot $asset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12SbomApprovedAssets[$asset]) { throw "M12 SBOM asset checksum mismatch: $asset" } }
+    if ((Get-FileHash -LiteralPath $m12SbomProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12SbomProducerSha256) { throw 'M12 SBOM producer source checksum mismatch.' }
+    if ((Get-FileHash -LiteralPath $m12SbomPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12SbomAssetManifestSha256) { throw 'M12 SBOM asset manifest checksum mismatch.' }
+    if ($m12SbomContractSchema.additionalProperties -ne $false -or $m12SbomInputs.'$schema' -cne 'm12-sbom-inputs.v1.schema.json' -or @($m12SbomInputs.files).Count -ne 40) { throw 'M12 SBOM schemas or input manifest are not closed.' }
+    $m12SbomProducerText = Get-Content -LiteralPath $m12SbomProducerPath -Raw; $m12SbomGeneratorText = Get-Content -LiteralPath $m12SbomGeneratorPath -Raw
+    foreach ($marker in @('ContractOnly','m12-sbom.cdx.json','m12-sbom-test-evidence.json','m12-supply-chain-contract.v1.assets.sha256','Assert-M12TrustedTree','M12SuspendedProcess','CreateSuspended','KillOnClose','ProcessIds','ReadAsync','FileMode]::CreateNew','FileShare]::None','Flush($true)','Assert-M12NoDescendants','XmlResolver','DocumentType','UnitTestResult','Counters','expectedCounters','CycloneDX','1.7','4096','8192')) { if (-not $m12SbomProducerText.Contains($marker, [StringComparison]::Ordinal) -and -not $m12SbomGeneratorText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 SBOM producer is missing invariant: $marker" } }
+    $m12SbomMatrix = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-certification-matrix.v1.json') -Raw | ConvertFrom-Json
+    $m12SbomLane = @($m12SbomMatrix.lanes | Where-Object { $_.laneId -ceq 'supply-chain' }); $m12SbomCase = @($m12SbomLane.cases | Where-Object { $_.caseId -ceq 'm12-sbom' })
+    if ($m12SbomLane.Count -ne 1 -or $m12SbomLane[0].implementationStatus -cne 'pending' -or $m12SbomCase.Count -ne 1 -or $m12SbomCase[0].producerId -cne 'm12-supply-chain-harness' -or $m12SbomCase[0].implementationStatus -cne 'pending' -or $m12SbomCase[0].environment.factPredicates.sbom -ne $true) { throw 'M12 SBOM lane must remain pending and exact.' }
     $sqlContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerLabContract.cs') -Raw
     if ($sqlContractText -notmatch 'SQLOBSERVER_RELEASE_SQLSERVER' -or
         $sqlContractText -notmatch 'SqlConnectionStringBuilder' -or
@@ -2117,6 +2161,11 @@ foreach ($testProject in $testProjectsToRun) {
     $filter = $null
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.EndToEndTests.csproj') {
         $filter = 'Category!=RequiresPostgreSql'
+    }
+    if ($testProject -like '*SqlObserver.ReleaseTests.csproj') {
+        # Producer-owned M12 release proofs are selected only by their
+        # producer; ordinary validation must never run the live category.
+        $filter = 'Category!=RequiresM12SupplyChainRelease'
     }
     if ($Profile -eq 'Local' -and $testProject -like '*SqlObserver.McpContractTests.csproj') {
         $filter = 'Category!=RequiresM12McpRelease'

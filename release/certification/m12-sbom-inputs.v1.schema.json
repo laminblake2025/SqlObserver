@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://sqlobserver.invalid/schemas/m12-sbom-inputs.v1.schema.json", "title": "M12 SBOM generator input manifest", "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "manifestId", "roots", "files"],
+  "properties": { "$schema": { "const": "m12-sbom-inputs.v1.schema.json" }, "schemaVersion": { "const": 1 }, "manifestId": { "const": "m12-sbom-inputs" }, "roots": { "const": ["src/SqlObserver.Server/SqlObserver.Server.csproj", "src/SqlObserver.Collector/SqlObserver.Collector.csproj", "src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj"] }, "files": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": { "path": { "type": "string", "pattern": "^(?:[^./][^\\\\]*|[^./][^/]*(?:/[^/]+)+)$" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } } } }
+}

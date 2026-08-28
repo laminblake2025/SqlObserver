@@ -52,6 +52,18 @@ release tests and `tools/run-m12-observability-certification.ps1` are
 pending-only; they publish no evidence until an external Release Windows
 Server 2022/2025 run passes.
 
+The supply-chain SBOM producer is implemented as a pending-only harness. Its
+closed contract and input manifest pin the recursive Server/Collector/McpStdio
+project and lock closure, central build policy, web package lock, and existing
+web asset-catalog generator/schema. A Node-built deterministic CycloneDX 1.7
+subset combines three fresh host dependency graphs, sanitized production pnpm
+dependencies, and the deterministic web catalog with explicit supplied
+timestamp/commit/run/environment values. ContractOnly is side-effect free;
+live certification remains gated on genuine x64 Server 2022/2025 hosts,
+fresh Release publishes, one exact release test, and the hardened process,
+file-identity, quarantine, and publication boundaries. The `m12-sbom` matrix
+case remains pending and no release claim is created.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped
