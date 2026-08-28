@@ -188,7 +188,7 @@ M7 Query Store and plan-cache evidence, M8 alert evaluation/delivery, M9 operati
 
 ## Current post-M11 exclusions
 
-- M12 supply-chain SBOM, license, and vulnerability evidence remain pending: the closed CycloneDX 1.7, reviewed SPDX-license, and reject-all vulnerability-scan contracts plus deterministic generators and separate release-only producer dispatches are implemented for review, but no live Server 2022/2025 release evidence is claimed.
+- M12 supply-chain SBOM, license, vulnerability, and provenance evidence remain pending: the closed CycloneDX 1.7, reviewed SPDX-license, reject-all vulnerability-scan, and exact-subject provenance contracts plus deterministic generators and separate release-only producer dispatches are implemented for review, but no live Server 2022/2025 release evidence is claimed.
 
 The following are explicitly incomplete and must not be represented as working:
 

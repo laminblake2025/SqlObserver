@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-provenance-evidence.v1.schema.json",
+  "title": "SqlObserver deterministic M12 provenance evidence",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "caseId", "producerId", "kind", "result", "environmentId", "commitSha", "runId", "generatedAtUtc", "sbomSha256", "sbomSize", "inputManifestSha256", "inputManifestFileCount", "inputManifestTreeSha256", "products"],
+  "properties": {
+    "$schema": { "const": "m12-provenance-evidence.v1.schema.json" }, "schemaVersion": { "const": 1 }, "caseId": { "const": "m12-provenance" }, "producerId": { "const": "m12-supply-chain-harness" }, "kind": { "const": "supply-chain-evidence" }, "result": { "const": "passed" }, "environmentId": { "enum": ["release-windows-server-2022", "release-windows-server-2025"] }, "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }, "runId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }, "generatedAtUtc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{7}Z$" }, "sbomSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "sbomSize": { "type": "integer", "minimum": 1, "maximum": 4194304 }, "inputManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "inputManifestFileCount": { "const": 40 }, "inputManifestTreeSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "products": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "m12-provenance-subjects.v1.schema.json#/$defs/product" } }
+  }
+}

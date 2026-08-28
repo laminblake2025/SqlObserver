@@ -80,6 +80,13 @@ finding, unfixable package, unknown advisory/severity, partial response, and
 registry error. ContractOnly and deterministic generator tests are bounded and
 do not claim live release evidence.
 
+The pending provenance slice is also implemented as a closed, pending-only
+dispatch. It binds the exact SBOM and 40-file input manifest to the exact
+four-product build subject set with path, digest, size, and entry-point
+bindings. It does not claim license- or vulnerability-artifact provenance,
+SLSA, in-toto, signing, or external attestation, and the matrix case remains
+pending until approved Release evidence is externally accepted.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped

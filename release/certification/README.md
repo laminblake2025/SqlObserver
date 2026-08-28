@@ -153,6 +153,13 @@ unfixable packages, unknown advisories/severities, partial outputs, and registry
 errors. ContractOnly and generator tests are bounded; no live scan claim is
 made until approved Windows release evidence is externally accepted.
 
+The same producer also accepts `-CaseId m12-provenance` for a separate pending
+case. It binds the exact SBOM and 40-file input manifest to a closed,
+deterministic inventory of the four fresh product-build subjects, including
+their paths, SHA-256 digests, byte sizes, and entry points. This package makes
+no license-artifact, vulnerability-artifact, SLSA, in-toto, signing, or
+external-attestation claim; those remain separate release gates.
+
 Release validation also requires a supported 64-bit Windows runner, a running
 Docker PostgreSQL lab, live SQL Server configuration, browser/installer/OS
 evidence, signing evidence, and `SQLOBSERVER_CERTIFICATION_MANIFEST` pointing
