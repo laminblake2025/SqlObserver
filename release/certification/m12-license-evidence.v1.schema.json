@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-license-evidence.v1.schema.json",
+  "title": "SqlObserver deterministic M12 license evidence",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "caseId", "producerId", "kind", "result", "environmentId", "commitSha", "runId", "sbomSha256", "sbomSize", "components"],
+  "properties": {
+    "$schema": { "const": "m12-license-evidence.v1.schema.json" }, "schemaVersion": { "const": 1 },
+    "caseId": { "const": "m12-licenses" }, "producerId": { "const": "m12-supply-chain-harness" }, "kind": { "const": "supply-chain-evidence" }, "result": { "const": "passed" },
+    "environmentId": { "type": "string", "enum": ["release-windows-server-2022", "release-windows-server-2025"] },
+    "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 }, "runId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "sbomSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "sbomSize": { "type": "integer", "minimum": 1, "maximum": 4194304 },
+    "components": { "type": "array", "minItems": 1, "maxItems": 4096, "items": { "$ref": "#/$defs/component" } }
+  },
+  "$defs": {
+    "component": {
+      "type": "object", "additionalProperties": false, "required": ["bomRef", "name", "version", "purl", "ecosystem", "spdxId", "source"],
+      "properties": {
+        "bomRef": { "type": "string", "pattern": "^pkg:(nuget|npm)/[^\\s]+$", "maxLength": 512 }, "name": { "type": "string", "minLength": 1, "maxLength": 512 }, "version": { "type": "string", "minLength": 1, "maxLength": 512 }, "purl": { "type": "string", "pattern": "^pkg:(nuget|npm)/[^\\s]+$", "maxLength": 512 }, "ecosystem": { "enum": ["nuget", "npm"] }, "spdxId": { "enum": ["Apache-2.0", "MIT", "PostgreSQL"] },
+        "source": { "type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": { "path": { "type": "string", "pattern": "^[^\\\\/:~][^\\\\:]*$", "maxLength": 512 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } }
+      }
+    }
+  }
+}

@@ -64,6 +64,14 @@ fresh Release publishes, one exact release test, and the hardened process,
 file-identity, quarantine, and publication boundaries. The `m12-sbom` matrix
 case remains pending and no release claim is created.
 
+The same pending-only producer now has a separate `m12-licenses` dispatch. It
+binds exact third-party NuGet/npm runtime components to the freshly generated
+SBOM, accepts only the reviewed Apache-2.0/MIT/PostgreSQL identifiers, and applies
+the pinned Microsoft.Data.SqlClient.SNI runtime license-file override. The exact
+license-bound Release test and deterministic three-file publication remain gated
+on genuine x64 Server 2022/2025 evidence; ContractOnly is read-only and does not
+promote the matrix case.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped

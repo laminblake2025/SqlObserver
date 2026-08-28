@@ -137,6 +137,14 @@ fresh Release publishes and one exact release test. Only the SBOM, sanitized tes
 evidence, and nine-field provenance sidecar may be published, with pending matrix
 status unchanged until external evidence is accepted.
 
+The same producer accepts `-CaseId m12-licenses` for the separate pending license
+case. It regenerates the frozen SBOM, resolves every NuGet/npm runtime component
+against the reviewed Apache-2.0/MIT/PostgreSQL policy (including the exact SNI
+runtime override), and publishes only deterministic license evidence, test evidence,
+and provenance after the license-bound Release test passes. ContractOnly validates
+the independently pinned license contract and schema assets without building or
+publishing; no live Server 2022/2025 evidence is claimed locally.
+
 Release validation also requires a supported 64-bit Windows runner, a running
 Docker PostgreSQL lab, live SQL Server configuration, browser/installer/OS
 evidence, signing evidence, and `SQLOBSERVER_CERTIFICATION_MANIFEST` pointing

@@ -1886,8 +1886,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = 'f6e6c5748aed120c6c483b26de1c69f59f028412e79595ea7c77f1517b32ee79'
-    $m12SbomAssetManifestSha256 = 'ec910302a570642396c3b0f97b5a2515b202fbbf8fe37aa7f0caa00cb71ded71'
+    $m12SbomProducerSha256 = 'c7f3992b5de044a0147fd5f296cf4002567546ceb56790ed7efa72a1a8efc151'
+    $m12SbomAssetManifestSha256 = '015624c69675b8c6499af9df310ef8efc6b47239825233df534f241e73742bf1'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1900,12 +1900,12 @@ function Assert-RepositoryShape {
         'release/certification/m12-sbom-inputs.v1.json' = 'a305315faed7dbe50305804ea78198afd9e878d28896a991fdcb3e96df5fdcce'
         'release/certification/m12-sbom-inputs.v1.schema.json' = 'b01e0d97ca0190d5b814d8254a2079185e8d46792001f3424bfe10c53f0791e8'
         'release/certification/m12-certification-matrix.v1.json' = 'accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330'
-        'BACKLOG.md' = '3c1cccc8680acc549e0635eb9fe5c5c7e227a481810983af30599be3f830583d'
-        'docs/milestones/M12-reports-installer-release.md' = '658b72cd7d7b9b81093c5f8f918f3febe389d83d7fe932a8c2678a51a3c7652a'
-        'release/certification/README.md' = 'e21b220d8ce9e19d8d3f14902e7dff7df2568bf05ea1288f480766ba32ec385d'
+        'BACKLOG.md' = '1aa78f64928cefe7cca98a8dc78d7d3a4d2a44b982265f56b2b3c9ce4e50b4c2'
+        'docs/milestones/M12-reports-installer-release.md' = 'd0a23a54df10bb1fb0360470250e6ead53bc25ac70b9cef5341c32fcdf08e164'
+        'release/certification/README.md' = 'c743f230f8a24ee420641908cc93a10426d47f560b99d87c67e6a928b112d330'
         'tests/SqlObserver.ReleaseTests/M12SbomCertificationTests.cs' = '0b13d423fe513b05491bf16a36d147789ba96f90fe5b89f3e9e96d3af9093399'
         'tools/generate-m12-sbom.mjs' = '1b7170d73531a983f2f1cf8b0e7a29c83bf9aaa54c41f35f14dc691bb9120f04'
-        'web/tests/m12-sbom-generator-contract.test.mjs' = 'ec59b9a033b239a00ef7d08e5ddc19baa32fa3d1ad18847ddf770796308f7242'
+        'web/tests/m12-sbom-generator-contract.test.mjs' = '58d702aad3ca5d4989a160e0133b931ef3967b3474197941cb8596700d91fb92'
         'web/contracts/web-asset-manifest.v1.schema.json' = '1f1e5b785dde79c492773f7298074fbf4668a1cebe75764cecdf97983fed682a'
         'web/tools/web-asset-manifest.mjs' = '04370684e850b3cf9aaa0c5ed6db61dcdd6fb6fbbb7d0e67c8f5cb3197dcf17a'
     }
@@ -1920,6 +1920,22 @@ function Assert-RepositoryShape {
     $m12SbomMatrix = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-certification-matrix.v1.json') -Raw | ConvertFrom-Json
     $m12SbomLane = @($m12SbomMatrix.lanes | Where-Object { $_.laneId -ceq 'supply-chain' }); $m12SbomCase = @($m12SbomLane.cases | Where-Object { $_.caseId -ceq 'm12-sbom' })
     if ($m12SbomLane.Count -ne 1 -or $m12SbomLane[0].implementationStatus -cne 'pending' -or $m12SbomCase.Count -ne 1 -or $m12SbomCase[0].producerId -cne 'm12-supply-chain-harness' -or $m12SbomCase[0].implementationStatus -cne 'pending' -or $m12SbomCase[0].environment.factPredicates.sbom -ne $true) { throw 'M12 SBOM lane must remain pending and exact.' }
+    $m12LicenseAssets = [ordered]@{
+        'release/certification/m12-license-contract.v1.json' = '019fb05b5bfff8b55947601bbd1dc9e180af5e507136a7da4ce92d39a3196b93'
+        'release/certification/m12-license-contract.v1.schema.json' = '94c3c06975ce2a21bf29105cbb2a3b64a5ca0014d6fb082d6f59025eb0bd0390'
+        'release/certification/m12-license-evidence.v1.schema.json' = '6c3afae66b9651e0fbae67c95c13df5d5c8adaa0cbbdd7e39374fba1750e6361'
+        'tools/generate-m12-license-evidence.mjs' = '30da9daf68ebc3520b1b6995b208af92fcadb6c121744e538ea1b3b38b3315c8'
+        'web/tests/m12-license-generator-contract.test.mjs' = 'cafc70c06d0bb52bc3734674158a8e0d1a88ef5f7b71bdf705985a271acff5ce'
+        'tests/SqlObserver.ReleaseTests/M12LicenseCertificationTests.cs' = '76f056fe0a543e2ea9b7528db1bc14c2f2662946912661bc1b54a0788f9bdd08'
+    }
+    $m12LicensePinPath = Join-Path $repositoryRoot 'release/certification/m12-license-contract.v1.assets.sha256'; if (-not (Test-Path -LiteralPath $m12LicensePinPath -PathType Leaf)) { throw 'M12 license certification asset is missing.' }
+    foreach ($asset in $m12LicenseAssets.Keys) { if ((Get-FileHash -LiteralPath (Join-Path $repositoryRoot $asset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12LicenseAssets[$asset]) { throw "M12 license asset checksum mismatch: $asset" } }
+    $m12LicensePinText = [IO.File]::ReadAllText($m12LicensePinPath); $m12LicenseExpectedPin = (($m12LicenseAssets.Keys | ForEach-Object { "$($m12LicenseAssets[$_])  $_" }) -join "`n") + "`n"; if ($m12LicensePinText -cne $m12LicenseExpectedPin) { throw 'M12 license contract asset pin is not exact LF-closed.' }
+    if ((Get-FileHash -LiteralPath $m12LicensePinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'f6d7a7833147f8f0ff06d06d3d2a6ad113315c246e60a0afbf693f424c1e92eb') { throw 'M12 license asset manifest checksum mismatch.' }
+    $m12LicenseContract = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-license-contract.v1.json') -Raw | ConvertFrom-Json; $m12LicenseSchema = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-license-contract.v1.schema.json') -Raw | ConvertFrom-Json; $m12LicenseEvidenceSchema = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-license-evidence.v1.schema.json') -Raw | ConvertFrom-Json
+    if ($m12LicenseContract.'$schema' -cne 'm12-license-contract.v1.schema.json' -or $m12LicenseContract.contractId -cne 'sqlobserver-m12-licenses' -or $m12LicenseContract.producerId -cne 'm12-supply-chain-harness' -or $m12LicenseContract.artifactKind -cne 'supply-chain-evidence' -or $m12LicenseContract.caseId -cne 'm12-licenses' -or (@($m12LicenseContract.requiredFacts) -join '|') -cne 'os|architecture|licenses' -or $m12LicenseContract.factPredicates.licenses -ne $true -or (@($m12LicenseContract.outputFiles) -join '|') -cne 'm12-licenses.json|m12-licenses-test-evidence.json|m12-licenses-provenance.json' -or (@($m12LicenseContract.licensePolicy.allowedSpdx) -join '|') -cne 'Apache-2.0|MIT|PostgreSQL' -or $m12LicenseContract.bounds.components -ne 4096 -or $m12LicenseSchema.additionalProperties -ne $false -or $m12LicenseEvidenceSchema.additionalProperties -ne $false) { throw 'M12 license contract is not the approved closed shape.' }
+    $m12LicenseCase = @($m12SbomLane[0].cases | Where-Object { $_.caseId -ceq 'm12-licenses' }); if ($m12LicenseCase.Count -ne 1 -or $m12LicenseCase[0].producerId -cne 'm12-supply-chain-harness' -or $m12LicenseCase[0].implementationStatus -cne 'pending' -or $m12LicenseCase[0].environment.factPredicates.licenses -ne $true) { throw 'M12 license lane must remain pending and exact.' }
+    $m12LicenseTestText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.ReleaseTests/M12LicenseCertificationTests.cs') -Raw; foreach ($marker in @('RequiresM12SupplyChainRelease','LiveReleaseLicenseEvidenceIsCompleteDeterministicAndSbomBound','FileMode.CreateNew','SQLOBSERVER_M12_LICENSE_EVIDENCE_PATH','SQLOBSERVER_M12_LICENSE_SECOND_PATH')) { if (-not $m12LicenseTestText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 license test is missing invariant: $marker" } }
     $sqlContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerLabContract.cs') -Raw
     if ($sqlContractText -notmatch 'SQLOBSERVER_RELEASE_SQLSERVER' -or
         $sqlContractText -notmatch 'SqlConnectionStringBuilder' -or

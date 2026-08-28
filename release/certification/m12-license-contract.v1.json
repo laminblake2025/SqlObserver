@@ -1,0 +1,34 @@
+{
+  "$schema": "m12-license-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "sqlobserver-m12-licenses",
+  "producerId": "m12-supply-chain-harness",
+  "artifactKind": "supply-chain-evidence",
+  "caseId": "m12-licenses",
+  "environments": ["release-windows-server-2022", "release-windows-server-2025"],
+  "requiredFacts": ["os", "architecture", "licenses"],
+  "factPredicates": { "os": "windows", "architecture": "x64", "licenses": true },
+  "sbomSchema": "m12-sbom.v1.schema.json",
+  "outputFiles": ["m12-licenses.json", "m12-licenses-test-evidence.json", "m12-licenses-provenance.json"],
+  "generation": {
+    "format": "SPDX-license-evidence",
+    "deterministic": true,
+    "timestampSource": "supplied",
+    "commitSource": "supplied",
+    "runSource": "supplied"
+  },
+  "licensePolicy": {
+    "allowedSpdx": ["Apache-2.0", "MIT", "PostgreSQL"],
+    "thirdPartyEcosystems": ["nuget", "npm"],
+    "firstPartyCatalog": ["pkg:generic/sqlobserver.web@"],
+    "ambiguousExpressionsRejected": true,
+    "urlOnlyLicensesRejected": true,
+    "sniRuntimeOverride": {
+      "purl": "pkg:nuget/microsoft.data.sqlclient.sni.runtime@6.0.2",
+      "path": "LICENSE.txt",
+      "sha256": "9335e8bad875dd7be4eebd55d2335eb6433d1cea61aadb3817af7807bef8932a",
+      "spdxId": "MIT"
+    }
+  },
+  "bounds": { "components": 4096, "jsonBytes": 4194304, "stringLength": 512, "depth": 32 }
+}

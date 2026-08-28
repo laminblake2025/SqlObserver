@@ -75,6 +75,16 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void LicenseContractOnlyDispatchValidatesWithoutPublishing()
+    {
+        string root = FindRoot();
+        string source = File.ReadAllText(Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"));
+        foreach (string marker in new[] { "m12-licenses", "m12-license-contract.v1.json", "generate-m12-license-evidence.mjs", "m12-licenses.json", "m12-licenses-test-evidence.json", "m12-licenses-provenance.json", "LiveReleaseLicenseEvidenceIsCompleteDeterministicAndSbomBound", "SQLOBSERVER_M12_LICENSE_EVIDENCE_PATH", "SQLOBSERVER_M12_LICENSE_SECOND_PATH" }) Assert.Contains(marker, source, StringComparison.Ordinal);
+        Assert.Equal(0, RunCase(root, "m12-licenses", "-ContractOnly"));
+        Assert.False(Directory.Exists(Path.Combine(root, "TestResults", "m12", "candidate")));
+    }
+
+    [Fact]
     public void ProducerUsesExactClosedGraphAndCanonicalPurls()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
@@ -152,6 +162,12 @@ public sealed class M12SupplyChainCertificationProducerTests
     {
         ProcessStartInfo start = new("pwsh") { WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-File", Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"), "-RepositoryRoot", root, "-Profile", "Release", "-CaseId", "m12-sbom" }.Concat(extra)) start.ArgumentList.Add(argument);
+        using Process process = Process.Start(start)!; process.WaitForExit(); return process.ExitCode;
+    }
+    private static int RunCase(string root, string caseId, params string[] extra)
+    {
+        ProcessStartInfo start = new("pwsh") { WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+        foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-File", Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"), "-RepositoryRoot", root, "-Profile", "Release", "-CaseId", caseId }.Concat(extra)) start.ArgumentList.Add(argument);
         using Process process = Process.Start(start)!; process.WaitForExit(); return process.ExitCode;
     }
     private static int RunWithEnvironment(string root, IDictionary<string, string?> values)

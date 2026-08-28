@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildSbom, canonicalPurl, jsonBytes, LIMITS } from "../../tools/generate-m12-sbom.mjs";
 import { catalogDigest } from "../tools/web-asset-manifest.mjs";
+
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 test("SBOM purls and JSON bytes are canonical and deterministic", () => {
   const purl = canonicalPurl("npm", "react", "19.2.8");
@@ -36,7 +39,7 @@ async function fixture() {
 test("generator emits an identical complete component and edge closure twice", async () => {
   const f = await fixture();
   try {
-    const options = { root: path.resolve("."), inputManifest: path.resolve("release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths, pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00.0000000Z", commitSha: "a".repeat(40), runId: "11111111-1111-4111-8111-111111111111", environmentId: "release-windows-server-2022" };
+    const options = { root: repositoryRoot, inputManifest: path.join(repositoryRoot, "release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths, pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00.0000000Z", commitSha: "a".repeat(40), runId: "11111111-1111-4111-8111-111111111111", environmentId: "release-windows-server-2022" };
     const first = await buildSbom(options); const second = await buildSbom(options);
     assert.deepEqual(first.bytes, second.bytes);
     const refs = first.bom.components.map((component) => component["bom-ref"]);
@@ -51,7 +54,7 @@ test("generator emits an identical complete component and edge closure twice", a
 test("generator rejects missing hosts, catalog tamper, unsafe paths, and component bounds", async () => {
   const f = await fixture();
   try {
-    const options = { root: path.resolve("."), inputManifest: path.resolve("release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths.slice(0, 2), pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00Z", commitSha: "b".repeat(40), runId: "22222222-2222-4222-8222-222222222222", environmentId: "release-windows-server-2025" };
+    const options = { root: repositoryRoot, inputManifest: path.join(repositoryRoot, "release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths.slice(0, 2), pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00Z", commitSha: "b".repeat(40), runId: "22222222-2222-4222-8222-222222222222", environmentId: "release-windows-server-2025" };
     await assert.rejects(() => buildSbom(options), /exactly three/);
     await assert.rejects(() => buildSbom({ ...options, deps: [f.depsPaths[0], f.depsPaths[0], f.depsPaths[1]] }), /distinct/);
     const catalog = JSON.parse(await (await import("node:fs/promises")).readFile(f.catalogPath, "utf8")); catalog.files[0].path = "../escape.js"; await writeFile(f.catalogPath, JSON.stringify(catalog));
@@ -62,7 +65,7 @@ test("generator rejects missing hosts, catalog tamper, unsafe paths, and compone
 test("generator rejects duplicate JSON properties, unsafe pnpm fields, and dependency cycles", async () => {
   const f = await fixture();
   try {
-    const base = { root: path.resolve("."), inputManifest: path.resolve("release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths, pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00Z", commitSha: "c".repeat(40), runId: "33333333-3333-4333-8333-333333333333", environmentId: "release-windows-server-2022" };
+    const base = { root: repositoryRoot, inputManifest: path.join(repositoryRoot, "release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths, pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00Z", commitSha: "c".repeat(40), runId: "33333333-3333-4333-8333-333333333333", environmentId: "release-windows-server-2022" };
     await writeFile(f.pnpm, '{"dependencies":{"react":{"version":"1.0.0","version":"2.0.0"}}}\n');
     await assert.rejects(() => buildSbom(base), /duplicate property/);
     await writeFile(f.pnpm, JSON.stringify({ dependencies: { react: { version: "1.0.0", path: "C:/unsafe" } } }));
@@ -77,7 +80,7 @@ test("generator rejects duplicate JSON properties, unsafe pnpm fields, and depen
 test("generator enforces byte bounds and fatal UTF-8 decoding", async () => {
   const f = await fixture();
   try {
-    const base = { root: path.resolve("."), inputManifest: path.resolve("release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths, pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00Z", commitSha: "d".repeat(40), runId: "44444444-4444-4444-8444-444444444444", environmentId: "release-windows-server-2025" };
+    const base = { root: repositoryRoot, inputManifest: path.join(repositoryRoot, "release/certification/m12-sbom-inputs.v1.json"), deps: f.depsPaths, pnpmList: f.pnpm, webCatalog: f.catalogPath, timestamp: "2026-08-27T00:00:00Z", commitSha: "d".repeat(40), runId: "44444444-4444-4444-8444-444444444444", environmentId: "release-windows-server-2025" };
     const oversized = Buffer.concat([Buffer.from('{"dependencies":{"react":{"version":"1.0.0"}}}'), Buffer.alloc(LIMITS.jsonBytes, 0x20), Buffer.from("é")]);
     await writeFile(f.pnpm, oversized);
     await assert.rejects(() => buildSbom(base), /byte bound/);
