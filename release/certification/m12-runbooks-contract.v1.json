@@ -1,0 +1,18 @@
+{
+  "$schema": "m12-runbooks-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "sqlobserver-m12-runbooks",
+  "producerId": "m12-supply-chain-harness",
+  "artifactKind": "supply-chain-evidence",
+  "caseId": "m12-runbooks",
+  "environments": ["release-windows-server-2022", "release-windows-server-2025"],
+  "requiredFacts": ["os", "architecture", "runbooks"],
+  "factPredicates": { "os": "windows", "architecture": "x64", "runbooks": true },
+  "catalog": "m12-runbooks-catalog.v1.json",
+  "inputSchema": "m12-runbooks-inputs.v1.schema.json",
+  "outputFiles": ["m12-runbooks.json", "m12-runbooks-test-evidence.json", "m12-runbooks-provenance.json"],
+  "prerequisites": ["m12-sbom", "m12-licenses", "m12-vulnerability-scan", "m12-provenance"],
+  "generation": { "deterministic": true, "timestampSource": "supplied", "commitSource": "supplied", "runSource": "supplied", "commands": "fixed-producer-arrays" },
+  "policy": { "scope": "release-certification/supply-chain-only", "markdownCommands": "never-executed", "readiness": "not-claimed", "support": "not-claimed", "signing": "not-claimed", "installation": "not-claimed", "rollback": "not-claimed" },
+  "bounds": { "documents": 4, "sectionsPerDocument": 12, "prerequisites": 4, "links": 64, "documentBytes": 131072, "markdownBytes": 524288, "jsonBytes": 4194304, "stringLength": 512, "depth": 32 }
+}

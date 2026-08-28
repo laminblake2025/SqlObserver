@@ -98,7 +98,7 @@ Do not provision production credentials or point this repository slice at a prod
 | `docs/architecture/` | Architecture, support policy, and threat model |
 | `docs/adr/` | Architecture decision records |
 | `docs/product/` | Product vocabulary and clean-room rules |
-| `docs/runbooks/` | Future operator procedures; no runtime runbooks exist yet |
+| `docs/runbooks/` | Versioned M12 operator procedures; documentation-only and not runtime execution |
 | `tools/` | Canonical repository validation and staged local-development helpers |
 | `.github/workflows/` | Continuous integration definitions |
 

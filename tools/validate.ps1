@@ -1886,8 +1886,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = 'b19dfb6c53619209e90313d9a0fdad1a9010bcabbb83cfa57bf9d7277a4424d5'
-    $m12SbomAssetManifestSha256 = '5316f26f649e4b1d5217d94f6f999435ea7735f6b9e1f00514b62c5433ac2c08'
+    $m12SbomProducerSha256 = '0f658a369c73e95a3f340ca3a26f42c783e3bfd1b708abc264196534fd7cc47d'
+    $m12SbomAssetManifestSha256 = '00684879443711a327cb3ed3d79ee5301ebb375cf26b113accc9bdf1275b47aa'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1900,9 +1900,9 @@ function Assert-RepositoryShape {
         'release/certification/m12-sbom-inputs.v1.json' = 'a305315faed7dbe50305804ea78198afd9e878d28896a991fdcb3e96df5fdcce'
         'release/certification/m12-sbom-inputs.v1.schema.json' = 'b01e0d97ca0190d5b814d8254a2079185e8d46792001f3424bfe10c53f0791e8'
         'release/certification/m12-certification-matrix.v1.json' = 'accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330'
-        'BACKLOG.md' = 'ee7de817358a50147516fb6de395829641a11915da05c83030e6ea73385a5241'
-        'docs/milestones/M12-reports-installer-release.md' = '5b620b922fb37e2493095bf9b6cae9012847bbe887b33891b63fd70215f955ca'
-        'release/certification/README.md' = 'ac6cd2fc51fd672236d60a3ace86592dae17dbbfe8067003f903f8b6fccc388e'
+        'BACKLOG.md' = '0b1eba608b357aeb9efd016e7c688c8d754ed3851ecf070d3967d778f48c667a'
+        'docs/milestones/M12-reports-installer-release.md' = 'aacc939c5b3f156e2ebd6c93835a21c38f3c7706ec518e87ca08feccaa536ce9'
+        'release/certification/README.md' = 'd53a348a802b94b6cd5c35be5b6a1ab4862f93a4aee175107b77ee92f4e539f1'
         'tests/SqlObserver.ReleaseTests/M12SbomCertificationTests.cs' = '0b13d423fe513b05491bf16a36d147789ba96f90fe5b89f3e9e96d3af9093399'
         'tools/generate-m12-sbom.mjs' = '1b7170d73531a983f2f1cf8b0e7a29c83bf9aaa54c41f35f14dc691bb9120f04'
         'web/tests/m12-sbom-generator-contract.test.mjs' = '58d702aad3ca5d4989a160e0133b931ef3967b3474197941cb8596700d91fb92'
@@ -1969,6 +1969,32 @@ function Assert-RepositoryShape {
     $m12ProvenanceContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-provenance-contract.v1.json') -Raw; foreach ($marker in @('m12-provenance','exact-four-product-build','full-transitive','inputManifestFiles','not-claimed','m12-provenance-subjects.v1.schema.json')) { if (-not $m12ProvenanceContractText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 provenance contract is missing exact marker: $marker" } }
     $m12ProvenanceTestText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.ReleaseTests/M12ProvenanceCertificationTests.cs') -Raw; foreach ($marker in @('RequiresM12SupplyChainRelease','LiveReleaseProvenanceIsDeterministicAndBuildBound','FileMode.CreateNew','SQLOBSERVER_M12_PROVENANCE_EVIDENCE_PATH','SQLOBSERVER_M12_PROVENANCE_SECOND_PATH','SQLOBSERVER_M12_PROVENANCE_INPUT_MANIFEST_PATH')) { if (-not $m12ProvenanceTestText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 provenance test is missing invariant: $marker" } }
     $m12ProvenanceCase = @($m12SbomLane[0].cases | Where-Object { $_.caseId -ceq 'm12-provenance' }); if ($m12ProvenanceCase.Count -ne 1 -or $m12ProvenanceCase[0].producerId -cne 'm12-supply-chain-harness' -or $m12ProvenanceCase[0].implementationStatus -cne 'pending' -or $m12ProvenanceCase[0].environment.factPredicates.provenance -ne $true) { throw 'M12 provenance lane must remain pending and exact.' }
+    # Runbooks are a separate pending-only contract: the catalog is inert
+    # documentation and its producer emits only sanitized evidence identities.
+    $m12RunbooksAssets = [ordered]@{
+        'release/certification/m12-runbooks-contract.v1.json' = '45ebf324a497f67198f6e99b69a1a89f8e4092be88ffd35d1634e4e59ac7237d'
+        'release/certification/m12-runbooks-contract.v1.schema.json' = 'c646345c41b5ef372b065a2dae03c79b102f83e6f4495a00903e41dc8ece3764'
+        'release/certification/m12-runbooks-catalog.v1.json' = 'e02c9e69eea3ce5738444b46f5acc12f9baefab7be7da8fefb333cdc6752460d'
+        'release/certification/m12-runbooks-catalog.v1.schema.json' = 'b85173c75c8d7c8b75a59e7060d7badbbbb7cbe2144a2d21158fd1460911b8ac'
+        'release/certification/m12-runbooks-inputs.v1.schema.json' = 'e30cb530ff4bedc8785d159b1181f908962f49a848bd5b013b8cd7eadbcc8328'
+        'release/certification/m12-runbooks-evidence.v1.schema.json' = '0be97ec20d20928d9bd419b0be9fd771687e509a652194e8d9264ff37edf03ed'
+        'docs/runbooks/README.md' = '34a64642595a36b496a0b88d8627b4a7a375a178b3939fa1ed634d58bcd1de86'
+        'docs/runbooks/m12-release-preflight.md' = '4790e4124ec1ad70a9b2c7e7634d1bf87cc31f4c3823e5e1a7114b12ca743fa7'
+        'docs/runbooks/m12-supply-chain-certification.md' = 'db79db82d954af4474f90c8c4831c0a479ead9dc930178b7077bfca2b841af1e'
+        'docs/runbooks/m12-candidate-evidence-verification.md' = '43dd14b4ca5fb712118b85f92e0db21892eb04d59cbaf1737e98c111514be243'
+        'docs/runbooks/m12-failed-run-quarantine-and-escalation.md' = '51773b5b1d28f3134913de9aa5aa3c9f832307e43145a6afa1a835f51612856d'
+        'tools/generate-m12-runbooks-evidence.mjs' = 'ade2e49ea92f26d870e0ea3d04e5b9a06eb8dc4b79d9eeba8e5cbf539270d04e'
+        'web/tests/m12-runbooks-generator-contract.test.mjs' = 'f2f009025328ad0e486ab167835b4d47ba2158040e49f9a173703d0914c66e07'
+        'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs' = '239023befd25c5414795a2423f2cebb3ce3edd6881d32881c85d023dbd0249cc'
+    }
+    $m12RunbooksPinPath = Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.assets.sha256'; $m12RunbooksPinHash = '6e6c02c520190c939b9094665d0efdb154bc2a5d431f57a73a054121b5abd7a7'; if (-not (Test-Path -LiteralPath $m12RunbooksPinPath -PathType Leaf) -or (Get-FileHash -LiteralPath $m12RunbooksPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12RunbooksPinHash) { throw 'M12 runbooks asset manifest checksum mismatch.' }
+    foreach ($asset in $m12RunbooksAssets.GetEnumerator()) { $assetPath = Join-Path $repositoryRoot $asset.Key; if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.Value) { throw "M12 runbooks certification asset pin mismatch: $($asset.Key)" } }
+    $m12RunbooksContract = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.json') -Raw | ConvertFrom-Json; $m12RunbooksCatalog = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-runbooks-catalog.v1.json') -Raw | ConvertFrom-Json
+    if ($m12RunbooksContract.'$schema' -cne 'm12-runbooks-contract.v1.schema.json' -or $m12RunbooksContract.contractId -cne 'sqlobserver-m12-runbooks' -or $m12RunbooksContract.producerId -cne 'm12-supply-chain-harness' -or $m12RunbooksContract.artifactKind -cne 'supply-chain-evidence' -or $m12RunbooksContract.caseId -cne 'm12-runbooks' -or (@($m12RunbooksContract.requiredFacts) -join '|') -cne 'os|architecture|runbooks' -or $m12RunbooksContract.factPredicates.runbooks -ne $true -or (@($m12RunbooksContract.prerequisites) -join '|') -cne 'm12-sbom|m12-licenses|m12-vulnerability-scan|m12-provenance' -or (@($m12RunbooksContract.outputFiles) -join '|') -cne 'm12-runbooks.json|m12-runbooks-test-evidence.json|m12-runbooks-provenance.json' -or $m12RunbooksContract.bounds.documents -ne 4 -or $m12RunbooksContract.bounds.sectionsPerDocument -ne 12 -or $m12RunbooksContract.bounds.prerequisites -ne 4 -or $m12RunbooksContract.bounds.links -ne 64 -or $m12RunbooksContract.bounds.documentBytes -ne 131072 -or $m12RunbooksContract.bounds.markdownBytes -ne 524288 -or $m12RunbooksContract.bounds.jsonBytes -ne 4194304 -or $m12RunbooksContract.bounds.stringLength -ne 512 -or $m12RunbooksContract.bounds.depth -ne 32) { throw 'M12 runbooks contract is not the approved closed shape.' }
+    if ($m12RunbooksCatalog.documents.Count -ne 4 -or (@($m12RunbooksCatalog.allowedPrerequisiteCases) -join '|') -cne 'm12-sbom|m12-licenses|m12-vulnerability-scan|m12-provenance') { throw 'M12 runbooks catalog is not exact.' }
+    foreach ($runbook in $m12RunbooksCatalog.documents) { $runbookPath = Join-Path $repositoryRoot ([string]$runbook.path); if ($runbook.sectionCount -ne 12 -or ([regex]::Matches((Get-Content -LiteralPath $runbookPath -Raw), '(?m)^## ')).Count -ne 12) { throw 'M12 runbook must contain exactly twelve sections.' } }
+    $m12RunbooksTestText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs') -Raw; foreach ($marker in @('RequiresM12SupplyChainRelease','LiveReleaseRunbooksAreClosedVersionedAndExercised','FileMode.CreateNew','SQLOBSERVER_M12_RUNBOOKS_EVIDENCE_PATH','SQLOBSERVER_M12_RUNBOOKS_RESULT_PATH')) { if (-not $m12RunbooksTestText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 runbooks test is missing invariant: $marker" } }
+    $m12RunbooksCase = @($m12SbomLane[0].cases | Where-Object { $_.caseId -ceq 'm12-runbooks' }); if ($m12RunbooksCase.Count -ne 1 -or $m12RunbooksCase[0].producerId -cne 'm12-supply-chain-harness' -or $m12RunbooksCase[0].implementationStatus -cne 'pending' -or (@($m12RunbooksCase[0].environment.requiredFacts) -join '|') -cne 'os|architecture|runbooks' -or $m12RunbooksCase[0].environment.factPredicates.runbooks -ne $true) { throw 'M12 runbooks lane must remain pending and exact.' }
     $sqlContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.SqlServer/SqlServerLabContract.cs') -Raw
     if ($sqlContractText -notmatch 'SQLOBSERVER_RELEASE_SQLSERVER' -or
         $sqlContractText -notmatch 'SqlConnectionStringBuilder' -or

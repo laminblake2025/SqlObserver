@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-runbooks-catalog.v1.schema.json",
+  "title": "SqlObserver M12 runbooks document catalog",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "catalogId", "caseId", "matrixCase", "documents", "allowedPrerequisiteCases", "matrixIdentity"],
+  "properties": {
+    "$schema": { "const": "m12-runbooks-catalog.v1.schema.json" }, "schemaVersion": { "const": 1 }, "catalogId": { "const": "sqlobserver-m12-runbooks-catalog" }, "caseId": { "const": "m12-runbooks" }, "matrixCase": { "const": "m12-runbooks" },
+    "documents": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/document" } },
+    "allowedPrerequisiteCases": { "const": ["m12-sbom", "m12-licenses", "m12-vulnerability-scan", "m12-provenance"] }, "matrixIdentity": { "type": "object", "additionalProperties": false, "required": ["laneId", "producerId", "implementationStatus"], "properties": { "laneId": { "const": "supply-chain" }, "producerId": { "const": "m12-supply-chain-harness" }, "implementationStatus": { "const": "pending" } } }
+  },
+  "$defs": { "document": { "type": "object", "additionalProperties": false, "required": ["documentId", "path", "sectionCount", "sectionIds", "procedureIds"], "properties": { "documentId": { "type": "string", "pattern": "^m12-[a-z0-9-]+$", "maxLength": 512 }, "path": { "type": "string", "pattern": "^docs/runbooks/[a-z0-9-]+\\.md$", "maxLength": 512 }, "sectionCount": { "const": 12 }, "sectionIds": { "type": "array", "minItems": 12, "maxItems": 12, "items": { "type": "string", "maxLength": 512 } }, "procedureIds": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "type": "string", "maxLength": 512 } } } } }
+}

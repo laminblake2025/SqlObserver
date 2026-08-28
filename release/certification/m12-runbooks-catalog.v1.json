@@ -1,0 +1,15 @@
+{
+  "$schema": "m12-runbooks-catalog.v1.schema.json",
+  "schemaVersion": 1,
+  "catalogId": "sqlobserver-m12-runbooks-catalog",
+  "caseId": "m12-runbooks",
+  "matrixCase": "m12-runbooks",
+  "documents": [
+    { "documentId": "m12-release-preflight", "path": "docs/runbooks/m12-release-preflight.md", "sectionCount": 12, "sectionIds": ["status", "scope", "supported-versions-and-environment", "prerequisites", "required-role", "blast-radius", "procedure", "verification", "failure-recovery", "evidence-and-utc-timestamps", "escalation-conditions", "explicit-exclusions"], "procedureIds": ["matrix-only", "contract-only", "clean-trusted-tree"] },
+    { "documentId": "m12-supply-chain-certification", "path": "docs/runbooks/m12-supply-chain-certification.md", "sectionCount": 12, "sectionIds": ["status", "scope", "supported-versions-and-environment", "prerequisites", "required-role", "blast-radius", "procedure", "verification", "failure-recovery", "evidence-and-utc-timestamps", "escalation-conditions", "explicit-exclusions"], "procedureIds": ["fixed-prerequisite-order", "three-file-publication", "held-inputs"] },
+    { "documentId": "m12-candidate-evidence-verification", "path": "docs/runbooks/m12-candidate-evidence-verification.md", "sectionCount": 12, "sectionIds": ["status", "scope", "supported-versions-and-environment", "prerequisites", "required-role", "blast-radius", "procedure", "verification", "failure-recovery", "evidence-and-utc-timestamps", "escalation-conditions", "explicit-exclusions"], "procedureIds": ["three-file-inventory", "sidecar-binding", "locked-read"] },
+    { "documentId": "m12-failed-run-quarantine-and-escalation", "path": "docs/runbooks/m12-failed-run-quarantine-and-escalation.md", "sectionCount": 12, "sectionIds": ["status", "scope", "supported-versions-and-environment", "prerequisites", "required-role", "blast-radius", "procedure", "verification", "failure-recovery", "evidence-and-utc-timestamps", "escalation-conditions", "explicit-exclusions"], "procedureIds": ["owned-cleanup", "pending-verify-quarantine", "never-delete-unowned"] }
+  ],
+  "allowedPrerequisiteCases": ["m12-sbom", "m12-licenses", "m12-vulnerability-scan", "m12-provenance"],
+  "matrixIdentity": { "laneId": "supply-chain", "producerId": "m12-supply-chain-harness", "implementationStatus": "pending" }
+}

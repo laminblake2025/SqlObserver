@@ -125,7 +125,7 @@ See [SECURITY.md](../../SECURITY.md) and [the threat model](threat-model.md).
 
 All services use structured logs and OpenTelemetry while excluding secrets and unrestricted SQL text. Required signals include collection lag, lease contention, target/repository latency, timeouts, retries, circuit state, queue/backlog depth, ingested and rejected rows/bytes, sample loss, alert-evaluation health, audit-write failures, and partition/retention state.
 
-Operational runbooks are intentionally deferred until behavior exists and can be tested. [The runbook index](../runbooks/README.md) records the planned scope without presenting speculative steps as production guidance.
+The four M12 supply-chain runbooks are versioned, documentation-only procedures with bounded ContractOnly and pending-lane evidence checks. They do not assert product readiness or support, and they do not execute catalog commands. Broader product and operational runbooks remain incomplete. [The runbook index](../runbooks/README.md) records the approved M12 scope.
 
 ## Evolution constraints
 

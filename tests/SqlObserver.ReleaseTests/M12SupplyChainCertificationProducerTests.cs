@@ -101,6 +101,14 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void RunbooksContractOnlyDispatchValidatesWithoutPublishing()
+    {
+        string root = FindRoot(); string source = File.ReadAllText(Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"));
+        foreach (string marker in new[] { "m12-runbooks", "m12-runbooks-contract.v1.json", "m12-runbooks-catalog.v1.json", "m12-runbooks-inputs.v1.schema.json", "m12-runbooks-evidence.v1.schema.json", "generate-m12-runbooks-evidence.mjs", "m12-runbooks.json", "m12-runbooks-test-evidence.json", "m12-runbooks-provenance.json", "LiveReleaseRunbooksAreClosedVersionedAndExercised", "RequiresM12SupplyChainRelease" }) Assert.Contains(marker, source, StringComparison.Ordinal);
+        Assert.Equal(0, RunCase(root, "m12-runbooks", "-ContractOnly")); Assert.False(Directory.Exists(Path.Combine(root, "TestResults", "m12", "candidate")));
+    }
+
+    [Fact]
     public void VulnerabilityLiveRequiresExactReleaseHostAttestationBeforeWork()
     {
         string root = FindRoot(); string source = File.ReadAllText(Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"));

@@ -87,6 +87,8 @@ JSON files are published under the ignored run root. Ordinary validation
 explicitly excludes this trait; a missing or invalid release prerequisite is a
 producer failure, never a test skip.
 
+The pending runbooks lane is produced only by `tools/run-m12-supply-chain-certification.ps1` with case `m12-runbooks`. Its four fixed Markdown documents are catalogued by the closed versioned runbooks contract and must contain exactly the twelve ordered sections. ContractOnly validates the catalog, schemas, source pins, exact prerequisite order (SBOM, licenses, vulnerability scan, provenance), and the unchanged pending MatrixOnly case without publishing. The Release producer accepts only four previously published final UUID prerequisite candidates bound to the same commit and environment, exercises one fixed test, and publishes exactly `m12-runbooks.json`, `m12-runbooks-test-evidence.json`, and `m12-runbooks-provenance.json`. Markdown and catalog procedures are inert documentation and are never executed; `.pending-<UUID>` and `.verify-<UUID>` are producer-owned states, and an unowned quarantine is never deleted.
+
 The pending reports lane is produced only by
 `tools/run-m12-reports-certification.ps1`. It maps the three reports cases to
 their exact release test and facts, accepts only Release Windows Server

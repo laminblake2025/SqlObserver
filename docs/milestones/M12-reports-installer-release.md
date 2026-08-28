@@ -87,6 +87,14 @@ bindings. It does not claim license- or vulnerability-artifact provenance,
 SLSA, in-toto, signing, or external attestation, and the matrix case remains
 pending until approved Release evidence is externally accepted.
 
+The pending runbooks slice is implemented as a separate closed producer
+contract. It catalogs four fixed twelve-section procedures, validates the four
+published prerequisite candidates in SBOM-to-provenance order, and emits only
+three sanitized runbook evidence files after the exact Release test passes.
+Markdown and catalog procedures remain inert, producer-owned pending/verify
+directories are promoted only after identity checks, and the Matrix case stays
+pending until external evidence is accepted.
+
 ## Remaining packages
 
 - Reports and exports: locally implemented as the bounded, target-scoped
