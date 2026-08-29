@@ -102,6 +102,15 @@ Do not provision production credentials or point this repository slice at a prod
 | `tools/` | Canonical repository validation and staged local-development helpers |
 | `.github/workflows/` | Continuous integration definitions |
 
+## Lab deployment
+
+The repository can be built and inspected on a single Windows Server lab, but
+it does not yet include a supported installer, operator migration command, or
+authenticated static-web hosting integration. Follow the
+[single-host lab deployment guide](docs/deployment/lab-single-host.md) for host
+preparation, least-privilege boundaries, build commands, and the explicit stop
+gates that must be resolved before an end-to-end deployment.
+
 ## Milestone scope
 
 Milestones 0-4 establish the architecture, repository, onboarding, and collector foundation. Milestones 5-7 add passive activity, deadlock, and query-performance diagnostics; M8 adds alerting; M9 adds operational health; M10 adds host/replication evidence and analytics; M11 adds the authenticated, authorized, bounded, audited read-only MCP surface. See the [M2 record](docs/milestones/M2-postgresql-repository.md), [M3 record](docs/milestones/M3-onboarding-and-capabilities.md), [M4 record](docs/milestones/M4-collector-framework-and-core-health.md), [M5 record](docs/milestones/M5-sessions-requests-waits-blocking.md), [M6 record](docs/milestones/M6-deadlocks-and-extended-events.md), [M7 record](docs/milestones/M7-query-store-query-performance.md), [M8 record](docs/milestones/M8-alerts-maintenance-notifications.md), [M9 record](docs/milestones/M9-operational-health.md), [M10 record](docs/milestones/M10-rollups-host-replication-retention.md), [M11 record](docs/milestones/M11-mcp.md), and [BACKLOG.md](BACKLOG.md).
