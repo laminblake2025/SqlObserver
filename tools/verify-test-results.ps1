@@ -28,7 +28,7 @@ $PolicySchemaVersion = 1
 $ApprovedLaneIds = @('repository-contract','release-build','unit','api','security','performance','end-to-end','frontend','mcp','lifecycle','trusted-tls','postgresql','sqlserver','browser','installer','observability','reports','sustained-performance','supply-chain','signing')
 $ApprovedCaseIds = @('m12-repository-contract','m12-release-build','m12-unit-tests','m12-api-contract-tests','m12-security-tests','m12-performance-tests','m12-e2e-composition','m12-frontend','m12-mcp-protocol','m12-windows-server-2022-lifecycle','m12-windows-server-2025-lifecycle','m12-trusted-tls-wia-gmsa-kerberos','m12-postgresql-min-patch','m12-postgresql-current-patch','m12-sqlserver-2019-passive','m12-sqlserver-2022-passive','m12-sqlserver-2025-passive','m12-edge-browser','m12-chrome-browser','m12-installer-install','m12-installer-upgrade','m12-installer-recovery','m12-installer-uninstall','m12-readiness-observability','m12-telemetry-observability','m12-reports-exports','m12-report-contract','m12-export-contract','m12-sustained-performance','m12-sbom','m12-licenses','m12-vulnerability-scan','m12-provenance','m12-runbooks','m12-signing')
 $ApprovedAssetHashes = @{
-    'm12-certification-matrix.v1.json' = 'accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330'
+    'm12-certification-matrix.v1.json' = '8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac'
     'm12-certification-matrix.v1.schema.json' = '32c6a01aee7cb5884572410e85c5efa5b1dc2b2fef11049aab069512723bd5fe'
     'm12-certification-manifest.v1.schema.json' = '3613c4ac3fa4d39b6e96bb8a6aa2546f625f594ef287483b8c8e33749774dda6'
 }

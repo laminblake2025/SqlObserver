@@ -5,7 +5,7 @@ import path from "node:path";
 
 export const LIMITS = Object.freeze({ documents: 4, sections: 12, prerequisites: 4, links: 64, documentBytes: 131072, markdownBytes: 524288, jsonBytes: 4194304, stringLength: 512, depth: 32 });
 const ENVIRONMENTS = new Set(["release-windows-server-2022", "release-windows-server-2025"]);
-const APPROVED_MATRIX_SHA256 = "accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330";
+const APPROVED_MATRIX_SHA256 = "8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac";
 const PREREQUISITES = ["m12-sbom", "m12-licenses", "m12-vulnerability-scan", "m12-provenance"];
 const DOCS = [
   ["m12-release-preflight", "docs/runbooks/m12-release-preflight.md", ["matrix-only", "contract-only", "clean-trusted-tree"]],

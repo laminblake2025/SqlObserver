@@ -107,7 +107,7 @@ public sealed class M12RunbooksCertificationTests
         Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32()); Assert.Equal("m12-runbooks", root.GetProperty("caseId").GetString());
         Assert.Equal("m12-supply-chain-harness", root.GetProperty("producerId").GetString()); Assert.Equal("supply-chain-evidence", root.GetProperty("kind").GetString()); Assert.Equal("passed", root.GetProperty("result").GetString());
         Assert.Equal(commit, root.GetProperty("commitSha").GetString()); Assert.Contains(environment, new[] { "release-windows-server-2022", "release-windows-server-2025" }); Assert.Equal(environment, root.GetProperty("environmentId").GetString());
-        AssertUuid(root.GetProperty("runId").GetString()); AssertSha(root.GetProperty("catalogSha256").GetString()); Assert.Equal("accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330", root.GetProperty("matrixSha256").GetString());
+        AssertUuid(root.GetProperty("runId").GetString()); AssertSha(root.GetProperty("catalogSha256").GetString()); Assert.Equal("8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac", root.GetProperty("matrixSha256").GetString());
         JsonElement docs = root.GetProperty("documents"); Assert.Equal(JsonValueKind.Array, docs.ValueKind); Assert.Equal(4, docs.GetArrayLength());
         string[] ids = { "m12-release-preflight", "m12-supply-chain-certification", "m12-candidate-evidence-verification", "m12-failed-run-quarantine-and-escalation" };
         string[] paths = { "docs/runbooks/m12-release-preflight.md", "docs/runbooks/m12-supply-chain-certification.md", "docs/runbooks/m12-candidate-evidence-verification.md", "docs/runbooks/m12-failed-run-quarantine-and-escalation.md" };

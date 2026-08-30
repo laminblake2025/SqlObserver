@@ -5,7 +5,7 @@ import test from "node:test";
 import { buildRunbooks, LIMITS } from "../../tools/generate-m12-runbooks-evidence.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
-const matrix = "accdbd6d90f3012a7841daebf51b039b2ef574865476fcb75d682ff1c50a9330";
+const matrix = "8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac";
 const docs = ["m12-release-preflight", "m12-supply-chain-certification", "m12-candidate-evidence-verification", "m12-failed-run-quarantine-and-escalation"];
 const sections = ["status", "scope", "supported-versions-and-environment", "prerequisites", "required-role", "blast-radius", "procedure", "verification", "failure-recovery", "evidence-and-utc-timestamps", "escalation-conditions", "explicit-exclusions"];
 const cases = ["m12-sbom", "m12-licenses", "m12-vulnerability-scan", "m12-provenance"];

@@ -86,7 +86,8 @@ async function assertTrustedPath(root, target) {
   // junction must not be normalized into an apparently trusted root.
   const requestedRoot = path.resolve(root); const parsed = path.parse(requestedRoot); let current = parsed.root; const rootAncestors = [current];
   for (const segment of path.relative(parsed.root, requestedRoot).split(path.sep).filter(Boolean)) { current = path.join(current, segment); const info = await lstat(current).catch(() => null); if (!info || info.isSymbolicLink()) fail("path ancestor is a reparse point"); rootAncestors.push(current); }
-  const rootReal = await realpath(requestedRoot); const fullRoot = path.resolve(rootReal); const fullTarget = path.resolve(target); const relative = path.relative(fullRoot, fullTarget); if (relative.startsWith("..") || path.isAbsolute(relative)) fail("path escapes trusted root");
+  const requestedTarget = path.resolve(target); const requestedRelative = path.relative(requestedRoot, requestedTarget); if (requestedRelative.startsWith("..") || path.isAbsolute(requestedRelative)) fail("path escapes trusted root");
+  const rootReal = await realpath(requestedRoot); const fullRoot = path.resolve(rootReal); const fullTarget = path.resolve(fullRoot, requestedRelative); const relative = path.relative(fullRoot, fullTarget); if (relative.startsWith("..") || path.isAbsolute(relative)) fail("path escapes trusted root");
   const segments = relative ? relative.split(path.sep) : []; current = fullRoot; const ancestors = [...rootAncestors, current];
   for (const segment of segments) { current = path.join(current, segment); const info = await lstat(current).catch(() => null); if (!info || info.isSymbolicLink()) fail("path ancestor is a reparse point"); ancestors.push(current); }
   await assertNoAlternateDataStreams(ancestors);
