@@ -27,6 +27,18 @@ public sealed class RequestBodyLimitMiddleware
             && context.Request.Path.Value is string path
             && path.EndsWith("/reports", StringComparison.OrdinalIgnoreCase)
             && Guid.TryParse(context.Request.RouteValues["instanceId"]?.ToString(), out targetId);
+        if (context.Request.ContentLength is > MaximumRequestBytes)
+        {
+            if (reportCreate)
+            {
+                await RejectAsync(context, targetId, "oversize", StatusCodes.Status413PayloadTooLarge, "The request body exceeds its byte limit.").ConfigureAwait(false);
+            }
+            else
+            {
+                await RejectOversizedAsync(context).ConfigureAwait(false);
+            }
+            return;
+        }
         if (!reportCreate)
         {
             await _next(context).ConfigureAwait(false);
@@ -61,6 +73,20 @@ public sealed class RequestBodyLimitMiddleware
         }
         context.Request.Body.Position = 0;
         await _next(context).ConfigureAwait(false);
+    }
+
+    private static async Task RejectOversizedAsync(HttpContext context)
+    {
+        string correlationId = Guid.NewGuid().ToString("D");
+        context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        context.Response.Headers["X-Correlation-ID"] = correlationId;
+        await context.Response.WriteAsJsonAsync(
+                new SqlObserverProblemResponse(
+                    "payload_too_large",
+                    "The request body exceeds its byte limit.",
+                    correlationId),
+                cancellationToken: context.RequestAborted)
+            .ConfigureAwait(false);
     }
 
     private static async Task RejectAsync(HttpContext context, Guid targetId, string activityKind, int statusCode, string message)

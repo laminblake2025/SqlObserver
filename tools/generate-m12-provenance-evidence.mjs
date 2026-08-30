@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { lstat, open, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 
-export const LIMITS = Object.freeze({ jsonBytes: 4194304, manifestFiles: 40, products: 4, stringLength: 512, depth: 32 });
+export const LIMITS = Object.freeze({ jsonBytes: 4194304, manifestFiles: 41, products: 4, stringLength: 512, depth: 32 });
 const COMMIT = /^[0-9a-f]{40}$/u;
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/u;
@@ -98,7 +98,7 @@ async function expectedManifest(root) {
   } return expected;
 }
 async function validateManifest(value, root) {
-  validateManifestShape(value); const expected = await expectedManifest(root); if (expected.size !== LIMITS.manifestFiles) fail("input manifest closure is not exactly 40 files"); const actual = new Set();
+  validateManifestShape(value); const expected = await expectedManifest(root); if (expected.size !== LIMITS.manifestFiles) fail("input manifest closure is not exactly 41 files"); const actual = new Set();
   for (const entry of value.files) { if (!expected.has(entry.path)) fail("input manifest contains an extra file"); const file = await readRootFile(root, entry.path, `manifest file ${entry.path}`); if (file.hash !== entry.sha256) fail("input manifest hash mismatch"); actual.add(entry.path); }
   if (actual.size !== expected.size || [...expected].some((item) => !actual.has(item))) fail("input manifest closure is incomplete"); return value;
 }

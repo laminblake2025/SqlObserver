@@ -125,6 +125,7 @@ function Resolve-RepositoryHeadSha {
         $looseCanonical = [IO.Path]::GetFullPath($loose)
         if (-not $looseCanonical.StartsWith($gitRootCanonical + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { return $null }
         $found = [System.Collections.Generic.List[string]]::new()
+        $haveLooseRef = $false
         if (Test-Path -LiteralPath $loose -PathType Leaf) {
             Assert-TrustedPath $loose
             $looseText = [IO.File]::ReadAllText($loose)
@@ -132,6 +133,7 @@ function Resolve-RepositoryHeadSha {
             $looseSha = $looseText.TrimEnd([char[]]"`r`n")
             if (-not [regex]::IsMatch($looseSha, '^[0-9a-f]{40}$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)) { return $null }
             $found.Add($looseSha)
+            $haveLooseRef = $true
         }
         $packed = Join-Path $refRoot 'packed-refs'
         if (Test-Path -LiteralPath $packed -PathType Leaf) {
@@ -151,7 +153,7 @@ function Resolve-RepositoryHeadSha {
                 if (-not $packedRefs.Add($packedRefName)) { return $null }
                 $havePackedRef = $true
                 $havePeel = $false
-                if ([String]::Equals($packedRefName, $refName, [StringComparison]::Ordinal)) { $found.Add($packedMatch.Groups[1].Value) }
+                if (-not $haveLooseRef -and [String]::Equals($packedRefName, $refName, [StringComparison]::Ordinal)) { $found.Add($packedMatch.Groups[1].Value) }
             }
         }
         if ($found.Count -ne 1 -or -not [regex]::IsMatch($found[0], '^[0-9a-f]{40}$', [Text.RegularExpressions.RegexOptions]::CultureInvariant)) { return $null }

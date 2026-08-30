@@ -36,6 +36,7 @@
     { "path": "src/SqlObserver.Observability/SqlObserver.Observability.csproj", "sha256": "60576c36aab91800264f4e35c58943fded212a53c029a90171a87e897f0828c5" },
     { "path": "src/SqlObserver.Observability/packages.lock.json", "sha256": "5155e41a59144f5b151ebf8740dd978c29ec7d014197e1ec5f5f354c6606eadb" },
     { "path": "src/SqlObserver.Reporting/SqlObserver.Reporting.csproj", "sha256": "a26bbe38ff99fba66f3ad5e77565e465868d59cd12bdc10e0876a26256208e63" },
+    { "path": "src/SqlObserver.Reporting/packages.lock.json", "sha256": "4b3733aee06824f3bc1364aa332176d2398de2136313bf30f4b16e3801f638f6" },
     { "path": "src/SqlObserver.Security/SqlObserver.Security.csproj", "sha256": "c0d0704997ecf50b3f48d2118fc01838abb08322507841a6753cff068958af64" },
     { "path": "src/SqlObserver.Security/packages.lock.json", "sha256": "ee5a22f9f1a9377e5c8c6fb6665cfaa4c96e0ce5f8589089ec49eb8a58989c2a" },
     { "path": "src/SqlObserver.Server/SqlObserver.Server.csproj", "sha256": "168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93" },

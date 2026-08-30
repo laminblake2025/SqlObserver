@@ -121,6 +121,40 @@ public sealed class M12ReleaseIdentityAssessmentTests
     }
 
     [Fact]
+    public void LooseHeadRefOverridesOlderPackedRef()
+    {
+        string sourceRoot = FindRoot();
+        string tempRoot = Path.Combine(Path.GetTempPath(), "m12-assessment-loose-ref-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(tempRoot, "tools"));
+        Directory.CreateDirectory(Path.Combine(tempRoot, "release", "certification"));
+        Directory.CreateDirectory(Path.Combine(tempRoot, "release", "contracts"));
+        Directory.CreateDirectory(Path.Combine(tempRoot, ".git", "refs", "heads"));
+        try
+        {
+            foreach (string relative in new[]
+            {
+                "tools/assess-release-identity.ps1", "tools/verify-test-results.ps1",
+                "release/certification/m12-certification-matrix.v1.json", "release/certification/m12-certification-matrix.v1.schema.json",
+                "release/certification/m12-certification-manifest.v1.schema.json", "release/certification/m12-certification-assets.sha256",
+                "release/contracts/release-identity-assessment.v1.schema.json", "release/contracts/checksums.sha256"
+            }) File.Copy(Path.Combine(sourceRoot, relative.Replace('/', Path.DirectorySeparatorChar)), Path.Combine(tempRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
+
+            string looseCommit = new('1', 40);
+            string packedCommit = new('2', 40);
+            File.WriteAllText(Path.Combine(tempRoot, ".git", "HEAD"), "ref: refs/heads/main\n");
+            File.WriteAllText(Path.Combine(tempRoot, ".git", "refs", "heads", "main"), looseCommit + "\n");
+            File.WriteAllText(Path.Combine(tempRoot, ".git", "packed-refs"), "# pack-refs with: peeled fully-peeled\n" + packedCommit + " refs/heads/main\n");
+
+            using JsonDocument result = RunAssessmentScript(Path.Combine(tempRoot, "tools", "assess-release-identity.ps1"), tempRoot, out _);
+            Assert.Equal(looseCommit, result.RootElement.GetProperty("commitSha").GetString());
+            JsonElement headCheck = result.RootElement.GetProperty("checks").EnumerateArray().First();
+            Assert.Equal("head-commit", headCheck.GetProperty("checkId").GetString());
+            Assert.Equal("observed", headCheck.GetProperty("status").GetString());
+        }
+        finally { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true); }
+    }
+
+    [Fact]
     public void RepeatedAssessmentCannotBecomeReadyOrReleaseEvidence()
     {
         using JsonDocument first = RunAssessment(out _);

@@ -68,7 +68,7 @@ public sealed class M12ProvenanceCertificationTests
         Assert.Equal("m12-supply-chain-harness", root.GetProperty("producerId").GetString()); Assert.Equal("supply-chain-evidence", root.GetProperty("kind").GetString()); Assert.Equal("passed", root.GetProperty("result").GetString());
         Assert.Equal(environment, root.GetProperty("environmentId").GetString()); Assert.Equal(commit, root.GetProperty("commitSha").GetString());
         Assert.Matches("^[0-9a-f]{64}$", root.GetProperty("sbomSha256").GetString()!); Assert.InRange(root.GetProperty("sbomSize").GetInt64(), 1, 4 * 1024 * 1024);
-        Assert.Equal(40, root.GetProperty("inputManifestFileCount").GetInt32()); Assert.Matches("^[0-9a-f]{64}$", root.GetProperty("inputManifestSha256").GetString()!); Assert.Matches("^[0-9a-f]{64}$", root.GetProperty("inputManifestTreeSha256").GetString()!);
+        Assert.Equal(41, root.GetProperty("inputManifestFileCount").GetInt32()); Assert.Matches("^[0-9a-f]{64}$", root.GetProperty("inputManifestSha256").GetString()!); Assert.Matches("^[0-9a-f]{64}$", root.GetProperty("inputManifestTreeSha256").GetString()!);
         JsonElement products = root.GetProperty("products"); Assert.Equal(4, products.GetArrayLength());
         Assert.Equal(ProductIds, products.EnumerateArray().Select(x => x.GetProperty("productId").GetString()).OrderBy(x => x, StringComparer.Ordinal));
         var expectedPaths = new Dictionary<string, (string Path, string EntryPoint)>(StringComparer.Ordinal) {

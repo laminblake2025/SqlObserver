@@ -37,11 +37,11 @@ async function fixture() {
   return { root, subjectsPath, manifestPath: inputManifestPath, sbomPath };
 }
 
-test("four-product provenance is deterministic and bound to SBOM plus 40-file manifest", async () => {
+test("four-product provenance is deterministic and bound to SBOM plus 41-file manifest", async () => {
   const f = await fixture(); try {
     const options = { subjectsPath: f.subjectsPath, sbomPath: f.sbomPath, inputManifestPath: f.manifestPath, root: f.root, commitSha: commit, runId, environmentId, generatedAt: "2026-08-28T12:00:00.0000000Z" };
     const first = await buildProvenanceEvidence(options); const second = await buildProvenanceEvidence(options);
-    assert.deepEqual(first.bytes, second.bytes); assert.equal(first.evidence.products.length, 4); assert.equal(first.evidence.inputManifestFileCount, 40); assert.equal(first.bytes.at(-1), 10);
+    assert.deepEqual(first.bytes, second.bytes); assert.equal(first.evidence.products.length, 4); assert.equal(first.evidence.inputManifestFileCount, 41); assert.equal(first.bytes.at(-1), 10);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
@@ -54,7 +54,7 @@ test("nonexistent and all-zero claimed subjects fail closed", async () => {
 });
 
 test("canonical inputs, LF JSON, and duplicate-key rejection are enforced", async () => {
-  assert.equal(LIMITS.products, 4); assert.equal(LIMITS.manifestFiles, 40);
+  assert.equal(LIMITS.products, 4); assert.equal(LIMITS.manifestFiles, 41);
   const f = await fixture(); try {
     await writeFile(f.subjectsPath, Buffer.from('{"$schema":"m12-provenance-subjects.v1.schema.json","$schema":"bad","schemaVersion":1,"products":[]}\n'));
     await assert.rejects(() => buildProvenanceEvidence({ subjectsPath: f.subjectsPath, sbomPath: f.sbomPath, inputManifestPath: f.manifestPath, root: f.root, commitSha: commit, runId, environmentId, generatedAt: "2026-08-28T12:00:00.0000000Z" }), /duplicate/);

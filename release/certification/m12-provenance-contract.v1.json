@@ -11,6 +11,6 @@
   "subjectsSchema": "m12-provenance-subjects.v1.schema.json",
   "outputFiles": ["m12-provenance.json", "m12-provenance-test-evidence.json", "m12-provenance-provenance.json"],
   "generation": { "deterministic": true, "timestampSource": "supplied", "commitSource": "supplied", "runSource": "supplied" },
-  "policy": { "subjectSet": "exact-four-product-build", "externalAttestation": "not-claimed", "sbomAuthority": "full-transitive", "inputManifestFiles": 40 },
-  "bounds": { "products": 4, "manifestFiles": 40, "jsonBytes": 4194304, "stringLength": 512, "depth": 32 }
+  "policy": { "subjectSet": "exact-four-product-build", "externalAttestation": "not-claimed", "sbomAuthority": "full-transitive", "inputManifestFiles": 41 },
+  "bounds": { "products": 4, "manifestFiles": 41, "jsonBytes": 4194304, "stringLength": 512, "depth": 32 }
 }

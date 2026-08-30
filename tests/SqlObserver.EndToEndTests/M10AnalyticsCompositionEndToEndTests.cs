@@ -33,9 +33,10 @@ public sealed class M10AnalyticsCompositionEndToEndTests
         Assert.Same(dataPlane.AnalyticsBackfill, provider.GetRequiredService<IAnalyticsBackfillStore>());
 
         IHostedService[] workers = provider.GetServices<IHostedService>().ToArray();
+        Assert.Contains(workers, static worker => worker is ReportExpiryWorker);
         Assert.Contains(workers, static worker => worker is AnalyticsDerivationWorker);
         Assert.Contains(workers, static worker => worker is AnalyticsBackfillWorker);
-        Assert.Equal(6, workers.Length);
+        Assert.Equal(8, workers.Length);
     }
 
     [Fact]
@@ -50,8 +51,9 @@ public sealed class M10AnalyticsCompositionEndToEndTests
         await using ServiceProvider provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         IHostedService[] workers = provider.GetServices<IHostedService>().ToArray();
+        Assert.Contains(workers, static worker => worker is ReportExpiryWorker);
         Assert.DoesNotContain(workers, static worker => worker is AnalyticsDerivationWorker or AnalyticsBackfillWorker);
-        Assert.Equal(4, workers.Length);
+        Assert.Equal(6, workers.Length);
     }
 
     private static IConfiguration Configuration(string environment) => new ConfigurationBuilder()

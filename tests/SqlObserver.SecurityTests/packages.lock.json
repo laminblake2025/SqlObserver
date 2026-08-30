@@ -398,6 +398,31 @@
           "Microsoft.TestPlatform.ObjectModel": "18.8.1"
         }
       },
+      "OpenTelemetry": {
+        "type": "Transitive",
+        "resolved": "1.18.0",
+        "contentHash": "13AKxycK+olOLe061MjliPTNBR/DUkjyRr0b9zwUhKyMjFS8lXS7G31R85rkbM55up2YFmdykWdAw2giBDJpiQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.EnvironmentVariables": "10.0.0",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "10.0.0",
+          "Microsoft.Extensions.Logging.Configuration": "10.0.0",
+          "OpenTelemetry.Api.ProviderBuilderExtensions": "1.18.0"
+        }
+      },
+      "OpenTelemetry.Api": {
+        "type": "Transitive",
+        "resolved": "1.18.0",
+        "contentHash": "Dhzm5oughIY9EWckt2J1yXcEbXpki5WCL2q7prJoYxzH6C7jdkfGtPMTkUVZZ4AhjJKzQnlC+kLSIlmIVwC4Vw=="
+      },
+      "OpenTelemetry.Api.ProviderBuilderExtensions": {
+        "type": "Transitive",
+        "resolved": "1.18.0",
+        "contentHash": "io6A6PJFp3vIObRGf6oPjdHsdglkinXt/0SpTDJHrVnsLxUtOzwh/QwTsnhBJ43wJ6QcGMkyNzsSSY8XEB1Q5Q==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
+          "OpenTelemetry.Api": "1.18.0"
+        }
+      },
       "System.Configuration.ConfigurationManager": {
         "type": "Transitive",
         "resolved": "9.0.13",
@@ -519,7 +544,9 @@
           "SqlObserver.Collectors": "[1.0.0, )",
           "SqlObserver.Infrastructure.PostgreSql": "[1.0.0, )",
           "SqlObserver.Infrastructure.SqlServer": "[1.0.0, )",
-          "SqlObserver.Infrastructure.Windows": "[1.0.0, )"
+          "SqlObserver.Infrastructure.Windows": "[1.0.0, )",
+          "SqlObserver.Observability": "[1.0.0, )",
+          "SqlObserver.Reporting": "[1.0.0, )"
         }
       },
       "sqlobserver.collector.abstractions": {
@@ -547,7 +574,8 @@
           "SqlObserver.Analytics": "[1.0.0, )",
           "SqlObserver.Application": "[1.0.0, )",
           "SqlObserver.Collector.Abstractions": "[1.0.0, )",
-          "SqlObserver.Domain": "[1.0.0, )"
+          "SqlObserver.Domain": "[1.0.0, )",
+          "SqlObserver.Reporting": "[1.0.0, )"
         }
       },
       "sqlobserver.infrastructure.sqlserver": {
@@ -585,6 +613,20 @@
           "SqlObserver.Mcp": "[1.0.0, )"
         }
       },
+      "sqlobserver.observability": {
+        "type": "Project",
+        "dependencies": {
+          "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.18.0, )",
+          "OpenTelemetry.Extensions.Hosting": "[1.18.0, )",
+          "SqlObserver.Application": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.reporting": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.security": {
         "type": "Project",
         "dependencies": {
@@ -604,6 +646,8 @@
           "SqlObserver.Infrastructure.PostgreSql": "[1.0.0, )",
           "SqlObserver.Infrastructure.Windows": "[1.0.0, )",
           "SqlObserver.Mcp": "[1.0.0, )",
+          "SqlObserver.Observability": "[1.0.0, )",
+          "SqlObserver.Reporting": "[1.0.0, )",
           "SqlObserver.Security": "[1.0.0, )"
         }
       },
@@ -727,6 +771,25 @@
         "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w==",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
+        }
+      },
+      "OpenTelemetry.Exporter.OpenTelemetryProtocol": {
+        "type": "CentralTransitive",
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "Et3WAviooKGObZjUZN8d6eTsdJs1YM3ZoN+KlWSAHksTmHG1nyGi9XGo2wb0fkFMWK0g80FOPdR1njg52Dm+aw==",
+        "dependencies": {
+          "OpenTelemetry": "1.18.0"
+        }
+      },
+      "OpenTelemetry.Extensions.Hosting": {
+        "type": "CentralTransitive",
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "u+JMA82H65MKwMvd2qUpL8C2qE4Jux2nvX9hmy036UK/Apv2YyIRYCttF/vlX6nMPcAKI8BXkscmL4QG3C69fw==",
+        "dependencies": {
+          "Microsoft.Extensions.Hosting.Abstractions": "10.0.0",
+          "OpenTelemetry": "1.18.0"
         }
       },
       "System.Diagnostics.EventLog": {
