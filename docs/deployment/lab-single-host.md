@@ -11,7 +11,8 @@ SqlObserver's M12 deployment, lifecycle, identity, signing, and platform cases
 remain pending. In particular, this repository does not yet provide:
 
 - a signed MSI/Burn installer or supported Windows service registration flow;
-- a standalone, operator-facing PostgreSQL migration executable;
+- a signed installer or supported production PostgreSQL migration executable
+  (the repository includes only a source-based, lab-loopback migration host);
 - an accepted secret-store, service-account, certificate, or TLS policy;
 - a supported reverse proxy/static-web deployment that joins `web/dist` to the
   authenticated Server API; or
@@ -133,13 +134,80 @@ commits each migration and ledger row in one transaction.
 runner-owned transaction, advisory lock, checksum validation, and
 `system.schema_migration` ledger contract.
 
-The repository does not yet expose that migration port through a supported
-installer or operator CLI. Therefore a complete application deployment must
-stop here until one of the following exists and is reviewed:
+The source-based `SqlObserver.Cli` exposes this port only through one closed lab
+command. It accepts no connection string, host, SQL text, migration path,
+password argument, password environment variable, or password file. The target
+is fixed at `127.0.0.1:5432`, database `sqlobserver`, and bootstrap login
+`sqlobserver_bootstrap`. Transport is deliberately limited to cleartext
+loopback on the co-located non-production lab; it is not a production TLS
+decision or a supported deployment interface.
 
-1. the planned signed installer invokes the embedded migration port; or
-2. a separately reviewed, lab-only migration host exposes the same bounded
-   behavior without accepting arbitrary SQL or logging credentials.
+Create the bootstrap login and empty database with PostgreSQL's own tools. The
+`--pwprompt` option keeps the new password out of command history. These
+commands also prompt for the existing PostgreSQL administrator password when
+needed:
+
+```powershell
+$pgBin = 'C:\Program Files\PostgreSQL\18\bin'
+
+& "$pgBin\createuser.exe" `
+  --host 127.0.0.1 --port 5432 --username postgres `
+  --pwprompt --createdb --createrole --no-superuser --no-replication `
+  sqlobserver_bootstrap
+if ($LASTEXITCODE -ne 0) { throw 'Bootstrap role creation failed.' }
+
+& "$pgBin\createdb.exe" `
+  --host 127.0.0.1 --port 5432 --username sqlobserver_bootstrap `
+  --owner sqlobserver_bootstrap sqlobserver
+if ($LASTEXITCODE -ne 0) { throw 'Repository database creation failed.' }
+```
+
+Stop if either object already exists unexpectedly; inspect it rather than
+changing or reusing it blindly. Then publish and run the exact lab host:
+
+```powershell
+$migrationHost = 'C:\SqlObserverLab\MigrationHost'
+dotnet publish .\src\SqlObserver.Cli\SqlObserver.Cli.csproj `
+  --configuration Release --no-restore --output $migrationHost
+if ($LASTEXITCODE -ne 0) { throw 'Migration-host publish failed.' }
+
+& "$migrationHost\SqlObserver.Cli.exe" postgres migrate `
+  --lab-loopback --allow-loopback-cleartext `
+  --database sqlobserver --username sqlobserver_bootstrap
+if ($LASTEXITCODE -ne 0) { throw 'Repository migration failed.' }
+```
+
+The executable prompts once with hidden input. A successful result is a single
+secret-free JSON object with `status` equal to `succeeded`, zero failed
+migrations, and the applied migration list. An already-current exact ledger is
+also successful with an empty list. Any unknown, missing, reordered, or
+checksum-mismatched ledger row fails closed. Save the JSON with the deployed
+commit ID if lab evidence is required; it contains no credential or endpoint.
+
+After migration, create distinct runtime logins with prompted passwords, then
+grant each only its closed group role:
+
+```powershell
+& "$pgBin\createuser.exe" --host 127.0.0.1 --port 5432 --username postgres `
+  --pwprompt --no-createdb --no-createrole --no-superuser --no-replication `
+  sqlobserver_server_login
+if ($LASTEXITCODE -ne 0) { throw 'Server login creation failed.' }
+
+& "$pgBin\createuser.exe" --host 127.0.0.1 --port 5432 --username postgres `
+  --pwprompt --no-createdb --no-createrole --no-superuser --no-replication `
+  sqlobserver_collector_login
+if ($LASTEXITCODE -ne 0) { throw 'Collector login creation failed.' }
+
+& "$pgBin\psql.exe" --host 127.0.0.1 --port 5432 `
+  --username sqlobserver_bootstrap --dbname sqlobserver `
+  --no-psqlrc --set ON_ERROR_STOP=1 `
+  --command 'GRANT sqlobserver_server TO sqlobserver_server_login; GRANT sqlobserver_collector TO sqlobserver_collector_login;'
+if ($LASTEXITCODE -ne 0) { throw 'Runtime membership grant failed.' }
+```
+
+Do not grant either runtime login `sqlobserver_migrator`, CREATEROLE, CREATEDB,
+superuser, replication, or bypass-row-security privileges. Keep the bootstrap
+credential separate and use it only for reviewed migration runs.
 
 The PostgreSQL integration suite may be run to validate the repository code in
 an isolated disposable container, but its Testcontainers database is not the
@@ -150,8 +218,9 @@ dotnet test .\tests\SqlObserver.IntegrationTests.PostgreSql\SqlObserver.Integrat
   --configuration Release --no-restore
 ```
 
-This gate is intentional. Do not synthesize ledger rows or grant runtime
-accounts migration authority to work around it.
+This gate remains intentional for every environment except the explicitly
+bounded single-host lab flow above. Do not synthesize ledger rows or grant
+runtime accounts migration authority to work around it.
 
 ## 5. Build application artifacts
 

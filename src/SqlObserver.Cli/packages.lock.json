@@ -2,6 +2,33 @@
   "version": 2,
   "dependencies": {
     "net10.0": {
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.0",
+        "contentHash": "L3AdmZ1WOK4XXT5YFPEwyt0ep6l8lGIPs7F5OOBZc77Zqeo01Of7XXICy47628sdVl0v/owxYJTe86DTgFwKCA=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.0",
+        "contentHash": "FU/IfjDfwaMuKr414SSQNTIti/69bHEMb+QKrskRb26oVqpx3lNFXMjs/RC9ZUuhBhcwDM2BwOgoMw+PZ+beqQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0"
+        }
+      },
+      "sqlobserver.alerting": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.analytics": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
@@ -17,6 +44,33 @@
       },
       "sqlobserver.domain": {
         "type": "Project"
+      },
+      "sqlobserver.infrastructure.postgresql": {
+        "type": "Project",
+        "dependencies": {
+          "Npgsql": "[10.0.3, )",
+          "SqlObserver.Alerting": "[1.0.0, )",
+          "SqlObserver.Analytics": "[1.0.0, )",
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )",
+          "SqlObserver.Reporting": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.reporting": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "Npgsql": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
+        }
       }
     }
   }
