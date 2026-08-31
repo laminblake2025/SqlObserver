@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sqlobserver-lifecycle-assessment-v1",
+  "title": "SqlObserver lifecycle assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "product", "checks", "evaluatedAtUtc", "status", "readyToMutate"],
+  "properties": {
+    "action": { "type": "string", "enum": ["install", "upgrade", "recover", "uninstall", "purge"] },
+    "product": { "$ref": "#/$defs/product" },
+    "checks": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/check" } },
+    "evaluatedAtUtc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "status": { "type": "string", "enum": ["not_ready", "ready_for_review", "ready_to_mutate"] },
+    "readyToMutate": { "const": false },
+    "ownerPolicy": { "$ref": "#/$defs/ownerPolicy" }
+  },
+  "$defs": {
+    "token": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-z0-9][a-z0-9_.:-]*$" },
+    "product": {
+      "type": "object", "additionalProperties": false,
+      "required": ["productId", "version", "commit", "bundleDigest", "bundleSize", "runId", "environment"],
+      "properties": {
+        "productId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 48, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "commit": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Fa-f0-9]+$" },
+        "bundleDigest": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[A-Fa-f0-9]{64}$" },
+        "bundleSize": { "type": "integer", "minimum": 1, "maximum": 4294967296 },
+        "runId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "environment": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" }
+      }
+    },
+    "check": {
+      "type": "object", "additionalProperties": false,
+      "required": ["checkId", "status", "code"],
+      "properties": {
+        "checkId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+        "status": { "type": "string", "enum": ["not_evaluated", "passed", "failed", "blocked"] },
+        "code": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+        "detail": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[^\\u0000-\\u001f]*$" }
+      }
+    },
+    "ownerPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policyId", "policyDigest"],
+      "properties": {
+        "policyId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "policyDigest": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Fa-f0-9]+$" }
+      }
+    }
+  }
+}

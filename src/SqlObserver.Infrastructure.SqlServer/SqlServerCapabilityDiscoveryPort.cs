@@ -7,6 +7,7 @@ using System.Text;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Capabilities;
+using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
 
 namespace SqlObserver.Infrastructure.SqlServer;
@@ -22,29 +23,56 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
     private static readonly CapabilityId WindowsPlatformCapabilityId = new("platform.windows");
     private static readonly CapabilityId AvailabilityGroupsCapabilityId =
         new("feature.availability-groups");
+    private static readonly CapabilityId SqlAgentHistoryCapabilityId = new("feature.sql-agent-history");
     private static readonly SqlServerPermissionId ViewServerStatePermissionId =
         new("server.view-state");
     private static readonly SqlServerPermissionId ViewServerPerformanceStatePermissionId =
         new("server.view-performance-state");
     private static readonly SqlServerPermissionId PerformanceReaderMembershipPermissionId =
         new("server.performance-reader-role-membership");
+    private static readonly SqlServerPermissionId BackupsetSelectPermissionId = new("msdb.backupset.select");
+    private static readonly SqlServerPermissionId SysjobhistorySelectPermissionId = new("msdb.sysjobhistory.select");
 
     private readonly ISqlServerConnectionFactory _connectionFactory;
     private readonly SqlServerCapabilityAssetCatalog _assets;
+    private readonly SqlServerCapabilityV2AssetCatalog? _assetsV2;
+    private readonly SqlServerCapabilityV3AssetCatalog? _assetsV3;
+    private readonly string? _distributionDatabase;
+    private readonly IReplicationDistributionBindingResolver? _distributionBindingResolver;
+    private static readonly SqlServerPermissionId ReplicationMonitorPermissionId =
+        new("replication.replmonitor");
 
-    public SqlServerCapabilityDiscoveryPort()
+    public SqlServerCapabilityDiscoveryPort(string? distributionDatabase = null)
         : this(
             new SqlServerIntegratedConnectionFactory(),
-            SqlServerCapabilityAssetCatalog.LoadEmbedded())
+            SqlServerCapabilityAssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV2AssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV3AssetCatalog.LoadEmbedded(),
+            distributionDatabase,
+            null)
     {
     }
 
     internal SqlServerCapabilityDiscoveryPort(
         ISqlServerConnectionFactory connectionFactory,
-        SqlServerCapabilityAssetCatalog assets)
+        SqlServerCapabilityAssetCatalog assets,
+        SqlServerCapabilityV2AssetCatalog? assetsV2 = null,
+        SqlServerCapabilityV3AssetCatalog? assetsV3 = null,
+        string? distributionDatabase = null,
+        IReplicationDistributionBindingResolver? distributionBindingResolver = null)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _assets = assets ?? throw new ArgumentNullException(nameof(assets));
+        _assetsV2 = assetsV2;
+        _assetsV3 = assetsV3;
+        _distributionDatabase = ValidateDistributionDatabase(distributionDatabase);
+        _distributionBindingResolver = distributionBindingResolver;
+    }
+
+    /// <summary>Creates discovery using the persisted target/revision binding resolver.</summary>
+    public SqlServerCapabilityDiscoveryPort(IReplicationDistributionBindingResolver distributionBindingResolver)
+        : this(new SqlServerIntegratedConnectionFactory(), SqlServerCapabilityAssetCatalog.LoadEmbedded(), SqlServerCapabilityV2AssetCatalog.LoadEmbedded(), SqlServerCapabilityV3AssetCatalog.LoadEmbedded(), null, distributionBindingResolver)
+    {
     }
 
     public async ValueTask<CapabilityProfile> DiscoverAsync(
@@ -60,6 +88,14 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
 
         try
         {
+            string? distributionDatabase = _distributionDatabase;
+            if (_distributionBindingResolver is not null)
+            {
+                ReplicationDistributionBinding? binding = await _distributionBindingResolver
+                    .ResolveAsync(request.TargetId, request.TargetRevision, timeout.Token)
+                    .ConfigureAwait(false);
+                distributionDatabase = binding?.DatabaseName;
+            }
             await using SqlConnection connection = await _connectionFactory
                 .OpenConnectionAsync(request.ConnectionPolicy, timeout.Token)
                 .ConfigureAwait(false);
@@ -124,21 +160,31 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             {
                 detail = await ExecuteDetailAsync(
                         connection,
-                        _assets.GetSupportedQuery(bootstrap.ProductMajorVersion),
+                        _assetsV3?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
+                            _assetsV2?.Get($"capability.connection.sqlserver{bootstrap.ProductMajorVersion}-windows.v2.sql") ??
+                            _assets.GetSupportedQuery(bootstrap.ProductMajorVersion),
                         commandTimeout,
                         budget,
                         usedPermissionFallback: false,
+                        contractVersion: _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1,
                         timeout.Token)
                     .ConfigureAwait(false);
             }
             catch (SqlException exception) when (IsPermissionDenied(exception))
             {
+                if (_assetsV3 is not null || _assetsV2 is not null)
+                {
+                    // A v2 contract must never silently downgrade to the
+                    // historical v1 fallback while still labeling its profile v2.
+                    throw new InvalidDataException("Capability v2 detail evidence was denied; v1 fallback is forbidden.", exception);
+                }
                 detail = await ExecuteDetailAsync(
                         connection,
                         _assets.PermissionFallbackSql,
                         commandTimeout,
                         budget,
                         usedPermissionFallback: true,
+                        contractVersion: 1,
                         timeout.Token)
                     .ConfigureAwait(false);
             }
@@ -148,8 +194,25 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 throw new InvalidDataException("SQL Server version evidence changed during capability discovery.");
             }
 
+            if (_assetsV3 is not null && distributionDatabase is not null)
+            {
+                bool roleGranted = await ProbeReplicationMonitorRoleAsync(
+                        connection,
+                        distributionDatabase,
+                        commandTimeout,
+                        budget,
+                        timeout.Token)
+                    .ConfigureAwait(false);
+                detail = detail with { HasReplicationMonitorPermission = roleGranted };
+            }
+
             (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) disposition =
                 GetConnectedDisposition(detail);
+            if (_assetsV3 is null && disposition.Outcome == CapabilityDiscoveryOutcome.Supported &&
+                (!detail.HasBackupsetSelect || !detail.HasSysjobhistorySelect))
+            {
+                disposition = (CapabilityDiscoveryOutcome.Degraded, CapabilityDiscoveryReason.RequiredPermissionMissing);
+            }
             return CreateConnectedProfile(
                 request,
                 detail,
@@ -249,6 +312,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         int commandTimeout,
         ProbeBudget budget,
         bool usedPermissionFallback,
+        int contractVersion,
         CancellationToken cancellationToken)
     {
         await using var command = new SqlCommand(commandText, connection)
@@ -256,12 +320,61 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             CommandTimeout = commandTimeout,
         };
         await using SqlDataReader reader = await command.ExecuteReaderAsync(
-                CommandBehavior.SingleResult,
+                contractVersion >= 2 ? CommandBehavior.Default : CommandBehavior.SingleResult,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             throw new InvalidDataException("SQL Server detail discovery returned no evidence.");
+        }
+
+        if (contractVersion == 3)
+        {
+            if (reader.FieldCount != 11)
+            {
+                throw new InvalidDataException("SQL Server capability v3 result contract requires exactly 11 columns.");
+            }
+
+            int v3ProductMajorVersion = reader.GetInt32(0);
+            string v3ProductVersion = ReadBoundedString(reader, 1, 128, budget);
+            string v3Edition = ReadBoundedString(reader, 2, 128, budget);
+            int v3EngineEdition = reader.GetInt32(3);
+            string? v3HostPlatform = ReadNullableBoundedString(reader, 4, 256, budget);
+            bool v3HasRequiredPermission = reader.GetBoolean(5);
+            bool v3IsSysAdmin = reader.GetBoolean(6);
+            string v3AuthScheme = ReadBoundedString(reader, 7, 40, budget);
+            string v3EncryptOption = ReadBoundedString(reader, 8, 40, budget);
+            bool v3HasReplicationFeature = reader.GetBoolean(9);
+            bool v3HasHostBindingFeature = reader.GetBoolean(10);
+            budget.AddFixedBytes(4 + (7 * sizeof(byte)));
+            await EnsureSingleRowAsync(reader, cancellationToken).ConfigureAwait(false);
+            return new DetailedEvidence(
+                v3ProductMajorVersion,
+                v3ProductVersion,
+                ProductLevel: "unknown",
+                Edition: v3Edition,
+                EngineEdition: v3EngineEdition,
+                Platform: ParsePlatform(v3HostPlatform),
+                HostDistribution: null,
+                HostRelease: null,
+                IsHadrEnabled: false,
+                IntegratedSecurityOnly: true,
+                HasRequiredPermission: v3HasRequiredPermission,
+                IsPerformanceReaderMember: v3HasRequiredPermission,
+                IsSysAdmin: v3IsSysAdmin,
+                AuthenticationScheme: ParseAuthenticationScheme(v3AuthScheme),
+                NetTransport: "TCP",
+                TransportEncrypted: string.Equals(v3EncryptOption, "TRUE", StringComparison.OrdinalIgnoreCase),
+                UsedPermissionFallback: usedPermissionFallback,
+                ContractVersion: 3,
+                HasReplicationFeature: v3HasReplicationFeature,
+                HasHostBindingFeature: v3HasHostBindingFeature);
+        }
+
+        const int expectedColumns = 16;
+        if (reader.FieldCount != expectedColumns)
+        {
+            throw new InvalidDataException($"SQL Server capability result contract requires exactly {expectedColumns} columns.");
         }
 
         int productMajorVersion = reader.GetInt32(0);
@@ -280,8 +393,20 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         string authScheme = ReadBoundedString(reader, 13, 40, budget);
         string netTransport = ReadBoundedString(reader, 14, 40, budget);
         string? encryptOption = ReadNullableBoundedString(reader, 15, 40, budget);
+        bool hasBackupsetSelect = false;
+        bool hasSysjobhistorySelect = false;
+        bool hasSqlAgentHistory = false;
         budget.AddFixedBytes(8 + (7 * sizeof(byte)));
         await EnsureSingleRowAsync(reader, cancellationToken).ConfigureAwait(false);
+        if (contractVersion == 2)
+        {
+            if (!await reader.NextResultAsync(cancellationToken).ConfigureAwait(false) || reader.FieldCount != 3 || !await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidDataException("Capability v2 database/feature evidence result is missing or malformed.");
+            hasBackupsetSelect = reader.GetBoolean(0);
+            hasSysjobhistorySelect = reader.GetBoolean(1);
+            hasSqlAgentHistory = reader.GetBoolean(2);
+            await EnsureSingleRowAsync(reader, cancellationToken).ConfigureAwait(false);
+        }
 
         return new DetailedEvidence(
             productMajorVersion,
@@ -302,7 +427,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             encryptOption is null
                 ? IsTransportEncryptedByPolicy(netTransport)
                 : string.Equals(encryptOption, "TRUE", StringComparison.OrdinalIgnoreCase),
-            usedPermissionFallback);
+            usedPermissionFallback, hasBackupsetSelect, hasSysjobhistorySelect, hasSqlAgentHistory);
     }
 
     private static async ValueTask EnsureSingleRowAsync(
@@ -487,8 +612,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             request.TargetId,
             request.TargetRevision,
             _assets.Manifest.Id,
-            _assets.Manifest.ManifestVersion.Value,
-            _assets.Manifest.OutputSchemaVersion.Value,
+            _assetsV3 is not null ? _assetsV3.ManifestVersion : _assetsV2?.ManifestVersion ?? _assets.Manifest.ManifestVersion.Value,
+            _assetsV3 is not null ? 3 : _assetsV2 is null ? _assets.Manifest.OutputSchemaVersion.Value : 2,
             identity,
             outcome,
             reason,
@@ -514,8 +639,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             request.TargetId,
             request.TargetRevision,
             _assets.Manifest.Id,
-            _assets.Manifest.ManifestVersion.Value,
-            _assets.Manifest.OutputSchemaVersion.Value,
+            _assetsV3 is not null ? _assetsV3.ManifestVersion : _assetsV2?.ManifestVersion ?? _assets.Manifest.ManifestVersion.Value,
+            _assetsV3 is not null ? 3 : _assetsV2 is null ? _assets.Manifest.OutputSchemaVersion.Value : 2,
             serverIdentity: null,
             outcome,
             reason,
@@ -570,6 +695,22 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 AvailabilityGroupsCapabilityId,
                 detail.IsHadrEnabled ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
                 detail.IsHadrEnabled ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled),
+            new CapabilityEvidence(
+                SqlAgentHistoryCapabilityId,
+                detail.HasSqlAgentHistory ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
+                detail.HasSqlAgentHistory ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled),
+            ..(detail.ContractVersion >= 3
+                ? (IEnumerable<CapabilityEvidence>)[
+                    new CapabilityEvidence(
+                        new CapabilityId("feature.replication"),
+                        detail.HasReplicationFeature ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
+                        detail.HasReplicationFeature ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled),
+                    new CapabilityEvidence(
+                        new CapabilityId("feature.host-binding"),
+                        detail.HasHostBindingFeature ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
+                        detail.HasHostBindingFeature ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled),
+                ]
+                : Array.Empty<CapabilityEvidence>()),
         ];
     }
 
@@ -584,6 +725,35 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 ? PermissionEvidenceOutcome.Granted
                 : PermissionEvidenceOutcome.Denied;
 
+        if (detail.ContractVersion >= 3)
+        {
+            return
+            [
+                new PermissionEvidence(
+                    requiredPermission,
+                    PermissionEvidenceScope.Server,
+                    detail.HasRequiredPermission
+                        ? PermissionEvidenceOutcome.Granted
+                        : PermissionEvidenceOutcome.Denied),
+                new PermissionEvidence(
+                    ReplicationMonitorPermissionId,
+                    PermissionEvidenceScope.Database,
+                    detail.HasReplicationFeature
+                        ? detail.HasReplicationMonitorPermission switch
+                        {
+                            true => PermissionEvidenceOutcome.Granted,
+                            false => PermissionEvidenceOutcome.Denied,
+                            // No persisted distribution binding means the
+                            // database-scoped role is not applicable. The
+                            // replication collector remains eligible and
+                            // emits a typed visibility gap until a binding
+                            // is supplied and probed.
+                            _ => PermissionEvidenceOutcome.NotApplicable,
+                        }
+                        : PermissionEvidenceOutcome.NotApplicable),
+            ];
+        }
+
         return
         [
             new PermissionEvidence(
@@ -596,6 +766,10 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 PerformanceReaderMembershipPermissionId,
                 PermissionEvidenceScope.Server,
                 roleOutcome),
+            new PermissionEvidence(BackupsetSelectPermissionId, PermissionEvidenceScope.Database,
+                detail.HasBackupsetSelect ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied),
+            new PermissionEvidence(SysjobhistorySelectPermissionId, PermissionEvidenceScope.Database,
+                detail.HasSysjobhistorySelect ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied),
         ];
     }
 
@@ -669,6 +843,47 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
     {
         return string.Equals(netTransport, "TCP", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(netTransport, "Named pipe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ValidateDistributionDatabase(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (value.Length > 128 || value.Trim() != value || value is "." or ".." ||
+            value.Any(static c => !(char.IsLetterOrDigit(c) || c is '_' or '-')))
+            throw new ArgumentException("Distribution database binding is not a safe database identifier.", nameof(value));
+        return value;
+    }
+
+    private static async ValueTask<bool> ProbeReplicationMonitorRoleAsync(
+        SqlConnection connection,
+        string distributionDatabase,
+        int commandTimeout,
+        ProbeBudget budget,
+        CancellationToken cancellationToken)
+    {
+        string originalDatabase = connection.Database;
+        try
+        {
+            connection.ChangeDatabase(distributionDatabase);
+            await using var command = new SqlCommand(
+                "SELECT CONVERT(int,COALESCE(IS_ROLEMEMBER(N'replmonitor'),0));",
+                connection)
+            {
+                CommandTimeout = commandTimeout,
+            };
+            object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            budget.AddFixedBytes(sizeof(int));
+            return value is int role && role == 1;
+        }
+        catch (SqlException exception) when (IsPermissionDenied(exception))
+        {
+            return false;
+        }
+        finally
+        {
+            if (!string.Equals(connection.Database, originalDatabase, StringComparison.Ordinal))
+                connection.ChangeDatabase(originalDatabase);
+        }
     }
 
     private static bool IsPermissionDenied(SqlException exception)
@@ -866,5 +1081,12 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         SqlServerAuthenticationScheme AuthenticationScheme,
         string NetTransport,
         bool TransportEncrypted,
-        bool UsedPermissionFallback);
+        bool UsedPermissionFallback,
+        bool HasBackupsetSelect = false,
+        bool HasSysjobhistorySelect = false,
+        bool HasSqlAgentHistory = false,
+        int ContractVersion = 2,
+        bool HasReplicationFeature = false,
+        bool HasHostBindingFeature = false,
+        bool? HasReplicationMonitorPermission = null);
 }

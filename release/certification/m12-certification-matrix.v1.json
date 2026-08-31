@@ -1,0 +1,1005 @@
+{
+  "$schema": "m12-certification-matrix.v1.schema.json",
+  "schemaVersion": 1,
+  "matrixId": "sqlobserver-m12",
+  "version": "1.2.0",
+  "environmentIdentities": [
+    "local-windows",
+    "release-windows-server-2022",
+    "release-windows-server-2025"
+  ],
+  "profiles": {
+    "Local": {
+      "releaseEvidence": false,
+      "requiredLanes": [
+        "repository-contract",
+        "release-build",
+        "unit",
+        "api",
+        "security",
+        "performance",
+        "end-to-end",
+        "frontend"
+      ],
+      "omittedExternalLanes": [
+        "mcp",
+        "lifecycle",
+        "trusted-tls",
+        "postgresql",
+        "sqlserver",
+        "browser",
+        "installer",
+        "observability",
+        "reports",
+        "sustained-performance",
+        "supply-chain",
+        "signing"
+      ]
+    },
+    "Release": {
+      "releaseEvidence": true,
+      "requiredLanes": [
+        "repository-contract",
+        "release-build",
+        "unit",
+        "api",
+        "security",
+        "performance",
+        "end-to-end",
+        "frontend",
+        "mcp",
+        "lifecycle",
+        "trusted-tls",
+        "postgresql",
+        "sqlserver",
+        "browser",
+        "installer",
+        "observability",
+        "reports",
+        "sustained-performance",
+        "supply-chain",
+        "signing"
+      ],
+      "omittedExternalLanes": []
+    }
+  },
+  "lanes": [
+    {
+      "laneId": "repository-contract",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-repository-contract",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "release-build",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-release-build",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "unit",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-unit-tests",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "api",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-api-contract-tests",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "security",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-security-tests",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "performance",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-performance-tests",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "end-to-end",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-e2e-composition",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "frontend",
+      "producerId": "m12-local-validation",
+      "implementationStatus": "implemented",
+      "cases": [
+        {
+          "caseId": "m12-frontend",
+          "producerId": "m12-local-validation",
+          "implementationStatus": "implemented",
+          "artifactKinds": [
+            "local-validation-bundle"
+          ],
+          "environment": {
+            "identities": [
+              "local-windows",
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture"
+            ],
+            "factPredicates": {
+              "architecture": "x64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "laneId": "mcp",
+      "producerId": "m12-mcp-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-mcp-protocol",
+          "producerId": "m12-mcp-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "mcpProtocol"
+            ],
+            "factPredicates": {
+              "mcpProtocol": "stable-v1"
+            }
+          },
+          "artifactKinds": [
+            "mcp-protocol-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "lifecycle",
+      "producerId": "m12-windows-lifecycle-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-windows-server-2022-lifecycle",
+          "producerId": "m12-windows-lifecycle-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "windowsServerVersion"
+            ],
+            "factPredicates": {
+              "windowsServerVersion": "2022"
+            }
+          },
+          "artifactKinds": [
+            "windows-lifecycle-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-windows-server-2025-lifecycle",
+          "producerId": "m12-windows-lifecycle-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "windowsServerVersion"
+            ],
+            "factPredicates": {
+              "windowsServerVersion": "2025"
+            }
+          },
+          "artifactKinds": [
+            "windows-lifecycle-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "trusted-tls",
+      "producerId": "m12-trusted-auth-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-trusted-tls-wia-gmsa-kerberos",
+          "producerId": "m12-trusted-auth-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "trustedTls",
+              "wia",
+              "gmsa",
+              "kerberos"
+            ],
+            "factPredicates": {
+              "trustedTls": true,
+              "wia": true,
+              "gmsa": true,
+              "kerberos": true
+            }
+          },
+          "artifactKinds": [
+            "trusted-auth-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "postgresql",
+      "producerId": "m12-postgresql-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-postgresql-min-patch",
+          "producerId": "m12-postgresql-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "postgresqlVersion",
+              "postgresqlPatch"
+            ],
+            "factPredicates": {
+              "postgresqlVersion": "18",
+              "postgresqlPatch": "minimum"
+            }
+          },
+          "artifactKinds": [
+            "postgresql-certification-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-postgresql-current-patch",
+          "producerId": "m12-postgresql-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "postgresqlVersion",
+              "postgresqlPatch"
+            ],
+            "factPredicates": {
+              "postgresqlVersion": "18",
+              "postgresqlPatch": "current"
+            }
+          },
+          "artifactKinds": [
+            "postgresql-certification-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "sqlserver",
+      "producerId": "m12-sqlserver-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-sqlserver-2019-passive",
+          "producerId": "m12-sqlserver-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "sqlServerVersion",
+              "passiveMutation",
+              "nonmutation"
+            ],
+            "factPredicates": {
+              "sqlServerVersion": 15,
+              "passiveMutation": true,
+              "nonmutation": true
+            }
+          },
+          "artifactKinds": [
+            "sqlserver-nonmutation-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-sqlserver-2022-passive",
+          "producerId": "m12-sqlserver-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "sqlServerVersion",
+              "passiveMutation",
+              "nonmutation"
+            ],
+            "factPredicates": {
+              "sqlServerVersion": 16,
+              "passiveMutation": true,
+              "nonmutation": true
+            }
+          },
+          "artifactKinds": [
+            "sqlserver-nonmutation-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-sqlserver-2025-passive",
+          "producerId": "m12-sqlserver-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "sqlServerVersion",
+              "passiveMutation",
+              "nonmutation"
+            ],
+            "factPredicates": {
+              "sqlServerVersion": 17,
+              "passiveMutation": true,
+              "nonmutation": true
+            }
+          },
+          "artifactKinds": [
+            "sqlserver-nonmutation-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "browser",
+      "producerId": "m12-browser-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-edge-browser",
+          "producerId": "m12-browser-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "browser"
+            ],
+            "factPredicates": {
+              "browser": "Edge"
+            }
+          },
+          "artifactKinds": [
+            "browser-certification-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-chrome-browser",
+          "producerId": "m12-browser-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "browser"
+            ],
+            "factPredicates": {
+              "browser": "Chrome"
+            }
+          },
+          "artifactKinds": [
+            "browser-certification-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "installer",
+      "producerId": "m12-installer-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-installer-install",
+          "producerId": "m12-installer-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "installer"
+            ],
+            "factPredicates": {
+              "installer": "install"
+            }
+          },
+          "artifactKinds": [
+            "installer-lifecycle-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-installer-upgrade",
+          "producerId": "m12-installer-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "installer"
+            ],
+            "factPredicates": {
+              "installer": "upgrade"
+            }
+          },
+          "artifactKinds": [
+            "installer-lifecycle-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-installer-recovery",
+          "producerId": "m12-installer-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "installer"
+            ],
+            "factPredicates": {
+              "installer": "recovery"
+            }
+          },
+          "artifactKinds": [
+            "installer-lifecycle-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-installer-uninstall",
+          "producerId": "m12-installer-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "installer"
+            ],
+            "factPredicates": {
+              "installer": "uninstall"
+            }
+          },
+          "artifactKinds": [
+            "installer-lifecycle-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "observability",
+      "producerId": "m12-observability-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-readiness-observability",
+          "producerId": "m12-observability-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "readiness",
+              "otel"
+            ],
+            "factPredicates": {
+              "readiness": true,
+              "otel": true
+            }
+          },
+          "artifactKinds": [
+            "observability-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-telemetry-observability",
+          "producerId": "m12-observability-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "telemetry",
+              "otel"
+            ],
+            "factPredicates": {
+              "telemetry": true,
+              "otel": true
+            }
+          },
+          "artifactKinds": [
+            "observability-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "reports",
+      "producerId": "m12-reports-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-reports-exports",
+          "producerId": "m12-reports-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "reports",
+              "exports"
+            ],
+            "factPredicates": {
+              "reports": true,
+              "exports": true
+            }
+          },
+          "artifactKinds": [
+            "reports-exports-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-report-contract",
+          "producerId": "m12-reports-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "reports",
+              "reportKind"
+            ],
+            "factPredicates": {
+              "reports": true,
+              "reportKind": "report"
+            }
+          },
+          "artifactKinds": [
+            "reports-exports-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-export-contract",
+          "producerId": "m12-reports-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "exports",
+              "reportKind"
+            ],
+            "factPredicates": {
+              "exports": true,
+              "reportKind": "export"
+            }
+          },
+          "artifactKinds": [
+            "reports-exports-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "sustained-performance",
+      "producerId": "m12-sustained-performance-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-sustained-performance",
+          "producerId": "m12-sustained-performance-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "sustainedLoad"
+            ],
+            "factPredicates": {
+              "sustainedLoad": true
+            }
+          },
+          "artifactKinds": [
+            "sustained-performance-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "supply-chain",
+      "producerId": "m12-supply-chain-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-sbom",
+          "producerId": "m12-supply-chain-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "sbom"
+            ],
+            "factPredicates": {
+              "sbom": true
+            }
+          },
+          "artifactKinds": [
+            "supply-chain-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-licenses",
+          "producerId": "m12-supply-chain-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "licenses"
+            ],
+            "factPredicates": {
+              "licenses": true
+            }
+          },
+          "artifactKinds": [
+            "supply-chain-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-vulnerability-scan",
+          "producerId": "m12-supply-chain-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "vulnerabilityScan"
+            ],
+            "factPredicates": {
+              "vulnerabilityScan": true
+            }
+          },
+          "artifactKinds": [
+            "supply-chain-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-provenance",
+          "producerId": "m12-supply-chain-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "provenance"
+            ],
+            "factPredicates": {
+              "provenance": true
+            }
+          },
+          "artifactKinds": [
+            "supply-chain-evidence"
+          ]
+        },
+        {
+          "caseId": "m12-runbooks",
+          "producerId": "m12-supply-chain-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "runbooks"
+            ],
+            "factPredicates": {
+              "runbooks": true
+            }
+          },
+          "artifactKinds": [
+            "supply-chain-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "laneId": "signing",
+      "producerId": "m12-signing-harness",
+      "implementationStatus": "pending",
+      "cases": [
+        {
+          "caseId": "m12-signing",
+          "producerId": "m12-signing-harness",
+          "implementationStatus": "pending",
+          "environment": {
+            "identities": [
+              "release-windows-server-2022",
+              "release-windows-server-2025"
+            ],
+            "requiredFacts": [
+              "os",
+              "architecture",
+              "signing"
+            ],
+            "factPredicates": {
+              "signing": true
+            }
+          },
+          "artifactKinds": [
+            "signing-evidence"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-sbom.v1.schema.json",
+  "title": "SqlObserver deterministic CycloneDX SBOM",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bomFormat", "specVersion", "serialNumber", "version", "metadata", "components", "dependencies"],
+  "properties": {
+    "bomFormat": { "const": "CycloneDX" },
+    "specVersion": { "const": "1.7" },
+    "serialNumber": { "type": "string", "pattern": "^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", "maxLength": 64 },
+    "version": { "const": 1 },
+    "metadata": {
+      "type": "object", "additionalProperties": false,
+      "required": ["timestamp", "component", "properties"],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time", "maxLength": 40 },
+        "component": { "$ref": "#/$defs/component" },
+        "properties": {
+          "type": "array", "maxItems": 16,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["name", "value"],
+            "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 512 }, "value": { "type": "string", "minLength": 1, "maxLength": 512 } }
+          }
+        }
+      }
+    },
+    "components": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/component" } },
+    "dependencies": {
+      "type": "array", "maxItems": 8192,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["ref", "dependsOn"],
+        "properties": {
+          "ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "dependsOn": { "type": "array", "maxItems": 4096, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 512 } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "bom-ref", "name", "version", "purl"],
+      "properties": {
+        "type": { "enum": ["application", "library"] },
+        "bom-ref": { "type": "string", "pattern": "^pkg:[a-z][a-z0-9+.-]*/[^\\s]+$", "maxLength": 512 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "purl": { "type": "string", "pattern": "^pkg:[a-z][a-z0-9+.-]*/[^\\s]+$", "maxLength": 512 }
+      }
+    }
+  }
+}

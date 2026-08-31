@@ -15,6 +15,7 @@ using SqlObserver.Infrastructure.PostgreSql;
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class M4CollectorPersistenceIntegrationTests
 {
     private const string BundleDigest = "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e";

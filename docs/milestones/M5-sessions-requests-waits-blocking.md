@@ -1,0 +1,9 @@
+# M5 — Sessions, requests, waits, and blocking
+
+M5 is implemented as a bounded, passive activity vertical slice. The Collector host runs the four reviewed SQL Server collectors in mandatory order: `activity.sessions` (4), `activity.requests` (5), `waits.server` (6), and `blocking.current` (7). Each collector uses the checksum-pinned Windows SQL Server 2019/2022/2025 bundle, integrated authentication, documented DMVs, fixed parameters, cancellation, and row/byte/command-time budgets.
+
+Migration `0009_activity_sessions_requests_waits_blocking.sql` persists fenced activity runs, typed snapshots, loss accounting, wait baselines/reset markers, and bounded reporting functions. The Server composition root registers the repository projection port and application query service, then maps the target-scoped `/api/v1/observation-targets/{instanceId}/activity/*` routes. Authorization is resolved from Windows identity and target grants before any repository call; cursors bind target, run, and target revision.
+
+The web target workflow provides sessions, active requests, wait summaries, current blocking, and a one-hour bounded blocking-history view. API text is treated as untrusted: the client validates the response envelope, truncates evidence labels, does not render SQL/provider fields, and displays freshness, baseline/reset, and partial/loss evidence.
+
+M5 does not implement deadlocks, Extended Events, Query Store, alerts, session killing, configuration changes, or release/platform certification. M6 is the next runtime dependency. M12 remains the certification and packaging gate.

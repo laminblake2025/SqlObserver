@@ -10,7 +10,7 @@ namespace SqlObserver.Infrastructure.PostgreSql;
 /// </summary>
 public sealed class PostgreSqlMigrationPort : IMigrationPort
 {
-    private const long MigrationAdvisoryLockKey = 0x53514C4F42534D32L;
+    internal const long MigrationAdvisoryLockKey = 0x53514C4F42534D32L;
     private const string TryAcquireLockSql = "SELECT pg_catalog.pg_try_advisory_lock(@lock_key);";
     private const string ReleaseLockSql = "SELECT pg_catalog.pg_advisory_unlock(@lock_key);";
     private const string ReadServerVersionSql =
@@ -64,12 +64,12 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
                     .ConfigureAwait(false);
                 ownsAdvisoryLock = true;
 
-                IReadOnlyList<AppliedMigration> history = await ReadHistoryAsync(
+                IReadOnlyList<MigrationHistoryEntry> history = await ReadHistoryAsync(
                         connection,
                         request.Timeout,
                         timeout.Token)
                     .ConfigureAwait(false);
-                ValidateExactPrefix(history);
+                PostgreSqlMigrationHistoryValidator.ThrowIfInvalid(history, _catalog);
 
                 var results = new List<MigrationExecutionResult>();
                 IEnumerable<PostgreSqlMigrationResource> pending = _catalog.Migrations
@@ -221,12 +221,16 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         }
     }
 
-    private static async Task<IReadOnlyList<AppliedMigration>> ReadHistoryAsync(
+    internal static async Task<IReadOnlyList<MigrationHistoryEntry>> ReadHistoryAsync(
         NpgsqlConnection connection,
         RepositoryCallTimeout timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        NpgsqlTransaction? transaction = null,
+        int maxHistory = MigrationBatchResult.MaximumResults)
     {
-        await using (var existsCommand = new NpgsqlCommand(LedgerExistsSql, connection)
+        if (maxHistory is <= 0 or > MigrationBatchResult.MaximumResults)
+            throw new ArgumentOutOfRangeException(nameof(maxHistory));
+        await using (var existsCommand = new NpgsqlCommand(LedgerExistsSql, connection, transaction)
         {
             CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
         })
@@ -234,12 +238,12 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
             object? exists = await existsCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             if (exists is not true)
             {
-                return Array.Empty<AppliedMigration>();
+                return Array.Empty<MigrationHistoryEntry>();
             }
         }
 
-        var result = new List<AppliedMigration>();
-        await using var command = new NpgsqlCommand(ReadLedgerSql, connection)
+        var result = new List<MigrationHistoryEntry>();
+        await using var command = new NpgsqlCommand(ReadLedgerSql, connection, transaction)
         {
             CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
         };
@@ -249,51 +253,25 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
 
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            result.Add(new AppliedMigration(
-                reader.GetInt32(0),
-                reader.GetString(1),
-                reader.GetString(2)));
+            try
+            {
+                result.Add(new MigrationHistoryEntry(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    reader.GetString(2)));
+            }
+            catch (ArgumentException exception)
+            {
+                throw new InvalidDataException("Repository migration history contains an invalid ledger row.", exception);
+            }
 
-            if (result.Count > MigrationBatchResult.MaximumResults)
+            if (result.Count > maxHistory)
             {
                 throw new InvalidDataException("Repository migration history exceeds the supported bound.");
             }
         }
 
         return result;
-    }
-
-    private void ValidateExactPrefix(IReadOnlyList<AppliedMigration> history)
-    {
-        if (history.Count > _catalog.Migrations.Count)
-        {
-            throw new InvalidDataException("Repository migration history contains an unknown migration.");
-        }
-
-        for (int index = 0; index < history.Count; index++)
-        {
-            AppliedMigration applied = history[index];
-            PostgreSqlMigrationResource expected = _catalog.Migrations[index];
-            int expectedNumber = index + 1;
-
-            if (applied.Number != expectedNumber)
-            {
-                throw new InvalidDataException(
-                    $"Repository migration history has a gap or non-prefix entry at {expectedNumber:D4}.");
-            }
-
-            if (!string.Equals(applied.FileName, expected.FileName, StringComparison.Ordinal))
-            {
-                throw new InvalidDataException(
-                    $"Repository migration {expectedNumber:D4} has an unexpected immutable name.");
-            }
-
-            if (!string.Equals(applied.Checksum, expected.ChecksumHex, StringComparison.Ordinal))
-            {
-                throw new InvalidDataException(
-                    $"Repository migration {expected.FileName} failed checksum drift validation.");
-            }
-        }
     }
 
     private static async Task<DateTimeOffset> ReadRepositoryClockAsync(
@@ -363,5 +341,4 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         }
     }
 
-    private sealed record AppliedMigration(int Number, string FileName, string Checksum);
 }

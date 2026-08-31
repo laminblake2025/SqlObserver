@@ -31,6 +31,11 @@ public sealed class PostgreSqlIngestionPort : ITelemetryIngestionPort, IDiagnost
         (observed_at, sample_id, instance_id, metric_key, metric_value, dimensions, collected_at)
         FROM STDIN (FORMAT BINARY)
         """;
+    // This is the generic M2 compatibility path.  It intentionally does not
+    // manufacture a target revision (or collection-run provenance): M10
+    // analytics/backfill admit raw rows only through an authoritative
+    // collection_run target-revision join.  M4+ collector commits use the
+    // fenced collection-run persistence contract instead.
     private const string InsertMetricsSql = """
         INSERT INTO telemetry.raw_metric_sample
         (observed_at, sample_id, instance_id, metric_key, metric_value, dimensions, collected_at)

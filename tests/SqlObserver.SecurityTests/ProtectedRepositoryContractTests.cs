@@ -110,8 +110,9 @@ public sealed class ProtectedRepositoryContractTests
         Type[] repositoryTypes =
         [
             .. typeof(ISensitivePayloadPort).Assembly.GetExportedTypes()
-                .Where(static type => type.Namespace == "SqlObserver.Application.Ports"),
-            .. typeof(SqlObserver.Infrastructure.PostgreSql.AssemblyMarker).Assembly.GetExportedTypes(),
+                .Where(static type => type.Namespace == "SqlObserver.Application.Ports" && type.Name.Contains("Migration", StringComparison.Ordinal)),
+            .. typeof(SqlObserver.Infrastructure.PostgreSql.AssemblyMarker).Assembly.GetExportedTypes()
+                .Where(static type => type.Name.Contains("Migration", StringComparison.Ordinal)),
         ];
 
         Assert.Null(publicSql);

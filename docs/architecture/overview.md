@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This document fixes the product architecture and records the implementation boundary through Milestone 4. Target onboarding, capability discovery, the PostgreSQL repository, fenced collection runtime, passive core/database/file collectors, and scoped health projections have active evidence. Later diagnostics, alerts, analytics, MCP, reports, packaging, and support certification remain planned and must not be inferred from this topology.
+This document fixes the product architecture and records the implementation boundary through Milestone 11. Repository, onboarding, collection, diagnostic, alerting, analytics, and the fixed read-only MCP surface have local evidence. Reports, packaging, deployment lifecycle, and support certification remain M12 work and must not be inferred from this topology.
 
 SqlObserver is a Windows Server-hosted, agentless-by-default diagnostics application for Microsoft SQL Server. PostgreSQL 18.x is the application repository. The design is a modular monolith: modules share domain and application contracts, while independently hosted processes have narrow responsibilities and can be deployed separately.
 
@@ -125,7 +125,7 @@ See [SECURITY.md](../../SECURITY.md) and [the threat model](threat-model.md).
 
 All services use structured logs and OpenTelemetry while excluding secrets and unrestricted SQL text. Required signals include collection lag, lease contention, target/repository latency, timeouts, retries, circuit state, queue/backlog depth, ingested and rejected rows/bytes, sample loss, alert-evaluation health, audit-write failures, and partition/retention state.
 
-Operational runbooks are intentionally deferred until behavior exists and can be tested. [The runbook index](../runbooks/README.md) records the planned scope without presenting speculative steps as production guidance.
+The four M12 supply-chain runbooks are versioned, documentation-only procedures with bounded ContractOnly and pending-lane evidence checks. They do not assert product readiness or support, and they do not execute catalog commands. Broader product and operational runbooks remain incomplete. [The runbook index](../runbooks/README.md) records the approved M12 scope.
 
 ## Evolution constraints
 

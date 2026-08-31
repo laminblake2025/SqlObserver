@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sqlobserver-deployment-security-assessment-v1",
+  "title": "SqlObserver ADR-0017 deployment security assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["evaluatedAtUtc", "checks", "status", "readyToActivate"],
+  "properties": {
+    "evaluatedAtUtc": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{7}Z$" },
+    "checks": { "type": "array", "minItems": 12, "maxItems": 12, "prefixItems": [
+      { "$ref": "#/$defs/owner_policy" }, { "$ref": "#/$defs/identity_topology" }, { "$ref": "#/$defs/secret_store_policy" },
+      { "$ref": "#/$defs/certificate_lifecycle" }, { "$ref": "#/$defs/postgresql_transport" }, { "$ref": "#/$defs/mcp_endpoint" },
+      { "$ref": "#/$defs/target_connection_policy" }, { "$ref": "#/$defs/credential_policy" }, { "$ref": "#/$defs/sensitive_content" },
+      { "$ref": "#/$defs/configuration_integrity" }, { "$ref": "#/$defs/runtime_permissions" }, { "$ref": "#/$defs/release_evidence" }
+    ], "items": false },
+    "status": { "const": "not_ready" },
+    "readyToActivate": { "const": false }
+  },
+  "$defs": {
+    "owner_policy": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "owner_policy" } } }] },
+    "identity_topology": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "identity_topology" } } }] },
+    "secret_store_policy": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "secret_store_policy" } } }] },
+    "certificate_lifecycle": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "certificate_lifecycle" } } }] },
+    "postgresql_transport": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "postgresql_transport" } } }] },
+    "mcp_endpoint": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "mcp_endpoint" } } }] },
+    "target_connection_policy": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "target_connection_policy" } } }] },
+    "credential_policy": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "credential_policy" } } }] },
+    "sensitive_content": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "sensitive_content" } } }] },
+    "configuration_integrity": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "configuration_integrity" } } }] },
+    "runtime_permissions": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "runtime_permissions" } } }] },
+    "release_evidence": { "allOf": [{ "$ref": "#/$defs/check" }, { "properties": { "checkId": { "const": "release_evidence" } } }] },
+    "check": {
+      "type": "object", "additionalProperties": false,
+      "required": ["checkId", "status", "code"],
+      "properties": {
+        "checkId": { "type": "string", "enum": ["owner_policy", "identity_topology", "secret_store_policy", "certificate_lifecycle", "postgresql_transport", "mcp_endpoint", "target_connection_policy", "credential_policy", "sensitive_content", "configuration_integrity", "runtime_permissions", "release_evidence"] },
+        "status": { "type": "string", "enum": ["not_evaluated", "passed", "failed", "blocked"] },
+        "code": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_-]*$" }
+      }
+    }
+  }
+}

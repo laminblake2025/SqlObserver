@@ -178,11 +178,6 @@
           "System.Security.Cryptography.ProtectedData": "9.0.13"
         }
       },
-      "System.Diagnostics.EventLog": {
-        "type": "Transitive",
-        "resolved": "9.0.13",
-        "contentHash": "675Rk4RwaVrWo09wrR2rpDVKixtgtnhd5NhPrn6O21uj92JvE61KTGupn76M2N6Ff/xJjY3SHSfSg0MIanEzGw=="
-      },
       "System.IdentityModel.Tokens.Jwt": {
         "type": "Transitive",
         "resolved": "8.16.0",
@@ -255,6 +250,14 @@
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
+      "sqlobserver.collectors": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.domain": {
         "type": "Project"
       },
@@ -284,6 +287,12 @@
           "System.Configuration.ConfigurationManager": "9.0.13",
           "System.Security.Cryptography.Pkcs": "9.0.13"
         }
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       }
     }
   }

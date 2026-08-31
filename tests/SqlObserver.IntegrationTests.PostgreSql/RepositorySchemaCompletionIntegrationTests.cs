@@ -99,6 +99,7 @@ public sealed class PostgreSqlMigrationCatalogCompletionTests
 }
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
 public sealed class RepositorySchemaCompletionIntegrationTests
 {
     private const string ValidateMetricReplaySql = """

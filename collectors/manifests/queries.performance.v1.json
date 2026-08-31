@@ -1,0 +1,15 @@
+{
+  "$schema": "collector-manifest.v4.schema.json", "schemaVersion": 4,
+  "collectorId": "queries.performance", "collectorVersion": 1,
+  "displayName": "SQL Server Query Store query performance", "operationalMode": "passive",
+  "dependsOn": ["capability.connection", "engine.core", "database.inventory"],
+  "supportedTargets": {"product":"Microsoft SQL Server","minimumMajorVersion":15,"maximumMajorVersion":17,"platforms":["Windows"],"engineEditions":[2,3,4]},
+  "requiredCapabilities": ["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"],
+  "requiredPermissionsByMajor": {"15":["database.view-state"],"16":["database.view-performance-state"],"17":["database.view-performance-state"]},
+  "cadence": {"defaultIntervalSeconds": 300,"minimumIntervalSeconds": 60,"nonOverlappingPerTarget":true},
+  "executionBounds": {"connectTimeoutSeconds":5,"commandTimeoutSeconds":15,"maximumRows":2000,"maximumResponseBytes":8388608},
+  "resilience": {"maximumAttempts":2,"transientRetryDelayMilliseconds":100,"circuitFailureThreshold":3,"circuitOpenSeconds":300},
+  "estimatedCostClass":"moderate", "fallback":{"mode":"plan-cache","singleAttempt":true,"permissionsByMajor":{"15":["server.view-state"],"16":["server.view-performance-state"],"17":["server.view-performance-state"]},"on":{"disabled":"fallback","unsupported":"fallback","permission_denied":"fallback","read_failure":"fallback","timed_out":"fallback","cancelled":"no_fallback","fence_lost":"no_fallback"}},
+  "queryResources":{"supportedByMajor":{"15":"queries.performance.sqlserver15-windows.v1.sql","16":"queries.performance.sqlserver16-windows.v1.sql","17":"queries.performance.sqlserver17-windows.v1.sql"}},
+  "outputSchemaVersion":1,"outputKind":"query-performance"
+}

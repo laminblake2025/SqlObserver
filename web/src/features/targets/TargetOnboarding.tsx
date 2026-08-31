@@ -1,6 +1,12 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import { TargetHealthPanel } from "../health/TargetHealthPanel";
+import { TargetActivityPanel } from "../activity/TargetActivityPanel";
+import { TargetDeadlockPanel } from "../deadlocks/TargetDeadlockPanel";
+import { TargetQueryPerformancePanel } from "../queries/TargetQueryPerformancePanel";
+import { TargetAlertsPanel } from "../alerts/TargetAlertsPanel";
+import { OperationsPanel } from "../operations/OperationsPanel";
+import { ReportsPanel } from "../reports/ReportsPanel";
 import { listObservationTargets, registerObservationTarget } from "./targetApi";
 import type {
   CapabilityStatus,
@@ -38,6 +44,12 @@ export function TargetOnboarding() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string>();
   const [selectedTargetId, setSelectedTargetId] = useState<string>();
+  const [selectedActivityTargetId, setSelectedActivityTargetId] = useState<string>();
+  const [selectedDeadlockTargetId, setSelectedDeadlockTargetId] = useState<string>();
+  const [selectedQueryPerformanceTargetId, setSelectedQueryPerformanceTargetId] = useState<string>();
+  const [selectedAlertsTargetId, setSelectedAlertsTargetId] = useState<string>();
+  const [selectedOperationsTargetId, setSelectedOperationsTargetId] = useState<string>();
+  const [selectedReportsTargetId, setSelectedReportsTargetId] = useState<string>();
   const [registrationInstanceId, setRegistrationInstanceId] = useState(createClientInstanceId);
   const selectedTarget = targets.find((target) => target.instanceId === selectedTargetId);
 
@@ -207,6 +219,26 @@ export function TargetOnboarding() {
               >
                 View health evidence
               </button>
+              <button
+                className="secondary-button target-health-button"
+                onClick={() => setSelectedDeadlockTargetId(target.instanceId)}
+                type="button"
+              >
+                View deadlock evidence
+              </button>
+              <button
+                className="secondary-button target-health-button"
+                onClick={() => setSelectedActivityTargetId(target.instanceId)}
+                type="button"
+              >
+                View activity
+              </button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedQueryPerformanceTargetId(target.instanceId)} type="button">
+                View query performance
+              </button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedAlertsTargetId(target.instanceId)} type="button">View alerts</button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedOperationsTargetId(target.instanceId)} type="button">View operations</button>
+              <button className="secondary-button target-health-button" onClick={() => setSelectedReportsTargetId(target.instanceId)} type="button">Create report</button>
             </article>
           ))}
         </div>
@@ -218,6 +250,36 @@ export function TargetOnboarding() {
           onClose={() => setSelectedTargetId(undefined)}
         />
       )}
+      {selectedActivityTargetId === undefined ? null : (() => {
+        const activityTarget = targets.find((target) => target.instanceId === selectedActivityTargetId);
+        return activityTarget === undefined ? null : (
+          <TargetActivityPanel
+            displayName={activityTarget.displayName}
+            instanceId={activityTarget.instanceId}
+            onClose={() => setSelectedActivityTargetId(undefined)}
+          />
+        );
+      })()}
+      {selectedDeadlockTargetId === undefined ? null : (() => {
+        const deadlockTarget = targets.find((target) => target.instanceId === selectedDeadlockTargetId);
+        return deadlockTarget === undefined ? null : (
+          <TargetDeadlockPanel
+            displayName={deadlockTarget.displayName}
+            instanceId={deadlockTarget.instanceId}
+            onClose={() => setSelectedDeadlockTargetId(undefined)}
+          />
+        );
+      })()}
+      {selectedQueryPerformanceTargetId === undefined ? null : (() => {
+        const queryTarget = targets.find((target) => target.instanceId === selectedQueryPerformanceTargetId);
+        return queryTarget === undefined ? null : <TargetQueryPerformancePanel displayName={queryTarget.displayName} instanceId={queryTarget.instanceId} onClose={() => setSelectedQueryPerformanceTargetId(undefined)} />;
+      })()}
+      {selectedAlertsTargetId === undefined ? null : (() => {
+        const alertTarget = targets.find((target) => target.instanceId === selectedAlertsTargetId);
+        return alertTarget === undefined ? null : <TargetAlertsPanel displayName={alertTarget.displayName} instanceId={alertTarget.instanceId} onClose={() => setSelectedAlertsTargetId(undefined)} />;
+      })()}
+      {selectedOperationsTargetId === undefined ? null : <OperationsPanel instanceId={selectedOperationsTargetId} />}
+      {selectedReportsTargetId === undefined ? null : (() => { const reportTarget = targets.find((target) => target.instanceId === selectedReportsTargetId); return reportTarget === undefined ? null : <ReportsPanel displayName={reportTarget.displayName} instanceId={reportTarget.instanceId} onClose={() => setSelectedReportsTargetId(undefined)} />; })()}
     </section>
   );
 }

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-runbooks-inputs.v1.schema.json",
+  "title": "SqlObserver M12 runbooks prerequisite input",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "caseId", "commitSha", "environmentId", "matrixSha256", "prerequisites"],
+  "properties": {
+    "$schema": { "const": "m12-runbooks-inputs.v1.schema.json" }, "schemaVersion": { "const": 1 }, "caseId": { "const": "m12-runbooks" }, "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }, "environmentId": { "enum": ["release-windows-server-2022", "release-windows-server-2025"] }, "matrixSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "prerequisites": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/prerequisite" } }
+  },
+  "$defs": { "prerequisite": { "type": "object", "additionalProperties": false, "required": ["caseId", "runId", "path", "artifactPath", "testEvidencePath", "provenancePath", "artifactSha256", "artifactSize", "commitSha", "environmentId"], "properties": { "caseId": { "enum": ["m12-sbom", "m12-licenses", "m12-vulnerability-scan", "m12-provenance"] }, "runId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }, "path": { "type": "string", "pattern": "^TestResults/m12/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", "maxLength": 512 }, "artifactPath": { "type": "string", "pattern": "^TestResults/m12/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[a-z0-9.-]+$", "maxLength": 512 }, "testEvidencePath": { "type": "string", "pattern": "^TestResults/m12/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[a-z0-9.-]+$", "maxLength": 512 }, "provenancePath": { "type": "string", "pattern": "^TestResults/m12/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[a-z0-9.-]+$", "maxLength": 512 }, "artifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "artifactSize": { "type": "integer", "minimum": 1 }, "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }, "environmentId": { "enum": ["release-windows-server-2022", "release-windows-server-2025"] } } } }
+}

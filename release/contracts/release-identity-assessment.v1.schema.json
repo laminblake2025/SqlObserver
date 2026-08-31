@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/release-identity-assessment.v1.schema.json",
+  "title": "SqlObserver M12 release identity and evidence assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schemaVersion", "assessmentId", "assessedAtUtc", "status",
+    "releaseEvidence", "readyToRelease", "commitSha", "policyId", "policyVersion",
+    "matrixId", "counts", "checks"
+  ],
+  "properties": {
+    "$schema": { "const": "release-identity-assessment.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "assessmentId": { "const": "m12-release-identity" },
+    "assessedAtUtc": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{7}Z$" },
+    "status": { "const": "not_ready" },
+    "releaseEvidence": { "const": false },
+    "readyToRelease": { "const": false },
+    "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "policyId": { "const": "sqlobserver-m12-policy-v1" },
+    "policyVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "matrixId": { "const": "sqlobserver-m12" },
+    "counts": {
+      "type": "object", "additionalProperties": false,
+      "required": [ "matrixLanes", "matrixCases", "implementedLanes", "implementedCases", "pendingLanes", "pendingCases", "checks" ],
+      "properties": {
+        "matrixLanes": { "const": 20 },
+        "matrixCases": { "const": 35 },
+        "implementedLanes": { "const": 8 },
+        "implementedCases": { "const": 8 },
+        "pendingLanes": { "const": 12 },
+        "pendingCases": { "const": 27 },
+        "checks": { "const": 29 }
+      }
+    },
+    "checks": {
+      "type": "array", "minItems": 29, "maxItems": 29, "uniqueItems": true, "items": false,
+      "prefixItems": [
+        { "$ref": "#/$defs/check-1" }, { "$ref": "#/$defs/check-2" }, { "$ref": "#/$defs/check-3" }, { "$ref": "#/$defs/check-4" }, { "$ref": "#/$defs/check-5" }, { "$ref": "#/$defs/check-6" }, { "$ref": "#/$defs/check-7" }, { "$ref": "#/$defs/check-8" }, { "$ref": "#/$defs/check-9" }, { "$ref": "#/$defs/check-10" }, { "$ref": "#/$defs/check-11" }, { "$ref": "#/$defs/check-12" }, { "$ref": "#/$defs/check-13" }, { "$ref": "#/$defs/check-14" }, { "$ref": "#/$defs/check-15" }, { "$ref": "#/$defs/check-16" }, { "$ref": "#/$defs/check-17" }, { "$ref": "#/$defs/check-18" }, { "$ref": "#/$defs/check-19" }, { "$ref": "#/$defs/check-20" }, { "$ref": "#/$defs/check-21" }, { "$ref": "#/$defs/check-22" }, { "$ref": "#/$defs/check-23" }, { "$ref": "#/$defs/check-24" }, { "$ref": "#/$defs/check-25" }, { "$ref": "#/$defs/check-26" }, { "$ref": "#/$defs/check-27" }, { "$ref": "#/$defs/check-28" }, { "$ref": "#/$defs/check-29" }
+      ]
+    }
+  },
+  "$defs": {
+    "check-1": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "head-commit" }, "order": { "const": 1 }, "status": { "const": "observed" }, "code": { "const": "HEAD_VERIFIED" } } }, { "properties": { "checkId": { "const": "head-commit" }, "order": { "const": 1 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-2": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "policy-identity" }, "order": { "const": 2 }, "status": { "const": "observed" }, "code": { "const": "POLICY_ID_VERIFIED" } } }, { "properties": { "checkId": { "const": "policy-identity" }, "order": { "const": 2 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-3": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "matrix-identity" }, "order": { "const": 3 }, "status": { "const": "observed" }, "code": { "const": "MATRIX_ID_VERIFIED" } } }, { "properties": { "checkId": { "const": "matrix-identity" }, "order": { "const": 3 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-4": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "matrix-inventory" }, "order": { "const": 4 }, "status": { "const": "observed" }, "code": { "const": "MATRIX_INVENTORY_VERIFIED" } } }, { "properties": { "checkId": { "const": "matrix-inventory" }, "order": { "const": 4 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-5": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "profile-inventory" }, "order": { "const": 5 }, "status": { "const": "observed" }, "code": { "const": "PROFILE_INVENTORY_VERIFIED" } } }, { "properties": { "checkId": { "const": "profile-inventory" }, "order": { "const": 5 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-6": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "schema-checksum" }, "order": { "const": 6 }, "status": { "const": "observed" }, "code": { "const": "ASSESSMENT_SCHEMA_PINNED" } } }, { "properties": { "checkId": { "const": "schema-checksum" }, "order": { "const": 6 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-7": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "matrix-only-verification" }, "order": { "const": 7 }, "status": { "const": "observed" }, "code": { "const": "MATRIX_ONLY_VERIFIED" } } }, { "properties": { "checkId": { "const": "matrix-only-verification" }, "order": { "const": 7 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-8": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "repository-contract" }, "order": { "const": 8 }, "status": { "const": "observed" }, "code": { "const": "REPOSITORY_CONTRACT_OBSERVED" } } }, { "properties": { "checkId": { "const": "repository-contract" }, "order": { "const": 8 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-9": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "product-version" }, "order": { "const": 9 }, "status": { "const": "blocked" }, "code": { "const": "PRODUCT_IDENTITY_PENDING" } } }, { "properties": { "checkId": { "const": "product-version" }, "order": { "const": 9 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-10": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "artifact-digests" }, "order": { "const": 10 }, "status": { "const": "blocked" }, "code": { "const": "ARTIFACT_DIGESTS_PENDING" } } }, { "properties": { "checkId": { "const": "artifact-digests" }, "order": { "const": 10 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-11": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "publisher-identity" }, "order": { "const": 11 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "publisher-identity" }, "order": { "const": 11 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-12": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "license" }, "order": { "const": 12 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "license" }, "order": { "const": 12 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-13": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "versioning-policy" }, "order": { "const": 13 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "versioning-policy" }, "order": { "const": 13 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-14": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "signing-identity" }, "order": { "const": 14 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "signing-identity" }, "order": { "const": 14 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-15": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "key-custody" }, "order": { "const": 15 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "key-custody" }, "order": { "const": 15 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-16": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "timestamping" }, "order": { "const": 16 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "timestamping" }, "order": { "const": 16 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-17": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "key-rotation" }, "order": { "const": 17 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "key-rotation" }, "order": { "const": 17 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-18": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "revocation-response" }, "order": { "const": 18 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "revocation-response" }, "order": { "const": 18 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-19": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "release-approver" }, "order": { "const": 19 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "release-approver" }, "order": { "const": 19 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-20": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "artifact-retention" }, "order": { "const": 20 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "artifact-retention" }, "order": { "const": 20 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-21": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "evidence-access" }, "order": { "const": 21 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "evidence-access" }, "order": { "const": 21 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-22": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "canonical-build-environment" }, "order": { "const": 22 }, "status": { "const": "blocked" }, "code": { "const": "OWNER_DECISION_REQUIRED" } } }, { "properties": { "checkId": { "const": "canonical-build-environment" }, "order": { "const": 22 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-23": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "windows-certification" }, "order": { "const": 23 }, "status": { "const": "blocked" }, "code": { "const": "MATRIX_PENDING" } } }, { "properties": { "checkId": { "const": "windows-certification" }, "order": { "const": 23 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-24": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "postgresql-certification" }, "order": { "const": 24 }, "status": { "const": "blocked" }, "code": { "const": "MATRIX_PENDING" } } }, { "properties": { "checkId": { "const": "postgresql-certification" }, "order": { "const": 24 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-25": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "sqlserver-certification" }, "order": { "const": 25 }, "status": { "const": "blocked" }, "code": { "const": "MATRIX_PENDING" } } }, { "properties": { "checkId": { "const": "sqlserver-certification" }, "order": { "const": 25 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-26": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "browser-certification" }, "order": { "const": 26 }, "status": { "const": "blocked" }, "code": { "const": "MATRIX_PENDING" } } }, { "properties": { "checkId": { "const": "browser-certification" }, "order": { "const": 26 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-27": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "installer-certification" }, "order": { "const": 27 }, "status": { "const": "blocked" }, "code": { "const": "MATRIX_PENDING" } } }, { "properties": { "checkId": { "const": "installer-certification" }, "order": { "const": 27 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-28": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "sustained-load-recovery" }, "order": { "const": 28 }, "status": { "const": "blocked" }, "code": { "const": "MATRIX_PENDING" } } }, { "properties": { "checkId": { "const": "sustained-load-recovery" }, "order": { "const": 28 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check-29": { "allOf": [ { "$ref": "#/$defs/check" }, { "oneOf": [ { "properties": { "checkId": { "const": "release-manifest" }, "order": { "const": 29 }, "status": { "const": "blocked" }, "code": { "const": "MATRIX_PENDING" } } }, { "properties": { "checkId": { "const": "release-manifest" }, "order": { "const": 29 }, "status": { "const": "blocked" }, "code": { "const": "ASSESSMENT_UNAVAILABLE" } } } ] } ] },
+    "check": {
+      "type": "object", "additionalProperties": false,
+      "required": [ "checkId", "order", "status", "code" ],
+      "properties": {
+        "checkId": { "enum": [
+          "head-commit", "policy-identity", "matrix-identity", "matrix-inventory", "profile-inventory",
+          "schema-checksum", "matrix-only-verification", "repository-contract", "product-version", "artifact-digests",
+          "publisher-identity", "license", "versioning-policy", "signing-identity", "key-custody", "timestamping",
+          "key-rotation", "revocation-response", "release-approver", "artifact-retention", "evidence-access",
+          "canonical-build-environment", "windows-certification", "postgresql-certification", "sqlserver-certification",
+          "browser-certification", "installer-certification", "sustained-load-recovery", "release-manifest"
+        ] },
+        "order": { "type": "integer", "minimum": 1, "maximum": 29 },
+        "status": { "enum": [ "observed", "blocked" ] },
+        "code": { "enum": [
+          "HEAD_VERIFIED", "POLICY_ID_VERIFIED", "MATRIX_ID_VERIFIED", "MATRIX_INVENTORY_VERIFIED",
+          "PROFILE_INVENTORY_VERIFIED", "ASSESSMENT_SCHEMA_PINNED", "MATRIX_ONLY_VERIFIED",
+          "REPOSITORY_CONTRACT_OBSERVED", "PRODUCT_IDENTITY_PENDING", "ARTIFACT_DIGESTS_PENDING",
+          "OWNER_DECISION_REQUIRED", "MATRIX_PENDING", "ASSESSMENT_UNAVAILABLE"
+        ] }
+      }
+    }
+  }
+}

@@ -15,8 +15,6 @@ namespace SqlObserver.IntegrationTests.SqlServer;
 
 public sealed class SqlServerCapabilityIntegrationTests
 {
-    private const string LabDataSource = "DESKTOP-IORRV3E\\SQLEXPRESS";
-
     [Fact]
     public void EmbeddedCollectorAssetsAreChecksumVerifiedBoundedAndPassive()
     {
@@ -180,6 +178,37 @@ public sealed class SqlServerCapabilityIntegrationTests
     }
 
     [Fact]
+    public void V2EvidenceDistinguishesDeniedPermissionFromUnsupportedEdition()
+    {
+        (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) denied =
+            SqlServerCapabilityDiscoveryPort.ClassifyConnectedEvidence(
+                productMajorVersion: 16,
+                engineEdition: 3,
+                SqlServerPlatform.Windows,
+                SqlServerAuthenticationScheme.Kerberos,
+                transportEncrypted: true,
+                isSysAdmin: false,
+                hasRequiredPermission: false,
+                usedPermissionFallback: false);
+        Assert.Equal(CapabilityDiscoveryOutcome.Degraded, denied.Outcome);
+        Assert.Equal(CapabilityDiscoveryReason.RequiredPermissionMissing, denied.Reason);
+
+        (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) unsupportedEdition =
+            SqlServerCapabilityDiscoveryPort.ClassifyConnectedEvidence(
+                productMajorVersion: 16,
+                engineEdition: 5,
+                SqlServerPlatform.Windows,
+                SqlServerAuthenticationScheme.Kerberos,
+                transportEncrypted: true,
+                isSysAdmin: false,
+                hasRequiredPermission: true,
+                usedPermissionFallback: false);
+        Assert.Equal(CapabilityDiscoveryOutcome.Unsupported, unsupportedEdition.Outcome);
+        Assert.Equal(CapabilityDiscoveryReason.UnsupportedEdition, unsupportedEdition.Reason);
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
     public async Task LocalSqlServerDiscoveryIsBoundedSecurityAwareAndNonMutating()
     {
         var connectionFactory = new LabSqlServerConnectionFactory();
@@ -316,9 +345,9 @@ public sealed class SqlServerCapabilityIntegrationTests
 
     private static CapabilityDiscoveryRequest CreateLabRequest(TimeSpan timeout)
     {
-        var endpoint = new SqlServerEndpoint(
-            new SqlServerHostName("DESKTOP-IORRV3E"),
-            new SqlServerInstanceName("SQLEXPRESS"));
+        // The request is also used by cancellation-only tests; the live
+        // factory below supplies the configured endpoint when it opens SQL.
+        var endpoint = new SqlServerEndpoint(new SqlServerHostName("test"), new SqlServerInstanceName("SQLEXPRESS"));
         return new CapabilityDiscoveryRequest(
             new MonitoredInstanceId(Guid.NewGuid()),
             new ObservationTargetRevision(1),
@@ -381,19 +410,7 @@ public sealed class SqlServerCapabilityIntegrationTests
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(policy);
-            var builder = new SqlConnectionStringBuilder
-            {
-                DataSource = LabDataSource,
-                InitialCatalog = "master",
-                IntegratedSecurity = true,
-                Encrypt = SqlConnectionEncryptOption.Optional,
-                TrustServerCertificate = true,
-                ApplicationName = "SqlObserver.IntegrationTests.SqlServer",
-                ConnectTimeout = 5,
-                Pooling = false,
-                Enlist = false,
-            };
-            var connection = new SqlConnection(builder.ConnectionString);
+            var connection = new SqlConnection(SqlServerLabContract.ConnectionString);
             try
             {
                 await connection.OpenAsync(cancellationToken);

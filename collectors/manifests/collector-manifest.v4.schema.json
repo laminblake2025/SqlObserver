@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/collector-manifest.v4.json",
+  "title": "SqlObserver deadlock collector manifest v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "collectorId", "collectorVersion", "displayName", "operationalMode", "dependsOn", "supportedTargets", "requiredCapabilities", "requiredPermissionsByMajor", "cadence", "executionBounds", "resilience", "estimatedCostClass", "queryResources", "fallback", "outputSchemaVersion", "outputKind"],
+  "properties": {
+    "$schema": { "const": "collector-manifest.v4.schema.json" },
+    "schemaVersion": { "const": 4 },
+    "collectorId": { "const": "deadlocks.system-health" },
+    "collectorVersion": { "type": "integer", "minimum": 1 },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "operationalMode": { "const": "passive" },
+    "dependsOn": { "type": "array", "minItems": 6, "maxItems": 16, "items": { "type": "string" } },
+    "supportedTargets": { "type": "object" },
+    "requiredCapabilities": { "type": "array", "items": { "type": "string" } },
+    "requiredPermissionsByMajor": { "type": "object" },
+    "cadence": { "type": "object" },
+    "executionBounds": { "type": "object" },
+    "resilience": { "type": "object" },
+    "estimatedCostClass": { "enum": ["low", "moderate", "high"] },
+    "queryResources": { "type": "object" },
+    "fallback": { "type": "object" },
+    "outputSchemaVersion": { "const": 1 },
+    "outputKind": { "const": "deadlocks" }
+  }
+}

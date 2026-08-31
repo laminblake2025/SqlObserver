@@ -232,3 +232,38 @@ public sealed class MigrationBatchResult
 
     public bool HasFailures => _results.Any(static result => result.Outcome == MigrationOutcome.Failed);
 }
+
+/// <summary>Read-only, safe projection of one row from the repository migration ledger.</summary>
+public sealed class MigrationHistoryEntry
+{
+    public const int MaximumNameLength = 96;
+    public const int MaximumChecksumLength = 64;
+
+    public MigrationHistoryEntry(int number, string name, string checksum)
+    {
+        if (number is <= 0 or > MigrationNumber.MaximumValue) throw new ArgumentOutOfRangeException(nameof(number));
+        Number = number;
+        Name = RequireToken(name, nameof(name), MaximumNameLength);
+        Checksum = RequireHex(checksum, nameof(checksum), MaximumChecksumLength);
+    }
+
+    public int Number { get; }
+    public string Name { get; }
+    public string Checksum { get; }
+
+    private static string RequireToken(string value, string parameterName, int maximumLength)
+    {
+        ArgumentNullException.ThrowIfNull(value, parameterName);
+        if (value.Length == 0 || value.Length > maximumLength || value.Any(static c => !(c is >= 'a' and <= 'z') && !(c is >= '0' and <= '9') && c != '_' && c != '-' && c != '.'))
+            throw new ArgumentException("The value contains unsupported characters.", parameterName);
+        return value;
+    }
+
+    private static string RequireHex(string value, string parameterName, int maximumLength)
+    {
+        ArgumentNullException.ThrowIfNull(value, parameterName);
+        if (value.Length != 64 || value.Length > maximumLength || value.Any(static c => !(c is >= '0' and <= '9') && !(c is >= 'a' and <= 'f')))
+            throw new ArgumentException("The value must be hexadecimal.", parameterName);
+        return value;
+    }
+}

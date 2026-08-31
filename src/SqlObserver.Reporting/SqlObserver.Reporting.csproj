@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.Reporting</RootNamespace>
+    <AssemblyName>SqlObserver.Reporting</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../SqlObserver.Domain/SqlObserver.Domain.csproj" />
+  </ItemGroup>
+</Project>

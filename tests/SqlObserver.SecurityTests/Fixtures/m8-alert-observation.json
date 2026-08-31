@@ -1,0 +1,10 @@
+{
+  "TargetId": "11111111-1111-4111-8111-111111111111",
+  "RuleId": "22222222-2222-4222-8222-222222222222",
+  "ObservedAtUtc": "2026-08-25T00:00:00.000000Z",
+  "Value": 12.5,
+  "CollectorHealthy": null,
+  "Reason": "observed|sample=33333333-3333-4333-8333-333333333333",
+  "OperationId": "44444444-4444-5444-8444-444444444444",
+  "EvidenceDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

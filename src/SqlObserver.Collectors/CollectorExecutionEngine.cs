@@ -99,8 +99,7 @@ public sealed class CollectorExecutionEngine
         int attempts = 0;
 
         using Activity? activity = Activities.StartActivity("collector.execute", ActivityKind.Internal);
-        activity?.SetTag("sqlobserver.collector.id", manifest.Id.Value);
-        activity?.SetTag("sqlobserver.target.id", work.TargetId.ToString());
+        activity?.SetTag("sqlobserver.collector.id", BoundAttribute(manifest.Id.Value));
         activity?.SetTag("sqlobserver.collector.manifest_version", manifest.ManifestVersion.Value);
 
         for (int attempt = 1; attempt <= manifest.Resilience.MaximumAttempts; attempt++)
@@ -145,6 +144,7 @@ public sealed class CollectorExecutionEngine
             }
             catch (OperationCanceledException)
             {
+                activity?.SetTag("sqlobserver.collector.outcome", "Cancelled");
                 throw;
             }
             catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
@@ -175,7 +175,7 @@ public sealed class CollectorExecutionEngine
                 break;
             }
 
-            RetryCount.Add(1, new KeyValuePair<string, object?>("collector.id", manifest.Id.Value));
+            RetryCount.Add(1, new KeyValuePair<string, object?>("collector.id", BoundAttribute(manifest.Id.Value)));
             try
             {
                 await Task.Delay(
@@ -228,18 +228,21 @@ public sealed class CollectorExecutionEngine
         activity?.SetTag("sqlobserver.collector.attempts", summary.AttemptCount);
         DurationMilliseconds.Record(
             duration.TotalMilliseconds,
-            new KeyValuePair<string, object?>("collector.id", manifest.Id.Value),
+            new KeyValuePair<string, object?>("collector.id", BoundAttribute(manifest.Id.Value)),
             new KeyValuePair<string, object?>("outcome", finalResult.Outcome.ToString()));
         if (finalResult.Loss.HasLoss)
         {
             LostItemCount.Add(
                 finalResult.Loss.MinimumLostItems,
-                new KeyValuePair<string, object?>("collector.id", manifest.Id.Value),
+                new KeyValuePair<string, object?>("collector.id", BoundAttribute(manifest.Id.Value)),
                 new KeyValuePair<string, object?>("loss.kind", finalResult.Loss.Kind.ToString()));
         }
 
         return new CollectorEngineResult(summary, finalResult.Payload, nextCircuit);
     }
+
+    private static string BoundAttribute(string value) =>
+        value.Length <= 64 ? value : value[..64];
 
     public static CollectorEngineResult CreateIneligibleResult(
         CollectorRegistration registration,

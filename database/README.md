@@ -1,5 +1,10 @@
 # PostgreSQL repository assets
 
+Migration `0011_query_performance.sql` adds M7’s append-only, target-scoped Query
+Store/plan-cache evidence tables, cache baselines, protected-content links, and
+bounded status/top/history/plan projections. Runtime collection commits require
+the target claim and completion digest; content remains unavailable until M12.
+
 This directory contains the SQL-first repository definition for PostgreSQL 18.x.
 PostgreSQL is SqlObserver's application repository; it is not a monitored target.
 
@@ -99,6 +104,7 @@ secrets are outside the schema and function contracts.
 
 ## Time, partitions, and retention
 
+
 All persisted instants use `timestamptz`; migrations and programmable objects set UTC
 explicitly. `telemetry.raw_metric_sample` is partitioned by UTC day and
 `events.diagnostic_event` by UTC month, with no default partition. Missing partitions
@@ -115,6 +121,18 @@ Partition indexes are inherited from the partitioned indexes on each parent:
 Retention policy rows are installed disabled and without invented durations. M2 does
 not include a detach/drop function or background database job. A later milestone must
 add preview, recovery, audit, and coordination gates before enabling retention.
+
+## M6 deadlock evidence
+
+Migration `0010_deadlocks_extended_events.sql` adds typed, append-only deadlock
+summary, participant, and relation evidence. The Collector uses only the fenced
+`control.commit_deadlock_collection_run` function, which validates the exact M6
+contract, worker lease, target revision, schedule revision, request digest, and
+bounded arrays before inserting. Fingerprints provide deterministic duplicate
+accounting and replay identity. Raw Extended Events XML is never stored; malformed
+or truncated source events remain visible through collection-run loss and
+visibility-gap evidence. Server reads use only target-scoped security-definer
+`control.list_deadlocks` and `control.get_deadlock` functions.
 
 ## High-volume ingestion contract
 

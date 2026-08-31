@@ -1,0 +1,13 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://sqlobserver.local/capability.connection.v3.schema.json","title":"SqlObserver passive capability discovery manifest v3","type":"object","additionalProperties":false,
+  "required":["$schema","schemaVersion","collectorId","collectorVersion","displayName","operationalMode","supportedTargets","requiredCapabilities","features","requiredPermissionsByMajor","replicationPermissions","hostBinding","queryResources","fallback","outputSchemaVersion"],
+  "properties":{
+    "$schema":{"const":"capability.connection.v3.schema.json"},"schemaVersion":{"const":3},"collectorId":{"const":"capability.connection"},"collectorVersion":{"const":3},"displayName":{"const":"SQL Server capability and connection v3"},"operationalMode":{"const":"passive"},"outputSchemaVersion":{"const":3},
+    "supportedTargets":{"type":"object","additionalProperties":false,"required":["product","minimumMajorVersion","maximumMajorVersion","platforms","engineEditions"],"properties":{"product":{"const":"Microsoft SQL Server"},"minimumMajorVersion":{"const":15},"maximumMajorVersion":{"const":17},"platforms":{"const":["Windows"]},"engineEditions":{"const":[2,3,4]} }},
+    "requiredCapabilities":{"const":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"]},"features":{"const":["feature.replication","feature.host-binding"]},
+    "requiredPermissionsByMajor":{"type":"object","additionalProperties":false,"required":["15","16","17"],"properties":{"15":{"const":["server.view-state"]},"16":{"const":["server.view-performance-state"]},"17":{"const":["server.view-performance-state"]}}},
+    "replicationPermissions":{"const":["replication.replmonitor"]},"hostBinding":{"type":"object","additionalProperties":false,"required":["capability","platform","scope"],"properties":{"capability":{"const":"feature.host-binding"},"platform":{"const":"Windows"},"scope":{"const":"local-only"}}},
+    "queryResources":{"type":"object","additionalProperties":false,"required":["supportedByMajor"],"properties":{"supportedByMajor":{"type":"object","additionalProperties":false,"required":["15","16","17"],"properties":{"15":{"const":"capability.connection.sqlserver15-windows.v3.sql"},"16":{"const":"capability.connection.sqlserver16-windows.v3.sql"},"17":{"const":"capability.connection.sqlserver17-windows.v3.sql"}}}}},
+    "fallback":{"type":"object","additionalProperties":false,"required":["mode"],"properties":{"mode":{"const":"unsupported"}}}
+  }
+}

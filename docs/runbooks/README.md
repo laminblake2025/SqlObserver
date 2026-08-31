@@ -1,18 +1,23 @@
 # Runbooks
 
-No production runbook exists in the Milestone 0/Milestone 1 scaffold because there is no runtime system to operate. This directory is an index for procedures that must be written, exercised, and versioned alongside the behavior they describe. Empty or speculative instructions must not be presented as safe operational guidance.
+These four M12 runbooks are versioned operator procedures. They describe
+bounded, read-only preparation and evidence handling; they do not make a
+product-support or release-readiness claim. The certification producer hashes
+the exact Markdown bytes and records only document identities, section IDs,
+procedure IDs, and prerequisite case identities.
 
-Future runbooks are expected to cover:
+| Runbook | Purpose |
+| --- | --- |
+| [M12 release preflight](m12-release-preflight.md) | fixed MatrixOnly/ContractOnly order and clean-tree preflight |
+| [M12 supply-chain certification](m12-supply-chain-certification.md) | deterministic SBOM, license, vulnerability, and provenance evidence order |
+| [M12 candidate evidence verification](m12-candidate-evidence-verification.md) | exact three-file candidate inspection and cross-file binding |
+| [M12 failed-run quarantine and escalation](m12-failed-run-quarantine-and-escalation.md) | ownership-safe pending/verify/quarantine handling |
 
-- supported installation, gMSA and SPN setup, TLS, Windows Integrated Authentication, RBAC bootstrap, and uninstall;
-- PostgreSQL 18.x provisioning, least privilege, backup/restore, migration, partition care, retention, capacity, and disaster recovery;
-- target onboarding, capability discovery, generated permission review, credential rotation, and offboarding;
-- passive collection validation and safe handling of unsupported/degraded collectors;
-- separate DBA review, application, validation, upgrade, and removal of optional enhanced-monitoring scripts;
-- service start/stop/upgrade, health checks, lease recovery, backlog recovery, and clock-skew diagnosis;
-- collection lag, target/repository timeouts, circuit breakers, visible sample loss, ingestion failure, and partition failure;
-- audit-write failure, suspected credential exposure, authorization anomaly, data export, and security incident response;
-- alert delivery, report generation, MCP access revocation, and bounded diagnostic troubleshooting;
-- supported upgrade/rollback decisions and evidence-preserving product removal.
-
-Each future runbook must state supported versions, prerequisites, required role, blast radius, exact verification, rollback or recovery, audit evidence, UTC timestamps, and escalation conditions. It must preserve the rules in [SECURITY.md](../../SECURITY.md), including no permanent target `sysadmin`, no automatic Query Store/Extended Events/blocked-process changes, and no MCP administrative action.
+The procedures are source-backed by the M12 certification matrix, the closed
+contracts under `release/certification/`, `tools/verify-test-results.ps1`, and
+the supply-chain producer. Parsed commands in Markdown are identifiers only;
+the producer executes its own fixed argument arrays. Never delete an unowned
+`.pending-*`, `.verify-*`, or `.quarantine` directory. Preserve
+[SECURITY.md](../../SECURITY.md), including no permanent target `sysadmin`, no
+automatic Query Store/Extended Events/blocked-process changes, and no MCP
+administrative action.

@@ -1,0 +1,11 @@
+{
+  "$schema":"collector-manifest.v5.schema.json","schemaVersion":5,"collectorId":"replication.health","collectorVersion":1,
+  "displayName":"SQL Server replication health","operationalMode":"passive","dependsOn":["capability.connection","engine.core"],
+  "supportedTargets":{"product":"Microsoft SQL Server","minimumMajorVersion":15,"maximumMajorVersion":17,"platforms":["Windows"],"engineEditions":[2,3]},
+  "requiredCapabilities":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows","feature.replication"],
+  "requiredPermissionsByMajor":{"15":["server.view-state"],"16":["server.view-performance-state"],"17":["server.view-performance-state"]},
+  "replicationPermissionsByMajor":{"15":["replication.replmonitor"],"16":["replication.replmonitor"],"17":["replication.replmonitor"]},
+  "cadence":{"defaultIntervalSeconds":60,"minimumIntervalSeconds":30,"nonOverlappingPerTarget":true},
+  "executionBounds":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":10,"maximumRows":2048,"maximumResponseBytes":2097152},"estimatedCostClass":"moderate",
+  "queryResources":{"supportedByMajor":{"15":"replication.health.sqlserver15-windows.v1.sql","16":"replication.health.sqlserver16-windows.v1.sql","17":"replication.health.sqlserver17-windows.v1.sql"}},"fallback":{"mode":"unsupported"},"outputSchemaVersion":1,"outputKind":"replication_health"
+}

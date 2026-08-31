@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sqlobserver-migration-assessment-v1",
+  "title": "SqlObserver read-only migration assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "code", "evaluatedAtUtc", "history"],
+  "properties": {
+    "status": { "type": "string", "enum": ["not_evaluated", "current", "pending", "drift", "gap", "unknown", "unsupported_major", "lock_unavailable", "timed_out", "access_denied", "invalid_history"] },
+    "code": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "evaluatedAtUtc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "serverVersion": { "$ref": "#/$defs/serverVersion" },
+    "nextMigrationNumber": { "type": "integer", "minimum": 1, "maximum": 9999 },
+    "observedHistoryCount": { "type": "integer", "minimum": 0, "maximum": 256 },
+    "history": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/historyEntry" } }
+  },
+  "$defs": {
+    "serverVersion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["major", "update"],
+      "properties": { "major": { "type": "integer", "minimum": 1, "maximum": 99 }, "update": { "type": "integer", "minimum": 0, "maximum": 999 } }
+    },
+    "historyEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["number", "name", "checksum"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1, "maximum": 9999 },
+        "name": { "type": "string", "enum": ["0001_repository_bootstrap.sql", "0002_repository_tables.sql", "0003_partition_and_retention_foundations.sql", "0004_repository_functions.sql", "0005_views_and_least_privilege_grants.sql", "0006_replay_validation_functions.sql", "0007_observation_target_capabilities.sql", "0008_collector_scheduling_and_core_health.sql", "0009_activity_sessions_requests_waits_blocking.sql", "0010_deadlocks_extended_events.sql", "0011_query_performance.sql", "0012_alerts_maintenance_notifications.sql", "0013_backups_jobs_tempdb_availability_groups.sql", "0014_analytics_host_replication_retention.sql", "0015_mcp_invocation_audit.sql", "0016_mcp_metric_series_cursor.sql", "0017_mcp_forecast_limit.sql", "0018_mcp_diagnostics_lookahead.sql", "0019_mcp_forecast_cursor.sql", "0020_mcp_snapshot_and_incident_cursor.sql", "0021_reports_exports.sql"] },
+        "checksum": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "$schema":"host.metrics.v1.schema.json","schemaVersion":1,"collectorId":"host.metrics","collectorVersion":1,
+  "displayName":"Windows host metrics","operationalMode":"passive","dependsOn":["engine.core"],
+  "supportedTargets":{"product":"Microsoft SQL Server","minimumMajorVersion":15,"maximumMajorVersion":17,"platforms":["Windows"],"engineEditions":[2,3,4]},
+  "requiredCapabilities":["platform.windows","feature.host-binding"],"requiredPermissionsByMajor":{"15":[],"16":[],"17":[]},
+  "cadence":{"defaultIntervalSeconds":60,"minimumIntervalSeconds":30,"nonOverlappingPerTarget":true},
+  "executionBounds":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":5,"maximumRows":256,"maximumResponseBytes":262144},"estimatedCostClass":"moderate",
+  "fallback":{"mode":"unsupported"},"outputSchemaVersion":1,"outputKind":"metrics"
+}

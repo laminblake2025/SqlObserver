@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>SqlObserver.Observability</RootNamespace>
+    <AssemblyName>SqlObserver.Observability</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,51 @@
+{
+  "$schema": "m12-reports-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "m12-reports-exports",
+  "producerId": "m12-reports-harness",
+  "definitionVersion": 1,
+  "reportKinds": ["instance-health", "performance-window", "incident-evidence", "capacity-readiness"],
+  "sections": ["health", "performance", "incidents", "capacity"],
+  "formats": {
+    "html": "inert-printable",
+    "csv": "utf-8-per-section"
+  },
+  "bounds": {
+    "requestBytes": 65536,
+    "pageRows": 200,
+    "htmlRows": 2000,
+    "materializationRows": 10000,
+    "responseBytes": 1048576,
+    "materializationBytes": 8388608,
+    "detailedWindowDays": 7,
+    "trendWindowDays": 31,
+    "repositoryTimeoutSeconds": 5,
+    "totalTimeoutSeconds": 15,
+    "actorConcurrency": 2,
+    "globalConcurrency": 16,
+    "retentionHours": 24
+  },
+  "encoding": {
+    "html": "html-encode-text-and-attributes",
+    "csv": "rfc4180",
+    "formulaNeutralization": true,
+    "formulaSentinels": ["=", "+", "-", "@"],
+    "controlCharacterNormalization": true,
+    "utf8Bom": false
+  },
+  "caseMappings": [
+    { "caseId": "m12-reports-exports", "testName": "LiveReleaseReportsExportsRepresentativeVolumeIsBounded", "facts": { "reports": true, "exports": true, "reportKind": null } },
+    { "caseId": "m12-report-contract", "testName": "LiveReleaseReportContractIsSnapshotScopedAndAudited", "facts": { "reports": true, "exports": false, "reportKind": "report" } },
+    { "caseId": "m12-export-contract", "testName": "LiveReleaseExportContractIsInertAndFormulaSafe", "facts": { "reports": false, "exports": true, "reportKind": "export" } }
+  ],
+  "assetPins": {
+    "database/migrations/0021_reports_exports.sql": "584bd6d145c173eae60a8411b5df0a0b3905d78e5c68c5babe5ee5b83fe6b7ac",
+    "database/migrations/checksums.sha256": "7046116f03d04b6e0948209d3ddaf77b39603b41b64cbe3104b9055bf1e6a5cd",
+    "src/SqlObserver.Reporting/ReportContracts.cs": "95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8",
+    "src/SqlObserver.Reporting/ReportRendering.cs": "6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61",
+    "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs": "61a2b2dd0a6e7bb83e701be55967643db23c2a52c1fc666d07e9160fbb5ba557",
+    "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs": "9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74",
+    "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs": "5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22",
+    "tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj": "1e42d8ee02bc687988cc17b44f6200f4bf04dc48d1c93b7e298b195e6c521910"
+  }
+}

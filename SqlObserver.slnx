@@ -9,12 +9,14 @@
     <Project Path="src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
     <Project Path="src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <Project Path="src/SqlObserver.Domain/SqlObserver.Domain.csproj" />
+    <Project Path="src/SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
     <Project Path="src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
     <Project Path="src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
     <Project Path="src/SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />
     <Project Path="src/SqlObserver.Mcp/SqlObserver.Mcp.csproj" />
     <Project Path="src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj" />
     <Project Path="src/SqlObserver.Security/SqlObserver.Security.csproj" />
+    <Project Path="src/SqlObserver.Observability/SqlObserver.Observability.csproj" />
     <Project Path="src/SqlObserver.Server/SqlObserver.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -24,6 +26,7 @@
     <Project Path="tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj" />
     <Project Path="tests/SqlObserver.McpContractTests/SqlObserver.McpContractTests.csproj" />
     <Project Path="tests/SqlObserver.PerformanceTests/SqlObserver.PerformanceTests.csproj" />
+    <Project Path="tests/SqlObserver.ReleaseTests/SqlObserver.ReleaseTests.csproj" />
     <Project Path="tests/SqlObserver.SecurityTests/SqlObserver.SecurityTests.csproj" />
     <Project Path="tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj" />
   </Folder>

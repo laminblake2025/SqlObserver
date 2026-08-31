@@ -15,3 +15,20 @@ configuration, DDL, DML, dynamic SQL, undocumented interfaces, or arbitrary inpu
 Least-privilege setup is deliberately outside the service execution path. Use
 `tools/generate-permissions.ps1` to create an offline DBA-reviewed grant or removal
 plan for the exact supported SQL Server major version.
+
+## M6 system_health deadlocks
+
+The `deadlocks.system-health` bundle is a passive order-8 collector for SQL Server
+15, 16, and 17 on Windows. It derives the trusted directory from the existing
+`system_health` event-file target and uses only the fixed `system_health*.xel`
+rollover pattern; it reads only `xml_deadlock_report` rows through
+`sys.fn_xe_file_target_read_file`. The service has no XE create/alter/start/stop
+path and never changes blocked-process settings. XML is bounded and parsed with
+DTD/entity resolution disabled; only typed participant/relation evidence and an
+opaque fingerprint leave the adapter.
+## M7 query performance
+
+`queries.performance` is a checksum-pinned, metadata-only passive bundle for
+SQL Server 15–17 Windows. Query Store is preferred per online user database;
+fallback state and metric semantics are explicit. No asset selects
+`sys.dm_exec_sql_text`, plan XML, raw handles, or content columns.

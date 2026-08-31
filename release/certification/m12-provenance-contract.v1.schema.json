@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-provenance-contract.v1.schema.json",
+  "title": "SqlObserver M12 provenance contract",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "contractId", "producerId", "artifactKind", "caseId", "environments", "requiredFacts", "factPredicates", "subjectsSchema", "outputFiles", "generation", "policy", "bounds"],
+  "properties": {
+    "$schema": { "const": "m12-provenance-contract.v1.schema.json" }, "schemaVersion": { "const": 1 },
+    "contractId": { "const": "sqlobserver-m12-provenance" }, "producerId": { "const": "m12-supply-chain-harness" }, "artifactKind": { "const": "supply-chain-evidence" }, "caseId": { "const": "m12-provenance" },
+    "environments": { "const": ["release-windows-server-2022", "release-windows-server-2025"] }, "requiredFacts": { "const": ["os", "architecture", "provenance"] }, "factPredicates": { "const": { "os": "windows", "architecture": "x64", "provenance": true } }, "subjectsSchema": { "const": "m12-provenance-subjects.v1.schema.json" },
+    "outputFiles": { "const": ["m12-provenance.json", "m12-provenance-test-evidence.json", "m12-provenance-provenance.json"] },
+    "generation": { "type": "object", "additionalProperties": false, "required": ["deterministic", "timestampSource", "commitSource", "runSource"], "properties": { "deterministic": { "const": true }, "timestampSource": { "const": "supplied" }, "commitSource": { "const": "supplied" }, "runSource": { "const": "supplied" } } },
+    "policy": { "type": "object", "additionalProperties": false, "required": ["subjectSet", "externalAttestation", "sbomAuthority", "inputManifestFiles"], "properties": { "subjectSet": { "const": "exact-four-product-build" }, "externalAttestation": { "const": "not-claimed" }, "sbomAuthority": { "const": "full-transitive" }, "inputManifestFiles": { "const": 41 } } },
+    "bounds": { "type": "object", "additionalProperties": false, "required": ["products", "manifestFiles", "jsonBytes", "stringLength", "depth"], "properties": { "products": { "const": 4 }, "manifestFiles": { "const": 41 }, "jsonBytes": { "const": 4194304 }, "stringLength": { "const": 512 }, "depth": { "const": 32 } } }
+  }
+}

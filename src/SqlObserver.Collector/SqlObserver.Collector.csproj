@@ -5,6 +5,9 @@
     <AssemblyName>SqlObserver.Collector</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../SqlObserver.Alerting/SqlObserver.Alerting.csproj" />
+    <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
+    <ProjectReference Include="../SqlObserver.Analytics/SqlObserver.Analytics.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
@@ -12,5 +15,7 @@
     <ProjectReference Include="../SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
     <ProjectReference Include="../SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="../SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />
+    <ProjectReference Include="../SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
+    <ProjectReference Include="../SqlObserver.Observability/SqlObserver.Observability.csproj" />
   </ItemGroup>
 </Project>

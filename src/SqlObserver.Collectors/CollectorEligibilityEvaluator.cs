@@ -102,8 +102,16 @@ public static class CollectorEligibilityEvaluator
 
         var permissions = profile.Permissions.ToDictionary(
             static evidence => (evidence.PermissionId.Value, evidence.Scope));
-        if (manifest.RequiredPermissions
-            .Where(required => required.ApplicableVersions.Contains(identity.Version.Major))
+        // Query Store permissions are database-scoped and are intentionally probed after switching
+        // to each validated inventory database. Scheduling may only rely on the separately evidenced
+        // server fallback permission; it must never relabel that server evidence as database access.
+        IEnumerable<CollectorPermissionRequirement> requiredPermissions = manifest.RequiredPermissions
+            .Where(required => required.ApplicableVersions.Contains(identity.Version.Major));
+        if (manifest.Id.Value == "queries.performance")
+        {
+            requiredPermissions = requiredPermissions.Where(required => required.Scope != PermissionEvidenceScope.Database);
+        }
+        if (requiredPermissions
             .Any(required =>
                 !permissions.TryGetValue((required.PermissionId.Value, required.Scope), out PermissionEvidence? evidence) ||
                 evidence.Outcome != PermissionEvidenceOutcome.Granted))

@@ -1,0 +1,16 @@
+{
+  "$schema": "m12-provenance-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "sqlobserver-m12-provenance",
+  "producerId": "m12-supply-chain-harness",
+  "artifactKind": "supply-chain-evidence",
+  "caseId": "m12-provenance",
+  "environments": ["release-windows-server-2022", "release-windows-server-2025"],
+  "requiredFacts": ["os", "architecture", "provenance"],
+  "factPredicates": { "os": "windows", "architecture": "x64", "provenance": true },
+  "subjectsSchema": "m12-provenance-subjects.v1.schema.json",
+  "outputFiles": ["m12-provenance.json", "m12-provenance-test-evidence.json", "m12-provenance-provenance.json"],
+  "generation": { "deterministic": true, "timestampSource": "supplied", "commitSource": "supplied", "runSource": "supplied" },
+  "policy": { "subjectSet": "exact-four-product-build", "externalAttestation": "not-claimed", "sbomAuthority": "full-transitive", "inputManifestFiles": 41 },
+  "bounds": { "products": 4, "manifestFiles": 41, "jsonBytes": 4194304, "stringLength": 512, "depth": 32 }
+}

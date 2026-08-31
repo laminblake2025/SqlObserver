@@ -88,6 +88,15 @@ There is intentionally no Server-to-target, MCP-to-repository, or MCP-to-target 
 
 ## Security invariants
 
+M10 analytics adds target/revision/generation and replay-digest fences to
+rollups, evidence, incidents, and retention jobs. M11 confines official MCP SDK
+types to the adapter, fixes the tool inventory, routes every read through normal
+RBAC services, applies time/row/byte/concurrency bounds, and withholds results
+until a safe append-only terminal audit succeeds. The stdio bridge accepts only
+the configured authenticated HTTPS Server endpoint and has no database or target
+path. Docker, Kerberos/SPN, trusted TLS, SSPI/WMI, and live-target certification
+remain residual environment risks for M12.
+
 - Passive monitoring causes no target state change.
 - Target access never depends on permanent `sysadmin`.
 - Query Store, Extended Events, and blocked-process configuration are never changed automatically.
@@ -102,3 +111,4 @@ There is intentionally no Server-to-target, MCP-to-repository, or MCP-to-target 
 Even least-privilege diagnostic access can reveal schema and workload details. Repository compromise can expose retained data and falsify analysis unless infrastructure protections and backup integrity are strong. Windows and database administrators can act outside SqlObserver controls. Integrated authentication depends on correct Active Directory, SPN, delegation, and host configuration. Passive diagnostic queries may still impose measurable load, especially under target distress. Source interfaces such as `system_health` can change across engine updates. Bounds may trade completeness for safety, so truncation must remain visible. A central repository and lease service are availability dependencies. No control eliminates risk from a fully compromised application host.
 
 Later milestones must assign owners, measurable limits, tests, and monitoring to these risks. Deployment documentation must not imply that SqlObserver replaces network segmentation, endpoint protection, SQL Server auditing, database backups, or incident response.
+M9 preserves the clean-room boundary: no backup, restore, job, TempDB, or Availability Group mutation is issued. Provider names, commands, paths, messages, hosts, endpoints, and LSNs are excluded from persisted and API payloads.

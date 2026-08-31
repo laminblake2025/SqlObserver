@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Hosts;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 
@@ -95,7 +96,13 @@ public sealed class CollectorPayload
         ActivitySessionObservationBatch? activitySessions = null,
         ActivityRequestObservationBatch? activityRequests = null,
         ServerWaitObservationBatch? serverWaits = null,
-        BlockingEdgeObservationBatch? blockingEdges = null)
+        BlockingEdgeObservationBatch? blockingEdges = null,
+        DeadlockObservationBatch? deadlocks = null,
+        QueryPerformanceObservationBatch? queryPerformance = null,
+        IReadOnlyList<QueryPerformanceDatabaseStatus>? queryPerformanceStatuses = null,
+        QueryPerformanceTargetStatus? queryPerformanceTargetStatus = null,
+        OperationalHealthPayload? operationalHealth = null,
+        HostMetricsPayloadContext? hostMetricsContext = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -120,6 +127,13 @@ public sealed class CollectorPayload
         ActivityRequests = activityRequests ?? new ActivityRequestObservationBatch([]);
         ServerWaits = serverWaits ?? new ServerWaitObservationBatch([]);
         BlockingEdges = blockingEdges ?? new BlockingEdgeObservationBatch([]);
+        Deadlocks = deadlocks ?? new DeadlockObservationBatch([]);
+        QueryPerformance = queryPerformance ?? new QueryPerformanceObservationBatch([]);
+        QueryPerformanceStatuses = new ReadOnlyCollection<QueryPerformanceDatabaseStatus>((queryPerformanceStatuses ?? Array.Empty<QueryPerformanceDatabaseStatus>()).ToArray());
+        if (QueryPerformanceStatuses.Count > 256 || QueryPerformanceStatuses.Select(static x => x.DatabaseId).Distinct().Count() != QueryPerformanceStatuses.Count) throw new ArgumentException("Query performance database statuses must be bounded and unique.", nameof(queryPerformanceStatuses));
+        QueryPerformanceTargetStatus = queryPerformanceTargetStatus;
+        OperationalHealth = operationalHealth;
+        HostMetricsContext = hostMetricsContext;
     }
 
     public IReadOnlyList<MetricSample> Metrics => _metrics;
@@ -129,6 +143,12 @@ public sealed class CollectorPayload
     public ActivityRequestObservationBatch ActivityRequests { get; }
     public ServerWaitObservationBatch ServerWaits { get; }
     public BlockingEdgeObservationBatch BlockingEdges { get; }
+    public DeadlockObservationBatch Deadlocks { get; }
+    public QueryPerformanceObservationBatch QueryPerformance { get; }
+    public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
+    public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
+    public OperationalHealthPayload? OperationalHealth { get; }
+    public HostMetricsPayloadContext? HostMetricsContext { get; }
     public int ItemCount => checked(
         Metrics.Count +
         Databases.Items.Count +
@@ -136,7 +156,10 @@ public sealed class CollectorPayload
         ActivitySessions.Items.Count +
         ActivityRequests.Items.Count +
         ServerWaits.Items.Count +
-        BlockingEdges.Items.Count);
+        BlockingEdges.Items.Count +
+        Deadlocks.Items.Count +
+        QueryPerformance.Items.Count +
+        (OperationalHealth?.ItemCount ?? 0));
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
         Databases.Items.Sum(static item => item.EstimatedSizeBytes) +
@@ -144,7 +167,10 @@ public sealed class CollectorPayload
         ActivitySessions.Items.Sum(static item => item.EstimatedSizeBytes) +
         ActivityRequests.Items.Sum(static item => item.EstimatedSizeBytes) +
         ServerWaits.Items.Sum(static item => item.EstimatedSizeBytes) +
-        BlockingEdges.Items.Sum(static item => item.EstimatedSizeBytes));
+        BlockingEdges.Items.Sum(static item => item.EstimatedSizeBytes) +
+        Deadlocks.Items.Sum(static item => item.EstimatedSizeBytes) +
+        QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes) +
+        (OperationalHealth?.EstimatedSizeBytes ?? 0));
 
     public static CollectorPayload Empty { get; } = new();
 }
@@ -290,7 +316,10 @@ public sealed class CollectorOutputContract
         int maxActivitySessionObservations = 0,
         int maxActivityRequestObservations = 0,
         int maxServerWaitObservations = 0,
-        int maxBlockingEdgeObservations = 0)
+        int maxBlockingEdgeObservations = 0,
+        int maxDeadlockObservations = 0,
+        int maxQueryPerformanceObservations = 0,
+        int maxOperationalHealthObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -328,6 +357,18 @@ public sealed class CollectorOutputContract
         {
             throw new ArgumentOutOfRangeException(nameof(maxBlockingEdgeObservations));
         }
+        if (maxDeadlockObservations is < 0 or > DeadlockObservationBatch.MaximumItems)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxDeadlockObservations));
+        }
+        if (maxQueryPerformanceObservations is < 0 or > QueryPerformanceObservationBatch.MaximumItems)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxQueryPerformanceObservations));
+        }
+        if (maxOperationalHealthObservations is < 0 or > IngestionLimits.MaximumItemCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxOperationalHealthObservations));
+        }
 
         var copy = new CollectorMetricOutputContract[metrics.Count];
         var metricIds = new HashSet<string>(StringComparer.Ordinal);
@@ -358,6 +399,9 @@ public sealed class CollectorOutputContract
         MaxActivityRequestObservations = maxActivityRequestObservations;
         MaxServerWaitObservations = maxServerWaitObservations;
         MaxBlockingEdgeObservations = maxBlockingEdgeObservations;
+        MaxDeadlockObservations = maxDeadlockObservations;
+        MaxQueryPerformanceObservations = maxQueryPerformanceObservations;
+        MaxOperationalHealthObservations = maxOperationalHealthObservations;
     }
 
     public CollectorOutputSchemaVersion SchemaVersion { get; }
@@ -369,6 +413,23 @@ public sealed class CollectorOutputContract
     public int MaxActivityRequestObservations { get; }
     public int MaxServerWaitObservations { get; }
     public int MaxBlockingEdgeObservations { get; }
+    public int MaxDeadlockObservations { get; }
+    public int MaxQueryPerformanceObservations { get; }
+    public int MaxOperationalHealthObservations { get; }
+}
+
+/// <summary>Typed M9 payload; snapshots are immutable and contain no provider text.</summary>
+public sealed class OperationalHealthPayload
+{
+    public OperationalHealthPayload(IOperationalHealthSnapshot snapshot, int itemCount, int estimatedSizeBytes)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (itemCount is < 0 or > 2048 || estimatedSizeBytes is < 0 or > 2 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(itemCount));
+        Snapshot = snapshot; ItemCount = itemCount; EstimatedSizeBytes = estimatedSizeBytes;
+    }
+    public object Snapshot { get; }
+    public int ItemCount { get; }
+    public int EstimatedSizeBytes { get; }
 }
 
 public interface ICollectorOutputValidator
@@ -381,12 +442,23 @@ public interface ICollectorOutputValidator
         CollectorExecutionResult result);
 }
 
-/// <summary>A fixed, passive SQL Server collector selected through capability evidence.</summary>
-public interface ISqlServerCollector
+/// <summary>Source-neutral collector contract used by the execution engine.</summary>
+/// <remarks>
+/// The request/result envelope is deliberately independent of a provider.  A
+/// SQL Server adapter can continue to implement <see cref="ISqlServerCollector"/>,
+/// while host and other local adapters can participate without pretending to
+/// be SQL connections.
+/// </remarks>
+public interface ICollector
 {
     CollectorManifest Manifest { get; }
 
     ValueTask<CollectorExecutionResult> CollectAsync(
         CollectorExecutionRequest request,
         CancellationToken cancellationToken);
+}
+
+/// <summary>A fixed, passive SQL Server collector selected through capability evidence.</summary>
+public interface ISqlServerCollector : ICollector
+{
 }

@@ -153,7 +153,7 @@ public sealed class TargetHealthHttpContractTests : IClassFixture<TargetHealthAp
             $"/api/v1/observation-targets/{FakeHealthProjectionRepository.TimeoutTargetId:D}/health");
         string body = await response.Content.ReadAsStringAsync();
 
-        Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Contains("request_timed_out", body, StringComparison.Ordinal);
         Assert.DoesNotContain("provider", body, StringComparison.OrdinalIgnoreCase);
     }
@@ -182,8 +182,8 @@ public sealed class TargetHealthHttpContractTests : IClassFixture<TargetHealthAp
             $"/api/v1/observation-targets/{FakeHealthProjectionRepository.FailingTargetId:D}/health");
         string body = await response.Content.ReadAsStringAsync();
 
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Contains("request_failed", body, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("operation_conflict", body, StringComparison.Ordinal);
         Assert.DoesNotContain("supersecret", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("connection string", body, StringComparison.OrdinalIgnoreCase);
     }

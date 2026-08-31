@@ -1,0 +1,23 @@
+{
+  "$schema": "m12-supply-chain-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "sqlobserver-m12-supply-chain",
+  "producerId": "m12-supply-chain-harness",
+  "artifactKind": "supply-chain-evidence",
+  "caseId": "m12-sbom",
+  "environments": ["release-windows-server-2022", "release-windows-server-2025"],
+  "requiredFacts": ["os", "architecture", "sbom"],
+  "factPredicates": { "os": "windows", "architecture": "x64", "sbom": true },
+  "inputManifest": "m12-sbom-inputs.v1.json",
+  "sbomSchema": "m12-sbom.v1.schema.json",
+  "outputFiles": ["m12-sbom.cdx.json", "m12-sbom-test-evidence.json", "m12-sbom-provenance.json"],
+  "generation": {
+    "format": "CycloneDX",
+    "specVersion": "1.7",
+    "deterministic": true,
+    "timestampSource": "supplied",
+    "commitSource": "supplied",
+    "runSource": "supplied"
+  },
+  "bounds": { "components": 4096, "dependencyNodes": 8192, "jsonBytes": 4194304, "stringLength": 512, "depth": 32 }
+}

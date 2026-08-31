@@ -24,6 +24,20 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0"
         }
       },
+      "sqlobserver.alerting": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
+      "sqlobserver.analytics": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
+      },
       "sqlobserver.application": {
         "type": "Project",
         "dependencies": {
@@ -39,6 +53,12 @@
       },
       "sqlobserver.domain": {
         "type": "Project"
+      },
+      "sqlobserver.reporting": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Domain": "[1.0.0, )"
+        }
       }
     }
   }

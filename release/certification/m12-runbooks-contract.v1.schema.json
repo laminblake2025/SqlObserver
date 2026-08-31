@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.invalid/schemas/m12-runbooks-contract.v1.schema.json",
+  "title": "SqlObserver M12 runbooks contract",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "contractId", "producerId", "artifactKind", "caseId", "environments", "requiredFacts", "factPredicates", "catalog", "inputSchema", "outputFiles", "prerequisites", "generation", "policy", "bounds"],
+  "properties": {
+    "$schema": { "const": "m12-runbooks-contract.v1.schema.json" }, "schemaVersion": { "const": 1 },
+    "contractId": { "const": "sqlobserver-m12-runbooks" }, "producerId": { "const": "m12-supply-chain-harness" }, "artifactKind": { "const": "supply-chain-evidence" }, "caseId": { "const": "m12-runbooks" },
+    "environments": { "const": ["release-windows-server-2022", "release-windows-server-2025"] }, "requiredFacts": { "const": ["os", "architecture", "runbooks"] }, "factPredicates": { "const": { "os": "windows", "architecture": "x64", "runbooks": true } },
+    "catalog": { "const": "m12-runbooks-catalog.v1.json" }, "inputSchema": { "const": "m12-runbooks-inputs.v1.schema.json" }, "outputFiles": { "const": ["m12-runbooks.json", "m12-runbooks-test-evidence.json", "m12-runbooks-provenance.json"] }, "prerequisites": { "const": ["m12-sbom", "m12-licenses", "m12-vulnerability-scan", "m12-provenance"] },
+    "generation": { "type": "object", "additionalProperties": false, "required": ["deterministic", "timestampSource", "commitSource", "runSource", "commands"], "properties": { "deterministic": { "const": true }, "timestampSource": { "const": "supplied" }, "commitSource": { "const": "supplied" }, "runSource": { "const": "supplied" }, "commands": { "const": "fixed-producer-arrays" } } },
+    "policy": { "type": "object", "additionalProperties": false, "required": ["scope", "markdownCommands", "readiness", "support", "signing", "installation", "rollback"], "properties": { "scope": { "const": "release-certification/supply-chain-only" }, "markdownCommands": { "const": "never-executed" }, "readiness": { "const": "not-claimed" }, "support": { "const": "not-claimed" }, "signing": { "const": "not-claimed" }, "installation": { "const": "not-claimed" }, "rollback": { "const": "not-claimed" } } },
+    "bounds": { "type": "object", "additionalProperties": false, "required": ["documents", "sectionsPerDocument", "prerequisites", "links", "documentBytes", "markdownBytes", "jsonBytes", "stringLength", "depth"], "properties": { "documents": { "const": 4 }, "sectionsPerDocument": { "const": 12 }, "prerequisites": { "const": 4 }, "links": { "const": 64 }, "documentBytes": { "const": 131072 }, "markdownBytes": { "const": 524288 }, "jsonBytes": { "const": 4194304 }, "stringLength": { "const": 512 }, "depth": { "const": 32 } } }
+  }
+}
