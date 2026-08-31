@@ -1,1 +1,1 @@
-return SqlObserver.Cli.CliHostScaffold.SuccessExitCode;
+return await SqlObserver.Cli.LabPostgreSqlMigrationHost.RunAsync(args).ConfigureAwait(false);
