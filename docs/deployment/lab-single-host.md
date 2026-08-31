@@ -95,7 +95,9 @@ From an operator PowerShell session:
 ```powershell
 git clone https://github.com/laminblake2025/SqlObserver.git
 Set-Location SqlObserver
-git switch codex/m12-reports-installer-release-hardening
+git switch main
+git pull --ff-only origin main
+git rev-parse HEAD
 git status --short --branch
 dotnet --info
 node --version
@@ -103,8 +105,9 @@ pnpm --version
 pwsh --version
 ```
 
-The checkout must be clean before building. Review the branch's pull request
-and its validation results before using it on the lab host.
+The checkout must be clean before building. Confirm that the `Validate`
+workflow succeeded for the exact `main` commit reported by `git rev-parse HEAD`
+before using it on the lab host.
 
 Restore and build from the checked lock files:
 
