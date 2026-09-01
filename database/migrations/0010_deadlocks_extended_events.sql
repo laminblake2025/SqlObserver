@@ -432,8 +432,8 @@ BEGIN
     RETURN QUERY SELECT 'committed',inserted_count,duplicate_count,rejected_count,persisted_bytes::integer,captured_repository_time;
 END
 $sqlobserver$;
-REVOKE ALL ON FUNCTION control.commit_deadlock_collection_run(uuid,uuid,bigint,text,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer,text,integer,integer,timestamptz[],uuid[],bytea[],integer[],integer[],boolean[],jsonb[],jsonb[],integer[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION control.commit_deadlock_collection_run(uuid,uuid,bigint,text,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer,text,integer,integer,timestamptz[],uuid[],bytea[],integer[],integer[],boolean[],jsonb[],jsonb[],integer[]) TO sqlobserver_collector;
+REVOKE ALL ON FUNCTION control.commit_deadlock_collection_run(uuid,uuid,bigint,text,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer,text,integer,timestamptz[],uuid[],bytea[],integer[],integer[],boolean[],jsonb[],jsonb[],integer[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION control.commit_deadlock_collection_run(uuid,uuid,bigint,text,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer,text,integer,timestamptz[],uuid[],bytea[],integer[],integer[],boolean[],jsonb[],jsonb[],integer[]) TO sqlobserver_collector;
 
 CREATE OR REPLACE FUNCTION control.reconcile_collector_catalog_m6
 (
