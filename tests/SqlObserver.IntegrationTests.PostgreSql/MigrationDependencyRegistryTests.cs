@@ -50,6 +50,28 @@ public sealed class MigrationDependencyRegistryTests
             RegexOptions.CultureInvariant));
     }
 
+    [Fact]
+    public void QueryPerformanceMigrationQualifiesPlpgsqlColumnReferences()
+    {
+        string root = FindRoot();
+        string migration = File.ReadAllText(Path.Combine(
+            root,
+            "database",
+            "migrations",
+            "0011_query_performance.sql"));
+
+        Assert.Contains(
+            "SELECT baseline.cumulative_executions,baseline.cumulative_cpu_ms",
+            migration,
+            StringComparison.Ordinal);
+        Assert.Contains("FROM candidates AS candidate", migration, StringComparison.Ordinal);
+        Assert.Contains("SELECT candidate.database_id,candidate.query_fingerprint", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SELECT cumulative_executions,cumulative_cpu_ms",
+            migration,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;
