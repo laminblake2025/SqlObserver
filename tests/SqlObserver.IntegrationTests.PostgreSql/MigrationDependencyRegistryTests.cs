@@ -105,6 +105,25 @@ public sealed class MigrationDependencyRegistryTests
         Assert.True(wrapperIndex > canonicalIndex, "Compatibility wrapper must follow its dependency.");
     }
 
+    [Fact]
+    public void AlertingMigrationParenthesizesCaseExpressionInPlpgsqlIfCondition()
+    {
+        string root = FindRoot();
+        string migration = File.ReadAllText(Path.Combine(
+            root,
+            "database",
+            "migrations",
+            "0012_alerts_maintenance_notifications.sql"));
+        const string parenthesizedCondition =
+            "IF event_kind IS DISTINCT FROM (CASE WHEN expected_state=3";
+
+        Assert.Contains(parenthesizedCondition, migration, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "IF event_kind IS DISTINCT FROM CASE WHEN expected_state=3",
+            migration,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;
