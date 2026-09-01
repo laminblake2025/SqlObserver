@@ -112,7 +112,14 @@ BEGIN
      cumulative_executions := executions_value;
      cumulative_cpu := cpu_value;
      plan_key := coalesce(plan_id,decode(repeat('00',32),'hex'));
-     SELECT cumulative_executions,cumulative_cpu_ms INTO prior_executions,prior_cpu FROM events.query_performance_cache_baseline WHERE instance_id=p_instance_id AND database_id=db AND query_fingerprint=query_id AND plan_fingerprint=plan_key FOR UPDATE;
+     SELECT baseline.cumulative_executions,baseline.cumulative_cpu_ms
+     INTO prior_executions,prior_cpu
+     FROM events.query_performance_cache_baseline AS baseline
+     WHERE baseline.instance_id=p_instance_id
+       AND baseline.database_id=db
+       AND baseline.query_fingerprint=query_id
+       AND baseline.plan_fingerprint=plan_key
+     FOR UPDATE;
      reset_value := cumulative_executions IS NULL OR cumulative_cpu IS NULL OR prior_executions IS NULL OR prior_cpu IS NULL OR cumulative_executions < prior_executions OR cumulative_cpu < prior_cpu;
      IF reset_value THEN
        semantics_value := CASE WHEN prior_executions IS NULL OR prior_cpu IS NULL THEN 'plan_cache_baseline' ELSE 'reset' END;
@@ -217,7 +224,23 @@ CREATE OR REPLACE FUNCTION control.get_top_queries_projection(p_instance_id uuid
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, control, events AS $fn$
 BEGIN
  IF p_limit IS NULL OR p_limit <= 0 OR p_limit > 200 OR p_from_utc IS NULL OR p_to_utc IS NULL OR p_to_utc <= p_from_utc OR p_to_utc-p_from_utc > interval '7 days' OR p_snapshot_utc IS NULL OR p_metric NOT IN ('cpu','duration','executions','logical_reads','writes','rows') THEN RAISE EXCEPTION 'query performance top projection bounds invalid' USING ERRCODE='22023'; END IF;
- RETURN QUERY WITH candidates AS MATERIALIZED (SELECT o.database_id,o.query_fingerprint,o.plan_fingerprint,o.interval_start,o.interval_end,o.observed_at,o.semantics,o.cpu_ms,o.duration_ms,o.execution_count,o.logical_reads,o.writes,o.rows_processed,o.source,o.source_state,r.coverage,r.freshness,r.truncated,r.committed_at,o.collection_run_id,o.observation_key,CASE p_metric WHEN 'cpu' THEN o.cpu_ms WHEN 'duration' THEN o.duration_ms WHEN 'executions' THEN o.execution_count WHEN 'logical_reads' THEN o.logical_reads WHEN 'writes' THEN o.writes ELSE o.rows_processed END AS metric_value FROM events.query_performance_observation o JOIN events.query_performance_query q USING(collection_run_id,database_id,query_fingerprint) JOIN events.query_performance_run r USING(collection_run_id) WHERE q.instance_id=p_instance_id AND o.interval_start>=p_from_utc AND o.interval_end<=p_to_utc AND r.committed_at<=p_snapshot_utc AND control.query_performance_target_claim(p_instance_id)) SELECT database_id,query_fingerprint,plan_fingerprint,interval_start,interval_end,observed_at,semantics,cpu_ms,duration_ms,execution_count,logical_reads,writes,rows_processed,source,source_state,coverage,freshness,truncated,committed_at,collection_run_id,observation_key FROM candidates WHERE metric_value IS NOT NULL AND metric_value >= 0 AND (p_after_query IS NULL OR metric_value < p_after_metric OR (metric_value = p_after_metric AND (database_id,interval_end,query_fingerprint,coalesce(plan_fingerprint,''::bytea),collection_run_id,observation_key) > (p_after_database_id,p_after_interval_end,p_after_query,coalesce(p_after_plan,''::bytea),p_after_run_id,coalesce(p_after_observation_key,''::bytea)))) ORDER BY metric_value DESC,database_id,interval_end,query_fingerprint,coalesce(plan_fingerprint,''::bytea),collection_run_id,observation_key LIMIT p_limit + 1;
+ RETURN QUERY
+ WITH candidates AS MATERIALIZED
+ (
+  SELECT o.database_id,o.query_fingerprint,o.plan_fingerprint,o.interval_start,o.interval_end,o.observed_at,o.semantics,o.cpu_ms,o.duration_ms,o.execution_count,o.logical_reads,o.writes,o.rows_processed,o.source,o.source_state,r.coverage,r.freshness,r.truncated,r.committed_at,o.collection_run_id,o.observation_key,
+         CASE p_metric WHEN 'cpu' THEN o.cpu_ms WHEN 'duration' THEN o.duration_ms WHEN 'executions' THEN o.execution_count WHEN 'logical_reads' THEN o.logical_reads WHEN 'writes' THEN o.writes ELSE o.rows_processed END AS metric_value
+  FROM events.query_performance_observation o
+  JOIN events.query_performance_query q USING(collection_run_id,database_id,query_fingerprint)
+  JOIN events.query_performance_run r USING(collection_run_id)
+  WHERE q.instance_id=p_instance_id AND o.interval_start>=p_from_utc AND o.interval_end<=p_to_utc
+    AND r.committed_at<=p_snapshot_utc AND control.query_performance_target_claim(p_instance_id)
+ )
+ SELECT candidate.database_id,candidate.query_fingerprint,candidate.plan_fingerprint,candidate.interval_start,candidate.interval_end,candidate.observed_at,candidate.semantics,candidate.cpu_ms,candidate.duration_ms,candidate.execution_count,candidate.logical_reads,candidate.writes,candidate.rows_processed,candidate.source,candidate.source_state,candidate.coverage,candidate.freshness,candidate.truncated,candidate.committed_at,candidate.collection_run_id,candidate.observation_key
+ FROM candidates AS candidate
+ WHERE candidate.metric_value IS NOT NULL AND candidate.metric_value >= 0
+   AND (p_after_query IS NULL OR candidate.metric_value < p_after_metric OR (candidate.metric_value = p_after_metric AND (candidate.database_id,candidate.interval_end,candidate.query_fingerprint,coalesce(candidate.plan_fingerprint,''::bytea),candidate.collection_run_id,candidate.observation_key) > (p_after_database_id,p_after_interval_end,p_after_query,coalesce(p_after_plan,''::bytea),p_after_run_id,coalesce(p_after_observation_key,''::bytea))))
+ ORDER BY candidate.metric_value DESC,candidate.database_id,candidate.interval_end,candidate.query_fingerprint,coalesce(candidate.plan_fingerprint,''::bytea),candidate.collection_run_id,candidate.observation_key
+ LIMIT p_limit + 1;
 END; $fn$;
 REVOKE ALL ON FUNCTION control.get_query_history_projection(uuid,integer,bytea,timestamptz,timestamptz,integer,timestamptz,uuid,bytea,bytea,timestamptz),control.get_top_queries_projection(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION control.get_query_history_projection(uuid,integer,bytea,timestamptz,timestamptz,integer,timestamptz,uuid,bytea,bytea,timestamptz),control.get_top_queries_projection(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz) TO sqlobserver_server;
