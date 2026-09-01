@@ -124,6 +124,21 @@ public sealed class MigrationDependencyRegistryTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void M9PartitionMigrationUsesScalarForeachElementVariable()
+    {
+        string root = FindRoot();
+        string migration = File.ReadAllText(Path.Combine(
+            root,
+            "database",
+            "migrations",
+            "0013_backups_jobs_tempdb_availability_groups.sql"));
+
+        Assert.Contains("spec text; BEGIN", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("spec text[]; BEGIN", migration, StringComparison.Ordinal);
+        Assert.Contains("FOREACH spec IN ARRAY table_spec LOOP", migration, StringComparison.Ordinal);
+    }
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;
