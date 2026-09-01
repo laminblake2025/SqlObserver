@@ -3,7 +3,10 @@ SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '5min'; SET LOCAL i
 
 INSERT INTO control.collector_contract (collector_id,collector_version,execution_order,manifest_schema_version,output_schema_version,manifest_sha256,asset_bundle_sha256,default_interval,minimum_interval,execution_timeout,maximum_rows,maximum_response_bytes,estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval)
 VALUES ('queries.performance',1,9,4,1,decode('d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69','hex'),decode('da915ffb11e60bc0f1f019cb3e3e81ccafabc2c3ff94b26520378574562855eb','hex'),interval '5 minutes',interval '1 minute',interval '15 seconds',2000,8388608,'moderate',2,3,interval '5 minutes');
-INSERT INTO control.collector_dependency(collector_id,collector_version,prerequisite_collector_id,prerequisite_collector_version) VALUES ('queries.performance',1,'capability.connection',1),('queries.performance',1,'engine.core',1),('queries.performance',1,'database.inventory',1);
+-- capability.connection is control-plane discovery, not a scheduled collector
+-- contract.  Its manifest declaration is enforced by the asset catalog; only
+-- scheduled prerequisites belong in this foreign-key-backed registry.
+INSERT INTO control.collector_dependency(collector_id,collector_version,prerequisite_collector_id,prerequisite_collector_version) VALUES ('queries.performance',1,'engine.core',1),('queries.performance',1,'database.inventory',1);
 
 CREATE TYPE events.query_performance_source AS ENUM ('query_store','plan_cache','mixed','unavailable');
 REVOKE ALL ON TYPE events.query_performance_source FROM PUBLIC;

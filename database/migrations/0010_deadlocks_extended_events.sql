@@ -21,7 +21,10 @@ VALUES
 );
 INSERT INTO control.collector_dependency(collector_id,collector_version,prerequisite_collector_id,prerequisite_collector_version)
 VALUES
- ('deadlocks.system-health',1,'capability.connection',1),('deadlocks.system-health',1,'engine.core',1),('deadlocks.system-health',1,'activity.sessions',1),
+ -- capability.connection is control-plane discovery, not a scheduled
+ -- collector contract, so it remains a manifest-only prerequisite and must
+ -- not enter the foreign-key-backed scheduled dependency registry.
+ ('deadlocks.system-health',1,'engine.core',1),('deadlocks.system-health',1,'activity.sessions',1),
  ('deadlocks.system-health',1,'activity.requests',1),('deadlocks.system-health',1,'waits.server',1),
  ('deadlocks.system-health',1,'blocking.current',1);
 
