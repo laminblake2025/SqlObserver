@@ -82,6 +82,29 @@ public sealed class MigrationDependencyRegistryTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AlertingMigrationDefinesCanonicalEvidenceOverloadBeforeCompatibilityWrapper()
+    {
+        string root = FindRoot();
+        string migration = File.ReadAllText(Path.Combine(
+            root,
+            "database",
+            "migrations",
+            "0012_alerts_maintenance_notifications.sql"));
+        const string canonicalOverload =
+            "CREATE OR REPLACE FUNCTION alerting.canonical_evidence_sha256(" +
+            "p_target_id uuid, p_rule_id uuid, p_source_kind text";
+        const string compatibilityWrapper =
+            "CREATE OR REPLACE FUNCTION alerting.canonical_evidence_sha256(" +
+            "p_target_id uuid, p_rule_id uuid, p_observed_at timestamptz";
+
+        int canonicalIndex = migration.IndexOf(canonicalOverload, StringComparison.Ordinal);
+        int wrapperIndex = migration.IndexOf(compatibilityWrapper, StringComparison.Ordinal);
+
+        Assert.True(canonicalIndex >= 0, "Canonical evidence overload is missing.");
+        Assert.True(wrapperIndex > canonicalIndex, "Compatibility wrapper must follow its dependency.");
+    }
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;

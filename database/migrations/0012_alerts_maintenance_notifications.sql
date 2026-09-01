@@ -402,13 +402,13 @@ BEGIN
   RETURN p_operation::uuid;
 END $$;
 
-CREATE OR REPLACE FUNCTION alerting.canonical_evidence_sha256(p_target_id uuid, p_rule_id uuid, p_observed_at timestamptz, p_value double precision, p_collector_healthy boolean, p_reason text)
-RETURNS bytea LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, public AS $$
-  SELECT alerting.canonical_evidence_sha256(p_target_id,p_rule_id,NULL,NULL,NULL,NULL,NULL,NULL,p_observed_at,NULL,NULL,p_value,p_collector_healthy,p_reason)
-$$;
 CREATE OR REPLACE FUNCTION alerting.canonical_evidence_sha256(p_target_id uuid, p_rule_id uuid, p_source_kind text, p_metric_id text, p_source_collector text, p_source_version text, p_source_schema_version integer, p_source_digest text, p_observed_at timestamptz, p_sample_id text, p_run_id uuid, p_value double precision, p_collector_healthy boolean, p_reason text)
 RETURNS bytea LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, public AS $$
   SELECT sha256(convert_to(p_target_id::text || '|' || p_rule_id::text || '|' || coalesce(p_source_kind,'<null>') || '|' || coalesce(p_metric_id,'<null>') || '|' || coalesce(p_source_collector,'<null>') || '|' || coalesce(p_source_version,'<null>') || '|' || coalesce(p_source_schema_version::text,'<null>') || '|' || coalesce(p_source_digest,'<null>') || '|' || to_char(p_observed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') || '|' || coalesce(p_sample_id,'<null>') || '|' || coalesce(p_run_id::text,'<null>') || '|' || coalesce(p_value::text,'<null>') || '|' || coalesce(lower(p_collector_healthy::text),'<null>') || '|' || coalesce(p_reason,'<null>'),'UTF8'))
+$$;
+CREATE OR REPLACE FUNCTION alerting.canonical_evidence_sha256(p_target_id uuid, p_rule_id uuid, p_observed_at timestamptz, p_value double precision, p_collector_healthy boolean, p_reason text)
+RETURNS bytea LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, public AS $$
+  SELECT alerting.canonical_evidence_sha256(p_target_id,p_rule_id,NULL,NULL,NULL,NULL,NULL,NULL,p_observed_at,NULL,NULL,p_value,p_collector_healthy,p_reason)
 $$;
 
 -- The replay ledger stores this server-shaped document, never the caller's
