@@ -28,6 +28,28 @@ public sealed class MigrationDependencyRegistryTests
                 StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void DeadlockCommitFunctionGrantsUseTheDeclaredArgumentSignature()
+    {
+        string root = FindRoot();
+        string migration = File.ReadAllText(Path.Combine(
+            root,
+            "database",
+            "migrations",
+            "0010_deadlocks_extended_events.sql"));
+        string compact = Regex.Replace(migration, @"\s+", string.Empty);
+        const string signature =
+            "uuid,uuid,bigint,text,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea," +
+            "text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer," +
+            "text,integer,timestamptz[],uuid[],bytea[],integer[],integer[],boolean[],jsonb[],jsonb[],integer[]";
+        string functionReference = $"ONFUNCTIONcontrol.commit_deadlock_collection_run({signature})";
+
+        Assert.Equal(2, Regex.Count(
+            compact,
+            Regex.Escape(functionReference),
+            RegexOptions.CultureInvariant));
+    }
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;
