@@ -66,6 +66,16 @@ public sealed class MigrationDependencyRegistryTests
             StringComparison.Ordinal);
         Assert.Contains("FROM candidates AS candidate", migration, StringComparison.Ordinal);
         Assert.Contains("SELECT candidate.database_id,candidate.query_fingerprint", migration, StringComparison.Ordinal);
+        Assert.Equal(
+            4,
+            Regex.Count(
+                migration,
+                @"JOIN events\.query_performance_run r ON r\.collection_run_id=o\.collection_run_id",
+                RegexOptions.CultureInvariant));
+        Assert.DoesNotContain(
+            "JOIN events.query_performance_run r USING(collection_run_id)",
+            migration,
+            StringComparison.Ordinal);
         Assert.DoesNotContain(
             "SELECT cumulative_executions,cumulative_cpu_ms",
             migration,
