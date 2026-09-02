@@ -64,5 +64,24 @@ public sealed class M12ReportsMigrationStaticTests
         Assert.Contains("'UPDATE'", sql, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ReportExpiryLockPrivilegeRepairIsExactAndAppendOnly()
+    {
+        string root = FindRoot();
+        string sql = File.ReadAllText(Path.Combine(root, "database/migrations/0023_report_expiry_lock_privilege.sql"));
+
+        Assert.Contains("REVOKE ALL ON TABLE reporting.report_run", sql, StringComparison.Ordinal);
+        Assert.Contains("GRANT SELECT, UPDATE, DELETE ON TABLE reporting.report_run", sql, StringComparison.Ordinal);
+        Assert.Contains("'sqlobserver_report_expirer'", sql, StringComparison.Ordinal);
+        Assert.Contains("'UPDATE'", sql, StringComparison.Ordinal);
+        Assert.Contains("'TRUNCATE'", sql, StringComparison.Ordinal);
+        Assert.Contains("'REFERENCES'", sql, StringComparison.Ordinal);
+        Assert.Contains("'TRIGGER'", sql, StringComparison.Ordinal);
+        Assert.Contains("has_function_privilege", sql, StringComparison.Ordinal);
+        Assert.Contains("'sqlobserver_collector'", sql, StringComparison.Ordinal);
+        Assert.Contains("pg_catalog.pg_get_userbyid", sql, StringComparison.Ordinal);
+        Assert.Contains("'reporting.expire_report_runs(integer,uuid,bigint)'::regprocedure", sql, StringComparison.Ordinal);
+    }
+
     private static string FindRoot() { string path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "SqlObserver.slnx"))) path = Directory.GetParent(path)?.FullName ?? throw new DirectoryNotFoundException(); return path; }
 }

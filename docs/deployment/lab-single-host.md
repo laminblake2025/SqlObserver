@@ -125,9 +125,12 @@ package source to make the build pass.
 ## 4. PostgreSQL repository gate
 
 The migration catalog currently contains the exact, contiguous `0001` through
-`0022` sequence and `database/migrations/checksums.sha256`. Migration `0022`
+`0023` sequence and `database/migrations/checksums.sha256`. Migration `0022`
 is the append-only PostgreSQL 18 runtime-startup repair for the report-expiry
-worker lease and alert evidence reconciliation. The embedded
+worker lease and alert evidence reconciliation. Migration `0023` completes the
+report-expiry lock boundary by granting the dedicated NOLOGIN definer the
+`UPDATE` privilege PostgreSQL requires for `SELECT ... FOR UPDATE`, without
+granting direct report-table access to the Collector. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
 commits each migration and ledger row in one transaction.
