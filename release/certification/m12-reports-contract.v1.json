@@ -40,7 +40,7 @@
   ],
   "assetPins": {
     "database/migrations/0021_reports_exports.sql": "584bd6d145c173eae60a8411b5df0a0b3905d78e5c68c5babe5ee5b83fe6b7ac",
-    "database/migrations/checksums.sha256": "be9a41748393b12184378bd9fd25c0302906f651d9eca3ac95736a1ece1e3c9d",
+    "database/migrations/checksums.sha256": "a140171cb8aefab6848a4fbd53c2943b2367fc5b3699f4a27f7d47bb33e61736",
     "src/SqlObserver.Reporting/ReportContracts.cs": "95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8",
     "src/SqlObserver.Reporting/ReportRendering.cs": "6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61",
     "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs": "61a2b2dd0a6e7bb83e701be55967643db23c2a52c1fc666d07e9160fbb5ba557",

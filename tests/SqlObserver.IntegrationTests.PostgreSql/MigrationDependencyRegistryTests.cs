@@ -139,6 +139,34 @@ public sealed class MigrationDependencyRegistryTests
         Assert.Contains("FOREACH spec IN ARRAY table_spec LOOP", migration, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void M9CommitBoundsParenthesizePlpgsqlCaseExpressions()
+    {
+        string root = FindRoot();
+        string migration = File.ReadAllText(Path.Combine(
+            root,
+            "database",
+            "migrations",
+            "0013_backups_jobs_tempdb_availability_groups.sql"));
+
+        Assert.Contains(
+            ">(CASE WHEN p_collector_id='availability-groups.health'",
+            migration,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "NOT BETWEEN 0 AND (CASE WHEN p_collector_id='sql-agent.failures'",
+            migration,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IS DISTINCT FROM (CASE WHEN p_collector_id IN",
+            migration,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "NOT BETWEEN 0 AND CASE WHEN p_collector_id",
+            migration,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;
