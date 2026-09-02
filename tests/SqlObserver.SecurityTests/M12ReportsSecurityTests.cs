@@ -31,6 +31,18 @@ public sealed class M12ReportsSecurityTests
         Assert.Contains("ApplicationRole.TargetAdministrator", contracts, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ReportExpiryLockRepairRemainsBehindTheDedicatedDefiner()
+    {
+        string sql = File.ReadAllText(Path.Combine(FindRoot(), "database/migrations/0023_report_expiry_lock_privilege.sql"));
+        Assert.Contains("REVOKE ALL ON TABLE reporting.report_run", sql, StringComparison.Ordinal);
+        Assert.Contains("GRANT SELECT, UPDATE, DELETE ON TABLE reporting.report_run", sql, StringComparison.Ordinal);
+        Assert.Contains("TO sqlobserver_report_expirer", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("TO sqlobserver_collector;", sql, StringComparison.Ordinal);
+        Assert.Contains("has_function_privilege", sql, StringComparison.Ordinal);
+        Assert.Contains("has_table_privilege('sqlobserver_collector'", sql, StringComparison.Ordinal);
+    }
+
     private static string FindRoot()
     {
         string path = AppContext.BaseDirectory;

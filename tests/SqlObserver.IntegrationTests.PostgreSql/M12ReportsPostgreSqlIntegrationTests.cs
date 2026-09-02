@@ -27,13 +27,17 @@ public sealed class M12ReportsPostgreSqlIntegrationTests(PostgreSql18Fixture fix
             Assert.Equal("sqlobserver_report_expirer", (string?)await owner.ExecuteScalarAsync());
             await using var execute = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_collector','reporting.expire_report_runs(integer,uuid,bigint)','EXECUTE') AND NOT has_table_privilege('sqlobserver_collector','reporting.report_run','DELETE');", privilegeConnection);
             Assert.True((bool)(await execute.ExecuteScalarAsync() ?? false));
-            await using var expiryBoundary = new NpgsqlCommand("SELECT (SELECT count(*) FROM pg_catalog.pg_auth_members membership JOIN pg_catalog.pg_roles granted_role ON granted_role.oid=membership.roleid JOIN pg_catalog.pg_roles member_role ON member_role.oid=membership.member WHERE granted_role.rolname='sqlobserver_report_expirer' OR member_role.rolname='sqlobserver_report_expirer'),NOT has_schema_privilege('sqlobserver_report_expirer','reporting','CREATE'),has_table_privilege('sqlobserver_report_expirer','control.worker_lease','SELECT'),has_table_privilege('sqlobserver_report_expirer','control.worker_lease','UPDATE');", privilegeConnection);
+            await using var expiryBoundary = new NpgsqlCommand("SELECT (SELECT count(*) FROM pg_catalog.pg_auth_members membership JOIN pg_catalog.pg_roles granted_role ON granted_role.oid=membership.roleid JOIN pg_catalog.pg_roles member_role ON member_role.oid=membership.member WHERE granted_role.rolname='sqlobserver_report_expirer' OR member_role.rolname='sqlobserver_report_expirer'),NOT has_schema_privilege('sqlobserver_report_expirer','reporting','CREATE'),has_table_privilege('sqlobserver_report_expirer','control.worker_lease','SELECT'),has_table_privilege('sqlobserver_report_expirer','control.worker_lease','UPDATE'),has_table_privilege('sqlobserver_report_expirer','reporting.report_run','SELECT'),has_table_privilege('sqlobserver_report_expirer','reporting.report_run','UPDATE'),has_table_privilege('sqlobserver_report_expirer','reporting.report_run','DELETE'),has_table_privilege('sqlobserver_report_expirer','reporting.report_run','INSERT');", privilegeConnection);
             await using NpgsqlDataReader expiryBoundaryReader = await expiryBoundary.ExecuteReaderAsync();
             Assert.True(await expiryBoundaryReader.ReadAsync());
             Assert.Equal(0L, expiryBoundaryReader.GetInt64(0));
             Assert.True(expiryBoundaryReader.GetBoolean(1));
             Assert.True(expiryBoundaryReader.GetBoolean(2));
             Assert.True(expiryBoundaryReader.GetBoolean(3));
+            Assert.True(expiryBoundaryReader.GetBoolean(4));
+            Assert.True(expiryBoundaryReader.GetBoolean(5));
+            Assert.True(expiryBoundaryReader.GetBoolean(6));
+            Assert.False(expiryBoundaryReader.GetBoolean(7));
         }
         Guid target = Guid.NewGuid(), otherTarget = Guid.NewGuid(), operation = Guid.NewGuid(); byte[] digest = new byte[32];
         await using (NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync())

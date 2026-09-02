@@ -42,13 +42,13 @@ public sealed class M12MigrationAssessmentStaticTests
     [Fact]
     public void AdapterNextMigrationDecisionIsBoundedAndStatusAware()
     {
-        Assert.Null(PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Current, 21, 21));
-        Assert.Equal(2, PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 1, 21));
-        Assert.Equal(1, PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 0, 21));
-        Assert.Null(PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 21, 21));
+        Assert.Null(PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Current, 23, 23));
+        Assert.Equal(2, PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 1, 23));
+        Assert.Equal(1, PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 0, 23));
+        Assert.Null(PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 23, 23));
         foreach (MigrationAssessmentStatus status in Enum.GetValues<MigrationAssessmentStatus>().Where(static status => status != MigrationAssessmentStatus.Pending))
-            Assert.Null(PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(status, 0, 21));
-        Assert.Throws<ArgumentOutOfRangeException>(() => PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 22, 21));
+            Assert.Null(PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(status, 0, 23));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PostgreSqlMigrationAssessmentPort.GetNextMigrationNumber(MigrationAssessmentStatus.Pending, 24, 23));
     }
 
     private static string FindRoot()
