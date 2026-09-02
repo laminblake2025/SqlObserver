@@ -14,8 +14,9 @@ remain pending. In particular, this repository does not yet provide:
 - a signed installer or supported production PostgreSQL migration executable
   (the repository includes only a source-based, lab-loopback migration host);
 - an accepted secret-store, service-account, certificate, or TLS policy;
-- a supported reverse proxy/static-web deployment that joins `web/dist` to the
-  authenticated Server API; or
+- a supported production reverse proxy/static-web deployment (the source-based
+  lab host can serve a bounded `web/dist` snapshot on the authenticated API
+  origin); or
 - live release evidence for the single-host topology.
 
 Do not describe a successful lab build as a supported deployment. Do not point
@@ -336,23 +337,59 @@ Windows login.
 Only request the optional replication plan when replication is configured and
 the distribution database has been explicitly identified.
 
-## 8. Web interface gate
+## 8. Authenticated lab web interface
 
 `pnpm --dir web build` produces deterministic static assets in `web/dist`.
-The current Server host does not yet serve those files, and the Vite development
-server does not proxy `/api`. A Vite-only preview therefore shows the interface
-but API calls return 404.
-
-For visual review only:
+Copy that completed build to a versioned, administrator-owned directory. The
+Server loads one bounded immutable snapshot at startup and serves only
+`index.html` and allowlisted files below `assets/`; source maps and unknown
+paths are not served.
 
 ```powershell
-node .\web\node_modules\vite\bin\vite.js --host 127.0.0.1 --port 5173
+$commit = (git rev-parse --short=7 HEAD).Trim()
+$webRoot = "C:\SqlObserverLab\Web-$commit"
+if (Test-Path -LiteralPath $webRoot) {
+  throw "Refusing to replace existing web root: $webRoot"
+}
+
+Copy-Item -LiteralPath .\web\dist -Destination $webRoot -Recurse
 ```
 
-Do not treat that preview as an application deployment. A complete lab requires
-a reviewed same-origin static-file/reverse-proxy design that preserves Windows
-authentication, HTTPS, request bounds, and target-scoped authorization. Do not
-place an unauthenticated proxy in front of the API merely to make the UI load.
+Protect the copied directory from writes by the Server service account. Grant
+that identity read and execute only; retain full control only for SYSTEM and
+Administrators. Then append the absolute web-root setting to the Server service
+command line while retaining its existing content root:
+
+```powershell
+$serverExecutable = "C:\SqlObserverLab\Server-$commit\SqlObserver.Server.exe"
+$serverContentRoot = 'C:\SqlObserverLab\Config\Server'
+$serverCommand =
+  "`"$serverExecutable`" --contentRoot `"$serverContentRoot`" " +
+  "--SqlObserver:WebRootPath `"$webRoot`""
+
+sc.exe config SqlObserverServer binPath= $serverCommand
+Restart-Service SqlObserverServer
+```
+
+The configured path must be absolute. Startup fails closed for a missing,
+empty, oversized, hidden, system, or reparse-point build. The web endpoints use
+the same HTTPS listener, Negotiate authentication, fallback authorization, and
+origin as `/api`; no CORS or identity-header bypass is required. Verify from a
+domain or explicitly authorized lab browser:
+
+```powershell
+$response = Invoke-WebRequest `
+  -Uri 'https://SERVER-DNS-NAME:5443/' `
+  -UseDefaultCredentials
+if ($response.StatusCode -ne 200 -or $response.Content -notmatch '<title>SqlObserver</title>') {
+  throw 'Authenticated web interface verification failed.'
+}
+```
+
+If `SqlObserver:WebRootPath` is omitted, `/` continues to return the service
+descriptor and the web interface is disabled. `/api/v1/service` always returns
+that descriptor. Do not expose Vite, add an unauthenticated proxy, bypass the
+certificate, or grant the Server write access to the copied web build.
 
 ## 9. Register a target after all gates pass
 
@@ -394,6 +431,7 @@ server version, target write requirement, or request to weaken TLS/permissions.
 Host preparation, source verification, locked builds, isolated integration
 tests, and offline SQL permission generation are available now. Persistent
 repository migration, supported service installation, secrets/certificate
-provisioning, and authenticated same-origin web hosting remain explicit M12
-deployment blockers. Resolve those through accepted ADRs and reviewed code;
+provisioning, and production web hosting remain explicit M12 deployment
+blockers. The authenticated same-origin source-based web host is lab-only.
+Resolve the remaining gaps through accepted ADRs and reviewed code;
 do not fill the gaps with ad hoc production procedures.
