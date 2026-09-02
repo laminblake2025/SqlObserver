@@ -90,10 +90,11 @@ VALUES
   decode('7e06e0e3d1c71dd3c9e5a2e2acd14412984e761009921a63bf1141a5b34d18aa','hex'),
   interval '1 minute',interval '30 seconds',interval '10 seconds',2048,2097152,
   'moderate',2,3,interval '5 minutes')
-ON CONFLICT (collector_id,collector_version) DO UPDATE SET
- manifest_sha256=EXCLUDED.manifest_sha256,asset_bundle_sha256=EXCLUDED.asset_bundle_sha256,
- execution_order=EXCLUDED.execution_order,manifest_schema_version=EXCLUDED.manifest_schema_version,
- output_schema_version=EXCLUDED.output_schema_version;
+-- collector_contract is protected by a statement-level append-only trigger.
+-- Even a conflict-free INSERT ... DO UPDATE fires that trigger, so upgrades
+-- must leave an existing immutable contract untouched and let the exact digest
+-- gate below reject any drift.
+ON CONFLICT (collector_id,collector_version) DO NOTHING;
 DO $m10_asset_digest_gate$
 BEGIN
  IF NOT EXISTS (SELECT 1 FROM control.collector_contract WHERE collector_id='host.metrics' AND collector_version=1 AND manifest_sha256=decode('ea1cdd808a9d9245db30012beafe40ec09b148a430016281993f31a1046e8b35','hex') AND asset_bundle_sha256=decode('cf629310626827ea9b91baab7ef21427d20c230adfaeff472ddfd26d1ebfee26','hex'))

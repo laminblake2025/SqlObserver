@@ -44,6 +44,10 @@ Require 'divergent backfill replay' 'backfill replay divergence fence'
 Require 'divergent recovery attestation replay' 'recovery replay divergence fence'
 Require 'source:=CASE' 'explicit legacy source map'
 Require 'ON CONFLICT DO NOTHING' 'idempotent backfill/ingestion writes'
+$collectorContractSeed = [regex]::Match($sql, '(?is)INSERT INTO control\.collector_contract\s*\(.*?ON CONFLICT \(collector_id,collector_version\).*?(?=DO \$m10_asset_digest_gate\$)').Value
+if ([string]::IsNullOrWhiteSpace($collectorContractSeed)) { $errors.Add('M10 collector contract seed block is missing') }
+if ($collectorContractSeed -notmatch 'ON CONFLICT \(collector_id,collector_version\) DO NOTHING;') { $errors.Add('M10 collector contract seed must preserve an existing immutable contract') }
+if ($collectorContractSeed -match 'ON CONFLICT \(collector_id,collector_version\) DO UPDATE') { $errors.Add('M10 collector contract seed must not invoke the append-only UPDATE trigger') }
 Require 'm10_host_metrics.*false,NULL' 'host retention disabled/null seed'
 Require 'm10_replication.*false,NULL' 'replication retention disabled/null seed'
 Require 'SecurityAdministrator' 'database-side global retention authorization'
