@@ -30,7 +30,7 @@
     "src/SqlObserver.Observability/SqlObserver.Observability.csproj": "60576c36aab91800264f4e35c58943fded212a53c029a90171a87e897f0828c5",
     "src/SqlObserver.Observability/ObservabilityContracts.cs": "7113bcc81e331cf73417d4538ac713e03b2cee8e23d2294edf123e945f544a21",
     "src/SqlObserver.Observability/packages.lock.json": "9921a06f61fbd419a030273ecc8a58e96cffaf02bcf95e1c07088e62098b2468",
-    "src/SqlObserver.Server/Program.cs": "fa52b10205812691f9c75c302be0d34126c10c9b605b3c4f26249c64a5271695",
+    "src/SqlObserver.Server/Program.cs": "d05604bfbc05a82ef0c85bee16792d3897b694d32c6b00f51e122d75ba812650",
     "src/SqlObserver.Server/ServerServiceRegistration.cs": "6486f74a42216f3e8686019afe3a74f3cf991a8af8be9c125c955590560e1939",
     "src/SqlObserver.Server/SqlObserver.Server.csproj": "168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93",
     "src/SqlObserver.Server/packages.lock.json": "8d45a1c3b8399796f0365785e5abf99cffec270168e8d850eceebafc4e3d02d3",

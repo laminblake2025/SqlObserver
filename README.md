@@ -104,9 +104,10 @@ Do not provision production credentials or point this repository slice at a prod
 
 ## Lab deployment
 
-The repository can be built and inspected on a single Windows Server lab, but
-it does not yet include a supported installer, operator migration command, or
-authenticated static-web hosting integration. Follow the
+The repository can be built and inspected on a single Windows Server lab. It
+includes an opt-in, authenticated same-origin host for a reviewed `web/dist`
+snapshot, but it does not yet include a supported installer or production
+operator migration workflow. Follow the
 [single-host lab deployment guide](docs/deployment/lab-single-host.md) for host
 preparation, least-privilege boundaries, build commands, and the explicit stop
 gates that must be resolved before an end-to-end deployment.

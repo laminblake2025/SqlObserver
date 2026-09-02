@@ -128,6 +128,7 @@ builder.Services.AddSqlObserverMcp();
 // otherwise isolated API test into a production connection attempt.  Keep the
 // worker enabled for every real host while fencing it out of contract tests.
 WebApplication app = builder.Build();
+WebInterfaceAssetCatalog? webInterface = WebInterfaceAssetCatalog.Load(builder.Configuration);
 
 app.UseMiddleware<SafeApiExceptionMiddleware>();
 app.UseRequestTimeouts();
@@ -136,7 +137,7 @@ app.UseMiddleware<McpHttpAuditBoundaryMiddleware>();
 app.UseMiddleware<RequestBodyLimitMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
-app.MapSqlObserverScaffoldEndpoints();
+app.MapSqlObserverScaffoldEndpoints(includeRootDescriptor: webInterface is null);
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
 app.MapTargetActivityEndpoints();
@@ -147,6 +148,10 @@ app.MapOperationalHealthEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapReportEndpoints();
 app.MapSqlObserverMcp().RequireAuthorization();
+if (webInterface is not null)
+{
+    app.MapSqlObserverWebInterface(webInterface);
+}
 
 await app.RunAsync();
 

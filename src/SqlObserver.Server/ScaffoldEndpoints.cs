@@ -6,12 +6,21 @@ namespace SqlObserver.Server;
 public static class ScaffoldEndpoints
 {
     /// <summary>Maps root metadata and a process-health response.</summary>
-    public static IEndpointRouteBuilder MapSqlObserverScaffoldEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapSqlObserverScaffoldEndpoints(
+        this IEndpointRouteBuilder endpoints,
+        bool includeRootDescriptor = true)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
+        if (includeRootDescriptor)
+        {
+            endpoints.MapGet(
+                "/",
+                static () => Results.Ok(new ServiceDescriptor("SqlObserver", "scaffold")));
+        }
+
         endpoints.MapGet(
-            "/",
+            "/api/v1/service",
             static () => Results.Ok(new ServiceDescriptor("SqlObserver", "scaffold")));
         endpoints.MapGet(
             "/health",
