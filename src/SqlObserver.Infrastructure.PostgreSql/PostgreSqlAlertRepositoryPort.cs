@@ -176,8 +176,18 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await using NpgsqlTransaction transaction = await c.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
         await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(c, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await SetTargetScopeAsync(c, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
-        await using var snapshotCommand = new NpgsqlCommand("SELECT clock_timestamp();", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
-        DateTimeOffset snapshot = cursor?.SnapshotUtc ?? (DateTimeOffset)(await snapshotCommand.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? throw new InvalidOperationException("Repository snapshot was not returned."));
+        DateTimeOffset snapshot;
+        if (cursor is not null)
+        {
+            snapshot = cursor.SnapshotUtc;
+        }
+        else
+        {
+            await using var snapshotCommand = new NpgsqlCommand("SELECT clock_timestamp();", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            object repositorySnapshot = await snapshotCommand.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Repository snapshot was not returned.");
+            snapshot = PostgreSqlRuntimeSupport.ConvertUtcTimestamp(repositorySnapshot);
+        }
         await using var cmd = new NpgsqlCommand("SELECT alert_id,rule_id,target_id,rule_name,state,first_observed_at,fired_at,acknowledged_at,value,reason,delivery_suppressed FROM reporting.list_active_alerts(@target_id,@max_results,@after_fired,@after_alert_id,@snapshot_utc);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("max_results", limit); cmd.Parameters.AddWithValue("after_fired", (object?)cursor?.SortAtUtc ?? DBNull.Value); cmd.Parameters.AddWithValue("after_alert_id", (object?)cursor?.AlertId ?? DBNull.Value); cmd.Parameters.AddWithValue("snapshot_utc", snapshot);
         var rows = new List<AlertActiveDto>(limit + 1); await using NpgsqlDataReader r = await cmd.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);

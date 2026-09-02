@@ -57,14 +57,29 @@ internal static class PostgreSqlRuntimeSupport
     public static DateTimeOffset ReadUtcTimestamp(NpgsqlDataReader reader, int ordinal)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        DateTime value = reader.GetDateTime(ordinal);
+        return ConvertUtcTimestamp(reader.GetValue(ordinal));
+    }
 
-        if (value.Kind != DateTimeKind.Utc)
+    internal static DateTimeOffset ConvertUtcTimestamp(object value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (value is DateTimeOffset offset)
         {
-            value = DateTime.SpecifyKind(value, DateTimeKind.Utc);
+            return offset.ToUniversalTime();
         }
 
-        return new DateTimeOffset(value);
+        if (value is not DateTime timestamp)
+        {
+            throw new InvalidDataException("PostgreSQL returned an invalid timestamp value.");
+        }
+
+        if (timestamp.Kind != DateTimeKind.Utc)
+        {
+            timestamp = DateTime.SpecifyKind(timestamp, DateTimeKind.Utc);
+        }
+
+        return new DateTimeOffset(timestamp);
     }
 
     public static string GetSafeFailureCode(Exception exception)
