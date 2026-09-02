@@ -1,7 +1,10 @@
 using Npgsql;
 using NpgsqlTypes;
 using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Targets;
+using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
 using System.Text.Json;
 
@@ -19,6 +22,29 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     private readonly PostgreSql18Fixture fixture;
 
     public M10AnalyticsPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => this.fixture = fixture;
+
+    [Fact]
+    public async Task ReplicationBindingResolverUsesCanonicalTextTargetScope()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid();
+        await InsertTargetAsync(database, target, "m10-replication-binding", 1);
+        await ExecuteAsync(
+            database,
+            "INSERT INTO control.replication_distribution_binding(instance_id,target_revision,database_name,tcp_port) VALUES(@target,1,'distribution',1433);",
+            ("target", target));
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var resolver = new PostgreSqlReplicationDistributionBindingResolver(collector);
+        ReplicationDistributionBinding? binding = await resolver.ResolveAsync(
+            new MonitoredInstanceId(target),
+            new ObservationTargetRevision(1),
+            CancellationToken.None);
+
+        Assert.NotNull(binding);
+        Assert.Equal("distribution", binding.DatabaseName);
+        Assert.Equal(1433, binding.TcpPort);
+    }
 
     [Fact]
     public async Task M10MigrationCreatesCatalogRevisionFencesAndPartitionedSurface()

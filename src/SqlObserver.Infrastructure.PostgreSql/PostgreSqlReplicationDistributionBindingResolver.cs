@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
@@ -32,7 +33,7 @@ public sealed class PostgreSqlReplicationDistributionBindingResolver : IReplicat
         {
             await using (NpgsqlCommand scope = new("SELECT set_config('sqlobserver.target_scope', @scope, true)", connection, transaction) { CommandTimeout = 5 })
             {
-                scope.Parameters.AddWithValue("scope", targetId.Value);
+                scope.Parameters.Add("scope", NpgsqlDbType.Text).Value = targetId.Value.ToString("D");
                 await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
