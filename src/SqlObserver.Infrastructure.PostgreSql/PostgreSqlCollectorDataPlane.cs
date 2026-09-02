@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 using SqlObserver.Analytics;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Hosts;
@@ -63,7 +64,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
             // this same connection/transaction so RLS cannot observe an empty
             // or stale scope from a pooled session.
             await using NpgsqlCommand scope = new("SELECT set_config('sqlobserver.target_scope', @scope, true)", connection, transaction) { CommandTimeout = 5 };
-            scope.Parameters.AddWithValue("scope", targetId.Value);
+            scope.Parameters.Add("scope", NpgsqlDbType.Text).Value = targetId.Value.ToString("D");
             await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             await using NpgsqlCommand command = new("SELECT host_id,target_revision,binding_revision,host_name,binding_state,identity_fingerprint,profile_revision,capability_state,profile FROM control.resolve_m10_host_target(@instance_id,@target_revision)", connection, transaction) { CommandTimeout = 5 };
             command.Parameters.AddWithValue("instance_id", targetId.Value);
