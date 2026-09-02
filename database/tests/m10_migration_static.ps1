@@ -48,6 +48,8 @@ $collectorContractSeed = [regex]::Match($sql, '(?is)INSERT INTO control\.collect
 if ([string]::IsNullOrWhiteSpace($collectorContractSeed)) { $errors.Add('M10 collector contract seed block is missing') }
 if ($collectorContractSeed -notmatch 'ON CONFLICT \(collector_id,collector_version\) DO NOTHING;') { $errors.Add('M10 collector contract seed must preserve an existing immutable contract') }
 if ($collectorContractSeed -match 'ON CONFLICT \(collector_id,collector_version\) DO UPDATE') { $errors.Add('M10 collector contract seed must not invoke the append-only UPDATE trigger') }
+$retentionParentConstraint = [regex]::Match($sql, '(?is)ADD CONSTRAINT ck_retention_policy_parent CHECK.*?(?=INSERT INTO system\.retention_policy)').Value
+if ($retentionParentConstraint -notmatch "m9_agent_history','m9_agent_failures','m9_agent_occurrences") { $errors.Add('M10 retention parent allowlist must preserve the unpartitioned M9 Agent failures policy') }
 Require 'm10_host_metrics.*false,NULL' 'host retention disabled/null seed'
 Require 'm10_replication.*false,NULL' 'replication retention disabled/null seed'
 Require 'SecurityAdministrator' 'database-side global retention authorization'
