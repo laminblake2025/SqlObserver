@@ -172,7 +172,12 @@ public sealed class PostgreSqlOperationalHealthProjectionPort : IOperationalHeal
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             return new Header(null, new ObservationTargetRevision(1), DateTimeOffset.UtcNow, "NoData", false);
-        Header header = new(new CollectorRunId(reader.GetGuid(0)), new ObservationTargetRevision(reader.GetInt64(1)), reader.GetFieldValue<DateTimeOffset>(2), reader.GetString(3), true);
+        Guid runId = reader.GetGuid(0);
+        var revision = new ObservationTargetRevision(reader.GetInt64(1));
+        DateTimeOffset observedAtUtc = reader.GetFieldValue<DateTimeOffset>(2);
+        string state = reader.GetString(3);
+        bool hasSnapshot = !string.Equals(state, "NoData", StringComparison.Ordinal);
+        Header header = new(hasSnapshot ? new CollectorRunId(runId) : null, revision, observedAtUtc, state, hasSnapshot);
         if (request.Cursor is not null)
         {
             OperationalHealthCursor cursor = OperationalHealthCursor.Decode(request.Cursor);

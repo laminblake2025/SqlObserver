@@ -184,6 +184,21 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
         await using var command = new NpgsqlCommand("SELECT state FROM reporting.get_latest_m9_run(@target,'tempdb.health');", connection);
         command.Parameters.AddWithValue("target", target);
         Assert.Equal("NoData", (string?)await command.ExecuteScalarAsync());
+
+        var projection = new PostgreSqlOperationalHealthProjectionPort(server);
+        TempDbSnapshot? projected = await projection.GetTempDbAsync(
+            new OperationalHealthRequest(
+                new MonitoredInstanceId(target),
+                null,
+                null,
+                8,
+                null,
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(10))),
+            CancellationToken.None);
+        Assert.NotNull(projected);
+        Assert.Equal(OperationalObservationState.NoData, projected!.State);
+        Assert.Null(projected.RunId);
+        Assert.Empty(projected.Files);
     }
 
     [Fact]
