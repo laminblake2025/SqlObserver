@@ -69,7 +69,7 @@ public sealed class PostgreSqlOperationalHealthProjectionPort : IOperationalHeal
         await using var command = new NpgsqlCommand("SELECT * FROM reporting.get_tempdb_snapshot(@instance_id,@run_id,@target_revision);", connection) { CommandTimeout = 5 };
         command.Parameters.AddWithValue("instance_id", request.TargetId.Value); command.Parameters.AddWithValue("run_id", header.RunId!.Value); command.Parameters.AddWithValue("target_revision", header.Revision.Value);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return new TempDbSnapshot(request.TargetId, header.Revision, header.RunId, header.ObservedAtUtc, OperationalObservationState.NoData, null, null, null, null, [], false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return new TempDbSnapshot(request.TargetId, header.Revision, header.RunId, header.ObservedAtUtc, ParseState(header.State), null, null, null, null, [], false);
         long? total=reader.IsDBNull(2)?null:reader.GetInt64(2), used=reader.IsDBNull(3)?null:reader.GetInt64(3), logTotal=reader.IsDBNull(4)?null:reader.GetInt64(4), logUsed=reader.IsDBNull(5)?null:reader.GetInt64(5); bool truncated=reader.GetBoolean(6); await reader.DisposeAsync().ConfigureAwait(false); await command.DisposeAsync().ConfigureAwait(false);
         var files = new List<TempDbFileObservation>();
         await using var fileCommand = new NpgsqlCommand("SELECT * FROM reporting.list_tempdb_files(@instance_id,@run_id,@target_revision,@after_file_id,@limit);", connection) { CommandTimeout = 5 };
