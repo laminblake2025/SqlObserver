@@ -192,6 +192,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("max_results", limit); cmd.Parameters.AddWithValue("after_fired", (object?)cursor?.SortAtUtc ?? DBNull.Value); cmd.Parameters.AddWithValue("after_alert_id", (object?)cursor?.AlertId ?? DBNull.Value); cmd.Parameters.AddWithValue("snapshot_utc", snapshot);
         var rows = new List<AlertActiveDto>(limit + 1); await using NpgsqlDataReader r = await cmd.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
         while (await r.ReadAsync(deadline.Token).ConfigureAwait(false)) rows.Add(new AlertActiveDto(r.GetGuid(0), r.GetGuid(1), new MonitoredInstanceId(r.GetGuid(2)), r.GetString(3), (AlertState)r.GetInt32(4), r.GetFieldValue<DateTimeOffset>(5), r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6), r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7), r.IsDBNull(8) ? null : r.GetDouble(8), r.IsDBNull(9) ? null : r.GetString(9), r.GetBoolean(10)));
+        await r.DisposeAsync().ConfigureAwait(false);
         bool more = rows.Count > limit; if (more) rows.RemoveAt(rows.Count - 1);
         AlertActiveCursor? next = more && rows.Count > 0 ? new AlertActiveCursor(targetId, rows[^1].FiredUtc ?? rows[^1].FirstObservedUtc, rows[^1].AlertId, snapshot) : null;
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return new AlertActivePage(rows, snapshot, next);
