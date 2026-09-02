@@ -234,6 +234,35 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     }
 
     [Fact]
+    public async Task M9TempDbProjectionPreservesDegradedHeaderWhenRunHasNoDetailSnapshot()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid();
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 degraded TempDB target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.tempdb.degraded.{target:N}"));
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        CollectorDueWorkItem work = (await runtime.ListDueAsync(new ListDueCollectorWorkRequest(16, new RepositoryCallTimeout(TimeSpan.FromSeconds(10))), CancellationToken.None)).Items.First(item => item.TargetId.Value == target && item.CollectorId.Value == "tempdb.health");
+        WorkerLeaseIdentity lease = await AcquireAsync(collector, work);
+        CollectorRunId run = new(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(new BeginCollectorRunRequest(work, run, lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(10))), CancellationToken.None)).Status);
+        var summary = new CollectorRunSummary(run, new MonitoredInstanceId(target), work.TargetRevision, work.CollectorId, work.CollectorManifestVersion, work.OutputSchemaVersion, CollectorRunOutcome.OutputInvalid, CollectorRunReason.OutputValidationFailed, TimeSpan.FromMilliseconds(1), 1, new CollectorRunAccounting(1, 1, 64, 64), new CollectorLossEvidence(CollectorLossKind.OutputValidationFailure, 1, true, 64));
+        Assert.Equal(CollectorRunCommitStatus.Committed, (await runtime.CommitRunAsync(new CommitCollectorRunRequest(work, summary, new CollectorPayload(), CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(10))), CancellationToken.None)).Status);
+
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var projection = new PostgreSqlOperationalHealthProjectionPort(server);
+        TempDbSnapshot? projected = await projection.GetTempDbAsync(
+            new OperationalHealthRequest(new MonitoredInstanceId(target), null, null, 8, null, new RepositoryCallTimeout(TimeSpan.FromSeconds(10))),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(OperationalObservationState.Degraded, projected!.State);
+        Assert.Equal(run, projected.RunId);
+        Assert.Empty(projected.Files);
+        Assert.Null(projected.TotalBytes);
+    }
+
+    [Fact]
     public async Task M9AgentProductionCommitsDeduplicateEventAndKeepTwoOccurrences()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
