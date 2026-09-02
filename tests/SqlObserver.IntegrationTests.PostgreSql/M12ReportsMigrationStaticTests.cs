@@ -26,8 +26,14 @@ public sealed class M12ReportsMigrationStaticTests
         Assert.DoesNotContain("expire_report_runs(integer)", sql, StringComparison.Ordinal);
         Assert.Contains("CREATE ROLE sqlobserver_report_expirer WITH NOLOGIN", sql, StringComparison.Ordinal);
         Assert.Contains("BYPASSRLS", sql, StringComparison.Ordinal);
+        Assert.Contains("rolname=current_user AND rolsuper", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("pg_catalog.current_user", sql, StringComparison.Ordinal);
+        Assert.Contains("GRANT sqlobserver_report_expirer TO %I WITH ADMIN OPTION", sql, StringComparison.Ordinal);
+        Assert.Contains("requires temporary bootstrap membership with ADMIN OPTION", sql, StringComparison.Ordinal);
         Assert.Contains("ALTER FUNCTION reporting.expire_report_runs(integer,uuid,bigint) OWNER TO sqlobserver_report_expirer", sql, StringComparison.Ordinal);
+        Assert.Contains("REVOKE CREATE ON SCHEMA reporting FROM sqlobserver_report_expirer", sql, StringComparison.Ordinal);
         Assert.Contains("REVOKE sqlobserver_report_expirer FROM sqlobserver_migrator", sql, StringComparison.Ordinal);
+        Assert.Contains("REVOKE sqlobserver_report_expirer FROM CURRENT_USER", sql, StringComparison.Ordinal);
         Assert.Contains("GRANT EXECUTE ON FUNCTION reporting.expire_report_runs(integer,uuid,bigint) TO sqlobserver_collector", sql, StringComparison.Ordinal);
         Assert.Contains("metric_observed_at <= snapshot_utc", sql, StringComparison.Ordinal);
         Assert.Contains("last_attempt_at <= snapshot_utc", sql, StringComparison.Ordinal);

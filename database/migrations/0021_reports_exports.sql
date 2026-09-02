@@ -8,14 +8,18 @@ SET LOCAL idle_in_transaction_session_timeout = '5min';
 SET LOCAL TIME ZONE 'UTC';
 
 -- The expiry definer is deliberately separate from the migrator owner.  The
--- bootstrap login creates it before this migration changes role; on an
--- already bootstrapped database a missing role is a deployment error rather
--- than an implicit privilege escalation.
+-- deployment administrator creates it before this migration changes role.
+-- A cluster-admin-backed disposable test database may create it here; a
+-- missing role under the ordinary bootstrap login fails closed.
 DO $role$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='sqlobserver_report_expirer') THEN
-        IF NOT pg_catalog.pg_has_role(pg_catalog.current_user,'createrole','member') THEN
-            RAISE EXCEPTION 'sqlobserver_report_expirer must be provisioned by the bootstrap/admin login' USING ERRCODE='42501';
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_roles
+            WHERE rolname=current_user AND rolsuper)
+        THEN
+            RAISE EXCEPTION 'sqlobserver_report_expirer must be provisioned by a PostgreSQL cluster administrator' USING ERRCODE='42501';
         END IF;
         EXECUTE 'CREATE ROLE sqlobserver_report_expirer WITH NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS';
     END IF;
@@ -23,8 +27,32 @@ BEGIN
         RAISE EXCEPTION 'sqlobserver_report_expirer has unsafe attributes' USING ERRCODE='55000';
     END IF;
     IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members membership JOIN pg_catalog.pg_roles member_role ON member_role.oid=membership.member WHERE member_role.rolname='sqlobserver_report_expirer')
-       OR EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members membership JOIN pg_catalog.pg_roles granted_role ON granted_role.oid=membership.roleid WHERE granted_role.rolname='sqlobserver_report_expirer') THEN
-        RAISE EXCEPTION 'sqlobserver_report_expirer must not have role memberships' USING ERRCODE='55000';
+       OR EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_auth_members membership
+            JOIN pg_catalog.pg_roles granted_role ON granted_role.oid=membership.roleid
+            JOIN pg_catalog.pg_roles member_role ON member_role.oid=membership.member
+            WHERE granted_role.rolname='sqlobserver_report_expirer'
+              AND (member_role.rolname<>current_user OR NOT membership.admin_option))
+    THEN
+        RAISE EXCEPTION 'sqlobserver_report_expirer has unsafe role memberships' USING ERRCODE='55000';
+    END IF;
+    IF NOT EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_auth_members membership
+            JOIN pg_catalog.pg_roles granted_role ON granted_role.oid=membership.roleid
+            JOIN pg_catalog.pg_roles member_role ON member_role.oid=membership.member
+            WHERE granted_role.rolname='sqlobserver_report_expirer'
+              AND member_role.rolname=current_user AND membership.admin_option)
+    THEN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_roles
+            WHERE rolname=current_user AND rolsuper)
+        THEN
+            RAISE EXCEPTION 'sqlobserver_report_expirer requires temporary bootstrap membership with ADMIN OPTION' USING ERRCODE='42501';
+        END IF;
+        EXECUTE format('GRANT sqlobserver_report_expirer TO %I WITH ADMIN OPTION', current_user);
     END IF;
 END
 $role$;
@@ -320,10 +348,15 @@ GRANT EXECUTE ON FUNCTION audit.append_report_activity(uuid,uuid,text,text,text,
 GRANT EXECUTE ON FUNCTION reporting.expire_report_runs(integer,uuid,bigint) TO sqlobserver_collector;
 
 -- The dedicated BYPASSRLS role has only the fixed rows needed by this one
--- function.  It has no login, inheritance, membership, or schema privileges.
+-- function. CREATE is granted only for the ownership transfer and revoked in
+-- the same transaction.
 GRANT USAGE ON SCHEMA reporting,control,audit TO sqlobserver_report_expirer;
+GRANT CREATE ON SCHEMA reporting TO sqlobserver_report_expirer;
 GRANT SELECT ON TABLE control.worker_lease TO sqlobserver_report_expirer;
 GRANT SELECT,DELETE ON TABLE reporting.report_run TO sqlobserver_report_expirer;
 GRANT INSERT ON TABLE audit.report_activity TO sqlobserver_report_expirer;
 ALTER FUNCTION reporting.expire_report_runs(integer,uuid,bigint) OWNER TO sqlobserver_report_expirer;
+REVOKE CREATE ON SCHEMA reporting FROM sqlobserver_report_expirer;
+RESET ROLE;
 REVOKE sqlobserver_report_expirer FROM sqlobserver_migrator;
+REVOKE sqlobserver_report_expirer FROM CURRENT_USER;
