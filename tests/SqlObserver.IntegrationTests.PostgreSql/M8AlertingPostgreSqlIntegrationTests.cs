@@ -173,6 +173,18 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
     }
 
     [Fact]
+    public async Task FreshInstallExecutesEmptyEvidenceReconciliationWithoutSemanticSqlErrors()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT count(*) FROM alerting.reconcile_due_evidence_internal(1);",
+            connection);
+
+        Assert.Equal(0L, (long)(await command.ExecuteScalarAsync() ?? -1L));
+    }
+
+    [Fact]
     public async Task DispatchPermitAndMaintenanceFenceSerializeOnTheRealPostgreSqlSession()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();

@@ -272,10 +272,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69",
         "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff",
         "3803245b86c5f6b8a52fe13751717a670f2dbf96779596ba40bcaa75dbe248ee",
-        "a25e4b1355ca6c10706b72dc764fd0085cf7a45458121915f26692e10abd695c",
+        "e71c0bf83c1285c3b63467448bd36c26bba8373c2a5a8ffb8785dbd764eecf57",
         "a560579657eb62da6e2a887169ccd4468a5ba7299de3ba61ca375e5e87e4c306",
         "ea1cdd808a9d9245db30012beafe40ec09b148a430016281993f31a1046e8b35",
-        "a70df0e82b7a9afb54842a1e98154735f66f6071a6a17245dfbc92c76ed275e4",
+        "1cc5d831d59222c75555791fbf1a3045b486158195dbed42384ab43d0e4a9509",
     ];
 
     private static readonly string[] RequiredBundleDigests =
@@ -294,7 +294,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "cf629310626827ea9b91baab7ef21427d20c230adfaeff472ddfd26d1ebfee26",
-        "f8f4d57e6f22ac7951a77d76b3ac5c15ee9781404ef8f40318c60c581ab16c37",
+        "7e06e0e3d1c71dd3c9e5a2e2acd14412984e761009921a63bf1141a5b34d18aa",
     ];
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
