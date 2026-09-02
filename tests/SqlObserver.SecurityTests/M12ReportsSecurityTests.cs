@@ -11,9 +11,12 @@ public sealed class M12ReportsSecurityTests
         Assert.Contains("reporting.reject_report_mutation", sql, StringComparison.Ordinal);
         Assert.Contains("CREATE ROLE sqlobserver_report_expirer WITH NOLOGIN", sql, StringComparison.Ordinal);
         Assert.Contains("BYPASSRLS", sql, StringComparison.Ordinal);
+        Assert.Contains("rolname=current_user AND rolsuper", sql, StringComparison.Ordinal);
+        Assert.Contains("REVOKE sqlobserver_report_expirer FROM CURRENT_USER", sql, StringComparison.Ordinal);
         Assert.Contains("GRANT SELECT ON TABLE control.worker_lease TO sqlobserver_report_expirer", sql, StringComparison.Ordinal);
         Assert.Contains("GRANT SELECT,DELETE ON TABLE reporting.report_run TO sqlobserver_report_expirer", sql, StringComparison.Ordinal);
         Assert.Contains("GRANT INSERT ON TABLE audit.report_activity TO sqlobserver_report_expirer", sql, StringComparison.Ordinal);
+        Assert.Contains("REVOKE CREATE ON SCHEMA reporting FROM sqlobserver_report_expirer", sql, StringComparison.Ordinal);
         Assert.Contains("GRANT EXECUTE ON FUNCTION reporting.expire_report_runs(integer,uuid,bigint) TO sqlobserver_collector", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("GRANT SELECT ON TABLE reporting.report_run TO sqlobserver_server", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("GRANT DELETE ON TABLE reporting.report_run TO sqlobserver_collector", sql, StringComparison.OrdinalIgnoreCase);

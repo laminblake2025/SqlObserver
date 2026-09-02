@@ -1042,6 +1042,12 @@ ALTER TABLE telemetry.visibility_gap DROP CONSTRAINT IF EXISTS ck_m10_replicatio
 ALTER TABLE telemetry.visibility_gap ADD CONSTRAINT ck_m10_replication_gap_evidence CHECK
  (collector_id<>'replication.health' OR (octet_length(topology_fingerprint)=32 AND gap_evidence IS NOT NULL AND jsonb_typeof(gap_evidence)='object'));
 
+-- The retention API below compiles against policy_revision.  Upgrade the
+-- existing M3 policy table before defining any function that references it.
+ALTER TABLE system.retention_policy ADD COLUMN IF NOT EXISTS policy_revision bigint NOT NULL DEFAULT 1;
+ALTER TABLE system.retention_policy DROP CONSTRAINT IF EXISTS ck_retention_policy_revision;
+ALTER TABLE system.retention_policy ADD CONSTRAINT ck_retention_policy_revision CHECK (policy_revision>0);
+
 REVOKE ALL ON TABLE control.host_binding,control.host_profile,control.replication_profile,control.replication_distribution_binding,telemetry.host_metric_snapshot_v2,telemetry.replication_snapshot_v2,telemetry.m10_commit_replay,analytics.metric_catalog,analytics.metric_rollup_v2,analytics.metric_baseline,analytics.metric_forecast,analytics.evidence_packet_v2,analytics.incident_thread,analytics.incident_generation,control.analytics_job,control.analytics_watermark,control.analytics_replay,system.retention_policy_history,system.recovery_attestation,system.retention_execution,system.retention_backfill_state,system.partition_reader_lease,system.retention_drop_retry FROM PUBLIC,sqlobserver_server,sqlobserver_collector,sqlobserver_auditor;
 
 CREATE OR REPLACE FUNCTION system.update_m10_retention_policy(p_data_class text,p_enabled boolean,p_retain_for interval,p_minimum_partitions integer,p_expected_revision bigint,p_changed_by text,p_change_reason text)
@@ -1250,14 +1256,25 @@ ALTER TABLE analytics.evidence_packet_v2 ADD COLUMN IF NOT EXISTS source_cutoff_
 ALTER TABLE analytics.incident_generation ADD COLUMN IF NOT EXISTS supersedes_previous boolean NOT NULL DEFAULT false;
 ALTER TABLE analytics.incident_generation ADD COLUMN IF NOT EXISTS instance_id uuid;
 ALTER TABLE analytics.incident_generation ADD COLUMN IF NOT EXISTS target_revision bigint;
+DROP TRIGGER IF EXISTS m10_incident_generation_append_only ON analytics.incident_generation;
 UPDATE analytics.incident_generation g
 SET instance_id=t.instance_id,target_revision=t.target_revision
 FROM analytics.incident_thread t
 WHERE t.thread_id=g.thread_id AND (g.instance_id IS NULL OR g.target_revision IS NULL);
 ALTER TABLE analytics.incident_generation ALTER COLUMN instance_id SET NOT NULL;
 ALTER TABLE analytics.incident_generation ALTER COLUMN target_revision SET NOT NULL;
+CREATE TRIGGER m10_incident_generation_append_only BEFORE UPDATE OR DELETE ON analytics.incident_generation FOR EACH STATEMENT EXECUTE FUNCTION control.reject_collector_history_mutation();
 ALTER TABLE analytics.incident_generation DROP CONSTRAINT IF EXISTS incident_generation_pkey;
 ALTER TABLE analytics.incident_generation ADD PRIMARY KEY (instance_id,target_revision,thread_id,generation);
+DO $m10_identity_constraints$
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_m10_forecast_target_identity') THEN
+  ALTER TABLE analytics.metric_forecast ADD CONSTRAINT uq_m10_forecast_target_identity UNIQUE (forecast_id,instance_id,target_revision);
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_m10_incident_target_identity') THEN
+  ALTER TABLE analytics.incident_thread ADD CONSTRAINT uq_m10_incident_target_identity UNIQUE (thread_id,instance_id,target_revision);
+ END IF;
+END $m10_identity_constraints$;
 DO $m10_generation_identity$
 BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_m10_incident_generation_target_revision') THEN
@@ -1277,18 +1294,6 @@ ALTER TABLE telemetry.replication_snapshot_v2 DROP CONSTRAINT IF EXISTS replicat
 ALTER TABLE telemetry.replication_snapshot_v2 ADD PRIMARY KEY (observed_at,instance_id,target_revision,run_id,topology_fingerprint);
 ALTER TABLE analytics.evidence_packet_v2 DROP CONSTRAINT IF EXISTS evidence_packet_v2_pkey;
 ALTER TABLE analytics.evidence_packet_v2 ADD PRIMARY KEY (occurred_at,instance_id,target_revision,packet_id);
-DO $m10_identity_constraints$
-BEGIN
- IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_m10_forecast_target_identity') THEN
-  ALTER TABLE analytics.metric_forecast ADD CONSTRAINT uq_m10_forecast_target_identity UNIQUE (forecast_id,instance_id,target_revision);
- END IF;
- IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_m10_incident_target_identity') THEN
-  ALTER TABLE analytics.incident_thread ADD CONSTRAINT uq_m10_incident_target_identity UNIQUE (thread_id,instance_id,target_revision);
- END IF;
-END $m10_identity_constraints$;
-ALTER TABLE system.retention_policy ADD COLUMN IF NOT EXISTS policy_revision bigint NOT NULL DEFAULT 1;
-ALTER TABLE system.retention_policy DROP CONSTRAINT IF EXISTS ck_retention_policy_revision;
-ALTER TABLE system.retention_policy ADD CONSTRAINT ck_retention_policy_revision CHECK (policy_revision>0);
 CREATE OR REPLACE VIEW analytics.metric_rollup AS SELECT * FROM analytics.metric_rollup_v2;
 CREATE OR REPLACE VIEW reporting.m10_rollup_compat AS SELECT * FROM analytics.metric_rollup_v2;
 

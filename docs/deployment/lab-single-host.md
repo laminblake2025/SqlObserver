@@ -156,13 +156,21 @@ $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
   sqlobserver_bootstrap
 if ($LASTEXITCODE -ne 0) { throw 'Bootstrap role creation failed.' }
 
+# This fixed NOLOGIN role owns only the forced-RLS report expiry function.
+# PostgreSQL requires an administrator that already has BYPASSRLS to create it.
+& "$pgBin\psql.exe" `
+  --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+  --no-psqlrc --set ON_ERROR_STOP=1 `
+  --command 'CREATE ROLE sqlobserver_report_expirer WITH NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS;'
+if ($LASTEXITCODE -ne 0) { throw 'Report expiry role creation failed.' }
+
 & "$pgBin\createdb.exe" `
   --host 127.0.0.1 --port 5432 --username sqlobserver_bootstrap `
   --owner sqlobserver_bootstrap sqlobserver
 if ($LASTEXITCODE -ne 0) { throw 'Repository database creation failed.' }
 ```
 
-Stop if either object already exists unexpectedly; inspect it rather than
+Stop if any object already exists unexpectedly; inspect it rather than
 changing or reusing it blindly. Then publish and run the exact lab host:
 
 ```powershell
@@ -171,10 +179,28 @@ dotnet publish .\src\SqlObserver.Cli\SqlObserver.Cli.csproj `
   --configuration Release --no-restore --output $migrationHost
 if ($LASTEXITCODE -ne 0) { throw 'Migration-host publish failed.' }
 
-& "$migrationHost\SqlObserver.Cli.exe" postgres migrate `
-  --lab-loopback --allow-loopback-cleartext `
-  --database sqlobserver --username sqlobserver_bootstrap
-if ($LASTEXITCODE -ne 0) { throw 'Repository migration failed.' }
+# PostgreSQL requires temporary ADMIN OPTION membership to transfer the
+# forced-RLS function to its fixed NOLOGIN owner. The migration revokes it on
+# success; this finally block also revokes it after any failed attempt.
+& "$pgBin\psql.exe" `
+  --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+  --no-psqlrc --set ON_ERROR_STOP=1 `
+  --command 'GRANT sqlobserver_report_expirer TO sqlobserver_bootstrap WITH ADMIN OPTION;'
+if ($LASTEXITCODE -ne 0) { throw 'Temporary report expiry membership grant failed.' }
+
+try {
+  & "$migrationHost\SqlObserver.Cli.exe" postgres migrate `
+    --lab-loopback --allow-loopback-cleartext `
+    --database sqlobserver --username sqlobserver_bootstrap
+  if ($LASTEXITCODE -ne 0) { throw 'Repository migration failed.' }
+}
+finally {
+  & "$pgBin\psql.exe" `
+    --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+    --no-psqlrc --set ON_ERROR_STOP=1 `
+    --command 'REVOKE sqlobserver_report_expirer FROM sqlobserver_bootstrap; DO $verify$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid JOIN pg_catalog.pg_roles member ON member.oid=m.member WHERE granted.rolname=''sqlobserver_report_expirer'' OR member.rolname=''sqlobserver_report_expirer'') THEN RAISE EXCEPTION ''sqlobserver_report_expirer membership cleanup failed''; END IF; END $verify$;'
+  if ($LASTEXITCODE -ne 0) { throw 'Report expiry membership cleanup failed.' }
+}
 ```
 
 The executable prompts once with hidden input. A successful result is a single

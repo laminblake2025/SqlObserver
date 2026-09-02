@@ -50,6 +50,16 @@ if ($collectorContractSeed -notmatch 'ON CONFLICT \(collector_id,collector_versi
 if ($collectorContractSeed -match 'ON CONFLICT \(collector_id,collector_version\) DO UPDATE') { $errors.Add('M10 collector contract seed must not invoke the append-only UPDATE trigger') }
 $retentionParentConstraint = [regex]::Match($sql, '(?is)ADD CONSTRAINT ck_retention_policy_parent CHECK.*?(?=INSERT INTO system\.retention_policy)').Value
 if ($retentionParentConstraint -notmatch "m9_agent_history','m9_agent_failures','m9_agent_occurrences") { $errors.Add('M10 retention parent allowlist must preserve the unpartitioned M9 Agent failures policy') }
+$policyRevisionColumn = $sql.IndexOf('ALTER TABLE system.retention_policy ADD COLUMN IF NOT EXISTS policy_revision', [StringComparison]::Ordinal)
+$policyRevisionApi = $sql.IndexOf('CREATE OR REPLACE FUNCTION system.update_m10_retention_policy', [StringComparison]::Ordinal)
+if ($policyRevisionColumn -lt 0 -or $policyRevisionApi -lt 0 -or $policyRevisionColumn -gt $policyRevisionApi) { $errors.Add('M10 policy_revision column must exist before retention API compilation') }
+$generationTriggerDrop = $sql.IndexOf('DROP TRIGGER IF EXISTS m10_incident_generation_append_only ON analytics.incident_generation', [StringComparison]::Ordinal)
+$generationBackfill = $sql.IndexOf('UPDATE analytics.incident_generation g', [StringComparison]::Ordinal)
+$generationTriggerRestore = if ($generationBackfill -ge 0) { $sql.IndexOf('CREATE TRIGGER m10_incident_generation_append_only', $generationBackfill, [StringComparison]::Ordinal) } else { -1 }
+if ($generationTriggerDrop -lt 0 -or $generationBackfill -lt 0 -or $generationTriggerRestore -lt 0 -or $generationTriggerDrop -gt $generationBackfill -or $generationBackfill -gt $generationTriggerRestore) { $errors.Add('M10 incident-generation repair must bracket its backfill with append-only trigger removal/restoration') }
+$incidentParentIdentity = $sql.IndexOf('ALTER TABLE analytics.incident_thread ADD CONSTRAINT uq_m10_incident_target_identity', [StringComparison]::Ordinal)
+$incidentGenerationForeignKey = $sql.IndexOf('ALTER TABLE analytics.incident_generation ADD CONSTRAINT fk_m10_incident_generation_target_revision', [StringComparison]::Ordinal)
+if ($incidentParentIdentity -lt 0 -or $incidentGenerationForeignKey -lt 0 -or $incidentParentIdentity -gt $incidentGenerationForeignKey) { $errors.Add('M10 incident parent identity must exist before the generation foreign key') }
 Require 'm10_host_metrics.*false,NULL' 'host retention disabled/null seed'
 Require 'm10_replication.*false,NULL' 'replication retention disabled/null seed'
 Require 'SecurityAdministrator' 'database-side global retention authorization'

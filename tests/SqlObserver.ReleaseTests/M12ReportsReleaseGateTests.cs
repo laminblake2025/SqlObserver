@@ -27,7 +27,7 @@ public sealed class M12ReportsReleaseGateTests
         Assert.Contains("\"implementationStatus\": \"pending\"", matrix, StringComparison.Ordinal);
         Assert.Contains("LiveReleaseReportsExportsRepresentativeVolumeIsBounded", contract, StringComparison.Ordinal);
         Assert.Contains("formulaNeutralization", contract, StringComparison.Ordinal);
-        Assert.Contains("584bd6d145c173eae60a8411b5df0a0b3905d78e5c68c5babe5ee5b83fe6b7ac", contract, StringComparison.Ordinal);
+        Assert.Contains("e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986", contract, StringComparison.Ordinal);
     }
 
     private static string FindRoot() { string path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "SqlObserver.slnx"))) path = Directory.GetParent(path)?.FullName ?? throw new DirectoryNotFoundException(); return path; }
