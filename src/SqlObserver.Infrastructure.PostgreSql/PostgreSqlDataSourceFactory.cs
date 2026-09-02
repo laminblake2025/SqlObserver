@@ -24,6 +24,7 @@ public static class PostgreSqlDataSourceFactory
             ApplicationName = applicationName,
             IncludeErrorDetail = false,
             PersistSecurityInfo = false,
+            Timezone = "UTC",
         };
 
         return NpgsqlDataSource.Create(settings.ConnectionString);
