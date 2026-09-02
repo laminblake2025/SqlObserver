@@ -843,7 +843,7 @@ ALTER TABLE system.retention_policy ADD CONSTRAINT ck_retention_policy_data_clas
   'm10_host_metrics','m10_replication','m10_rollups','m10_evidence'));
 ALTER TABLE system.retention_policy DROP CONSTRAINT IF EXISTS ck_retention_policy_parent;
 ALTER TABLE system.retention_policy ADD CONSTRAINT ck_retention_policy_parent CHECK
- (partition_granularity IN ('day','month','none') AND ((data_class='diagnostic_events' AND parent_schema='events' AND parent_table='diagnostic_event') OR (data_class IN ('raw_metric_samples','m5_activity','m5_blocking','m6_deadlocks','m7_query_performance','m8_alert_history','m8_alert_delivery','m9_backup_status','m9_agent_history','m9_agent_occurrences','m9_tempdb','m9_tempdb_files','m9_ag_replicas','m9_ag_databases','m10_host_metrics','m10_replication','m10_rollups','m10_evidence'))));
+ (partition_granularity IN ('day','month','none') AND ((data_class='diagnostic_events' AND parent_schema='events' AND parent_table='diagnostic_event') OR (data_class IN ('raw_metric_samples','m5_activity','m5_blocking','m6_deadlocks','m7_query_performance','m8_alert_history','m8_alert_delivery','m9_backup_status','m9_agent_history','m9_agent_failures','m9_agent_occurrences','m9_tempdb','m9_tempdb_files','m9_ag_replicas','m9_ag_databases','m10_host_metrics','m10_replication','m10_rollups','m10_evidence'))));
 INSERT INTO system.retention_policy(data_class,parent_schema,parent_table,partition_granularity,enabled,retain_for,minimum_partitions_to_keep)
 VALUES
  ('m5_activity','telemetry','activity_session_snapshot_v2','day',false,NULL,3),('m5_blocking','events','blocking_edge_v2','month',false,NULL,3),
