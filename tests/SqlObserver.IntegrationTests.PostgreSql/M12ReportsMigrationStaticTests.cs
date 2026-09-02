@@ -47,5 +47,22 @@ public sealed class M12ReportsMigrationStaticTests
         Assert.Contains("\"occurredAtUtc\", \"severity\", \"eventKind\", \"visibility\"", contracts, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void RuntimeStartupRepairIsAppendOnlyAndSemanticallyProbed()
+    {
+        string root = FindRoot();
+        string sql = File.ReadAllText(Path.Combine(root, "database/migrations/0022_runtime_startup_repairs.sql"));
+
+        Assert.Contains("GRANT SELECT, UPDATE ON TABLE control.worker_lease", sql, StringComparison.Ordinal);
+        Assert.Contains("CREATE OR REPLACE FUNCTION alerting.reconcile_due_evidence_internal", sql, StringComparison.Ordinal);
+        Assert.Equal(2, sql.Split("e.sample_id::text", StringSplitOptions.None).Length - 1);
+        Assert.Contains("ON CONFLICT ON CONSTRAINT evaluation_queue_pkey DO NOTHING", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("ORDER BY observed_at ASC, sample_id ASC, run_id ASC NULLS LAST, operation_id ASC", sql, StringComparison.Ordinal);
+        Assert.Contains("FROM alerting.reconcile_due_evidence_internal(1)", sql, StringComparison.Ordinal);
+        Assert.Contains("m22_runtime_probe_rollback", sql, StringComparison.Ordinal);
+        Assert.Contains("has_table_privilege", sql, StringComparison.Ordinal);
+        Assert.Contains("'UPDATE'", sql, StringComparison.Ordinal);
+    }
+
     private static string FindRoot() { string path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "SqlObserver.slnx"))) path = Directory.GetParent(path)?.FullName ?? throw new DirectoryNotFoundException(); return path; }
 }

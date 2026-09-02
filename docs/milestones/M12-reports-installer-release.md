@@ -99,8 +99,9 @@ pending until external evidence is accepted.
 
 - Reports and exports: locally implemented as the bounded, target-scoped
   catalog and safe HTML/CSV contract in [ADR-0015](../adr/ADR-0015-reports-and-exports.md),
-  including migration `0021`. External report-volume, browser/accessibility,
-  and release certification evidence remains pending.
+  including migration `0021` and its append-only PostgreSQL 18 runtime repair
+  in migration `0022`. External report-volume, browser/accessibility, and
+  release certification evidence remains pending.
 - Windows installer and PostgreSQL lifecycle: qualify WiX packaging, service
   identities, migration sequencing, upgrade/recovery, uninstall preservation,
   and separately authorized purge under
