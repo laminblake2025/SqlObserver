@@ -357,18 +357,35 @@ public sealed class PostgreSqlHealthProjectionPort : IHealthProjectionRepository
         int runOrdinal,
         int targetRevisionOrdinal)
     {
-        bool runIsNull = reader.IsDBNull(runOrdinal);
-        bool revisionIsNull = reader.IsDBNull(targetRevisionOrdinal);
-        if (runIsNull != revisionIsNull)
+        Guid? runId = reader.IsDBNull(runOrdinal) ? null : reader.GetGuid(runOrdinal);
+        long? targetRevision = reader.IsDBNull(targetRevisionOrdinal) ? null : reader.GetInt64(targetRevisionOrdinal);
+        (runId, targetRevision) = NormalizeSnapshotIdentity(runId, targetRevision);
+
+        return runId is null
+            ? (null, null)
+            : (
+                new CollectorRunId(runId.Value),
+                new SqlObserver.Domain.Targets.ObservationTargetRevision(targetRevision!.Value));
+    }
+
+    internal static (Guid? RunId, long? TargetRevision) NormalizeSnapshotIdentity(
+        Guid? runId,
+        long? targetRevision)
+    {
+        // A collector can have a current schedule revision before it has a usable data run,
+        // including output-invalid/degraded transitions. In that state the revision describes
+        // the schedule, not a pageable snapshot, so expose no snapshot identity.
+        if (runId is null)
+        {
+            return (null, null);
+        }
+
+        if (targetRevision is null)
         {
             throw new InvalidDataException("PostgreSQL returned an incomplete health snapshot identity.");
         }
 
-        return runIsNull
-            ? (null, null)
-            : (
-                new CollectorRunId(reader.GetGuid(runOrdinal)),
-                new SqlObserver.Domain.Targets.ObservationTargetRevision(reader.GetInt64(targetRevisionOrdinal)));
+        return (runId, targetRevision);
     }
 
     private static CollectorHealthProjection ReadCollectorHealth(
