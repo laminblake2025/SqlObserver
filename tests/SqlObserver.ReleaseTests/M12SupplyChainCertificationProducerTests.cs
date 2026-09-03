@@ -300,6 +300,16 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void SbomPublicationCleansOwnedWebSnapshotBeforeRawInputs()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        int live = source.IndexOf("function Invoke-M12Live", StringComparison.Ordinal);
+        int cleanup = source.IndexOf("Exit-M12CleanEnvironment $environmentState;$environmentState=$null;Remove-M12SafeDescendants $raw $Root", live, StringComparison.Ordinal);
+        int promotion = source.IndexOf("$verify=Join-Path $outputRoot", cleanup, StringComparison.Ordinal);
+        Assert.True(live >= 0 && cleanup > live && promotion > cleanup);
+    }
+
+    [Fact]
     public void ProducerUsesExactClosedGraphAndCanonicalPurls()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
