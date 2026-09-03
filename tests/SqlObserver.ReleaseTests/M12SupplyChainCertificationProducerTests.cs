@@ -108,6 +108,9 @@ public sealed class M12SupplyChainCertificationProducerTests
         Assert.Equal(4, supplyChain.Split(hoistedBuild, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("'install','--frozen-lockfile','--config.node-linker=hoisted'", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("'pnpm','--dir',$webRoot,'run','build'", supplyChain, StringComparison.Ordinal);
+        Assert.Contains("(Hash (Join-Path $raw 'sbom-one.json'))-cne(Hash (Join-Path $raw 'sbom-two.json'))", supplyChain, StringComparison.Ordinal);
+        Assert.Contains("(Hash $licenseOne)-cne(Hash $licenseTwo)", supplyChain, StringComparison.Ordinal);
+        Assert.DoesNotContain("-cne Hash ", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("nodejs/node_modules/corepack/dist/pnpm.js", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("throw$", supplyChain, StringComparison.Ordinal);
 
