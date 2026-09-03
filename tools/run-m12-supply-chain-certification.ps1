@@ -371,7 +371,7 @@ function Assert-M12VulnerabilityReleaseHost([string]$Environment) {
             'release-windows-server-2025' { 'Windows Server 2025' }
             default { Fail 'HOST' }
         }
-        if($null -eq $os -or $os.ProductType -notin @(2,3) -or -not [String]::StartsWith([string]$os.Caption,$expectedCaption,[StringComparison]::Ordinal)){Fail 'HOST'}
+        if($null -eq $os -or $os.ProductType -notin @(2,3) -or -not ([string]$os.Caption).StartsWith($expectedCaption,[StringComparison]::Ordinal)){Fail 'HOST'}
     } catch { Fail 'HOST' }
 }
 function Assert-M12VulnerabilityPostRun([string]$Root,[string]$Commit) {

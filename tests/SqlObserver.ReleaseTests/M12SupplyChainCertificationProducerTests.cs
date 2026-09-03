@@ -17,6 +17,18 @@ public sealed class M12SupplyChainCertificationProducerTests
         Assert.Contains("-lt [Version]'7.5'", source, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("run-m12-supply-chain-certification.ps1")]
+    [InlineData("run-m12-sqlserver-certification.ps1")]
+    [InlineData("run-m12-reports-certification.ps1")]
+    [InlineData("run-m12-mcp-certification.ps1")]
+    public void ReleaseHostCaptionChecksCallTheStringInstanceMethod(string scriptName)
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools", scriptName));
+        Assert.Contains(".StartsWith(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("[String]::StartsWith(", source, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ContractOnlyRejectsTamperedPinnedInput()
     {

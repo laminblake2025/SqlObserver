@@ -138,7 +138,7 @@ public sealed class M12ReportsCertificationProducerTests
         Assert.DoesNotContain("Diagnostics.Process.Start", source, StringComparison.Ordinal);
         Assert.DoesNotContain("--no-build", source, StringComparison.Ordinal);
         string validator = File.ReadAllText(Path.Combine(FindRoot(), "tools/validate.ps1"));
-        Assert.Contains("e5d773a8f2d54d9086bfc61938fd07cbb3f4ad1e1085e44f2a7729fc3c5d44bd", validator, StringComparison.Ordinal);
+        Assert.Contains("caac0602c4fdf7179ef39deb70e18e872b0dc6fcefa3a2440779b1fbeae0759f", validator, StringComparison.Ordinal);
         Assert.Contains("var builder = new StringBuilder(\"\\\"\")", source, StringComparison.Ordinal);
         Assert.DoesNotContain("new StringBuilder(\"\\\\\\\"\")", source, StringComparison.Ordinal);
     }
