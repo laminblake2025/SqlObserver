@@ -102,9 +102,12 @@ public sealed class M12SupplyChainCertificationProducerTests
         Assert.Contains("nodejs/node_modules/corepack/dist/corepack.js", supplyChain, StringComparison.Ordinal);
         Assert.Contains("@($pnpmScript,'pnpm','--version') $webRoot", supplyChain, StringComparison.Ordinal);
         Assert.Contains("'--config.node-linker=hoisted'", supplyChain, StringComparison.Ordinal);
-        const string hoistedInstall = "'pnpm','--config.node-linker=hoisted','--dir',$webRoot,'install'";
+        const string hoistedInstall = "'pnpm','--config.node-linker=hoisted','--dir',$webRoot,'install','--frozen-lockfile','--package-import-method','copy'";
         Assert.Equal(4, supplyChain.Split(hoistedInstall, StringSplitOptions.None).Length - 1);
+        const string hoistedBuild = "'pnpm','--config.node-linker=hoisted','--dir',$webRoot,'run','build'";
+        Assert.Equal(4, supplyChain.Split(hoistedBuild, StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("'install','--frozen-lockfile','--config.node-linker=hoisted'", supplyChain, StringComparison.Ordinal);
+        Assert.DoesNotContain("'pnpm','--dir',$webRoot,'run','build'", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("nodejs/node_modules/corepack/dist/pnpm.js", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("throw$", supplyChain, StringComparison.Ordinal);
 
