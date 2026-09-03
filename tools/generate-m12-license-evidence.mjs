@@ -10,7 +10,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { lstat, open, readFile, readdir, realpath } from "node:fs/promises";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -27,7 +27,6 @@ const FORBIDDEN_HOST = /(?:^|[\/:@])(?:[A-Za-z0-9-]+\.)+(?:com|net|org|local|int
 const SAFE_PACKAGE_IDENTITY = /^[A-Za-z0-9@_.+~\/-]+$/u;
 const SENSITIVE_PACKAGE_TERM = /(?:password|credential|private[\s._-]*key|authorization|connection[\s._-]*string|api[\s._-]*key|access[\s._-]*token|refresh[\s._-]*token|client[\s._-]*secret|secret|bearer|cookie)/iu;
 const BENIGN_SECURITY_PACKAGE = /^(?:microsoft\.extensions\.configuration\.usersecrets|microsoft\.identitymodel\.jsonwebtokens|microsoft\.identitymodel\.tokens|system\.identitymodel\.tokens\.jwt)(?:[\/.][a-z0-9+_.~-]+)*$/iu;
-const SAFE_LICENSE_FILE = /^(?:license|licence|copying|notice)(?:[._ -](?:txt|md|rst|html?))?$/iu;
 const execFileAsync = promisify(execFile);
 
 function fail(message) { throw new Error(`m12-licenses: ${message}`); }
@@ -137,12 +136,6 @@ async function checkedLicenseFile(root, file, expectedPath = null, expectedHash 
   // safe package-relative path are sufficient for later independent review.
   return { path: safePackageRelative(packageRelative, "license source package path"), sha256: hash, bytes };
 }
-async function findLicenseFile(root, packageDir) {
-  const entries = await readdir(packageDir, { withFileTypes: true });
-  const candidates = entries.filter((e) => e.isFile() && SAFE_LICENSE_FILE.test(e.name)).sort((a, b) => ordinal(a.name.toLowerCase(), b.name.toLowerCase()));
-  if (candidates.length !== 1) fail(candidates.length === 0 ? "license file is missing" : "license files are ambiguous");
-  return checkedLicenseFile(root, path.join(packageDir, candidates[0].name), candidates[0].name, null, packageDir);
-}
 function packageParts(purl) {
   const match = /^pkg:(nuget|npm)\/(.+)@([^@]+)$/u.exec(purl); if (!match) fail("component purl is not NuGet/npm");
   let name; let version;
@@ -186,8 +179,8 @@ async function parseNugetMetadata(file, stableBytes) {
    $rootAttrs=@($root.Attributes|Where-Object {$_.NamespaceURI -ne 'http://www.w3.org/2000/xmlns/' -or $_.Name -cne 'xmlns'});if($rootAttrs.Count -ne 0){exit 9};$rootElements=@($root.ChildNodes|Where-Object NodeType -eq ([Xml.XmlNodeType]::Element));if($rootElements.Count -ne 1 -or $rootElements[0].LocalName -cne 'metadata'){exit 9};$metadata=$rootElements[0];if($metadata.NamespaceURI -cne $ns){exit 9};$metadataAttrs=@($metadata.Attributes|Where-Object {$_.NamespaceURI -ne '' -or $_.Name -cne 'minClientVersion' -or [string]::IsNullOrWhiteSpace($_.Value)});if($metadataAttrs.Count -ne 0){exit 9};
   foreach($n in @($root.ChildNodes|Where-Object {$_.NodeType -in @([Xml.XmlNodeType]::Text,[Xml.XmlNodeType]::Whitespace,[Xml.XmlNodeType]::SignificantWhitespace)})){if(-not[string]::IsNullOrWhiteSpace($n.Value)){exit 9}};foreach($n in @($metadata.ChildNodes|Where-Object {$_.NodeType -in @([Xml.XmlNodeType]::Text,[Xml.XmlNodeType]::Whitespace,[Xml.XmlNodeType]::SignificantWhitespace)})){if(-not[string]::IsNullOrWhiteSpace($n.Value)){exit 9}};
   $id=@($metadata.ChildNodes|Where-Object {$_.NodeType -eq [Xml.XmlNodeType]::Element -and $_.LocalName -ceq 'id'});$v=@($metadata.ChildNodes|Where-Object {$_.NodeType -eq [Xml.XmlNodeType]::Element -and $_.LocalName -ceq 'version'});$l=@($metadata.ChildNodes|Where-Object {$_.NodeType -eq [Xml.XmlNodeType]::Element -and $_.LocalName -ceq 'license'});if($id.Count -ne 1 -or $v.Count -ne 1 -or $l.Count -ne 1){exit 9};
-   $leaf=$null;foreach($leaf in @($id[0],$v[0],$l[0])){if($leaf.NamespaceURI -cne $ns -or $leaf.ChildNodes.Count -ne 1 -or $leaf.ChildNodes[0].NodeType -ne [Xml.XmlNodeType]::Text -or [string]::IsNullOrWhiteSpace($leaf.ChildNodes[0].Value)){exit 9}};if($id[0].Attributes.Count -ne 0 -or $v[0].Attributes.Count -ne 0 -or $l[0].Attributes.Count -ne 1 -or $null -eq $l[0].Attributes['type'] -or $l[0].GetAttribute('type') -notin @('expression','file')){exit 9};$o=[ordered]@{id=[string]$id[0].ChildNodes[0].Value;version=[string]$v[0].ChildNodes[0].Value;license=[string]$l[0].ChildNodes[0].Value};[Console]::Out.Write(($o|ConvertTo-Json -Compress))`;
-  try { const result = await execFileAsync(pwsh, ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 10000, maxBuffer: 4096, env: { ...process.env, M12_NUSPEC_PATH: file, M12_NUSPEC_BYTES: Buffer.from(stableBytes).toString("base64") } }); const parsed = JSON.parse(result.stdout); if (typeof parsed.id !== "string" || typeof parsed.version !== "string" || typeof parsed.license !== "string") fail("NuGet metadata is malformed"); return parsed; } catch (error) { if (error?.message?.startsWith("m12-licenses:")) throw error; fail("NuGet metadata is malformed"); }
+   $leaf=$null;foreach($leaf in @($id[0],$v[0],$l[0])){if($leaf.NamespaceURI -cne $ns -or $leaf.ChildNodes.Count -ne 1 -or $leaf.ChildNodes[0].NodeType -ne [Xml.XmlNodeType]::Text -or [string]::IsNullOrWhiteSpace($leaf.ChildNodes[0].Value)){exit 9}};if($id[0].Attributes.Count -ne 0 -or $v[0].Attributes.Count -ne 0 -or $l[0].Attributes.Count -ne 1 -or $null -eq $l[0].Attributes['type'] -or $l[0].GetAttribute('type') -notin @('expression','file')){exit 9};$o=[ordered]@{id=[string]$id[0].ChildNodes[0].Value;version=[string]$v[0].ChildNodes[0].Value;license=[string]$l[0].ChildNodes[0].Value;licenseType=[string]$l[0].GetAttribute('type')};[Console]::Out.Write(($o|ConvertTo-Json -Compress))`;
+  try { const result = await execFileAsync(pwsh, ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 10000, maxBuffer: 4096, env: { ...process.env, M12_NUSPEC_PATH: file, M12_NUSPEC_BYTES: Buffer.from(stableBytes).toString("base64") } }); const parsed = JSON.parse(result.stdout); if (typeof parsed.id !== "string" || typeof parsed.version !== "string" || typeof parsed.license !== "string" || !["expression", "file"].includes(parsed.licenseType)) fail("NuGet metadata is malformed"); return parsed; } catch (error) { if (error?.message?.startsWith("m12-licenses:")) throw error; fail("NuGet metadata is malformed"); }
 }
 async function packageLicense(component, roots, map) {
   const purl = component["bom-ref"]; const parts = packageParts(purl); const supplied = map?.[purl] ?? map?.[purl.toLowerCase()];
@@ -212,10 +205,10 @@ async function packageLicense(component, roots, map) {
     const declarations = ["license", "licenses"].filter((key) => Object.prototype.hasOwnProperty.call(npmMetadata, key)).map((key) => licenseValue(npmMetadata[key], "npm license")); if (declarations.length !== 1 || declarations.some((id) => id !== declarations[0])) fail("npm license is conflicting or ambiguous"); const spdxId = declarations[0];
     return { spdxId, source: { path: "package.json", sha256: npmSnapshot.hash } };
   }
-  // NuGet packages may carry an SPDX expression in a nuspec.  We still bind
-  // evidence to a license file, avoiding an unauditable metadata-only claim.
-  const file = await findLicenseFile(rootReal, packageDir); const nuspecs = (await readdir(packageDir, { withFileTypes: true })).filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".nuspec")); if (nuspecs.length !== 1) fail(nuspecs.length === 0 ? "NuGet package metadata is missing" : "NuGet package metadata is ambiguous"); const nuspec = nuspecs[0]; safePackageRelative(nuspec.name, "NuGet metadata path"); const nuspecPath = path.join(packageDir, nuspec.name); const nuspecEvidence = await checkedLicenseFile(rootReal, nuspecPath, null, null, packageDir);
-  const metadata = await parseNugetMetadata(nuspecPath, nuspecEvidence.bytes); if (metadata.id.trim().toLowerCase() !== parts.name.toLowerCase() || metadata.version.trim() !== parts.version) fail("NuGet metadata identity does not match SBOM purl"); return { spdxId: licenseValue(metadata.license.trim(), "NuGet license"), source: file };
+  const nuspecs = (await readdir(packageDir, { withFileTypes: true })).filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".nuspec")); if (nuspecs.length !== 1) fail(nuspecs.length === 0 ? "NuGet package metadata is missing" : "NuGet package metadata is ambiguous"); const nuspec = nuspecs[0]; safePackageRelative(nuspec.name, "NuGet metadata path"); const nuspecPath = path.join(packageDir, nuspec.name); const nuspecEvidence = await checkedLicenseFile(rootReal, nuspecPath, null, null, packageDir);
+  const metadata = await parseNugetMetadata(nuspecPath, nuspecEvidence.bytes); if (metadata.id.trim().toLowerCase() !== parts.name.toLowerCase() || metadata.version.trim() !== parts.version) fail("NuGet metadata identity does not match SBOM purl");
+  if (metadata.licenseType === "expression") return { spdxId: licenseValue(metadata.license.trim(), "NuGet license"), source: { path: nuspec.name, sha256: nuspecEvidence.sha256 } };
+  fail("NuGet file license requires a reviewed license map entry");
 }
 function exactKeys(value, keys, label) { object(value, label); const actual = Object.keys(value).sort(ordinal); const expected = [...keys].sort(ordinal); if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) fail(`${label} shape is invalid`); return value; }
 function canonicalPurlParts(purl) {
