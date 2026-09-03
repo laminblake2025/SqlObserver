@@ -310,6 +310,18 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void LicensePublicationRetainsOwnedInputsThroughFinalValidationThenCleansThem()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        int live = source.IndexOf("function Invoke-M12Live", StringComparison.Ordinal);
+        int license = source.IndexOf("if($CaseId-ceq'm12-licenses'){", live, StringComparison.Ordinal);
+        int finalValidation = source.IndexOf("Assert-M12PublishedLicenseArtifacts $final", license, StringComparison.Ordinal);
+        int cleanup = source.IndexOf("Exit-M12CleanEnvironment $environmentState;$environmentState=$null;Remove-M12SafeDescendants $raw $Root", license, StringComparison.Ordinal);
+        int clearTarget = source.IndexOf("$cleanupTarget=$null;exit 0", cleanup, StringComparison.Ordinal);
+        Assert.True(live >= 0 && license > live && finalValidation > license && cleanup > finalValidation && clearTarget > cleanup);
+    }
+
+    [Fact]
     public void ProducerUsesExactClosedGraphAndCanonicalPurls()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));

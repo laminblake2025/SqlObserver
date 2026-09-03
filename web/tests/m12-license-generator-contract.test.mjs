@@ -50,6 +50,38 @@ test("license evidence is deterministic and bijective over NuGet/npm SBOM compon
   finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+test("license generator permits reviewed security package identities and rejects sensitive lookalikes", async () => {
+  const f = await fixture();
+  try {
+    const actual = sbom();
+    const packages = [
+      ["Microsoft.Extensions.Configuration.UserSecrets", "10.0.11"],
+      ["Microsoft.IdentityModel.JsonWebTokens", "8.16.0"],
+      ["Microsoft.IdentityModel.Tokens", "8.16.0"],
+      ["System.IdentityModel.Tokens.Jwt", "8.16.0"],
+    ];
+    for (const [name, version] of packages) {
+      const ref = `pkg:nuget/${name.toLowerCase()}@${version}`;
+      actual.components.push({ type: "library", "bom-ref": ref, name, version, purl: ref });
+      actual.dependencies.push({ ref, dependsOn: [] });
+      const packageDir = path.join(f.nuget, name.toLowerCase(), version); await mkdir(packageDir, { recursive: true });
+      await writeFile(path.join(packageDir, "LICENSE.txt"), "MIT\n");
+      await writeFile(path.join(packageDir, `${name}.nuspec`), `<package><metadata><id>${name}</id><version>${version}</version><license type="expression">MIT</license></metadata></package>\n`);
+    }
+    actual.components.sort((a, b) => a["bom-ref"] < b["bom-ref"] ? -1 : a["bom-ref"] > b["bom-ref"] ? 1 : 0);
+    actual.dependencies.sort((a, b) => a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0);
+    const generated = await buildLicenseEvidence(options(f, { sbom: actual }));
+    for (const [name, version] of packages) assert.ok(generated.evidence.components.some((component) => component.bomRef === `pkg:nuget/${name.toLowerCase()}@${version}`));
+
+    const unsafe = sbom(); const ref = "pkg:nuget/contoso.password@1.0.0";
+    unsafe.components.push({ type: "library", "bom-ref": ref, name: "Contoso.Password", version: "1.0.0", purl: ref });
+    unsafe.dependencies.push({ ref, dependsOn: [] });
+    unsafe.components.sort((a, b) => a["bom-ref"] < b["bom-ref"] ? -1 : a["bom-ref"] > b["bom-ref"] ? 1 : 0);
+    unsafe.dependencies.sort((a, b) => a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0);
+    await assert.rejects(() => buildLicenseEvidence(options(f, { sbom: unsafe })), /SBOM component name is unsafe/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test("license generator accepts unchanged real peer-suffixed react-dom package metadata", async () => {
   const f = await fixture();
   try {
