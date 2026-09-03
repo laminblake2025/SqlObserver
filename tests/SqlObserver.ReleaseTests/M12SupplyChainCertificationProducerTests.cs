@@ -358,6 +358,14 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void LicenseProvenanceKeyOrderComparisonJoinsExpectedKeysBeforeComparing()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        Assert.DoesNotContain("-cne$expectedProv-join'|'", source, StringComparison.Ordinal);
+        Assert.Contains("-cne($expectedProv-join'|')", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProducerUsesExactClosedGraphAndCanonicalPurls()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
