@@ -226,7 +226,7 @@ function Assert-ReleaseHost([string] $Root) {
             'release-windows-server-2025' { 'Windows Server 2025' }
             default { Fail 'HOST' }
         }
-        if ($os.ProductType -notin @(2, 3) -or -not [String]::StartsWith([string]$os.Caption, $expectedCaption, [StringComparison]::Ordinal)) { Fail 'HOST' }
+        if ($os.ProductType -notin @(2, 3) -or -not ([string]$os.Caption).StartsWith($expectedCaption, [StringComparison]::Ordinal)) { Fail 'HOST' }
     } catch { Fail 'HOST' }
     $outputRoot = [IO.Path]::GetFullPath((Join-Path $Root 'TestResults/m12'))
     $rootPrefix = $Root.TrimEnd('\\', '/') + [IO.Path]::DirectorySeparatorChar
