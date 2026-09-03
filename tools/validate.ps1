@@ -1890,7 +1890,7 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = '095745a77cea4f26628852bb4f1c4700d9ee992a2259463c232a514b5acdaca9'
+    $m12SbomProducerSha256 = '5b1b2dcb59cd23cd2bd55aa79874caa32a1badbc9514e12e812a330d9c7b305a'
     $m12SbomAssetManifestSha256 = '8e2b192b62f9c0f3194a84beaf2d0728572441eadd73bd8b70d733e16b791e85'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
