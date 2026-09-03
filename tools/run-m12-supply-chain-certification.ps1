@@ -13,7 +13,7 @@ $MaximumOutput=65536; $MaximumError=8192; $MaximumMilliseconds=300000; $MaximumJ
 $ApprovedMatrixSha256='8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac'
 $ApprovedAssetManifestSha256='8e2b192b62f9c0f3194a84beaf2d0728572441eadd73bd8b70d733e16b791e85'
 $ApprovedLicenseAssetManifestSha256='c1c860c378484cb0fa6a3a799d7823011acb3a2f0d32ce393f40eaa184e5aed1'
-$ApprovedVulnerabilityAssetManifestSha256='12b537a0411af1a9d5805cae6eddd872b2797011a5eede4ab16ac527d9686854'
+$ApprovedVulnerabilityAssetManifestSha256='fb13c5b7873f7cebf225a26bf7e8d2f9cb2af5a32a73f4516dc9e58b971bab73'
 $ApprovedProvenanceAssetManifestSha256='15520599bce1a8d4e0893eaa35a67454c069597c4e0b246d9cfcf76d915d075b'
 $ContractName='m12-supply-chain-contract.v1.json'; $SchemaName='m12-supply-chain-contract.v1.schema.json'; $InputsName='m12-sbom-inputs.v1.json'; $InputsSchemaName='m12-sbom-inputs.v1.schema.json'; $SbomSchemaName='m12-sbom.v1.schema.json'
 $LicenseContractName='m12-license-contract.v1.json'; $LicenseSchemaName='m12-license-contract.v1.schema.json'; $LicenseEvidenceSchemaName='m12-license-evidence.v1.schema.json'; $LicensePinName='m12-license-contract.v1.assets.sha256'
