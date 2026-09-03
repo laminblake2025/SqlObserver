@@ -1890,7 +1890,7 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = '72aadbf416ed5f2b329dc1863ddf207b18f5f5b2188b6a433a36bf0fdd602ba6'
+    $m12SbomProducerSha256 = '329ab48330137b9e47c141e955807d062c2699ee95cfd14c8cea4e554d67e098'
     $m12SbomAssetManifestSha256 = '8e2b192b62f9c0f3194a84beaf2d0728572441eadd73bd8b70d733e16b791e85'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
@@ -1967,11 +1967,11 @@ function Assert-RepositoryShape {
         'release/certification/m12-vulnerability-scan-contract.v1.json' = 'a706e3dd8eb50f3db41746644c85d5fc6866d977c88a44a4be502dcc38120b53'
         'release/certification/m12-vulnerability-scan-contract.v1.schema.json' = '3aef7a3362dfdc7a503b09bc7cb5995f7eec647c0fe4a3498aa5bca697a3b2e1'
         'release/certification/m12-vulnerability-scan-evidence.v1.schema.json' = '52feab8195f4b0deb0beb4db1d6200289a0816868c5ad75cfc5742ae4cb5fe8f'
-        'tools/generate-m12-vulnerability-scan-evidence.mjs' = 'e693b813a7225dcb5f65fd1ebb0214254c4fdf0699d4ceb9e44aeef14c79cb85'
-        'web/tests/m12-vulnerability-scan-generator-contract.test.mjs' = '55ca1a9797c7d447cf10cf90e9853c5a7d6296fba444f8858f3cce8c9391e16c'
+        'tools/generate-m12-vulnerability-scan-evidence.mjs' = '0f36cc04e0e811a8a62582cd338eed0ce0c71c5377bbfc022251f87a42ebeffc'
+        'web/tests/m12-vulnerability-scan-generator-contract.test.mjs' = '20d0d74713d5aa3a26d30b3831281684518a73e5d06d054347cf1f3e2cb682ce'
         'tests/SqlObserver.ReleaseTests/M12VulnerabilityCertificationTests.cs' = '56545c0435608cb33bb59acaf4c2e5cb50668a999f0c1fbfc7b71a7193680fd3'
     }
-    $m12VulnerabilityPinPath = Join-Path $repositoryRoot 'release/certification/m12-vulnerability-scan-contract.v1.assets.sha256'; if ((Get-FileHash -LiteralPath $m12VulnerabilityPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'fb13c5b7873f7cebf225a26bf7e8d2f9cb2af5a32a73f4516dc9e58b971bab73') { throw 'M12 vulnerability asset manifest checksum mismatch.' }; foreach ($asset in $m12VulnerabilityAssets.GetEnumerator()) { $assetPath = Join-Path $repositoryRoot $asset.Key; if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.Value) { throw "M12 vulnerability certification asset pin mismatch: $($asset.Key)" } }
+    $m12VulnerabilityPinPath = Join-Path $repositoryRoot 'release/certification/m12-vulnerability-scan-contract.v1.assets.sha256'; if ((Get-FileHash -LiteralPath $m12VulnerabilityPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '4a059f15a450cd9d2bb3d1476759af51de960d5a02fb2b190739a7f1c69cab95') { throw 'M12 vulnerability asset manifest checksum mismatch.' }; foreach ($asset in $m12VulnerabilityAssets.GetEnumerator()) { $assetPath = Join-Path $repositoryRoot $asset.Key; if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.Value) { throw "M12 vulnerability certification asset pin mismatch: $($asset.Key)" } }
     $m12VulnerabilityContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-vulnerability-scan-contract.v1.json') -Raw; foreach ($marker in @('m12-vulnerability-scan','10.0.203','22.22.0','11.19.0','reject-all','registryErrors','unfixable')) { if (-not $m12VulnerabilityContractText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 vulnerability contract is missing exact marker: $marker" } }
     $m12VulnerabilityTestText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.ReleaseTests/M12VulnerabilityCertificationTests.cs') -Raw; foreach ($marker in @('RequiresM12SupplyChainRelease','LiveReleaseVulnerabilityScanIsCleanDeterministicAndSbomBound','FileMode.CreateNew','SQLOBSERVER_M12_VULNERABILITY_EVIDENCE_PATH','SQLOBSERVER_M12_VULNERABILITY_SECOND_PATH')) { if (-not $m12VulnerabilityTestText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 vulnerability test is missing invariant: $marker" } }
     $m12ProvenanceAssets = @{
