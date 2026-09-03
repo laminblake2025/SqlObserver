@@ -32,7 +32,7 @@ async function fixture() {
   const catalog = { $schema: "web-asset-manifest.v1.schema.json", schemaVersion: 1, sha256: "", entrypoint: { document: "index.html", graph: [] }, files: [{ path: "assets/app-AbCd1234.js", role: "chunk", bytes: 7, sha256: "a".repeat(64) }] };
   catalog.sha256 = catalogDigest(catalog);
   const pnpm = path.join(temp, "pnpm.json"); const catalogPath = path.join(temp, "catalog.json");
-  await writeFile(pnpm, JSON.stringify({ dependencies: { react: { version: "19.2.8" } } })); await writeFile(catalogPath, JSON.stringify(catalog));
+  await writeFile(pnpm, JSON.stringify({ packages: { "sql-observer-web": { version: "0.1.0", dependencies: { react: "19.2.8" } }, react: { version: "19.2.8", dependencies: {} } } })); await writeFile(catalogPath, JSON.stringify(catalog));
   return { temp, depsPaths, pnpm, catalogPath };
 }
 
@@ -43,9 +43,10 @@ test("generator emits an identical complete component and edge closure twice", a
     const first = await buildSbom(options); const second = await buildSbom(options);
     assert.deepEqual(first.bytes, second.bytes);
     const refs = first.bom.components.map((component) => component["bom-ref"]);
-    assert.ok(refs.includes("pkg:generic/sqlobserver.server@1.0.0")); assert.ok(refs.includes("pkg:nuget/serilog@3.0.0")); assert.ok(refs.includes("pkg:nuget/microsoft.extensions.configuration.usersecrets@10.0.11")); assert.ok(refs.includes("pkg:npm/react@19.2.8")); assert.ok(refs.some((ref) => ref.startsWith("pkg:generic/web/")));
+    assert.ok(refs.includes("pkg:generic/sqlobserver.server@1.0.0")); assert.ok(refs.includes("pkg:nuget/serilog@3.0.0")); assert.ok(refs.includes("pkg:nuget/microsoft.extensions.configuration.usersecrets@10.0.11")); assert.ok(refs.includes("pkg:npm/react@19.2.8")); assert.ok(!refs.includes("pkg:npm/sql-observer-web@0.1.0")); assert.ok(refs.some((ref) => ref.startsWith("pkg:generic/web/")));
     assert.ok(!refs.includes(first.bom.metadata.component["bom-ref"])); assert.equal(new Set([first.bom.metadata.component["bom-ref"], ...refs]).size, refs.length + 1);
     const server = first.bom.dependencies.find((item) => item.ref === "pkg:generic/sqlobserver.server@1.0.0"); assert.deepEqual(server.dependsOn, ["pkg:nuget/microsoft.extensions.configuration.usersecrets@10.0.11", "pkg:nuget/serilog@3.0.0"]);
+    const web = first.bom.dependencies.find((item) => item.ref === `pkg:generic/sqlobserver.web@${options.commitSha}`); assert.ok(web.dependsOn.includes("pkg:npm/react@19.2.8")); assert.ok(web.dependsOn.some((ref) => ref.startsWith("pkg:generic/web/")));
     assert.equal(first.bom.metadata.properties.find((item) => item.name === "environmentId").value, "release-windows-server-2022"); assert.equal(first.bom.metadata.properties.find((item) => item.name === "identity.kind").value, "git-commit"); assert.equal(first.bom.metadata.component.type, "application"); assert.equal(first.bom.metadata.timestamp, options.timestamp);
     assert.ok(first.bom.components.some((item) => item.name === "Microsoft.Extensions.Configuration.UserSecrets")); assert.ok(first.bom.metadata.properties.every((item) => !/[/\\]|(?:password|token|secret)/iu.test(item.value)));
   } finally { await rm(f.temp, { recursive: true, force: true }); }
@@ -70,10 +71,12 @@ test("generator rejects duplicate JSON properties, unsafe pnpm fields, and depen
     await assert.rejects(() => buildSbom(base), /duplicate property/);
     await writeFile(f.pnpm, JSON.stringify({ dependencies: { react: { version: "1.0.0", path: "C:/unsafe" } } }));
     await assert.rejects(() => buildSbom(base), /unsafe/);
-    await writeFile(f.pnpm, JSON.stringify({ packages: { a: { version: "1.0.0", dependencies: { b: "1.0.0" } }, b: { version: "1.0.0", dependencies: { a: "1.0.0" } } } }));
+    await writeFile(f.pnpm, JSON.stringify({ packages: { "sql-observer-web": { version: "0.1.0", dependencies: { a: "1.0.0" } }, a: { version: "1.0.0", dependencies: { b: "1.0.0" } }, b: { version: "1.0.0", dependencies: { a: "1.0.0" } } } }));
     await assert.rejects(() => buildSbom(base), /cycle/);
-    await writeFile(f.pnpm, JSON.stringify({ packages: { a: { version: "1.0.0", dependencies: { a: "1.0.0" } } } }));
+    await writeFile(f.pnpm, JSON.stringify({ packages: { "sql-observer-web": { version: "0.1.0", dependencies: { a: "1.0.0" } }, a: { version: "1.0.0", dependencies: { a: "1.0.0" } } } }));
     await assert.rejects(() => buildSbom(base), /self-edge|cycle/);
+    await writeFile(f.pnpm, JSON.stringify({ packages: { react: { version: "19.2.8", dependencies: {} } } }));
+    await assert.rejects(() => buildSbom(base), /workspace package/);
   } finally { await rm(f.temp, { recursive: true, force: true }); }
 });
 
