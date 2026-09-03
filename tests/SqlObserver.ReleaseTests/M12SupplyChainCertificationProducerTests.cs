@@ -99,6 +99,9 @@ public sealed class M12SupplyChainCertificationProducerTests
         string supplyChain = File.ReadAllText(Path.Combine(root, "tools", "run-m12-supply-chain-certification.ps1"));
         Assert.Contains("'COREPACK_ENABLE_DOWNLOAD_PROMPT'", supplyChain, StringComparison.Ordinal);
         Assert.Contains("COREPACK_ENABLE_DOWNLOAD_PROMPT='0'", supplyChain, StringComparison.Ordinal);
+        Assert.Contains("nodejs/node_modules/corepack/dist/corepack.js", supplyChain, StringComparison.Ordinal);
+        Assert.Contains("@($pnpmScript,'pnpm','--version') $webRoot", supplyChain, StringComparison.Ordinal);
+        Assert.DoesNotContain("nodejs/node_modules/corepack/dist/pnpm.js", supplyChain, StringComparison.Ordinal);
 
         foreach (string scriptName in new[]
         {
