@@ -95,6 +95,26 @@ public sealed class M12SupplyChainCertificationProducerTests
             Assert.DoesNotContain("'include.path='", gitHelper, StringComparison.Ordinal);
             Assert.DoesNotContain("SetEnvironmentVariable($name,$null)", gitHelper, StringComparison.Ordinal);
         }
+
+        foreach (string scriptName in new[]
+        {
+            "run-m12-supply-chain-certification.ps1",
+            "run-m12-sqlserver-certification.ps1",
+            "run-m12-reports-certification.ps1",
+            "run-m12-observability-certification.ps1"
+        })
+        {
+            string source = File.ReadAllText(Path.Combine(root, "tools", scriptName));
+            int boundedStart = source.IndexOf("function Invoke-M12BoundedProcess", StringComparison.Ordinal);
+            int boundedEnd = source.IndexOf("function ", boundedStart + 10, StringComparison.Ordinal);
+            if (boundedEnd < 0) boundedEnd = source.Length;
+            string bounded = source[boundedStart..boundedEnd];
+            int capture = bounded.IndexOf("$exitCode=if(", StringComparison.Ordinal);
+            int terminate = bounded.IndexOf(".Terminate()", capture, StringComparison.Ordinal);
+            int wait = bounded.IndexOf(".WaitForZero(2000)", terminate, StringComparison.Ordinal);
+            Assert.True(capture >= 0 && terminate > capture && wait > terminate);
+            Assert.Contains("ExitCode=$exitCode", bounded, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
