@@ -1890,8 +1890,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = '5d5f3e6e379b0e26d18f4c9a77a4d462c716bed08fb13c2f53ea40e0a4533444'
-    $m12SbomAssetManifestSha256 = '452290a5b083e0adfdf145230ba86a77ad4164009d18936b6f34bc2e291350f5'
+    $m12SbomProducerSha256 = '2bb482942b073b9ea3d93001bd6ac7e71596520c9dd839aebc71ddb2a4993d3a'
+    $m12SbomAssetManifestSha256 = '860b644674e99e1f00eacf5c1f9c563578f56dc6d33323d2df8e40a95c5b0972'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1907,7 +1907,7 @@ function Assert-RepositoryShape {
         'BACKLOG.md' = '0b1eba608b357aeb9efd016e7c688c8d754ed3851ecf070d3967d778f48c667a'
         'docs/milestones/M12-reports-installer-release.md' = '8de3b25680aacfef350918d1244c1c4bb3c8c98ab841a7baa71d70f2ab0af383'
         'release/certification/README.md' = '2919035e5332331ede6ca9a33a2f3cdc95792154eda39b1eb25ebe83ed435799'
-        'tests/SqlObserver.ReleaseTests/M12SbomCertificationTests.cs' = '0b13d423fe513b05491bf16a36d147789ba96f90fe5b89f3e9e96d3af9093399'
+        'tests/SqlObserver.ReleaseTests/M12SbomCertificationTests.cs' = '99746d8fd4025ede698ea84c3a259218db82ccad889c81dd474a6474cc6cf734'
         'tools/generate-m12-sbom.mjs' = '1b7170d73531a983f2f1cf8b0e7a29c83bf9aaa54c41f35f14dc691bb9120f04'
         'web/tests/m12-sbom-generator-contract.test.mjs' = '58d702aad3ca5d4989a160e0133b931ef3967b3474197941cb8596700d91fb92'
         'web/contracts/web-asset-manifest.v1.schema.json' = '1f1e5b785dde79c492773f7298074fbf4668a1cebe75764cecdf97983fed682a'
