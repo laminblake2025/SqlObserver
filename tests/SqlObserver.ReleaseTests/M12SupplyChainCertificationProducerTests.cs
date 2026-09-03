@@ -345,19 +345,28 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
-    public void LicensePrepublicationAllowsOnlyTheOwnedRawWorkspace()
+    public void LicenseValidationAllowsOnlyTheOwnedRawWorkspaceUntilFinalCleanup()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
         int live = source.IndexOf("function Invoke-M12Live", StringComparison.Ordinal);
         int license = source.IndexOf("if($CaseId-ceq'm12-licenses'){", live, StringComparison.Ordinal);
         int prepublication = source.IndexOf("Assert-M12PublishedLicenseArtifacts $build", license, StringComparison.Ordinal);
-        int verification = source.IndexOf("Assert-M12PublishedLicenseArtifacts $verify", prepublication, StringComparison.Ordinal);
-        int final = source.IndexOf("Assert-M12PublishedLicenseArtifacts $final", verification, StringComparison.Ordinal);
-        Assert.True(live >= 0 && license > live && prepublication > license && verification > prepublication && final > verification);
+        int verifyOutput = source.IndexOf("Assert-M12OutputTree $verify $outputRoot -AllowOwnedRaw", prepublication, StringComparison.Ordinal);
+        int verification = source.IndexOf("Assert-M12PublishedLicenseArtifacts $verify", verifyOutput, StringComparison.Ordinal);
+        int finalOutput = source.IndexOf("Assert-M12OutputTree $final $outputRoot -AllowOwnedRaw", verification, StringComparison.Ordinal);
+        int final = source.IndexOf("Assert-M12PublishedLicenseArtifacts $final", finalOutput, StringComparison.Ordinal);
+        Assert.True(live >= 0 && license > live && prepublication > license && verifyOutput > prepublication && verification > verifyOutput && finalOutput > verification && final > finalOutput);
+        int cleanup = source.IndexOf("Exit-M12CleanEnvironment $environmentState;$environmentState=$null;Remove-M12SafeDescendants $raw $Root", final, StringComparison.Ordinal);
+        int exactFinal = source.IndexOf("Assert-M12OutputTree $final $outputRoot;", cleanup, StringComparison.Ordinal);
+        Assert.True(cleanup > final && exactFinal > cleanup);
         Assert.Contains("-AllowOwnedRaw", source[prepublication..verification], StringComparison.Ordinal);
-        Assert.DoesNotContain("-AllowOwnedRaw", source[verification..final], StringComparison.Ordinal);
+        Assert.Contains("-AllowOwnedRaw", source[verifyOutput..finalOutput], StringComparison.Ordinal);
+        Assert.Contains("-AllowOwnedRaw", source[finalOutput..cleanup], StringComparison.Ordinal);
+        Assert.DoesNotContain("-AllowOwnedRaw", source[cleanup..exactFinal], StringComparison.Ordinal);
         Assert.Contains("$expectedNames=if($AllowOwnedRaw){@($names)+@('raw')}else{$names}", source, StringComparison.Ordinal);
         Assert.Contains("$rawEntry.Count-ne1-or-not$rawEntry[0].PSIsContainer", source, StringComparison.Ordinal);
+        Assert.Contains("$expectedCount=if($AllowOwnedRaw){4}else{3}", source, StringComparison.Ordinal);
+        Assert.Contains("if($AllowOwnedRaw-and-not$names.Contains('raw')){Fail 'OUTPUT'}", source, StringComparison.Ordinal);
     }
 
     [Fact]
