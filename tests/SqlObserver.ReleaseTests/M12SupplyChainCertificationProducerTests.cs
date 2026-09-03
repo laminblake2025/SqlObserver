@@ -101,7 +101,9 @@ public sealed class M12SupplyChainCertificationProducerTests
         Assert.Contains("COREPACK_ENABLE_DOWNLOAD_PROMPT='0'", supplyChain, StringComparison.Ordinal);
         Assert.Contains("nodejs/node_modules/corepack/dist/corepack.js", supplyChain, StringComparison.Ordinal);
         Assert.Contains("@($pnpmScript,'pnpm','--version') $webRoot", supplyChain, StringComparison.Ordinal);
+        Assert.Contains("'--config.node-linker=hoisted'", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("nodejs/node_modules/corepack/dist/pnpm.js", supplyChain, StringComparison.Ordinal);
+        Assert.DoesNotContain("throw$", supplyChain, StringComparison.Ordinal);
 
         foreach (string scriptName in new[]
         {
