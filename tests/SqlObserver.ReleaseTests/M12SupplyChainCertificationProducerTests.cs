@@ -127,6 +127,33 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void PnpmListConversionDeserializesTheValidatedBytesAsOneJsonDocument()
+    {
+        string root = FindRoot();
+        string output = Path.Combine(root, "TestResults", "m12", ".pnpm-converter-test-" + Guid.NewGuid().ToString("N") + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        const string json = "[{\"name\":\"sql-observer-web\",\"version\":\"0.1.0\",\"dependencies\":{\"react\":{\"version\":\"19.2.8\"},\"react-dom\":{\"version\":\"19.2.8\",\"dependencies\":{\"react\":{\"version\":\"19.2.8\"},\"scheduler\":{\"version\":\"0.27.0\"}}}}}]";
+        string command = "$root=$env:M12_CONVERTER_ROOT;$output=$env:M12_CONVERTER_OUTPUT;. (Join-Path $root 'tools/run-m12-supply-chain-certification.ps1') -RepositoryRoot $root -Profile Release -CaseId m12-sbom -FunctionProbe;Convert-M12PnpmList $env:M12_CONVERTER_JSON $root $output";
+        try
+        {
+            ProcessStartInfo start = new("pwsh") { WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            start.Environment["M12_CONVERTER_ROOT"] = root;
+            start.Environment["M12_CONVERTER_OUTPUT"] = output;
+            start.Environment["M12_CONVERTER_JSON"] = json;
+            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", command }) start.ArgumentList.Add(argument);
+            using Process process = Process.Start(start)!;
+            string standardError = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            Assert.True(process.ExitCode == 0, standardError);
+            using System.Text.Json.JsonDocument converted = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(output));
+            System.Text.Json.JsonElement packages = converted.RootElement.GetProperty("packages");
+            Assert.Equal("react|react-dom|scheduler|sql-observer-web", string.Join('|', packages.EnumerateObject().Select(property => property.Name)));
+            Assert.Equal("19.2.8", packages.GetProperty("react-dom").GetProperty("dependencies").GetProperty("react").GetString());
+        }
+        finally { File.Delete(output); }
+    }
+
+    [Fact]
     public void ContractOnlyRejectsTamperedPinnedInput()
     {
         string root = FindRoot(); string path = Path.Combine(root, "release/certification/m12-sbom-inputs.v1.json"); string original = File.ReadAllText(path);
