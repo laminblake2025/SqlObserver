@@ -173,6 +173,33 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void NativeJsonConversionCanonicalizesWindowsCrlfBeforeClosedValidation()
+    {
+        string root = FindRoot();
+        string output = Path.Combine(root, "TestResults", "m12", ".native-json-test-" + Guid.NewGuid().ToString("N") + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        string command = "$root=$env:M12_NATIVE_JSON_ROOT;$output=$env:M12_NATIVE_JSON_OUTPUT;. (Join-Path $root 'tools/run-m12-supply-chain-certification.ps1') -RepositoryRoot $root -Profile Release -CaseId m12-vulnerability-scan -FunctionProbe;$process=[pscustomobject]@{ExitCode=0;TimedOut=$false;TooLarge=$false;Error='';Output=$env:M12_NATIVE_JSON_INPUT};Write-M12NativeJson $process $output $root";
+        try
+        {
+            ProcessStartInfo start = new("pwsh") { WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            start.Environment["M12_NATIVE_JSON_ROOT"] = root;
+            start.Environment["M12_NATIVE_JSON_OUTPUT"] = output;
+            start.Environment["M12_NATIVE_JSON_INPUT"] = "{\r\n  \"projects\": []\r\n}\r\n";
+            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", command }) start.ArgumentList.Add(argument);
+            using Process process = Process.Start(start)!;
+            string standardError = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            Assert.True(process.ExitCode == 0, standardError);
+            byte[] bytes = File.ReadAllBytes(output);
+            Assert.Equal((byte)'\n', bytes[^1]);
+            Assert.DoesNotContain((byte)'\r', bytes);
+            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(bytes);
+            Assert.Equal(System.Text.Json.JsonValueKind.Array, document.RootElement.GetProperty("projects").ValueKind);
+        }
+        finally { File.Delete(output); }
+    }
+
+    [Fact]
     public void ContractOnlyRejectsTamperedPinnedInput()
     {
         string root = FindRoot(); string path = Path.Combine(root, "release/certification/m12-sbom-inputs.v1.json"); string original = File.ReadAllText(path);
