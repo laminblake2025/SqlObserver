@@ -23,10 +23,15 @@ const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const ENVIRONMENTS = new Set(["release-windows-server-2022", "release-windows-server-2025"]);
 const URL = /^(?:https?|ftp):\/\//iu;
 const HOST_OR_SECRET = /(?:password|secret|token|credential|private.?key|localhost|127\.0\.0\.1|[A-Za-z]:[\\/]|\\\\|\/Users\/|\/home\/)/iu;
+const FORBIDDEN_HOST = /(?:^|[\/:@])(?:[A-Za-z0-9-]+\.)+(?:com|net|org|local|internal|test)(?:$|[\/?:])/iu;
+const SAFE_PACKAGE_IDENTITY = /^[A-Za-z0-9@_.+~\/-]+$/u;
+const SENSITIVE_PACKAGE_TERM = /(?:password|credential|private[\s._-]*key|authorization|connection[\s._-]*string|api[\s._-]*key|access[\s._-]*token|refresh[\s._-]*token|client[\s._-]*secret|secret|bearer|cookie)/iu;
+const BENIGN_SECURITY_PACKAGE = /^(?:microsoft\.extensions\.configuration\.usersecrets|microsoft\.identitymodel\.jsonwebtokens|microsoft\.identitymodel\.tokens|system\.identitymodel\.tokens\.jwt)(?:[\/.][a-z0-9+_.~-]+)*$/iu;
 const SAFE_LICENSE_FILE = /^(?:license|licence|copying|notice)(?:[._ -](?:txt|md|rst|html?))?$/iu;
 const execFileAsync = promisify(execFile);
 
 function fail(message) { throw new Error(`m12-licenses: ${message}`); }
+function isSafePackageIdentity(value) { return SAFE_PACKAGE_IDENTITY.test(value) && (value.includes(".") || value.includes("/") || value.startsWith("@")) && !value.split("/").some((part) => !part || part === "." || part === ".." || part.includes(":")) && (!SENSITIVE_PACKAGE_TERM.test(value) || BENIGN_SECURITY_PACKAGE.test(value)); }
 function ordinal(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
 function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
 function stable(value) {
@@ -36,7 +41,9 @@ function stable(value) {
 }
 export function jsonBytes(value) { return Buffer.from(`${stable(value)}\n`, "utf8"); }
 function string(value, label) { if (typeof value !== "string" || value.length < 1 || value.length > LIMITS.stringLength || /[\u0000-\u001f\u007f]/u.test(value) || HOST_OR_SECRET.test(value)) fail(`${label} is unsafe`); return value; }
+function packageIdentityString(value, label) { if (typeof value !== "string" || value.length < 1 || value.length > LIMITS.stringLength || /[\u0000-\u001f\u007f]/u.test(value) || (HOST_OR_SECRET.test(value) && (!isSafePackageIdentity(value) || FORBIDDEN_HOST.test(value)))) fail(`${label} is unsafe`); return value; }
 function safeRelative(value, label) { string(value, label); if (value.includes("\\") || value.startsWith("/") || value.startsWith("~") || value.includes(":") || value.split("/").some((part) => !part || part === "." || part === "..") || path.posix.normalize(value) !== value) fail(`${label} is unsafe`); return value; }
+function safePackageRelative(value, label) { packageIdentityString(value, label); if (value.includes("\\") || value.startsWith("/") || value.startsWith("~") || value.includes(":") || value.split("/").some((part) => !part || part === "." || part === "..") || path.posix.normalize(value) !== value) fail(`${label} is unsafe`); return value; }
 function object(value, label) { if (!value || typeof value !== "object" || Array.isArray(value)) fail(`${label} must be an object`); return value; }
 
 // Parsing is intentionally independent of JSON.parse so duplicate properties
@@ -119,7 +126,7 @@ export function licenseValue(value, label = "license") {
   if (typeof candidate !== "string" || !ALLOWED_SPDX.includes(candidate) || URL.test(candidate) || /\s(?:OR|AND)\s/iu.test(candidate)) fail(`${label} is missing, unknown, URL-only, or ambiguous`);
   return candidate;
 }
-function sourcePath(root, file) { const relative = path.relative(root, file).replaceAll(path.sep, "/"); return safeRelative(relative, "license source path"); }
+function sourcePath(root, file) { const relative = path.relative(root, file).replaceAll(path.sep, "/"); return safePackageRelative(relative, "license source path"); }
 async function checkedLicenseFile(root, file, expectedPath = null, expectedHash = null, packageDir = null) {
   const { rootReal: fullRoot, fullTarget: full } = await assertTrustedPath(root, file); const relative = sourcePath(fullRoot, full);
   const packageRelative = packageDir ? path.relative(packageDir, full).replaceAll(path.sep, "/") : relative;
@@ -128,7 +135,7 @@ async function checkedLicenseFile(root, file, expectedPath = null, expectedHash 
   const bytes = stable.bytes; const hash = sha256(bytes); if (expectedHash !== null && hash !== expectedHash) fail("license source digest mismatch");
   // Raw license text is intentionally never put into evidence; the digest and
   // safe package-relative path are sufficient for later independent review.
-  return { path: safeRelative(packageRelative, "license source package path"), sha256: hash, bytes };
+  return { path: safePackageRelative(packageRelative, "license source package path"), sha256: hash, bytes };
 }
 async function findLicenseFile(root, packageDir) {
   const entries = await readdir(packageDir, { withFileTypes: true });
@@ -207,7 +214,7 @@ async function packageLicense(component, roots, map) {
   }
   // NuGet packages may carry an SPDX expression in a nuspec.  We still bind
   // evidence to a license file, avoiding an unauditable metadata-only claim.
-  const file = await findLicenseFile(rootReal, packageDir); const nuspecs = (await readdir(packageDir, { withFileTypes: true })).filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".nuspec")); if (nuspecs.length !== 1) fail(nuspecs.length === 0 ? "NuGet package metadata is missing" : "NuGet package metadata is ambiguous"); const nuspec = nuspecs[0]; safeRelative(nuspec.name, "NuGet metadata path"); const nuspecPath = path.join(packageDir, nuspec.name); const nuspecEvidence = await checkedLicenseFile(rootReal, nuspecPath, null, null, packageDir);
+  const file = await findLicenseFile(rootReal, packageDir); const nuspecs = (await readdir(packageDir, { withFileTypes: true })).filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".nuspec")); if (nuspecs.length !== 1) fail(nuspecs.length === 0 ? "NuGet package metadata is missing" : "NuGet package metadata is ambiguous"); const nuspec = nuspecs[0]; safePackageRelative(nuspec.name, "NuGet metadata path"); const nuspecPath = path.join(packageDir, nuspec.name); const nuspecEvidence = await checkedLicenseFile(rootReal, nuspecPath, null, null, packageDir);
   const metadata = await parseNugetMetadata(nuspecPath, nuspecEvidence.bytes); if (metadata.id.trim().toLowerCase() !== parts.name.toLowerCase() || metadata.version.trim() !== parts.version) fail("NuGet metadata identity does not match SBOM purl"); return { spdxId: licenseValue(metadata.license.trim(), "NuGet license"), source: file };
 }
 function exactKeys(value, keys, label) { object(value, label); const actual = Object.keys(value).sort(ordinal); const expected = [...keys].sort(ordinal); if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) fail(`${label} shape is invalid`); return value; }
@@ -226,7 +233,7 @@ function validateSbom(sbom, context = {}) {
   if (!Array.isArray(sbom.metadata.properties) || sbom.metadata.properties.length !== 4) fail("SBOM metadata properties are invalid"); const propertyNames = ["commitSha", "runId", "environmentId", "identity.kind"]; sbom.metadata.properties.forEach((property, index) => { exactKeys(property, ["name", "value"], "SBOM metadata property"); if (property.name !== propertyNames[index] || typeof property.value !== "string") fail("SBOM metadata properties are invalid"); }); if (sbom.metadata.properties[0].value !== context.commitSha || sbom.metadata.properties[1].value !== context.runId || sbom.metadata.properties[2].value !== context.environmentId || sbom.metadata.properties[3].value !== "git-commit") fail("SBOM metadata properties are invalid");
   if (!Array.isArray(sbom.components) || sbom.components.length < 1 || sbom.components.length > LIMITS.components || !Array.isArray(sbom.dependencies) || sbom.dependencies.length < 1 || sbom.dependencies.length > 8192) fail("SBOM shape is invalid");
   const rootRef = root["bom-ref"]; const refs = new Set([rootRef]); let previous = ""; const applications = new Set();
-  for (const component of sbom.components) { exactKeys(component, ["type", "bom-ref", "name", "version", "purl"], "SBOM component"); if (!["application", "library"].includes(component.type) || component["bom-ref"] !== component.purl || typeof component.name !== "string" || typeof component.version !== "string" || !component.name || !component.version || ordinal(component["bom-ref"], previous) < 0 || !refs.add(component["bom-ref"])) fail("SBOM component refs are invalid"); previous = component["bom-ref"]; string(component.name, "SBOM component name"); string(component.version, "SBOM component version"); const parts = canonicalPurlParts(component.purl); if (parts.name !== component.name && !((parts.ecosystem === "nuget" || parts.ecosystem === "generic") && parts.name.toLowerCase() === component.name.toLowerCase())) fail("SBOM component identity is invalid"); if (parts.version !== component.version) fail("SBOM component version is invalid"); if (parts.ecosystem === "nuget" || parts.ecosystem === "npm") { if (component.type !== "library") fail("SBOM third-party component is malformed"); packageParts(component.purl); } else if (parts.ecosystem === "generic") { if (component.type === "application") applications.add(component.name); } else fail("SBOM component ecosystem is invalid"); }
+  for (const component of sbom.components) { exactKeys(component, ["type", "bom-ref", "name", "version", "purl"], "SBOM component"); if (!["application", "library"].includes(component.type) || component["bom-ref"] !== component.purl || typeof component.name !== "string" || typeof component.version !== "string" || !component.name || !component.version || ordinal(component["bom-ref"], previous) < 0 || !refs.add(component["bom-ref"])) fail("SBOM component refs are invalid"); previous = component["bom-ref"]; packageIdentityString(component.name, "SBOM component name"); string(component.version, "SBOM component version"); const parts = canonicalPurlParts(component.purl); if (parts.name !== component.name && !((parts.ecosystem === "nuget" || parts.ecosystem === "generic") && parts.name.toLowerCase() === component.name.toLowerCase())) fail("SBOM component identity is invalid"); if (parts.version !== component.version) fail("SBOM component version is invalid"); if (parts.ecosystem === "nuget" || parts.ecosystem === "npm") { if (component.type !== "library") fail("SBOM third-party component is malformed"); packageParts(component.purl); } else if (parts.ecosystem === "generic") { if (component.type === "application") applications.add(component.name); } else fail("SBOM component ecosystem is invalid"); }
   const expectedApplications = new Set(["SqlObserver.Collector", "SqlObserver.McpStdio", "SqlObserver.Server", "SqlObserver.Web"]); if (applications.size !== expectedApplications.size || [...expectedApplications].some((name) => !applications.has(name))) fail("SBOM application set is invalid");
   const edgeMap = new Map(); previous = ""; for (const edge of sbom.dependencies) { exactKeys(edge, ["ref", "dependsOn"], "SBOM dependency"); if (typeof edge.ref !== "string" || !refs.has(edge.ref) || ordinal(edge.ref, previous) < 0 || edgeMap.has(edge.ref) || !Array.isArray(edge.dependsOn)) fail("SBOM dependency graph is invalid"); previous = edge.ref; let prior = ""; const deps = new Set(); for (const dep of edge.dependsOn) { if (typeof dep !== "string" || !refs.has(dep) || deps.has(dep) || ordinal(dep, prior) < 0 || dep === edge.ref) fail("SBOM dependency graph is invalid"); deps.add(dep); prior = dep; } edgeMap.set(edge.ref, [...deps]); }
   if (edgeMap.size !== refs.size || [...refs].some((ref) => !edgeMap.has(ref))) fail("SBOM dependency graph is incomplete"); const visiting = new Set(); const visited = new Set(); const visit = (ref) => { if (visiting.has(ref)) fail("SBOM dependency graph contains a cycle"); if (visited.has(ref)) return; visiting.add(ref); for (const dep of edgeMap.get(ref)) visit(dep); visiting.delete(ref); visited.add(ref); }; for (const ref of refs) visit(ref);
