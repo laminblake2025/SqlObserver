@@ -222,8 +222,8 @@ function Assert-ReleaseHost([string] $Root) {
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
         $expectedCaption = switch ($environment) {
-            'release-windows-server-2022' { 'Windows Server 2022' }
-            'release-windows-server-2025' { 'Windows Server 2025' }
+            'release-windows-server-2022' { 'Microsoft Windows Server 2022' }
+            'release-windows-server-2025' { 'Microsoft Windows Server 2025' }
             default { Fail 'HOST' }
         }
         if ($os.ProductType -notin @(2, 3) -or -not ([string]$os.Caption).StartsWith($expectedCaption, [StringComparison]::Ordinal)) { Fail 'HOST' }
