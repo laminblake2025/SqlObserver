@@ -111,6 +111,8 @@ public sealed class M12SupplyChainCertificationProducerTests
         Assert.Contains("(Hash (Join-Path $raw 'sbom-one.json'))-cne(Hash (Join-Path $raw 'sbom-two.json'))", supplyChain, StringComparison.Ordinal);
         Assert.Contains("(Hash $licenseOne)-cne(Hash $licenseTwo)", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("-cne Hash ", supplyChain, StringComparison.Ordinal);
+        Assert.Contains("if(-not$script:M12LiveRoot){Assert-M12ToolEnvironmentClean}", supplyChain, StringComparison.Ordinal);
+        Assert.DoesNotContain("function Assert-M12CleanTree([string]$Root) { Assert-M12ToolEnvironmentClean", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("nodejs/node_modules/corepack/dist/pnpm.js", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("throw$", supplyChain, StringComparison.Ordinal);
 
