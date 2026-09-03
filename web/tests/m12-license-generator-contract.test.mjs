@@ -46,8 +46,21 @@ async function assertLicenseEvidenceSchema(value) {
 
 test("license evidence is deterministic and bijective over NuGet/npm SBOM components", async () => {
   const f = await fixture();
-  try { const first = await buildLicenseEvidence(options(f)); const second = await buildLicenseEvidence(options(f)); await assertLicenseEvidenceSchema(first.evidence); assert.deepEqual(first.bytes, second.bytes); assert.equal(Object.keys(JSON.parse(first.bytes)).join("|"), "$schema|caseId|commitSha|components|environmentId|kind|producerId|result|runId|sbomSha256|sbomSize|schemaVersion"); assert.deepEqual(first.evidence.components.map((x) => x.bomRef), ["pkg:npm/react@19.2.8", "pkg:nuget/serilog@3.0.0"]); assert.equal(first.evidence.components[0].source.path, "package.json"); }
+  try { const first = await buildLicenseEvidence(options(f)); const second = await buildLicenseEvidence(options(f)); await assertLicenseEvidenceSchema(first.evidence); assert.deepEqual(first.bytes, second.bytes); assert.equal(Object.keys(JSON.parse(first.bytes)).join("|"), "$schema|caseId|commitSha|components|environmentId|kind|producerId|result|runId|sbomSha256|sbomSize|schemaVersion"); assert.deepEqual(first.evidence.components.map((x) => x.bomRef), ["pkg:npm/react@19.2.8", "pkg:nuget/serilog@3.0.0"]); assert.equal(first.evidence.components[0].source.path, "package.json"); assert.equal(first.evidence.components[1].source.path, "serilog.nuspec"); }
   finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("NuGet SPDX expressions are bound to nuspec bytes without requiring a license file", async () => {
+  const f = await fixture();
+  try {
+    await rm(path.join(f.nuget, "serilog", "3.0.0", "LICENSE.txt"));
+    const nuspecPath = path.join(f.nuget, "serilog", "3.0.0", "serilog.nuspec");
+    const nuspecBytes = await readFile(nuspecPath);
+    const generated = await buildLicenseEvidence(options(f));
+    const component = generated.evidence.components.find((item) => item.bomRef === "pkg:nuget/serilog@3.0.0");
+    assert.equal(component.spdxId, "MIT");
+    assert.deepEqual(component.source, { path: "serilog.nuspec", sha256: createHash("sha256").update(nuspecBytes).digest("hex") });
+  } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
 test("license generator permits reviewed security package identities and rejects sensitive lookalikes", async () => {
@@ -142,9 +155,9 @@ test("license generator rejects NuGet traversal and encoded path variants", asyn
 });
 
 test("license generator rejects Windows ADS on package files and directories", { skip: process.platform !== "win32" }, async () => {
-  const f = await fixture(); const licenseAds = path.join(f.nuget, "serilog", "3.0.0", "LICENSE.txt:alternate"); const directoryAds = path.join(f.nuget, "serilog", "3.0.0:alternate");
+  const f = await fixture(); const licenseAds = path.join(f.nuget, "serilog", "3.0.0", "serilog.nuspec:alternate"); const directoryAds = path.join(f.nuget, "serilog", "3.0.0:alternate");
   const makeAds = async (target) => execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Set-Content -LiteralPath ($env:M12_ADS_TARGET + ':alternate') -Value 'blocked'"], { windowsHide: true, env: { ...process.env, M12_ADS_TARGET: target } });
-  try { await makeAds(path.join(f.nuget, "serilog", "3.0.0", "LICENSE.txt")); await assert.rejects(() => buildLicenseEvidence(options(f)), /alternate data stream|missing|regular file/); await rm(licenseAds, { force: true }); await makeAds(path.join(f.nuget, "serilog", "3.0.0")); await assert.rejects(() => buildLicenseEvidence(options(f)), /alternate data stream|missing|regular file/); }
+  try { await makeAds(path.join(f.nuget, "serilog", "3.0.0", "serilog.nuspec")); await assert.rejects(() => buildLicenseEvidence(options(f)), /alternate data stream|missing|regular file/); await rm(licenseAds, { force: true }); await makeAds(path.join(f.nuget, "serilog", "3.0.0")); await assert.rejects(() => buildLicenseEvidence(options(f)), /alternate data stream|missing|regular file/); }
   finally { await rm(licenseAds, { force: true }); await rm(directoryAds, { force: true }); await rm(f.root, { recursive: true, force: true }); }
 });
 
