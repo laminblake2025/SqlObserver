@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SqlObserver.ReleaseTests;
 
@@ -73,6 +74,19 @@ public sealed class M12SbomCertificationTests
         Assert.Throws<InvalidDataException>(() => ValidateSbom(duplicate, null));
         byte[] dangling = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(valid).Replace("pkg:generic/sqlobserver.server@1\"]", "pkg:generic/missing@1\"]", StringComparison.Ordinal));
         Assert.Throws<InvalidDataException>(() => ValidateSbom(dangling, null));
+
+        byte[] benignSecurityPackage = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(valid)
+            .Replace("pkg:generic/sqlobserver.server@1", "pkg:nuget/microsoft.extensions.configuration.usersecrets@10.0.11", StringComparison.Ordinal)
+            .Replace("SqlObserver.Server", "Microsoft.Extensions.Configuration.UserSecrets", StringComparison.Ordinal));
+        ValidateSbom(benignSecurityPackage, new string('a', 40));
+
+        byte[] sensitivePackage = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(benignSecurityPackage)
+            .Replace("Microsoft.Extensions.Configuration.UserSecrets", "Contoso.ClientSecret", StringComparison.Ordinal));
+        Assert.Throws<InvalidDataException>(() => ValidateSbom(sensitivePackage, null));
+
+        byte[] sensitiveMetadata = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(valid)
+            .Replace("git-commit", "client-secret", StringComparison.Ordinal));
+        Assert.Throws<InvalidDataException>(() => ValidateSbom(sensitiveMetadata, null));
     }
 
     private static byte[] ReadLocked(string path)
@@ -101,11 +115,23 @@ public sealed class M12SbomCertificationTests
         Assert.Equal("CycloneDX", root.GetProperty("bomFormat").GetString()); Assert.Equal("1.7", root.GetProperty("specVersion").GetString()); Assert.Equal(1, root.GetProperty("version").GetInt32());
         JsonElement metadata = root.GetProperty("metadata"); JsonElement metadataComponent = metadata.GetProperty("component"); string rootRef = metadataComponent.GetProperty("bom-ref").GetString()!;
         Assert.Equal("application", metadataComponent.GetProperty("type").GetString()); Assert.Equal(rootRef, metadataComponent.GetProperty("purl").GetString());
-        string? commit = null; foreach (JsonElement property in metadata.GetProperty("properties").EnumerateArray()) { Assert.Equal(2, property.EnumerateObject().Count()); if (property.GetProperty("name").GetString() == "commitSha") commit = property.GetProperty("value").GetString(); }
+        string? commit = null; foreach (JsonElement property in metadata.GetProperty("properties").EnumerateArray()) { Assert.Equal(2, property.EnumerateObject().Count()); string value = property.GetProperty("value").GetString() ?? throw new InvalidDataException("SBOM metadata value"); RejectSensitiveValue(value); if (property.GetProperty("name").GetString() == "commitSha") commit = value; }
         Assert.Matches("^[0-9a-f]{40,64}$", commit ?? ""); if (expectedCommit is not null) Assert.Equal(expectedCommit, commit);
-        HashSet<string> refs = [rootRef]; foreach (JsonElement component in root.GetProperty("components").EnumerateArray()) { string reference = component.GetProperty("bom-ref").GetString()!; if (!refs.Add(reference)) throw new InvalidDataException("duplicate bom-ref"); Assert.Equal(reference, component.GetProperty("purl").GetString()); }
+        HashSet<string> refs = [rootRef]; foreach (JsonElement component in root.GetProperty("components").EnumerateArray()) { string reference = component.GetProperty("bom-ref").GetString()!; string name = component.GetProperty("name").GetString() ?? throw new InvalidDataException("SBOM component name"); string version = component.GetProperty("version").GetString() ?? throw new InvalidDataException("SBOM component version"); if (!refs.Add(reference)) throw new InvalidDataException("duplicate bom-ref"); Assert.Equal(reference, component.GetProperty("purl").GetString()); RejectSensitivePackageIdentity(name); RejectSensitiveValue(version); }
         HashSet<string> dependencyRefs = []; foreach (JsonElement dependency in root.GetProperty("dependencies").EnumerateArray()) { string reference = dependency.GetProperty("ref").GetString()!; if (!dependencyRefs.Add(reference) || !refs.Contains(reference)) throw new InvalidDataException("dependency closure"); foreach (string target in dependency.GetProperty("dependsOn").EnumerateArray().Select(x => x.GetString()!)) { if (!refs.Contains(target) || reference == target) throw new InvalidDataException("dependency edge"); } }
-        if (!refs.SetEquals(dependencyRefs)) throw new InvalidDataException("dependency closure"); string serialized = Encoding.UTF8.GetString(bytes); Assert.DoesNotMatch("(?i)(password|secret|token|credential|private.?key|localhost|127\\.0\\.0\\.1|[A-Za-z]:[\\\\/])", serialized);
+        if (!refs.SetEquals(dependencyRefs)) throw new InvalidDataException("dependency closure"); string serialized = Encoding.UTF8.GetString(bytes); Assert.DoesNotMatch("(?i)(password|credential|private.?key|authorization|connection.?string|localhost|127\\.0\\.0\\.1|[A-Za-z]:[\\\\/])", serialized);
+    }
+
+    private static void RejectSensitivePackageIdentity(string value)
+    {
+        if (!Regex.IsMatch(value, "(?i)(password|credential|private[\\s._-]*key|authorization|connection[\\s._-]*string|api[\\s._-]*key|access[\\s._-]*token|refresh[\\s._-]*token|client[\\s._-]*secret|secret|bearer|cookie|token)")) return;
+        string[] approved = ["Microsoft.Extensions.Configuration.UserSecrets", "Microsoft.IdentityModel.JsonWebTokens", "Microsoft.IdentityModel.Tokens", "System.IdentityModel.Tokens.Jwt"];
+        if (!approved.Contains(value, StringComparer.OrdinalIgnoreCase)) throw new InvalidDataException("SBOM component identity contains sensitive data");
+    }
+
+    private static void RejectSensitiveValue(string value)
+    {
+        if (Regex.IsMatch(value, "(?i)(password|secret|token|credential|private.?key|authorization|connection.?string|localhost|127\\.0\\.0\\.1|[A-Za-z]:[\\\\/])")) throw new InvalidDataException("SBOM value contains sensitive data");
     }
 
     private static void EnsureUnique(JsonElement element)
