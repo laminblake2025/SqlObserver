@@ -314,6 +314,8 @@ public sealed class M12SupplyChainCertificationProducerTests
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
         foreach (string marker in new[] { "Get-M12CanonicalPurl", "canonicalRoot", "edgeMap.Count-ne$refs.Count", "dependsOn|ref", "bom-ref|name|purl|type|version", "Assert-M12AssetPins", "Assert-M12SbomTypes", "CompareOrdinal" }) Assert.Contains(marker, source, StringComparison.Ordinal);
+        Assert.Contains("$application.name-ceq'SqlObserver.Web'-and$application.version-cne$CommitSha", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("foreach($application in $applications){if($application.version-cne$CommitSha", source, StringComparison.Ordinal);
     }
 
     [Fact]
