@@ -96,6 +96,10 @@ public sealed class M12SupplyChainCertificationProducerTests
             Assert.DoesNotContain("SetEnvironmentVariable($name,$null)", gitHelper, StringComparison.Ordinal);
         }
 
+        string supplyChain = File.ReadAllText(Path.Combine(root, "tools", "run-m12-supply-chain-certification.ps1"));
+        Assert.Contains("'COREPACK_ENABLE_DOWNLOAD_PROMPT'", supplyChain, StringComparison.Ordinal);
+        Assert.Contains("COREPACK_ENABLE_DOWNLOAD_PROMPT='0'", supplyChain, StringComparison.Ordinal);
+
         foreach (string scriptName in new[]
         {
             "run-m12-supply-chain-certification.ps1",
