@@ -330,6 +330,22 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void LicensePrepublicationAllowsOnlyTheOwnedRawWorkspace()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        int live = source.IndexOf("function Invoke-M12Live", StringComparison.Ordinal);
+        int license = source.IndexOf("if($CaseId-ceq'm12-licenses'){", live, StringComparison.Ordinal);
+        int prepublication = source.IndexOf("Assert-M12PublishedLicenseArtifacts $build", license, StringComparison.Ordinal);
+        int verification = source.IndexOf("Assert-M12PublishedLicenseArtifacts $verify", prepublication, StringComparison.Ordinal);
+        int final = source.IndexOf("Assert-M12PublishedLicenseArtifacts $final", verification, StringComparison.Ordinal);
+        Assert.True(live >= 0 && license > live && prepublication > license && verification > prepublication && final > verification);
+        Assert.Contains("-AllowOwnedRaw", source[prepublication..verification], StringComparison.Ordinal);
+        Assert.DoesNotContain("-AllowOwnedRaw", source[verification..final], StringComparison.Ordinal);
+        Assert.Contains("$expectedNames=if($AllowOwnedRaw){@($names)+@('raw')}else{$names}", source, StringComparison.Ordinal);
+        Assert.Contains("$rawEntry.Count-ne1-or-not$rawEntry[0].PSIsContainer", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProducerUsesExactClosedGraphAndCanonicalPurls()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
