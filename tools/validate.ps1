@@ -1890,8 +1890,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = '71bb839399ae587af3f71f908555409a10c2a0db8685fed1f00c370be4623431'
-    $m12SbomAssetManifestSha256 = '8e2b192b62f9c0f3194a84beaf2d0728572441eadd73bd8b70d733e16b791e85'
+    $m12SbomProducerSha256 = 'b446f2445236ca5512b28ccff6d38cc67731fa51284812e1896282d3a4b6cab2'
+    $m12SbomAssetManifestSha256 = '484d5752e8f4de3e95b247ab552b8019c2fc4032eecbdb30aaa6b3c1290e2f72'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1918,7 +1918,7 @@ function Assert-RepositoryShape {
         'release/certification/m12-provenance-evidence.v1.schema.json' = 'f263b9c335b96fb81240e48acd35e79b4b3d17d1eaa8db181cbf5c6a86ead203'
         'tools/generate-m12-provenance-evidence.mjs' = 'd628beeefcc974388d96a83d5be67ed151fb78719005a0660286ca50795f06b4'
         'web/tests/m12-provenance-generator-contract.test.mjs' = 'ebaa94d9165ecd7cc635c31b037cf8b10b3988276b98035fc3298fdbf9568db8'
-        'tests/SqlObserver.ReleaseTests/M12ProvenanceCertificationTests.cs' = 'b8f334db0d62e0afb74b424b1137647c168717209f738485e5e28b05f2d45f77'
+        'tests/SqlObserver.ReleaseTests/M12ProvenanceCertificationTests.cs' = '3c728b7be95d23e04731816c765e31ee4dd69518cfdcd8f152a52dff454769b0'
         'release/certification/m12-runbooks-contract.v1.json' = '45ebf324a497f67198f6e99b69a1a89f8e4092be88ffd35d1634e4e59ac7237d'
         'release/certification/m12-runbooks-contract.v1.schema.json' = 'c646345c41b5ef372b065a2dae03c79b102f83e6f4495a00903e41dc8ece3764'
         'release/certification/m12-runbooks-catalog.v1.json' = 'e02c9e69eea3ce5738444b46f5acc12f9baefab7be7da8fefb333cdc6752460d'
@@ -1981,9 +1981,9 @@ function Assert-RepositoryShape {
         'release/certification/m12-provenance-evidence.v1.schema.json' = 'f263b9c335b96fb81240e48acd35e79b4b3d17d1eaa8db181cbf5c6a86ead203'
         'tools/generate-m12-provenance-evidence.mjs' = 'd628beeefcc974388d96a83d5be67ed151fb78719005a0660286ca50795f06b4'
         'web/tests/m12-provenance-generator-contract.test.mjs' = 'ebaa94d9165ecd7cc635c31b037cf8b10b3988276b98035fc3298fdbf9568db8'
-        'tests/SqlObserver.ReleaseTests/M12ProvenanceCertificationTests.cs' = 'b8f334db0d62e0afb74b424b1137647c168717209f738485e5e28b05f2d45f77'
+        'tests/SqlObserver.ReleaseTests/M12ProvenanceCertificationTests.cs' = '3c728b7be95d23e04731816c765e31ee4dd69518cfdcd8f152a52dff454769b0'
     }
-    $m12ProvenancePinPath = Join-Path $repositoryRoot 'release/certification/m12-provenance-contract.v1.assets.sha256'; if ((Get-FileHash -LiteralPath $m12ProvenancePinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '15520599bce1a8d4e0893eaa35a67454c069597c4e0b246d9cfcf76d915d075b') { throw 'M12 provenance asset manifest checksum mismatch.' }; foreach ($asset in $m12ProvenanceAssets.GetEnumerator()) { $assetPath = Join-Path $repositoryRoot $asset.Key; if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.Value) { throw "M12 provenance certification asset pin mismatch: $($asset.Key)" } }
+    $m12ProvenancePinPath = Join-Path $repositoryRoot 'release/certification/m12-provenance-contract.v1.assets.sha256'; if ((Get-FileHash -LiteralPath $m12ProvenancePinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'd330401af715109e93edf0ad735d470d44ff3e8dd767b3e6de39222a707db883') { throw 'M12 provenance asset manifest checksum mismatch.' }; foreach ($asset in $m12ProvenanceAssets.GetEnumerator()) { $assetPath = Join-Path $repositoryRoot $asset.Key; if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.Value) { throw "M12 provenance certification asset pin mismatch: $($asset.Key)" } }
     $m12ProvenanceContractText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-provenance-contract.v1.json') -Raw; foreach ($marker in @('m12-provenance','exact-four-product-build','full-transitive','inputManifestFiles','not-claimed','m12-provenance-subjects.v1.schema.json')) { if (-not $m12ProvenanceContractText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 provenance contract is missing exact marker: $marker" } }
     $m12ProvenanceTestText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'tests/SqlObserver.ReleaseTests/M12ProvenanceCertificationTests.cs') -Raw; foreach ($marker in @('RequiresM12SupplyChainRelease','LiveReleaseProvenanceIsDeterministicAndBuildBound','FileMode.CreateNew','SQLOBSERVER_M12_PROVENANCE_EVIDENCE_PATH','SQLOBSERVER_M12_PROVENANCE_SECOND_PATH','SQLOBSERVER_M12_PROVENANCE_INPUT_MANIFEST_PATH')) { if (-not $m12ProvenanceTestText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 provenance test is missing invariant: $marker" } }
     $m12ProvenanceCase = @($m12SbomLane[0].cases | Where-Object { $_.caseId -ceq 'm12-provenance' }); if ($m12ProvenanceCase.Count -ne 1 -or $m12ProvenanceCase[0].producerId -cne 'm12-supply-chain-harness' -or $m12ProvenanceCase[0].implementationStatus -cne 'pending' -or $m12ProvenanceCase[0].environment.factPredicates.provenance -ne $true) { throw 'M12 provenance lane must remain pending and exact.' }
