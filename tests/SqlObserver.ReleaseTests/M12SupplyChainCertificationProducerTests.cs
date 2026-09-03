@@ -116,6 +116,14 @@ public sealed class M12SupplyChainCertificationProducerTests
         Assert.DoesNotContain("nodejs/node_modules/corepack/dist/pnpm.js", supplyChain, StringComparison.Ordinal);
         Assert.DoesNotContain("throw$", supplyChain, StringComparison.Ordinal);
 
+        int supplyBoundedStart = supplyChain.IndexOf("function Invoke-M12BoundedProcess", StringComparison.Ordinal);
+        int supplyBoundedEnd = supplyChain.IndexOf("function ", supplyBoundedStart + 10, StringComparison.Ordinal);
+        string supplyBounded = supplyChain[supplyBoundedStart..supplyBoundedEnd];
+        Assert.DoesNotContain("$observed", supplyBounded, StringComparison.Ordinal);
+        Assert.DoesNotContain("Get-Process -Id", supplyBounded, StringComparison.Ordinal);
+        Assert.Contains("$native.WaitForZero(2000)", supplyBounded, StringComparison.Ordinal);
+        Assert.Contains("$native.ActiveProcesses-ne 0", supplyBounded, StringComparison.Ordinal);
+
         foreach (string scriptName in new[]
         {
             "run-m12-supply-chain-certification.ps1",
@@ -209,7 +217,7 @@ public sealed class M12SupplyChainCertificationProducerTests
     public void ProducerSourceHasContainmentAndClosedPublicationTerms()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
-        Assert.Contains("Assert-M12NoDescendants", source, StringComparison.Ordinal); Assert.Contains("Assert-M12OutputFileIdentity", source, StringComparison.Ordinal); Assert.Contains("FileShare]::None", source, StringComparison.Ordinal); Assert.Contains("m12-supply-chain-contract.v1.assets.sha256", source, StringComparison.Ordinal); Assert.Contains("m12-sbom-provenance.json", source, StringComparison.Ordinal); Assert.Contains("generate-m12-sbom.mjs", source, StringComparison.Ordinal); Assert.Contains("--deps", source, StringComparison.Ordinal); Assert.Contains("--pnpm-list", source, StringComparison.Ordinal); Assert.Contains("--web-catalog", source, StringComparison.Ordinal); Assert.Contains("LiveReleaseSbomIsCompleteDeterministicAndCommitBound", source, StringComparison.Ordinal); Assert.Contains("inProgress", source, StringComparison.Ordinal); Assert.Contains("pending", source, StringComparison.Ordinal); Assert.DoesNotContain("WriteAllText", source, StringComparison.Ordinal); Assert.DoesNotContain("return $null", source, StringComparison.Ordinal); Assert.DoesNotContain("Get-Command git", source, StringComparison.Ordinal);
+        Assert.Contains("AssignProcessToJobObject", source, StringComparison.Ordinal); Assert.Contains("KillOnClose", source, StringComparison.Ordinal); Assert.Contains("CreateSuspended", source, StringComparison.Ordinal); Assert.Contains("ActiveProcesses", source, StringComparison.Ordinal); Assert.Contains("Assert-M12OutputFileIdentity", source, StringComparison.Ordinal); Assert.Contains("FileShare]::None", source, StringComparison.Ordinal); Assert.Contains("m12-supply-chain-contract.v1.assets.sha256", source, StringComparison.Ordinal); Assert.Contains("m12-sbom-provenance.json", source, StringComparison.Ordinal); Assert.Contains("generate-m12-sbom.mjs", source, StringComparison.Ordinal); Assert.Contains("--deps", source, StringComparison.Ordinal); Assert.Contains("--pnpm-list", source, StringComparison.Ordinal); Assert.Contains("--web-catalog", source, StringComparison.Ordinal); Assert.Contains("LiveReleaseSbomIsCompleteDeterministicAndCommitBound", source, StringComparison.Ordinal); Assert.Contains("inProgress", source, StringComparison.Ordinal); Assert.Contains("pending", source, StringComparison.Ordinal); Assert.DoesNotContain("WriteAllText", source, StringComparison.Ordinal); Assert.DoesNotContain("return $null", source, StringComparison.Ordinal); Assert.DoesNotContain("Get-Command git", source, StringComparison.Ordinal);
     }
 
     [Fact]
