@@ -11,7 +11,7 @@ $ErrorActionPreference='Stop'
 $ProducerId='m12-supply-chain-harness'; $ArtifactKind='supply-chain-evidence'
 $MaximumOutput=65536; $MaximumError=8192; $MaximumMilliseconds=300000; $MaximumJsonBytes=4194304
 $ApprovedMatrixSha256='8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac'
-$ApprovedAssetManifestSha256='860b644674e99e1f00eacf5c1f9c563578f56dc6d33323d2df8e40a95c5b0972'
+$ApprovedAssetManifestSha256='8e2b192b62f9c0f3194a84beaf2d0728572441eadd73bd8b70d733e16b791e85'
 $ApprovedLicenseAssetManifestSha256='a08115f32d95b6e7e386f72f72b18d96c6aefb599a68258667b794f450e56dae'
 $ApprovedVulnerabilityAssetManifestSha256='12b537a0411af1a9d5805cae6eddd872b2797011a5eede4ab16ac527d9686854'
 $ApprovedProvenanceAssetManifestSha256='15520599bce1a8d4e0893eaa35a67454c069597c4e0b246d9cfcf76d915d075b'

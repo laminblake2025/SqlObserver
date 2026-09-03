@@ -1890,8 +1890,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = '30cc3871e868d9d62fb30058ac69641e5788cb0293f48eec1e2262f7ea8e355f'
-    $m12SbomAssetManifestSha256 = '860b644674e99e1f00eacf5c1f9c563578f56dc6d33323d2df8e40a95c5b0972'
+    $m12SbomProducerSha256 = '9d4353a9466ca2e4606a29538af559f7149b4180ffe2a93143ce314fae1f225b'
+    $m12SbomAssetManifestSha256 = '8e2b192b62f9c0f3194a84beaf2d0728572441eadd73bd8b70d733e16b791e85'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1908,8 +1908,8 @@ function Assert-RepositoryShape {
         'docs/milestones/M12-reports-installer-release.md' = '8de3b25680aacfef350918d1244c1c4bb3c8c98ab841a7baa71d70f2ab0af383'
         'release/certification/README.md' = '2919035e5332331ede6ca9a33a2f3cdc95792154eda39b1eb25ebe83ed435799'
         'tests/SqlObserver.ReleaseTests/M12SbomCertificationTests.cs' = '99746d8fd4025ede698ea84c3a259218db82ccad889c81dd474a6474cc6cf734'
-        'tools/generate-m12-sbom.mjs' = '1b7170d73531a983f2f1cf8b0e7a29c83bf9aaa54c41f35f14dc691bb9120f04'
-        'web/tests/m12-sbom-generator-contract.test.mjs' = '58d702aad3ca5d4989a160e0133b931ef3967b3474197941cb8596700d91fb92'
+        'tools/generate-m12-sbom.mjs' = 'ea8887aa4b6ef4c04be0cb4e7e120d2ce67bfe8e967b3b0267a895d2d3de8614'
+        'web/tests/m12-sbom-generator-contract.test.mjs' = '1a75390422b14b00dfcbbca0401b0a82bfa5874447b84384a2a9dc003fbc55b1'
         'web/contracts/web-asset-manifest.v1.schema.json' = '1f1e5b785dde79c492773f7298074fbf4668a1cebe75764cecdf97983fed682a'
         'web/tools/web-asset-manifest.mjs' = '04370684e850b3cf9aaa0c5ed6db61dcdd6fb6fbbb7d0e67c8f5cb3197dcf17a'
         'release/certification/m12-provenance-contract.v1.json' = 'c7d4c9e5dd56adfa61ec5e871e2f7759936b555001504bcd49c2a540c3a12c40'

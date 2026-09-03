@@ -115,33 +115,41 @@ function dependenciesFromDeps(value, components, edges) {
   if (!libraries || typeof libraries !== "object" || Array.isArray(libraries)) fail("host dependency graph has no closed libraries object");
   for (const [key, info] of Object.entries(libraries)) { const p = libraryParts(key, info?.version); if (!p) fail("host dependency graph has an invalid library identity"); libraryRef(components, p.name, p.version); }
 }
-function dependencyObject(value, components, edges) {
+function dependencyObject(value, components, edges, workspace) {
   if (!value || typeof value !== "object") return;
   const assertGraphShape = (item, label) => { const allowed = new Set(["name", "version", "dependencies", "packages"]); for (const key of Object.keys(item)) if (!allowed.has(key)) fail(`${label} has unsafe field ${key}`); if (item.dependencies !== undefined && (!item.dependencies || typeof item.dependencies !== "object" || Array.isArray(item.dependencies))) fail(`${label}.dependencies must be an object`); };
   if (!Array.isArray(value)) assertGraphShape(value, "pnpm graph");
-  const visit = (name, item) => {
+  let workspaceCount = 0; const workspaceDependencies = new Set();
+  const visit = (name, item, isTopLevel = false) => {
     if (typeof name !== "string" || !name || !item || typeof item !== "object" || Array.isArray(item)) fail(`pnpm package ${name || "<unnamed>"} is malformed`);
     const packageName = name.replace(/^\//u, "");
     const version = item.version;
     if (typeof version !== "string" || !version) fail(`pnpm package ${packageName} has no version`);
-    assertGraphShape(item, `pnpm package ${packageName}`); const ref = addComponent(components, "npm", packageName, version);
+    assertGraphShape(item, `pnpm package ${packageName}`); const isWorkspace = packageName === workspace.name && version === workspace.version;
+    if (isWorkspace && !isTopLevel) fail("pnpm workspace package cannot be a dependency");
+    if (isWorkspace) workspaceCount++;
+    const ref = isWorkspace ? null : addComponent(components, "npm", packageName, version);
     const children = item.dependencies && typeof item.dependencies === "object" ? item.dependencies : {};
     const childRefs = Object.entries(children).map(([child, childValue]) => {
       const childItem = typeof childValue === "string" ? { version: childValue } : childValue;
       if (!childItem || typeof childItem !== "object" || Array.isArray(childItem) || typeof childItem.version !== "string" || !childItem.version) fail(`pnpm dependency ${child} is malformed`);
+      if (child.replace(/^\//u, "") === workspace.name && childItem.version === workspace.version) fail("pnpm workspace package cannot be a dependency");
       return addComponent(components, "npm", child.replace(/^\//u, ""), childItem.version);
     });
-    addEdges(edges, ref, childRefs); for (const [child, childValue] of Object.entries(children)) visit(child, typeof childValue === "object" ? childValue : { version: childValue });
+    if (isWorkspace) for (const childRef of childRefs) workspaceDependencies.add(childRef); else addEdges(edges, ref, childRefs);
+    for (const [child, childValue] of Object.entries(children)) visit(child, typeof childValue === "object" ? childValue : { version: childValue });
   };
   if (Array.isArray(value)) {
-    for (const item of value) if (item && typeof item === "object") visit(item.name ?? item.package ?? item.path, item);
+    for (const item of value) if (item && typeof item === "object") visit(item.name ?? item.package ?? item.path, item, true);
   } else if (value.packages && typeof value.packages === "object") {
-    for (const [name, item] of Object.entries(value.packages)) visit(name, item);
+    for (const [name, item] of Object.entries(value.packages)) visit(name, item, true);
   } else if (value.dependencies && typeof value.dependencies === "object") {
-    for (const [name, item] of Object.entries(value.dependencies)) visit(name, typeof item === "object" ? item : { version: item });
+    for (const [name, item] of Object.entries(value.dependencies)) { const child = typeof item === "object" ? item : { version: item }; visit(name, child, true); workspaceDependencies.add(canonicalPurl("npm", name.replace(/^\//u, ""), child.version)); }
   } else {
-    for (const [name, item] of Object.entries(value)) if (item && typeof item === "object") visit(name, item);
+    fail("pnpm graph has no closed package collection");
   }
+  if ((Array.isArray(value) || value.packages) && workspaceCount !== 1) fail("pnpm graph must contain the exact workspace package once");
+  return [...workspaceDependencies];
 }
 async function verifyManifest(root, manifestPath) {
   const manifest = parse(await readFile(manifestPath), "input manifest");
@@ -169,7 +177,8 @@ export async function buildSbom({ root, inputManifest, deps = [], pnpmList, webC
   if (hostRefs.length !== hostNames.length || hostNames.some((host) => !hostRefs.some((item) => item.host === host))) fail("host dependency identities are incomplete");
   if (!pnpmList || !webCatalog) fail("sanitized pnpm list and web asset catalog are required");
   const pnpmInfo = await lstat(pnpmList); const catalogInfo = await lstat(webCatalog); if (!pnpmInfo.isFile() || pnpmInfo.isSymbolicLink() || !catalogInfo.isFile() || catalogInfo.isSymbolicLink()) fail("dependency or catalog input is not a regular file");
-  dependencyObject(parse(await readFile(pnpmList), "sanitized pnpm list"), components, edges);
+  const webPackage = parse(await readFile(path.join(root, "web/package.json")), "web package manifest"); if (typeof webPackage.name !== "string" || !webPackage.name || typeof webPackage.version !== "string" || !webPackage.version || webPackage.private !== true) fail("web package identity is invalid");
+  const webDependencyRefs = dependencyObject(parse(await readFile(pnpmList), "sanitized pnpm list"), components, edges, { name: webPackage.name, version: webPackage.version });
   const catalog = parse(await readFile(webCatalog), "web asset catalog"); if (!Array.isArray(catalog.files) || catalog.$schema !== "web-asset-manifest.v1.schema.json" || catalog.schemaVersion !== 1 || typeof catalog.sha256 !== "string") fail("web asset catalog shape is invalid");
   const catalogWithoutDigest = Object.fromEntries(Object.entries(catalog).filter(([key]) => key !== "sha256")); const catalogDigest = sha256(Buffer.from(stable(catalogWithoutDigest), "utf8")); if (catalogDigest !== catalog.sha256) fail("web asset catalog digest is invalid");
   const catalogPaths = new Set(), webRefs = []; for (const file of catalog.files) { object(file, "web catalog file"); if (Object.keys(file).length !== 4 || typeof file.path !== "string" || !CATALOG_ROLES.has(file.role) || !HASH.test(file.sha256) || !Number.isSafeInteger(file.bytes) || file.bytes < 0 || file.bytes > 4294967296) fail("web catalog file is unsafe"); const relative = safeRelative(file.path, "web catalog path"); if (catalogPaths.has(relative.toLowerCase())) fail("web catalog has duplicate paths"); catalogPaths.add(relative.toLowerCase()); const name = `web/${relative}`; webRefs.push(addComponent(components, "generic", name, `sha256:${file.sha256}`)); }
@@ -177,7 +186,7 @@ export async function buildSbom({ root, inputManifest, deps = [], pnpmList, webC
   // there (and therefore is intentionally absent from components), while its
   // dependency node remains explicit so the complete edge closure is closed.
   const rootComponent = component("generic", "SqlObserver", commitSha, "application"); const rootRef = rootComponent["bom-ref"];
-  const webRef = addComponent(components, "generic", "SqlObserver.Web", commitSha, "application"); addEdges(edges, rootRef, [...hostRefs.map((item) => item.ref), webRef]); addEdges(edges, webRef, webRefs);
+  const webRef = addComponent(components, "generic", "SqlObserver.Web", commitSha, "application"); addEdges(edges, rootRef, [...hostRefs.map((item) => item.ref), webRef]); addEdges(edges, webRef, [...webDependencyRefs, ...webRefs]);
   if (components.size === 0 || components.size > LIMITS.components) fail("component count exceeds bound");
   const list = [...components.values()].sort((a, b) => ordinal(a["bom-ref"], b["bom-ref"])); const refs = new Set([rootRef, ...list.map((item) => item["bom-ref"])]);
   for (const ref of refs) if (!edges.has(ref)) edges.set(ref, new Set());
