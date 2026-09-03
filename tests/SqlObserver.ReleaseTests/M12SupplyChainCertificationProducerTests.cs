@@ -330,6 +330,21 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void LicensePublicationRebindsOwnedEnvironmentAfterEachDirectoryMove()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        int live = source.IndexOf("function Invoke-M12Live", StringComparison.Ordinal);
+        int license = source.IndexOf("if($CaseId-ceq'm12-licenses'){", live, StringComparison.Ordinal);
+        int firstMove = source.IndexOf("[IO.Directory]::Move($build,$verify);$cleanupTarget=$verify;Update-M12CleanEnvironmentAfterMove $environmentState $oldRaw $nextRaw;$raw=$nextRaw", license, StringComparison.Ordinal);
+        int secondMove = source.IndexOf("[IO.Directory]::Move($verify,$final);$cleanupTarget=$final;Update-M12CleanEnvironmentAfterMove $environmentState $oldRaw $nextRaw;$raw=$nextRaw", firstMove, StringComparison.Ordinal);
+        int cleanup = source.IndexOf("Exit-M12CleanEnvironment $environmentState;$environmentState=$null;Remove-M12SafeDescendants $raw $Root", secondMove, StringComparison.Ordinal);
+        Assert.True(live >= 0 && license > live && firstMove > license && secondMove > firstMove && cleanup > secondMove);
+        Assert.Contains("'M12_ISOLATED_WEB_ROOT','M12_ISOLATED_OWNER_PATH','M12_ISOLATED_CLAIM_PATH'", source, StringComparison.Ordinal);
+        Assert.Contains("'DOTNET_CLI_HOME','NUGET_PACKAGES','NUGET_HTTP_CACHE_PATH','COREPACK_HOME','npm_config_cache'", source, StringComparison.Ordinal);
+        Assert.Contains("Assert-M12SameIdentity $Saved['M12_ISOLATED_TARGET_IDENTITY']", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LicensePrepublicationAllowsOnlyTheOwnedRawWorkspace()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
