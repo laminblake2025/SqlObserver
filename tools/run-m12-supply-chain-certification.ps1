@@ -11,10 +11,10 @@ $ErrorActionPreference='Stop'
 $ProducerId='m12-supply-chain-harness'; $ArtifactKind='supply-chain-evidence'
 $MaximumOutput=65536; $MaximumError=8192; $MaximumMilliseconds=300000; $MaximumJsonBytes=4194304
 $ApprovedMatrixSha256='8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac'
-$ApprovedAssetManifestSha256='8e2b192b62f9c0f3194a84beaf2d0728572441eadd73bd8b70d733e16b791e85'
+$ApprovedAssetManifestSha256='484d5752e8f4de3e95b247ab552b8019c2fc4032eecbdb30aaa6b3c1290e2f72'
 $ApprovedLicenseAssetManifestSha256='c1c860c378484cb0fa6a3a799d7823011acb3a2f0d32ce393f40eaa184e5aed1'
 $ApprovedVulnerabilityAssetManifestSha256='da654c8aede4876ae2d91276e08b6a67769ce58d00beb5e22f97c84743c229b5'
-$ApprovedProvenanceAssetManifestSha256='15520599bce1a8d4e0893eaa35a67454c069597c4e0b246d9cfcf76d915d075b'
+$ApprovedProvenanceAssetManifestSha256='d330401af715109e93edf0ad735d470d44ff3e8dd767b3e6de39222a707db883'
 $ContractName='m12-supply-chain-contract.v1.json'; $SchemaName='m12-supply-chain-contract.v1.schema.json'; $InputsName='m12-sbom-inputs.v1.json'; $InputsSchemaName='m12-sbom-inputs.v1.schema.json'; $SbomSchemaName='m12-sbom.v1.schema.json'
 $LicenseContractName='m12-license-contract.v1.json'; $LicenseSchemaName='m12-license-contract.v1.schema.json'; $LicenseEvidenceSchemaName='m12-license-evidence.v1.schema.json'; $LicensePinName='m12-license-contract.v1.assets.sha256'
 $VulnerabilityContractName='m12-vulnerability-scan-contract.v1.json'; $VulnerabilitySchemaName='m12-vulnerability-scan-contract.v1.schema.json'; $VulnerabilityEvidenceSchemaName='m12-vulnerability-scan-evidence.v1.schema.json'; $VulnerabilityPinName='m12-vulnerability-scan-contract.v1.assets.sha256'
@@ -685,10 +685,11 @@ function Assert-M12HeldProvenanceSnapshots([object[]]$Held,[string]$Root) {
     foreach($snapshot in $Held){
         if($null -eq $snapshot -or $null -eq $snapshot.Stream){Fail 'OUTPUT'}
         Assert-M12NoReparse $snapshot.Path $Root;Assert-M12NoAlternateDataStreams $snapshot.Path $Root
-        $current=[M12OutputFile]::Read($snapshot.Stream);Assert-M12SameIdentity $snapshot.Identity $current
-        $locked=Read-M12LockedBytes $snapshot.Path $Root $MaximumJsonBytes
-        if($locked.Hash-cne$snapshot.Hash-or$locked.Bytes.Length-ne$snapshot.Bytes.Length-or[Convert]::ToBase64String($locked.Bytes)-cne[Convert]::ToBase64String($snapshot.Bytes)){Fail 'OUTPUT'}
-        Assert-M12SameIdentity $snapshot.Identity $locked.Identity
+        $stream=$snapshot.Stream;$stream.Position=0;if($stream.Length-ne$snapshot.Bytes.Length){Fail 'OUTPUT'}
+        $bytes=[byte[]]::new([int]$stream.Length);$offset=0;while($offset-lt$bytes.Length){$read=$stream.Read($bytes,$offset,$bytes.Length-$offset);if($read-lt1){Fail 'OUTPUT'};$offset+=$read}
+        $sha=[Security.Cryptography.SHA256]::Create();try{$hash=[Convert]::ToHexString($sha.ComputeHash($bytes)).ToLowerInvariant()}finally{$sha.Dispose()}
+        if($hash-cne$snapshot.Hash-or[Convert]::ToBase64String($bytes)-cne[Convert]::ToBase64String($snapshot.Bytes)){Fail 'OUTPUT'}
+        $stream.Position=0;$current=[M12OutputFile]::Read($stream);Assert-M12SameIdentity $snapshot.Identity $current
     }
 }
 function Close-M12HeldProvenanceSnapshots([object[]]$Held,[string]$Root) {
