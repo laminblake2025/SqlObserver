@@ -22,11 +22,35 @@ public sealed class M12SupplyChainCertificationProducerTests
     [InlineData("run-m12-sqlserver-certification.ps1")]
     [InlineData("run-m12-reports-certification.ps1")]
     [InlineData("run-m12-mcp-certification.ps1")]
+    [InlineData("run-m12-observability-certification.ps1")]
     public void ReleaseHostCaptionChecksCallTheStringInstanceMethod(string scriptName)
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools", scriptName));
         Assert.Contains(".StartsWith(", source, StringComparison.Ordinal);
+        Assert.Contains("Microsoft Windows Server 2025", source, StringComparison.Ordinal);
         Assert.DoesNotContain("[String]::StartsWith(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LivePreflightUsesTheSingleLinkGitEntryPointAndDoesNotLeakGitScrubState()
+    {
+        string root = FindRoot();
+        foreach (string scriptName in new[] { "run-m12-supply-chain-certification.ps1", "run-m12-reports-certification.ps1", "run-m12-observability-certification.ps1" })
+        {
+            string source = File.ReadAllText(Path.Combine(root, "tools", scriptName));
+            Assert.Contains("Git/bin/git.exe", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Git/cmd/git.exe", source, StringComparison.Ordinal);
+        }
+
+        string supplyChain = File.ReadAllText(Path.Combine(root, "tools", "run-m12-supply-chain-certification.ps1"));
+        int trustedTreeStart = supplyChain.IndexOf("function Assert-M12TrustedTree", StringComparison.Ordinal);
+        int trustedTreeEnd = supplyChain.IndexOf("function Get-M12ExpectedManifestPaths", trustedTreeStart, StringComparison.Ordinal);
+        Assert.True(trustedTreeStart >= 0 && trustedTreeEnd > trustedTreeStart);
+        Assert.DoesNotContain("$env:GIT_", supplyChain[trustedTreeStart..trustedTreeEnd], StringComparison.Ordinal);
+
+        string observability = File.ReadAllText(Path.Combine(root, "tools", "run-m12-observability-certification.ps1"));
+        Assert.Contains("$PSVersionTable.PSVersion-lt[Version]'7.5'", observability, StringComparison.Ordinal);
+        Assert.DoesNotContain("$PSVersionTable.PSVersion.Minor-ne 5", observability, StringComparison.Ordinal);
     }
 
     [Fact]
