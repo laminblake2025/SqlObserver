@@ -54,6 +54,50 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void LiveProcessExitCodesComeFromTheOwnedNativeHandleAndGitScrubbingIsExact()
+    {
+        string root = FindRoot();
+        foreach (string scriptName in new[]
+        {
+            "run-m12-supply-chain-certification.ps1",
+            "run-m12-sqlserver-certification.ps1",
+            "run-m12-reports-certification.ps1",
+            "run-m12-mcp-certification.ps1",
+            "run-m12-observability-certification.ps1"
+        })
+        {
+            string source = File.ReadAllText(Path.Combine(root, "tools", scriptName));
+            Assert.Contains("GetExitCodeProcess", source, StringComparison.Ordinal);
+            Assert.Contains("public int ExitCode", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("$process.ExitCode", source, StringComparison.Ordinal);
+            int boundedStart = source.IndexOf("function Invoke-M12BoundedProcess", StringComparison.Ordinal);
+            if (boundedStart >= 0)
+            {
+                int boundedEnd = source.IndexOf("function ", boundedStart + 10, StringComparison.Ordinal);
+                if (boundedEnd < 0) boundedEnd = source.Length;
+                Assert.DoesNotContain("$p.ExitCode", source[boundedStart..boundedEnd], StringComparison.Ordinal);
+            }
+        }
+
+        foreach (string scriptName in new[]
+        {
+            "run-m12-supply-chain-certification.ps1",
+            "run-m12-reports-certification.ps1",
+            "run-m12-observability-certification.ps1"
+        })
+        {
+            string source = File.ReadAllText(Path.Combine(root, "tools", scriptName));
+            string helperName = scriptName == "run-m12-reports-certification.ps1" ? "function Invoke-M12GitStatus" : "function Invoke-M12GitCommand";
+            int start = source.IndexOf(helperName, StringComparison.Ordinal);
+            int end = source.IndexOf("function ", start + 10, StringComparison.Ordinal);
+            Assert.True(start >= 0 && end > start);
+            string gitHelper = source[start..end];
+            Assert.DoesNotContain("'include.path='", gitHelper, StringComparison.Ordinal);
+            Assert.DoesNotContain("SetEnvironmentVariable($name,$null)", gitHelper, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void ContractOnlyRejectsTamperedPinnedInput()
     {
         string root = FindRoot(); string path = Path.Combine(root, "release/certification/m12-sbom-inputs.v1.json"); string original = File.ReadAllText(path);

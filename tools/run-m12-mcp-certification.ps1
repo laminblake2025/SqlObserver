@@ -97,6 +97,7 @@ public sealed class M12SuspendedProcess : IDisposable
     public Process ManagedProcess { get; }
     public Stream StandardOutput => new FileStream(_stdoutRead, FileAccess.Read, 4096, false);
     public Stream StandardError => new FileStream(_stderrRead, FileAccess.Read, 4096, false);
+    public int ExitCode { get { if (!GetExitCodeProcess(_processHandle, out var code) || code == 259) throw new InvalidOperationException("process exit code unavailable"); return unchecked((int)code); } }
     public static M12SuspendedProcess Start(string executable, string[] args, string workingDirectory)
     {
         SafeFileHandle stdoutRead = null!, stdoutWrite = null!, stderrRead = null!, stderrWrite = null!;
@@ -171,6 +172,7 @@ public sealed class M12SuspendedProcess : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint length, IntPtr returnLength);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool TerminateJobObject(IntPtr job, uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr GetStdHandle(int standardHandle);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr handle);
 }
 '@
@@ -413,7 +415,7 @@ function Invoke-LiveTest([string] $Root, [string] $BuildRoot, [string] $StdioPat
     $cleanupFailed = $false
     try {
         $streams = Read-CappedProcessStreams $process $job $stdout $stderr
-        if ($streams.TooLarge -or $streams.TimedOut -or $process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $trx -PathType Leaf)) { Fail 'TEST' }
+        if ($streams.TooLarge -or $streams.TimedOut -or $job.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $trx -PathType Leaf)) { Fail 'TEST' }
         $trxInfo = Get-Item -LiteralPath $trx -Force
         if ($trxInfo.PSIsContainer -or $trxInfo.Length -lt 1 -or $trxInfo.Length -gt 16777216) { Fail 'TEST' }
         $trxIdentity = Assert-OutputFileIdentity $trx $trxDirectory
