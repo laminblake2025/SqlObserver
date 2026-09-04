@@ -200,6 +200,24 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void VulnerabilityAuditRetriesOnlyTheExactBoundedRegistryTimeout()
+    {
+        string root = FindRoot();
+        string command = "$root=$env:M12_AUDIT_RETRY_ROOT;. (Join-Path $root 'tools/run-m12-supply-chain-certification.ps1') -RepositoryRoot $root -Profile Release -CaseId m12-vulnerability-scan -FunctionProbe;" +
+            "$script:attempt=0;function Invoke-M12BoundedProcess([string]$Exe,[string[]]$Arguments,[string]$WorkingDirectory){$script:attempt++;if($script:attempt-eq1){return [pscustomobject]@{ExitCode=1;TimedOut=$false;TooLarge=$false;Error='';Output=\"{`n  `\"error`\": {`n    `\"code`\": 23,`n    `\"message`\": `\"The operation was aborted due to timeout`\"`n  }`n}`n\"}};return [pscustomobject]@{ExitCode=0;TimedOut=$false;TooLarge=$false;Error='';Output=\"{}`n\"}};" +
+            "$result=Invoke-M12PnpmAuditWithRetry 'node' 'pnpm' $root;if($result.ExitCode-ne0-or$script:attempt-ne2){exit 11};" +
+            "$script:attempt=0;function Invoke-M12BoundedProcess([string]$Exe,[string[]]$Arguments,[string]$WorkingDirectory){$script:attempt++;return [pscustomobject]@{ExitCode=1;TimedOut=$false;TooLarge=$false;Error='';Output=\"{`n  `\"error`\": {`n    `\"code`\": 99,`n    `\"message`\": `\"different failure`\"`n  }`n}`n\"}};" +
+            "$result=Invoke-M12PnpmAuditWithRetry 'node' 'pnpm' $root;if($result.ExitCode-ne1-or$script:attempt-ne1){exit 12}";
+        ProcessStartInfo start = new("pwsh") { WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+        start.Environment["M12_AUDIT_RETRY_ROOT"] = root;
+        foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", command }) start.ArgumentList.Add(argument);
+        using Process process = Process.Start(start)!;
+        string standardError = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        Assert.True(process.ExitCode == 0, standardError);
+    }
+
+    [Fact]
     public void ContractOnlyRejectsTamperedPinnedInput()
     {
         string root = FindRoot(); string path = Path.Combine(root, "release/certification/m12-sbom-inputs.v1.json"); string original = File.ReadAllText(path);
