@@ -293,6 +293,18 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void VulnerabilityCanBindPublishedCanonicalSbomForRunbooks()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        int liveStart = source.IndexOf("function Invoke-M12VulnerabilityLive", StringComparison.Ordinal);
+        int liveEnd = source.IndexOf("function Assert-M12PublishedProvenanceArtifacts", liveStart, StringComparison.Ordinal);
+        Assert.True(liveStart >= 0 && liveEnd > liveStart);
+        string live = source[liveStart..liveEnd];
+        foreach (string marker in new[] { "SQLOBSERVER_M12_VULNERABILITY_SBOM_PATH", "m12-sbom\\.cdx\\.json$", "Assert-M12PublishedArtifacts", "Open-M12HeldSnapshot", "$vulnerabilitySbomName='published-sbom.json'", "Assert-M12RunbooksHeldFile $vulnerabilitySbomHeld", "Join-Path $raw $vulnerabilitySbomName" }) Assert.Contains(marker, live, StringComparison.Ordinal);
+        Assert.True(live.Split("Assert-M12RunbooksHeldFile $vulnerabilitySbomHeld", StringSplitOptions.None).Length >= 3);
+    }
+
+    [Fact]
     public void ProvenanceContractOnlyDispatchValidatesWithoutPublishing()
     {
         string root = FindRoot(); string source = File.ReadAllText(Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"));
@@ -390,6 +402,23 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void CleanEnvironmentPinsNodeCommandPathAndRestoresTheOriginalPath()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        int enter = source.IndexOf("function Enter-M12CleanEnvironment([string]$Scratch)", StringComparison.Ordinal);
+        int exit = source.IndexOf("function Exit-M12CleanEnvironment([hashtable]$Saved)", enter, StringComparison.Ordinal);
+        Assert.True(enter >= 0 && exit > enter);
+        string cleanEnvironment = source[enter..exit];
+        Assert.Contains("'npm_config_package_import_method','PATH'", cleanEnvironment, StringComparison.Ordinal);
+        Assert.Contains("PATH=($nodeDirectory,$systemDirectory,$windowsDirectory-join[IO.Path]::PathSeparator)", cleanEnvironment, StringComparison.Ordinal);
+        Assert.Contains("$saved['M12_ENV_STATE']=Save-M12Environment $envNames", cleanEnvironment, StringComparison.Ordinal);
+        Assert.Contains("Restore-M12Environment $saved['M12_ENV_STATE']", cleanEnvironment, StringComparison.Ordinal);
+        Assert.Contains("$pnpmCommand=Join-Path $nodeDirectory 'pnpm.cmd'", source, StringComparison.Ordinal);
+        Assert.Contains("$pnpmCommandHandle=Open-M12ExecutableHandle $pnpmCommand", source, StringComparison.Ordinal);
+        Assert.Contains("if($null-ne$pnpmCommandHandle){$pnpmCommandHandle.Stream.Dispose()}", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LicenseValidationAllowsOnlyTheOwnedRawWorkspaceUntilFinalCleanup()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
@@ -421,7 +450,7 @@ public sealed class M12SupplyChainCertificationProducerTests
         string root = FindRoot();
         string producer = File.ReadAllText(Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"));
         string generator = File.ReadAllText(Path.Combine(root, "tools/generate-m12-license-evidence.mjs"));
-        Assert.Equal(4, producer.Split(digest, StringSplitOptions.None).Length - 1);
+        Assert.Equal(5, producer.Split(digest, StringSplitOptions.None).Length - 1);
         Assert.Contains($"sha256: \"{digest}\"", generator, StringComparison.Ordinal);
         Assert.DoesNotContain("9335e8bad875dd7beebd55d2335eb6433d1cea61aadb3817af7807bef8932a", producer, StringComparison.Ordinal);
     }

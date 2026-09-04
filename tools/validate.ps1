@@ -1890,8 +1890,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = 'ad3c41075f4059f17c8f945f9104394ae5dfa917ed0bc4e2cc83a8fc2207e93e'
-    $m12SbomAssetManifestSha256 = '0baa3d45aa77b2a40407ae4173f2c1cd1ef795e681e8e380e7d3ca20ea77f432'
+    $m12SbomProducerSha256 = 'f6e9be85273fbeec18f88437751880c411f1498f4091264666cedd78fc61b814'
+    $m12SbomAssetManifestSha256 = 'bb0f4efa5261989bfba45370b673fa4fdf9de2f88a7dea5f20a1e9f645c54ada'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1927,12 +1927,12 @@ function Assert-RepositoryShape {
         'release/certification/m12-runbooks-evidence.v1.schema.json' = '0be97ec20d20928d9bd419b0be9fd771687e509a652194e8d9264ff37edf03ed'
         'docs/runbooks/README.md' = '34a64642595a36b496a0b88d8627b4a7a375a178b3939fa1ed634d58bcd1de86'
         'docs/runbooks/m12-release-preflight.md' = '4790e4124ec1ad70a9b2c7e7634d1bf87cc31f4c3823e5e1a7114b12ca743fa7'
-        'docs/runbooks/m12-supply-chain-certification.md' = 'db79db82d954af4474f90c8c4831c0a479ead9dc930178b7077bfca2b841af1e'
+        'docs/runbooks/m12-supply-chain-certification.md' = '42e554d9e78300ea30cd856ae38d207f427291401cab7923e3092f5f13d0fd1b'
         'docs/runbooks/m12-candidate-evidence-verification.md' = '43dd14b4ca5fb712118b85f92e0db21892eb04d59cbaf1737e98c111514be243'
         'docs/runbooks/m12-failed-run-quarantine-and-escalation.md' = '51773b5b1d28f3134913de9aa5aa3c9f832307e43145a6afa1a835f51612856d'
-        'tools/generate-m12-runbooks-evidence.mjs' = '88e7b402e88e6e26eacab2fa39f3df82efe8952d90da8d380d3d24c7f9c62c19'
-        'web/tests/m12-runbooks-generator-contract.test.mjs' = 'e55a715bb332adc7ccdcacd675d2cf51527c47aa73e6be8a858d8cbea3b50f92'
-        'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs' = 'f7f89fa4ecd33ee2a92ef052151659938018566ca5daaa4d1898a841892020ff'
+        'tools/generate-m12-runbooks-evidence.mjs' = '06e9dc7a1ff01043b09bbd3a0d37da578c360c32b49a22e446a5af07fe0f9a42'
+        'web/tests/m12-runbooks-generator-contract.test.mjs' = '37a55f7ebd97e003ee97115cc4221a4ca14dcda121a4d674fab3dcca1a9def25'
+        'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs' = '461454385641c8205b76076e3f7d0a21555c8dc3db845c998ea6e0a50613d4aa'
     }
     $m12SbomPinText = [IO.File]::ReadAllText($m12SbomPinPath); $m12SbomExpectedPin = (($m12SbomApprovedAssets.Keys | ForEach-Object { "$($m12SbomApprovedAssets[$_])  $_" }) -join "`n") + "`n"
     if ($m12SbomPinText -cne $m12SbomExpectedPin) { throw 'M12 SBOM contract asset pin is not exact LF-closed.' }
@@ -1949,14 +1949,14 @@ function Assert-RepositoryShape {
         'release/certification/m12-license-contract.v1.json' = '019fb05b5bfff8b55947601bbd1dc9e180af5e507136a7da4ce92d39a3196b93'
         'release/certification/m12-license-contract.v1.schema.json' = '94c3c06975ce2a21bf29105cbb2a3b64a5ca0014d6fb082d6f59025eb0bd0390'
         'release/certification/m12-license-evidence.v1.schema.json' = '6c3afae66b9651e0fbae67c95c13df5d5c8adaa0cbbdd7e39374fba1750e6361'
-        'tools/generate-m12-license-evidence.mjs' = '15bd0a1026b8b91ede946b57bfd57423a60d496fe9d1e1dbabe1fa84dd2e264c'
-        'web/tests/m12-license-generator-contract.test.mjs' = 'dd82c560c68883c494d6bd1b288e7eaa0a75eacc36e6e3c113627072dfa23c2a'
+        'tools/generate-m12-license-evidence.mjs' = 'c0442ca8796f142501acf275a9617bade204dd0e0734a7c476b83b13dce540bc'
+        'web/tests/m12-license-generator-contract.test.mjs' = '174f3ed497010e5441a1a326588e612e6ad81b3080d6aad4fe73f0c044adcf8d'
         'tests/SqlObserver.ReleaseTests/M12LicenseCertificationTests.cs' = '76f056fe0a543e2ea9b7528db1bc14c2f2662946912661bc1b54a0788f9bdd08'
     }
     $m12LicensePinPath = Join-Path $repositoryRoot 'release/certification/m12-license-contract.v1.assets.sha256'; if (-not (Test-Path -LiteralPath $m12LicensePinPath -PathType Leaf)) { throw 'M12 license certification asset is missing.' }
     foreach ($asset in $m12LicenseAssets.Keys) { if ((Get-FileHash -LiteralPath (Join-Path $repositoryRoot $asset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12LicenseAssets[$asset]) { throw "M12 license asset checksum mismatch: $asset" } }
     $m12LicensePinText = [IO.File]::ReadAllText($m12LicensePinPath); $m12LicenseExpectedPin = (($m12LicenseAssets.Keys | ForEach-Object { "$($m12LicenseAssets[$_])  $_" }) -join "`n") + "`n"; if ($m12LicensePinText -cne $m12LicenseExpectedPin) { throw 'M12 license contract asset pin is not exact LF-closed.' }
-    if ((Get-FileHash -LiteralPath $m12LicensePinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'c1c860c378484cb0fa6a3a799d7823011acb3a2f0d32ce393f40eaa184e5aed1') { throw 'M12 license asset manifest checksum mismatch.' }
+    if ((Get-FileHash -LiteralPath $m12LicensePinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'c3aef3256aee2332534f023242300d377aec66361b99b3385b34efd3084c1a57') { throw 'M12 license asset manifest checksum mismatch.' }
     $m12LicenseContract = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-license-contract.v1.json') -Raw | ConvertFrom-Json; $m12LicenseSchema = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-license-contract.v1.schema.json') -Raw | ConvertFrom-Json; $m12LicenseEvidenceSchema = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-license-evidence.v1.schema.json') -Raw | ConvertFrom-Json
     if ($m12LicenseContract.'$schema' -cne 'm12-license-contract.v1.schema.json' -or $m12LicenseContract.contractId -cne 'sqlobserver-m12-licenses' -or $m12LicenseContract.producerId -cne 'm12-supply-chain-harness' -or $m12LicenseContract.artifactKind -cne 'supply-chain-evidence' -or $m12LicenseContract.caseId -cne 'm12-licenses' -or (@($m12LicenseContract.requiredFacts) -join '|') -cne 'os|architecture|licenses' -or $m12LicenseContract.factPredicates.licenses -ne $true -or (@($m12LicenseContract.outputFiles) -join '|') -cne 'm12-licenses.json|m12-licenses-test-evidence.json|m12-licenses-provenance.json' -or (@($m12LicenseContract.licensePolicy.allowedSpdx) -join '|') -cne 'Apache-2.0|MIT|PostgreSQL' -or $m12LicenseContract.bounds.components -ne 4096 -or $m12LicenseSchema.additionalProperties -ne $false -or $m12LicenseEvidenceSchema.additionalProperties -ne $false) { throw 'M12 license contract is not the approved closed shape.' }
     $m12LicenseCase = @($m12SbomLane[0].cases | Where-Object { $_.caseId -ceq 'm12-licenses' }); if ($m12LicenseCase.Count -ne 1 -or $m12LicenseCase[0].producerId -cne 'm12-supply-chain-harness' -or $m12LicenseCase[0].implementationStatus -cne 'pending' -or $m12LicenseCase[0].environment.factPredicates.licenses -ne $true) { throw 'M12 license lane must remain pending and exact.' }
@@ -1998,14 +1998,14 @@ function Assert-RepositoryShape {
         'release/certification/m12-runbooks-evidence.v1.schema.json' = '0be97ec20d20928d9bd419b0be9fd771687e509a652194e8d9264ff37edf03ed'
         'docs/runbooks/README.md' = '34a64642595a36b496a0b88d8627b4a7a375a178b3939fa1ed634d58bcd1de86'
         'docs/runbooks/m12-release-preflight.md' = '4790e4124ec1ad70a9b2c7e7634d1bf87cc31f4c3823e5e1a7114b12ca743fa7'
-        'docs/runbooks/m12-supply-chain-certification.md' = 'db79db82d954af4474f90c8c4831c0a479ead9dc930178b7077bfca2b841af1e'
+        'docs/runbooks/m12-supply-chain-certification.md' = '42e554d9e78300ea30cd856ae38d207f427291401cab7923e3092f5f13d0fd1b'
         'docs/runbooks/m12-candidate-evidence-verification.md' = '43dd14b4ca5fb712118b85f92e0db21892eb04d59cbaf1737e98c111514be243'
         'docs/runbooks/m12-failed-run-quarantine-and-escalation.md' = '51773b5b1d28f3134913de9aa5aa3c9f832307e43145a6afa1a835f51612856d'
-        'tools/generate-m12-runbooks-evidence.mjs' = '88e7b402e88e6e26eacab2fa39f3df82efe8952d90da8d380d3d24c7f9c62c19'
-        'web/tests/m12-runbooks-generator-contract.test.mjs' = 'e55a715bb332adc7ccdcacd675d2cf51527c47aa73e6be8a858d8cbea3b50f92'
-        'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs' = 'f7f89fa4ecd33ee2a92ef052151659938018566ca5daaa4d1898a841892020ff'
+        'tools/generate-m12-runbooks-evidence.mjs' = '06e9dc7a1ff01043b09bbd3a0d37da578c360c32b49a22e446a5af07fe0f9a42'
+        'web/tests/m12-runbooks-generator-contract.test.mjs' = '37a55f7ebd97e003ee97115cc4221a4ca14dcda121a4d674fab3dcca1a9def25'
+        'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs' = '461454385641c8205b76076e3f7d0a21555c8dc3db845c998ea6e0a50613d4aa'
     }
-    $m12RunbooksPinPath = Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.assets.sha256'; $m12RunbooksPinHash = '0dd945d457c69e64c47b8dbfe089c9e8a1a7765caa8f7997685e7088d17b4a28'; if (-not (Test-Path -LiteralPath $m12RunbooksPinPath -PathType Leaf) -or (Get-FileHash -LiteralPath $m12RunbooksPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12RunbooksPinHash) { throw 'M12 runbooks asset manifest checksum mismatch.' }
+    $m12RunbooksPinPath = Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.assets.sha256'; $m12RunbooksPinHash = '7642720a58b636639bef61332a638aa6587f2ac90f60a45dfbd25e2b6dc6961f'; if (-not (Test-Path -LiteralPath $m12RunbooksPinPath -PathType Leaf) -or (Get-FileHash -LiteralPath $m12RunbooksPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12RunbooksPinHash) { throw 'M12 runbooks asset manifest checksum mismatch.' }
     foreach ($asset in $m12RunbooksAssets.GetEnumerator()) { $assetPath = Join-Path $repositoryRoot $asset.Key; if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.Value) { throw "M12 runbooks certification asset pin mismatch: $($asset.Key)" } }
     $m12RunbooksContract = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.json') -Raw | ConvertFrom-Json; $m12RunbooksCatalog = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-runbooks-catalog.v1.json') -Raw | ConvertFrom-Json
     if ($m12RunbooksContract.'$schema' -cne 'm12-runbooks-contract.v1.schema.json' -or $m12RunbooksContract.contractId -cne 'sqlobserver-m12-runbooks' -or $m12RunbooksContract.producerId -cne 'm12-supply-chain-harness' -or $m12RunbooksContract.artifactKind -cne 'supply-chain-evidence' -or $m12RunbooksContract.caseId -cne 'm12-runbooks' -or (@($m12RunbooksContract.requiredFacts) -join '|') -cne 'os|architecture|runbooks' -or $m12RunbooksContract.factPredicates.runbooks -ne $true -or (@($m12RunbooksContract.prerequisites) -join '|') -cne 'm12-sbom|m12-licenses|m12-vulnerability-scan|m12-provenance' -or (@($m12RunbooksContract.outputFiles) -join '|') -cne 'm12-runbooks.json|m12-runbooks-test-evidence.json|m12-runbooks-provenance.json' -or $m12RunbooksContract.bounds.documents -ne 4 -or $m12RunbooksContract.bounds.sectionsPerDocument -ne 12 -or $m12RunbooksContract.bounds.prerequisites -ne 4 -or $m12RunbooksContract.bounds.links -ne 64 -or $m12RunbooksContract.bounds.documentBytes -ne 131072 -or $m12RunbooksContract.bounds.markdownBytes -ne 524288 -or $m12RunbooksContract.bounds.jsonBytes -ne 4194304 -or $m12RunbooksContract.bounds.stringLength -ne 512 -or $m12RunbooksContract.bounds.depth -ne 32) { throw 'M12 runbooks contract is not the approved closed shape.' }

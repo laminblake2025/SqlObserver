@@ -30,12 +30,44 @@ public sealed class M12RunbooksCertificationTests
     }
 
     [Fact]
+    public void RunbookPredecessorUsesImmutableLicenseEvidenceInsteadOfReopeningPackageRoots()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        Assert.Contains("function Assert-M12PublishedEvidenceSource", source, StringComparison.Ordinal);
+        Assert.Contains("[switch]$PublishedEvidenceOnly", source, StringComparison.Ordinal);
+        Assert.Contains("-SbomRunId $SbomRunId -PublishedEvidenceOnly", source, StringComparison.Ordinal);
+        Assert.Contains("if($PublishedEvidenceOnly){Assert-M12PublishedEvidenceSource $component}else{Assert-M12EvidenceSource", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("'m12-licenses' {[void](Assert-M12PublishedLicenseArtifacts $dir $Root $SbomPath $Commit $runId $Environment 'SqlObserver.ReleaseTests.M12LicenseCertificationTests.LiveReleaseLicenseEvidenceIsCompleteDeterministicAndSbomBound' ([Environment]::GetEnvironmentVariable('NUGET_PACKAGES'))", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RunbookHeldRevalidationScansDirectoryAncestorsForLateAds()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
         Assert.Contains("function Assert-M12NoAlternateDataStreamsTree", source, StringComparison.Ordinal);
-        Assert.Contains("Assert-M12NoAlternateDataStreamsTree $item.Path $Root", source, StringComparison.Ordinal);
+        Assert.Contains("Assert-M12NoAlternateDataStreamsTree $Item.Path $boundary", source, StringComparison.Ordinal);
         Assert.Contains("Assert-M12NoAlternateDataStreamsTree $Path $Root", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RunbookHeldExternalToolsUseExactInstallationBoundaries()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        Assert.Contains("$externalBoundaries=@{}", source, StringComparison.Ordinal);
+        Assert.Contains("if(-not$externalBoundaries.ContainsKey($full)){Fail 'PATH'}", source, StringComparison.Ordinal);
+        Assert.Contains("$MaximumTrustedToolBytes=134217728", source, StringComparison.Ordinal);
+        Assert.Contains("MaximumBytes=$MaximumTrustedToolBytes", source, StringComparison.Ordinal);
+        Assert.Contains("$boundary=[string]$external.Boundary;$maximumBytes=[int]$external.MaximumBytes", source, StringComparison.Ordinal);
+        Assert.Contains("Open-M12HeldSnapshot $full $boundary $maximumBytes", source, StringComparison.Ordinal);
+        Assert.Contains("return ,$held", source, StringComparison.Ordinal);
+        Assert.Contains("if($matches.Count-ne1){Fail 'PATH'};$item=$matches[0]", source, StringComparison.Ordinal);
+        Assert.Contains("if($matches.Count-eq0){[void]$Held.Add((Open-M12HeldSnapshot $full $Root $MaximumJsonBytes))", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("$rawRoots=@(Get-ChildItem", source, StringComparison.Ordinal);
+        Assert.Contains("BoundaryRoot=$boundary", source, StringComparison.Ordinal);
+        Assert.Contains("$boundary=[string]$Item.BoundaryRoot", source, StringComparison.Ordinal);
+        Assert.Contains("if($item.Kind-ceq'File'-and$null-ne$item.Stream)", source, StringComparison.Ordinal);
+        Assert.Contains("GetEnvironmentVariable('SQLOBSERVER_M12_RUNBOOKS_EVIDENCE_PATH')", source, StringComparison.Ordinal);
+        Assert.Contains("$Arguments=@($Arguments+'--no-build')", source, StringComparison.Ordinal);
     }
 
     [Fact]

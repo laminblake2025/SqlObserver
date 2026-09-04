@@ -50,6 +50,17 @@ test("license evidence is deterministic and bijective over NuGet/npm SBOM compon
   finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+test("license evidence can bind a published SBOM from a distinct run", async () => {
+  const f = await fixture();
+  try {
+    const licenseRunId = "22222222-2222-4222-8222-222222222222";
+    const generated = await buildLicenseEvidence(options(f, { runId: licenseRunId, sbomRunId: runId }));
+    assert.equal(generated.evidence.runId, licenseRunId);
+    assert.equal(generated.evidence.sbomSha256, createHash("sha256").update(jsonBytes(sbom())).digest("hex"));
+    await assert.rejects(() => buildLicenseEvidence(options(f, { runId: licenseRunId })), /SBOM metadata properties are invalid/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test("NuGet SPDX expressions are bound to nuspec bytes without requiring a license file", async () => {
   const f = await fixture();
   try {
@@ -115,11 +126,11 @@ test("license generator accepts unchanged real peer-suffixed react-dom package m
 test("production PowerShell assertion accepts generated canonical evidence and rejects reordered evidence", async () => {
   const f = await fixture();
   try {
-    const validSbom = sbom(); const sbomPath = path.join(f.root, "sbom.json"); const evidencePath = path.join(f.root, "evidence.json"); const reorderedPath = path.join(f.root, "reordered-evidence.json");
-    await writeFile(sbomPath, jsonBytes(validSbom)); const generated = await buildLicenseEvidence(options(f, { sbom: validSbom })); await writeFile(evidencePath, generated.bytes);
+    const licenseRunId = "22222222-2222-4222-8222-222222222222"; const validSbom = sbom(); const sbomPath = path.join(f.root, "sbom.json"); const evidencePath = path.join(f.root, "evidence.json"); const reorderedPath = path.join(f.root, "reordered-evidence.json");
+    await writeFile(sbomPath, jsonBytes(validSbom)); const generated = await buildLicenseEvidence(options(f, { sbom: validSbom, runId: licenseRunId, sbomRunId: runId })); await writeFile(evidencePath, generated.bytes);
     const reordered = {}; for (const key of ["caseId", "$schema", "commitSha", "components", "environmentId", "kind", "producerId", "result", "runId", "sbomSha256", "sbomSize", "schemaVersion"]) reordered[key] = JSON.parse(generated.bytes)[key]; await writeFile(reorderedPath, JSON.stringify(reordered) + "\n");
-    const command = ". $env:M12_PRODUCER -RepositoryRoot $env:M12_ROOT -FunctionProbe\n$license=Read-M12LockedBytes $env:M12_EVIDENCE $env:M12_ROOT 4194304\n$sbom=Read-M12LockedBytes $env:M12_SBOM $env:M12_ROOT 4194304\n[void](Assert-M12LicenseEvidence ([pscustomobject]@{Bytes=$license.Bytes;Hash=$license.Hash}) $env:M12_ROOT $env:M12_SBOM $env:M12_COMMIT $env:M12_RUN $env:M12_ENV ([pscustomobject]@{Bytes=$sbom.Bytes;Hash=$sbom.Hash}) $env:M12_NUGET $env:M12_NPM)";
-    const pwsh = process.env.SQLOBSERVER_M12_TRUSTED_PWSH_PATH ?? "pwsh"; const env = { ...process.env, M12_PRODUCER: path.join(repositoryRoot, "tools/run-m12-supply-chain-certification.ps1"), M12_ROOT: f.root, M12_EVIDENCE: evidencePath, M12_SBOM: sbomPath, M12_COMMIT: commit, M12_RUN: runId, M12_ENV: environmentId, M12_NUGET: f.nuget, M12_NPM: f.npm };
+    const command = ". $env:M12_PRODUCER -RepositoryRoot $env:M12_ROOT -FunctionProbe\n$license=Read-M12LockedBytes $env:M12_EVIDENCE $env:M12_ROOT 4194304\n$sbom=Read-M12LockedBytes $env:M12_SBOM $env:M12_ROOT 4194304\n[void](Assert-M12LicenseEvidence ([pscustomobject]@{Bytes=$license.Bytes;Hash=$license.Hash}) $env:M12_ROOT $env:M12_SBOM $env:M12_COMMIT $env:M12_RUN $env:M12_ENV ([pscustomobject]@{Bytes=$sbom.Bytes;Hash=$sbom.Hash}) $env:M12_NUGET $env:M12_NPM $env:M12_SBOM_RUN)";
+    const pwsh = process.env.SQLOBSERVER_M12_TRUSTED_PWSH_PATH ?? "pwsh"; const env = { ...process.env, M12_PRODUCER: path.join(repositoryRoot, "tools/run-m12-supply-chain-certification.ps1"), M12_ROOT: f.root, M12_EVIDENCE: evidencePath, M12_SBOM: sbomPath, M12_COMMIT: commit, M12_RUN: licenseRunId, M12_SBOM_RUN: runId, M12_ENV: environmentId, M12_NUGET: f.nuget, M12_NPM: f.npm };
     await execFileAsync(pwsh, ["-NoProfile", "-NonInteractive", "-Command", command], { windowsHide: true, env });
     await assert.rejects(() => execFileAsync(pwsh, ["-NoProfile", "-NonInteractive", "-Command", command], { windowsHide: true, env: { ...env, M12_EVIDENCE: reorderedPath } }));
   } finally { await rm(f.root, { recursive: true, force: true }); }
