@@ -59,6 +59,8 @@ public sealed class M12RunbooksCertificationTests
         Assert.Contains("MaximumBytes=$MaximumTrustedToolBytes", source, StringComparison.Ordinal);
         Assert.Contains("$boundary=[string]$external.Boundary;$maximumBytes=[int]$external.MaximumBytes", source, StringComparison.Ordinal);
         Assert.Contains("Open-M12HeldSnapshot $full $boundary $maximumBytes", source, StringComparison.Ordinal);
+        Assert.Contains("return ,$held", source, StringComparison.Ordinal);
+        Assert.Contains("if($matches.Count-ne1){Fail 'PATH'};$item=$matches[0]", source, StringComparison.Ordinal);
         Assert.Contains("BoundaryRoot=$boundary", source, StringComparison.Ordinal);
         Assert.Contains("$boundary=[string]$Item.BoundaryRoot", source, StringComparison.Ordinal);
         Assert.Contains("if($item.Kind-ceq'File'-and$null-ne$item.Stream)", source, StringComparison.Ordinal);
