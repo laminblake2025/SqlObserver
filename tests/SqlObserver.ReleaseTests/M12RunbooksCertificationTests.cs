@@ -61,6 +61,7 @@ public sealed class M12RunbooksCertificationTests
         Assert.Contains("Open-M12HeldSnapshot $full $boundary $maximumBytes", source, StringComparison.Ordinal);
         Assert.Contains("BoundaryRoot=$boundary", source, StringComparison.Ordinal);
         Assert.Contains("$boundary=[string]$Item.BoundaryRoot", source, StringComparison.Ordinal);
+        Assert.Contains("if($item.Kind-ceq'File'-and$null-ne$item.Stream)", source, StringComparison.Ordinal);
     }
 
     [Fact]
