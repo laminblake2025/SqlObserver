@@ -63,6 +63,21 @@ public sealed class M12ProvenanceCertificationTests
         Assert.DoesNotContain("Read-M12LockedBytes", function, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ProvenanceSnapshotRevalidationUsesHeldAuthorityWithoutExclusiveReopen()
+    {
+        string root = FindRoot();
+        string producer = File.ReadAllText(Path.Combine(root, "tools", "run-m12-supply-chain-certification.ps1"));
+        int start = producer.IndexOf("function Assert-M12ProvenanceSnapshots", StringComparison.Ordinal);
+        int end = producer.IndexOf("function Assert-M12HeldProvenanceSnapshots", start, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        string function = producer[start..end];
+        Assert.Contains("Assert-M12HeldProvenanceSnapshots $provenanceHeld $Root", function, StringComparison.Ordinal);
+        Assert.Contains("$heldMatches.Count-eq1", function, StringComparison.Ordinal);
+        Assert.Contains("Assert-M12SameIdentity $snapshot.Identity $current.Identity;continue", function, StringComparison.Ordinal);
+        Assert.Contains("$current=Read-M12LockedBytes", function, StringComparison.Ordinal);
+    }
+
     private static string Required(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value ? value : throw new InvalidDataException(name);
 
     private static byte[] ReadLocked(string path)
