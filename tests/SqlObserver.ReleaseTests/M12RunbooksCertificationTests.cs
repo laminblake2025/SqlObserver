@@ -45,8 +45,19 @@ public sealed class M12RunbooksCertificationTests
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
         Assert.Contains("function Assert-M12NoAlternateDataStreamsTree", source, StringComparison.Ordinal);
-        Assert.Contains("Assert-M12NoAlternateDataStreamsTree $item.Path $Root", source, StringComparison.Ordinal);
+        Assert.Contains("Assert-M12NoAlternateDataStreamsTree $Item.Path $boundary", source, StringComparison.Ordinal);
         Assert.Contains("Assert-M12NoAlternateDataStreamsTree $Path $Root", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RunbookHeldExternalToolsUseExactInstallationBoundaries()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        Assert.Contains("$externalBoundaries=@{}", source, StringComparison.Ordinal);
+        Assert.Contains("if(-not$externalBoundaries.ContainsKey($full)){Fail 'PATH'}", source, StringComparison.Ordinal);
+        Assert.Contains("$boundary=[string]$externalBoundaries[$full]", source, StringComparison.Ordinal);
+        Assert.Contains("BoundaryRoot=$boundary", source, StringComparison.Ordinal);
+        Assert.Contains("$boundary=[string]$Item.BoundaryRoot", source, StringComparison.Ordinal);
     }
 
     [Fact]
