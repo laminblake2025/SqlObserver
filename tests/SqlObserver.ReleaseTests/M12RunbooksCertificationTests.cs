@@ -30,6 +30,17 @@ public sealed class M12RunbooksCertificationTests
     }
 
     [Fact]
+    public void RunbookPredecessorUsesImmutableLicenseEvidenceInsteadOfReopeningPackageRoots()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        Assert.Contains("function Assert-M12PublishedEvidenceSource", source, StringComparison.Ordinal);
+        Assert.Contains("[switch]$PublishedEvidenceOnly", source, StringComparison.Ordinal);
+        Assert.Contains("-SbomRunId $SbomRunId -PublishedEvidenceOnly", source, StringComparison.Ordinal);
+        Assert.Contains("if($PublishedEvidenceOnly){Assert-M12PublishedEvidenceSource $component}else{Assert-M12EvidenceSource", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("'m12-licenses' {[void](Assert-M12PublishedLicenseArtifacts $dir $Root $SbomPath $Commit $runId $Environment 'SqlObserver.ReleaseTests.M12LicenseCertificationTests.LiveReleaseLicenseEvidenceIsCompleteDeterministicAndSbomBound' ([Environment]::GetEnvironmentVariable('NUGET_PACKAGES'))", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RunbookHeldRevalidationScansDirectoryAncestorsForLateAds()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));

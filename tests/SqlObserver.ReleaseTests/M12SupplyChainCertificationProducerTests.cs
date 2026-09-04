@@ -438,7 +438,7 @@ public sealed class M12SupplyChainCertificationProducerTests
         string root = FindRoot();
         string producer = File.ReadAllText(Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"));
         string generator = File.ReadAllText(Path.Combine(root, "tools/generate-m12-license-evidence.mjs"));
-        Assert.Equal(4, producer.Split(digest, StringSplitOptions.None).Length - 1);
+        Assert.Equal(5, producer.Split(digest, StringSplitOptions.None).Length - 1);
         Assert.Contains($"sha256: \"{digest}\"", generator, StringComparison.Ordinal);
         Assert.DoesNotContain("9335e8bad875dd7beebd55d2335eb6433d1cea61aadb3817af7807bef8932a", producer, StringComparison.Ordinal);
     }
