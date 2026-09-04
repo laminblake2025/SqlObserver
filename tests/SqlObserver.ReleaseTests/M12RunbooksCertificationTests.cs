@@ -55,7 +55,10 @@ public sealed class M12RunbooksCertificationTests
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
         Assert.Contains("$externalBoundaries=@{}", source, StringComparison.Ordinal);
         Assert.Contains("if(-not$externalBoundaries.ContainsKey($full)){Fail 'PATH'}", source, StringComparison.Ordinal);
-        Assert.Contains("$boundary=[string]$externalBoundaries[$full]", source, StringComparison.Ordinal);
+        Assert.Contains("$MaximumTrustedToolBytes=134217728", source, StringComparison.Ordinal);
+        Assert.Contains("MaximumBytes=$MaximumTrustedToolBytes", source, StringComparison.Ordinal);
+        Assert.Contains("$boundary=[string]$external.Boundary;$maximumBytes=[int]$external.MaximumBytes", source, StringComparison.Ordinal);
+        Assert.Contains("Open-M12HeldSnapshot $full $boundary $maximumBytes", source, StringComparison.Ordinal);
         Assert.Contains("BoundaryRoot=$boundary", source, StringComparison.Ordinal);
         Assert.Contains("$boundary=[string]$Item.BoundaryRoot", source, StringComparison.Ordinal);
     }
