@@ -66,6 +66,8 @@ public sealed class M12RunbooksCertificationTests
         Assert.Contains("BoundaryRoot=$boundary", source, StringComparison.Ordinal);
         Assert.Contains("$boundary=[string]$Item.BoundaryRoot", source, StringComparison.Ordinal);
         Assert.Contains("if($item.Kind-ceq'File'-and$null-ne$item.Stream)", source, StringComparison.Ordinal);
+        Assert.Contains("GetEnvironmentVariable('SQLOBSERVER_M12_RUNBOOKS_EVIDENCE_PATH')", source, StringComparison.Ordinal);
+        Assert.Contains("$Arguments=@($Arguments+'--no-build')", source, StringComparison.Ordinal);
     }
 
     [Fact]
