@@ -42,6 +42,13 @@ the bounded catalog and exactly three output files only after all prerequisite
 checks and the exact live test pass. Markdown command labels are never parsed
 or executed.
 
+After the SBOM candidate is final, set
+`SQLOBSERVER_M12_LICENSE_SBOM_PATH` to its canonical
+`TestResults/m12/<UUID>/m12-sbom.cdx.json` path while running the
+`m12-licenses` case. The license run keeps its own distinct UUID while binding
+its evidence cryptographically to that exact published SBOM. Clear the variable
+after the license case; the runner rejects external or non-final SBOM paths.
+
 ## Verification
 
 Check byte and identity binding for each prerequisite sidecar, distinct run IDs
