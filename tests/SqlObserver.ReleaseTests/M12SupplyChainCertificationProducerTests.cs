@@ -293,6 +293,18 @@ public sealed class M12SupplyChainCertificationProducerTests
     }
 
     [Fact]
+    public void VulnerabilityCanBindPublishedCanonicalSbomForRunbooks()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-supply-chain-certification.ps1"));
+        int liveStart = source.IndexOf("function Invoke-M12VulnerabilityLive", StringComparison.Ordinal);
+        int liveEnd = source.IndexOf("function Assert-M12PublishedProvenanceArtifacts", liveStart, StringComparison.Ordinal);
+        Assert.True(liveStart >= 0 && liveEnd > liveStart);
+        string live = source[liveStart..liveEnd];
+        foreach (string marker in new[] { "SQLOBSERVER_M12_VULNERABILITY_SBOM_PATH", "m12-sbom\\.cdx\\.json$", "Assert-M12PublishedArtifacts", "Open-M12HeldSnapshot", "$vulnerabilitySbomName='published-sbom.json'", "Assert-M12RunbooksHeldFile $vulnerabilitySbomHeld", "Join-Path $raw $vulnerabilitySbomName" }) Assert.Contains(marker, live, StringComparison.Ordinal);
+        Assert.True(live.Split("Assert-M12RunbooksHeldFile $vulnerabilitySbomHeld", StringSplitOptions.None).Length >= 3);
+    }
+
+    [Fact]
     public void ProvenanceContractOnlyDispatchValidatesWithoutPublishing()
     {
         string root = FindRoot(); string source = File.ReadAllText(Path.Combine(root, "tools/run-m12-supply-chain-certification.ps1"));
