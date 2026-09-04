@@ -1890,8 +1890,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = '06d3ce48f9a99bd97e2fc0db254ff7ccd0c85b6e8f0a5e8c675c1dc924d66ada'
-    $m12SbomAssetManifestSha256 = '9a94a6f3f3cfffdf116c7b74a8b35ca182cd34fd450ed9e19270afc785885ffd'
+    $m12SbomProducerSha256 = '7efa93e995231d3fd74bfc0e2a8880040945b27f0e44a9967f5a83b2bd6fb507'
+    $m12SbomAssetManifestSha256 = 'e4dfc92d23c41e5f7160d7ea46c9371f495fc7537f838bc6dee910bf0aa3cbc2'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1930,8 +1930,8 @@ function Assert-RepositoryShape {
         'docs/runbooks/m12-supply-chain-certification.md' = '42e554d9e78300ea30cd856ae38d207f427291401cab7923e3092f5f13d0fd1b'
         'docs/runbooks/m12-candidate-evidence-verification.md' = '43dd14b4ca5fb712118b85f92e0db21892eb04d59cbaf1737e98c111514be243'
         'docs/runbooks/m12-failed-run-quarantine-and-escalation.md' = '51773b5b1d28f3134913de9aa5aa3c9f832307e43145a6afa1a835f51612856d'
-        'tools/generate-m12-runbooks-evidence.mjs' = '88e7b402e88e6e26eacab2fa39f3df82efe8952d90da8d380d3d24c7f9c62c19'
-        'web/tests/m12-runbooks-generator-contract.test.mjs' = 'e55a715bb332adc7ccdcacd675d2cf51527c47aa73e6be8a858d8cbea3b50f92'
+        'tools/generate-m12-runbooks-evidence.mjs' = '06e9dc7a1ff01043b09bbd3a0d37da578c360c32b49a22e446a5af07fe0f9a42'
+        'web/tests/m12-runbooks-generator-contract.test.mjs' = '37a55f7ebd97e003ee97115cc4221a4ca14dcda121a4d674fab3dcca1a9def25'
         'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs' = '3a45210e3f61d17e3aee62c07bfad3f4d7b5f12b131caaafcb2c0b3f48518fb5'
     }
     $m12SbomPinText = [IO.File]::ReadAllText($m12SbomPinPath); $m12SbomExpectedPin = (($m12SbomApprovedAssets.Keys | ForEach-Object { "$($m12SbomApprovedAssets[$_])  $_" }) -join "`n") + "`n"
@@ -2001,11 +2001,11 @@ function Assert-RepositoryShape {
         'docs/runbooks/m12-supply-chain-certification.md' = '42e554d9e78300ea30cd856ae38d207f427291401cab7923e3092f5f13d0fd1b'
         'docs/runbooks/m12-candidate-evidence-verification.md' = '43dd14b4ca5fb712118b85f92e0db21892eb04d59cbaf1737e98c111514be243'
         'docs/runbooks/m12-failed-run-quarantine-and-escalation.md' = '51773b5b1d28f3134913de9aa5aa3c9f832307e43145a6afa1a835f51612856d'
-        'tools/generate-m12-runbooks-evidence.mjs' = '88e7b402e88e6e26eacab2fa39f3df82efe8952d90da8d380d3d24c7f9c62c19'
-        'web/tests/m12-runbooks-generator-contract.test.mjs' = 'e55a715bb332adc7ccdcacd675d2cf51527c47aa73e6be8a858d8cbea3b50f92'
+        'tools/generate-m12-runbooks-evidence.mjs' = '06e9dc7a1ff01043b09bbd3a0d37da578c360c32b49a22e446a5af07fe0f9a42'
+        'web/tests/m12-runbooks-generator-contract.test.mjs' = '37a55f7ebd97e003ee97115cc4221a4ca14dcda121a4d674fab3dcca1a9def25'
         'tests/SqlObserver.ReleaseTests/M12RunbooksCertificationTests.cs' = '3a45210e3f61d17e3aee62c07bfad3f4d7b5f12b131caaafcb2c0b3f48518fb5'
     }
-    $m12RunbooksPinPath = Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.assets.sha256'; $m12RunbooksPinHash = '12c54147441405da19c71998e1ce54bf9de637eb6e21d6337878efe987915f4c'; if (-not (Test-Path -LiteralPath $m12RunbooksPinPath -PathType Leaf) -or (Get-FileHash -LiteralPath $m12RunbooksPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12RunbooksPinHash) { throw 'M12 runbooks asset manifest checksum mismatch.' }
+    $m12RunbooksPinPath = Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.assets.sha256'; $m12RunbooksPinHash = 'cadad498265e6adf93e9a51bc1e3adff87feb1cdee3a4ffce22839d9330a0b73'; if (-not (Test-Path -LiteralPath $m12RunbooksPinPath -PathType Leaf) -or (Get-FileHash -LiteralPath $m12RunbooksPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12RunbooksPinHash) { throw 'M12 runbooks asset manifest checksum mismatch.' }
     foreach ($asset in $m12RunbooksAssets.GetEnumerator()) { $assetPath = Join-Path $repositoryRoot $asset.Key; if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.Value) { throw "M12 runbooks certification asset pin mismatch: $($asset.Key)" } }
     $m12RunbooksContract = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-runbooks-contract.v1.json') -Raw | ConvertFrom-Json; $m12RunbooksCatalog = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-runbooks-catalog.v1.json') -Raw | ConvertFrom-Json
     if ($m12RunbooksContract.'$schema' -cne 'm12-runbooks-contract.v1.schema.json' -or $m12RunbooksContract.contractId -cne 'sqlobserver-m12-runbooks' -or $m12RunbooksContract.producerId -cne 'm12-supply-chain-harness' -or $m12RunbooksContract.artifactKind -cne 'supply-chain-evidence' -or $m12RunbooksContract.caseId -cne 'm12-runbooks' -or (@($m12RunbooksContract.requiredFacts) -join '|') -cne 'os|architecture|runbooks' -or $m12RunbooksContract.factPredicates.runbooks -ne $true -or (@($m12RunbooksContract.prerequisites) -join '|') -cne 'm12-sbom|m12-licenses|m12-vulnerability-scan|m12-provenance' -or (@($m12RunbooksContract.outputFiles) -join '|') -cne 'm12-runbooks.json|m12-runbooks-test-evidence.json|m12-runbooks-provenance.json' -or $m12RunbooksContract.bounds.documents -ne 4 -or $m12RunbooksContract.bounds.sectionsPerDocument -ne 12 -or $m12RunbooksContract.bounds.prerequisites -ne 4 -or $m12RunbooksContract.bounds.links -ne 64 -or $m12RunbooksContract.bounds.documentBytes -ne 131072 -or $m12RunbooksContract.bounds.markdownBytes -ne 524288 -or $m12RunbooksContract.bounds.jsonBytes -ne 4194304 -or $m12RunbooksContract.bounds.stringLength -ne 512 -or $m12RunbooksContract.bounds.depth -ne 32) { throw 'M12 runbooks contract is not the approved closed shape.' }

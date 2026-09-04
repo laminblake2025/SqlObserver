@@ -11,7 +11,7 @@ $ErrorActionPreference='Stop'
 $ProducerId='m12-supply-chain-harness'; $ArtifactKind='supply-chain-evidence'
 $MaximumOutput=65536; $MaximumError=8192; $MaximumMilliseconds=300000; $MaximumJsonBytes=4194304; $MaximumTrustedToolBytes=134217728
 $ApprovedMatrixSha256='8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac'
-$ApprovedAssetManifestSha256='9a94a6f3f3cfffdf116c7b74a8b35ca182cd34fd450ed9e19270afc785885ffd'
+$ApprovedAssetManifestSha256='e4dfc92d23c41e5f7160d7ea46c9371f495fc7537f838bc6dee910bf0aa3cbc2'
 $ApprovedLicenseAssetManifestSha256='c3aef3256aee2332534f023242300d377aec66361b99b3385b34efd3084c1a57'
 $ApprovedVulnerabilityAssetManifestSha256='da654c8aede4876ae2d91276e08b6a67769ce58d00beb5e22f97c84743c229b5'
 $ApprovedProvenanceAssetManifestSha256='4202952515d9c5be6ad6dfdaf5c1ee01f94912ee9affe44da6289b92f4884e6a'
@@ -19,7 +19,7 @@ $ContractName='m12-supply-chain-contract.v1.json'; $SchemaName='m12-supply-chain
 $LicenseContractName='m12-license-contract.v1.json'; $LicenseSchemaName='m12-license-contract.v1.schema.json'; $LicenseEvidenceSchemaName='m12-license-evidence.v1.schema.json'; $LicensePinName='m12-license-contract.v1.assets.sha256'
 $VulnerabilityContractName='m12-vulnerability-scan-contract.v1.json'; $VulnerabilitySchemaName='m12-vulnerability-scan-contract.v1.schema.json'; $VulnerabilityEvidenceSchemaName='m12-vulnerability-scan-evidence.v1.schema.json'; $VulnerabilityPinName='m12-vulnerability-scan-contract.v1.assets.sha256'
 $ProvenanceContractName='m12-provenance-contract.v1.json'; $ProvenanceSchemaName='m12-provenance-contract.v1.schema.json'; $ProvenanceSubjectsSchemaName='m12-provenance-subjects.v1.schema.json'; $ProvenanceEvidenceSchemaName='m12-provenance-evidence.v1.schema.json'; $ProvenancePinName='m12-provenance-contract.v1.assets.sha256'
-$RunbooksContractName='m12-runbooks-contract.v1.json'; $RunbooksSchemaName='m12-runbooks-contract.v1.schema.json'; $RunbooksCatalogName='m12-runbooks-catalog.v1.json'; $RunbooksInputsSchemaName='m12-runbooks-inputs.v1.schema.json'; $RunbooksEvidenceSchemaName='m12-runbooks-evidence.v1.schema.json'; $RunbooksPinName='m12-runbooks-contract.v1.assets.sha256'; $ApprovedRunbooksAssetManifestSha256='12c54147441405da19c71998e1ce54bf9de637eb6e21d6337878efe987915f4c'
+$RunbooksContractName='m12-runbooks-contract.v1.json'; $RunbooksSchemaName='m12-runbooks-contract.v1.schema.json'; $RunbooksCatalogName='m12-runbooks-catalog.v1.json'; $RunbooksInputsSchemaName='m12-runbooks-inputs.v1.schema.json'; $RunbooksEvidenceSchemaName='m12-runbooks-evidence.v1.schema.json'; $RunbooksPinName='m12-runbooks-contract.v1.assets.sha256'; $ApprovedRunbooksAssetManifestSha256='cadad498265e6adf93e9a51bc1e3adff87feb1cdee3a4ffce22839d9330a0b73'
 $script:M12OutputIdentities=@{}; $script:M12OutputHashes=@{}; $provenanceHeld=[Collections.Generic.List[object]]::new();$script:M12ProvenanceBuildPath=$null;$script:M12ProvenanceBuildIdentity=$null;$script:M12ProvenanceClaimPath=$null;$script:M12ProvenanceClaimSnapshot=$null;$script:M12FreshOutputInventories=@{};$script:M12InitialCommit=$null
 if($IsWindows -and -not ('M12OutputFile' -as [type])) {
 Add-Type -TypeDefinition @'
