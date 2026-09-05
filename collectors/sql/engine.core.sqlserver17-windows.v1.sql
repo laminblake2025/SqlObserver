@@ -47,6 +47,12 @@ WITH metric_values AS
 
     UNION ALL
 
+    -- Stable local startup identity, used only to detect counter epochs (not a UTC timestamp).
+    SELECT N'engine.start_time_key', CONVERT(float, DATEDIFF_BIG(SECOND, CONVERT(datetime2, '20000101', 112), info.sqlserver_start_time))
+    FROM sys.dm_os_sys_info AS info
+
+    UNION ALL
+
     SELECT N'engine.target_memory_bytes', CONVERT(float, info.committed_target_kb) * 1024.0
     FROM sys.dm_os_sys_info AS info
 )

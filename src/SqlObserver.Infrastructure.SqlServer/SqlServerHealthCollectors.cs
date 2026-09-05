@@ -354,8 +354,9 @@ public sealed class SqlServerCoreEngineCollector : SqlServerHealthCollector
             new CollectorMetricOutputContract(new MetricId("engine.process_physical_memory_bytes"), []),
             new CollectorMetricOutputContract(new MetricId("engine.committed_memory_bytes"), []),
             new CollectorMetricOutputContract(new MetricId("engine.target_memory_bytes"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.start_time_key"), []),
         ],
-        maxMetricSamples: 8,
+        maxMetricSamples: 9,
         maxDatabaseObservations: 0,
         maxDatabaseFileObservations: 0);
 
@@ -369,6 +370,7 @@ public sealed class SqlServerCoreEngineCollector : SqlServerHealthCollector
         "engine.process_physical_memory_bytes",
         "engine.committed_memory_bytes",
         "engine.target_memory_bytes",
+        "engine.start_time_key",
     };
 
     public static CollectorOutputContract OutputContract => RegisteredOutputContract;

@@ -131,7 +131,7 @@ internal sealed class QueryPerformanceLossAccumulator
 public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollectorBase
 {
     private const string InventorySql = "SELECT TOP (257) database_id,name FROM sys.databases WHERE state=0 AND user_access=0 AND database_id>4 ORDER BY database_id;";
-    private const string PlanCacheSql = "SELECT TOP (@probe_rows) CONVERT(int,pa.value),CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),CONCAT(CONVERT(varchar(20),s.query_hash),':cache:',CONVERT(varchar(20),pa.value)))),2),CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),CONCAT(CONVERT(varchar(20),s.query_hash),':plan:',CONVERT(varchar(30),s.plan_generation_num),':created:',CONVERT(varchar(33),s.creation_time,126)))),2),CONVERT(varchar(16),'plan_cache'),CONVERT(varchar(32),'read_failure'),CONVERT(bigint,s.total_worker_time/1000),CONVERT(bigint,s.total_elapsed_time/1000),CONVERT(bigint,s.execution_count),CONVERT(bigint,s.total_logical_reads),CONVERT(bigint,s.total_logical_writes),CONVERT(bigint,NULL),@sample_start,@sample_end,@sample_end,CONVERT(bit,0),CONVERT(bit,0) FROM sys.dm_exec_query_stats s CROSS APPLY sys.dm_exec_plan_attributes(s.plan_handle) pa WHERE pa.attribute='dbid' ORDER BY s.total_worker_time DESC,s.query_hash,s.plan_generation_num,s.creation_time;";
+    private const string PlanCacheSql = "SELECT TOP (@probe_rows) CONVERT(int,pa.value),CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),CONCAT(CONVERT(varchar(20),s.query_hash),':cache:',CONVERT(varchar(20),pa.value)))),2),CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),CONCAT(CONVERT(varchar(20),s.query_hash),':plan:',CONVERT(varchar(30),s.plan_generation_num),':created:',CONVERT(varchar(33),s.creation_time,126)))),2),CONVERT(varchar(16),'plan_cache'),CONVERT(varchar(32),'read_failure'),CONVERT(bigint,SUM(s.total_worker_time)/1000),CONVERT(bigint,SUM(s.total_elapsed_time)/1000),CONVERT(bigint,SUM(s.execution_count)),CONVERT(bigint,SUM(s.total_logical_reads)),CONVERT(bigint,SUM(s.total_logical_writes)),CONVERT(bigint,NULL),@sample_start,@sample_end,@sample_end,CONVERT(bit,0),CONVERT(bit,0) FROM sys.dm_exec_query_stats s CROSS APPLY sys.dm_exec_plan_attributes(s.plan_handle) pa WHERE pa.attribute='dbid' GROUP BY pa.value,s.query_hash,s.plan_generation_num,s.creation_time ORDER BY SUM(s.total_worker_time) DESC,s.query_hash,s.plan_generation_num,s.creation_time;";
     public static CollectorOutputContract OutputContract { get; } = new(new CollectorOutputSchemaVersion(1), [], 0, 0, 0, maxQueryPerformanceObservations: QueryPerformanceObservationBatch.MaximumItems);
     private readonly ISqlServerQueryPerformanceExecutionPort? executionPort;
     public SqlServerQueryPerformanceCollector() : this(SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded()) { }
@@ -215,8 +215,9 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
             // fallback observations. Per-database read results carry status
             // and attribution only; they must not add the same sample rows a
             // second time. Query Store rows remain sourced from their reads.
+            HashSet<int> queryStoreDatabaseIds = reads.Where(static read => !read.IsPlanCacheDerived()).Select(static read => read.Database.DatabaseId).ToHashSet();
             IEnumerable<QueryPerformanceObservation> sourceObservations = reads.Where(static x => !x.IsPlanCacheDerived()).SelectMany(static x => x.Observations)
-                .Concat(planCacheSample?.Observations ?? reads.Where(static x => x.IsPlanCacheDerived()).SelectMany(static x => x.Observations));
+                .Concat(planCacheSample?.Observations.Where(item => !queryStoreDatabaseIds.Contains(item.Query.DatabaseId)) ?? reads.Where(static x => x.IsPlanCacheDerived()).SelectMany(static x => x.Observations));
             QueryPerformanceDeduplicationResult allDeduplication = QueryPerformanceBounds.DedupeOverlapWithAccounting(sourceObservations);
             QueryPerformanceObservation[] deduped = allDeduplication.Observations.Where(item => inventoriedDatabaseIds.Contains(item.Query.DatabaseId)).ToArray();
             // Dedupe the raw sequence exactly once.  Filtering out
@@ -257,7 +258,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
             var statuses = reads.Where(read => inventoriedDatabaseIds.Contains(read.Database.DatabaseId)).Select(read =>
             {
                 QueryPerformancePlanCacheDatabaseAccounting? sampleAccounting = null;
-                if (planCacheSample is not null) planCacheSample.ByDatabase.TryGetValue(read.Database.DatabaseId, out sampleAccounting);
+                if (planCacheSample is not null && read.IsPlanCacheDerived()) planCacheSample.ByDatabase.TryGetValue(read.Database.DatabaseId, out sampleAccounting);
                 int sourceRowsForStatus = sampleAccounting?.SourceRowsRead ?? read.SourceRowsRead;
                 int responseBytesForStatus = sampleAccounting?.ResponseBytes ?? read.ResponseBytes;
                 bool sourceTruncated = read.Truncated || sampleAccounting?.Truncated == true;
@@ -369,7 +370,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
         // The payload is monotonic in retained observations except for the
         // bounded status transition when a database loses its final row. Use a
         // binary search for the largest candidate, then recheck a small bounded
-        // neighborhood after status growth. This avoids the former O(n²)
+        // neighborhood after status growth. This avoids the former O(nÂ²)
         // reserialization loop while retaining exact final-size validation.
         int low = 0;
         int high = originalItems.Length;
@@ -624,12 +625,16 @@ internal sealed record QueryPerformancePlanCacheParseResult(
 /// <summary>Provider-shape tolerant UTC conversion for SQL datetime and datetimeoffset columns.</summary>
 public static class QueryPerformanceRowParser
 {
-    public static DateTimeOffset ReadUtc(object value) => value switch
+    public static DateTimeOffset ReadUtc(object value)
     {
-        DateTimeOffset timestamp => timestamp.ToUniversalTime(),
-        DateTime timestamp => new DateTimeOffset(DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)),
-        _ => throw new InvalidCastException("Query performance timestamps must be datetimeoffset or datetime values."),
-    };
+        DateTimeOffset utc = value switch
+        {
+            DateTimeOffset timestamp => timestamp.ToUniversalTime(),
+            DateTime timestamp => new DateTimeOffset(DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)),
+            _ => throw new InvalidCastException("Query performance timestamps must be datetimeoffset or datetime values."),
+        };
+        return new DateTimeOffset(utc.Ticks - utc.Ticks % 10, TimeSpan.Zero);
+    }
 }
 
 internal sealed class SharedResponseBudget

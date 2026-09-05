@@ -446,7 +446,9 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
 
         if (profile.OutputSchemaVersion == 3)
         {
-            if (permissions.Count != 2 ||
+            bool hasHistoryEvidence = permissions.ContainsKey(BackupsetSelectPermissionId) &&
+                permissions.ContainsKey(SysjobhistorySelectPermissionId);
+            if (permissions.Count != (hasHistoryEvidence ? 4 : 2) ||
                 !permissions.TryGetValue(ReplicationMonitorPermissionId, out PermissionEvidence? replication) ||
                 replication.Outcome is not (PermissionEvidenceOutcome.Granted or PermissionEvidenceOutcome.NotApplicable))
             {

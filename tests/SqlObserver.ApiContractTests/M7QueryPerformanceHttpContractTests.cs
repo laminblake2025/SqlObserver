@@ -21,6 +21,21 @@ public sealed class M7QueryPerformanceHttpContractTests : IClassFixture<M7QueryP
     private readonly M7QueryPerformanceApiFactory factory;
     public M7QueryPerformanceHttpContractTests(M7QueryPerformanceApiFactory factory) => this.factory = factory;
 
+    [Theory]
+    [InlineData("cpu")]
+    [InlineData("duration")]
+    [InlineData("executions")]
+    [InlineData("logical_reads")]
+    [InlineData("writes")]
+    [InlineData("rows")]
+    public async Task BrowserMetricNamesAreAccepted(string metric)
+    {
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/observation-targets/{M7QueryPerformanceApiFactory.TargetId:D}/query-performance/top?metric={metric}&limit=1");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     [Fact]
     public async Task RealTopRouteReplaysItsIssuedCursorWithExactBindings()
     {

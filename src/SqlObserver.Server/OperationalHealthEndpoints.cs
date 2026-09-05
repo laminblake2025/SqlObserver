@@ -11,7 +11,7 @@ namespace SqlObserver.Server;
 /// <summary>Bounded, target-scoped operational-health read routes.</summary>
 public static class OperationalHealthEndpoints
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new CanonicalUtcDateTimeOffsetConverter() } };
     private static readonly RepositoryCallTimeout RepositoryTimeout = new(TimeSpan.FromSeconds(5));
     private const int MaximumResponseBytes = 1_048_576;
 

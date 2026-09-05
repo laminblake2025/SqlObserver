@@ -12,6 +12,32 @@ namespace SqlObserver.IntegrationTests.SqlServer;
 
 public sealed class M7QueryPerformanceIntegrationTests
 {
+    [Fact]
+    public async Task TargetWideCacheDoesNotContaminateQueryStoreDatabase()
+    {
+        var db = new SqlServerDatabaseIdentity(5, "query_store");
+        var qs = Observation(5, 20, QueryPerformanceSource.QueryStore, QueryStoreState.ReadWrite, QueryMetricSemantics.QueryStoreInterval);
+        var cached = Observation(5, 21, QueryPerformanceSource.PlanCache, QueryStoreState.Disabled, QueryMetricSemantics.PlanCacheCumulative);
+        var sample = new QueryPerformancePlanCacheSample([cached], 1, 256, CollectorLossKind.None, false,
+            new Dictionary<int, QueryPerformancePlanCacheDatabaseAccounting> { [5] = new(1, 1, 0, 256, CollectorLossKind.None, false) });
+        var read = Read(db, QueryPerformanceReadStatus.QueryStoreRows, [qs], "query_store_read", false, QueryStoreState.ReadWrite, 1, 512);
+        var result = await new SqlServerQueryPerformanceCollector(SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded(), new InjectedExecutionPort([db], [read], sample)).CollectAsync(Request(), CancellationToken.None);
+        Assert.Equal(QueryPerformanceSource.QueryStore, Assert.Single(result.Payload.QueryPerformance.Items).Source);
+        Assert.Equal(512, Assert.Single(result.Payload.QueryPerformanceStatuses).ResponseBytes);
+        Assert.Equal(768, result.Accounting.ResponseBytes);
+        Assert.Equal(2, result.Accounting.SourceRowsRead);
+    }
+    [Fact]
+    public void SqlHundredNanosecondTimestampsAreNormalizedToRepositoryPrecision()
+    {
+        var source = new DateTimeOffset(2026, 9, 5, 3, 0, 0, TimeSpan.FromHours(-4)).AddTicks(1234567);
+        DateTimeOffset normalized = QueryPerformanceRowParser.ReadUtc(source);
+        Assert.Equal(TimeSpan.Zero, normalized.Offset);
+        Assert.Equal(0, normalized.Ticks % 10);
+        Assert.InRange(source.ToUniversalTime() - normalized, TimeSpan.Zero, TimeSpan.FromTicks(9));
+        Assert.Equal(normalized, QueryPerformanceRowParser.ReadUtc(source.UtcDateTime));
+    }
+
     [Fact] public async Task TargetResponseBudgetIsSharedAcrossConcurrentDatabaseReaders() { var budget = new SharedResponseBudget(100); var results = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => budget.TryAccept(30)))); Assert.Equal(3, results.Count(static accepted => accepted)); Assert.Equal(90, budget.ResponseBytes); Assert.True(budget.ByteLimitReached); Assert.False(budget.TryAccept(1)); }
     [Fact] public void MigrationAllowsMixedOnlyForAggregateRunMetadata() { string path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../database/migrations/0011_query_performance.sql")); string migration = File.ReadAllText(path); string observation = migration.Split("CREATE TABLE events.query_performance_observation", StringSplitOptions.None)[1].Split("CREATE TABLE events.query_performance_cache_baseline", StringSplitOptions.None)[0]; string status = migration.Split("CREATE TABLE events.query_performance_database_status", StringSplitOptions.None)[1].Split("CREATE INDEX", StringSplitOptions.None)[0]; string run = migration.Split("CREATE TABLE events.query_performance_run", StringSplitOptions.None)[1].Split("CREATE TABLE events.query_performance_query", StringSplitOptions.None)[0]; string statusGuard = migration.Split("IF jsonb_typeof(status_item)", StringSplitOptions.None)[1].Split("THEN RAISE EXCEPTION", StringSplitOptions.None)[0]; const string databaseStates = "('read_write','read_only','disabled','unsupported','permission_denied','read_failure','timed_out')"; Assert.DoesNotContain("'mixed'", observation, StringComparison.Ordinal); Assert.DoesNotContain("'mixed'", status, StringComparison.Ordinal); Assert.Contains($"source_state IN ('read_write','read_only','disabled','unsupported','permission_denied','read_failure','timed_out','mixed')", run, StringComparison.Ordinal); Assert.Contains($"status_item->>'sourceState' IS NULL OR status_item->>'sourceState' NOT IN {databaseStates}", statusGuard, StringComparison.Ordinal); Assert.DoesNotContain("status_item->>'sourceState' NOT IN ('read_write','read_only','disabled','unsupported','permission_denied','read_failure','timed_out','mixed')", statusGuard, StringComparison.Ordinal); Assert.DoesNotContain("33554432", migration, StringComparison.Ordinal); Assert.Contains("p_response_bytes NOT BETWEEN 0 AND 8388608", migration, StringComparison.Ordinal); Assert.Contains("p_minimum_lost_bytes NOT BETWEEN 0 AND 8388608", migration, StringComparison.Ordinal); }
     [Fact] public void PlanlessCacheBaselineUsesExactly32ByteSentinel() { string path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../database/migrations/0011_query_performance.sql")); string migration = File.ReadAllText(path); Assert.Contains("DEFAULT decode(repeat('00',32),'hex')", migration, StringComparison.Ordinal); Assert.Contains("plan_key := coalesce(plan_id,decode(repeat('00',32),'hex'))", migration, StringComparison.Ordinal); Assert.DoesNotContain("repeat('00',64)", migration, StringComparison.Ordinal); }

@@ -5,6 +5,9 @@ using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
+using SqlObserver.Domain.Authorization;
+using SqlObserver.Domain.Security;
+using SqlObserver.Domain.Auditing;
 using SqlObserver.Infrastructure.PostgreSql;
 using System.Text.Json;
 
@@ -89,14 +92,14 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     }
 
     [Fact]
-    public async Task M10FreshForecastSchemaHasDimensionIdentityDefaults()
+    public async Task M10FreshForecastSchemaStoresExplicitDimensionIdentity()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
         await InsertTargetAsync(database, target, "m10-forecast-schema", 1);
         Guid forecast = Guid.NewGuid();
         DateTimeOffset start = DateTimeOffset.UtcNow;
-        await ExecuteAsync(database, "INSERT INTO analytics.metric_forecast(forecast_id,instance_id,target_revision,metric_key,horizon_start,horizon_end,model,predicted_value,source_generation,visibility_state) VALUES(@forecast,@target,1,'host.volume.free_bytes',@start,@end,'test',1,1,'complete');", ("forecast", forecast), ("target", target), ("start", start), ("end", start.AddHours(1)));
+        await ExecuteAsync(database, "INSERT INTO analytics.metric_forecast(forecast_id,instance_id,target_revision,metric_key,horizon_start,horizon_end,model,predicted_value,source_generation,visibility_state,dimension_hash) VALUES(@forecast,@target,1,'host.volume.free_bytes',@start,@end,'test',1,1,'complete',sha256(convert_to('{}','UTF8')));", ("forecast", forecast), ("target", target), ("start", start), ("end", start.AddHours(1)));
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand("SELECT dimensions::text,octet_length(dimension_hash),EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='analytics' AND table_name='metric_forecast' AND column_name='dimensions') FROM analytics.metric_forecast WHERE forecast_id=@forecast;", connection);
         command.Parameters.AddWithValue("forecast", forecast);
@@ -133,7 +136,7 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
 
         Guid target = Guid.NewGuid();
         Guid job = Guid.NewGuid();
-        DateTimeOffset from = DateTimeOffset.UtcNow.AddDays(-1).Date;
+        DateTimeOffset from = DateTimeOffset.UtcNow.UtcDateTime.AddDays(-1).Date;
         await InsertTargetAsync(database, target, "m10-backfill-role", 1);
         await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,from_utc,to_utc,status,work_key) VALUES(@job,'backfill',@target,1,@from,@to,'queued','analytics/backfill');", ("job", job), ("target", target), ("from", from), ("to", from.AddHours(1)));
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
@@ -190,7 +193,7 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
 
         await ExecuteAsync(database, "UPDATE control.observation_target SET revision=2,updated_at=clock_timestamp() WHERE instance_id=@target;", ("target", target));
         await using var stale = new NpgsqlCommand(
-            "SELECT count(*) FROM reporting.list_metric_series(@target,1,@from,@to,'host.cpu.percent',10,@snapshot);", serverConnection);
+            "SELECT control.resolve_m10_target_revision(@target,1);", serverConnection);
         stale.Parameters.AddWithValue("target", target);
         stale.Parameters.AddWithValue("from", now.AddDays(-1));
         stale.Parameters.AddWithValue("to", now.AddDays(1));
@@ -215,7 +218,8 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         int repeat = await ScalarIntAsync(connection, "SELECT control.schedule_m10_derivation_jobs(@owner,@token);", ("owner", owner), ("token", token));
         Assert.Equal(0, repeat);
 
-        await using (var counts = new NpgsqlCommand("SELECT count(*) FILTER (WHERE job_kind='rollup'),count(*) FILTER (WHERE job_kind<>'rollup') FROM control.analytics_job WHERE instance_id=@target;", connection))
+        await using NpgsqlConnection inspection = await database.DataSource.OpenConnectionAsync();
+        await using (var counts = new NpgsqlCommand("SELECT count(*) FILTER (WHERE job_kind='rollup'),count(*) FILTER (WHERE job_kind<>'rollup') FROM control.analytics_job WHERE instance_id=@target;", inspection))
         {
             counts.Parameters.AddWithValue("target", target);
             await using NpgsqlDataReader countReader = await counts.ExecuteReaderAsync();
@@ -245,7 +249,7 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
             ScalarBoolAsync(connection, "SELECT control.complete_m10_derivation_job(@job,'succeeded',NULL,@owner,@token);", ("job", jobId), ("owner", owner), ("token", token + 1)));
         Assert.Equal("55000", stale.SqlState);
 
-        await using var status = new NpgsqlCommand("SELECT status,attempt FROM control.analytics_job WHERE job_id=@job;", connection);
+        await using var status = new NpgsqlCommand("SELECT status,attempt FROM control.analytics_job WHERE job_id=@job;", inspection);
         status.Parameters.AddWithValue("job", jobId);
         await using NpgsqlDataReader reader = await status.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync());
@@ -442,6 +446,39 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         string changedReplicationPayload = replicationPayload.Replace("synchronized", "unknown", StringComparison.Ordinal);
         PostgresException replicationDivergence = await Assert.ThrowsAsync<PostgresException>(() => CommitReplicationAsync(connection, replicationRun, target, "collector/m10-replication", replicationOwner, replicationToken, digest, changedReplicationPayload, digest));
         Assert.Equal("40001", replicationDivergence.SqlState);
+
+        // Command counts must keep their unit through the public surface.
+        // They are not Always On send/redo queue byte measurements.
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var surfaces = new PostgreSqlAnalyticsRepositoryPort(server,
+            new SqlObserver.Domain.Security.IdentityFingerprintKey(new byte[32]));
+        AnalyticsSurfacePage page = await surfaces.ReadSurfaceAsync(target, "replication/status",
+            observed.AddMinutes(-1), observed.AddMinutes(1), 10, null, CancellationToken.None);
+        JsonElement item = Assert.Single(page.Items);
+        Assert.Equal(3, item.GetProperty("pendingCommands").GetInt64());
+        Assert.Equal(1.5, item.GetProperty("latencySeconds").GetDouble());
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("sendQueueBytes").ValueKind);
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("redoQueueBytes").ValueKind);
+        var targetId = new MonitoredInstanceId(target);
+        var authorization = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-711"),
+            AuthorizationPrincipalState.Active, [ApplicationRole.Viewer], TargetAuthorizationScope.ForTargets([targetId]));
+        foreach ((string metric, double expected) in new[] { ("host.cpu.percent", 10.0), ("replication.pending_commands", 3.0), ("replication.latency_seconds", 1.5) })
+        {
+            var series = await surfaces.ReadMetricSeriesAsync(new MetricSeriesQuery(authorization, targetId,
+                metric, observed.AddMinutes(-1), observed.AddMinutes(1), 100,
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(5))), CancellationToken.None);
+            Assert.Equal(expected, Assert.Single(series.Items).Value);
+        }
+
+        // Existing host and replication history must not prevent rediscovery.
+        await ExecuteAsync(database, "UPDATE control.observation_target SET revision=2 WHERE instance_id=@target;", ("target", target));
+        page = await surfaces.ReadSurfaceAsync(target, "replication/status",
+            observed.AddMinutes(-1), observed.AddMinutes(1), 10, null, CancellationToken.None);
+        Assert.Empty(page.Items);
+        await using var historical = new NpgsqlCommand("SELECT target_revision FROM telemetry.replication_snapshot_v2 WHERE instance_id=@target", await database.DataSource.OpenConnectionAsync());
+        historical.Parameters.AddWithValue("target", target);
+        Assert.Equal(1L, await historical.ExecuteScalarAsync());
+        await historical.Connection!.DisposeAsync();
     }
 
     [Fact]
@@ -496,7 +533,7 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     }
 
     private static async Task InsertTargetAsync(RepositoryTestDatabase database, Guid target, string key, long revision) =>
-        await ExecuteAsync(database, "INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES(@target,@key,'M10 target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',@revision,clock_timestamp(),clock_timestamp());", ("target", target), ("key", key), ("revision", revision));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES(@target,@key,'M10 target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',@revision,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", key), ("revision", revision));
 
     private static async Task<(long Token, Guid Owner)> AcquireLeaseAsync(NpgsqlDataSource dataSource, string key, Guid owner)
     {

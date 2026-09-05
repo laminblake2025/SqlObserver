@@ -1,0 +1,7 @@
+export function ObservationChart({ items, label }: { readonly items: readonly {time: string; value: number | null}[]; readonly label: string }) {
+  const points = items.filter((item): item is {time: string; value: number} => item.value !== null && Number.isFinite(item.value) && Number.isFinite(Date.parse(item.time))).slice(0, 1000);
+  if (!points.length) return <p className="empty-state">No numeric observations available.</p>;
+  const start = Math.min(...points.map(p => Date.parse(p.time))), end = Math.max(...points.map(p => Date.parse(p.time)));
+  const max = Math.max(1, ...points.map(p => p.value));
+  return <figure><figcaption>{label} · {points.length} bounded observations · UTC</figcaption><svg className="chart" viewBox="0 0 640 240" role="img" aria-label={`${label}. Individual observations; gaps are not interpolated. Range 0 to ${max}.`}><path d="M45 15V200H620" fill="none" stroke="#526370"/><text x="0" y="25">{max.toLocaleString()}</text><text x="20" y="200">0</text>{points.map((p, i) => <circle key={i} cx={45 + (Date.parse(p.time) - start) / Math.max(1, end - start) * 565} cy={195 - p.value / max * 165} r="3"><title>{p.time}: {p.value} · {label}</title></circle>)}<text x="45" y="225">{new Date(start).toISOString().slice(11,19)}</text><text x="550" y="225">{new Date(end).toISOString().slice(11,19)}</text></svg><small>Separate observations preserve gaps; no inferred continuity or rate.</small></figure>;
+}

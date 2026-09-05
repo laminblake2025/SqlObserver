@@ -19,14 +19,15 @@ public sealed class SqlServerSqlAgentFailuresCollector : SqlServerOperationalHea
         {
             rows++;
             if (items.Count >= OperationalHealthBounds.AgentMaximumRows) continue;
+            Guid jobId = reader.GetGuid(0); long historyId = reader.GetInt64(1); int stepId = reader.GetInt32(2);
+            int status = reader.GetInt32(3);
+            int? messageId = reader.IsDBNull(4) ? null : reader.GetInt32(4), severity = reader.IsDBNull(5) ? null : reader.GetInt32(5);
+            int retries = reader.GetInt32(6);
             int duration = reader.GetInt32(7), dh = duration / 10000, dm = duration / 100 % 100, ds = duration % 100;
             if (dm > 59 || ds > 59) continue;
-            int status = reader.GetInt32(3);
             AgentFailureKind kind = status == 2 ? AgentFailureKind.Retry : status == 3 ? AgentFailureKind.Cancelled : AgentFailureKind.Failed;
-            Guid jobId = reader.GetGuid(0); long historyId = reader.GetInt64(1); int stepId = reader.GetInt32(2);
             items.Add(new SqlAgentFailureObservation(request.TargetId, request.TargetRevision, jobId, historyId, stepId, status, kind,
-                reader.IsDBNull(4) ? null : reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                reader.GetInt32(6), checked(dh * 3600 + dm * 60 + ds), now,
+                messageId, severity, retries, checked(dh * 3600 + dm * 60 + ds), now,
                 SqlAgentFailureIdentity.Compute(1, request.TargetId, request.TargetRevision, jobId, historyId, stepId, status)));
         }
         var snapshot = new SqlAgentFailureSnapshot(request.TargetId, request.TargetRevision, request.RunId, now,

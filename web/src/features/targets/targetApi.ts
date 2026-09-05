@@ -8,8 +8,9 @@ const targetsPath = "/api/v1/observation-targets";
 
 export async function listObservationTargets(
   signal: AbortSignal,
+  cursor?: string,
 ): Promise<ObservationTargetPage> {
-  const response = await fetch(`${targetsPath}?limit=50`, {
+  const response = await fetch(`${targetsPath}?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
     signal,
@@ -46,4 +47,9 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+export async function getObservationTarget(instanceId: string, signal: AbortSignal): Promise<ObservationTargetSummary> {
+  const response = await fetch(`${targetsPath}/${encodeURIComponent(instanceId)}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal });
+  return readJson<ObservationTargetSummary>(response);
 }

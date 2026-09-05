@@ -19,11 +19,11 @@ test("deadlock lock modes are canonicalized to the reviewed allowlist", () => {
 });
 
 test("deadlock panel is reachable from the target workflow and supports detail", () => {
-  const onboarding = readFileSync(new URL("../src/features/targets/TargetOnboarding.tsx", import.meta.url), "utf8");
+  const onboarding = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const panel = readFileSync(new URL("../src/features/deadlocks/TargetDeadlockPanel.tsx", import.meta.url), "utf8");
   const api = readFileSync(new URL("../src/features/deadlocks/deadlockApi.ts", import.meta.url), "utf8");
   assert.match(onboarding, /TargetDeadlockPanel/);
-  assert.match(onboarding, /View deadlock evidence/);
+  assert.match(onboarding, /route.page === "deadlocks"/);
   assert.match(panel, /getDeadlock\(/);
   assert.match(api, /readBoundedBody/);
 });

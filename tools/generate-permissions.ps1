@@ -15,6 +15,8 @@ param(
 
     [switch] $Replication,
 
+    [switch] $LogicalFiles,
+
     [string] $DistributionDatabase,
 
     [switch] $Force
@@ -97,6 +99,16 @@ $replicationGrantSection = if ($Replication) {
     BEGIN
         ALTER ROLE [replmonitor] ADD MEMBER [$principalIdentifier];
     END;
+    -- The fixed collector query reads these objects directly; replmonitor
+    -- grants monitor procedures but does not grant these SELECT permissions.
+    GRANT SELECT ON dbo.MSdistribution_status TO [$principalIdentifier];
+    GRANT SELECT ON dbo.MSdistribution_history TO [$principalIdentifier];
+    GRANT SELECT ON dbo.MSdistribution_agents TO [$principalIdentifier];
+    USE [msdb];
+    IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @sqlobserver_principal AND SUSER_SNAME(sid) = @sqlobserver_principal)
+        CREATE USER [$principalIdentifier] FOR LOGIN [$principalIdentifier];
+    GRANT SELECT ON dbo.sysjobactivity TO [$principalIdentifier];
+    USE [$distributionIdentifier];
 "@
 } else { '' }
 
@@ -229,7 +241,7 @@ $grantStatement
         SELECT 1
         FROM sys.database_principals AS database_principal
         WHERE database_principal.name = @sqlobserver_principal
-          AND database_principal.authentication_type_desc NOT IN (N'INSTANCE', N'NONE')
+          AND database_principal.authentication_type_desc NOT IN (N'INSTANCE', N'NONE', N'WINDOWS')
     )
     BEGIN
         THROW 51001, 'The existing msdb principal is not an instance-mapped user.', 1;
@@ -275,6 +287,18 @@ BEGIN
     THROW 51000, 'SqlObserver permission plan operation is invalid.', 1;
 END;
 "@
+
+if ($LogicalFiles -and $Operation -eq 'Grant') {
+    $script += @"
+
+-- Explicit logical-file metadata visibility requested by the operator.
+-- sys.master_files requires VIEW ANY DEFINITION (or a stronger write permission).
+-- This is read-only metadata access; do not grant CREATE/ALTER ANY DATABASE.
+-- Review scope before applying. Removal requires provenance and is not automatic.
+USE [master];
+GRANT VIEW ANY DEFINITION TO [$principalIdentifier];
+"@
+}
 
 $script = $script.Replace("`r`n", "`n", [StringComparison]::Ordinal).Replace("`r", "`n", [StringComparison]::Ordinal)
 if (-not $script.EndsWith("`n", [StringComparison]::Ordinal)) {

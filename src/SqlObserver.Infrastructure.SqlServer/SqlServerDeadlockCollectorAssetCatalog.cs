@@ -169,20 +169,23 @@ public sealed class SqlServerDeadlockCollector : SqlServerActivityCollectorBase
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 if (!budget.TryBeginRow()) break;
+                // SequentialAccess requires consuming the timestamp and XML before the state column.
+                DateTime? occurredValue = reader.IsDBNull(0) ? null : reader.GetDateTime(0);
+                BoundedXmlRead? bounded = null;
+                if (!reader.IsDBNull(1))
+                {
+                    using TextReader textReader = reader.GetTextReader(1);
+                    bounded = await ReadBoundedXmlAsync(textReader, cancellationToken).ConfigureAwait(false);
+                }
+                if (bounded is { Oversized: true }) { parseLoss++; break; }
                 string sourceState = reader.FieldCount > 2 && !reader.IsDBNull(2) ? reader.GetString(2) : "ready";
                 if (sourceState == "oversized") { parseLoss++; _ = budget.TryAcceptResponseBytes(1); break; }
                 if (sourceState is not ("ready" or "empty" or "missing")) { parseLoss++; _ = budget.TryAcceptResponseBytes(1); continue; }
-                if (reader.IsDBNull(0)) { if (!budget.TryAcceptResponseBytes(1)) break; if (sourceState == "missing") parseLoss++; continue; }
-                DateTime occurredValue;
-                try { occurredValue = reader.GetDateTime(0); }
-                catch (Exception exception) when (exception is InvalidCastException or FormatException or ArgumentException) { parseLoss++; _ = budget.TryAcceptResponseBytes(1); continue; }
-                DateTimeOffset occurred = new DateTimeOffset(DateTime.SpecifyKind(occurredValue, DateTimeKind.Utc));
-                if (reader.IsDBNull(1)) { parseLoss++; _ = budget.TryAcceptResponseBytes(1); continue; }
-                using TextReader textReader = reader.GetTextReader(1);
-                BoundedXmlRead bounded = await ReadBoundedXmlAsync(textReader, cancellationToken).ConfigureAwait(false);
-                if (!budget.TryAcceptResponseBytes(bounded.Utf8Bytes)) break;
-                if (bounded.Oversized) { parseLoss++; break; }
-                string xml = bounded.Text;
+                if (occurredValue is null) { if (!budget.TryAcceptResponseBytes(1)) break; if (sourceState == "missing") parseLoss++; continue; }
+                if (bounded is null) { parseLoss++; _ = budget.TryAcceptResponseBytes(1); continue; }
+                if (!budget.TryAcceptResponseBytes(bounded.Value.Utf8Bytes)) break;
+                DateTimeOffset occurred = new(DateTime.SpecifyKind(occurredValue.Value, DateTimeKind.Utc));
+                string xml = bounded.Value.Text;
                 try
                 {
                     DeadlockObservation observation = DeadlockXmlParser.Parse(request.TargetId, request.TargetRevision, Encoding.UTF8.GetBytes(xml), occurred, cancellationToken);

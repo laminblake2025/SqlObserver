@@ -10,14 +10,15 @@ const typesUrl = new URL("../src/features/targets/targetTypes.ts", import.meta.u
 const apiUrl = new URL("../src/features/targets/targetApi.ts", import.meta.url);
 
 test("onboarding exposes integrated identity and explicit non-healthy states", async () => {
-  const source = await readFile(componentUrl, "utf8");
+  const source = await readFile(componentUrl, "utf8") + await readFile(new URL("../src/App.tsx", import.meta.url), "utf8") + await readFile(new URL("../src/dashboardModel.ts", import.meta.url), "utf8");
   const types = await readFile(typesUrl, "utf8");
 
   assert.match(source, /Collector Windows service identity/);
   assert.match(source, /Degraded visibility/);
   assert.match(source, /Unsupported/);
   assert.match(source, /Unreachable/);
-  assert.match(source, /Lifecycle:/);
+  const servers = await readFile(new URL("../src/features/targets/ServersPage.tsx", import.meta.url), "utf8");
+  assert.match(servers, /Lifecycle/);
   assert.match(source, /crypto\.randomUUID\(\)/);
   assert.match(source, /candidate\.instanceId !== target\.instanceId/);
   assert.match(types, /windows_integrated_service_identity/);

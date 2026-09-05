@@ -2,6 +2,9 @@ using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Security;
 using SqlObserver.Infrastructure.SqlServer;
+using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Coordination;
+using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.UnitTests;
 
@@ -21,7 +24,7 @@ public sealed class M10ReplicationContractTests
         foreach (int major in new[] { 15, 16, 17 })
         {
             string sql = File.ReadAllText(Path.Combine(root, $"collectors/sql/replication.health.sqlserver{major}-windows.v1.sql"));
-            Assert.DoesNotContain("EXEC", sql, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotMatch(@"(?i)\bEXEC(?:UTE)?\b", sql);
             Assert.DoesNotContain("sp_", sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("dynamic", sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("LSN", sql, StringComparison.OrdinalIgnoreCase);
@@ -31,7 +34,9 @@ public sealed class M10ReplicationContractTests
             Assert.Contains("MSdistribution_status", sql, StringComparison.Ordinal);
             Assert.Contains("MSdistribution_history", sql, StringComparison.Ordinal);
             Assert.Contains("HASHBYTES('SHA2_256'", sql, StringComparison.Ordinal);
-            Assert.Contains("SYSUTCDATETIME()", sql, StringComparison.Ordinal);
+            Assert.Contains("GETDATE()", sql, StringComparison.Ordinal);
+            Assert.Contains("msdb.dbo.sysjobactivity", sql, StringComparison.Ordinal);
+            Assert.Contains("j.stop_execution_date IS NOT NULL THEN 6", sql, StringComparison.Ordinal);
         }
     }
 
@@ -78,6 +83,18 @@ public sealed class M10ReplicationContractTests
         Assert.Equal(parsed.Snapshot.Items.Count, parsed.Snapshot.Items.Select(item => item.VisibilityGapFingerprint).Distinct().Count());
         Assert.Equal(OperationalObservationState.Degraded, parsed.Snapshot.State);
         Assert.Equal(CollectorLossKind.VisibilityIncomplete, parsed.Loss.Kind);
+
+        // Exercise the persistence validator with the real parser envelope:
+        // replication shares the typed operational payload but is not M9.
+        var manifest = M4TestData.CreateManifest("replication.health", outputKind: CollectorOutputKind.ReplicationHealth);
+        var work = M4TestData.CreateWork(manifest);
+        var payload = new CollectorPayload([], operationalHealth: new OperationalHealthPayload(parsed.Snapshot, parsed.Items, parsed.Bytes));
+        var summary = new CollectorRunSummary(request.RunId, target, M4TestData.TargetRevision, manifest.Id, 1, 1,
+            CollectorRunOutcome.Partial, CollectorRunReason.VisibilityIncomplete, TimeSpan.FromMilliseconds(1), 1,
+            new CollectorRunAccounting(parsed.Rows, payload.ItemCount, parsed.Bytes, payload.EstimatedSizeBytes), parsed.Loss);
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey($"collector/run/replication.health/{target.Value:N}"), new WorkerExecutionId(Guid.NewGuid()), new FencingToken(1));
+        var commit = new CommitCollectorRunRequest(work, summary, payload, work.Circuit, lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+        typeof(PostgreSqlCollectorRuntimeRepositoryPort).GetMethod("ValidateCommit", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.Invoke(null, [commit]);
     }
 
     [Fact]
@@ -141,7 +158,7 @@ public sealed class M10ReplicationContractTests
     public void ReplicationEmbeddedBundleMatchesTheLFManifestDigest()
     {
         SqlServerReplicationAssetCatalog catalog = SqlServerReplicationAssetCatalog.LoadEmbedded();
-        Assert.Equal("7e06e0e3d1c71dd3c9e5a2e2acd14412984e761009921a63bf1141a5b34d18aa", catalog.BundleChecksum);
+        Assert.Equal("8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a", catalog.BundleChecksum);
         Assert.Equal(ReplicationAssetNames, catalog.AssetNames);
     }
 

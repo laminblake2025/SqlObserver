@@ -22,6 +22,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         McpInvocationAudit = new PostgreSqlMcpInvocationAuditPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         HealthProjections = new PostgreSqlHealthProjectionPort(dataSource);
+        OverviewHistory = new PostgreSqlOverviewHistoryPort(dataSource);
         ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
         DeadlockProjections = new PostgreSqlDeadlockProjectionPort(dataSource);
         QueryPerformanceApiProjections = new PostgreSqlQueryPerformanceApiProjectionPort(dataSource);
@@ -51,6 +52,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IWorkerLeasePort WorkerLeases { get; }
 
     public IHealthProjectionRepositoryPort HealthProjections { get; }
+    public IOverviewHistoryRepositoryPort OverviewHistory { get; }
 
     public IActivityProjectionRepositoryPort ActivityProjections { get; }
 

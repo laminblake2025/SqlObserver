@@ -14,6 +14,31 @@ public sealed class M10HostObservationTests
     private static readonly IdentityFingerprintKey Key = new(Enumerable.Repeat((byte)0xA5, IdentityFingerprintKey.RequiredLength).ToArray());
 
     [Fact]
+    public async Task FixedMetricQueriesStartTogetherWithinTheOwnedOperation()
+    {
+        var reader = new CohortReader();
+        var source = new WindowsHostMetricSource(reader, Key);
+        HostIdentityFingerprint fingerprint = HostIdentityFingerprint.FromOpaqueIdentity("cohort-host", Key);
+        HostMetricsV1 metrics = await source.ReadAsync(fingerprint, DateTimeOffset.UtcNow, CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(WindowsHostQuery.AllowList.Count, reader.Started);
+        Assert.Equal(fingerprint, metrics.HostFingerprint);
+        Assert.Single(metrics.Volumes);
+    }
+
+    private sealed class CohortReader : IWindowsHostDataReader
+    {
+        private readonly TaskCompletionSource allStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int started;
+        internal int Started => started;
+        public async ValueTask<IReadOnlyList<WindowsHostDataRow>> ReadAsync(WindowsHostQuery query, CancellationToken token)
+        {
+            if (Interlocked.Increment(ref started) == WindowsHostQuery.AllowList.Count) allStarted.TrySetResult();
+            await allStarted.Task.WaitAsync(token);
+            return await new GoodReader().ReadAsync(query, token);
+        }
+    }
+
+    [Fact]
     public void CollectorServerAndPostgreSqlUseTheSameConfiguredIdentityContract()
     {
         string configured = Convert.ToHexString(KeyBytes());
@@ -140,7 +165,8 @@ public sealed class M10HostObservationTests
         {
             await factory.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
             operation.Cancel();
-            Assert.True(await operation.TerminateAsync(TimeSpan.FromMilliseconds(100)));
+            // This checks completion and disposal ordering, not thread-pool scheduling latency.
+            Assert.True(await operation.TerminateAsync(TimeSpan.FromSeconds(1)));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation.Completion);
         }
 

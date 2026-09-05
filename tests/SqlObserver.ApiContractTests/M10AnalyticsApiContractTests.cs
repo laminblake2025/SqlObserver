@@ -119,6 +119,28 @@ public sealed class M10AnalyticsApiContractTests : IClassFixture<M10AnalyticsApi
         Assert.Empty(factory.Repository.TargetIds);
     }
 
+    [Theory]
+    [InlineData("15", HttpStatusCode.OK)]
+    [InlineData("0", HttpStatusCode.OK)]
+    [InlineData("16", HttpStatusCode.BadRequest)]
+    [InlineData("-1", HttpStatusCode.BadRequest)]
+    [InlineData("1.5", HttpStatusCode.BadRequest)]
+    [InlineData("\"15\"", HttpStatusCode.BadRequest)]
+    [InlineData("null", HttpStatusCode.BadRequest)]
+    public async Task HostBindingValidatesExplicitCapabilityFlags(string capabilities, HttpStatusCode expected)
+    {
+        using HttpClient client = CreateClient("administrator");
+        var key = new IdentityFingerprintKey(Enumerable.Repeat((byte)0xA5, IdentityFingerprintKey.RequiredLength).ToArray());
+        var fingerprint = SqlObserver.Domain.Hosts.HostIdentityFingerprint.FromOpaqueIdentity("test-host", key);
+        Guid hostId = fingerprint.ToStableHostId(key);
+        Guid operation = Guid.NewGuid();
+        Guid correlation = Guid.NewGuid();
+        using JsonDocument profile = JsonDocument.Parse("{\"osFamily\":\"windows\",\"osVersion\":\"test\",\"cpuCount\":4,\"memoryBytes\":8192,\"capabilityState\":\"available\",\"capabilities\":" + capabilities + "}");
+        byte[] digest = MutationDigestV1.HostBinding(M10AnalyticsApiFactory.Target, hostId, "test-host", fingerprint.Value, 0, 1, 1, profile.RootElement, operation, "S-1-5-21-10200", "all", correlation, "Validate capabilities");
+        using var body = new StringContent(JsonSerializer.Serialize(new { targetId=M10AnalyticsApiFactory.Target, hostId, hostName="test-host", identityFingerprint=fingerprint.Value, bindingRevision=0, profileRevision=1, expectedRevision=1, operationId=operation, correlationId=correlation, changeReason="Validate capabilities", requestDigest=MutationDigestV1.Hex(digest), profile=profile.RootElement }), Encoding.UTF8, "application/json");
+        Assert.Equal(expected, (await client.PostAsync($"/api/v1/observation-targets/{M10AnalyticsApiFactory.Target:D}/host-binding", body)).StatusCode);
+    }
+
     [Fact]
     public async Task HostBindingRejectsPayloadTargetMismatchBeforeRepositoryMutation()
     {

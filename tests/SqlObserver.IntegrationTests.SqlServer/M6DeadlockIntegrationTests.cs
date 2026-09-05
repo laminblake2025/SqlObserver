@@ -32,14 +32,16 @@ public sealed class M6DeadlockIntegrationTests
             Assert.Contains("source_state", sql, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("invalid", sql, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("config_invalid", sql, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("TRY_CONVERT(datetime2", sql, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("occurred_at_utc IS NULL", sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("TRY_CONVERT(datetime2(7), event_data.value('(/event/@timestamp)[1]', 'nvarchar(64)'), 127) >= source_window.start_utc", sql, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("deadlock_candidates", sql, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("TOP (@maximum_rows)", sql, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("CASE source_state WHEN N'ready' THEN 0", sql, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("DATALENGTH(raw.event_data)", sql, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("bounded_raw_events", sql, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("raw.object_name = N'xml_deadlock_report'", sql, StringComparison.Ordinal);
+            Assert.Contains("configured_target.name", sql, StringComparison.Ordinal);
+            Assert.DoesNotContain("configured_target.target_name", sql, StringComparison.Ordinal);
+            Assert.Equal(1, sql.Split("sys.fn_xe_file_target_read_file(", StringSplitOptions.None).Length - 1);
             Assert.DoesNotContain("CREATE EVENT SESSION", sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("ALTER EVENT SESSION", sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("START EVENT SESSION", sql, StringComparison.OrdinalIgnoreCase);
@@ -95,7 +97,7 @@ public sealed class M6DeadlockIntegrationTests
         int bundleStart = runtimeSource.IndexOf("RequiredBundleDigests", StringComparison.Ordinal);
         string bundleBlock = runtimeSource[bundleStart..runtimeSource.IndexOf("];", bundleStart, StringComparison.Ordinal)];
         Assert.Contains("86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e", bundleBlock, StringComparison.Ordinal);
-        Assert.Contains("72570fba287327e1dec64a56d6211b9c24a7d597b35010c9b9ac765615d2963f", bundleBlock, StringComparison.Ordinal);
+        Assert.Contains("de178d916eb80f75611f3982879dc53ab2270589a22b3b28e10cd24e756b745a", bundleBlock, StringComparison.Ordinal);
     }
 
     [Fact]

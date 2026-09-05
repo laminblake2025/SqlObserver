@@ -9,6 +9,17 @@ namespace SqlObserver.UnitTests;
 
 public sealed class M10AnalyticsContractTests
 {
+    [Fact]
+    public void OptionalAnalyticsSnapshotAcceptsOmissionAndRejectsNonUtcValues()
+    {
+        var request = new SqlObserver.Application.Ports.AnalyticsQueryRequest(M4TestData.TargetId, "host.cpu.percent", M4TestData.RepositoryTime.AddHours(-1), M4TestData.RepositoryTime, 1000, new SqlObserver.Application.Ports.RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+        var validate = typeof(SqlObserver.Infrastructure.PostgreSql.PostgreSqlAnalyticsRepositoryPort).GetMethod("ValidateQuery", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        validate.Invoke(null, [request]);
+        validate.Invoke(null, [request with { SnapshotUtc = M4TestData.RepositoryTime }]);
+        var failure = Assert.Throws<System.Reflection.TargetInvocationException>(() => validate.Invoke(null, [request with { SnapshotUtc = M4TestData.RepositoryTime.ToOffset(TimeSpan.FromHours(1)) }]));
+        Assert.IsType<ArgumentException>(failure.InnerException);
+    }
+
     private static readonly string[] CatalogMetricKeys = ["host.cpu.percent", "host.memory.available_bytes", "host.memory.committed_bytes", "host.volume.free_bytes", "host.volume.total_bytes", "host.volume.queue_length", "host.volume.read_latency_ms", "host.volume.write_latency_ms", "replication.pending_commands", "replication.latency_seconds"];
     private static readonly string[] HostMetricAssetNames = ["host.metrics.v1.schema.json", "host.metrics.v1.json"];
     private static readonly string[] VolumeDimensionKeys = ["volume"];

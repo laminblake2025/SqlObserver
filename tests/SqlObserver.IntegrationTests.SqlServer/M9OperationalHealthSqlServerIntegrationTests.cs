@@ -294,7 +294,13 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
     {
         private int index = -1;
         public int FieldCount => rows.Count == 0 ? 0 : rows[0].Length;
-        private object? Value(int ordinal) => rows[index][ordinal];
+        private int lastOrdinal = -1;
+        private object? Value(int ordinal)
+        {
+            Assert.True(ordinal >= lastOrdinal, $"Sequential reader moved backward from {lastOrdinal} to {ordinal}");
+            lastOrdinal = ordinal;
+            return rows[index][ordinal];
+        }
         public bool IsDBNull(int ordinal) => Value(ordinal) is null or DBNull;
         public byte[] GetBinary(int ordinal) => (byte[])Value(ordinal)!;
         public bool GetBoolean(int ordinal) => (bool)Value(ordinal)!;
@@ -308,6 +314,7 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             index++;
+            lastOrdinal = -1;
             return ValueTask.FromResult(index < rows.Count);
         }
     }

@@ -26,7 +26,7 @@ public sealed class SqlServerActivityIntegrationTests
             catalog.Collectors.Select(static asset => asset.Manifest.Id.Value));
         Assert.Equal("86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e", catalog.BundleChecksum);
         Assert.Equal(
-            "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
+            "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
             SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
 
         string[][] expectedDependencies =

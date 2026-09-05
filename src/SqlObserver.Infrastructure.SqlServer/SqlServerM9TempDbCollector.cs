@@ -16,13 +16,14 @@ public sealed class SqlServerTempDbHealthCollector : SqlServerOperationalHealthC
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             rows++; if (files.Count >= OperationalHealthBounds.TempDbMaximumFiles) continue;
+            int fileId = reader.GetInt32(0);
             long size = reader.GetInt64(1), use = reader.IsDBNull(2) ? 0 : reader.GetInt64(2), free = reader.IsDBNull(3) ? 0 : reader.GetInt64(3);
             long? rowLogTotal = reader.IsDBNull(4) ? null : reader.GetInt64(4), rowLogUsed = reader.IsDBNull(5) ? null : reader.GetInt64(5);
             if ((logTotal is not null && logTotal != rowLogTotal) || (logUsed is not null && logUsed != rowLogUsed)) continue;
             logTotal ??= rowLogTotal; logUsed ??= rowLogUsed;
             if (size < 0 || use < 0 || free < 0 || use > size || free > size || free != size - use || rowLogUsed.HasValue && rowLogUsed.Value > 0 && rowLogTotal is null || rowLogTotal.HasValue && rowLogUsed.HasValue && rowLogUsed.Value > rowLogTotal.Value) continue;
             checked { total += size; used += use; }
-            files.Add(new TempDbFileObservation(request.TargetId, request.TargetRevision, reader.GetInt32(0), size, use, free, TempDbComponentState.Healthy));
+            files.Add(new TempDbFileObservation(request.TargetId, request.TargetRevision, fileId, size, use, free, TempDbComponentState.Healthy));
         }
         var snapshot = new TempDbSnapshot(request.TargetId, request.TargetRevision, request.RunId, DateTimeOffset.UtcNow,
             files.Count == 0 ? OperationalObservationState.NoData : OperationalObservationState.Complete, total, used, logTotal, logUsed, files,

@@ -212,8 +212,10 @@ public static class AnalyticsEndpoints
     private static string RequiredSha256(JsonElement root, string name) { string value = RequiredText(root, name, 64); return value.Length == 64 && value.All(Uri.IsHexDigit) ? value : throw new ArgumentException($"{name} is invalid."); }
     private static bool RequiredProfile(JsonElement profile)
     {
-        string[] allowed = ["osFamily", "osVersion", "cpuCount", "memoryBytes", "capabilityState"];
+        string[] allowed = ["osFamily", "osVersion", "cpuCount", "memoryBytes", "capabilityState", "capabilities"];
         if (profile.EnumerateObject().Any(property => !allowed.Contains(property.Name, StringComparer.Ordinal))) return false;
+        if (profile.TryGetProperty("capabilities", out JsonElement capabilities) &&
+            (capabilities.ValueKind != JsonValueKind.Number || !capabilities.TryGetInt32(out int flags) || flags < 0 || (flags & ~15) != 0)) return false;
         if (!profile.TryGetProperty("osFamily", out JsonElement family) || family.GetString() is not { Length: > 0 and <= 128 } ||
             !profile.TryGetProperty("osVersion", out JsonElement version) || version.GetString() is not { Length: > 0 and <= 128 } ||
             !profile.TryGetProperty("cpuCount", out JsonElement cpu) || !cpu.TryGetInt32(out int cpuCount) || cpuCount is < 1 or > 65536 ||

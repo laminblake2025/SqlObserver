@@ -38,6 +38,7 @@ builder.Services.AddRequestTimeouts(options =>
     });
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    options.SerializerOptions.Converters.Add(new CanonicalUtcDateTimeOffsetConverter());
     options.SerializerOptions.MaxDepth = 32;
     options.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
 });
@@ -88,6 +89,8 @@ builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTa
 builder.Services.AddSingleton<IObservationTargetQueryService, ObservationTargetQueryService>();
 builder.Services.AddSingleton<IObservationTargetStatusQueryService, ObservationTargetStatusQueryService>();
 builder.Services.AddSingleton<IHealthProjectionQueryService, HealthProjectionQueryService>();
+builder.Services.AddSingleton<IOverviewHistoryRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OverviewHistory);
+builder.Services.AddSingleton<IOverviewQueryService, OverviewQueryService>();
 builder.Services.AddSingleton<IActivityProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);
 builder.Services.AddSingleton<IActivityProjectionQueryService, ActivityProjectionQueryService>();
@@ -140,6 +143,7 @@ app.UseRateLimiter();
 app.MapSqlObserverScaffoldEndpoints(includeRootDescriptor: webInterface is null);
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
+app.MapOverviewEndpoints();
 app.MapTargetActivityEndpoints();
 app.MapTargetDeadlockEndpoints();
 app.MapTargetQueryPerformanceApiEndpoints();

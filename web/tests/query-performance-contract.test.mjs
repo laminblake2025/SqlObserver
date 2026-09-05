@@ -93,3 +93,14 @@ test("production status parser accepts every unsupported target reason and rejec
   try { await assert.rejects(() => getQueryPerformanceStatus("target-reasons")); }
   finally { globalThis.fetch = originalFetch; }
 });
+
+test("query windows accept equivalent UTC precision but reject distinct instants", async () => {
+  const originalFetch = globalThis.fetch;
+  let responseFrom = "2026-09-04T01:00:00Z";
+  globalThis.fetch = async () => new Response(JSON.stringify({ targetId: "precision", metric: "cpu", snapshotUtc: "2026-09-04T02:00:00Z", fromUtc: responseFrom, toUtc: "2026-09-04T02:00:00Z", nextCursor: null, items: [] }), { headers: { "content-type": "application/json" } });
+  try {
+    await getQueryPerformanceTop("precision", "cpu", undefined, "2026-09-04T01:00:00.000Z", "2026-09-04T02:00:00.000Z");
+    responseFrom = "2026-09-04T01:00:00.0000001Z";
+    await assert.rejects(() => getQueryPerformanceTop("precision", "cpu", undefined, "2026-09-04T01:00:00.000Z", "2026-09-04T02:00:00.000Z"), /outside its bounds/);
+  } finally { globalThis.fetch = originalFetch; }
+});

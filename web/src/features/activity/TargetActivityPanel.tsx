@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { getActivitySnapshot } from "./activityApi";
+import { getActivitySnapshot, getBlockingHistoryPage } from "./activityApi";
 import type { ActivityPage, BlockingHistoryItem } from "./activityTypes";
 
 export interface TargetActivityPanelProps {
@@ -11,35 +11,77 @@ export interface TargetActivityPanelProps {
 
 export function TargetActivityPanel({ instanceId, displayName, onClose }: TargetActivityPanelProps) {
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
+  const [historyHours, setHistoryHours] = useState<1 | 6 | 24>(1);
   const [message, setMessage] = useState<string>();
   useEffect(() => {
     const controller = new AbortController();
     setSnapshot(undefined);
-    void getActivitySnapshot(instanceId, controller.signal)
+    setMessage(undefined);
+    void getActivitySnapshot(instanceId, controller.signal, historyHours)
       .then((next) => { if (!controller.signal.aborted) { setSnapshot(next); setMessage(undefined); } })
       .catch((error: unknown) => { if (!controller.signal.aborted) { setMessage(error instanceof Error ? error.message : "Activity evidence is unavailable."); } });
     return () => controller.abort();
-  }, [instanceId]);
+  }, [instanceId, historyHours]);
 
   return (
     <section className="activity-panel" aria-labelledby="activity-heading" aria-live="polite">
       <div className="health-heading-row"><div><p className="eyebrow">Milestone 5</p><h3 id="activity-heading">Activity for {displayName}</h3></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+      <label>Blocking history window <select value={historyHours} onChange={event => setHistoryHours(Number(event.target.value) as 1 | 6 | 24)}><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24">Last 24 hours</option></select></label>
       {message === undefined ? null : <p className="status-message">{message}</p>}
       {snapshot === undefined && message === undefined ? <p>Loading bounded activity evidence…</p> : null}
       {snapshot === undefined ? null : <>
-        <Evidence page={snapshot.sessions} />
-        <Evidence page={snapshot.requests} />
-        <ActivityTable title="Sessions" columns={["Session", "Status", "Database", "CPU ms", "Memory pages", "Reads/writes", "Elapsed ms"]} rows={snapshot.sessions.items.map((item) => [String(item.sessionId), item.status, String(item.databaseId ?? "—"), item.cpuMilliseconds, item.memoryUsagePages, `${item.reads}/${item.writes}`, item.totalElapsedMilliseconds])} />
-        <ActivityTable title="Active requests" columns={["Session/request", "Status", "Command", "CPU ms", "Reads/writes", "Rows", "% complete"]} rows={snapshot.requests.items.map((item) => [`${String(item.sessionId)}/${String(item.requestId)}`, item.status, item.command, item.cpuMilliseconds, `${item.reads}/${item.writes}`, item.rowCount, String(item.percentComplete)])} />
-        <Evidence page={snapshot.waits} />
-        <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />
-        <Evidence page={snapshot.blocking} />
-        <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "State"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />
-        <HistoryEvidence page={snapshot.history} />
-        <ActivityTable title="Blocking history (last hour)" columns={["Blocked", "Blocker", "Wait type", "Tasks/duration", "Depth", "State/evidence"]} rows={snapshot.history.items.map((item) => [String(item.edge.blockedSessionId), item.edge.blockerSessionId === undefined ? item.edge.blockerKind : String(item.edge.blockerSessionId), item.edge.waitType, `${item.edge.waitingTaskCount}/${item.edge.waitDurationMilliseconds}`, String(item.edge.chainDepth), `${item.edge.chainState} (${item.evidence.freshness}/${item.evidence.outcome})`])} />
+        {snapshot.errors.map(error => <p role="status" key={error}>{error} Refresh to retry this section.</p>)}
+        {snapshot.sessions && <Evidence page={snapshot.sessions} />}
+        {snapshot.requests && <Evidence page={snapshot.requests} />}
+        {snapshot.sessions && <ActivityTable title="Sessions" columns={["Session", "Status", "Database", "CPU ms", "Memory pages", "Reads/writes", "Elapsed ms"]} rows={snapshot.sessions.items.map((item) => [String(item.sessionId), item.status, String(item.databaseId ?? "—"), item.cpuMilliseconds, item.memoryUsagePages, `${item.reads}/${item.writes}`, item.totalElapsedMilliseconds])} />}
+        {snapshot.requests && <ActivityTable title="Active requests" columns={["Session/request", "Status", "Command", "CPU ms", "Reads/writes", "Rows", "% complete"]} rows={snapshot.requests.items.map((item) => [`${String(item.sessionId)}/${String(item.requestId)}`, item.status, item.command, item.cpuMilliseconds, `${item.reads}/${item.writes}`, item.rowCount, String(item.percentComplete)])} />}
+        {snapshot.waits && <Evidence page={snapshot.waits} />}
+        {snapshot.waits && <section className="panel wait-chart"><h4>Wait deltas · loaded page</h4><p>Up to 10 largest wait-time deltas in this page, in milliseconds. Missing baselines and resets are excluded.</p>{snapshot.waits!.items.filter(item => item.baselineAvailable && !item.resetDetected && item.waitTimeMillisecondsDelta != null).sort((a,b) => Number(b.waitTimeMillisecondsDelta)-Number(a.waitTimeMillisecondsDelta)).slice(0,10).map(item => <label key={item.waitType}>{item.waitType}<meter min={0} max={Math.max(1,...snapshot.waits!.items.filter(x => x.baselineAvailable && !x.resetDetected).map(x => Number(x.waitTimeMillisecondsDelta ?? 0)))} value={Number(item.waitTimeMillisecondsDelta)} />{item.waitTimeMillisecondsDelta} ms</label>)}{!snapshot.waits!.items.some(item => item.baselineAvailable && !item.resetDetected && item.waitTimeMillisecondsDelta != null) && <p>No comparable wait deltas are available.</p>}</section>}
+        {snapshot.waits && <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />}
+        {snapshot.blocking && <Evidence page={snapshot.blocking} />}
+        {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "State"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
+        {snapshot.history && <BlockingHistory key={`${instanceId}/${historyHours}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
       </>}
     </section>
   );
+}
+
+function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: string; readonly initialPage: ActivityPage<BlockingHistoryItem> }) {
+  const [page, setPage] = useState(initialPage);
+  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+  const request = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => request.current?.abort(), []);
+  const window = initialPage.fromUtc && initialPage.toUtc ? { fromUtc: initialPage.fromUtc, toUtc: initialPage.toUtc } : undefined;
+  async function navigate(index: number, cursor?: string) {
+    if (!window || request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true); setError(undefined);
+    try {
+      const next = await getBlockingHistoryPage(instanceId, window, controller.signal, cursor);
+      if (controller.signal.aborted) return;
+      setPage(next); setPageIndex(index);
+      setCursors(previous => [...previous.slice(0, index), cursor]);
+    } catch (failure: unknown) {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "History could not be loaded. Try again.");
+    } finally {
+      if (!controller.signal.aborted) { request.current = undefined; setLoading(false); }
+    }
+  }
+  return <section aria-label="Blocking history" aria-busy={loading}>
+    <HistoryEvidence page={page} />
+    <ActivityTable title="Blocking history" columns={["Observed UTC", "Blocked", "Blocker", "Wait type", "Tasks/duration", "Depth", "State/evidence"]} rows={page.items.map(item => [item.edge.observedAtUtc, String(item.edge.blockedSessionId), item.edge.blockerSessionId === undefined ? item.edge.blockerKind : String(item.edge.blockerSessionId), item.edge.waitType, `${item.edge.waitingTaskCount}/${item.edge.waitDurationMilliseconds}`, String(item.edge.chainDepth), `${item.edge.chainState} (${item.evidence.freshness}/${item.evidence.outcome})`])} />
+    <p role="status">Page {pageIndex + 1} · {page.items.length} observations{loading ? " · Loading history…" : page.nextCursor === undefined ? " · End of this window" : ""}</p>
+    {error && <p role="alert">{error} The displayed page is unchanged. Retry using the navigation buttons.</p>}
+    <nav aria-label="Blocking history pages">
+      <button type="button" disabled={loading || pageIndex === 0 || !window} onClick={() => void navigate(0)}>First history page</button>{" "}
+      <button type="button" disabled={loading || pageIndex === 0 || !window} onClick={() => void navigate(pageIndex - 1, cursors[pageIndex - 1])}>Newer history</button>{" "}
+      <button type="button" disabled={loading || page.nextCursor === undefined || !window} onClick={() => void navigate(pageIndex + 1, page.nextCursor)}>Older history</button>
+    </nav>
+  </section>;
 }
 
 function Evidence<T>({ page }: { readonly page: ActivityPage<T> }) {
@@ -59,5 +101,5 @@ function HistoryEvidence({ page }: { readonly page: ActivityPage<BlockingHistory
 }
 
 function ActivityTable({ title, columns, rows }: { readonly title: string; readonly columns: readonly string[]; readonly rows: readonly (readonly string[])[] }) {
-  return <section className="activity-section"><h4>{title}</h4>{rows.length === 0 ? <p className="empty-state">No bounded rows reported.</p> : <div className="activity-table" role="table"><div className="activity-row activity-header" role="row">{columns.map((column) => <span key={column}>{column}</span>)}</div>{rows.map((row, index) => <div className="activity-row" key={`${title}-${String(index)}`} role="row">{row.map((cell, cellIndex) => <span key={`${String(index)}-${String(cellIndex)}`}>{cell}</span>)}</div>)}</div>}</section>;
+  return <section className="activity-section"><h4>{title}</h4>{rows.length === 0 ? <p className="empty-state">No bounded rows reported.</p> : <table><thead><tr>{columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table>}</section>;
 }

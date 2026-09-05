@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $MaximumOutput = 65536
 $MaximumError = 8192
 $MaximumMilliseconds = 180000
-$ApprovedSqlContractSha256 = 'bcee1b97f6405d48dd4ecb786c53236a85da52b158077c65057cc20847038f33'
+$ApprovedSqlContractSha256 = '618512601dd46a161e4ee00dabcfd9e10c5d2d2d4990e3fc88663b1e77f0976f'
 $ApprovedSqlContractSchemaSha256 = '5539bba4fe0139b92aadbcd6203526cb3377b689d732e68c70aff60bac843406'
 
 if ($IsWindows -and -not ('M12OutputFile' -as [type])) {
@@ -246,7 +246,7 @@ function Assert-SqlContract([string] $Root) {
     $actual = @($ordered | ForEach-Object { $_.collectorId })
     $orders = @($ordered | ForEach-Object { [int]$_.executionOrder })
     if (($actual -join '|') -cne ($collectors -join '|') -or ($orders -join '|') -cne '1|2|3|4|5|6|7|8|9|10|11|12|13|15' -or @($contract.collectors).Count -ne 14 -or @($actual | Select-Object -Unique).Count -ne 14) { Fail-M12 'CONTRACT' }
-    $assets = [ordered]@{ 'm4-core-health'='1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e'; 'm5-activity'='86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e'; 'm6-deadlocks'='72570fba287327e1dec64a56d6211b9c24a7d597b35010c9b9ac765615d2963f'; 'm7-query-performance'='da915ffb11e60bc0f1f019cb3e3e81ccafabc2c3ff94b26520378574562855eb'; 'm9-operational-health'='5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484'; 'm10-replication'='7e06e0e3d1c71dd3c9e5a2e2acd14412984e761009921a63bf1141a5b34d18aa' }
+    $assets = [ordered]@{ 'm4-core-health'='34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c'; 'm5-activity'='86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e'; 'm6-deadlocks'='de178d916eb80f75611f3982879dc53ab2270589a22b3b28e10cd24e756b745a'; 'm7-query-performance'='ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f'; 'm9-operational-health'='5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484'; 'm10-replication'='8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a' }
     foreach ($asset in $assets.Keys) { if ([string]$contract.assetBundles.$asset -cne $assets[$asset]) { Fail-M12 'CONTRACT' } }
     if ($contract.mutationPolicy.passiveMutation -ne $false -or $contract.mutationPolicy.allowMutationTokens -ne $false -or $contract.mutationPolicy.snapshotRequired -ne $true) { Fail-M12 'CONTRACT' }
     return $contract

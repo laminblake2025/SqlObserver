@@ -4,19 +4,30 @@ export { ActivityRequestError, safeStatusMessage } from "./activityParser.mjs";
 
 const pageLimit = 25;
 
-export async function getActivitySnapshot(instanceId: string, signal: AbortSignal): Promise<{
-  readonly sessions: ActivityPage<ActivitySession>; readonly requests: ActivityPage<ActivityRequest>;
-  readonly waits: ActivityPage<ActivityWait>; readonly blocking: ActivityPage<BlockingEdge>;
-  readonly history: ActivityPage<BlockingHistoryItem>;
+export async function getBlockingHistoryPage(instanceId: string, window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal, cursor?: string): Promise<ActivityPage<BlockingHistoryItem>> {
+  const from = Date.parse(window.fromUtc), to = Date.parse(window.toUtc);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 24 * 3_600_000) throw new Error("Invalid blocking history window.");
+  const parameters = new URLSearchParams({ limit: String(pageLimit), fromUtc: window.fromUtc, toUtc: window.toUtc });
+  if (cursor !== undefined) parameters.set("cursor", cursor);
+  return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/history?${parameters}`, parseHistory, instanceId, signal);
+}
+
+export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historyHours: 1 | 6 | 24 = 1): Promise<{
+  readonly sessions?: ActivityPage<ActivitySession>; readonly requests?: ActivityPage<ActivityRequest>;
+  readonly waits?: ActivityPage<ActivityWait>; readonly blocking?: ActivityPage<BlockingEdge>;
+  readonly history?: ActivityPage<BlockingHistoryItem>; readonly errors: readonly string[];
 }> {
+  if (![1, 6, 24].includes(historyHours)) throw new Error("Invalid blocking history window.");
   const base = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity`;
   const now = Date.now();
+  const errors: string[] = [];
+  const read = async <T,>(name: string, operation: Promise<T>): Promise<T | undefined> => { try { return await operation; } catch (error) { if (signal.aborted) throw error; errors.push(`${name}: ${error instanceof Error ? error.message : "Evidence unavailable."}`); return undefined; } };
   const [sessions, requests, waits, blocking, history] = await Promise.all([
-    getPage(`${base}/sessions?limit=${String(pageLimit)}`, parseSession, instanceId, signal),
-    getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal),
-    getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal),
-    getPage(`${base}/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal),
-    getPage(`${base}/blocking/history?limit=${String(pageLimit)}&fromUtc=${encodeURIComponent(new Date(now - 3_600_000).toISOString())}&toUtc=${encodeURIComponent(new Date(now).toISOString())}`, parseHistory, instanceId, signal),
+    read("Sessions", getPage(`${base}/sessions?limit=${String(pageLimit)}`, parseSession, instanceId, signal)),
+    read("Requests", getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal)),
+    read("Waits", getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal)),
+    read("Current blocking", getPage(`${base}/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal)),
+    read("Blocking history", getBlockingHistoryPage(instanceId, { fromUtc: new Date(now - historyHours * 3_600_000).toISOString(), toUtc: new Date(now).toISOString() }, signal)),
   ]);
-  return { sessions, requests, waits, blocking, history };
+  return { sessions, requests, waits, blocking, history, errors };
 }
