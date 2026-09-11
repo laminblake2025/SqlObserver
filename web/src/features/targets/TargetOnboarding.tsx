@@ -90,14 +90,14 @@ export function TargetOnboarding({onRegistered}: {readonly onRegistered: (target
           </fieldset>
 
           {addressMode === "tcp" ? (
-            <label>
+            <label key="tcp-port">
               Port
-              <input defaultValue="1433" max="65535" min="1" name="tcpPort" required type="number" />
+              <input key="tcp-port-input" defaultValue="1433" max="65535" min="1" name="tcpPort" required type="number" />
             </label>
           ) : (
-            <label>
+            <label key="named-instance">
               Instance name
-              <input name="namedInstance" maxLength={128} required />
+              <input key="named-instance-input" name="namedInstance" maxLength={128} required />
             </label>
           )}
 

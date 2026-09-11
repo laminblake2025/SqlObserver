@@ -1,11 +1,12 @@
 import type { ObservationTargetSummary } from "./targetTypes";
 import type { FleetEvidence } from "./useFleetEvidence";
 import { lastMetric } from "./useFleetEvidence";
-import { capabilityLabels, formatAddress, routeHref } from "../../dashboardModel";
+import { capabilityLabels, formatAddress, type Destination } from "../../dashboardModel";
 import { useState } from "react";
-export function ServersPage({targets,evidence,cursor,nextCursor,setCursor}: {
+export function ServersPage({targets,evidence,cursor,nextCursor,setCursor,routeHref}: {
   targets: readonly ObservationTargetSummary[]; evidence: Readonly<Record<string,FleetEvidence>>;
   cursor?: string; nextCursor?: string; setCursor:(value:string|undefined)=>void;
+  routeHref: (page: Destination, target: string) => string;
 }) {
  const [search,setSearch]=useState(""); const [lifecycle,setLifecycle]=useState("");
  const visible=targets.filter(target => `${target.displayName} ${target.host}`.toLowerCase().includes(search.toLowerCase()) && (!lifecycle || target.lifecycle === lifecycle)).sort((a,b)=>a.displayName.localeCompare(b.displayName));

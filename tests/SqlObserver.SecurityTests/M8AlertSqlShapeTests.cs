@@ -177,7 +177,7 @@ public sealed class M8AlertSqlShapeTests
         string repository = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlAlertRepositoryPort.cs")));
         string destinations = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Infrastructure.Windows/AlertDestinations.cs")));
         string registration = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Collector/CollectorServiceRegistration.cs")));
-        Assert.Contains("pg_advisory_lock(hashtextextended", repository, StringComparison.Ordinal);
+        Assert.Contains("pg_advisory_lock_shared(hashtextextended", repository, StringComparison.Ordinal);
         Assert.Contains("AcquireDeliveryDispatchPermitAsync", repository, StringComparison.Ordinal);
         Assert.Contains("pinnedAddresses", destinations, StringComparison.Ordinal);
         Assert.Contains("Destination DNS answers changed outside the approved address set", destinations, StringComparison.Ordinal);

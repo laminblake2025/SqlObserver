@@ -1,5 +1,17 @@
 # Disposable SQL Server workload
 
+## Controlled stress and Observer validation
+
+`run-stress-test.ps1` is the bounded, operator-run stress harness. It adds staged
+2/4/8/16-worker workloads, deterministic connection-count alert episodes, local
+Event Log delivery checks, maintenance suppression, and recovery evidence. It
+does not stop SQL Server or Observer, change collector intervals, or send external
+notifications. See [the stress validation runbook](../../docs/technical/SqlObserver-Controlled-Stress-Test-2026-09-08.md)
+for prerequisites, commands, acceptance criteria, and the current lab blocker.
+
+Run `test-stress-harness.ps1` to exercise guards, process ownership/cancellation,
+deadline handling, atomic journals, and retryable cleanup without SQL load.
+
 Restricted by host guards to WIN-QNGOV5GDM24. These are operator-run fixtures; collectors remain passive. Use the VM administrator account and validated SQL Server TLS.
 
 ## Setup and run

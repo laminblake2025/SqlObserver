@@ -624,7 +624,7 @@ public sealed class ServerWaitSummaryPage : ActivityPage<ServerWaitSummaryItem, 
         DateTimeOffset repositoryTimeUtc)
         : base(targetId, evidence, items, nextCursor, ListServerWaitSummaryRepositoryRequest.MaximumResults, repositoryTimeUtc)
     {
-        if (nextCursor?.BaselineRunId != baselineRunId)
+        if (nextCursor is not null && nextCursor.BaselineRunId != baselineRunId)
         {
             throw new ArgumentException("A wait-summary cursor must retain the exact baseline run.", nameof(nextCursor));
         }

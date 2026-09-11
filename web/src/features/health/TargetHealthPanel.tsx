@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
+import { Tabs } from "../../components/DiagnosticUi";
 
 import { getTargetHealthEvidence, HealthRequestError } from "./healthApi";
+import {
+  coreMetricDefinition,
+  formatCoreMetricValue,
+  healthSummaryMetricDefinitions,
+  latestDimensionlessMetric,
+} from "./healthDisplayModel";
 import type {
   CollectorCircuitState,
   CollectorHealthReason,
@@ -60,6 +67,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHe
   const [evidence, setEvidence] = useState<TargetHealthEvidence>();
   const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"summary" | "databases" | "collection">("summary");
   const snapshot = evidence?.target;
 
   useEffect(() => {
@@ -102,10 +110,10 @@ export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHe
   }, [instanceId]);
 
   return (
-    <section className="health-panel" aria-labelledby="health-heading" aria-live="polite">
+    <section className="health-screen" aria-labelledby="health-heading" aria-live="polite">
       <div className="health-heading-row">
         <div>
-          <p className="eyebrow">Repository snapshot</p>
+          <p className="eyebrow">Server summary · target-scoped snapshot</p>
           <h3 id="health-heading">Health evidence for {displayName}</h3>
         </div>
         <button className="secondary-button" onClick={onClose} type="button">
@@ -117,6 +125,12 @@ export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHe
       {message === undefined ? null : <p className="status-message">{message}</p>}
       {evidence === undefined ? null : (
         <>
+          <Tabs
+            label="Server summary sections"
+            tabs={[{ value: "summary", label: "Summary" }, { value: "databases", label: "Databases" }, { value: "collection", label: "Collection health" }]}
+            value={tab}
+            onChange={(value) => setTab(value as "summary" | "databases" | "collection")}
+          />
           <div className="health-summary">
             <span className={`health-state health-${evidence.target.state}`}>
               {stateLabels[evidence.target.state]}
@@ -125,18 +139,30 @@ export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHe
               Evaluated using repository time: {formatTimestamp(evidence.target.repositoryTimeUtc)}
             </p>
           </div>
-          <div className="collector-grid">
-            {evidence.target.collectors.map((collector) => (
-              <CollectorHealthCard collector={collector} key={collector.collectorId} />
-            ))}
-          </div>
-          <CoreMetrics metrics={evidence.target.coreMetrics} />
-          <DatabaseHealth page={evidence.databases} />
-          <DatabaseFileHealth page={evidence.files} />
+          {tab === "summary" ? <>
+            <HealthMetricStrip metrics={evidence.target.coreMetrics} />
+            <CoreMetrics metrics={evidence.target.coreMetrics} />
+            <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
+          </> : null}
+          {tab === "databases" ? <><DatabaseHealth page={evidence.databases} /><DatabaseFileHealth page={evidence.files} /></> : null}
+          {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
         </>
       )}
     </section>
   );
+}
+
+function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricSummary[] }) {
+  return <div className="health-metric-strip">{healthSummaryMetricDefinitions.map((definition) => {
+    const metric = latestDimensionlessMetric(metrics, definition.metricId);
+    return <section className="health-metric" key={definition.metricId}>
+      <p>{definition.label}</p>
+      <strong>{metric === undefined ? "Unavailable" : formatCoreMetricValue(metric, definition)}</strong>
+      <small>{metric === undefined
+        ? "No sample available"
+        : `Observed ${formatTimestamp(metric.observedAtUtc)}`}</small>
+    </section>;
+  })}</div>;
 }
 
 function DatabaseHealth({ page }: { readonly page: DatabaseHealthPage }) {
@@ -290,9 +316,9 @@ function CoreMetrics({ metrics }: { readonly metrics: readonly CoreMetricSummary
         <dl className="core-metric-grid">
           {metrics.map((metric) => (
             <div key={metric.sampleId}>
-              <dt>{metric.metricId}</dt>
-              <dd>{String(metric.value)}</dd>
-              <dd className="metric-observed">{formatTimestamp(metric.observedAtUtc)}</dd>
+              <dt>{coreMetricDefinition(metric.metricId).label}</dt>
+              <dd>{formatCoreMetricValue(metric)}</dd>
+              <dd className="metric-observed">Metric ID: {metric.metricId} · Observed {formatTimestamp(metric.observedAtUtc)}</dd>
               {metric.dimensions.length === 0 ? null : (
                 <dd className="metric-dimensions">
                   {metric.dimensions.map((dimension) => (
@@ -364,7 +390,7 @@ function formatOptionalTimestamp(value: string | null): string {
 
 function formatTimestamp(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? "Invalid timestamp" : date.toLocaleString();
+  return Number.isNaN(date.valueOf()) ? "Invalid timestamp" : date.toISOString();
 }
 
 function formatToken(value: string): string {

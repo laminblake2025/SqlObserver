@@ -11,6 +11,15 @@ test('one credentialed request carries the complete selected scope and window',a
   const result=await getOverview(id,window,new AbortController().signal);assert.equal(result.evidence[0].activeAlerts.value,null);assert.equal(count,1);
  }finally{globalThis.fetch=original;}
 });
+test('accepts database-dimension workload series',async()=>{
+ const original=globalThis.fetch;
+ try{
+  const body=value();body.evidence[0].series=[{targetId:id,label:'SQL 1',metric:'activity.user_sessions',unit:'sessions',state:'observed',dimension:'Orders · database 5',points:[{timeUtc:window.fromUtc,value:3,samples:4}]}];
+  globalThis.fetch=async()=>Response.json(body);
+  const result=await getOverview(id,window,new AbortController().signal);
+  assert.equal(result.evidence[0].series[0].dimension,'Orders · database 5');
+ }finally{globalThis.fetch=original;}
+});
 test('rejects wrong server, mismatched window, unsafe destinations and invalid numeric points',async()=>{
  const original=globalThis.fetch;
  try{

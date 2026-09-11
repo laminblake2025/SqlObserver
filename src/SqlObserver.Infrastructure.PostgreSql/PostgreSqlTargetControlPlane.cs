@@ -16,6 +16,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     private PostgreSqlTargetControlPlane(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey)
     {
         _dataSource = dataSource;
+        LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
         Targets = new PostgreSqlObservationTargetPort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         AdministrativeAudit = new PostgreSqlAdministrativeAuditPort(dataSource);
@@ -39,6 +40,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
+    public ILiveActivityRepository LiveActivity { get; }
 
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
 

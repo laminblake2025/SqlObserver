@@ -20,9 +20,13 @@ public interface IOverviewQueryService
     Task<OverviewSnapshot> ReadAsync(OverviewQuery query, CancellationToken cancellationToken);
 }
 
-/// <summary>Reads bounded SQL core history from persisted observations, never from a monitored server.</summary>
+/// <summary>Reads bounded overview history from persisted observations, never from a monitored server.</summary>
 public interface IOverviewHistoryRepositoryPort
 {
     Task<IReadOnlyList<OverviewSeries>> ReadAsync(MonitoredInstanceId targetId, long targetRevision,
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, DateTimeOffset cutoffUtc, CancellationToken cancellationToken);
+
+    /// <summary>Reads database-scoped user-session history for one explicitly selected server.</summary>
+    Task<IReadOnlyList<OverviewSeries>> ReadDatabaseActivityAsync(MonitoredInstanceId targetId, long targetRevision,
         DateTimeOffset fromUtc, DateTimeOffset toUtc, DateTimeOffset cutoffUtc, CancellationToken cancellationToken);
 }

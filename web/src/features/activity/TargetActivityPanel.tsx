@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LiveSessionsPanel } from "./LiveSessionsPanel";
 
 import { getActivitySnapshot, getBlockingHistoryPage } from "./activityApi";
 import type { ActivityPage, BlockingHistoryItem } from "./activityTypes";
@@ -7,9 +8,11 @@ export interface TargetActivityPanelProps {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
+  readonly initialHistoryAtUtc?: string;
+  readonly initialHistoryEventId?: string;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose }: TargetActivityPanelProps) {
+export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId }: TargetActivityPanelProps) {
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
   const [historyHours, setHistoryHours] = useState<1 | 6 | 24>(1);
   const [message, setMessage] = useState<string>();
@@ -24,8 +27,10 @@ export function TargetActivityPanel({ instanceId, displayName, onClose }: Target
   }, [instanceId, historyHours]);
 
   return (
-    <section className="activity-panel" aria-labelledby="activity-heading" aria-live="polite">
-      <div className="health-heading-row"><div><p className="eyebrow">Milestone 5</p><h3 id="activity-heading">Activity for {displayName}</h3></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+    <section className="activity-screen" aria-labelledby="activity-heading" aria-live="polite">
+      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} />
+      <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Live sessions stay in the primary workspace. Historical waits and blocking pages remain bounded and expandable.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+      <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
       <label>Blocking history window <select value={historyHours} onChange={event => setHistoryHours(Number(event.target.value) as 1 | 6 | 24)}><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24">Last 24 hours</option></select></label>
       {message === undefined ? null : <p className="status-message">{message}</p>}
       {snapshot === undefined && message === undefined ? <p>Loading bounded activity evidence…</p> : null}
@@ -39,9 +44,10 @@ export function TargetActivityPanel({ instanceId, displayName, onClose }: Target
         {snapshot.waits && <section className="panel wait-chart"><h4>Wait deltas · loaded page</h4><p>Up to 10 largest wait-time deltas in this page, in milliseconds. Missing baselines and resets are excluded.</p>{snapshot.waits!.items.filter(item => item.baselineAvailable && !item.resetDetected && item.waitTimeMillisecondsDelta != null).sort((a,b) => Number(b.waitTimeMillisecondsDelta)-Number(a.waitTimeMillisecondsDelta)).slice(0,10).map(item => <label key={item.waitType}>{item.waitType}<meter min={0} max={Math.max(1,...snapshot.waits!.items.filter(x => x.baselineAvailable && !x.resetDetected).map(x => Number(x.waitTimeMillisecondsDelta ?? 0)))} value={Number(item.waitTimeMillisecondsDelta)} />{item.waitTimeMillisecondsDelta} ms</label>)}{!snapshot.waits!.items.some(item => item.baselineAvailable && !item.resetDetected && item.waitTimeMillisecondsDelta != null) && <p>No comparable wait deltas are available.</p>}</section>}
         {snapshot.waits && <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />}
         {snapshot.blocking && <Evidence page={snapshot.blocking} />}
-        {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "State"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
+        {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "Root resolution"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
         {snapshot.history && <BlockingHistory key={`${instanceId}/${historyHours}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
       </>}
+      </div></details>
     </section>
   );
 }
@@ -73,7 +79,7 @@ function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: str
   }
   return <section aria-label="Blocking history" aria-busy={loading}>
     <HistoryEvidence page={page} />
-    <ActivityTable title="Blocking history" columns={["Observed UTC", "Blocked", "Blocker", "Wait type", "Tasks/duration", "Depth", "State/evidence"]} rows={page.items.map(item => [item.edge.observedAtUtc, String(item.edge.blockedSessionId), item.edge.blockerSessionId === undefined ? item.edge.blockerKind : String(item.edge.blockerSessionId), item.edge.waitType, `${item.edge.waitingTaskCount}/${item.edge.waitDurationMilliseconds}`, String(item.edge.chainDepth), `${item.edge.chainState} (${item.evidence.freshness}/${item.evidence.outcome})`])} />
+    <ActivityTable title="Blocking history" columns={["Observed UTC", "Blocked", "Blocker", "Wait type", "Tasks/duration", "Depth", "Root resolution/evidence"]} rows={page.items.map(item => [item.edge.observedAtUtc, String(item.edge.blockedSessionId), item.edge.blockerSessionId === undefined ? item.edge.blockerKind : String(item.edge.blockerSessionId), item.edge.waitType, `${item.edge.waitingTaskCount}/${item.edge.waitDurationMilliseconds}`, String(item.edge.chainDepth), `${item.edge.chainState} (${item.evidence.freshness}/${item.evidence.outcome})`])} />
     <p role="status">Page {pageIndex + 1} · {page.items.length} observations{loading ? " · Loading history…" : page.nextCursor === undefined ? " · End of this window" : ""}</p>
     {error && <p role="alert">{error} The displayed page is unchanged. Retry using the navigation buttons.</p>}
     <nav aria-label="Blocking history pages">

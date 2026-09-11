@@ -157,6 +157,89 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     }
 
     [Fact]
+    public async Task WaitPagesRetainExactSnapshotAndAdjacentBaselineAcrossFullAndFinalPages()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset at = (await ReadRepositoryClockAsync(database)).AddMinutes(-2);
+        MonitoredInstanceId target = new(Guid.NewGuid());
+        Guid baseline = Guid.NewGuid(), snapshot = Guid.NewGuid();
+        await SeedTargetAndRunAsync(database, target, baseline, "waits.server", at);
+        await SeedTargetAndRunAsync(database, target, snapshot, "waits.server", at.AddSeconds(10));
+        await EnsurePartitionsAsync(database, at, at.AddSeconds(10));
+        foreach (var pair in new[] { (Run: baseline, At: at, Count: 10), (Run: snapshot, At: at.AddSeconds(10), Count: 20) })
+        {
+            await ExecuteAsync(database, """
+                INSERT INTO telemetry.server_wait_snapshot
+                (observed_at,collection_run_id,instance_id,target_revision,wait_type,
+                 waiting_tasks_count,wait_time_ms,maximum_wait_time_ms,signal_wait_time_ms,collected_at)
+                SELECT @at,@run,@target,1,'WAIT_' || lpad(n::text,3,'0'),@count,@count,1,1,@at
+                FROM generate_series(1,240) n;
+                """, ("at", pair.At), ("run", pair.Run), ("target", target.Value), ("count", pair.Count));
+        }
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var projections = new PostgreSqlActivityProjectionPort(server);
+        async Task<ServerWaitSummaryPage> Read(ServerWaitSummaryCursor? cursor = null) =>
+            Assert.IsType<ServerWaitSummaryPage>(await projections.ListWaitSummaryAsync(
+                new ListServerWaitSummaryRepositoryRequest(target, 100, cursor, Timeout), CancellationToken.None));
+        ServerWaitSummaryPage first = await Read();
+        Assert.Equal(100, first.Items.Count);
+        Assert.All(first.Items, item => Assert.Equal("10", item.WaitingTasksDelta));
+        Guid newer = Guid.NewGuid();
+        await SeedTargetAndRunAsync(database, target, newer, "waits.server", at.AddSeconds(20));
+        await InsertWaitAsync(database, target, newer, at.AddSeconds(20), "WAIT_001", 1, 1, 1, 1);
+        ServerWaitSummaryPage second = await Read(first.NextCursor);
+        ServerWaitSummaryPage final = await Read(second.NextCursor);
+        Assert.Equal(100, second.Items.Count);
+        Assert.Equal(40, final.Items.Count);
+        Assert.Null(final.NextCursor);
+        Assert.Equal(snapshot, final.Evidence!.RunId.Value);
+        Assert.Equal(baseline, final.BaselineRunId!.Value);
+        Assert.Equal(240, first.Items.Concat(second.Items).Concat(final.Items).Select(item => item.WaitType.Value).Distinct().Count());
+        Assert.True(Assert.Single((await Read()).Items).ResetDetected);
+        var wrongBaseline = new ServerWaitSummaryCursor(target, first.NextCursor!.SnapshotRunId,
+            new CollectorRunId(newer), first.NextCursor.SnapshotTargetRevision, first.NextCursor.WaitType);
+        await Assert.ThrowsAsync<ArgumentException>(() => Read(wrongBaseline));
+        MonitoredInstanceId other = new(Guid.NewGuid());
+        await SeedTargetAndRunAsync(database, other, Guid.NewGuid(), "waits.server", at.AddSeconds(30));
+        Assert.Throws<ArgumentException>(() => new ListServerWaitSummaryRepositoryRequest(other, 100, first.NextCursor, Timeout));
+        await using (NpgsqlConnection connection = await server.OpenConnectionAsync())
+        {
+            await using var denied = new NpgsqlCommand("SELECT cursor_valid FROM reporting.list_server_wait_summary(@other,@snapshot,@baseline,1,'WAIT_100',100);", connection);
+            denied.Parameters.AddWithValue("other", other.Value);
+            denied.Parameters.AddWithValue("snapshot", snapshot);
+            denied.Parameters.AddWithValue("baseline", baseline);
+            Assert.Equal(false, await denied.ExecuteScalarAsync());
+        }
+        await ReconfigureTargetAsync(database, target, 2);
+        Assert.Null((await Read()).Evidence);
+        await Assert.ThrowsAsync<ArgumentException>(() => Read(first.NextCursor));
+    }
+
+    [Fact]
+    public async Task InstanceHealthPreparedReadsKeepTheLatestTargetEvidence()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset at = (await ReadRepositoryClockAsync(database)).AddMinutes(-1);
+        MonitoredInstanceId target = new(Guid.NewGuid()), other = new(Guid.NewGuid());
+        Guid latest = Guid.NewGuid(), foreign = Guid.NewGuid();
+        await SeedTargetAndRunAsync(database, target, Guid.NewGuid(), "engine.core", at.AddMinutes(-1));
+        await SeedTargetAndRunAsync(database, target, latest, "engine.core", at);
+        await SeedTargetAndRunAsync(database, other, foreign, "engine.core", at.AddSeconds(1));
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        await using NpgsqlConnection connection = await server.OpenConnectionAsync();
+        await using (var generic = new NpgsqlCommand("SET plan_cache_mode=force_generic_plan;", connection))
+            await generic.ExecuteNonQueryAsync();
+        await using var read = new NpgsqlCommand("SELECT run_id FROM reporting.get_instance_health(@target);", connection);
+        read.Parameters.AddWithValue("target", target.Value);
+        await read.PrepareAsync();
+        for (int i = 0; i < 8; i++) Assert.Equal(latest, await read.ExecuteScalarAsync());
+        read.Parameters[0].Value = other.Value;
+        Assert.Equal(foreign, await read.ExecuteScalarAsync());
+        read.Parameters[0].Value = Guid.NewGuid();
+        Assert.Null(await read.ExecuteScalarAsync());
+    }
+
+    [Fact]
     public async Task ActivityProjectionsPersistSessionsAndRequestsWithSnapshotBoundCursors()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
@@ -198,6 +281,53 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             new ListActivityRequestsRepositoryRequest(targetId, 1, requests.NextCursor, Timeout), CancellationToken.None));
         Assert.Equal(requestRun, requestContinuation.Evidence?.RunId.Value);
         Assert.Equal(requestRun, requests.Evidence?.RunId.Value);
+    }
+
+    [Fact]
+    public async Task OverviewDatabaseActivityHistoryGroupsCompleteUserSessionsAndIncludesEmptySnapshots()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset repositoryNow = await ReadRepositoryClockAsync(database);
+        DateTimeOffset observedAt = repositoryNow.AddMinutes(-2);
+        DateTimeOffset from = observedAt.AddMinutes(-1);
+        MonitoredInstanceId targetId = new(Guid.NewGuid());
+        Guid firstRun = Guid.NewGuid();
+        Guid secondRun = Guid.NewGuid();
+        Guid emptyRun = Guid.NewGuid();
+        await SeedTargetAndRunAsync(database, targetId, firstRun, "activity.sessions", observedAt);
+        await SeedTargetAndRunAsync(database, targetId, secondRun, "activity.sessions", observedAt);
+        await SeedTargetAndRunAsync(database, targetId, emptyRun, "activity.sessions", observedAt);
+        await EnsurePartitionsAsync(database, observedAt, observedAt);
+        await InsertSessionAsync(database, targetId, firstRun, observedAt, 51, databaseId: 5);
+        await InsertSessionAsync(database, targetId, firstRun, observedAt, 52, databaseId: 5);
+        await InsertSessionAsync(database, targetId, firstRun, observedAt, 61, databaseId: 6);
+        await InsertSessionAsync(database, targetId, firstRun, observedAt, 71, databaseId: 7, isUserProcess: false);
+        await InsertSessionAsync(database, targetId, secondRun, observedAt, 51, databaseId: 5);
+        await InsertSessionAsync(database, targetId, secondRun, observedAt, 61, databaseId: 6);
+        await InsertSessionAsync(database, targetId, secondRun, observedAt, 62, databaseId: 6);
+
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var history = new PostgreSqlOverviewHistoryPort(server);
+        IReadOnlyList<OverviewSeries> result = await history.ReadDatabaseActivityAsync(
+            targetId, 1, from, repositoryNow, repositoryNow, CancellationToken.None);
+
+        OverviewSeries databaseFive = Assert.Single(result, item => item.Dimension!.Contains("Database 5", StringComparison.Ordinal));
+        OverviewSeries databaseSix = Assert.Single(result, item => item.Dimension!.Contains("Database 6", StringComparison.Ordinal));
+        Assert.Equal("activity.user_sessions", databaseFive.Metric);
+        Assert.Equal(1d, Assert.Single(databaseFive.Points).Value);
+        Assert.Equal(3, databaseFive.Points[0].Samples);
+        Assert.Equal(1d, Assert.Single(databaseSix.Points).Value);
+        Assert.Equal(3, databaseSix.Points[0].Samples);
+        Assert.DoesNotContain(result, item => item.Dimension?.Contains("Database 7", StringComparison.Ordinal) == true);
+
+        await using NpgsqlConnection connection = await server.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT * FROM reporting.overview_database_activity_history(@id,1,@from,@to,@to)", connection);
+        command.Parameters.AddWithValue("id", targetId.Value);
+        command.Parameters.AddWithValue("from", from);
+        command.Parameters.AddWithValue("to", repositoryNow);
+        PostgresException denied = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+        Assert.Equal("42501", denied.SqlState);
     }
 
     [Fact]
@@ -261,9 +391,15 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         var leases = new PostgreSqlWorkerLeasePort(collectorDataSource);
         (CollectorDueWorkItem work, WorkerLeaseIdentity lease, CollectorRunId runId, CommitCollectorRunRequest commit) = await PrepareActivityCommitAsync(database, targetId, runtime, leases);
         await ReconfigureTargetAsync(database, targetId, 2);
-        CollectorRunCommitResult result = await runtime.CommitRunAsync(commit, CancellationToken.None);
-        Assert.Equal(CollectorRunCommitStatus.TargetRevisionConflict, result.Status);
-        Assert.Equal(0L, await CountRowsForRunAsync(database, runId.Value));
+        // Reconciliation commits an invalidation outcome for an already-started
+        // run; a late payload must not replace it or persist observations.
+        PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(
+            async () => await runtime.CommitRunAsync(commit, CancellationToken.None));
+        Assert.Equal("22023", rejected.SqlState);
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var evidence = new NpgsqlCommand("SELECT reason_code FROM telemetry.collection_run_outcome WHERE run_id=@run AND NOT EXISTS (SELECT 1 FROM telemetry.activity_session_snapshot WHERE collection_run_id=@run);", connection);
+        evidence.Parameters.AddWithValue("run", runId.Value);
+        Assert.Equal("target_revision_changed", await evidence.ExecuteScalarAsync());
         await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(lease, Timeout), CancellationToken.None);
     }
 
@@ -298,7 +434,9 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     {
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand("SELECT clock_timestamp();", connection);
-        return (DateTimeOffset)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Repository clock unavailable."));
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return reader.GetFieldValue<DateTimeOffset>(0);
     }
 
     private static async Task InsertActiveTargetAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId)
@@ -310,7 +448,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         ExecuteAsync(database, "UPDATE control.observation_target SET revision = @revision, updated_at = clock_timestamp(), discovery_requested_at = clock_timestamp() WHERE instance_id = @target;", ("target", targetId.Value), ("revision", revision));
 
     private static Task BumpScheduleRevisionAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, string collectorId) =>
-        ExecuteAsync(database, "UPDATE control.collector_schedule SET collection_interval = collection_interval + interval '1 second' WHERE instance_id = @target AND collector_id = @collector;", ("target", targetId.Value), ("collector", collectorId));
+        ExecuteAsync(database, "UPDATE control.collector_schedule SET schedule_revision = schedule_revision + 1, collection_interval = collection_interval + interval '1 second' WHERE instance_id = @target AND collector_id = @collector;", ("target", targetId.Value), ("collector", collectorId));
 
     private static async Task<long> CountRowsForRunAsync(RepositoryTestDatabase database, Guid runId)
     {
@@ -356,9 +494,9 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             INSERT INTO control.observation_target
                 (instance_id, instance_key, display_name, host_name, tcp_port, connect_timeout,
                  authentication_mode, transport_security_mode, lifecycle_state, revision,
-                 updated_at, discovery_requested_at)
+                 created_at, updated_at, discovery_requested_at)
             VALUES (@target, @key, 'M5 integration target', 'sql01', 1433, interval '5 seconds',
-                    'windows_integrated_service_identity', 'mandatory_validated', 'active', 1, @at, @at)
+                    'windows_integrated_service_identity', 'mandatory_validated', 'active', 1, @at, @at, @at)
             ON CONFLICT (instance_id) DO NOTHING;
             INSERT INTO telemetry.collection_run
                 (run_id, instance_id, collector_id, collector_version, output_schema_version,
@@ -394,8 +532,8 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     private static async Task InsertWaitAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, string waitType, long tasks, long waitMs, long maxWaitMs, long signalMs) =>
         await ExecuteAsync(database, "INSERT INTO telemetry.server_wait_snapshot (observed_at, collection_run_id, instance_id, target_revision, wait_type, waiting_tasks_count, wait_time_ms, maximum_wait_time_ms, signal_wait_time_ms, collected_at) VALUES (@at,@run,@target,1,@type,@tasks,@wait,@max,@signal,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("type", waitType), ("tasks", tasks), ("wait", waitMs), ("max", maxWaitMs), ("signal", signalMs));
 
-    private static async Task InsertSessionAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, int sessionId) =>
-        await ExecuteAsync(database, "INSERT INTO telemetry.activity_session_snapshot (observed_at, collection_run_id, instance_id, target_revision, session_id, status_code, is_user_process, database_id, open_transaction_count, cpu_ms, memory_usage_pages, reads, writes, logical_reads, total_elapsed_ms, collected_at) VALUES (@at,@run,@target,1,@session,'running',true,5,0,10,20,30,40,50,60,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("session", sessionId));
+    private static async Task InsertSessionAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, int sessionId, int databaseId = 5, bool isUserProcess = true) =>
+        await ExecuteAsync(database, "INSERT INTO telemetry.activity_session_snapshot (observed_at, collection_run_id, instance_id, target_revision, session_id, status_code, is_user_process, database_id, open_transaction_count, cpu_ms, memory_usage_pages, reads, writes, logical_reads, total_elapsed_ms, collected_at) VALUES (@at,@run,@target,1,@session,'running',@user,@database,0,10,20,30,40,50,60,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("session", sessionId), ("user", isUserProcess), ("database", databaseId));
 
     private static async Task InsertRequestAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, int sessionId, int requestId) =>
         await ExecuteAsync(database, "INSERT INTO telemetry.activity_request_snapshot (observed_at, collection_run_id, instance_id, target_revision, session_id, request_id, status_code, command_code, database_id, cpu_ms, total_elapsed_ms, reads, writes, logical_reads, row_count, percent_complete, collected_at) VALUES (@at,@run,@target,1,@session,@request,'running','select',5,10,20,30,40,50,60,25,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("session", sessionId), ("request", requestId));

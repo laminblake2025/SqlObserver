@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformanceStatus, getQueryPerformanceTop } from "../src/features/queries/queryPerformanceApi.ts";
+
+test("query performance panel shows all source evidence by default", async () => {
+  const panel = await readFile(new URL("../src/features/queries/TargetQueryPerformancePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /const \[source, setSource\] = useState\("mixed"\)/);
+  assert.match(panel, /<option value="mixed">All sources · evidence<\/option>/);
+  assert.match(panel, /queryPerformanceDatabaseOptions/);
+  assert.match(panel, /databaseName/);
+});
 
 test("production endpoint response shape is flat, bounded, and content-unavailable", () => {
   const response = { targetId: "00000000-0000-0000-0000-000000000001", metric: "executions", snapshotUtc: new Date().toISOString(), nextCursor: "opaque-cursor", items: [{ databaseId: 5, queryFingerprint: "a".repeat(64), planFingerprint: null, source: "query_store", sourceState: "read_write", metric: "executions", value: null, semantics: "query_store_interval", intervalStartUtc: new Date(Date.now() - 60000).toISOString(), intervalEndUtc: new Date().toISOString(), coverage: "complete", fresh: true, truncated: false, contentAvailable: false }] };
@@ -40,8 +49,8 @@ test("production history client sends a bound cursor and parses every metric", a
 
 test("production status parser requires mixed aggregate and per-database evidence", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify({ targetId: "target-2", snapshotUtc: "2026-08-24T12:00:00Z", source: "mixed", sourceState: "mixed", coverage: "truncated", fresh: false, truncated: true, contentAvailable: false, databaseStatuses: [{ databaseId: 5, status: "query_store_rows", sourceState: "read_write", reason: "query_store_read", fallbackAttempted: false, truncated: false, lossKind: "none", sourceRowsRead: 1, responseBytes: 100, minimumLostItems: 0, lossCountIsExact: true, minimumLostBytes: 0 }] }), { status: 200, headers: { "content-type": "application/json", "content-length": "700" } });
-  try { const status = await getQueryPerformanceStatus("target-2"); assert.equal(status.sourceState, "mixed"); assert.equal(status.databaseStatuses[0].status, "query_store_rows"); }
+  globalThis.fetch = async () => new Response(JSON.stringify({ targetId: "target-2", snapshotUtc: "2026-08-24T12:00:00Z", source: "mixed", sourceState: "mixed", coverage: "truncated", fresh: false, truncated: true, contentAvailable: false, databaseStatuses: [{ databaseId: 5, status: "query_store_rows", sourceState: "read_write", reason: "query_store_read", fallbackAttempted: false, truncated: false, lossKind: "none", sourceRowsRead: 1, responseBytes: 100, minimumLostItems: 0, lossCountIsExact: true, minimumLostBytes: 0 }], databaseCatalog: [{ databaseId: 5, databaseName: "SqlObserverLabSales" }, { databaseId: 7, databaseName: "SqlObserverLabPublisher" }] }), { status: 200, headers: { "content-type": "application/json", "content-length": "700" } });
+  try { const status = await getQueryPerformanceStatus("target-2"); assert.equal(status.sourceState, "mixed"); assert.equal(status.databaseStatuses[0].status, "query_store_rows"); assert.equal(status.databaseCatalog[1].databaseName, "SqlObserverLabPublisher"); }
   finally { globalThis.fetch = originalFetch; }
 });
 

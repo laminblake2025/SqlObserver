@@ -11,12 +11,12 @@ export async function getOverview(target: string, window: {fromUtc: string; toUt
   if (value.evidence.some(e => !ids.has(e.targetId) || (target && e.targetId !== target) || !Array.isArray(e.series) || !Array.isArray(e.resources) || !Array.isArray(e.issues))) throw new Error('Overview returned invalid server evidence.');
   const timestamp = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v));
   const numeric = (v: unknown) => v === null || typeof v === 'number' && Number.isFinite(v) && v >= 0;
-  for (const evidence of value.evidence) {
+    for (const evidence of value.evidence) {
     if (typeof evidence.displayName !== 'string' || typeof evidence.collectionState !== 'string' || !Array.isArray(evidence.gaps) || evidence.gaps.some((g:unknown)=>typeof g!=='string')) throw new Error('Invalid Overview coverage.');
     for (const measurement of [evidence.activeAlerts,evidence.blockedSessions,evidence.deadlocks])
       if (!measurement || !numeric(measurement.value) || typeof measurement.state !== 'string') throw new Error('Invalid Overview summary.');
     for (const series of evidence.series)
-      if (series.targetId !== evidence.targetId || typeof series.metric !== 'string' || typeof series.label !== 'string' || typeof series.unit !== 'string' || !Array.isArray(series.points) || series.points.length>1000 || series.points.some((p:OverviewPoint)=>!timestamp(p.timeUtc)||!numeric(p.value)||!Number.isSafeInteger(p.samples)||p.samples<0)) throw new Error('Invalid Overview series.');
+      if (series.targetId !== evidence.targetId || typeof series.metric !== 'string' || typeof series.label !== 'string' || typeof series.unit !== 'string' || typeof series.state !== 'string' || (series.dimension !== null && typeof series.dimension !== 'string') || !Array.isArray(series.points) || series.points.length>1000 || series.points.some((p:OverviewPoint)=>!timestamp(p.timeUtc)||!numeric(p.value)||!Number.isSafeInteger(p.samples)||p.samples<0)) throw new Error('Invalid Overview series.');
     for (const resource of evidence.resources)
       if (resource.targetId !== evidence.targetId || typeof resource.label !== 'string' || !numeric(resource.value)) throw new Error('Invalid Overview resource.');
     for (const issue of evidence.issues)

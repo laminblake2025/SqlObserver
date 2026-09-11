@@ -28,7 +28,7 @@ public static class AlertEvaluator
         bool inMaintenance = maintenance is not null && maintenance.TargetId.Value == observation.TargetId.Value && maintenance.Contains(now);
         int count = matches ? Math.Min(rule.ConfirmationCount, prior.ConsecutiveMatches + 1) : 0;
         DateTimeOffset? first = matches ? prior.FirstMatchUtc ?? now : null;
-        if (matches && first is not null && now - first > rule.ConfirmationWindow) { count = 1; first = now; }
+        if (matches && prior.State is not (AlertState.Firing or AlertState.Acknowledged) && first is not null && now - first > rule.ConfirmationWindow) { count = 1; first = now; }
         AlertState next = prior.State;
         AlertEventKind? evt = null;
         if (!matches)
@@ -49,7 +49,7 @@ public static class AlertEvaluator
         bool freshEpisode = prior.State == AlertState.Resolved;
         Guid? alertId = prior.AlertId;
         Guid? episodeId = prior.EpisodeId;
-        if (next == AlertState.Pending)
+        if (next is AlertState.Normal or AlertState.Pending)
         {
             alertId = null;
             episodeId = null;
@@ -68,7 +68,7 @@ public static class AlertEvaluator
             lastReason: observation.Reason,
             deliverySuppressed: inMaintenance,
             resolvedUtc: freshEpisode ? null : next == AlertState.Resolved ? now : prior.ResolvedUtc,
-            episodeStartedUtc: next == AlertState.Pending ? null : next == AlertState.Firing && (freshEpisode || prior.EpisodeStartedUtc is null) ? now : prior.EpisodeStartedUtc,
+            episodeStartedUtc: next is AlertState.Normal or AlertState.Pending ? null : next == AlertState.Firing && (freshEpisode || prior.EpisodeStartedUtc is null) ? now : prior.EpisodeStartedUtc,
             acknowledgedBy: freshEpisode ? null : prior.AcknowledgedBy,
             revision: prior.Revision + 1,
             lastValue: observation.Value);

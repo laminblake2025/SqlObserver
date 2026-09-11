@@ -67,7 +67,8 @@ public sealed class CollectorCompositionEndToEndTests
                     cancelled.Token));
         IHostedService[] hostedServices = provider.GetServices<IHostedService>().ToArray();
         Assert.Contains(hostedServices, static service => service is ReportExpiryWorker);
-        Assert.Equal(8, hostedServices.Length);
+        Assert.Contains(hostedServices, static service => service is LiveActivityWorker);
+        Assert.Equal(9, hostedServices.Length);
         Assert.DoesNotContain(
             services,
             static descriptor => descriptor.ServiceType == typeof(PostgreSqlTargetControlPlane));

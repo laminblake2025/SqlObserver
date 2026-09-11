@@ -84,6 +84,8 @@ public sealed class M7QueryPerformanceHttpContractTests : IClassFixture<M7QueryP
         string body = await response.Content.ReadAsStringAsync();
         Assert.Contains("\"source\":\"unavailable\"", body, StringComparison.Ordinal);
         Assert.Contains("\"targetStatus\":\"deadline_exceeded\"", body, StringComparison.Ordinal);
+        Assert.Contains("SqlObserverLabSales", body, StringComparison.Ordinal);
+        Assert.Contains("SqlObserverLabPublisher", body, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -117,7 +119,7 @@ internal sealed class FakeM7QueryPerformanceService : IQueryPerformanceApiQueryS
     internal QueryPerformanceCursorEnvelope? LastHistoryCursor { get; private set; }
     private static readonly DateTimeOffset From = new(2026, 8, 24, 11, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset To = new(2026, 8, 24, 12, 0, 0, TimeSpan.Zero);
-    public ValueTask<QueryPerformanceStatusDto?> GetStatusAsync(AuthorizationContext authorization, QueryPerformanceStatusRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<QueryPerformanceStatusDto?>(new QueryPerformanceStatusDto(request.TargetId, To, QueryPerformanceSource.Unavailable, "unavailable", QueryCoverage.Unavailable, false, false, false, null, [], "deadline_exceeded", "deadline_exceeded"));
+    public ValueTask<QueryPerformanceStatusDto?> GetStatusAsync(AuthorizationContext authorization, QueryPerformanceStatusRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<QueryPerformanceStatusDto?>(new QueryPerformanceStatusDto(request.TargetId, To, QueryPerformanceSource.Unavailable, "unavailable", QueryCoverage.Unavailable, false, false, false, null, [], "deadline_exceeded", "deadline_exceeded", [new QueryPerformanceDatabaseCatalogDto(5, "SqlObserverLabSales"), new QueryPerformanceDatabaseCatalogDto(7, "SqlObserverLabPublisher")]));
     public ValueTask<TopQueryPage> GetTopAsync(AuthorizationContext authorization, TopQueryRequest request, CancellationToken cancellationToken)
     {
         LastCursor = request.Cursor;

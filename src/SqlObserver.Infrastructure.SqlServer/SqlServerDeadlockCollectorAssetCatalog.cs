@@ -98,7 +98,8 @@ public sealed class SqlServerDeadlockCollectorAssetCatalog
         JsonElement bounds = Object(root, "executionBounds");
         RequireProperties(bounds, "connectTimeoutSeconds", "commandTimeoutSeconds", "maximumRows", "maximumResponseBytes");
         RequireInt(bounds, "connectTimeoutSeconds", 5);
-        RequireInt(bounds, "commandTimeoutSeconds", 5);
+        // A bounded rollover-file scan can exceed five seconds even on an idle target.
+        RequireInt(bounds, "commandTimeoutSeconds", 20);
         RequireInt(bounds, "maximumRows", 257);
         RequireInt(bounds, "maximumResponseBytes", 1048576);
         var limits = new CollectorExecutionLimits(TimeSpan.FromSeconds(PositiveInt(bounds, "connectTimeoutSeconds")), TimeSpan.FromSeconds(PositiveInt(bounds, "commandTimeoutSeconds")), PositiveInt(bounds, "maximumRows"), PositiveInt(bounds, "maximumResponseBytes"), CollectorEstimatedCost.Moderate);

@@ -23,7 +23,7 @@ The initial checkout was `ed85a2b`; its tree matches the handoff's `5387e8e` mer
 | Collection state | Target `/health`, state and repository time | Separate from discovery capability |
 | Attention | Target `/alerts/active?limit=5`, health and discovery reasons | Loaded alert records and explicit gaps; no fleet-wide alert total |
 | Host CPU history | Target `/analytics/series`, `host.cpu.percent` | Selected target only; supported API's bounded window and partial state |
-| Query ranking | Target `/query-performance/top`, one allowlisted metric | Up to 200 observations per page; each response retains its own snapshot and window |
+| Query ranking | Target `/query-performance/top`, one allowlisted metric, plus `/query-performance/status` database catalog | Up to 200 latest observations per logical query/plan/source identity; the database selector is populated from target-scoped inventory names as well as observed IDs, so databases without a ranked row remain selectable. Each response retains its own snapshot and window. The history endpoint remains the complete observation stream. |
 | Selected query KPIs/history | Target query history and plan metadata endpoints | Exact observation match for KPIs; chart filters source and semantics; content remains unavailable |
 | Wait bars | Activity waits, `waitTimeMillisecondsDelta` | Largest ten comparable deltas within the loaded 25-row page; no rate or all-server total |
 | Analytics / operations | Existing validated API projections | Human-readable column headings, inert details, explicit provenance |

@@ -87,7 +87,7 @@ Do not provision production credentials or point this repository slice at a prod
 | Path | Purpose |
 | --- | --- |
 | `src/` | .NET domain, application, infrastructure, feature libraries, and executable hosts |
-| `web/` | Strict React/TypeScript client skeleton; feature UI begins in M3 |
+| `web/` | Strict React/TypeScript client for overview, target health, activity, query performance, deadlocks, alerts, operations, analytics, and report surfaces; release support remains incomplete |
 | `database/migrations/` | Immutable, numbered PostgreSQL SQL migrations and checksum manifest |
 | `database/functions/`, `database/views/` | Review indexes for SQL-first objects deployed by numbered migrations |
 | `database/seeds/`, `database/testdata/` | Non-production reference and test inputs |

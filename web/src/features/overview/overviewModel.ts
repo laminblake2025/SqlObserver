@@ -1,4 +1,4 @@
-import type { OverviewEvidence, OverviewScope, OverviewValue, OverviewSnapshot } from './overviewTypes';
+import type { OverviewEvidence, OverviewResource, OverviewScope, OverviewValue, OverviewSnapshot } from './overviewTypes';
 
 export function readOverviewScope(hash: string): OverviewScope {
   const params = new URLSearchParams(hash.split('?')[1]);
@@ -30,3 +30,35 @@ export function rankedIssues(snapshot: OverviewSnapshot) {
   return snapshot.evidence.flatMap(e => e.issues).sort((a,b) => a.priority-b.priority || (a.observedAtUtc ?? '').localeCompare(b.observedAtUtc ?? '') || a.server.localeCompare(b.server)).slice(0,5);
 }
 export function displayMetric(value: number | null): string { return value === null ? '—' : value.toLocaleString(undefined, {maximumFractionDigits:2}); }
+
+function isWindowedResource(resource: OverviewResource): boolean {
+  return resource.label.startsWith('host.') || resource.label.startsWith('replication.');
+}
+
+function observationAge(observedAtUtc: string, refreshedAtUtc: string): string {
+  const milliseconds = Date.parse(refreshedAtUtc) - Date.parse(observedAtUtc);
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return 'unavailable';
+  const seconds = Math.floor(milliseconds / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
+export function overviewResourceObservationText(resource: OverviewResource, refreshedAtUtc: string): string {
+  const windowed = isWindowedResource(resource);
+  const timestamp = resource.observedAtUtc && Number.isFinite(Date.parse(resource.observedAtUtc))
+    ? new Date(resource.observedAtUtc).toISOString().replace('T', ' ')
+    : 'No observation';
+  const age = windowed && resource.observedAtUtc
+    ? ` · Observation age: ${observationAge(resource.observedAtUtc, refreshedAtUtc)}`
+    : '';
+  return `${windowed ? 'Latest in selected window' : 'Latest source snapshot'} · ${resource.state}${age} · ${timestamp}`;
+}
+
+export function overviewEvidenceFooter(snapshot: Pick<OverviewSnapshot, 'fromUtc' | 'toUtc' | 'refreshedAtUtc'>): string {
+  return `Current cards, waits, and operations use latest source snapshots. Host, storage, and replication metric rows show the latest observation inside the selected window (${snapshot.fromUtc} to ${snapshot.toUtc}); observation age is measured against refresh time ${snapshot.refreshedAtUtc}. Historical charts use ${snapshot.fromUtc} to ${snapshot.toUtc}. Independent collectors can have different coverage.`;
+}

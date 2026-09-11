@@ -4,6 +4,7 @@
     <AssemblyName>SqlObserver.Infrastructure.Windows</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
     <EmbeddedResource Include="../../collectors/manifests/m10-host.assets.sha256"><LogicalName>SqlObserver.Infrastructure.Windows.M10HostAssets.m10-host.assets.sha256</LogicalName></EmbeddedResource>

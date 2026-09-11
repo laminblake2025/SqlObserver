@@ -26,3 +26,12 @@ test("replication command counts and latency retain distinct bounded units",()=>
   }
  }
 });
+
+test("jobs accept opaque persisted IDs and the evidence job kind",()=>{
+ const item={jobId:"b1ccf640-49fb-a7a9-ff07-99878282294c",jobKind:"evidence",status:"failed",requestedAtUtc:"2026-09-05T15:36:20.585508+00:00",startedAtUtc:"2026-09-05T15:36:40.840239+00:00",completedAtUtc:"2026-09-05T15:36:45.860025+00:00",attempt:5,targetRevision:2};
+ const result=parseAnalyticsSurfacePage({...page("jobs",[item]),targetRevision:2},"jobs",target);
+ assert.equal(result.items[0].jobId,item.jobId);
+ assert.throws(()=>parseAnalyticsSurfacePage({...page("jobs",[{...item,jobId:"00000000-0000-0000-0000-000000000000"}]),targetRevision:2},"jobs",target));
+ assert.throws(()=>parseAnalyticsSurfacePage({...page("jobs",[{...item,jobId:"not-a-guid"}]),targetRevision:2},"jobs",target));
+ assert.throws(()=>parseAnalyticsSurfacePage({...page("jobs",[{...item,jobKind:"provider-secret"}]),targetRevision:2},"jobs",target));
+});

@@ -94,6 +94,9 @@ builder.Services.AddSingleton<IOverviewQueryService, OverviewQueryService>();
 builder.Services.AddSingleton<IActivityProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);
 builder.Services.AddSingleton<IActivityProjectionQueryService, ActivityProjectionQueryService>();
+builder.Services.AddSingleton<ILiveActivityRepository>(s => s.GetRequiredService<PostgreSqlTargetControlPlane>().LiveActivity);
+builder.Services.AddSingleton<ILiveActivityProtector>(_ => new LiveActivityProtector(builder.Configuration["SqlObserver:LiveActivity:ProtectedKeyPath"]));
+builder.Services.AddSingleton<ILiveActivityQueryService>(s => new LiveActivityQueryService(s.GetRequiredService<ILiveActivityRepository>(), s.GetRequiredService<ILiveActivityProtector>(), TimeProvider.System));
 builder.Services.AddSingleton<IDeadlockProjectionRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().DeadlockProjections);
 builder.Services.AddSingleton<IDeadlockProjectionQueryService, DeadlockProjectionQueryService>();
 builder.Services.AddSingleton<IQueryPerformanceApiRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryPerformanceApiProjections);
@@ -145,6 +148,7 @@ app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
 app.MapOverviewEndpoints();
 app.MapTargetActivityEndpoints();
+app.MapLiveActivityEndpoints();
 app.MapTargetDeadlockEndpoints();
 app.MapTargetQueryPerformanceApiEndpoints();
 app.MapAlertEndpoints();

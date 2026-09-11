@@ -12,6 +12,7 @@ public sealed class M6DeadlockIntegrationTests
         SqlServerDeadlockCollectorAssetCatalog catalog = SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded();
         Assert.Equal("deadlocks.system-health", catalog.Asset.Manifest.Id.Value);
         Assert.Equal(1, catalog.Asset.Manifest.ManifestVersion.Value);
+        Assert.Equal(TimeSpan.FromSeconds(20), catalog.Asset.Manifest.Limits.CommandTimeout);
         Assert.Equal("passive", catalog.Asset.Manifest.OperationalMode.ToString().ToLowerInvariant());
         for (int major = 15; major <= 17; major++)
         {
@@ -97,7 +98,7 @@ public sealed class M6DeadlockIntegrationTests
         int bundleStart = runtimeSource.IndexOf("RequiredBundleDigests", StringComparison.Ordinal);
         string bundleBlock = runtimeSource[bundleStart..runtimeSource.IndexOf("];", bundleStart, StringComparison.Ordinal)];
         Assert.Contains("86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e", bundleBlock, StringComparison.Ordinal);
-        Assert.Contains("de178d916eb80f75611f3982879dc53ab2270589a22b3b28e10cd24e756b745a", bundleBlock, StringComparison.Ordinal);
+        Assert.Contains("57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de", bundleBlock, StringComparison.Ordinal);
     }
 
     [Fact]

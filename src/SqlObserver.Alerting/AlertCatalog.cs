@@ -12,7 +12,16 @@ public sealed class AlertCatalog
 {
     public static readonly IReadOnlyList<AlertCatalogEntry> Entries = LoadEmbeddedEntries();
     public static string Digest { get; } = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', Entries.Select(static x => $"{x.Name}|{x.Kind}|{x.Metric}|{x.SourceCollector}|{x.SourceSchemaVersion}|{x.Unit}|{x.Comparison}|{x.Threshold:R}|{x.Hysteresis:R}|{x.ConfirmationCount}|{x.ConfirmationWindow}|{x.EvaluationInterval}"))))).ToLowerInvariant();
-    public static bool IsApproved(AlertRuleDefinition rule) => Entries.Any(entry => entry.Name == rule.Name && entry.Kind == rule.Kind && entry.Metric == rule.MetricId?.Value && entry.Comparison == rule.Comparison && entry.Threshold == rule.Threshold && entry.Hysteresis == rule.Hysteresis && entry.ConfirmationCount == rule.ConfirmationCount && entry.ConfirmationWindow == rule.ConfirmationWindow && entry.EvaluationInterval == rule.EvaluationInterval && entry.SourceCollector.Length > 0 && entry.SourceSchemaVersion > 0 && entry.Unit.Length > 0);
+    public static bool IsApproved(AlertRuleDefinition rule) => Entries.Any(entry =>
+        entry.Kind == rule.Kind && entry.Metric == rule.MetricId?.Value &&
+        entry.SourceCollector.Length > 0 && entry.SourceSchemaVersion > 0 && entry.Unit.Length > 0 &&
+        (rule.Kind == AlertRuleKind.MetricThreshold
+            ? rule.Comparison is AlertComparison.GreaterThan or AlertComparison.GreaterThanOrEqual &&
+              rule.Threshold is >= 0 and <= 1_000_000 && rule.Hysteresis <= rule.Threshold &&
+              rule.EvaluationInterval >= TimeSpan.FromSeconds(15)
+            : entry.Name == rule.Name && entry.Comparison == rule.Comparison && entry.Threshold == rule.Threshold &&
+              entry.Hysteresis == rule.Hysteresis && entry.ConfirmationCount == rule.ConfirmationCount &&
+              entry.ConfirmationWindow == rule.ConfirmationWindow && entry.EvaluationInterval == rule.EvaluationInterval));
 
     private static AlertCatalogEntry[] LoadEmbeddedEntries()
     {
