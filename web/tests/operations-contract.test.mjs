@@ -97,3 +97,70 @@ test("M9 render model maps every surface and state with safe retry, paging, and 
   retryState = operationsReducer(retryState, { type: "cancel", kind: "backups" });
   assert.equal(buildOperationsRenderModel(retryState).cards.backups.canCancel, false);
 });
+
+test("operations cancellation remains truthful and recoverable without discarding an existing page", () => {
+  let initial = initialOperationsState();
+  initial = operationsReducer(initial, { type: "cancel", kind: "agent" });
+  const cancelled = buildOperationsRenderModel(initial).cards.agent;
+  assert.equal(cancelled.status, "Error");
+  assert.match(cancelled.error, /cancelled/i);
+  assert.equal(cancelled.canRetry, true);
+  assert.equal(cancelled.canCancel, false);
+
+  const page = { ...base("backups"), items: [{ label: "first" }], hasMore: true, nextCursor: "next" };
+  let loaded = initialOperationsState();
+  loaded = operationsReducer(loaded, { type: "success", kind: "backups", page, append: false });
+  loaded = operationsReducer(loaded, { type: "start", kind: "backups", append: false });
+  const inFlight = buildOperationsRenderModel(loaded).cards.backups;
+  assert.equal(inFlight.status, "Loading");
+  assert.equal(inFlight.canCancel, true);
+  loaded = operationsReducer(loaded, { type: "cancel", kind: "backups" });
+  const preserved = buildOperationsRenderModel(loaded).cards.backups;
+  assert.equal(preserved.page, page);
+  assert.deepEqual(preserved.items, page.items);
+  assert.match(preserved.error, /cancelled/i);
+  assert.equal(preserved.canRetry, true);
+  assert.equal(preserved.canCancel, false);
+});
+
+test("operations parser retains validated TempDB totals from the live response shape", () => {
+  const live = parseOperationalPage({
+    ...base("tempdb-summary"),
+    totalBytes: 142606336,
+    usedBytes: 86114304,
+    logTotalBytes: 75489280,
+    logUsedBytes: 56487936,
+  }, "tempdb-summary", target);
+  assert.equal(live.totalBytes, 142606336);
+  assert.equal(live.usedBytes, 86114304);
+  assert.equal(live.logTotalBytes, 75489280);
+  assert.equal(live.logUsedBytes, 56487936);
+
+  const zero = parseOperationalPage({ ...base("tempdb-summary"), totalBytes: 0, usedBytes: 0, logTotalBytes: 0, logUsedBytes: 0 }, "tempdb-summary", target);
+  assert.equal(zero.totalBytes, 0);
+  assert.equal(zero.usedBytes, 0);
+  assert.equal(zero.logTotalBytes, 0);
+  assert.equal(zero.logUsedBytes, 0);
+
+  const unknown = parseOperationalPage({ ...base("tempdb-summary"), totalBytes: null, usedBytes: null, logTotalBytes: null, logUsedBytes: null }, "tempdb-summary", target);
+  assert.equal(unknown.totalBytes, null);
+  assert.equal(unknown.usedBytes, null);
+  assert.equal(unknown.logTotalBytes, null);
+  assert.equal(unknown.logUsedBytes, null);
+
+  for (const field of ["totalBytes", "usedBytes", "logTotalBytes", "logUsedBytes"]) {
+    for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 2, "86114304"]) {
+      assert.throws(() => parseOperationalPage({ ...base("tempdb-summary"), [field]: value }, "tempdb-summary", target));
+    }
+  }
+  assert.throws(() => parseOperationalPage({ ...base("tempdb-summary"), totalBytes: 10, usedBytes: 11 }, "tempdb-summary", target));
+  assert.throws(() => parseOperationalPage({ ...base("tempdb-summary"), logTotalBytes: 10, logUsedBytes: 11 }, "tempdb-summary", target));
+});
+
+test("operations parser retains validated AG visibility for both casing forms", () => {
+  for (const kind of ["ag-replicas", "ag-databases"]) {
+    assert.equal(parseOperationalPage({ ...base(kind), visibilityScope: "ResolvingLocalOnly" }, kind, target).visibilityScope, "ResolvingLocalOnly");
+    assert.equal(parseOperationalPage({ ...base(kind), visibilityScope: undefined, VisibilityScope: "SecondaryLocalOnly" }, kind, target).visibilityScope, "SecondaryLocalOnly");
+    assert.throws(() => parseOperationalPage({ ...base(kind), visibilityScope: "provider-secret" }, kind, target));
+  }
+});

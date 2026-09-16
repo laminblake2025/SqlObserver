@@ -12,6 +12,7 @@ public enum ApplicationRole
     SecurityAdministrator = 4,
     Auditor = 5,
     CollectorService = 6,
+    QueryTextReader = 7,
 }
 
 public enum AuthorizationPrincipalState

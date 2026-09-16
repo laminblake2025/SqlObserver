@@ -51,6 +51,9 @@ public sealed class M5ActivityHttpContractTests : IClassFixture<M5ActivityApiFac
             {
                 HttpResponseMessage response = await client.GetAsync($"/api/v1/observation-targets/{M5ActivityApiFactory.TargetId:D}/activity/{route}");
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                string json = await response.Content.ReadAsStringAsync();
+                Assert.DoesNotContain("+00:00", json);
+                Assert.Contains("Z\"", json);
             }
         }
         finally { _factory.Service.ReturnPages = false; }

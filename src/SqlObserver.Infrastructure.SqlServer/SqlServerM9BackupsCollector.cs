@@ -18,15 +18,18 @@ public sealed class SqlServerBackupsStatusCollector : SqlServerOperationalHealth
         {
             rows++;
             if (items.Count >= OperationalHealthBounds.BackupMaximumRows) continue;
+            string fingerprint = Convert.ToHexString(reader.GetBinary(0)).ToLowerInvariant();
+            BackupKind kind = (BackupKind)reader.GetInt32(1);
             DateTime local = reader.IsDBNull(2) ? default : reader.GetDateTime(2);
+            long? size = reader.IsDBNull(3) ? null : reader.GetInt64(3);
+            bool? copyOnly = reader.IsDBNull(4) ? null : reader.GetBoolean(4), checksum = reader.IsDBNull(5) ? null : reader.GetBoolean(5), damaged = reader.IsDBNull(6) ? null : reader.GetBoolean(6);
+            long? backupSetId = reader.IsDBNull(7) ? null : reader.GetInt64(7);
             short? offset = reader.IsDBNull(8) ? null : reader.GetInt16(8);
             var utc = SqlServerTimestamp.ToUtc(local, offset);
             items.Add(new BackupStatusObservation(request.TargetId, request.TargetRevision,
-                Convert.ToHexString(reader.GetBinary(0)).ToLowerInvariant(), (BackupKind)reader.GetInt32(1),
-                utc.Utc, utc.Local, utc.SourceTimeUnknown, reader.IsDBNull(3) ? null : reader.GetInt64(3),
-                reader.IsDBNull(4) ? null : reader.GetBoolean(4), reader.IsDBNull(5) ? null : reader.GetBoolean(5),
-                reader.IsDBNull(6) ? null : reader.GetBoolean(6), BackupCoverage.Complete)
-            { BackupSetId = reader.IsDBNull(7) ? null : reader.GetInt64(7) });
+                fingerprint, kind, utc.Utc, utc.Local, utc.SourceTimeUnknown, size,
+                copyOnly, checksum, damaged, BackupCoverage.Complete)
+            { BackupSetId = backupSetId });
         }
         var snapshot = new BackupStatusSnapshot(request.TargetId, request.TargetRevision, request.RunId, DateTimeOffset.UtcNow,
             items.Count == 0 ? OperationalObservationState.NoData : OperationalObservationState.Complete, items, rows, rows > OperationalHealthBounds.BackupMaximumRows);

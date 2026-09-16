@@ -227,8 +227,16 @@ public sealed class SqlServerCapabilityIntegrationTests
         Assert.Equal(1, profile.CollectorManifestVersion);
         Assert.Equal(1, profile.OutputSchemaVersion);
         Assert.NotNull(profile.ServerIdentity);
-        Assert.Equal(16, profile.ServerIdentity.Version.Major);
-        Assert.Equal(SqlServerEngineEdition.Express, profile.ServerIdentity.EngineEdition);
+        // Compare discovery with independent server evidence so this contract
+        // also validates supported SQL Server 2025 and non-Express labs.
+        await using (SqlConnection identityConnection = await connectionFactory.OpenConnectionAsync(request.ConnectionPolicy, CancellationToken.None))
+        await using (var identityCommand = new SqlCommand("SELECT CONVERT(int, SERVERPROPERTY('ProductMajorVersion')), CONVERT(int, SERVERPROPERTY('EngineEdition'));", identityConnection) { CommandTimeout = 5 })
+        await using (SqlDataReader identity = await identityCommand.ExecuteReaderAsync(CancellationToken.None))
+        {
+            Assert.True(await identity.ReadAsync(CancellationToken.None));
+            Assert.Equal(identity.GetInt32(0), profile.ServerIdentity.Version.Major);
+            Assert.Equal((SqlServerEngineEdition)identity.GetInt32(1), profile.ServerIdentity.EngineEdition);
+        }
         Assert.Equal(SqlServerPlatform.Windows, profile.ServerIdentity.Platform);
         Assert.Equal(SqlServerAuthenticationScheme.Ntlm, profile.AuthenticationScheme);
         Assert.True(profile.IsSysAdmin);

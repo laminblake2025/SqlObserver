@@ -13,8 +13,8 @@ export const operationKinds: readonly OperationalKind[] = ["backups", "agent", "
 export const initialOperationsState = (): OperationsState => Object.fromEntries(operationKinds.map(kind => [kind, { loading: true }])) as OperationsState;
 export function operationsReducer(state: OperationsState, action: OperationsAction): OperationsState {
   if (action.type === "reset") return initialOperationsState();
-  if (action.type === "start") return { ...state, [action.kind]: { ...state[action.kind], loading: true, error: undefined } };
-  if (action.type === "cancel") return { ...state, [action.kind]: { ...state[action.kind], loading: false } };
+  if (action.type === "start") return { ...state, [action.kind]: { ...state[action.kind], loading: true, error: undefined, retryable: undefined } };
+  if (action.type === "cancel") return { ...state, [action.kind]: { ...state[action.kind], loading: false, error: "The operational-health request was cancelled. Retry to request a fresh snapshot.", retryable: true } };
   if (action.type === "failure") return { ...state, [action.kind]: { ...state[action.kind], loading: false, error: action.error, retryable: action.retryable } };
   const previous = state[action.kind].page;
   const page = action.append && previous ? { ...action.page, items: [...previous.items, ...action.page.items] } : action.page;

@@ -167,6 +167,7 @@ public static class CollectorServiceRegistration
         services.AddSingleton<HostMetricsCollectorAdapter>();
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
+        services.AddSingleton<IDeadlockActivitySnapshotTrigger, DeadlockActivitySnapshotTrigger>();
         services.AddSingleton(static provider => new CollectorScheduler(
             provider.GetRequiredService<CollectorRegistry>(),
             provider.GetRequiredService<ICollectorRuntimeRepositoryPort>(),
@@ -177,8 +178,13 @@ public static class CollectorServiceRegistration
                 maxItemsPerCycle: ListDueCollectorWorkRequest.MaximumItems,
                 maxConcurrency: 4,
                 new WorkerLeaseDuration(TimeSpan.FromSeconds(30)),
-                new RepositoryCallTimeout(TimeSpan.FromSeconds(5)))));
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),
+            provider.GetRequiredService<IDeadlockActivitySnapshotTrigger>()));
         services.AddHostedService<CapabilityDiscoveryWorker>();
+        services.AddSingleton<ILiveActivityRepository>(s => s.GetRequiredService<PostgreSqlCollectorDataPlane>().LiveActivity);
+        services.AddSingleton<ILiveActivityProtector>(_ => new LiveActivityProtector(configuration["SqlObserver:LiveActivity:ProtectedKeyPath"]));
+        services.AddSingleton<ILiveActivityCollector, SqlServerLiveActivityCollector>();
+        services.AddHostedService<LiveActivityWorker>();
         services.AddHostedService<CollectionWorker>();
         services.AddHostedService<AlertEvaluationWorker>();
         services.AddHostedService<AlertDeliveryWorker>();

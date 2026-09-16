@@ -97,6 +97,7 @@ public sealed class CollectorScheduler
     private readonly CollectorExecutionEngine _engine;
     private readonly WorkerExecutionId _workerExecutionId;
     private readonly CollectorSchedulerOptions _options;
+    private readonly IDeadlockActivitySnapshotTrigger? _deadlockActivitySnapshotTrigger;
     private readonly ConcurrentDictionary<string, byte> _inFlight = new(StringComparer.Ordinal);
 
     public CollectorScheduler(
@@ -105,7 +106,8 @@ public sealed class CollectorScheduler
         IWorkerLeasePort leases,
         CollectorExecutionEngine engine,
         WorkerExecutionId workerExecutionId,
-        CollectorSchedulerOptions options)
+        CollectorSchedulerOptions options,
+        IDeadlockActivitySnapshotTrigger? deadlockActivitySnapshotTrigger = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
@@ -113,6 +115,7 @@ public sealed class CollectorScheduler
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _workerExecutionId = workerExecutionId ?? throw new ArgumentNullException(nameof(workerExecutionId));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _deadlockActivitySnapshotTrigger = deadlockActivitySnapshotTrigger;
     }
 
     public ValueTask<CollectorCatalogReconcileResult> ReconcileCatalogAsync(
@@ -272,6 +275,18 @@ public sealed class CollectorScheduler
                 {
                     RecordLeaseLoss(work);
                     return CollectorWorkDisposition.LeaseLost;
+                }
+
+                if ((committed.Status is CollectorRunCommitStatus.Committed or CollectorRunCommitStatus.Replayed) &&
+                    _deadlockActivitySnapshotTrigger is not null &&
+                    string.Equals(work.CollectorId.Value, "deadlocks.system-health", StringComparison.Ordinal) &&
+                    engineResult.Payload.Deadlocks.Items.Count > 0)
+                {
+                    await _deadlockActivitySnapshotTrigger.TriggerAsync(
+                            work,
+                            engineResult.Payload.Deadlocks,
+                            ownershipCancellation.Token)
+                        .ConfigureAwait(false);
                 }
 
                 return committed.Status is CollectorRunCommitStatus.Committed or CollectorRunCommitStatus.Replayed

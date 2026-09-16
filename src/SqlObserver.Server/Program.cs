@@ -38,6 +38,7 @@ builder.Services.AddRequestTimeouts(options =>
     });
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    options.SerializerOptions.Converters.Add(new CanonicalUtcDateTimeOffsetConverter());
     options.SerializerOptions.MaxDepth = 32;
     options.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
 });
@@ -88,9 +89,14 @@ builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTa
 builder.Services.AddSingleton<IObservationTargetQueryService, ObservationTargetQueryService>();
 builder.Services.AddSingleton<IObservationTargetStatusQueryService, ObservationTargetStatusQueryService>();
 builder.Services.AddSingleton<IHealthProjectionQueryService, HealthProjectionQueryService>();
+builder.Services.AddSingleton<IOverviewHistoryRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OverviewHistory);
+builder.Services.AddSingleton<IOverviewQueryService, OverviewQueryService>();
 builder.Services.AddSingleton<IActivityProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);
 builder.Services.AddSingleton<IActivityProjectionQueryService, ActivityProjectionQueryService>();
+builder.Services.AddSingleton<ILiveActivityRepository>(s => s.GetRequiredService<PostgreSqlTargetControlPlane>().LiveActivity);
+builder.Services.AddSingleton<ILiveActivityProtector>(_ => new LiveActivityProtector(builder.Configuration["SqlObserver:LiveActivity:ProtectedKeyPath"]));
+builder.Services.AddSingleton<ILiveActivityQueryService>(s => new LiveActivityQueryService(s.GetRequiredService<ILiveActivityRepository>(), s.GetRequiredService<ILiveActivityProtector>(), TimeProvider.System));
 builder.Services.AddSingleton<IDeadlockProjectionRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().DeadlockProjections);
 builder.Services.AddSingleton<IDeadlockProjectionQueryService, DeadlockProjectionQueryService>();
 builder.Services.AddSingleton<IQueryPerformanceApiRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryPerformanceApiProjections);
@@ -102,6 +108,7 @@ builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services 
 builder.Services.AddSingleton<IAnalyticsRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
 builder.Services.AddSingleton<IAnalyticsSurfaceRepositoryPort>(static services => (IAnalyticsSurfaceRepositoryPort)services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
 builder.Services.AddSingleton<IRetentionRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Retention);
+builder.Services.AddSingleton<IRetentionPolicyRepositoryPort>(static services => (IRetentionPolicyRepositoryPort)services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
 builder.Services.AddSingleton<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddSingleton<IRetentionService, RetentionService>();
 builder.Services.AddSingleton<IRetentionPolicyService, RetentionPolicyService>();
@@ -140,7 +147,9 @@ app.UseRateLimiter();
 app.MapSqlObserverScaffoldEndpoints(includeRootDescriptor: webInterface is null);
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
+app.MapOverviewEndpoints();
 app.MapTargetActivityEndpoints();
+app.MapLiveActivityEndpoints();
 app.MapTargetDeadlockEndpoints();
 app.MapTargetQueryPerformanceApiEndpoints();
 app.MapAlertEndpoints();

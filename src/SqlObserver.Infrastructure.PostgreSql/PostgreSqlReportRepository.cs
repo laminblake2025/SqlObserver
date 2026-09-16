@@ -77,7 +77,7 @@ public sealed class PostgreSqlReportRepository(NpgsqlDataSource dataSource) : IR
     { await using var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,true);", connection, transaction); scope.Parameters.AddWithValue("scope", targetId.ToString("D")); await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false); }
     private static async ValueTask<ReportRun?> ReadRunCoreAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid targetId, Guid runId, CancellationToken cancellationToken)
     {
-        await using var command = new NpgsqlCommand("SELECT run_id,target_revision,definition_version,snapshot_utc,expires_at_utc,state,report_kind,encode(parameter_digest,'hex') FROM reporting.report_run WHERE target_id=@target AND run_id=@run AND expires_at_utc>clock_timestamp();", connection, transaction) { CommandTimeout = 5 };
+        await using var command = new NpgsqlCommand("SELECT run_id,target_revision,definition_version,snapshot_utc,expires_at_utc,state,report_kind,parameter_digest_hex FROM reporting.read_report_run(@target,@run);", connection, transaction) { CommandTimeout = 5 };
         command.Parameters.AddWithValue("target", targetId); command.Parameters.AddWithValue("run", runId);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? ReadRun(reader, targetId, Parse(reader.GetString(6)), reader.GetString(6), reader.GetString(7)) : null;

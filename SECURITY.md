@@ -6,11 +6,11 @@ SqlObserver observes high-value database systems and stores operational evidence
 
 Do not disclose a suspected vulnerability, credential, query text, plan, customer identifier, or exploit in a public issue. Use the private security-reporting channel published by the repository host or distribution owner. Include the affected version or commit, the smallest safe reproduction, impact, and any suggested mitigation. Remove secrets and production data from all attachments.
 
-If no private channel is visible, contact the repository owner through the private channel by which you received the software and ask for secure reporting instructions before sending details. Maintainers should acknowledge a report, establish an embargoed coordination channel, assess supported versions, and publish remediation and credit information when safe. This scaffold does not promise a response SLA.
+If no private channel is visible, contact the repository owner through the private channel by which you received the software and ask for secure reporting instructions before sending details. Maintainers should acknowledge a report, establish an embargoed coordination channel, assess supported versions, and publish remediation and credit information when safe. This pre-release implementation does not promise a response SLA.
 
 ## Supported versions and policy
 
-No released version exists at Milestone 0/Milestone 1 scaffolding, so there is currently no production-supported branch. Once releases begin, the project will publish a version-support table here, provide fixes only for versions listed as supported, and identify security-relevant upgrade requirements in release notes.
+No released version exists; this repository is a pre-release implementation with no production-supported branch. Once releases begin, the project will publish a version-support table here, provide fixes only for versions listed as supported, and identify security-relevant upgrade requirements in release notes.
 
 The initial platform target is Windows Server 2022 and 2025, PostgreSQL 18.x, SQL Server 2019/2022/2025 on Windows, Edge and Chrome, and Windows Integrated Authentication for the web application. Planned platforms are not supported until explicitly promoted in the [support matrix](docs/architecture/support-matrix.md).
 
@@ -73,4 +73,4 @@ Every MCP call is audited with actor, client identity, allowlisted tool name, UT
 
 SqlObserver is a diagnostic aid, not an isolation boundary, database firewall, backup product, or substitute for platform auditing. Least-privilege monitoring can still expose commercially sensitive workload details. A compromise of a collector identity may permit broad metadata reads within its grants, and a compromise of the repository can expose retained observations. Operators must isolate networks, patch dependencies and hosts, restrict repository access, use TLS, rotate identities, back up and test recovery, and choose retention appropriate to their data classification.
 
-The current repository is scaffold-only. Passing its initial validation does not constitute a penetration test, deployment approval, or security certification. See the [threat model](docs/architecture/threat-model.md) for tracked risks.
+The current repository is an implemented pre-release product slice. Passing local validation does not constitute a penetration test, deployment approval, production support commitment, or security certification; M12 release and platform certification remain incomplete. See the [threat model](docs/architecture/threat-model.md) for tracked risks.

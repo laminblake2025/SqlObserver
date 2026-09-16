@@ -194,6 +194,25 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 throw new InvalidDataException("SQL Server version evidence changed during capability discovery.");
             }
 
+            if (_assetsV3 is not null)
+            {
+                string originalDatabase = connection.Database;
+                try
+                {
+                    connection.ChangeDatabase("msdb");
+                    await using var historyProbe = new SqlCommand("SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(N'dbo.backupset',N'OBJECT',N'SELECT'),0)),CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(N'dbo.sysjobhistory',N'OBJECT',N'SELECT'),0));", connection) { CommandTimeout = commandTimeout };
+                    await using SqlDataReader history = await historyProbe.ExecuteReaderAsync(timeout.Token).ConfigureAwait(false);
+                    if (!await history.ReadAsync(timeout.Token).ConfigureAwait(false)) throw new InvalidDataException("History permission probe returned no row.");
+                    budget.AddFixedBytes(2);
+                    detail = detail with { HasBackupsetSelect = history.GetBoolean(0), HasSysjobhistorySelect = history.GetBoolean(1), HasSqlAgentHistory = detail.EngineEdition is 2 or 3 };
+                }
+                catch (SqlException exception) when (IsPermissionDenied(exception))
+                {
+                    detail = detail with { HasBackupsetSelect = false, HasSysjobhistorySelect = false, HasSqlAgentHistory = detail.EngineEdition is 2 or 3 };
+                }
+                finally { connection.ChangeDatabase(originalDatabase); }
+            }
+
             if (_assetsV3 is not null && distributionDatabase is not null)
             {
                 bool roleGranted = await ProbeReplicationMonitorRoleAsync(
@@ -735,6 +754,14 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                     detail.HasRequiredPermission
                         ? PermissionEvidenceOutcome.Granted
                         : PermissionEvidenceOutcome.Denied),
+                new PermissionEvidence(
+                    BackupsetSelectPermissionId,
+                    PermissionEvidenceScope.Database,
+                    detail.HasBackupsetSelect ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied),
+                new PermissionEvidence(
+                    SysjobhistorySelectPermissionId,
+                    PermissionEvidenceScope.Database,
+                    detail.HasSysjobhistorySelect ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied),
                 new PermissionEvidence(
                     ReplicationMonitorPermissionId,
                     PermissionEvidenceScope.Database,

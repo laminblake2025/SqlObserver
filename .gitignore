@@ -7,7 +7,7 @@ TestResults/
 *.coveragexml
 
 # Frontend dependencies and output
-web/node_modules/
+node_modules/
 web/dist/
 web/.artifacts/
 .pnpm-store/
@@ -27,6 +27,12 @@ appsettings.*.local.json
 *.log
 logs/
 secrets/
+
+# Local lab diagnostics, deployment packages, and repository backups
+/artifacts/
+/.codex-lab-*
+/*.bundle
+/release/certification/.m12-manifest-*.json
 
 # Operating-system files
 .DS_Store

@@ -292,14 +292,14 @@ public sealed class WindowsHostMetricSource
         var rows = new Dictionary<WindowsHostQueryKind, IReadOnlyList<WindowsHostDataRow>>();
         int rowCount = 0;
         int estimatedBytes = 0;
+        await using var batch = new HostQueryBatch();
+        setCurrent(batch);
+        batch.Start(_sessions, cancellationToken);
+        await batch.Completion.ConfigureAwait(false);
         foreach (WindowsHostQuery query in WindowsHostQuery.AllowList)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await using IWindowsHostQuerySession session = _sessions.Start(query, cancellationToken);
-            setCurrent(session);
-            IReadOnlyList<WindowsHostDataRow> result;
-            try { result = await session.Completion.ConfigureAwait(false); }
-            finally { setCurrent(null); }
+            IReadOnlyList<WindowsHostDataRow> result = await batch.Sessions[query.Kind].Completion.ConfigureAwait(false);
             if (result is null || result.Count > MaximumRows || (rowCount = checked(rowCount + result.Count)) > MaximumRows)
                 throw new HostMetricsSourceException(HostObservationReason.InvalidOutput);
             foreach (WindowsHostDataRow row in result)
@@ -311,6 +311,7 @@ public sealed class WindowsHostMetricSource
 
             rows.Add(query.Kind, result);
         }
+        setCurrent(null);
 
         double cpu = SingleValue(rows, WindowsHostQueryKind.CpuUtilization);
         long available = checked((long)SingleValue(rows, WindowsHostQueryKind.AvailableMemoryBytes));
@@ -342,6 +343,54 @@ public sealed class WindowsHostMetricSource
         var metrics = new HostMetricsV1(hostFingerprint, observedAtUtc, cpu, available, committed, volumes);
         metrics.Validate();
         return metrics;
+    }
+
+    // The seven fixed reads share one owned cancellation/termination boundary.
+    // Concurrent sampling avoids spending the whole deadline waiting for serial
+    // one-second performance counter samples.
+    private sealed class HostQueryBatch : IWindowsHostQuerySession
+    {
+        private readonly object gate = new();
+        internal Dictionary<WindowsHostQueryKind, IWindowsHostQuerySession> Sessions { get; } = [];
+        public Task<IReadOnlyList<WindowsHostDataRow>> Completion { get; private set; } = Task.FromResult<IReadOnlyList<WindowsHostDataRow>>([]);
+
+        internal void Start(IWindowsHostQuerySessionFactory factory, CancellationToken token)
+        {
+            lock (gate)
+            {
+                foreach (WindowsHostQuery query in WindowsHostQuery.AllowList)
+                {
+                    token.ThrowIfCancellationRequested();
+                    Sessions.Add(query.Kind, factory.Start(query, token));
+                }
+                Completion = CompleteAsync();
+            }
+        }
+
+        private async Task<IReadOnlyList<WindowsHostDataRow>> CompleteAsync()
+        {
+            await Task.WhenAll(Sessions.Values.Select(session => session.Completion)).ConfigureAwait(false);
+            return [];
+        }
+
+        public void Cancel()
+        {
+            lock (gate)
+                foreach (IWindowsHostQuerySession session in Sessions.Values) session.Cancel();
+        }
+
+        public async ValueTask<bool> TerminateAsync(TimeSpan timeout)
+        {
+            Cancel();
+            bool[] results = await Task.WhenAll(Sessions.Values.Select(session => session.TerminateAsync(timeout).AsTask())).WaitAsync(timeout).ConfigureAwait(false);
+            return results.All(static terminated => terminated);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            Cancel();
+            await Task.WhenAll(Sessions.Values.Select(session => session.DisposeAsync().AsTask())).ConfigureAwait(false);
+        }
     }
 
     private sealed class WindowsHostMetricsOperation : IWindowsHostMetricsOperation

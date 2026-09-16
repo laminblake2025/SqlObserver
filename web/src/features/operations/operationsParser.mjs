@@ -45,10 +45,10 @@ export function parseOperationalPage(value, kind = "backups", expectedTargetId =
   const output = { targetId, targetRevision, runId: runId ?? null, evidence: evidence ?? null, observedAtUtc, state, items, hasMore, nextCursor: nextCursor ?? null, truncated };
   if (kind === "backups") items.forEach(validateBackup);
   else if (kind === "agent") { validateCoverage(value, output); items.forEach(validateAgent); }
-  else if (kind === "tempdb-summary" || kind === "tempdb") validateTempDbSummary(value, items);
+  else if (kind === "tempdb-summary" || kind === "tempdb") Object.assign(output, validateTempDbSummary(value, items));
   else if (kind === "tempdb-files" || kind === "tempdb/files") items.forEach(validateTempDbFile);
-  else if (kind === "ag-replicas" || kind === "availability-groups/replicas") { validateVisibility(value); items.forEach(validateReplica); }
-  else if (kind === "ag-databases" || kind === "availability-groups/databases") { validateVisibility(value); items.forEach(validateDatabase); }
+  else if (kind === "ag-replicas" || kind === "availability-groups/replicas") { output.visibilityScope = validateVisibility(value); items.forEach(validateReplica); }
+  else if (kind === "ag-databases" || kind === "availability-groups/databases") { output.visibilityScope = validateVisibility(value); items.forEach(validateDatabase); }
   else fail("kind");
   return Object.freeze(output);
 }
@@ -66,13 +66,21 @@ function validateAgent(item) {
   if (field(item, "contentAvailable", "ContentAvailable") !== false) fail("agent sensitive content");
   if (!utc(field(item, "firstObservedAtUtc", "FirstObservedAtUtc"))) fail("agent first observed");
 }
+function optionalInteger(value, lower, upper, name) {
+  const candidate = field(value, lower, upper);
+  return candidate == null ? null : integer(candidate, name);
+}
 function validateTempDbSummary(value, items) {
   if (items.length !== 0) fail("summary files");
-  for (const name of ["totalBytes", "usedBytes", "logTotalBytes", "logUsedBytes"]) { const v = field(value, name, name[0].toUpperCase() + name.slice(1)); if (v != null) integer(v, name); }
-  const total = field(value, "totalBytes", "TotalBytes"), used = field(value, "usedBytes", "UsedBytes"); if (total != null && used != null && used > total) fail("summary consistency");
+  const totalBytes = optionalInteger(value, "totalBytes", "TotalBytes", "totalBytes");
+  const usedBytes = optionalInteger(value, "usedBytes", "UsedBytes", "usedBytes");
+  const logTotalBytes = optionalInteger(value, "logTotalBytes", "LogTotalBytes", "logTotalBytes");
+  const logUsedBytes = optionalInteger(value, "logUsedBytes", "LogUsedBytes", "logUsedBytes");
+  if ((totalBytes != null && usedBytes != null && usedBytes > totalBytes) || (logTotalBytes != null && logUsedBytes != null && logUsedBytes > logTotalBytes)) fail("summary consistency");
+  return { totalBytes, usedBytes, logTotalBytes, logUsedBytes };
 }
 function validateTempDbFile(item) { if (!item || typeof item !== "object") fail("tempdb file"); integer(field(item, "fileId", "FileId"), "file id"); const values = ["sizeBytes", "usedBytes", "freeBytes"].map(name => field(item, name, name[0].toUpperCase() + name.slice(1))); values.forEach((v, i) => integer(v, ["sizeBytes", "usedBytes", "freeBytes"][i])); if (values[1] + values[2] > values[0]) fail("tempdb consistency"); }
-function validateVisibility(value) { const visibility = field(value, "visibilityScope", "VisibilityScope"); if (typeof visibility !== "string" || !["PrimaryAllKnown", "SecondaryLocalOnly", "ResolvingLocalOnly"].includes(visibility)) fail("AG visibility"); }
+function validateVisibility(value) { const visibility = field(value, "visibilityScope", "VisibilityScope"); if (typeof visibility !== "string" || !["PrimaryAllKnown", "SecondaryLocalOnly", "ResolvingLocalOnly"].includes(visibility)) fail("AG visibility"); return visibility; }
 function token(value) { return typeof value === "string" && value.length > 0 && value.length <= 64 && /^[A-Za-z0-9 _-]+$/.test(value); }
 function validateReplica(item) { if (!item || !HEX.test(field(item, "groupFingerprint", "GroupFingerprint")) || !HEX.test(field(item, "replicaFingerprint", "ReplicaFingerprint")) || !token(field(item, "role", "Role")) || !token(field(item, "operationalState", "OperationalState")) || !token(field(item, "connectedState", "ConnectedState")) || !["PrimaryAllKnown", "SecondaryLocalOnly", "ResolvingLocalOnly"].includes(field(item, "visibilityScope", "VisibilityScope")) || typeof field(item, "stateAvailable", "StateAvailable") !== "boolean") fail("AG replica evidence"); }
 function validateDatabase(item) { if (!item || !HEX.test(field(item, "groupFingerprint", "GroupFingerprint")) || !HEX.test(field(item, "databaseFingerprint", "DatabaseFingerprint")) || !token(field(item, "synchronizationState", "SynchronizationState")) || !token(field(item, "databaseState", "DatabaseState")) || !["PrimaryAllKnown", "SecondaryLocalOnly", "ResolvingLocalOnly"].includes(field(item, "visibilityScope", "VisibilityScope")) || typeof field(item, "stateAvailable", "StateAvailable") !== "boolean") fail("AG database evidence"); }

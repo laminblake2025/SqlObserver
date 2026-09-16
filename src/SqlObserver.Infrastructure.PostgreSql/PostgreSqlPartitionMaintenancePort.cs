@@ -25,6 +25,9 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
     private const string EnsureM9SetDailySql = """
         SELECT (control.ensure_m9_daily_partitions(@partition_date, 3) > 0), clock_timestamp();
         """;
+    private const string EnsureM10PartitionSetSql = """
+        SELECT control.ensure_m10_partition_set(CURRENT_DATE);
+        """;
     private const string PreviewM9DailySql = """
         SELECT
             range_start,
@@ -108,6 +111,40 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
             await AssertLeaseAsync(connection, transaction, lease, timeout, timeoutScope.Token).ConfigureAwait(false);
             await transaction.CommitAsync(timeoutScope.Token).ConfigureAwait(false);
             return result is int count ? count : throw new InvalidDataException("M9 partition maintenance returned an invalid count.");
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Checks/touches the allowlisted M10 daily and monthly partition set under the catalog lease.</summary>
+    public async ValueTask<int> EnsureM10PartitionSetAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(timeout);
+        using CancellationTokenSource timeoutScope = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(timeoutScope.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(timeoutScope.Token).ConfigureAwait(false);
+        try
+        {
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, timeoutScope.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, timeoutScope.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand(EnsureM10PartitionSetSql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            object? result = await command.ExecuteScalarAsync(timeoutScope.Token).ConfigureAwait(false);
+            int checkedCount = result is int count && count >= 0
+                ? count
+                : throw new InvalidDataException("M10 partition maintenance returned an invalid checked count.");
+            await AssertLeaseAsync(connection, transaction, lease, timeout, timeoutScope.Token).ConfigureAwait(false);
+            await transaction.CommitAsync(timeoutScope.Token).ConfigureAwait(false);
+            return checkedCount;
         }
         catch
         {

@@ -20,6 +20,7 @@ public sealed partial class CollectionWorker : BackgroundService
     private readonly PostgreSqlPartitionMaintenancePort _partitionMaintenance;
     private readonly WorkerExecutionId _executionId;
     private readonly TimeProvider _timeProvider;
+    private readonly M10PartitionMaintenanceCoordinator _m10Maintenance;
     private readonly ILogger<CollectionWorker> _logger;
 
     public CollectionWorker(
@@ -35,6 +36,7 @@ public sealed partial class CollectionWorker : BackgroundService
         _partitionMaintenance = partitionMaintenance ?? throw new ArgumentNullException(nameof(partitionMaintenance));
         _executionId = executionId ?? throw new ArgumentNullException(nameof(executionId));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _m10Maintenance = new M10PartitionMaintenanceCoordinator(_timeProvider);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -80,6 +82,19 @@ public sealed partial class CollectionWorker : BackgroundService
             }
 
             identity = acquisition.Lease.Identity;
+            M10MaintenanceAttempt m10 = await _m10Maintenance.TryRunAsync(
+                    token => _partitionMaintenance.EnsureM10PartitionSetAsync(identity, RepositoryTimeout, token),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (m10.State == M10MaintenanceAttemptState.Succeeded)
+            {
+                LogM10MaintenanceCompleted(_logger, m10.CheckedCount!.Value);
+            }
+            else if (m10.State == M10MaintenanceAttemptState.Failed)
+            {
+                LogM10MaintenanceFailure(_logger, m10.FailureType!);
+            }
+
             await _partitionMaintenance.EnsureM9DailyPartitionsAsync(
                     identity,
                     RepositoryTimeout,
@@ -195,4 +210,16 @@ public sealed partial class CollectionWorker : BackgroundService
         Level = LogLevel.Warning,
         Message = "Collector catalog lease release failed safely. FailureType={FailureType}")]
     private static partial void LogLeaseReleaseFailure(ILogger logger, string failureType);
+
+    [LoggerMessage(
+        EventId = 3106,
+        Level = LogLevel.Information,
+        Message = "M10 partition maintenance checked/touched {CheckedCount} allowlisted partitions.")]
+    private static partial void LogM10MaintenanceCompleted(ILogger logger, int checkedCount);
+
+    [LoggerMessage(
+        EventId = 3107,
+        Level = LogLevel.Warning,
+        Message = "M10 partition maintenance failed safely. FailureType={FailureType}")]
+    private static partial void LogM10MaintenanceFailure(ILogger logger, string failureType);
 }

@@ -4,6 +4,8 @@
     <AssemblyName>SqlObserver.Infrastructure.SqlServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../collectors/sql/activity.live.v1.sql" LogicalName="SqlObserver.LiveActivity.sql" />
+    <EmbeddedResource Include="../../collectors/manifests/activity.live.v1.sha256" LogicalName="SqlObserver.LiveActivity.sha256" />
     <EmbeddedResource Include="../../collectors/manifests/capability.connection.assets-v3.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.assets-v3.sha256</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/capability.connection.v3.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.v3.schema.json</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/capability.connection.v3.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.v3.json</LogicalName></EmbeddedResource>

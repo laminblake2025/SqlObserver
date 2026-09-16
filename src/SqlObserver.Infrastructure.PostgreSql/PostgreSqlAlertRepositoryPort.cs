@@ -81,6 +81,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         {
             result.Add(new AlertRuleDefinition(r.GetGuid(0), r.GetString(1), (AlertRuleKind)r.GetInt32(2), r.IsDBNull(3) ? null : new MetricId(r.GetString(3)), (AlertComparison)r.GetInt32(4), r.GetDouble(5), r.GetDouble(6), r.GetInt32(7), r.GetTimeSpan(8), r.GetTimeSpan(9), r.GetBoolean(10)));
         }
+        await r.DisposeAsync().ConfigureAwait(false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return result;
     }
@@ -200,7 +201,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AlertRuleWriteRequest request, CancellationToken cancellationToken)
     {
         if (!AlertCatalog.IsApproved(request.Rule)) throw new InvalidDataException("The requested alert rule is not present in the validated catalog.");
-        AlertCatalogEntry catalog = AlertCatalog.Entries.Single(x => x.Name == request.Rule.Name && x.Kind == request.Rule.Kind && x.Metric == request.Rule.MetricId?.Value);
+        AlertCatalogEntry catalog = AlertCatalog.Entries.Single(x => x.Kind == request.Rule.Kind && x.Metric == request.Rule.MetricId?.Value);
         return ExecuteAdminAsync("alerting.upsert_rule(@rule,@idempotency_key,@actor_sid,@correlation_id)", request.Audit, request.IdempotencyKey, JsonSerializer.Serialize(new { Action = request.Audit.Action.ToString(), RuleId = request.Rule.RuleId, TargetId = request.Audit.TargetId.Value, request.Rule.Name, Kind = (int)request.Rule.Kind, MetricId = request.Rule.MetricId?.Value, Comparison = (int)request.Rule.Comparison, request.Rule.Threshold, request.Rule.Hysteresis, request.Rule.ConfirmationCount, ConfirmationWindow = request.Rule.ConfirmationWindow, EvaluationInterval = request.Rule.EvaluationInterval, request.Rule.Enabled, SourceCollector = catalog.SourceCollector, SourceSchemaVersion = catalog.SourceSchemaVersion, CatalogDigest = AlertCatalog.Digest, request.ExpectedRevision, request.RequestDigest }), request.Timeout, cancellationToken);
     }
     public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(MaintenanceWriteRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.upsert_maintenance(@window,@idempotency_key,@actor_sid,@correlation_id)", request.Audit, request.IdempotencyKey, JsonSerializer.Serialize(new { Action = request.Audit.Action.ToString(), Id = request.Window.Id, TargetId = request.Window.TargetId.Value, request.Window.StartsAtUtc, request.Window.EndsAtUtc, request.Window.Reason, request.ExpectedRevision, request.RequestDigest }), request.Timeout, cancellationToken);
@@ -272,6 +273,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         for (int index = 0; index < result.Count; index++)
         {
             AlertDeliveryWork work = result[index];
+            await SetTargetScopeAsync(c, work.TargetId!.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
             await using var snapshot = new NpgsqlCommand("SELECT destination_approval_revision,destination_configuration_digest FROM alerting.delivery_outbox WHERE delivery_id=@delivery_id AND instance_id=@target_id;", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
             snapshot.Parameters.AddWithValue("delivery_id", work.DeliveryId); snapshot.Parameters.AddWithValue("target_id", work.TargetId!.Value);
             await using NpgsqlDataReader sr = await snapshot.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
@@ -356,7 +358,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
         try
         {
-            await using var command = new NpgsqlCommand("SELECT pg_advisory_lock(hashtextextended(@target_id::text,0));", connection)
+            await using var command = new NpgsqlCommand("SELECT pg_advisory_lock_shared(hashtextextended(@target_id::text,0));", connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout)
             };
@@ -379,7 +381,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
             if (Interlocked.Exchange(ref disposed, 1) != 0) return;
             try
             {
-                await using var command = new NpgsqlCommand("SELECT pg_advisory_unlock(hashtextextended(@target_id::text,0));", connection)
+                await using var command = new NpgsqlCommand("SELECT pg_advisory_unlock_shared(hashtextextended(@target_id::text,0));", connection)
                 {
                     CommandTimeout = 5
                 };

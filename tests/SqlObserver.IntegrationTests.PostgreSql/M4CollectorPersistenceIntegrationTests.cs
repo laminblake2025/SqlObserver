@@ -18,7 +18,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 [Trait("Category", "RequiresPostgreSql")]
 public sealed class M4CollectorPersistenceIntegrationTests
 {
-    private const string BundleDigest = "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e";
+    private const string BundleDigest = "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c";
     private static readonly string[] EngineCoreMetricIds =
     [
         "engine.batch_requests_total",
@@ -190,14 +190,15 @@ public sealed class M4CollectorPersistenceIntegrationTests
         CollectorDueWorkBatch afterEngine = await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, DefaultTimeout),
             CancellationToken.None);
-        CollectorDueWorkItem inventory = Assert.Single(afterEngine.Items);
+        Assert.DoesNotContain(afterEngine.Items, static item => item.CollectorId.Value == "database.files");
+        CollectorDueWorkItem inventory = Assert.Single(afterEngine.Items, static item => item.CollectorId.Value == "database.inventory");
         Assert.Equal("database.inventory", inventory.CollectorId.Value);
         await CommitSuccessAsync(runtime, leases, inventory, CreateDatabasePayload(inventory, 5, 9));
 
         CollectorDueWorkBatch afterInventory = await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, DefaultTimeout),
             CancellationToken.None);
-        CollectorDueWorkItem files = Assert.Single(afterInventory.Items);
+        CollectorDueWorkItem files = Assert.Single(afterInventory.Items, static item => item.CollectorId.Value == "database.files");
         Assert.Equal("database.files", files.CollectorId.Value);
         await CommitSuccessAsync(runtime, leases, files, CreateFilePayload(files, fileId: 1));
     }
@@ -389,11 +390,11 @@ public sealed class M4CollectorPersistenceIntegrationTests
         await CommitSuccessAsync(runtime, leases, engine, CreateEnginePayload(engine));
         CollectorDueWorkItem inventory = Assert.Single((await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, DefaultTimeout),
-            CancellationToken.None)).Items);
+            CancellationToken.None)).Items, static item => item.CollectorId.Value == "database.inventory");
         await CommitSuccessAsync(runtime, leases, inventory, CreateDatabasePayload(inventory, 5, 9));
         CollectorDueWorkItem files = Assert.Single((await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, DefaultTimeout),
-            CancellationToken.None)).Items);
+            CancellationToken.None)).Items, static item => item.CollectorId.Value == "database.files");
         await CommitSuccessAsync(runtime, leases, files, CreateFilePayloads(files, 1, 2));
 
         DatabaseHealthPage firstPage = Assert.IsType<DatabaseHealthPage>(
@@ -987,6 +988,46 @@ public sealed class M4CollectorPersistenceIntegrationTests
                 serverDataSource,
                 "SELECT count(*) FROM telemetry.raw_metric_sample;",
                 targetId));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OverviewRatesRequireMatchingStartupMarkersAndPreserveLegacyPayloads(bool includeMarker)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        await RecordUsableCapabilityProfileAsync(collector, leases, targetId);
+        var observed = new List<DateTimeOffset>();
+        for (int index = 0; index < 3; index++)
+        {
+            await MakeDueAsync(database, targetId, "engine.core");
+            CollectorDueWorkItem work = (await runtime.ListDueAsync(new(16, DefaultTimeout), CancellationToken.None)).Items.Single(x => x.TargetId == targetId && x.CollectorId.Value == "engine.core");
+            DateTimeOffset at = MicrosecondNow(); observed.Add(at);
+            var samples = CreateEnginePayload(targetId, at).Metrics.Select(sample => sample.MetricId.Value == "engine.batch_requests_total"
+                ? new MetricSample(sample.SampleId, targetId, sample.MetricId, at, 100 + index * 100) : sample).ToList();
+            if (includeMarker) samples.Add(new(new(Guid.NewGuid()), targetId, new("engine.start_time_key"), at, index == 2 ? 2 : 1));
+            await CommitSuccessAsync(runtime, leases, work, new CollectorPayload(samples));
+        }
+        var history = new PostgreSqlOverviewHistoryPort(server);
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow;
+        var result = await history.ReadAsync(targetId, 1, cutoff.AddHours(-1), cutoff, cutoff, CancellationToken.None);
+        var connections = Assert.Single(result, x => x.Metric == "engine.user_connections");
+        Assert.Equal(3, connections.Points.Sum(x => x.Samples));
+        var rates = Assert.Single(result, x => x.Metric == "engine.batch_requests_per_second");
+        Assert.Equal(includeMarker ? 1 : 0, rates.Points.Sum(x => x.Samples));
+        if (includeMarker) Assert.Equal(100 / (observed[1] - observed[0]).TotalSeconds, Assert.Single(rates.Points, x => x.Value.HasValue).Value!.Value, precision: 5);
+        else Assert.All(rates.Points, point => Assert.Null(point.Value));
+        await using var connection = await server.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("SELECT * FROM reporting.overview_workload_history(@id,1,@from,@to,@to)",connection);
+        command.Parameters.AddWithValue("id",targetId.Value);command.Parameters.AddWithValue("from",cutoff.AddHours(-1));command.Parameters.AddWithValue("to",cutoff);
+        var denied = await Assert.ThrowsAsync<PostgresException>(()=>command.ExecuteNonQueryAsync());
+        Assert.Equal("42501",denied.SqlState);
     }
 
     private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync()

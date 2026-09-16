@@ -9,6 +9,8 @@ export default defineConfig({
     manifest: ".vite/manifest.json",
     rolldownOptions: {
       output: {
+        // The verified asset contract requires eight alphanumeric hash characters.
+        hashCharacters: "hex",
         entryFileNames: "assets/entry-[name]-[hash].js",
         chunkFileNames: "assets/chunk-[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash][extname]",

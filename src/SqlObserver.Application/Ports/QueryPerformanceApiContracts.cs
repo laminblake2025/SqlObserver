@@ -24,6 +24,17 @@ public static class QueryPerformanceLossKind
     private static readonly HashSet<string> Allowed = new(StringComparer.Ordinal) { "none", "source_row_limit", "response_byte_limit", "output_validation_failure", "ingestion_rejection", "duplicate_overlap" };
     public static string Require(string value) => Allowed.Contains(value) ? value : throw new InvalidDataException("Query performance loss kind was not allowlisted.");
 }
+public sealed record QueryPerformanceDatabaseCatalogDto
+{
+    public QueryPerformanceDatabaseCatalogDto(int databaseId, string databaseName)
+    {
+        if (databaseId is <= 0 or > 32767) throw new ArgumentOutOfRangeException(nameof(databaseId));
+        DatabaseId = databaseId;
+        DatabaseName = new SqlServerObjectName(databaseName).Value;
+    }
+    public int DatabaseId { get; }
+    public string DatabaseName { get; }
+}
 public sealed record QueryPerformanceDatabaseStatusDto
 {
     public QueryPerformanceDatabaseStatusDto(int databaseId, string status, string sourceState, string reason, bool fallbackAttempted, bool truncated, string lossKind, int sourceRowsRead, int responseBytes, int minimumLostItems = 0, bool lossCountIsExact = true, int minimumLostBytes = 0)
@@ -43,10 +54,10 @@ public sealed record QueryPerformanceDatabaseStatusDto
 }
 public sealed record QueryPerformanceStatusDto
 {
-    public QueryPerformanceStatusDto(MonitoredInstanceId targetId, DateTimeOffset snapshotUtc, QueryPerformanceSource? source, string sourceState, QueryCoverage coverage, bool fresh, bool truncated, bool contentAvailable, string? reason, IReadOnlyList<QueryPerformanceDatabaseStatusDto>? databaseStatuses = null, string? targetStatus = null, string? targetReason = null)
+    public QueryPerformanceStatusDto(MonitoredInstanceId targetId, DateTimeOffset snapshotUtc, QueryPerformanceSource? source, string sourceState, QueryCoverage coverage, bool fresh, bool truncated, bool contentAvailable, string? reason, IReadOnlyList<QueryPerformanceDatabaseStatusDto>? databaseStatuses = null, string? targetStatus = null, string? targetReason = null, IReadOnlyList<QueryPerformanceDatabaseCatalogDto>? databaseCatalog = null)
     {
         TargetId = targetId ?? throw new ArgumentNullException(nameof(targetId));
-        SnapshotUtc = snapshotUtc; Source = source; SourceState = QueryPerformanceAggregateState.Require(sourceState); Coverage = coverage; Fresh = fresh; Truncated = truncated; ContentAvailable = contentAvailable; Reason = reason; DatabaseStatuses = databaseStatuses; if (targetStatus is not null) { _ = new QueryPerformanceTargetStatus(targetStatus, targetReason ?? throw new InvalidDataException("Target failure reason is required.")); if (source is not QueryPerformanceSource.Unavailable || sourceState != "unavailable" || coverage != QueryCoverage.Unavailable || fresh) throw new InvalidDataException("Target failure evidence is inconsistent."); } TargetStatus = targetStatus; TargetReason = targetReason;
+        SnapshotUtc = snapshotUtc; Source = source; SourceState = QueryPerformanceAggregateState.Require(sourceState); Coverage = coverage; Fresh = fresh; Truncated = truncated; ContentAvailable = contentAvailable; Reason = reason; DatabaseStatuses = databaseStatuses; DatabaseCatalog = RequireDatabaseCatalog(databaseCatalog); if (targetStatus is not null) { _ = new QueryPerformanceTargetStatus(targetStatus, targetReason ?? throw new InvalidDataException("Target failure reason is required.")); if (source is not QueryPerformanceSource.Unavailable || sourceState != "unavailable" || coverage != QueryCoverage.Unavailable || fresh) throw new InvalidDataException("Target failure evidence is inconsistent."); } TargetStatus = targetStatus; TargetReason = targetReason;
     }
     public MonitoredInstanceId TargetId { get; }
     public DateTimeOffset SnapshotUtc { get; }
@@ -58,8 +69,19 @@ public sealed record QueryPerformanceStatusDto
     public bool ContentAvailable { get; }
     public string? Reason { get; }
     public IReadOnlyList<QueryPerformanceDatabaseStatusDto>? DatabaseStatuses { get; }
+    public IReadOnlyList<QueryPerformanceDatabaseCatalogDto> DatabaseCatalog { get; }
     public string? TargetStatus { get; }
     public string? TargetReason { get; }
+
+    private static QueryPerformanceDatabaseCatalogDto[] RequireDatabaseCatalog(IReadOnlyList<QueryPerformanceDatabaseCatalogDto>? databaseCatalog)
+    {
+        if (databaseCatalog is null) return [];
+        if (databaseCatalog.Count > QueryPerformanceBounds.MaximumDatabases) throw new ArgumentOutOfRangeException(nameof(databaseCatalog));
+        var ids = new HashSet<int>();
+        foreach (QueryPerformanceDatabaseCatalogDto item in databaseCatalog)
+            if (item is null || !ids.Add(item.DatabaseId)) throw new InvalidDataException("Query performance database catalog contains a duplicate identity.");
+        return databaseCatalog.ToArray();
+    }
 }
 public sealed record TopQueryDto(MonitoredInstanceId TargetId, QueryOpaqueIdentity Query, PlanOpaqueIdentity? Plan, QueryPerformanceSource Source, QueryStoreState SourceState, QueryPerformanceMetric Metric, long? Value, QueryMetricSemantics Semantics, DateTimeOffset IntervalStartUtc, DateTimeOffset IntervalEndUtc, QueryCoverage Coverage, bool Fresh, bool Truncated, bool ContentAvailable, Guid? CollectionRunId = null, string? ObservationKey = null);
 public sealed record QueryHistoryDto(MonitoredInstanceId TargetId, QueryOpaqueIdentity Query, QueryPerformanceSource Source, QueryStoreState SourceState, QueryPerformanceMetricSet Metrics, QueryMetricSemantics Semantics, DateTimeOffset IntervalStartUtc, DateTimeOffset IntervalEndUtc, bool ResetDetected, bool Fresh, bool Truncated, bool ContentAvailable, Guid? CollectionRunId = null, QueryCoverage Coverage = QueryCoverage.Complete, string? PlanFingerprint = null, string? ObservationKey = null);

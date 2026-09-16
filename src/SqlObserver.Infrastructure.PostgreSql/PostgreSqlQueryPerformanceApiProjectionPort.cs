@@ -10,7 +10,46 @@ public sealed class PostgreSqlQueryPerformanceApiProjectionPort : IQueryPerforma
     private readonly NpgsqlDataSource dataSource;
     public PostgreSqlQueryPerformanceApiProjectionPort(NpgsqlDataSource dataSource) => this.dataSource=dataSource??throw new ArgumentNullException(nameof(dataSource));
     public async ValueTask<QueryPerformanceStatusDto?> GetStatusAsync(QueryPerformanceStatusRequest request,CancellationToken cancellationToken)
-    { ArgumentNullException.ThrowIfNull(request); using CancellationTokenSource s=PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout,cancellationToken); await using NpgsqlConnection c=await dataSource.OpenConnectionAsync(s.Token); await SetScope(c,request.TargetId.Value,s.Token); await using var cmd=new NpgsqlCommand("SELECT * FROM control.get_query_performance_status(@instance_id,@from_utc,@to_utc);",c){CommandTimeout=PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout)};cmd.Parameters.AddWithValue("instance_id",request.TargetId.Value);cmd.Parameters.AddWithValue("from_utc",request.FromUtc);cmd.Parameters.AddWithValue("to_utc",request.ToUtc);await using NpgsqlDataReader r=await cmd.ExecuteReaderAsync(s.Token);if(!await r.ReadAsync(s.Token))return null;return new QueryPerformanceStatusDto(request.TargetId,PostgreSqlRuntimeSupport.ReadUtcTimestamp(r,5),ParseSource(r.GetString(0)),ParseAggregateState(r.GetString(1)),ParseCoverage(r.GetString(2)),r.GetBoolean(3),r.GetBoolean(4),false,null,ReadDatabaseStatuses(r,6),r.IsDBNull(7)?null:r.GetString(7),r.IsDBNull(8)?null:r.GetString(8)); }
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using CancellationTokenSource s=PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout,cancellationToken);
+        await using NpgsqlConnection c=await dataSource.OpenConnectionAsync(s.Token);
+        await SetScope(c,request.TargetId.Value,s.Token);
+
+        DateTimeOffset snapshotUtc;
+        QueryPerformanceSource? source;
+        string sourceState;
+        QueryCoverage coverage;
+        bool fresh;
+        bool truncated;
+        IReadOnlyList<QueryPerformanceDatabaseStatusDto> databaseStatuses;
+        string? targetStatus;
+        string? targetReason;
+        await using (var cmd=new NpgsqlCommand("SELECT * FROM control.get_query_performance_status(@instance_id,@from_utc,@to_utc);",c){CommandTimeout=PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout)})
+        {
+            cmd.Parameters.AddWithValue("instance_id",request.TargetId.Value);
+            cmd.Parameters.AddWithValue("from_utc",request.FromUtc);
+            cmd.Parameters.AddWithValue("to_utc",request.ToUtc);
+            await using NpgsqlDataReader r=await cmd.ExecuteReaderAsync(s.Token);
+            if(!await r.ReadAsync(s.Token))return null;
+            snapshotUtc=PostgreSqlRuntimeSupport.ReadUtcTimestamp(r,5);
+            source=ParseSource(r.GetString(0));
+            sourceState=ParseAggregateState(r.GetString(1));
+            coverage=ParseCoverage(r.GetString(2));
+            fresh=r.GetBoolean(3);
+            truncated=r.GetBoolean(4);
+            databaseStatuses=ReadDatabaseStatuses(r,6);
+            targetStatus=r.IsDBNull(7)?null:r.GetString(7);
+            targetReason=r.IsDBNull(8)?null:r.GetString(8);
+        }
+
+        await using (var catalog=new NpgsqlCommand("SELECT * FROM control.get_query_performance_database_catalog(@instance_id);",c){CommandTimeout=PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout)})
+        {
+            catalog.Parameters.AddWithValue("instance_id",request.TargetId.Value);
+            await using NpgsqlDataReader r=await catalog.ExecuteReaderAsync(s.Token);
+            return new QueryPerformanceStatusDto(request.TargetId,snapshotUtc,source,sourceState,coverage,fresh,truncated,false,null,databaseStatuses,targetStatus,targetReason,await ReadDatabaseCatalog(r,s.Token));
+        }
+    }
     public async ValueTask<TopQueryPage> GetTopAsync(TopQueryRequest request,CancellationToken cancellationToken)
     { ArgumentNullException.ThrowIfNull(request); using CancellationTokenSource s=PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout,cancellationToken); await using NpgsqlConnection c=await dataSource.OpenConnectionAsync(s.Token);await SetScope(c,request.TargetId.Value,s.Token);DateTimeOffset snapshot=request.Cursor?.SnapshotUtc ?? await ReadRepositorySnapshotAsync(c,s.Token);await using var cmd=new NpgsqlCommand("SELECT * FROM control.get_top_queries_projection(@instance_id,@from_utc,@to_utc,@metric,@limit,@after_database_id,@after_interval_end,@after_query,@after_plan,@after_run_id,@after_metric,@after_observation_key,@snapshot_utc);",c){CommandTimeout=PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout)};AddTopParameters(cmd,request,snapshot);return await ReadTop(cmd,request,snapshot,s.Token); }
     public async ValueTask<QueryHistoryPage> GetHistoryAsync(QueryHistoryRequest request,CancellationToken cancellationToken)
@@ -40,6 +79,19 @@ public sealed class PostgreSqlQueryPerformanceApiProjectionPort : IQueryPerforma
             int minimumLostItems = item.TryGetProperty("minimumLostItems", out JsonElement lostItems) ? lostItems.GetInt32() : 0; bool lossCountIsExact = !item.TryGetProperty("lossCountIsExact", out JsonElement exact) || exact.GetBoolean(); int minimumLostBytes = item.TryGetProperty("minimumLostBytes", out JsonElement lostBytes) ? lostBytes.GetInt32() : 0;
             if (databaseId is <= 0 or > 32767 || reason.Length is 0 or > 128 || item.GetProperty("sourceRowsRead").GetInt32() is < 0 or > QueryPerformanceBounds.ProbeRows || item.GetProperty("responseBytes").GetInt32() is < 0 or > QueryPerformanceBounds.ResponseBytes || minimumLostItems < 0 || minimumLostItems > QueryPerformanceBounds.MaximumObservationsPerDatabase || minimumLostBytes < 0 || minimumLostBytes > QueryPerformanceBounds.ResponseBytes) throw new InvalidDataException("Database status projection was outside its bound.");
             result.Add(new QueryPerformanceDatabaseStatusDto(databaseId, status, sourceState, reason, item.GetProperty("fallbackAttempted").GetBoolean(), item.GetProperty("truncated").GetBoolean(), lossKind, item.GetProperty("sourceRowsRead").GetInt32(), item.GetProperty("responseBytes").GetInt32(), minimumLostItems, lossCountIsExact, minimumLostBytes));
+        }
+        return result;
+    }
+    private static async Task<List<QueryPerformanceDatabaseCatalogDto>> ReadDatabaseCatalog(NpgsqlDataReader reader, CancellationToken token)
+    {
+        var result = new List<QueryPerformanceDatabaseCatalogDto>();
+        var ids = new HashSet<int>();
+        while (await reader.ReadAsync(token))
+        {
+            if (result.Count >= QueryPerformanceBounds.MaximumDatabases) throw new InvalidDataException("Database catalog projection exceeded its bound.");
+            int databaseId = reader.GetInt32(0);
+            if (!ids.Add(databaseId)) throw new InvalidDataException("Database catalog projection contained a duplicate identity.");
+            result.Add(new QueryPerformanceDatabaseCatalogDto(databaseId,reader.GetString(1)));
         }
         return result;
     }

@@ -98,6 +98,18 @@ public sealed class M8AlertEvaluatorTests
     }
 
     [Fact]
+    public void ConfiguredConnectionRulesKeepSupportedSignalAndExecutionBounds()
+    {
+        AlertRuleDefinition Rule(double threshold=25,double hysteresis=2,int seconds=15,AlertComparison comparison=AlertComparison.GreaterThan) =>
+            new(Guid.NewGuid(),"stress.run",AlertRuleKind.MetricThreshold,new MetricId("engine.user_connections"),comparison,threshold,hysteresis,2,TimeSpan.FromSeconds(90),TimeSpan.FromSeconds(seconds));
+        Assert.True(AlertCatalog.IsApproved(Rule()));
+        Assert.False(AlertCatalog.IsApproved(Rule(threshold:1_000_001)));
+        Assert.False(AlertCatalog.IsApproved(Rule(hysteresis:26)));
+        Assert.False(AlertCatalog.IsApproved(Rule(seconds:14)));
+        Assert.False(AlertCatalog.IsApproved(Rule(comparison:AlertComparison.LessThan)));
+    }
+
+    [Fact]
     public void CollectorHealthUnhealthyMatchesAndHealthyClears()
     {
         var healthRule = new AlertRuleDefinition(RuleId, "collector.health", AlertRuleKind.CollectorHealth, null, AlertComparison.LessThan, 1, 0, 1, TimeSpan.Zero, TimeSpan.FromSeconds(30));

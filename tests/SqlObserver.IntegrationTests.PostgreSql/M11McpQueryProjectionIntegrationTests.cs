@@ -74,7 +74,7 @@ public sealed class M11McpQueryProjectionIntegrationTests
         string functionText = (string?)await definition.ExecuteScalarAsync() ?? string.Empty;
         Assert.Contains("h.run_id", functionText, StringComparison.Ordinal);
         Assert.Contains("p_cursor_dimensions", functionText, StringComparison.Ordinal);
-        Assert.Contains("ORDER BY h.observed_at", functionText, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY s.observed_at", functionText, StringComparison.Ordinal);
 
         await using var forecastDefinition = new NpgsqlCommand("SELECT pg_get_functiondef(to_regprocedure('reporting.get_m10_forecast_scoped(uuid,bigint,text,jsonb,interval,timestamptz,integer,timestamptz,uuid)'));", connection);
         string forecastText = (string?)await forecastDefinition.ExecuteScalarAsync() ?? string.Empty;
@@ -104,7 +104,7 @@ public sealed class M11McpQueryProjectionIntegrationTests
         Guid run = Guid.NewGuid();
         await InsertTargetAsync(database, target, "m11-jsonb-order", 1);
         await SeedHostAsync(database, target, host);
-        DateTimeOffset snapshot = DateTimeOffset.UtcNow.Date.AddHours(12);
+        DateTimeOffset snapshot = DateTimeOffset.UtcNow.UtcDateTime.Date.AddHours(12);
         DateTimeOffset observed = snapshot.AddSeconds(-30);
         await ExecuteAsync(database,
             "INSERT INTO telemetry.host_metric_snapshot_v2(observed_at,run_id,instance_id,target_revision,host_id,binding_revision,profile_revision,metric_key,metric_value,dimensions,collected_at) VALUES(@observed,@run,@target,1,@host,1,1,'host.cpu.percent',1,'{}'::jsonb,@collected),(@observed,@run,@target,1,@host,1,1,'host.cpu.percent',2,'{\"volume\":\"C\"}'::jsonb,@collected);",
@@ -133,7 +133,7 @@ public sealed class M11McpQueryProjectionIntegrationTests
         Guid thread = Guid.NewGuid();
         Guid packet = Guid.NewGuid();
         await InsertTargetAsync(database, target, "m11-incident-snapshot", 1);
-        DateTimeOffset snapshot = DateTimeOffset.UtcNow.Date.AddHours(12);
+        DateTimeOffset snapshot = DateTimeOffset.UtcNow.UtcDateTime.Date.AddHours(12);
         DateTimeOffset occurred = snapshot.AddMinutes(-10);
         await ExecuteAsync(database,
             "INSERT INTO analytics.incident_thread(thread_id,instance_id,target_revision,opened_at,state,current_generation,summary) VALUES(@thread,@target,1,@opened,'open',1,'{}'::jsonb); INSERT INTO analytics.evidence_packet_v2(occurred_at,packet_id,instance_id,target_revision,evidence_kind,source_digest,identity_digest,source_cutoff_digest,evidence,confidence,visibility_state) VALUES(@occurred,@packet,@target,1,'metric',decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),decode(repeat('c',64),'hex'),'{}'::jsonb,.9,'complete'); INSERT INTO analytics.incident_generation(instance_id,target_revision,thread_id,generation,observed_at,state,evidence_packet_id,correlation_digest,supersedes_previous,details) VALUES(@target,1,@thread,1,@generation,'open',@packet,decode(repeat('d',64),'hex'),false,'{}'::jsonb);",
@@ -155,7 +155,7 @@ public sealed class M11McpQueryProjectionIntegrationTests
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
         await InsertTargetAsync(database, target, "m11-pagination", 1);
-        DateTimeOffset snapshot = DateTimeOffset.UtcNow.Date.AddHours(12);
+        DateTimeOffset snapshot = DateTimeOffset.UtcNow.UtcDateTime.Date.AddHours(12);
 
         // The server adapter asks metric and forecast projections for one
         // sentinel row.  Both functions must accept that bounded lookahead
@@ -209,7 +209,7 @@ public sealed class M11McpQueryProjectionIntegrationTests
         Guid host = Guid.NewGuid();
         await InsertTargetAsync(database, target, "m11-page-data", 1);
         await SeedHostAsync(database, target, host);
-        DateTimeOffset snapshot = DateTimeOffset.UtcNow.Date.AddHours(12);
+        DateTimeOffset snapshot = DateTimeOffset.UtcNow.UtcDateTime.Date.AddHours(12);
         DateTimeOffset observed = snapshot.AddSeconds(-30);
         await SeedMetricRowsAsync(database, target, host, observed);
         await SeedForecastRowsAsync(database, target, snapshot.AddMinutes(-10), snapshot.AddHours(1));

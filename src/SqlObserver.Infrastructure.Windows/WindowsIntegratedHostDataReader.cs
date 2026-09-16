@@ -22,16 +22,16 @@ public sealed class WindowsIntegratedHostDataReader : IWindowsHostDataReader, IW
     // query kind; all CIM classes, filters, and counter paths are literals.
     private const string HelperScript = @"
 $ErrorActionPreference = 'Stop'
-$kind = [int]$args[0]
+
 $rows = @()
 switch ($kind) {
   1 { $rows = @([pscustomobject]@{ Value = [double](Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples[0].CookedValue }) }
   2 { $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop; $rows = @([pscustomobject]@{ Value = [double]$os.FreePhysicalMemory * 1024 }) }
-  3 { $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop; $rows = @([pscustomobject]@{ Value = [double]($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) * 1024 }) }
+  3 { $rows = @([pscustomobject]@{ Value = [double](Get-Counter '\Memory\Committed Bytes' -ErrorAction Stop).CounterSamples[0].CookedValue }) }
   4 { $rows = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType = 3' -ErrorAction Stop | Sort-Object DeviceID | ForEach-Object { [pscustomobject]@{ VolumeIdentity = [string]$_.DeviceID; Value = 0.0; FreeBytes = [long]$_.FreeSpace; TotalBytes = [long]$_.Size } }) }
-  5 { $rows = @(Get-Counter '\LogicalDisk(*)\Current Disk Queue Length' -ErrorAction Stop | Select-Object -ExpandProperty CounterSamples | Where-Object { $_.InstanceName -ne '_Total' } | Sort-Object InstanceName | ForEach-Object { [pscustomobject]@{ VolumeIdentity = [string]$_.InstanceName; Value = [double]$_.CookedValue } }) }
-  6 { $rows = @(Get-Counter '\LogicalDisk(*)\Avg. Disk sec/Read' -ErrorAction Stop | Select-Object -ExpandProperty CounterSamples | Where-Object { $_.InstanceName -ne '_Total' } | Sort-Object InstanceName | ForEach-Object { [pscustomobject]@{ VolumeIdentity = [string]$_.InstanceName; Value = [double]$_.CookedValue * 1000 } }) }
-  7 { $rows = @(Get-Counter '\LogicalDisk(*)\Avg. Disk sec/Write' -ErrorAction Stop | Select-Object -ExpandProperty CounterSamples | Where-Object { $_.InstanceName -ne '_Total' } | Sort-Object InstanceName | ForEach-Object { [pscustomobject]@{ VolumeIdentity = [string]$_.InstanceName; Value = [double]$_.CookedValue * 1000 } }) }
+  5 { $rows = @(Get-Counter '\LogicalDisk(*)\Current Disk Queue Length' -ErrorAction Stop | Select-Object -ExpandProperty CounterSamples | Where-Object { $_.InstanceName -match '^[a-z]:$' } | Sort-Object InstanceName | ForEach-Object { [pscustomobject]@{ VolumeIdentity = ([string]$_.InstanceName).ToUpperInvariant(); Value = [double]$_.CookedValue } }) }
+  6 { $rows = @(Get-Counter '\LogicalDisk(*)\Avg. Disk sec/Read' -ErrorAction Stop | Select-Object -ExpandProperty CounterSamples | Where-Object { $_.InstanceName -match '^[a-z]:$' } | Sort-Object InstanceName | ForEach-Object { [pscustomobject]@{ VolumeIdentity = ([string]$_.InstanceName).ToUpperInvariant(); Value = [double]$_.CookedValue * 1000 } }) }
+  7 { $rows = @(Get-Counter '\LogicalDisk(*)\Avg. Disk sec/Write' -ErrorAction Stop | Select-Object -ExpandProperty CounterSamples | Where-Object { $_.InstanceName -match '^[a-z]:$' } | Sort-Object InstanceName | ForEach-Object { [pscustomobject]@{ VolumeIdentity = ([string]$_.InstanceName).ToUpperInvariant(); Value = [double]$_.CookedValue * 1000 } }) }
   8 { $product = Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop; $uuid = [string]$product.UUID; if ([string]::IsNullOrWhiteSpace($uuid) -or $uuid -eq 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF') { exit 3 }; $rows = @([pscustomobject]@{ MachineIdentity = $uuid }) }
   default { exit 2 }
 }
@@ -84,7 +84,7 @@ ConvertTo-Json -InputObject @($rows) -Compress -Depth 3
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
+                    FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"),
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
@@ -100,8 +100,8 @@ ConvertTo-Json -InputObject @($rows) -Compress -Depth 3
             _process.StartInfo.ArgumentList.Add("-ExecutionPolicy");
             _process.StartInfo.ArgumentList.Add("Bypass");
             _process.StartInfo.ArgumentList.Add("-EncodedCommand");
-            _process.StartInfo.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(HelperScript)));
-            _process.StartInfo.ArgumentList.Add(((int)query.Kind).ToString(CultureInfo.InvariantCulture));
+            _process.StartInfo.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes("$kind = " + ((int)query.Kind).ToString(CultureInfo.InvariantCulture) + Environment.NewLine + HelperScript)));
+
             try
             {
                 if (!_process.Start()) throw new InvalidOperationException("The host helper could not start.");

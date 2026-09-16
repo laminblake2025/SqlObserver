@@ -108,13 +108,13 @@ public sealed class RepositoryTestDatabase : IAsyncDisposable
 
     public NpgsqlDataSource DataSource { get; }
 
-    public NpgsqlDataSource CreateCollectorDataSource() =>
-        CreateRoleDataSource("sqlobserver_collector");
+    public NpgsqlDataSource CreateCollectorDataSource(bool initializeEmptyTargetScope = false) =>
+        CreateRoleDataSource("sqlobserver_collector", initializeEmptyTargetScope);
 
     public NpgsqlDataSource CreateServerDataSource() =>
         CreateRoleDataSource("sqlobserver_server");
 
-    private NpgsqlDataSource CreateRoleDataSource(string role)
+    private NpgsqlDataSource CreateRoleDataSource(string role, bool initializeEmptyTargetScope = false)
     {
         string setRoleSql = role switch
         {
@@ -122,6 +122,7 @@ public sealed class RepositoryTestDatabase : IAsyncDisposable
             "sqlobserver_server" => "SET ROLE sqlobserver_server;",
             _ => throw new ArgumentOutOfRangeException(nameof(role)),
         };
+        if (initializeEmptyTargetScope) setRoleSql += "SELECT set_config('sqlobserver.target_scope','',false);";
         var connectionString = new NpgsqlConnectionStringBuilder(_adminConnectionString)
         {
             Pooling = false,

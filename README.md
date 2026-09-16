@@ -1,129 +1,152 @@
 # SqlObserver
 
-M9 operational health assets (backups, SQL Agent failures, TempDB, and Availability Groups) are implemented locally with certification pending. They use passive, checksum-pinned SQL and target-scoped bounded projections; no backup, job, TempDB, or AG mutation is performed. M12 defines a versioned certification matrix and fail-closed evidence verifier: Local validation is explicitly non-release evidence, while Release validation requires every external lab and hashed run artifact.
+**SQL Server monitoring and diagnostics, with historical evidence in one place.**
 
-SqlObserver is a clean-room, Windows-hosted monitoring and diagnostics product for Microsoft SQL Server. It is intended to collect bounded, historical evidence without installing an agent on monitored database hosts by default. PostgreSQL 18.x is the product's application repository; it is not a monitored database engine.
+SqlObserver is a Windows-hosted platform for understanding SQL Server health, investigating slow queries and blocking, and reviewing what changed over time. It collects bounded telemetry remotely, stores observations in PostgreSQL, and presents them through a React dashboard and authenticated API.
 
-> **Repository status:** Milestones 0 through 11 are implemented locally. M5 activity, M6 deadlock, and M7 Query Store slices are bounded and passive. M8 adds fenced alerting and audited administration; M9 adds bounded operational health; M10 adds target-scoped analytics, host/replication evidence, incidents, and disabled-by-default retention controls; M11 adds the authenticated, audited, exactly allowlisted read-only MCP HTTP/stdio surface. PostgreSQL integration execution requires Docker/PostgreSQL 18.4 and SQL Server lab execution requires the configured Windows/SSPI environment; SqlObserver is not yet a supported release, and M12 reports, installers, deployment, and release/platform certification remain incomplete.
+[Capabilities](#capabilities) · [Architecture](#architecture) · [Getting started](#getting-started) · [Documentation](#documentation) · [Contributing](#contributing)
 
-## Product boundary
+> **Pre-release:** Milestones 0 through 11 are implemented locally, with reports, export contracts, and release tooling under M12. Production support, installer lifecycle validation, and full platform certification remain incomplete. Passing local tests does not certify a release.
 
-SqlObserver is designed to provide historical telemetry, query diagnostics, wait and blocking analysis, deadlock evidence, alerts, baselines, reports, forecasts, and incident correlation. Its MCP surface is an allowlisted, read-only diagnostic interface; reports remain an M12 deliverable.
+## Capabilities
 
-The boundary is deliberately narrow:
+| Area | What you can inspect |
+| --- | --- |
+| **Overview** | Fleet and selected-server health, historical charts, database activity, resource observations, and previous-period comparisons |
+| **Activity** | Sessions, requests, waits, blocking, and paginated history |
+| **Query performance** | Query Store observations and bounded DMV fallback evidence |
+| **Deadlocks** | Passive collection of system-health deadlock evidence and investigation views |
+| **Operational health** | Backup status, SQL Agent failures, TempDB, and Availability Groups |
+| **Host and replication** | Host metrics, replication status, and explicit visibility gaps |
+| **Alerts** | Alert evaluation, maintenance windows, notification handling, and audited administration |
+| **Analytics** | Rollups, baselines, forecasts, incident correlation, evidence packets, and backfill job inventory |
+| **Reports** | Bounded, target-scoped reporting with HTML and CSV export contracts; release certification is pending |
+| **MCP integration** | Authenticated, audited access through a reviewed catalog of 25 read-only diagnostic tools |
 
-- monitored engines are Microsoft SQL Server; PostgreSQL stores SqlObserver configuration and observations;
-- default monitoring is remote and agentless;
-- passive monitoring does not alter a monitored SQL Server instance;
-- any enhanced monitoring configuration is delivered separately as a reviewable, DBA-run script and is never applied automatically;
-- neither the web API nor MCP is a general-purpose SQL console;
-- query text, plans, object names, comments, errors, XML, and job steps are sensitive, untrusted data;
-- all persisted timestamps use UTC.
+The dashboard supports preset and custom UTC time ranges. Evidence views expose freshness, partial coverage, and unavailable data so missing observations are distinguishable from healthy results. Backfill jobs rebuild analytics from retained observations; retention controls remain disabled by default.
 
-The implementation is original. See [the clean-room boundary](docs/product/clean-room-boundary.md) and [ADR-0009](docs/adr/ADR-0009-clean-room-boundary.md).
+### Monitoring boundaries
+
+- **Remote collection:** no agent is installed on monitored SQL Server hosts by default.
+- **Passive monitoring:** collectors do not change Query Store, Extended Events, indexes, plans, sessions, or server configuration.
+- **Least privilege:** Windows integrated authentication, application RBAC, and target-scoped reads define access.
+- **Bounded collection:** queries and API operations enforce limits on time, rows, and payload size.
+- **Explicit administration:** enhanced monitoring setup is delivered as a separate, reviewable DBA-run script and is never applied automatically.
+- **Sensitive evidence:** query text, plans, object names, XML, and errors are treated as sensitive, untrusted data. Neither the API nor MCP provides an arbitrary SQL console.
+- **UTC storage:** persisted timestamps use UTC.
+
+SqlObserver is an original, clean-room implementation. See the [product boundary](docs/product/clean-room-boundary.md) and [security policy](SECURITY.md).
 
 ## Architecture
 
-SqlObserver is a modular monolith with three separately deployable .NET processes and a React/TypeScript client:
-
-| Process | Responsibility |
-| --- | --- |
-| `SqlObserver.Server` | ASP.NET Core API, web assets, SignalR, Windows authentication, RBAC, reports, and the MCP HTTP endpoint |
-| `SqlObserver.Collector` | Windows Worker Service for scheduling, bounded collection, ingestion, alert evaluation, rollups, baselines, partition care, and retention |
-| `SqlObserver.McpStdio` | Local MCP stdio bridge that authenticates to `SqlObserver.Server`; it has no database or target connection |
-| PostgreSQL 18.x | Configuration, security metadata, telemetry, analytics, alert state, reporting data, and audit records |
-
-Code is separated into domain, application, infrastructure, collector, analysis, security, audit, and host projects while remaining one product and one release train. PostgreSQL-backed leases coordinate workers before any separate broker is considered.
+The product is a modular monolith with separately deployable .NET processes and a React/TypeScript client. PostgreSQL is the application's repository; SQL Server is the monitored engine.
 
 ```mermaid
 flowchart LR
-    Browser[Edge or Chrome] -->|Windows integrated auth / HTTPS| Server[SqlObserver.Server]
-    McpClient[MCP client] -->|stdio| Bridge[SqlObserver.McpStdio]
-    Bridge -->|authenticated bounded HTTPS| Server
-    Server -->|application services| Repo[(PostgreSQL 18.x)]
-    Collector[SqlObserver.Collector] -->|parameterized read-only queries| Target[(Microsoft SQL Server)]
-    Collector -->|leases and ingestion| Repo
-    Server -. no direct target access .-> Target
-    Bridge -. no database access .-> Repo
+    Browser[Web dashboard] -->|Windows authentication / HTTPS| Server[SqlObserver.Server]
+    Client[MCP client] -->|stdio| Bridge[SqlObserver.McpStdio]
+    Bridge -->|Authenticated HTTPS| Server
+    Server -->|Application services| Repo[(PostgreSQL repository)]
+    Collector[SqlObserver.Collector] -->|Bounded passive queries| Target[(SQL Server)]
+    Collector -->|Observations and analytics| Repo
 ```
 
-More detail is in [the architecture overview](docs/architecture/overview.md), [support matrix](docs/architecture/support-matrix.md), and [threat model](docs/architecture/threat-model.md).
+| Component | Responsibility |
+| --- | --- |
+| `SqlObserver.Server` | ASP.NET Core API, web assets, SignalR, authentication, authorization, reports, and MCP HTTP endpoint |
+| `SqlObserver.Collector` | Scheduling, collection, ingestion, alerts, analytics, partition maintenance, and retention |
+| `SqlObserver.McpStdio` | Local bridge to the server; no direct repository or monitored-target connection |
+| PostgreSQL 18.x | Configuration, telemetry, analytics, alert state, reporting data, and audit records |
+| React / TypeScript | Browser dashboard and investigation workflows |
 
-## Quick start for contributors
+The API reads diagnostic evidence through application services and the repository. The collector owns monitored-target connections. PostgreSQL-backed leases coordinate background workers.
 
-The current quick start validates the architecture/bootstrap work, M2-M4 repository/onboarding/collector foundations, the M5-M7 passive diagnostic slices, M8 alerting, M9 operational health, M10 host/replication and analytics, and the M11 read-only MCP slice.
+See the [architecture overview](docs/architecture/overview.md), [architecture decisions](docs/adr/ADR-0001-modular-monolith.md), and [threat model](docs/architecture/threat-model.md).
 
-Validation uses one environment contract. Local runs may set
-`SQLOBSERVER_LOCAL_POSTGRES` and `SQLOBSERVER_LOCAL_SQLSERVER`; Release runs must
-set `SQLOBSERVER_RELEASE_POSTGRES` and `SQLOBSERVER_RELEASE_SQLSERVER` plus
-the browser, installer, signing, and certification-manifest variables checked
-by `tools/validate.ps1`. The M9 PostgreSQL E2E consumes the selected profile's
-connection value, and SQL Server lab tests consume the selected connection
-string's host/instance or port. Missing or malformed Release values fail
-preflight; Local validation is never release evidence.
+## Getting started
 
-Prerequisites:
+### 1. Prepare a development environment
 
-- Windows Server 2022/2025, or a Windows development workstation used only as an uncertified build host;
-- .NET 10 SDK;
-- a Node.js release supported by the checked-in frontend toolchain and its lockfile;
-- pnpm 11.19.0, as pinned by `web/package.json` and CI;
-- PowerShell Core 7.5+ (`pwsh`; Windows PowerShell 5.1 and pwsh 7.4 are unsupported);
-- Git;
-- Docker Desktop using Linux containers, with access to the pinned PostgreSQL 18.4 image used by the active integration suite.
+Use a Windows development workstation or an isolated Windows Server lab with:
 
-From the repository root, run:
+- **.NET 10 SDK**, resolved from [`global.json`](global.json).
+- **Node.js 22.22.0 or newer** and **pnpm 11.19.0**, as declared in [`web/package.json`](web/package.json).
+- **PowerShell Core 7.5+** (`pwsh`). Windows PowerShell 5.1 and pwsh 7.4 are unsupported for repository validation.
+- **Git**.
+
+Live PostgreSQL integration tests additionally require the pinned PostgreSQL 18.4 environment, including Docker with Linux containers for container-backed tests. Live SQL Server tests require the configured Windows authentication and SQL Server lab environment. These external environments are not required for the default environment-independent Local checks.
+
+### 2. Clone and validate
 
 ```powershell
-pwsh ./tools/validate.ps1
+git clone https://github.com/laminblake2025/SqlObserver.git
+Set-Location SqlObserver
+pwsh ./tools/validate.ps1 -Profile Local
 ```
 
-The validation entry point restores locked dependencies, compiles with warnings treated as errors, runs every local test plus environment-independent integration contracts, builds the strict TypeScript frontend, and performs repository-policy checks. Docker-backed PostgreSQL tests and certification-only cases are selected by explicit traits and run in Release only after preflight; no test is hidden by a runtime skip.
+The validator checks repository contracts and migration checksums, restores locked dependencies, builds .NET projects with warnings treated as errors, runs the Local test selection, typechecks the frontend, and builds and verifies web assets.
 
-Do not provision production credentials or point this repository slice at a production SQL Server. Development setup scripts are not production installers.
+| Profile | Purpose |
+| --- | --- |
+| `Local` | Contributor validation. Runs local and environment-independent checks; reports omitted external certification lanes. |
+| `Release` | Certification workflow. Requires configured external environments and verified evidence for the relevant lanes. Missing or malformed inputs fail preflight. |
+
+Local environment inputs use `SQLOBSERVER_LOCAL_POSTGRES` and `SQLOBSERVER_LOCAL_SQLSERVER`. Release inputs use `SQLOBSERVER_RELEASE_POSTGRES` and `SQLOBSERVER_RELEASE_SQLSERVER`, plus the browser, installer, signing, and certification-manifest settings described in the [release preflight guide](docs/runbooks/m12-release-preflight.md). Keep connection values and credentials outside version control.
+
+### 3. Run an isolated lab
+
+Follow the [single-host lab deployment guide](docs/deployment/lab-single-host.md) for host preparation, service identities, repository setup, TLS, and serving a reviewed web build. Development helpers are not production installers. Use disposable test environments for synthetic workloads.
+
+The initial platform targets are Windows Server 2022/2025, SQL Server 2019/2022/2025 on Windows, PostgreSQL 18.x, and Edge/Chrome. Qualification details and planned platforms are tracked in the [support matrix](docs/architecture/support-matrix.md).
+
+## Project status
+
+| Milestone | Implemented scope |
+| --- | --- |
+| M0–M4 | Architecture, PostgreSQL repository, onboarding, capability discovery, and collector foundations |
+| M5 activity | Sessions, requests, waits, blocking, and history |
+| M6 deadlocks | Passive system-health deadlock collection and investigation |
+| M7 Query Store | Query-performance collection and diagnostic views |
+| M8 | Alerting, maintenance, notifications, and audited administration |
+| M9 operational-health | Backups, SQL Agent failures, TempDB, and Availability Groups |
+| M10 | Host/replication evidence, analytics, incidents, backfill, and retention controls |
+| M11 MCP | Authenticated, authorized, bounded, audited read-only diagnostic access |
+| M12 | Reports, export contracts, observability, installer contracts, and certification tooling; external release evidence remains incomplete |
+
+Recent repairs improve Overview reads, query collection, analytics transactions, backfill completion and cursor handling, retention function access, and consistent time-range selection. New database corrections are delivered through forward migrations 0073–0077.
+
+### Collector catalog
+
+The 15 runtime-registered collectors, in execution order, are `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`.
+
+`capability.connection` is control-plane discovery and is not a scheduled collector. Capabilities and permissions determine which collectors can run; unsupported and degraded states remain visible.
 
 ## Repository map
 
-| Path | Purpose |
+| Path | Contents |
 | --- | --- |
-| `src/` | .NET domain, application, infrastructure, feature libraries, and executable hosts |
-| `web/` | Strict React/TypeScript client skeleton; feature UI begins in M3 |
-| `database/migrations/` | Immutable, numbered PostgreSQL SQL migrations and checksum manifest |
-| `database/functions/`, `database/views/` | Review indexes for SQL-first objects deployed by numbered migrations |
-| `database/seeds/`, `database/testdata/` | Non-production reference and test inputs |
-| `collectors/manifests/` | Versioned collector metadata contracts |
-| `collectors/sql/` | Versioned, fixed, bounded SQL Server collection statements |
-| `installer/wix/`, `installer/postgres/` | Future Windows and PostgreSQL packaging |
-| `tests/` | Unit, integration, contract, security, performance, and end-to-end suites |
-| `docs/architecture/` | Architecture, support policy, and threat model |
-| `docs/adr/` | Architecture decision records |
-| `docs/product/` | Product vocabulary and clean-room rules |
-| `docs/runbooks/` | Versioned M12 operator procedures; documentation-only and not runtime execution |
-| `tools/` | Canonical repository validation and staged local-development helpers |
-| `.github/workflows/` | Continuous integration definitions |
+| [`src/`](src/) | .NET domain, application, infrastructure, features, and executable hosts |
+| [`web/`](web/) | React/TypeScript dashboard and frontend tests |
+| [`database/`](database/) | Numbered migrations, checksums, SQL objects, and non-production test data |
+| [`collectors/`](collectors/) | Collector manifests and fixed, bounded SQL Server statements |
+| [`tests/`](tests/) | Unit, integration, API/MCP contract, security, performance, and end-to-end tests |
+| [`installer/`](installer/) | Packaging assets and installer contracts under development |
+| [`release/certification/`](release/certification/) | Versioned certification matrix, contracts, and evidence policy |
+| [`tools/`](tools/) | Validation, certification helpers, and opt-in lab tooling |
+| [`docs/`](docs/) | Architecture, milestones, deployment guides, and operator runbooks |
 
-## Lab deployment
+## Documentation
 
-The repository can be built and inspected on a single Windows Server lab. It
-includes an opt-in, authenticated same-origin host for a reviewed `web/dist`
-snapshot, but it does not yet include a supported installer or production
-operator migration workflow. Follow the
-[single-host lab deployment guide](docs/deployment/lab-single-host.md) for host
-preparation, least-privilege boundaries, build commands, and the explicit stop
-gates that must be resolved before an end-to-end deployment.
+- [Architecture and process boundaries](docs/architecture/overview.md)
+- [Platform scope and qualification](docs/architecture/support-matrix.md)
+- [Lab deployment](docs/deployment/lab-single-host.md)
+- [Operator runbooks](docs/runbooks/README.md)
+- [M12 release and certification status](docs/milestones/M12-reports-installer-release.md)
+- [Backlog and milestone dependencies](BACKLOG.md)
+- [Security policy and vulnerability reporting](SECURITY.md)
 
-## Milestone scope
+## Contributing
 
-Milestones 0-4 establish the architecture, repository, onboarding, and collector foundation. Milestones 5-7 add passive activity, deadlock, and query-performance diagnostics; M8 adds alerting; M9 adds operational health; M10 adds host/replication evidence and analytics; M11 adds the authenticated, authorized, bounded, audited read-only MCP surface. See the [M2 record](docs/milestones/M2-postgresql-repository.md), [M3 record](docs/milestones/M3-onboarding-and-capabilities.md), [M4 record](docs/milestones/M4-collector-framework-and-core-health.md), [M5 record](docs/milestones/M5-sessions-requests-waits-blocking.md), [M6 record](docs/milestones/M6-deadlocks-and-extended-events.md), [M7 record](docs/milestones/M7-query-store-query-performance.md), [M8 record](docs/milestones/M8-alerts-maintenance-notifications.md), [M9 record](docs/milestones/M9-operational-health.md), [M10 record](docs/milestones/M10-rollups-host-replication-retention.md), [M11 record](docs/milestones/M11-mcp.md), and [BACKLOG.md](BACKLOG.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code. Include focused tests, preserve bounded passive monitoring and least-privilege access, and document migration or compatibility effects. Run the canonical validator and report which external environments were exercised.
 
-The implemented and runtime-registered target collectors (execution order 1–15) are `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`. `capability.connection` is control-plane discovery and is not a scheduled collector. M5–M10 evidence is bounded, passive, target-scoped, and exposes explicit freshness/loss evidence. M10 analytics reads and writes are repository-only and target/revision/replay fenced; retention stays disabled by default. M9 API cursors are opaque, target/run/revision bound, and limited to 1 KiB; SQL Agent filtering uses UTC first-observed windows and never exposes job text, messages, commands, or source-local-time conversion. No collector mutates a monitored target. Docker/live SQL certification, deployment, upgrade behavior, and release/platform certification remain incomplete.
-
-## Non-goals through this milestone
-
-- Collecting target data beyond the implemented bounded passive capability, core, database/files, activity, waits/blocking, system-health deadlock, and query-performance collectors.
-- Adding MCP tools beyond the reviewed 25-tool read-only catalog, including any arbitrary-SQL or administrative capability.
-- Changing Query Store, Extended Events, blocked-process settings, indexes, plans, sessions, or server configuration.
-- Shipping an installer or claiming support certification.
-- Reproducing another product's schema, API, user interface, wording, artwork, or internal behavior.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes and [SECURITY.md](SECURITY.md) for the rules that all later milestones must preserve.
+Do not commit credentials, captured customer diagnostics, build outputs, or dependency caches. Report suspected vulnerabilities through the private process in [SECURITY.md](SECURITY.md).

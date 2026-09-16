@@ -22,14 +22,18 @@ public sealed class SqlServerAvailabilityGroupsHealthCollector : SqlServerOperat
             {
                 string replica = Convert.ToHexString(reader.GetBinary(2)).ToLowerInvariant();
                 string role = SafeState(reader, 3), operational = SafeState(reader, 4), connected = SafeState(reader, 5);
+                bool available = !reader.IsDBNull(6) && reader.GetBoolean(6);
                 AvailabilityVisibilityScope scope = ReadVisibilityScope(reader, 10, role); localVisibility ??= scope;
-                replicas.Add(new AvailabilityReplicaObservation(request.TargetId, request.TargetRevision, group, replica, role, operational, connected, scope, !reader.IsDBNull(6) && reader.GetBoolean(6)));
+                replicas.Add(new AvailabilityReplicaObservation(request.TargetId, request.TargetRevision, group, replica, role, operational, connected, scope, available));
             }
-            else if (!reader.IsDBNull(7))
+            else
             {
+                bool available = !reader.IsDBNull(6) && reader.GetBoolean(6);
+                if (reader.IsDBNull(7)) continue;
                 string database = Convert.ToHexString(reader.GetBinary(7)).ToLowerInvariant();
-                AvailabilityVisibilityScope scope = ReadVisibilityScope(reader, 10, SafeState(reader, 8)); localVisibility ??= scope;
-                databases.Add(new AvailabilityDatabaseObservation(request.TargetId, request.TargetRevision, group, database, SafeState(reader, 8), SafeState(reader, 9), scope, !reader.IsDBNull(6) && reader.GetBoolean(6)));
+                string synchronization = SafeState(reader, 8), databaseState = SafeState(reader, 9);
+                AvailabilityVisibilityScope scope = ReadVisibilityScope(reader, 10, synchronization); localVisibility ??= scope;
+                databases.Add(new AvailabilityDatabaseObservation(request.TargetId, request.TargetRevision, group, database, synchronization, databaseState, scope, available));
             }
         }
         AvailabilityVisibilityScope visibility = localVisibility ?? (replicas.Any(static x => x.Role == "PRIMARY") ? AvailabilityVisibilityScope.PrimaryAllKnown : replicas.Any(static x => x.Role == "SECONDARY") ? AvailabilityVisibilityScope.SecondaryLocalOnly : AvailabilityVisibilityScope.ResolvingLocalOnly);

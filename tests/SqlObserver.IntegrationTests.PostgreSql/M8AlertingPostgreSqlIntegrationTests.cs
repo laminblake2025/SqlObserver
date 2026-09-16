@@ -29,6 +29,105 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
     private readonly PostgreSql18Fixture _fixture;
     public M8AlertingPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NewConnectionRuleDoesNotReplayLoadBeforeItsConfiguration(bool previouslyScopedConnection)
+    {
+        await using var database = await CreateMigratedDatabaseAsync();
+        Guid target=Guid.NewGuid(),rule=Guid.NewGuid(),destination=Guid.NewGuid();
+        var lease=new WorkerLeaseIdentity(new WorkerLeaseKey("alerts/activation-test"),new WorkerExecutionId(Guid.NewGuid()),new FencingToken(1));
+        await SeedTargetAndLeaseAsync(database,target,lease);
+        await SeedRuleAndDestinationAsync(database,target,rule,destination);
+        await using var clock=database.DataSource.CreateCommand("SELECT clock_timestamp()");
+        var now=new DateTimeOffset((DateTime)(await clock.ExecuteScalarAsync())!);
+        Guid? currentOperation=null;
+        foreach(var observed in new[] { now.AddMinutes(-5),now })
+        {
+            string sample=Guid.NewGuid().ToString("D");Guid run=Guid.NewGuid();
+            var evidence=new AlertObservation(new MonitoredInstanceId(target),rule,observed,25,null,$"observed|sample={sample}|run={run:D}",sampleId:sample,runId:run,sourceKind:"metric_threshold",metricId:"engine.user_connections",sourceCollector:"engine.core",sourceVersion:"1",sourceSchemaVersion:1,sourceDigest:new string('a',64));
+            await SeedEvaluationQueueAsync(database,evidence);
+            if(observed==now)currentOperation=evidence.OperationId;
+        }
+        // Seed source observations only; let the production reconciler admit work.
+        await using var clearSeededQueue=database.DataSource.CreateCommand("DELETE FROM alerting.evaluation_queue");
+        await clearSeededQueue.ExecuteNonQueryAsync();
+        await using (var olderHistory=database.DataSource.CreateCommand("""
+            INSERT INTO telemetry.raw_metric_sample(observed_at,sample_id,instance_id,metric_key,metric_value,dimensions,collected_at,collection_run_id)
+            SELECT old.observed_at,gen_random_uuid(),old.instance_id,old.metric_key,old.metric_value,old.dimensions,old.collected_at,old.collection_run_id
+            FROM (SELECT * FROM telemetry.raw_metric_sample WHERE instance_id=@target ORDER BY observed_at LIMIT 1) old
+            CROSS JOIN generate_series(1,20000);
+            ANALYZE telemetry.raw_metric_sample;
+            """))
+        {
+            olderHistory.Parameters.AddWithValue("target",target);
+            await olderHistory.ExecuteNonQueryAsync();
+        }
+        await using var collector=database.CreateCollectorDataSource(previouslyScopedConnection);
+        var work=await new PostgreSqlAlertRepositoryPort(collector).ClaimDueEvaluationsAsync(lease,10,new RepositoryCallTimeout(TimeSpan.FromSeconds(5)),CancellationToken.None);
+        Assert.Equal(currentOperation,Assert.Single(work).OperationId);
+    }
+
+    [Fact]
+    public async Task SustainedFiringResolvesReturnsToNormalAndCreatesANewEpisode()
+    {
+        await using var database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), ruleId = Guid.NewGuid();
+        var targetId = new MonitoredInstanceId(target);
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("alerts/lifecycle-test"), new WorkerExecutionId(Guid.NewGuid()), new FencingToken(1));
+        await SeedTargetAndLeaseAsync(database, target, lease);
+        var rule = new AlertRuleDefinition(ruleId,"connections.lifecycle",AlertRuleKind.MetricThreshold,new MetricId("engine.user_connections"),AlertComparison.GreaterThan,20,2,2,TimeSpan.FromSeconds(90),TimeSpan.FromSeconds(15));
+        await using var serverSource = database.CreateServerDataSource();
+        await new PostgreSqlAlertRepositoryPort(serverSource).UpsertRuleAsync(new AlertRuleWriteRequest(rule,Guid.NewGuid().ToString("D"),Audit(targetId,AdministrativeAuditAction.CreateAlertRule),Timeout()),CancellationToken.None);
+        await using var collectorSource = database.CreateCollectorDataSource();
+        var repository = new PostgreSqlAlertRepositoryPort(collectorSource);
+        var start = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddMinutes(-10));
+        var steps = new[] { (0,10d,AlertState.Normal),(30,25d,AlertState.Pending),(60,25d,AlertState.Firing),(180,25d,AlertState.Firing),(210,10d,AlertState.Resolved),(240,10d,AlertState.Normal),(270,25d,AlertState.Pending),(300,25d,AlertState.Firing) };
+        Guid? firstAlert = null;
+        foreach (var (seconds,value,expected) in steps)
+        {
+            string sample = Guid.NewGuid().ToString("D"); Guid run = Guid.NewGuid();
+            var observation = new AlertObservation(targetId,ruleId,start.AddSeconds(seconds),value,null,$"observed|sample={sample}|run={run:D}",sampleId:sample,runId:run,sourceKind:"metric_threshold",metricId:"engine.user_connections",sourceCollector:"engine.core",sourceVersion:"1",sourceSchemaVersion:1,sourceDigest:new string('a',64));
+            await SeedEvaluationQueueAsync(database,observation);
+            var work = Assert.Single(await repository.ClaimDueEvaluationsAsync(lease,10,Timeout(),CancellationToken.None));
+            var prior = await repository.GetStateAsync(targetId,ruleId,Timeout(),CancellationToken.None) ?? new AlertRuleState(ruleId,targetId);
+            var evaluated = AlertEvaluator.Evaluate(rule,prior,observation);
+            Assert.Equal(expected,evaluated.State.State);
+            var decision = new AlertEvaluationDecision(observation,evaluated.State,evaluated.Event,evaluated.DeliverySuppressed,evaluated.Reason);
+            await repository.EvaluateAndPersistAsync(new AlertEvaluationBatch(new[] { observation },lease,Timeout(),new[] { decision },null,work.DueAtUtc,new[] { work }),CancellationToken.None);
+            var persisted = await repository.GetStateAsync(targetId,ruleId,Timeout(),CancellationToken.None);
+            Assert.Equal(expected,persisted!.State);
+            if(seconds==60) firstAlert=persisted.AlertId;
+            if(seconds==240) { Assert.Null(persisted.AlertId); Assert.Null(persisted.EpisodeStartedUtc); }
+            if(seconds==300) { Assert.NotNull(persisted.AlertId); Assert.NotEqual(firstAlert,persisted.AlertId); }
+        }
+    }
+
+    [Fact]
+    public async Task DeliverySnapshotsRemainScopedAcrossMultipleClaimedTargets()
+    {
+        await using var database = await CreateMigratedDatabaseAsync();
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("alerts/delivery"), new WorkerExecutionId(Guid.NewGuid()), new FencingToken(1));
+        Guid first = Guid.NewGuid(), second = Guid.NewGuid();
+        await SeedTargetAndLeaseAsync(database, first, lease);
+        await SeedTargetOnlyAsync(database, second);
+        foreach (Guid target in new[] { first, second })
+        {
+            Guid rule = Guid.NewGuid(), destination = Guid.NewGuid();
+            await SeedRuleAndDestinationAsync(database, target, rule, destination);
+            await SeedOutboxAsync(database, target, rule, destination, Guid.NewGuid(), Guid.NewGuid());
+        }
+        await using var collector = database.CreateCollectorDataSource();
+        var work = await new PostgreSqlAlertRepositoryPort(collector).ClaimDueDeliveriesAsync(lease, 10, Timeout(), CancellationToken.None);
+        Assert.Equal(2, work.Count);
+        Assert.Equal(2, work.Select(item => item.TargetId!.Value).Distinct().Count());
+        Assert.All(work, item => Assert.Equal(new string('d', 64), item.ConfigurationDigest));
+        await using var privileges = database.DataSource.CreateCommand("SELECT has_column_privilege('sqlobserver_collector','alerting.delivery_outbox','destination_configuration_digest','SELECT'),has_column_privilege('sqlobserver_collector','alerting.delivery_outbox','payload','SELECT'),has_table_privilege('sqlobserver_collector','alerting.delivery_outbox','UPDATE')");
+        await using var reader = await privileges.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.True(reader.GetBoolean(0)); Assert.False(reader.GetBoolean(1)); Assert.False(reader.GetBoolean(2));
+    }
+
     [Fact]
     public async Task FreshInstallExposesFencedScopedBootstrapAndAtomicDeliveryFunctions()
     {
@@ -218,7 +317,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         Guid owner = Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");
         var targetId = new MonitoredInstanceId(target);
         var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("alerts/m8/integration"), new WorkerExecutionId(owner), new FencingToken(1));
-        DateTimeOffset observed = new(2026, 8, 25, 10, 0, 0, TimeSpan.Zero);
+        DateTimeOffset observed = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddMinutes(-1));
         await SeedTargetAndLeaseAsync(database, target, lease);
 
         AlertCatalogEntry catalog = AlertCatalog.Entries.Single(x => x.Kind == AlertRuleKind.MetricThreshold);
@@ -227,7 +326,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await server.UpsertRuleAsync(new AlertRuleWriteRequest(rule, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.CreateAlertRule), Timeout()), CancellationToken.None);
         await SeedApprovedDestinationAsync(database, target, destinationId);
 
-        var observation = new AlertObservation(targetId, ruleId, observed, 2, null, "integration-sample", null, null, "11111111-1111-4111-8111-111111111111", Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), "metric_threshold", catalog.Metric, catalog.SourceCollector, "1", catalog.SourceSchemaVersion, new string('a', 64));
+        var observation = new AlertObservation(targetId, ruleId, observed, 2, null, "observed|sample=11111111-1111-4111-8111-111111111111|run=cccccccc-cccc-4ccc-8ccc-cccccccccccc", null, null, "11111111-1111-4111-8111-111111111111", Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), "metric_threshold", catalog.Metric, catalog.SourceCollector, "1", catalog.SourceSchemaVersion, new string('a', 64));
         await SeedEvaluationQueueAsync(database, observation);
 
         await using var collectorDataSource = database.CreateCollectorDataSource();
@@ -388,8 +487,8 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
                            CASE WHEN i=0 THEN @single_rule ELSE alerting.sha_uuid('m8-drain-rule-' || i::text) END AS rule_id
                     FROM generate_series(0,101) i
                 )
-                INSERT INTO control.observation_target(instance_id,instance_key,display_name)
-                SELECT target_id,'m8-drain-' || target_id::text,'M8 drain target' FROM targets
+                INSERT INTO control.observation_target(instance_id,instance_key,display_name,created_at,updated_at,discovery_requested_at)
+                SELECT target_id,'m8-drain-' || target_id::text,'M8 drain target',now(),now(),now() FROM targets
                 ON CONFLICT(instance_id) DO NOTHING;
                 UPDATE control.observation_target
                 SET host_name='m8-health.example',instance_name='M8HEALTH',connect_timeout=interval '5 seconds',authentication_mode='windows_integrated_service_identity',transport_security_mode='mandatory_validated',lifecycle_state='active',revision=1
@@ -405,6 +504,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
                 INSERT INTO alerting.rule(rule_id,instance_id,name,kind,metric_id,comparison,threshold,hysteresis,confirmation_count,confirmation_window,evaluation_interval)
                 VALUES(@health_rule,@single_target,'collector.health',2,NULL,1,0,0,1,interval '0 seconds',interval '1 hour')
                 ON CONFLICT(rule_id) DO NOTHING;
+                UPDATE alerting.rule SET created_at=now()-interval '1 day',updated_at=now()-interval '1 day';
                 WITH runs AS (
                     SELECT 0 AS target_index, @single_target AS target_id, @single_run AS run_id
                     UNION ALL
@@ -564,7 +664,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         Guid deliveryId = Guid.Parse("17171717-1717-4171-8171-171717171717");
         await SeedOutboxAsync(database, target, ruleId, destinationId, deliveryId, Guid.Parse("18181818-1818-4181-8181-181818181818"));
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = TruncateToMicroseconds(DateTimeOffset.UtcNow);
         var maintenance = new MaintenanceWindow(Guid.Parse("19191919-1919-4191-8191-191919191919"), targetId, now.AddMinutes(-1), now.AddMinutes(10), "integration maintenance");
         await server.UpsertMaintenanceAsync(new MaintenanceWriteRequest(maintenance, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.CreateMaintenanceWindow), Timeout()), CancellationToken.None);
         await using (NpgsqlConnection verify = await database.DataSource.OpenConnectionAsync())
@@ -629,7 +729,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await SeedTargetAndLeaseAsync(database, target, lease);
         await using var serverDataSource = database.CreateServerDataSource();
         var server = new PostgreSqlAlertRepositoryPort(serverDataSource);
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = TruncateToMicroseconds(DateTimeOffset.UtcNow);
         var future = new MaintenanceWindow(Guid.Parse("7b7b7b7b-7b7b-4b7b-8b7b-7b7b7b7b7b7b"), targetId, now.AddHours(1), now.AddHours(2), "future cancellation");
         await server.UpsertMaintenanceAsync(new MaintenanceWriteRequest(future, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.CreateMaintenanceWindow), Timeout()), CancellationToken.None);
         string idempotency = Guid.NewGuid().ToString("D");
@@ -674,7 +774,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
             Assert.Contains("cancelled_at IS NULL", definition, StringComparison.OrdinalIgnoreCase);
         }
         var cancelledUpdate = new MaintenanceWindow(future.Id, targetId, now.AddHours(3), now.AddHours(4), "reactivation attempt");
-        await Assert.ThrowsAsync<PostgresException>(() => server.UpsertMaintenanceAsync(new MaintenanceWriteRequest(cancelledUpdate, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.UpdateMaintenanceWindow), Timeout(), 2), CancellationToken.None).AsTask());
+        await Assert.ThrowsAsync<AlertRepositoryOperationException>(() => server.UpsertMaintenanceAsync(new MaintenanceWriteRequest(cancelledUpdate, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.UpdateMaintenanceWindow), Timeout(), 2), CancellationToken.None).AsTask());
         await using var collectorDataSource = database.CreateCollectorDataSource();
         var collector = new PostgreSqlAlertRepositoryPort(collectorDataSource);
         Assert.Null(await collector.GetMaintenanceAsync(targetId, now, Timeout(), CancellationToken.None));
@@ -722,7 +822,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
             command.Parameters.AddWithValue("retry", unrelatedRetryDelivery);
             await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
             Assert.True(await reader.ReadAsync());
-            Assert.True(reader.GetDateTime(0) <= now);
+            Assert.True(reader.GetFieldValue<DateTimeOffset>(0) <= DateTimeOffset.UtcNow);
             Assert.Equal(0, reader.GetInt32(1));
             Assert.True(reader.GetBoolean(2));
             Assert.True(await reader.ReadAsync());
@@ -751,7 +851,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         Assert.Equal(AlertDeliveryLeaseOutcome.Active, await collector.RenewDeliveryStateAsync(activeWork, lease, Timeout(), CancellationToken.None));
 
         DateTimeOffset evidenceObserved = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddSeconds(-20));
-        var evidence = new AlertObservation(targetId, activeRule, evidenceObserved, 99, null, "maintenance-cancelled-evidence", sampleId: "22222222-2222-4222-8222-222222222222", runId: Guid.Parse("87878787-8787-4787-8787-878787878787"), sourceKind: "metric_threshold", metricId: "engine.user_connections", sourceCollector: "engine.core", sourceVersion: "1", sourceSchemaVersion: 1, sourceDigest: new string('e', 64));
+        var evidence = new AlertObservation(targetId, activeRule, evidenceObserved, 99, null, "observed|sample=22222222-2222-4222-8222-222222222222|run=87878787-8787-4787-8787-878787878787", sampleId: "22222222-2222-4222-8222-222222222222", runId: Guid.Parse("87878787-8787-4787-8787-878787878787"), sourceKind: "metric_threshold", metricId: "engine.user_connections", sourceCollector: "engine.core", sourceVersion: "1", sourceSchemaVersion: 1, sourceDigest: new string('e', 64));
         await SeedEvaluationQueueAsync(database, evidence);
         IReadOnlyList<AlertEvaluationWork> evaluations = await collector.ClaimDueEvaluationsAsync(lease, 10, Timeout(), CancellationToken.None);
         AlertEvaluationWork evaluation = Assert.Single(evaluations);
@@ -766,7 +866,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         Assert.Equal(0, evaluated.Suppressed);
         await using (NpgsqlConnection evaluatedState = await database.DataSource.OpenConnectionAsync())
         {
-            await using var command = new NpgsqlCommand("SELECT s.state,s.last_operation_id,encode(s.evidence_digest,'hex'),(SELECT count(*) FROM alerting.state_history h WHERE h.instance_id=@target AND h.rule_id=@rule AND h.operation_id=@operation),(SELECT count(*) FROM alerting.evaluation_replay r WHERE r.instance_id=@target AND r.rule_id=@rule AND r.operation_id=@operation),(SELECT count(*) FROM alerting.delivery_outbox d WHERE d.instance_id=@target AND d.rule_id=@rule AND d.operation_id=@operation AND d.evidence_digest=decode(@digest,'hex')),(SELECT completed_at IS NOT NULL AND claimed_until IS NULL AND claim_work_key IS NULL AND claim_owner_execution_id IS NULL AND claim_fencing IS NULL FROM alerting.evaluation_queue q WHERE q.operation_id=@operation);", evaluatedState);
+            await using var command = new NpgsqlCommand("SELECT s.state,s.last_operation_id,encode(s.evidence_digest,'hex'),(SELECT count(*) FROM alerting.state_history h WHERE h.instance_id=@target AND h.rule_id=@rule AND h.operation_id=@operation),(SELECT count(*) FROM alerting.evaluation_replay r WHERE r.instance_id=@target AND r.rule_id=@rule AND r.operation_id=@operation),(SELECT count(*) FROM alerting.delivery_outbox d WHERE d.instance_id=@target AND d.rule_id=@rule AND d.operation_id=@operation AND d.evidence_digest=decode(@digest,'hex')),(SELECT completed_at IS NOT NULL AND claimed_until IS NULL AND claim_work_key IS NULL AND claim_owner_execution_id IS NULL AND claim_fencing IS NULL FROM alerting.evaluation_queue q WHERE q.operation_id=@operation) FROM alerting.rule_state s WHERE s.instance_id=@target AND s.rule_id=@rule;", evaluatedState);
             command.Parameters.AddWithValue("target", target);
             command.Parameters.AddWithValue("rule", activeRule);
             command.Parameters.AddWithValue("operation", claimedObservation.OperationId);
@@ -817,7 +917,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         IAlertDeliveryDispatchPermit permit = await repository.AcquireDeliveryDispatchPermitAsync(claimed, Timeout(), CancellationToken.None);
         try
         {
-            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset now = TruncateToMicroseconds(DateTimeOffset.UtcNow);
             var maintenance = new MaintenanceWindow(Guid.Parse("32323232-3232-4232-8232-323232323232"), targetId, now.AddMinutes(-1), now.AddMinutes(10), "permit race");
             Task<AdministrativeAuditReceipt> transition = server.UpsertMaintenanceAsync(new MaintenanceWriteRequest(maintenance, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.CreateMaintenanceWindow), Timeout()), CancellationToken.None).AsTask();
             await Task.Delay(150);
@@ -1011,12 +1111,13 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await SeedOutboxAsync(database, target, rule, destination, deliveryId, Guid.Parse("5d5d5d5d-5d5d-4d5d-8d5d-5d5d5d5d5d5d"));
         await using var collectorDataSource = database.CreateCollectorDataSource();
         var dispatcher = new ThrowingDestinationPort();
-        var worker = new SqlObserver.Collector.AlertDeliveryWorker(new PostgreSqlAlertRepositoryPort(collectorDataSource), dispatcher, new PostgreSqlWorkerLeasePort(collectorDataSource), lease.Owner, NullLogger<SqlObserver.Collector.AlertDeliveryWorker>.Instance);
+        var diagnosticLogger = new DeliveryDiagnosticLogger();
+        var worker = new SqlObserver.Collector.AlertDeliveryWorker(new PostgreSqlAlertRepositoryPort(collectorDataSource), dispatcher, new PostgreSqlWorkerLeasePort(collectorDataSource), lease.Owner, diagnosticLogger);
         await worker.StartAsync(CancellationToken.None);
-        await dispatcher.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try { await dispatcher.Started.Task.WaitAsync(TimeSpan.FromSeconds(10)); } catch (TimeoutException) { throw new InvalidOperationException(string.Join("; ", diagnosticLogger.Errors)); }
         await worker.StopAsync(CancellationToken.None);
         await using NpgsqlConnection verify = await database.DataSource.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand("SELECT completed_at IS NULL,cancelled_at IS NULL,leased_until IS NULL,lease_work_key IS NULL,lease_owner_execution_id IS NULL,lease_fencing IS NULL,due_at>clock_timestamp(),attempt,last_error_code,(SELECT outcome FROM alerting.delivery_attempt WHERE delivery_id=@id AND attempt=1);", verify);
+        await using var command = new NpgsqlCommand("SELECT completed_at IS NULL,cancelled_at IS NULL,leased_until IS NULL,lease_work_key IS NULL,lease_owner_execution_id IS NULL,lease_fencing IS NULL,due_at>clock_timestamp(),attempt,last_error_code,(SELECT outcome FROM alerting.delivery_attempt WHERE delivery_id=@id AND attempt=1) FROM alerting.delivery_outbox WHERE delivery_id=@id;", verify);
         command.Parameters.AddWithValue("id", deliveryId);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync());
@@ -1042,12 +1143,13 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await SeedOutboxAsync(database, target, rule, destination, deliveryId, Guid.Parse("63636363-6363-4363-8363-636363636363"));
         await using var collectorDataSource = database.CreateCollectorDataSource();
         var dispatcher = new CancellingDestinationPort();
-        var worker = new SqlObserver.Collector.AlertDeliveryWorker(new PostgreSqlAlertRepositoryPort(collectorDataSource), dispatcher, new PostgreSqlWorkerLeasePort(collectorDataSource), lease.Owner, NullLogger<SqlObserver.Collector.AlertDeliveryWorker>.Instance);
+        var diagnosticLogger = new DeliveryDiagnosticLogger();
+        var worker = new SqlObserver.Collector.AlertDeliveryWorker(new PostgreSqlAlertRepositoryPort(collectorDataSource), dispatcher, new PostgreSqlWorkerLeasePort(collectorDataSource), lease.Owner, diagnosticLogger);
         await worker.StartAsync(CancellationToken.None);
-        await dispatcher.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try { await dispatcher.Started.Task.WaitAsync(TimeSpan.FromSeconds(10)); } catch (TimeoutException) { throw new InvalidOperationException(string.Join("; ", diagnosticLogger.Errors)); }
         await worker.StopAsync(CancellationToken.None);
         await using NpgsqlConnection verify = await database.DataSource.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand("SELECT completed_at IS NULL,cancelled_at IS NULL,leased_until IS NULL,lease_work_key IS NULL,lease_owner_execution_id IS NULL,lease_fencing IS NULL,due_at>clock_timestamp(),attempt,last_error_code,(SELECT outcome FROM alerting.delivery_attempt WHERE delivery_id=@id AND attempt=1);", verify);
+        await using var command = new NpgsqlCommand("SELECT completed_at IS NULL,cancelled_at IS NULL,leased_until IS NULL,lease_work_key IS NULL,lease_owner_execution_id IS NULL,lease_fencing IS NULL,due_at>clock_timestamp(),attempt,last_error_code,(SELECT outcome FROM alerting.delivery_attempt WHERE delivery_id=@id AND attempt=1) FROM alerting.delivery_outbox WHERE delivery_id=@id;", verify);
         command.Parameters.AddWithValue("id", deliveryId);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync());
@@ -1073,8 +1175,12 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await SeedOutboxAsync(database, target, rule, destination, deliveryId, Guid.Parse("69696969-6969-4969-8969-696969696969"));
         await using var collectorDataSource = database.CreateCollectorDataSource();
         var repository = new PostgreSqlAlertRepositoryPort(collectorDataSource);
-        AlertDeliveryWork permitWork = new(deliveryId, Guid.NewGuid(), destination, "https-webhook", "integration", Array.Empty<byte>(), 0, DateTimeOffset.UtcNow, targetId, lease, lease.Key.Value);
-        await using IAlertDeliveryDispatchPermit permit = await repository.AcquireDeliveryDispatchPermitAsync(permitWork, Timeout(), CancellationToken.None);
+        // An administration fence is exclusive; delivery permits now share with
+        // their renewal connection and must not be used to block another sender.
+        await using var fence = await database.DataSource.OpenConnectionAsync();
+        await using var fenceCommand = new NpgsqlCommand("SELECT pg_advisory_lock(hashtextextended(@target::text,0));",fence) { CommandTimeout=10 };
+        fenceCommand.Parameters.AddWithValue("target",target);
+        await fenceCommand.ExecuteScalarAsync();
         var dispatcher = new CountingDestinationPort();
         var worker = new SqlObserver.Collector.AlertDeliveryWorker(repository, dispatcher, new PostgreSqlWorkerLeasePort(collectorDataSource), lease.Owner, NullLogger<SqlObserver.Collector.AlertDeliveryWorker>.Instance);
         await worker.StartAsync(CancellationToken.None);
@@ -1087,7 +1193,8 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
             command.Parameters.AddWithValue("target", target);
             Assert.Equal(1, await command.ExecuteNonQueryAsync());
         }
-        await permit.DisposeAsync();
+        fenceCommand.CommandText="SELECT pg_advisory_unlock(hashtextextended(@target::text,0));";
+        await fenceCommand.ExecuteScalarAsync();
         await WaitForCancelledAsync(database, deliveryId, "unapproved");
         await worker.StopAsync(CancellationToken.None);
         Assert.Equal(0, dispatcher.Invocations);
@@ -1109,6 +1216,8 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
             var runner = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await runner.ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
             Assert.False(result.HasFailures);
+            await using var partitions = database.DataSource.CreateCommand("SELECT control.ensure_daily_metric_partition(current_date-1); SELECT control.ensure_daily_metric_partition(current_date);" );
+            await partitions.ExecuteNonQueryAsync();
             return database;
         }
         catch
@@ -1148,7 +1257,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
     private static async Task SeedTargetOnlyAsync(RepositoryTestDatabase database, Guid target)
     {
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand("INSERT INTO control.observation_target(instance_id,instance_key,display_name) VALUES(@id,@key,@name) ON CONFLICT(instance_id) DO NOTHING;", connection);
+        await using var command = new NpgsqlCommand("INSERT INTO control.observation_target(instance_id,instance_key,display_name,created_at,updated_at,discovery_requested_at) VALUES(@id,@key,@name,now(),now(),now()) ON CONFLICT(instance_id) DO NOTHING;", connection);
         command.Parameters.AddWithValue("id", target);
         command.Parameters.AddWithValue("key", "m8-" + target.ToString("N")[..12]);
         command.Parameters.AddWithValue("name", "M8 integration target");
@@ -1248,7 +1357,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         const string sql = """
             INSERT INTO alerting.delivery_outbox(delivery_id,alert_id,instance_id,rule_id,destination_id,event_kind,payload,due_at,operation_id,destination_revision,destination_kind,destination_configuration_reference,destination_approval_revision,destination_approval_digest,destination_approval_scope,destination_configuration_digest)
-            SELECT @delivery,coalesce(s.alert_id,@alert),@target,@rule,@destination,@event_kind,'{}'::jsonb,clock_timestamp()-interval '1 second',@operation,d.revision,d.kind,d.configuration_reference,d.approved_revision,d.approval_digest,d.approval_scope,d.configuration_digest
+            SELECT @delivery,coalesce(CASE WHEN @override_alert THEN @alert END,s.alert_id,@alert),@target,@rule,@destination,@event_kind,'{}'::jsonb,clock_timestamp()-interval '1 second',@operation,d.revision,d.kind,d.configuration_reference,d.approved_revision,d.approval_digest,d.approval_scope,d.configuration_digest
             FROM alerting.destination d LEFT JOIN alerting.rule_state s ON s.instance_id=@target AND s.rule_id=@rule
             WHERE d.destination_id=@destination AND d.instance_id=@target
             ON CONFLICT(delivery_id) DO NOTHING;
@@ -1256,6 +1365,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("delivery", delivery);
         command.Parameters.AddWithValue("alert", alertId ?? Guid.NewGuid());
+        command.Parameters.AddWithValue("override_alert", alertId.HasValue);
         command.Parameters.AddWithValue("target", target);
         command.Parameters.AddWithValue("rule", rule);
         command.Parameters.AddWithValue("destination", destination);
@@ -1483,6 +1593,16 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         {
             Invocations++;
             return ValueTask.FromResult(new AlertDeliveryResult(work.DeliveryId, true, false, "unexpected-send", DateTimeOffset.UtcNow, work.TargetId));
+        }
+    }
+    private sealed class DeliveryDiagnosticLogger : Microsoft.Extensions.Logging.ILogger<SqlObserver.Collector.AlertDeliveryWorker>
+    {
+        public readonly System.Collections.Concurrent.ConcurrentQueue<string> Errors = new();
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel level, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (exception is not null) { var cause=exception.GetBaseException(); Errors.Enqueue(cause is PostgresException pg ? pg.SqlState+": "+pg.MessageText : cause.GetType().Name); }
         }
     }
 }

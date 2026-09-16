@@ -16,12 +16,14 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     private PostgreSqlTargetControlPlane(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey)
     {
         _dataSource = dataSource;
+        LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
         Targets = new PostgreSqlObservationTargetPort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         AdministrativeAudit = new PostgreSqlAdministrativeAuditPort(dataSource);
         McpInvocationAudit = new PostgreSqlMcpInvocationAuditPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         HealthProjections = new PostgreSqlHealthProjectionPort(dataSource);
+        OverviewHistory = new PostgreSqlOverviewHistoryPort(dataSource);
         ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
         DeadlockProjections = new PostgreSqlDeadlockProjectionPort(dataSource);
         QueryPerformanceApiProjections = new PostgreSqlQueryPerformanceApiProjectionPort(dataSource);
@@ -38,6 +40,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
+    public ILiveActivityRepository LiveActivity { get; }
 
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
 
@@ -51,6 +54,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IWorkerLeasePort WorkerLeases { get; }
 
     public IHealthProjectionRepositoryPort HealthProjections { get; }
+    public IOverviewHistoryRepositoryPort OverviewHistory { get; }
 
     public IActivityProjectionRepositoryPort ActivityProjections { get; }
 

@@ -9,7 +9,7 @@ const panelUrl = new URL(
 const typesUrl = new URL("../src/features/health/healthTypes.ts", import.meta.url);
 const apiUrl = new URL("../src/features/health/healthApi.ts", import.meta.url);
 const onboardingUrl = new URL(
-  "../src/features/targets/TargetOnboarding.tsx",
+  "../src/App.tsx",
   import.meta.url,
 );
 
@@ -17,8 +17,9 @@ test("target detail exposes bounded repository health evidence", async () => {
   const panel = await readFile(panelUrl, "utf8");
   const types = await readFile(typesUrl, "utf8");
   const onboarding = await readFile(onboardingUrl, "utf8");
+  const servers = await readFile(new URL("../src/features/targets/ServersPage.tsx", import.meta.url), "utf8");
 
-  assert.match(onboarding, /View health evidence/);
+  assert.match(servers, /routeHref\("health", target.instanceId\)/);
   assert.match(onboarding, /<TargetHealthPanel/);
   assert.match(panel, /No data yet/);
   assert.match(panel, /Degraded visibility/);

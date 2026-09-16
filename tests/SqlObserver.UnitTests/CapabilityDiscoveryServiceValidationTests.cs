@@ -29,6 +29,30 @@ public sealed class CapabilityDiscoveryServiceValidationTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task V3ProfilesPreserveOptionalHistoryPermissions(bool includeHistory)
+    {
+        var permissions = new List<PermissionEvidence>
+        {
+            new(new SqlServerPermissionId("server.view-performance-state"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            new(new SqlServerPermissionId("replication.replmonitor"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.NotApplicable),
+        };
+        if (includeHistory)
+        {
+            permissions.Add(new(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Granted));
+            permissions.Add(new(new SqlServerPermissionId("msdb.sysjobhistory.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Denied));
+        }
+        CapabilityEvidence[] capabilities = [.. CreateCapabilities(),
+            new(new CapabilityId("feature.replication"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled),
+            new(new CapabilityId("feature.host-binding"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled)];
+        TestHarness harness = CreateHarness(request => CreateConnectedProfile(request,
+            manifestVersion: 3, outputSchemaVersion: 3, capabilities: capabilities, permissions: permissions));
+        Assert.Equal(1, (await harness.RunAsync()).RecordedCount);
+        Assert.Equal(1, harness.Repository.RecordCalls);
+    }
+
+    [Theory]
     [InlineData(2, 1)]
     [InlineData(1, 2)]
     public async Task ContractVersionDriftIsRejectedBeforePersistence(

@@ -120,13 +120,16 @@ public sealed class PostgreSqlAnalyticsBackfillStore(NpgsqlDataSource dataSource
         ArgumentNullException.ThrowIfNull(lease); job.Validate();
         if (dayStartUtc.Offset != TimeSpan.Zero || cursor is not null && cursor.Length > 4096) throw new ArgumentException("Backfill cursor bounds rejected.");
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT control.advance_m10_backfill_cursor(@job_id,@day_start_utc,@cursor,@owner_execution_id,@fencing_token);", connection) { CommandTimeout = CommandTimeoutSeconds };
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, new RepositoryCallTimeout(TimeSpan.FromSeconds(CommandTimeoutSeconds)), cancellationToken).ConfigureAwait(false);
+        await using var command = new NpgsqlCommand("SELECT control.advance_m10_backfill_cursor(@job_id,@day_start_utc,@cursor,@owner_execution_id,@fencing_token);", connection, transaction) { CommandTimeout = CommandTimeoutSeconds };
         command.Parameters.AddWithValue("job_id", job.JobId);
         command.Parameters.AddWithValue("day_start_utc", dayStartUtc);
         command.Parameters.AddWithValue("cursor", (object?)cursor ?? DBNull.Value);
         command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
         command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
         await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask CompleteAsync(AnalyticsBackfillJob job, WorkerLeaseIdentity lease, AnalyticsBackfillCompletion completion, string? failureDetail, CancellationToken cancellationToken)

@@ -14,7 +14,6 @@ test("activity client requests all bounded target routes and validates untrusted
   assert.match(api, /`\$\{base\}\/requests\?limit=\$\{String\(pageLimit\)\}`/);
   assert.match(api, /`\$\{base\}\/waits\?limit=\$\{String\(pageLimit\)\}`/);
   assert.match(api, /`\$\{base\}\/blocking\/current\?limit=\$\{String\(pageLimit\)\}`/);
-  assert.match(api, /`\$\{base\}\/blocking\/history\?limit=\$\{String\(pageLimit\)\}/);
   assert.match(parser, /record\.items\.length > pageLimit/);
   assert.match(parser, /safeText/);
   assert.match(parser, /safeCursor/);

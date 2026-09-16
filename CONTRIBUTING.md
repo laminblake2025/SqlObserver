@@ -6,7 +6,7 @@ SqlObserver is being developed as an original, clean-room product. Contributions
 
 Read [the clean-room boundary](docs/product/clean-room-boundary.md), [the security policy](SECURITY.md), and the relevant records in [docs/adr](docs/adr). Check [BACKLOG.md](BACKLOG.md) for milestone ownership and dependencies.
 
-For the current first assignment, contribute only Milestone 0 documentation and non-runtime Milestone 1 scaffolding. Do not add a production collector, target query, repository schema, installer behavior, runtime MCP endpoint, or sample that connects to a real database. Empty placeholders and compile/build contracts must not imply operational support.
+Milestones 0 through 11 are implemented locally, while M12 release, deployment, and certification work remains incomplete. Treat runtime features as a pre-release implementation and follow the milestone ownership and dependencies in [BACKLOG.md](BACKLOG.md). Do not claim production support or add release behavior without the relevant design and review. Empty placeholders and compile/build contracts must not imply operational support.
 
 ## Clean-room contribution rules
 

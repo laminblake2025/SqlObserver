@@ -50,6 +50,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort
         if (hasMore) rows.RemoveRange(query.Limit, rows.Count - query.Limit);
         var items = rows.Select(static row => row.Item).ToList();
         MetricSeriesCursor? next = hasMore && rows.Count > 0 ? new MetricSeriesCursor(query.TargetId, query.MetricKey, rows[^1].Item.ObservedAtUtc, rows[^1].RunId, rows[^1].DimensionsKey, snapshot, new ObservationTargetRevision(revision)) : null;
+        await reader.DisposeAsync().ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new MetricSeriesPage(query.TargetId, query.MetricKey, query.FromUtc, query.ToUtc, items, items.Count == 0 ? "no_data" : "complete", new ObservationTargetRevision(revision), snapshot, next) { HasMore = hasMore };
     }

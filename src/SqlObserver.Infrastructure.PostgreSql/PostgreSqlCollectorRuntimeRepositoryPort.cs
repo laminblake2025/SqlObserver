@@ -130,8 +130,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string CommitAgentM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_agent_failures(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitTempDbM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_tempdb_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitAgM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
-    private const string CommitM10HostSql = "SELECT result_status, inserted_count, duplicate_count, 0 AS rejected_count, 0 AS persisted_bytes, committed_at FROM telemetry.commit_m10_host_metrics(@run_id,@instance_id,@target_revision,@work_key,@owner_execution_id,@fencing_token,@request_digest,@m10_payload,@completion_digest);";
-    private const string CommitM10ReplicationSql = "SELECT result_status, inserted_count, duplicate_count, 0 AS rejected_count, 0 AS persisted_bytes, committed_at FROM telemetry.commit_m10_replication(@run_id,@instance_id,@target_revision,@work_key,@owner_execution_id,@fencing_token,@request_digest,@m10_payload,@completion_digest);";
+    private static readonly string CommitM10Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_m10_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
 
     private const string CommitActivitySql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
@@ -268,7 +267,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "6490b8aaa503d5f96e52c4aacdb5e94a52965cc1bed0f0d0502f3e663cc88ee1",
         "aeae9d3d2a2f373b9b66b0e68a0c2d51dcc548dad3fc175a118ba3a5cd007da9",
         "2470cbe3d16e3825a8c30ed0fde6d84e0eced0124f93ef8ff268f93b4523c59b",
-        "5f3b0a9fef5a7d06f37cea5063e39a8b1b7e20dbec7c8234f84f521d41ca0a60",
+        "59cfabc2a63efa7236e61170f6ad1e3afee79e5dd79e4367ed90e49fb18214b8",
         "d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69",
         "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff",
         "3803245b86c5f6b8a52fe13751717a670f2dbf96779596ba40bcaa75dbe248ee",
@@ -280,21 +279,21 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static readonly string[] RequiredBundleDigests =
     [
-        "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
-        "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
-        "1dd0cc6cbdc4171ff656c658974cf4105c8e2594e5d1f26a5fc66011adaa284e",
+        "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
+        "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
+        "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
         "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
-        "72570fba287327e1dec64a56d6211b9c24a7d597b35010c9b9ac765615d2963f",
-        "da915ffb11e60bc0f1f019cb3e3e81ccafabc2c3ff94b26520378574562855eb",
+        "57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de",
+        "ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f",
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
         "cf629310626827ea9b91baab7ef21427d20c230adfaeff472ddfd26d1ebfee26",
-        "7e06e0e3d1c71dd3c9e5a2e2acd14412984e761009921a63bf1141a5b34d18aa",
+        "8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a",
     ];
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
@@ -627,9 +626,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         }
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildM10Payload(request, hostCollector), M9JsonOptions);
         if (json.Length > 1_048_576) throw new InvalidDataException("M10 persistence payload exceeds the accepted response bound.");
-        await using var command = new NpgsqlCommand(hostCollector ? CommitM10HostSql : CommitM10ReplicationSql, connection, transaction)
+        await using var command = new NpgsqlCommand(CommitM10Sql, connection, transaction)
         { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
         AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
+        AddSummaryCommitParameters(command, request);
         command.Parameters.AddWithValue("m10_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(json));
         command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, SHA256.HashData(json));
         CollectorRunCommitResult result;
@@ -652,7 +652,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private object BuildM10Payload(CommitCollectorRunRequest request, bool hostCollector)
     {
         if (request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
-            return new { items = Array.Empty<object>() };
+            return new { schemaVersion = 1, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), items = Array.Empty<object>() };
         if (hostCollector)
         {
             HostMetricsPayloadContext? hostMetrics = request.Payload.HostMetricsContext;
@@ -690,7 +690,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
                 synchronizationState = item.Status.ToString().ToLowerInvariant(),
                 // Keep the operational compatibility field for the status
                 // surface, while persisting the catalog-v1 metric explicitly.
-                sendQueueBytes = item.PendingCommands,
+                sendQueueBytes = (long?)null,
                 redoQueueBytes = (long?)null,
                 pendingCommands = item.PendingCommands,
                 latencySeconds = item.LatencySeconds,
@@ -915,7 +915,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddArray(command, "file_sizes", NpgsqlDbType.Integer, files.Select(static item => item.EstimatedSizeBytes).ToArray());
     }
 
-    private static void AddM9CommitParameters(NpgsqlCommand command, CommitCollectorRunRequest request)
+    private static void AddSummaryCommitParameters(NpgsqlCommand command, CommitCollectorRunRequest request)
     {
         CollectorRunSummary summary = request.Summary;
         command.Parameters.AddWithValue("outcome", MapOutcome(summary.Outcome));
@@ -932,6 +932,12 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         command.Parameters.AddWithValue("minimum_lost_bytes", summary.Loss.MinimumLostBytes);
         command.Parameters.AddWithValue("next_circuit_state", MapCircuit(request.NextCircuit.State));
         command.Parameters.AddWithValue("next_consecutive_failures", request.NextCircuit.ConsecutiveFailures);
+    }
+
+    private static void AddM9CommitParameters(NpgsqlCommand command, CommitCollectorRunRequest request)
+    {
+        AddSummaryCommitParameters(command, request);
+        CollectorRunSummary summary = request.Summary;
         object payload = BuildM9Payload(request.Payload.OperationalHealth?.Snapshot, request.Work.TargetId, request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Reason, summary.Accounting, summary.Loss);
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(payload, M9JsonOptions);
         int storageCap = request.Work.CollectorId.Value == "availability-groups.health" ? 2_097_152 : 1_048_576;
@@ -1255,7 +1261,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         string id = request.Work.CollectorId.Value;
         if (id is not ("backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health"))
         {
-            if (request.Payload.OperationalHealth is not null) throw new InvalidDataException("Operational-health payload is only valid for M9 collectors.");
+            if (id != "replication.health" && request.Payload.OperationalHealth is not null) throw new InvalidDataException("Operational-health payload is only valid for M9 or replication collectors.");
             return;
         }
         OperationalHealthPayload? envelope = request.Payload.OperationalHealth;

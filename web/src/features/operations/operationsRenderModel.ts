@@ -28,7 +28,7 @@ export function buildOperationsRenderModel(state: OperationsState): OperationsRe
   const cards = Object.fromEntries(operationKinds.map(kind => {
     const card = state[kind];
     const page = card.page;
-    const status: OperationsRenderStatus = card.error !== undefined && page === undefined ? "Error" : page?.state ?? (card.loading ? "Loading" : "Error");
+    const status: OperationsRenderStatus = card.error !== undefined && page === undefined ? "Error" : card.loading ? "Loading" : page?.state ?? "Error";
     const items = page?.items ?? [];
     const inertLabels = items.flatMap(item => Object.values(item).filter((value): value is string => typeof value === "string"));
     return [kind, { kind, label: labels[kind], status, page, loading: card.loading, items, error: card.error, retryable: card.retryable === true, canRetry: card.error !== undefined && card.retryable === true, canLoadMore: card.loading !== true && page?.hasMore === true && typeof page.nextCursor === "string", canCancel: card.loading, inertLabels } satisfies OperationsRenderCard];
