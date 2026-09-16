@@ -55,14 +55,9 @@ Local validation and these lab checks are **not release certification**. Install
 
 ## Screenshots
 
-All populated fleet/query images below are synthetic fixtures, isolated from production API paths. The activity image is from the live VM.
+Screenshots are retained locally under `TestResults/dashboard/screenshots/` and are not included in the repository. Populated fleet/query images use synthetic fixtures, isolated from production API paths; the activity capture is from the live VM.
 
-- [Fleet overview, 1440](../../TestResults/dashboard/screenshots/overview-1440.jpg)
-- [Query investigation, 1440](../../TestResults/dashboard/screenshots/query-1440.jpg)
-- [Narrow overview](../../TestResults/dashboard/screenshots/overview-390.jpg)
-- [Add server drawer](../../TestResults/dashboard/screenshots/add-server-1440.jpg)
-- [Loading](../../TestResults/dashboard/screenshots/overview-loading.jpg), [empty](../../TestResults/dashboard/screenshots/overview-empty.jpg), [error](../../TestResults/dashboard/screenshots/overview-error.jpg)
-- [Live activity](../../TestResults/dashboard/screenshots/live-activity-1440.jpg)
+The local evidence covers fleet overview, query investigation, a narrow viewport, the Add server drawer, loading/empty/error states, and live activity. See the validation results above for the checks recorded with these captures.
 
 No dependencies, external fonts, CDN resources or new third-party visual assets were added. The existing system font fallback is used. Build hashes now use Rolldown's hexadecimal alphabet to satisfy the unchanged eight-character alphanumeric asset contract.
 
