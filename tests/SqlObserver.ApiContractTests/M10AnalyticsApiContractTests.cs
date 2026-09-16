@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SqlObserver.Application.Ports;
@@ -31,6 +32,33 @@ public sealed class M10AnalyticsApiContractTests : IClassFixture<M10AnalyticsApi
     private readonly M10AnalyticsApiFactory factory;
 
     public M10AnalyticsApiContractTests(M10AnalyticsApiFactory factory) => this.factory = factory;
+
+    [Fact]
+    public async Task BackfillReadUsesItsOwnSurfaceInsteadOfGeneralJobInventory()
+    {
+        factory.Repository.Clear();
+        using HttpClient client = CreateClient("viewer");
+        using HttpResponseMessage response = await client.GetAsync($"/api/v1/observation-targets/{M10AnalyticsApiFactory.Target:D}/analytics/backfill");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("backfill", body.RootElement.GetProperty("surface").GetString());
+        Assert.Equal("backfill", body.RootElement.GetProperty("items")[0].GetProperty("surface").GetString());
+    }
+
+    [Fact]
+    public void ServerCompositionResolvesRetentionPolicyServiceWithProductionRepository()
+    {
+        using var composed = factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, configuration) =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:SqlObserverRepository"] = "Host=localhost;Database=composition_test;Username=sqlobserver_server;SSL Mode=VerifyFull",
+            })));
+
+        Assert.IsType<SqlObserver.Infrastructure.PostgreSql.PostgreSqlAnalyticsRepositoryPort>(
+            composed.Services.GetRequiredService<IRetentionPolicyRepositoryPort>());
+        Assert.IsType<SqlObserver.Application.Services.RetentionPolicyService>(
+            composed.Services.GetRequiredService<IRetentionPolicyService>());
+    }
 
     [Fact]
     public async Task RuntimeRoutesReturnBoundedTargetScopedDtos()

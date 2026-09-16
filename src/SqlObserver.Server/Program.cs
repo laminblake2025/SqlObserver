@@ -108,6 +108,7 @@ builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services 
 builder.Services.AddSingleton<IAnalyticsRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
 builder.Services.AddSingleton<IAnalyticsSurfaceRepositoryPort>(static services => (IAnalyticsSurfaceRepositoryPort)services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
 builder.Services.AddSingleton<IRetentionRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Retention);
+builder.Services.AddSingleton<IRetentionPolicyRepositoryPort>(static services => (IRetentionPolicyRepositoryPort)services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
 builder.Services.AddSingleton<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddSingleton<IRetentionService, RetentionService>();
 builder.Services.AddSingleton<IRetentionPolicyService, RetentionPolicyService>();

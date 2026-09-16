@@ -39,7 +39,7 @@ public static class AnalyticsEndpoints
         targets.MapGet("/baselines", BaselinesAsync);
         targets.MapGet("/forecasts", ForecastsAsync);
         targets.MapGet("/jobs", JobsAsync);
-        targets.MapGet("/backfill", JobsAsync);
+        targets.MapGet("/backfill", BackfillAsync);
         targets.MapGet("/host/status", HostStatusAsync);
         targets.MapGet("/host/metrics", HostMetricsAsync);
         targets.MapGet("/replication/status", ReplicationStatusAsync);
@@ -123,6 +123,7 @@ public static class AnalyticsEndpoints
         catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
     }
     private static Task<IResult> JobsAsync(HttpContext c, Guid instanceId, IAnalyticsSurfaceRepositoryPort p, WindowsGroupRoleResolver r, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, int limit = 100, string? cursor = null, CancellationToken ct = default) => ReadSurfaceAsync(c, instanceId, p, r, "jobs", fromUtc, toUtc, limit, cursor, ct);
+    private static Task<IResult> BackfillAsync(HttpContext c, Guid instanceId, IAnalyticsSurfaceRepositoryPort p, WindowsGroupRoleResolver r, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, int limit = 100, string? cursor = null, CancellationToken ct = default) => ReadSurfaceAsync(c, instanceId, p, r, "backfill", fromUtc, toUtc, limit, cursor, ct);
     private static Task<IResult> HostStatusAsync(HttpContext c, Guid instanceId, IAnalyticsSurfaceRepositoryPort p, WindowsGroupRoleResolver r, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, int limit = 200, string? cursor = null, CancellationToken ct = default) => ReadSurfaceAsync(c, instanceId, p, r, "host/status", fromUtc, toUtc, limit, cursor, ct);
     private static Task<IResult> HostMetricsAsync(HttpContext c, Guid instanceId, IAnalyticsSurfaceRepositoryPort p, WindowsGroupRoleResolver r, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, int limit = 200, string? cursor = null, CancellationToken ct = default) => ReadSurfaceAsync(c, instanceId, p, r, "host/metrics", fromUtc, toUtc, limit, cursor, ct);
     private static Task<IResult> ReplicationStatusAsync(HttpContext c, Guid instanceId, IAnalyticsSurfaceRepositoryPort p, WindowsGroupRoleResolver r, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, int limit = 200, string? cursor = null, CancellationToken ct = default) => ReadSurfaceAsync(c, instanceId, p, r, "replication/status", fromUtc, toUtc, limit, cursor, ct);

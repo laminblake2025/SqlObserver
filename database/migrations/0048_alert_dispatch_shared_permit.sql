@@ -30,6 +30,7 @@ BEGIN
   PERFORM control.assert_worker_lease(p_work_key,p_owner_execution_id,p_fencing);
   RETURN changed=1;
 END $$;
+
 CREATE OR REPLACE FUNCTION alerting.renew_delivery_with_outcome(p_delivery_id uuid, p_target_id uuid, p_work_key text, p_owner_execution_id uuid, p_fencing bigint)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, alerting, control AS $$
 DECLARE readiness text; changed boolean;
@@ -70,3 +71,4 @@ EXCEPTION
             AND l.expires_at>clock_timestamp());
     RETURN 'LostFence';
 END $$;
+

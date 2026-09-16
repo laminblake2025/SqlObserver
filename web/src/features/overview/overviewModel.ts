@@ -19,6 +19,15 @@ export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: str
   if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end || end - start > 31 * 86400000 || end > now + 60000) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
   return {fromUtc:new Date(start).toISOString(), toUtc:new Date(end).toISOString()};
 }
+export function customUtcWindow(from:string,to:string,now:number,maximumDays=31): {fromUtc:string;toUtc:string} {
+  const parse=(value:string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value) ? Date.parse(`${value}Z`) : NaN;
+  const start=parse(from),end=parse(to);
+  if (!Number.isFinite(start)||!Number.isFinite(end)) throw new Error('Enter both dates and times in UTC.');
+  if (start>=end) throw new Error('The end must be after the start.');
+  if (end-start>maximumDays*86400000) throw new Error(`Choose a range of ${maximumDays} days or less.`);
+  if (end>now) throw new Error('The end must not be in the future (UTC).');
+  return {fromUtc:new Date(start).toISOString(),toUtc:new Date(end).toISOString()};
+}
 export function aggregateValue(evidence: readonly OverviewEvidence[], key: 'activeAlerts' | 'blockedSessions' | 'deadlocks'): {text: string; note: string} {
   const values: OverviewValue[] = evidence.map(item => item[key]);
   const known = values.filter(v => v.value !== null && !['stale','unavailable','unsupported','disabled'].includes(v.state));

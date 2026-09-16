@@ -83,3 +83,4 @@ AS $sqlobserver$
     ORDER BY due.discovery_requested_at, due.instance_id
     LIMIT p_max_targets;
 $sqlobserver$;
+

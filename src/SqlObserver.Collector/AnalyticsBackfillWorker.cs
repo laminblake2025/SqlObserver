@@ -156,7 +156,10 @@ public sealed class AnalyticsBackfillWorker(
                 while (more && !cycleCancellation.IsCancellationRequested);
                 if (more || cycleCancellation.IsCancellationRequested || stopwatch.Elapsed >= AnalyticsJobBounds.MaximumDuration) break;
                 day = dayEnd;
-                current = current with { Cursor = null, CurrentDayUtc = day };
+                // Completion still passes through the validated replay/store
+                // contract. Keep its last in-range calendar day when the
+                // local loop reaches the exclusive end of the request.
+                current = current with { Cursor = null, CurrentDayUtc = day < current.ToUtc ? day : current.CurrentDayUtc };
                 if (day < current.ToUtc)
                     await store.SaveCursorAsync(current, lease, day, null, cycleCancellation.Token).ConfigureAwait(false);
             }

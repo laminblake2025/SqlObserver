@@ -12,7 +12,7 @@ const at = "2026-09-09T00:00:00Z";
 const surfaces = ["incidents", "jobs", "backfill", "host/status", "host/metrics", "replication/status", "replication/evidence", "diagnostics/search", "evidence-packets"];
 
 function paged(surface) {
-  return { targetId: target, surface: surface === "backfill" ? "jobs" : surface, fromUtc, toUtc, items: [], state: "no_data", nextCursor: null, cutoffUtc: at, snapshotUtc: at, generation: 1, targetRevision: 1 };
+  return { targetId: target, surface: surface, fromUtc, toUtc, items: [], state: "no_data", nextCursor: null, cutoffUtc: at, snapshotUtc: at, generation: 1, targetRevision: 1 };
 }
 
 test("analytics surface defaults stay within every server route bound", async () => {
@@ -29,7 +29,7 @@ test("analytics surface defaults stay within every server route bound", async ()
     for (const surface of surfaces) {
       const page = await getAnalyticsSurface(target, surface, new AbortController().signal);
       assert.equal(page.targetId, target);
-      assert.equal(page.surface, surface === "backfill" ? "jobs" : surface);
+      assert.equal(page.surface, surface);
       assert.equal(page.nextCursor, null);
       assert.equal(page.fromUtc, fromUtc);
       assert.equal(page.toUtc, toUtc);
@@ -87,11 +87,11 @@ test("jobs and backfill identify inventory scope without claiming UTC row filter
   const page = { fromUtc, toUtc, snapshotUtc: at, cutoffUtc: at };
   for (const surface of ["jobs", "backfill"]) {
     const text = analyticsScopeText(surface, page);
-    assert.match(text, /^Job inventory\./);
+    assert.match(text, surface === "backfill" ? /^Backfill job inventory\./ : /^Job inventory\./);
     assert.match(text, /not filtered/);
     assert.match(text, /Snapshot: 2026-09-09T00:00:00Z/);
     assert.doesNotMatch(text, /2026-09-08T00:00:00Z/);
-    assert.equal(analyticsEmptyStateText(surface), "No job inventory rows are available in this response.");
+    assert.equal(analyticsEmptyStateText(surface), surface === "backfill" ? "No backfill jobs are available in this response." : "No job inventory rows are available in this response.");
   }
   const metricText = analyticsScopeText("host/metrics", page);
   assert.match(metricText, /^UTC window:/);
@@ -101,7 +101,7 @@ test("jobs and backfill identify inventory scope without claiming UTC row filter
 test("job no-data status uses inventory wording before a page exists", () => {
   const messages = { "no-data": "No data is available for this window." };
   assert.equal(analyticsStatusText("jobs", "no-data", null, messages), "No job inventory rows are available in this response.");
-  assert.equal(analyticsStatusText("backfill", "no-data", null, messages), "No job inventory rows are available in this response.");
+  assert.equal(analyticsStatusText("backfill", "no-data", null, messages), "No backfill jobs are available in this response.");
   assert.equal(analyticsStatusText("host/metrics", "no-data", null, messages), "No data is available for this window.");
   assert.equal(analyticsStatusText("jobs", "no-data", "Request failed.", messages), "Request failed.");
 });

@@ -13,6 +13,25 @@ namespace SqlObserver.IntegrationTests.SqlServer;
 public sealed class M7QueryPerformanceIntegrationTests
 {
     [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task PlanCacheSourceIncludesOnlyInventoriedDatabasesBeforeApplyingItsRowBound()
+    {
+        await using var connection = new Microsoft.Data.SqlClient.SqlConnection(SqlServerLabContract.ConnectionString);
+        await connection.OpenAsync();
+        var databaseIds = new HashSet<int>();
+        await using (var inventory = new Microsoft.Data.SqlClient.SqlCommand(
+            "SELECT database_id FROM sys.databases WHERE database_id > 4 AND state = 0 AND user_access = 0", connection))
+        await using (var databases = await inventory.ExecuteReaderAsync())
+            while (await databases.ReadAsync()) databaseIds.Add(databases.GetInt32(0));
+        await using var command = new Microsoft.Data.SqlClient.SqlCommand(SqlServerQueryPerformanceCollector.PlanCacheSql, connection) { CommandTimeout = 10 };
+        command.Parameters.AddWithValue("probe_rows", QueryPerformanceBounds.ProbeRows);
+        command.Parameters.AddWithValue("sample_start", DateTime.UtcNow.AddMinutes(-1));
+        command.Parameters.AddWithValue("sample_end", DateTime.UtcNow);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync()) Assert.Contains(reader.GetInt32(0), databaseIds);
+    }
+
+    [Fact]
     public async Task TargetWideCacheDoesNotContaminateQueryStoreDatabase()
     {
         var db = new SqlServerDatabaseIdentity(5, "query_store");

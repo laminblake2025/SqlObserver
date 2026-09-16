@@ -11,14 +11,14 @@ export function analyticsScopeText(surface: AnalyticsSurface, page: AnalyticsSco
   const snapshot = page.snapshotUtc ?? "Unavailable";
   const cutoff = page.cutoffUtc ?? "Unavailable";
   if (surface === "jobs" || surface === "backfill") {
-    return `Job inventory. Records are not filtered by time. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
+    return `${surface === "backfill" ? "Backfill job inventory" : "Job inventory"}. Records are not filtered by time. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
   }
   return `UTC window: ${page.fromUtc} to ${page.toUtc}. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
 }
 
 export function analyticsEmptyStateText(surface: AnalyticsSurface): string {
   return surface === "jobs" || surface === "backfill"
-    ? "No job inventory rows are available in this response."
+    ? surface === "backfill" ? "No backfill jobs are available in this response." : "No job inventory rows are available in this response."
     : "No rows are available in this bounded window.";
 }
 

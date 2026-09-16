@@ -27,7 +27,7 @@ function canRetry(state: AnalyticsPanelState): boolean {
   return state === "degraded" || state === "stale" || state === "backfilling" || state === "cursor-invalid";
 }
 
-export function AnalyticsSurfacePanel({ targetId, surface }: { targetId: string; surface: AnalyticsSurface }) {
+export function AnalyticsSurfacePanel({ targetId, surface, timeWindow }: { targetId: string; surface: AnalyticsSurface; timeWindow?: {fromUtc:string;toUtc:string} }) {
   const [state, setState] = useState<AnalyticsPanelState>("loading");
   const [page, setPage] = useState<AnalyticsSurfacePage | null>(null);
   const [paging, setPaging] = useState<Paging>({});
@@ -37,7 +37,7 @@ export function AnalyticsSurfacePanel({ targetId, surface }: { targetId: string;
   useEffect(() => {
     const controller = new AbortController();
     setState("loading"); setPage(null); setError(null);
-    getAnalyticsSurface(targetId, surface, controller.signal, paging).then(value => {
+    getAnalyticsSurface(targetId, surface, controller.signal, {...timeWindow,...paging}).then(value => {
       if (controller.signal.aborted) return;
       setPage(value); setState(panelStateForSurface(value.state, value.items.length > 0));
     }).catch((failure: unknown) => {
@@ -46,7 +46,7 @@ export function AnalyticsSurfacePanel({ targetId, surface }: { targetId: string;
       setState(panelStateForRequestError(status, hasCursor)); setError(messageFor(failure, status, hasCursor));
     });
     return () => controller.abort();
-  }, [targetId, surface, paging, reload]);
+  }, [targetId, surface, paging, reload, timeWindow?.fromUtc, timeWindow?.toUtc]);
 
   const retry = () => { setState("loading"); setPage(null); setError(null); setReload(value => value + 1); };
   const restartPaging = () => {

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { aggregateValue, displayMetric, overviewEvidenceFooter, overviewHref, overviewResourceObservationText, rankedIssues, readOverviewScope } from './overviewModel';
 import { useOverviewAnalytics } from './useOverviewAnalytics';
 import { OverviewChart } from './OverviewChart';
-import type { OverviewRange, OverviewResource } from './overviewTypes';
+import { TimeRangeControls } from '../../components/TimeRangeControls';
+import type { OverviewResource } from './overviewTypes';
 
 const labels:Record<string,string>={'host.cpu.percent':'Host CPU','host.memory.available_bytes':'Available host memory','host.volume.free_bytes':'Volume free space','host.volume.read_latency_ms':'Volume read latency','host.volume.write_latency_ms':'Volume write latency','replication.latency_seconds':'Replication latency (worst subscription)'};
 export function OverviewPage({refresh,onAdd}: {refresh:number;onAdd:()=>void}) {
@@ -13,7 +14,6 @@ export function OverviewPage({refresh,onAdd}: {refresh:number;onAdd:()=>void}) {
   const [resourceMetric,setResourceMetric]=useState('host.cpu.percent');
   const [contention,setContention]=useState('blocking.sessions');
   const [serverSearch,setServerSearch]=useState('');
-  const [from,setFrom]=useState(scope.from?.slice(0,16)??''); const [to,setTo]=useState(scope.to?.slice(0,16)??'');
   const result=useOverviewAnalytics(scope,refresh,automatic); const data=result.data;
   // Keep the authorized selector choices while evidence reloads; no old evidence is shown under a new selection.
   const [choices,setChoices]=useState(data?.targets??[]);
@@ -31,11 +31,10 @@ export function OverviewPage({refresh,onAdd}: {refresh:number;onAdd:()=>void}) {
   const renderResources=(rows:readonly OverviewResource[],destination:string)=>rows.length ? <ul className="overview-resources">{rows.map((r,i)=><li key={`${r.targetId}:${r.label}:${i}`}><div><a href={href(destination,r.targetId)}>{r.server}</a><span>{Object.entries(labels).reduce((label,[key,name])=>label.replace(key,name),r.label)}</span></div><div><strong>{displayMetric(r.value)} <small>{r.unit}</small></strong><small>{overviewResourceObservationText(r,data?.refreshedAtUtc??'')}</small></div></li>)}</ul>:<p className="overview-empty">No observations available for this selection.</p>;
   return <div className="overview-page">
     <div className="overview-controls"><label>Server<select aria-label="Overview server" value={scope.target} onChange={e=>navigate({target:e.target.value})}><option value="">All servers</option>{scope.target&&!choices.some(t=>t.targetId===scope.target)&&<option value={scope.target}>Selected server</option>}{choices.map(t=><option key={t.targetId} value={t.targetId}>{t.displayName}{t.lifecycle!=='active'?` · ${t.lifecycle}`:''}</option>)}</select></label>
-      <label>Time range<select value={scope.range} onChange={e=>navigate({range:e.target.value as OverviewRange})}>{[['1h','Last hour'],['6h','Last 6 hours'],['24h','Last 24 hours'],['7d','Last 7 days'],['custom','Custom UTC range']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+      <TimeRangeControls scope={scope} onChange={navigate}/>
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={e=>navigate({compare:e.target.checked})}/>Compare previous period</label>
       <label className="overview-check"><input type="checkbox" checked={automatic} disabled={scope.range==='custom'} onChange={e=>setAutomatic(e.target.checked)}/>Refresh every 60s</label>
     </div>
-    {scope.range==='custom'&&<form className="overview-controls" onSubmit={e=>{e.preventDefault();navigate({from:from?`${from}:00Z`:undefined,to:to?`${to}:00Z`:undefined});}}><label>From (UTC)<input required type="datetime-local" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To (UTC)<input required type="datetime-local" value={to} onChange={e=>setTo(e.target.value)}/></label><button type="submit">Apply range</button></form>}
     {result.loading&&<p role="status" className="overview-coverage">Loading analytics for {scope.target?'the selected server':'all authorized servers'}…</p>}
     {result.error&&<p role="alert" className="status-message">{result.error}</p>}
     {data&&<><div className="overview-coverage" role="status"><span className={current===data.evidence.length?'coverage-dot':'coverage-dot partial'}/><strong>{current}/{data.evidence.length} servers reporting current SQL core evidence</strong><span>{data.excludedTargets} disabled/retired excluded from All servers</span><small>Refreshed {new Date(data.refreshedAtUtc).toISOString().replace('T',' ')} · SQL core freshness does not imply coverage for other sources</small></div>

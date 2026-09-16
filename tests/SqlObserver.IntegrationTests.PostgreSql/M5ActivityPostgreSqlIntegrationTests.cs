@@ -294,9 +294,14 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         Guid firstRun = Guid.NewGuid();
         Guid secondRun = Guid.NewGuid();
         Guid emptyRun = Guid.NewGuid();
+        Guid crossingRun = Guid.NewGuid();
         await SeedTargetAndRunAsync(database, targetId, firstRun, "activity.sessions", observedAt);
         await SeedTargetAndRunAsync(database, targetId, secondRun, "activity.sessions", observedAt);
-        await SeedTargetAndRunAsync(database, targetId, emptyRun, "activity.sessions", observedAt);
+        await SeedTargetAndRunAsync(database, targetId, emptyRun, "activity.sessions", observedAt, outputItemCount: 0);
+        // A non-empty outcome with missing retained rows must not invent a
+        // fourth zero-session sample in the selected window.
+        await SeedTargetAndRunAsync(database, targetId, Guid.NewGuid(), "activity.sessions", observedAt);
+        await SeedTargetAndRunAsync(database, targetId, crossingRun, "activity.sessions", observedAt.AddMinutes(1), startedAt: observedAt);
         await EnsurePartitionsAsync(database, observedAt, observedAt);
         await InsertSessionAsync(database, targetId, firstRun, observedAt, 51, databaseId: 5);
         await InsertSessionAsync(database, targetId, firstRun, observedAt, 52, databaseId: 5);
@@ -305,11 +310,17 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await InsertSessionAsync(database, targetId, secondRun, observedAt, 51, databaseId: 5);
         await InsertSessionAsync(database, targetId, secondRun, observedAt, 61, databaseId: 6);
         await InsertSessionAsync(database, targetId, secondRun, observedAt, 62, databaseId: 6);
+        await InsertSessionAsync(database, targetId, firstRun, observedAt, 91, databaseId: null);
+        await InsertSessionAsync(database, targetId, secondRun, observedAt, 91, databaseId: null);
+        // The complete run's observation time is outside the selected window;
+        // its earlier row must not be presented as a complete historical sample.
+        await InsertSessionAsync(database, targetId, crossingRun, observedAt, 81, databaseId: 5);
+        await InsertSessionAsync(database, targetId, crossingRun, observedAt.AddMinutes(1), 82, databaseId: 5);
 
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         var history = new PostgreSqlOverviewHistoryPort(server);
         IReadOnlyList<OverviewSeries> result = await history.ReadDatabaseActivityAsync(
-            targetId, 1, from, repositoryNow, repositoryNow, CancellationToken.None);
+            targetId, 1, from, observedAt.AddSeconds(30), repositoryNow, CancellationToken.None);
 
         OverviewSeries databaseFive = Assert.Single(result, item => item.Dimension!.Contains("Database 5", StringComparison.Ordinal));
         OverviewSeries databaseSix = Assert.Single(result, item => item.Dimension!.Contains("Database 6", StringComparison.Ordinal));
@@ -318,6 +329,9 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         Assert.Equal(3, databaseFive.Points[0].Samples);
         Assert.Equal(1d, Assert.Single(databaseSix.Points).Value);
         Assert.Equal(3, databaseSix.Points[0].Samples);
+        OverviewSeries unknown = Assert.Single(result, item => item.Dimension!.Contains("Unknown database", StringComparison.Ordinal));
+        Assert.Equal(2d / 3d, Assert.IsType<double>(Assert.Single(unknown.Points).Value), precision: 5);
+        Assert.Equal(3, unknown.Points[0].Samples);
         Assert.DoesNotContain(result, item => item.Dimension?.Contains("Database 7", StringComparison.Ordinal) == true);
 
         await using NpgsqlConnection connection = await server.OpenConnectionAsync();
@@ -423,11 +437,19 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync()
     {
         RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
-        var runner = new PostgreSqlMigrationPort(database.DataSource);
-        MigrationBatchResult result = await runner.ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
-        Assert.False(result.HasFailures);
-        return database;
+        try
+        {
+            var runner = new PostgreSqlMigrationPort(database.DataSource);
+            MigrationBatchResult result = await runner.ApplyPendingAsync(
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+            Assert.False(result.HasFailures);
+            return database;
+        }
+        catch
+        {
+            await database.DisposeAsync();
+            throw;
+        }
     }
 
     private static async Task<DateTimeOffset> ReadRepositoryClockAsync(RepositoryTestDatabase database)
@@ -486,7 +508,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         return (work, lease, runId, new CommitCollectorRunRequest(work, summary, payload, CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout));
     }
 
-    private static async Task SeedTargetAndRunAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, string collectorId, DateTimeOffset completedAt)
+    private static async Task SeedTargetAndRunAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, string collectorId, DateTimeOffset completedAt, int outputItemCount = 2, DateTimeOffset? startedAt = null)
     {
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
@@ -502,14 +524,14 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
                 (run_id, instance_id, collector_id, collector_version, output_schema_version,
                  target_revision, schedule_revision, work_key, owner_execution_id, fencing_token,
                  request_digest, scheduled_for, started_at)
-            VALUES (@run, @target, @collector, 1, 1, 1, 1, @work, @owner, 1, decode(repeat('aa', 32), 'hex'), @at, @at);
+            VALUES (@run, @target, @collector, 1, 1, 1, 1, @work, @owner, 1, decode(repeat('aa', 32), 'hex'), @started, @started);
             INSERT INTO telemetry.collection_run_outcome
                 (run_id, outcome, reason_code, attempt_count, retry_count, duration_ms,
                  source_row_count, output_item_count, inserted_item_count, duplicate_item_count,
                  rejected_item_count, response_bytes, output_bytes, persisted_bytes, truncated,
                  loss_detected, loss_kind, loss_count_exact, lost_row_count, lost_byte_count,
                  completion_digest, completed_at)
-            VALUES (@run, 'succeeded', 'completed', 1, 0, 10, 2, 2, 2, 0, 0, 128, 128, 128,
+            VALUES (@run, 'succeeded', 'completed', 1, 0, 10, @items, @items, @items, 0, 0, 128, 128, 128,
                     false, false, 'none', true, 0, 0, decode(repeat('bb', 32), 'hex'), @at);
             """,
             connection);
@@ -520,6 +542,8 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         command.Parameters.AddWithValue("work", $"collector/run/{collectorId}/{targetId.Value:N}");
         command.Parameters.AddWithValue("owner", Guid.NewGuid());
         command.Parameters.AddWithValue("at", completedAt);
+        command.Parameters.AddWithValue("items", outputItemCount);
+        command.Parameters.AddWithValue("started", startedAt ?? completedAt);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -532,8 +556,8 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     private static async Task InsertWaitAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, string waitType, long tasks, long waitMs, long maxWaitMs, long signalMs) =>
         await ExecuteAsync(database, "INSERT INTO telemetry.server_wait_snapshot (observed_at, collection_run_id, instance_id, target_revision, wait_type, waiting_tasks_count, wait_time_ms, maximum_wait_time_ms, signal_wait_time_ms, collected_at) VALUES (@at,@run,@target,1,@type,@tasks,@wait,@max,@signal,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("type", waitType), ("tasks", tasks), ("wait", waitMs), ("max", maxWaitMs), ("signal", signalMs));
 
-    private static async Task InsertSessionAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, int sessionId, int databaseId = 5, bool isUserProcess = true) =>
-        await ExecuteAsync(database, "INSERT INTO telemetry.activity_session_snapshot (observed_at, collection_run_id, instance_id, target_revision, session_id, status_code, is_user_process, database_id, open_transaction_count, cpu_ms, memory_usage_pages, reads, writes, logical_reads, total_elapsed_ms, collected_at) VALUES (@at,@run,@target,1,@session,'running',@user,@database,0,10,20,30,40,50,60,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("session", sessionId), ("user", isUserProcess), ("database", databaseId));
+    private static async Task InsertSessionAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, int sessionId, int? databaseId = 5, bool isUserProcess = true) =>
+        await ExecuteAsync(database, "INSERT INTO telemetry.activity_session_snapshot (observed_at, collection_run_id, instance_id, target_revision, session_id, status_code, is_user_process, database_id, open_transaction_count, cpu_ms, memory_usage_pages, reads, writes, logical_reads, total_elapsed_ms, collected_at) VALUES (@at,@run,@target,1,@session,'running',@user,@database,0,10,20,30,40,50,60,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("session", sessionId), ("user", isUserProcess), ("database", (object?)databaseId ?? DBNull.Value));
 
     private static async Task InsertRequestAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, DateTimeOffset at, int sessionId, int requestId) =>
         await ExecuteAsync(database, "INSERT INTO telemetry.activity_request_snapshot (observed_at, collection_run_id, instance_id, target_revision, session_id, request_id, status_code, command_code, database_id, cpu_ms, total_elapsed_ms, reads, writes, logical_reads, row_count, percent_complete, collected_at) VALUES (@at,@run,@target,1,@session,@request,'running','select',5,10,20,30,40,50,60,25,@at);", ("at", at), ("run", runId), ("target", targetId.Value), ("session", sessionId), ("request", requestId));

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AnalyticsSurfacePanel } from "./features/analytics/AnalyticsSurfacePanel";
-import { analyticsSurfaceCatalog } from "./features/analytics/analyticsSurfaceCatalog";
+import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
 import { PageHeading } from "./components/DiagnosticUi";
@@ -47,8 +46,8 @@ export function App() {
   const [message, setMessage] = useState<string>();
   const [refresh, setRefresh] = useState(0);
   const [directTargetLookup, setDirectTargetLookup] = useState<DirectTargetLookup>();
-  const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
   const [adding, setAdding] = useState(false);
+  const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
 
   useEffect(() => {
     const change = () => setRoute(readRoute(location.hash));
@@ -229,16 +228,7 @@ export function App() {
               {route.page === "alerts" && <TargetAlertsPanel {...props} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
-              {route.page === "analytics" && (
-                <>
-                  <label className="surface-selector">Evidence surface
-                    <select value={surface} onChange={(event) => setSurface(event.target.value as AnalyticsSurface)}>
-                      {analyticsSurfaceCatalog.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </label>
-                  <AnalyticsSurfacePanel key={surface} targetId={props.instanceId} surface={surface} />
-                </>
-              )}
+              {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={refresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>
           ) : null}
         </main>

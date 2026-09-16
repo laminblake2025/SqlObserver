@@ -20,6 +20,7 @@ BEGIN
     RETURNING q.operation_id,q.observations,q.due_at) SELECT claimed.operation_id,claimed.observations,claimed.due_at FROM claimed ORDER BY (claimed.observations->0->>'ObservedAtUtc')::timestamptz,claimed.operation_id;
   PERFORM control.assert_worker_lease(p_work_key,p_owner_execution_id,p_fencing);
 END $$;
+
 CREATE OR REPLACE FUNCTION alerting.claim_due_deliveries(p_instance_id uuid, p_work_key text, p_owner_execution_id uuid, p_fencing bigint, p_max_results integer)
 RETURNS TABLE(delivery_id uuid, alert_id uuid, destination_id uuid, target_id uuid, kind text, configuration_reference text, payload bytea, attempt integer, due_at timestamptz)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, alerting, control AS $$
@@ -36,3 +37,4 @@ BEGIN
     RETURNING d.delivery_id,d.alert_id,d.destination_id,d.instance_id,(SELECT z.kind FROM alerting.destination z WHERE z.destination_id=d.destination_id AND z.instance_id=p_instance_id),(SELECT z.configuration_reference FROM alerting.destination z WHERE z.destination_id=d.destination_id AND z.instance_id=p_instance_id),convert_to(d.payload::text,'UTF8'),d.attempt,d.due_at;
   PERFORM control.assert_worker_lease(p_work_key,p_owner_execution_id,p_fencing);
 END $$;
+
