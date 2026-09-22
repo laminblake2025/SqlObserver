@@ -23,8 +23,10 @@ public static class TargetDeadlockEndpoints
     {
         try
         {
-            DateTimeOffset to = ParseUtc(toUtc) ?? DateTimeOffset.UtcNow; DateTimeOffset from = ParseUtc(fromUtc) ?? to.AddHours(-24);
             DeadlockPageCursor? decoded = cursor is null ? null : DecodeCursor(cursor);
+            // A continuation belongs to the first page's immutable investigation window.
+            DateTimeOffset to = ParseUtc(toUtc) ?? decoded?.ToUtc ?? DateTimeOffset.UtcNow;
+            DateTimeOffset from = ParseUtc(fromUtc) ?? decoded?.FromUtc ?? to.AddHours(-24);
             DeadlockPage? page = await service.ListDeadlocksAsync(new ListDeadlocksQuery(resolver.Resolve(http.User), new MonitoredInstanceId(instanceId), from, to, limit, decoded, Timeout), cancellationToken);
             return page is null ? Results.NotFound() : Results.Ok(new DeadlockPageResponse(instanceId, page.RepositoryTimeUtc, page.Items.Select(x => new DeadlockSummaryResponse(x.EventId, x.OccurredAtUtc, x.Fingerprint, x.ParticipantCount, x.RelationCount, x.ParseTruncated, x.CollectedAtUtc)).ToArray(), page.NextCursor is null ? null : EncodeCursor(page.NextCursor)));
         }

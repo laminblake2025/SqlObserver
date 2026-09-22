@@ -15,7 +15,15 @@ using SqlObserver.Reporting;
 using SqlObserver.Observability;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-builder.Services.AddWindowsService(options => options.ServiceName = "SqlObserver Server");
+if (builder.Environment.IsEnvironment("ContractTesting") && OperatingSystem.IsWindows())
+{
+    // In-process contract hosts must not write to a machine's Windows event log.
+    builder.Logging.AddFilter<Microsoft.Extensions.Logging.EventLog.EventLogLoggerProvider>(static (_, _) => false);
+}
+if (!builder.Environment.IsEnvironment("ContractTesting"))
+{
+    builder.Services.AddWindowsService(options => options.ServiceName = "SqlObserver Server");
+}
 AuthenticationBuilder authentication = builder.Services
     .AddAuthentication(NegotiateDefaults.AuthenticationScheme);
 if (!builder.Environment.IsEnvironment("ContractTesting"))
@@ -30,12 +38,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddDataProtection();
 builder.Services.AddSqlObserverServerObservability(builder.Configuration, builder.Environment);
 builder.Services.AddOptions<OperationalHealthServerOptions>().Validate(options => options.RequestTimeout > TimeSpan.Zero && options.RequestTimeout <= TimeSpan.FromMinutes(2), "Operational health timeout must be positive and bounded.").ValidateOnStart();
-builder.Services.AddRequestTimeouts(options =>
-    options.DefaultPolicy = new Microsoft.AspNetCore.Http.Timeouts.RequestTimeoutPolicy
-    {
-        Timeout = TimeSpan.FromSeconds(15),
-        TimeoutStatusCode = StatusCodes.Status504GatewayTimeout,
-    });
+builder.Services.AddRequestTimeouts(ServerRequestTimeouts.Configure);
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new CanonicalUtcDateTimeOffsetConverter());

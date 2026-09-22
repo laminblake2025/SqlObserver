@@ -1,4 +1,5 @@
 using Npgsql;
+using SqlObserver.Application.Ports;
 using System.Security.Cryptography;
 using Testcontainers.PostgreSql;
 
@@ -13,9 +14,13 @@ public sealed class PostgreSql18CollectionDefinition : ICollectionFixture<Postgr
 public sealed class PostgreSql18Fixture : IAsyncLifetime
 {
     public const string Image = "postgres:18.4-bookworm@sha256:7e6103cf85f88f7a0eddb3ec0b1ba8940eba098ed118ade25a729ca9daee5568";
+    // Building the complete catalog is fixture preparation, not a runtime-operation deadline.
+    internal static readonly RepositoryCallTimeout MigrationSetupTimeout = new(TimeSpan.FromMinutes(2));
 
     private readonly PostgreSqlContainer? _container;
     private readonly string _adminConnectionString;
+
+    public bool UsesPinnedContainer => _container is not null;
 
     public PostgreSql18Fixture()
     {

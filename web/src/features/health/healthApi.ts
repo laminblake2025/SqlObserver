@@ -1,7 +1,7 @@
+import { responseFailure } from "../../api/responseFailure.ts";
 import type {
   DatabaseFileHealthPage,
   DatabaseHealthPage,
-  TargetHealthEvidence,
   TargetHealthSnapshot,
 } from "./healthTypes";
 
@@ -44,30 +44,6 @@ export async function getDatabaseFileHealth(
   );
 }
 
-export async function getTargetHealthEvidence(
-  instanceId: string,
-  signal: AbortSignal,
-): Promise<TargetHealthEvidence> {
-  const [target, databases, files] = await Promise.allSettled([
-    getTargetHealth(instanceId, signal),
-    getDatabaseHealth(instanceId, signal),
-    getDatabaseFileHealth(instanceId, signal),
-  ]);
-  if (target.status === "rejected") {
-    throw target.reason;
-  }
-
-  if (databases.status === "rejected") {
-    throw databases.reason;
-  }
-
-  if (files.status === "rejected") {
-    throw files.reason;
-  }
-
-  return { target: target.value, databases: databases.value, files: files.value };
-}
-
 async function getJson<T>(path: string, signal: AbortSignal): Promise<T> {
   let response: Response;
   try {
@@ -85,7 +61,7 @@ async function getJson<T>(path: string, signal: AbortSignal): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new HealthRequestError(getSafeHealthFailure(response.status));
+    throw new HealthRequestError(responseFailure(response, getSafeHealthFailure(response.status)).message);
   }
 
   return (await response.json()) as T;

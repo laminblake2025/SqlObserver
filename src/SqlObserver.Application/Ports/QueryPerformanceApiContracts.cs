@@ -101,6 +101,9 @@ public sealed class QueryPerformanceCursorEnvelope
     public Guid? CollectionRunId { get; }
     public string? PlanFingerprint { get; }
     public string? ObservationKey { get; }
+    // These are request filters, separate from the last row's database/source tie keys.
+    public int? FilterDatabaseId { get; init; }
+    public QueryPerformanceSource? FilterSource { get; init; }
     private static string RequireObservationKey(string value) => value.Length == 32 && value.All(Uri.IsHexDigit) ? value.ToLowerInvariant() : throw new ArgumentException("Observation key must be a 16-byte opaque token.", nameof(value));
     private static DateTimeOffset RequireUtc(DateTimeOffset value) => value.Offset == TimeSpan.Zero ? value : throw new ArgumentException("Cursor timestamp must be UTC.");
 }

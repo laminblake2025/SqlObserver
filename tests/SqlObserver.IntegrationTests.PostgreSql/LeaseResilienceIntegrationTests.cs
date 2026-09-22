@@ -286,7 +286,7 @@ public sealed class LeaseResilienceIntegrationTests
         {
             var migrations = new PostgreSqlMigrationPort(initialDataSource);
             MigrationBatchResult result = await migrations.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
                 CancellationToken.None);
             Assert.False(result.HasFailures);
 
@@ -329,7 +329,7 @@ public sealed class LeaseResilienceIntegrationTests
         {
             var runner = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await runner.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
                 CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;

@@ -33,6 +33,7 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         string firstBody = await first.Content.ReadAsStringAsync();
         using var firstJson = System.Text.Json.JsonDocument.Parse(firstBody);
+        Assert.Equal("metric.threshold", firstJson.RootElement.GetProperty("items")[0].GetProperty("ruleName").GetString());
         string cursor = firstJson.RootElement.GetProperty("nextCursor").GetString()!;
         HttpResponseMessage second = await client.GetAsync($"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/active?limit=1&cursor={Uri.EscapeDataString(cursor)}");
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);

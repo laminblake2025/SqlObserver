@@ -12,6 +12,8 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit --pretty false",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:browser": "playwright test",
+    "benchmark:browser": "playwright test --config playwright.benchmark.config.mjs",
     "assets:generate": "node tools/web-asset-manifest.mjs generate",
     "assets:verify": "node tools/web-asset-manifest.mjs verify",
     "build": "tsc --noEmit && vite build && pnpm run assets:generate && pnpm run assets:verify",
@@ -22,6 +24,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.1.0",

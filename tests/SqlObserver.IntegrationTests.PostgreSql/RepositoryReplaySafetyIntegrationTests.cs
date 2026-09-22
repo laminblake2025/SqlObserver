@@ -332,7 +332,7 @@ public sealed class RepositoryReplaySafetyIntegrationTests
         {
             var runner = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await runner.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
                 CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;

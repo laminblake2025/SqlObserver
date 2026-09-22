@@ -31,16 +31,17 @@ public sealed class OverviewQueryServiceTests
         return new(new(new(guid), new($"sql{index}"), new($"SQL {index:D2}"), new(new(new("sql.example.test"), tcpPort:1433), new(TimeSpan.FromSeconds(5))), lifecycle, new(1), At, At, At), null);
     }
     private static OverviewQueryService Service(IReadOnlyList<ObservationTargetStatusSnapshot> inventory, IAlertQueryService? alertService = null,
-        IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null)
+        IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null,
+        IObservationTargetStatusQueryService? targetService = null, IMetricSeriesQueryService? metricService = null)
     {
         var targets = OverviewStub.Create<IObservationTargetStatusQueryService>((_,args) =>
         {
             var query=(ListObservationTargetsQuery)args![0]!;
             return ValueTask.FromResult(new ObservationTargetStatusPage(inventory.Where(t=>query.Authorization.CanAccess(t.Target.TargetId)).ToArray(),null));
         });
-        return new(targets, OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
+        return new(targetService ?? targets, OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
             activityService??OverviewStub.Create<IActivityProjectionQueryService>(),OverviewStub.Create<IDeadlockProjectionQueryService>(),OverviewStub.Create<IOperationalHealthQueryService>(),
-            OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>());
+            metricService??OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>());
     }
 
     [Theory]
@@ -150,6 +151,51 @@ public sealed class OverviewQueryServiceTests
         });
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             Service([Target(1)], history: history).ReadAsync(new(Auth(), null, At.AddHours(-1), At), caller.Token));
+    }
+
+    [Fact]
+    public async Task InventoryHasOneFiveSecondBudgetAcrossPages()
+    {
+        int calls = 0;
+        bool cancelled = false;
+        async ValueTask<ObservationTargetStatusPage> ReadPage(CancellationToken token)
+        {
+            calls++;
+            try { await Task.Delay(TimeSpan.FromSeconds(3), token); }
+            catch (OperationCanceledException) { cancelled = true; throw; }
+            var target = Target(calls);
+            return new([target], new ObservationTargetListCursor(target.Target.Key, target.Target.TargetId));
+        }
+        var targets = OverviewStub.Create<IObservationTargetStatusQueryService>((_, args) => ReadPage((CancellationToken)args![1]!));
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Service([], targetService: targets).ReadAsync(new(Auth(), null, At.AddHours(-1), At), CancellationToken.None));
+        Assert.True(cancelled);
+        Assert.Equal(2, calls);
+        Assert.InRange(timer.Elapsed.TotalSeconds, 4, 8);
+    }
+
+    [Fact]
+    public async Task TenTargetEvidenceBudgetReturnsPartialResultsAndCancelsAllInFlightReads()
+    {
+        int active = 0, cancelled = 0;
+        async ValueTask<MetricSeriesPage> ReadSlowMetrics(CancellationToken token)
+        {
+            Interlocked.Increment(ref active);
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException) { Interlocked.Increment(ref cancelled); throw; }
+            finally { Interlocked.Decrement(ref active); }
+            throw new InvalidOperationException();
+        }
+        var metrics = OverviewStub.Create<IMetricSeriesQueryService>((_, args) => ReadSlowMetrics((CancellationToken)args![1]!));
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var result = await Service(Enumerable.Range(1, 10).Select(index => Target(index)).ToArray(), metricService: metrics)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At), CancellationToken.None);
+        Assert.InRange(timer.Elapsed.TotalSeconds, 19, 27);
+        Assert.Equal(10, result.Evidence.Count);
+        Assert.Equal(0, active);
+        Assert.True(cancelled > 0);
+        Assert.All(result.Evidence, evidence => Assert.Contains("host.cpu.percent unavailable", evidence.Gaps));
     }
 
     [Fact]

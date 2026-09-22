@@ -17,6 +17,32 @@ public sealed class MigrationIntegrationTests
         _fixture = fixture;
     }
 
+    [Theory]
+    [InlineData("committed")]
+    [InlineData("rolled_back")]
+    [InlineData("disposed")]
+    public async Task CompletedTransactionCleanupPreservesOriginalFailure(string state)
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        if (state == "committed") await transaction.CommitAsync();
+        else if (state == "rolled_back") await transaction.RollbackAsync();
+        else await transaction.DisposeAsync();
+
+        var original = new TimeoutException("original migration deadline");
+        TimeoutException observed = await Assert.ThrowsAsync<TimeoutException>(async () =>
+        {
+            try { throw original; }
+            catch
+            {
+                await PostgreSqlMigrationPort.RollbackWithoutMaskingAsync(transaction);
+                throw;
+            }
+        });
+        Assert.Same(original, observed);
+    }
+
     [Fact]
     public async Task EmbeddedCatalogAndPostgreSql184MigrateIdempotently()
     {
@@ -34,14 +60,15 @@ public sealed class MigrationIntegrationTests
 
         Assert.True(compatibilityResult.IsCompatible);
         Assert.Equal(18, compatibilityResult.ServerVersion.Major);
-        Assert.Equal(4, compatibilityResult.ServerVersion.Update);
+        // The CI container certifies the exact pin; explicitly configured external hosts test major-version compatibility.
+        if (_fixture.UsesPinnedContainer) Assert.Equal(4, compatibilityResult.ServerVersion.Update);
 
         var runner = new PostgreSqlMigrationPort(database.DataSource, catalog);
         MigrationBatchResult first = await runner.ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
             CancellationToken.None);
         MigrationBatchResult second = await runner.ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
             CancellationToken.None);
 
         Assert.False(first.HasFailures);
@@ -260,7 +287,7 @@ public sealed class MigrationIntegrationTests
         }
 
         MigrationBatchResult retry = await runner.ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
             CancellationToken.None);
         Assert.False(retry.HasFailures);
         Assert.Equal(catalog.Migrations.Count - 1, retry.Results.Count);
@@ -274,7 +301,7 @@ public sealed class MigrationIntegrationTests
         {
             var runner = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await runner.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
                 CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;

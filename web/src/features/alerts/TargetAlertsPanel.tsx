@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { RequestStatus } from "../../components/RequestStatus";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DetailPane, EvidenceStatus } from "../../components/DiagnosticUi";
 import { overviewHref, readOverviewScope } from "../overview/overviewModel";
 import { acknowledgeAlert, getActiveAlerts } from "./alertApi";
@@ -7,7 +8,10 @@ import type { ActiveAlert, AlertState } from "./alertTypes";
 
 import type { AlertFilter } from "./alertFilter";
 
-export function TargetAlertsPanel({ instanceId, displayName, onClose }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void }) {
+export function TargetAlertsPanel({ instanceId, displayName, onClose, refresh = 0 }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly refresh?: number }) {
+  const [updatedAt, setUpdatedAt] = useState<string>();
+  const pageCursors = useRef<(string | undefined)[]>([undefined]);
+  const extraRequests = useRef(new Set<AbortController>());
   const [items, setItems] = useState<readonly ActiveAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -23,19 +27,29 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose }: { readon
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    setItems([]);
-    setNextCursor(undefined);
-    setSelectedId(undefined);
+    setLoadingMore(false);
+    setBusy(undefined);
     setError(undefined);
     setMessage(undefined);
-    void getActiveAlerts(instanceId, controller.signal)
-      .then((page) => { if (!controller.signal.aborted) { setItems(page.items); setNextCursor(page.nextCursor); setError(undefined); setLoading(false); } })
-      .catch((failure: unknown) => { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "Alerts are unavailable."); setLoading(false); } });
-    return () => controller.abort();
-  }, [instanceId, reload]);
+    void (async () => {
+      const refreshed: ActiveAlert[] = [];
+      let finalCursor: string | undefined;
+      const refreshedCursors: (string | undefined)[] = [];
+      for (let index = 0; index < pageCursors.current.length; index++) {
+        const cursor = index === 0 ? undefined : finalCursor;
+        if (index > 0 && !cursor) break;
+        const page = await getActiveAlerts(instanceId, controller.signal, 100, cursor);
+        if (controller.signal.aborted) return;
+        refreshedCursors.push(cursor); refreshed.push(...page.items); finalCursor = page.nextCursor;
+      }
+      if (!controller.signal.aborted) { pageCursors.current = refreshedCursors; setItems(refreshed); setNextCursor(finalCursor); setUpdatedAt(new Date().toISOString()); }
+    })().catch((failure: unknown) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Alerts are unavailable."); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => { controller.abort(); extraRequests.current.forEach(request => request.abort()); extraRequests.current.clear(); };
+  }, [instanceId, reload, refresh]);
 
   const visible = useMemo(() => items.filter((item) => {
-    return alertMatchesFilter(filter, item.state) && (ruleFilter === "" || item.ruleId.toLowerCase().includes(ruleFilter.toLowerCase()));
+    return alertMatchesFilter(filter, item.state) && (ruleFilter === "" || (item.ruleName ?? item.ruleId).toLowerCase().includes(ruleFilter.toLowerCase()));
   }), [filter, items, ruleFilter]);
   const selected = visible.find((item) => item.alertId === selectedId) ?? visible[0];
   const scope = readOverviewScope(location.hash);
@@ -47,45 +61,51 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose }: { readon
   async function nextPage() {
     if (!nextCursor || loadingMore) return;
     const controller = new AbortController();
+    extraRequests.current.add(controller);
     setLoadingMore(true);
     try {
       const page = await getActiveAlerts(instanceId, controller.signal, 100, nextCursor);
+      if (controller.signal.aborted) return;
+      pageCursors.current.push(nextCursor);
       setItems((current) => [...current, ...page.items.filter((item) => !current.some((candidate) => candidate.alertId === item.alertId))]);
       setNextCursor(page.nextCursor);
       setError(undefined);
     } catch (failure: unknown) {
-      setError(failure instanceof Error ? failure.message : "Alerts are unavailable.");
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Alerts are unavailable.");
     } finally {
-      setLoadingMore(false);
+      extraRequests.current.delete(controller);
+      if (!controller.signal.aborted) setLoadingMore(false);
     }
   }
 
   async function acknowledge(item: ActiveAlert) {
     const isFiring = item.state === "firing";
-    if (!isFiring) return;
+    if (!isFiring || loading || loadingMore) return;
     const controller = new AbortController();
+    extraRequests.current.add(controller);
     setBusy(item.alertId);
     setMessage(undefined);
     try {
       await acknowledgeAlert(instanceId, item.alertId, controller.signal);
+      if (controller.signal.aborted) return;
       setItems((current) => current.map((candidate) => candidate.alertId === item.alertId ? { ...candidate, state: "acknowledged" as AlertState } : candidate));
       setMessage("Acknowledgement recorded. Monitoring continues; the server-provided acknowledgement timestamp will appear on refresh.");
     } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : "The alert could not be acknowledged.");
+      if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The alert could not be acknowledged.");
     } finally {
-      setBusy(undefined);
+      extraRequests.current.delete(controller);
+      if (!controller.signal.aborted) setBusy(undefined);
     }
   }
 
   return <section className="alerts-screen" aria-labelledby="alerts-heading">
     <div className="screen-intro"><div><p className="eyebrow">Alerts · {displayName}</p><h2 id="alerts-heading">Alert triage</h2><p>Review target-scoped alert state and supporting evidence. Acknowledgement records review, not resolution.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
-    <div className="alert-filters"><label>State<select value={filter} onChange={(event) => setFilter(event.target.value as AlertFilter)}><option value="active">Active</option><option value="firing">Firing</option><option value="all">All loaded states</option></select></label><label>Rule identifier<input aria-label="Filter by rule identifier" value={ruleFilter} onChange={(event) => setRuleFilter(event.target.value)} placeholder="Search loaded rules" /></label><span>{visible.length} shown · {items.length} loaded</span></div>
-    {loading ? <p role="status" className="status-message">Loading target-scoped alerts…</p> : null}
-    {error ? <div role="alert" className="status-message">{error} <button className="secondary-button" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></div> : null}
+    <div className="alert-filters"><label>State<select value={filter} onChange={(event) => setFilter(event.target.value as AlertFilter)}><option value="active">Active</option><option value="firing">Firing</option><option value="all">All loaded states</option></select></label><label>Rule<input aria-label="Filter by rule name" value={ruleFilter} onChange={(event) => setRuleFilter(event.target.value)} placeholder="Search loaded rules" /></label><span>{visible.length} shown · {items.length} loaded</span></div>
+    <RequestStatus loading={loading} error={error} hasData={items.length > 0} updatedAt={updatedAt} label="Alerts" onRetry={() => setReload(value => value + 1)} />
     {message ? <p role="status" className="status-message">{message}</p> : null}
     <div className="alerts-layout">
-      <section className="alert-list panel" aria-label="Target alerts"><div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3><p>Friendly rule names and severity are unavailable in this projection, so identifiers are shown as received.</p></div></div><div className="table-scroll"><table><caption>Target-scoped alert observations for {displayName}</caption><thead><tr><th scope="col">State</th><th scope="col">Alert / rule</th><th scope="col">Observed value</th><th scope="col">First observed</th><th scope="col">State timestamps</th></tr></thead><tbody>{visible.map((item) => <tr className={item.alertId === selected?.alertId ? "selected-row" : ""} key={item.alertId} onClick={() => setSelectedId(item.alertId)}><td><span className={`state-pill state-${item.state}`}>{item.state}</span></td><td><button className="table-link" type="button" onClick={() => setSelectedId(item.alertId)}>Rule {item.ruleId.slice(0, 12)}…</button><small>Alert {item.alertId.slice(0, 12)}…</small></td><td>{formatObservedValue(item.value)}</td><td>{formatUtc(item.firstObservedUtc)}</td><td>{formatAvailableTimestamps(item)}</td></tr>)}</tbody></table></div>{!loading && !error && visible.length === 0 ? <p className="empty-state">No alert rows match the loaded target-scoped evidence.</p> : null}<div className="pager"><span>{nextCursor ? "More bounded alerts are available." : "End of loaded alert page."}</span><button className="secondary-button" type="button" disabled={!nextCursor || loadingMore} onClick={() => void nextPage()}>{loadingMore ? "Loading…" : "Load more"}</button></div></section>
-      {loading ? <div className="detail-pane status-message">Loading alert evidence…</div> : selected ? <DetailPane title={`Rule ${selected.ruleId.slice(0, 12)}…`} subtitle={`Alert ${selected.alertId} · ${displayName}`} actions={selected.state === "firing" ? <button className="primary" type="button" disabled={busy === selected.alertId} onClick={() => void acknowledge(selected)}>{busy === selected.alertId ? "Acknowledging…" : "Acknowledge"}</button> : undefined}><EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"} tone={selected.state === "firing" ? "critical" : selected.state === "acknowledged" ? "warning" : "neutral"} /><p className="detail-note">Acknowledgement records review. Monitoring continues and state changes remain server-owned.</p><section className="alert-observed"><h3>Observed value</h3><strong>{formatObservedValue(selected.value)}</strong></section><section className="alert-chronology"><h3>Available state timestamps</h3><TimelineItem label="First observed" value={selected.firstObservedUtc} /><TimelineItem label="Fired" value={selected.firedUtc} /><TimelineItem label="Acknowledged" value={selected.acknowledgedUtc} /></section><section className="related-evidence"><h3>Related evidence</h3><a href={overviewHref(scope, "activity", instanceId)}>Open activity <span aria-hidden="true">→</span></a><a href={overviewHref(scope, "deadlocks", instanceId)}>Open deadlocks <span aria-hidden="true">→</span></a><p>Related observations may share a time window without sharing a cause.</p></section><p className="table-note">Rule identifier: {selected.ruleId} · Observed alert state is not a severity classification.</p></DetailPane> : <div className="detail-pane empty-state">Select an alert to inspect its available evidence.</div>}
+      <section className="alert-list panel" aria-label="Target alerts"><div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3><p>Current alert states; the investigation time range does not filter active alerts.</p></div></div><div className="table-scroll"><table><caption>Target-scoped alert observations for {displayName}</caption><thead><tr><th scope="col">State</th><th scope="col">Alert / rule</th><th scope="col">Observed value</th><th scope="col">First observed</th><th scope="col">State timestamps</th></tr></thead><tbody>{visible.map((item) => <tr className={item.alertId === selected?.alertId ? "selected-row" : ""} key={item.alertId} onClick={() => setSelectedId(item.alertId)}><td><span className={`state-pill state-${item.state}`}>{item.state}</span></td><td><button className="table-link" type="button" aria-pressed={item.alertId === selected?.alertId} onClick={() => setSelectedId(item.alertId)}>{item.ruleName ?? `Rule ${item.ruleId.slice(0, 12)}…`}</button></td><td>{formatObservedValue(item.value)}</td><td>{formatUtc(item.firstObservedUtc)}</td><td>{formatAvailableTimestamps(item)}</td></tr>)}</tbody></table></div>{!loading && !error && visible.length === 0 ? <p className="empty-state">No alert rows match the loaded target-scoped evidence.</p> : null}<div className="pager"><span>{nextCursor ? "More bounded alerts are available." : "End of loaded alert page."}</span><button className="secondary-button" type="button" disabled={!nextCursor || loadingMore || loading} onClick={() => void nextPage()}>{loadingMore ? "Loading…" : "Load more"}</button></div></section>
+      {loading && !selected ? <div className="detail-pane status-message">Loading alert evidence…</div> : selected ? <DetailPane title={selected.ruleName ?? `Rule ${selected.ruleId.slice(0, 12)}…`} subtitle={`Alert ${selected.alertId} · ${displayName}`} actions={selected.state === "firing" ? <button className="primary" type="button" disabled={loading || loadingMore || busy === selected.alertId} onClick={() => void acknowledge(selected)}>{busy === selected.alertId ? "Acknowledging…" : "Acknowledge"}</button> : undefined}><EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"} tone={selected.state === "firing" ? "critical" : selected.state === "acknowledged" ? "warning" : "neutral"} /><p className="detail-note">Acknowledgement records review. Monitoring continues and state changes remain server-owned.</p><section className="alert-observed"><h3>Observed value</h3><strong>{formatObservedValue(selected.value)}</strong></section><section className="alert-chronology"><h3>Available state timestamps</h3><TimelineItem label="First observed" value={selected.firstObservedUtc} /><TimelineItem label="Fired" value={selected.firedUtc} /><TimelineItem label="Acknowledged" value={selected.acknowledgedUtc} /></section><section className="related-evidence"><h3>Related evidence</h3><a href={overviewHref(scope, "activity", instanceId)}>Open activity <span aria-hidden="true">→</span></a><a href={overviewHref(scope, "deadlocks", instanceId)}>Open deadlocks <span aria-hidden="true">→</span></a><p>Related observations may share a time window without sharing a cause.</p></section><p className="table-note">Rule identifier: {selected.ruleId} · Observed alert state is not a severity classification.</p></DetailPane> : <div className="detail-pane empty-state">Select an alert to inspect its available evidence.</div>}
     </div>
   </section>;
 }

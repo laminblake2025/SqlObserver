@@ -60,7 +60,10 @@ public sealed class M11McpAuditPostgreSqlIntegrationTests
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         await AssertAllowedAsRoleAsync(database, "sqlobserver_server", "SELECT has_function_privilege(current_user, 'audit.append_mcp_invocation(uuid,text,text,text,text,text,text,uuid,uuid,uuid,bytea,bigint,bigint,text)'::regprocedure, 'EXECUTE');");
         await AssertAllowedAsRoleAsync(database, "sqlobserver_auditor", "SELECT has_table_privilege(current_user, 'audit.mcp_invocation', 'SELECT');");
-        await AssertDeniedAsRoleAsync(database, "sqlobserver_collector", "SELECT has_function_privilege(current_user, 'audit.append_mcp_invocation(uuid,text,text,text,text,text,text,uuid,uuid,uuid,bytea,bigint,bigint,text)'::regprocedure, 'EXECUTE');");
+        await AssertPrivilegeAbsentAsRoleAsync(database, "sqlobserver_collector", "SELECT has_function_privilege(current_user, 'audit.append_mcp_invocation(uuid,text,text,text,text,text,text,uuid,uuid,uuid,bytea,bigint,bigint,text)'::regprocedure, 'EXECUTE');");
+        const string append = "SELECT * FROM audit.append_mcp_invocation(gen_random_uuid(), 'integration-client', 'get_instance_health', 'get_instance_health', 'allowed', 'succeeded', 'completed', NULL, NULL, gen_random_uuid(), decode(repeat('00',32),'hex'), 0, 0, 'completed');";
+        await AssertDeniedAsRoleAsync(database, "sqlobserver_collector", append);
+        await AssertDeniedAsRoleAsync(database, "sqlobserver_auditor", append);
 
         const string insert = "INSERT INTO audit.mcp_invocation (invocation_id, actor_identifier, tool_name, action_name, authorization_result, outcome, reason, correlation_id, parameter_digest, duration_ms, response_bytes) VALUES (gen_random_uuid(), 'x', 'get_instance_health', 'get_instance_health', 'allowed', 'succeeded', 'completed', gen_random_uuid(), decode(repeat('00', 32), 'hex'), 0, 0);";
         await AssertDeniedAsRoleAsync(database, "sqlobserver_server", insert);
@@ -72,6 +75,28 @@ public sealed class M11McpAuditPostgreSqlIntegrationTests
             await AssertDeniedAsRoleAsync(database, role, "DELETE FROM audit.mcp_invocation WHERE false;");
         }
         await AssertDeniedAsRoleAsync(database, "sqlobserver_collector", "SELECT invocation_id FROM audit.mcp_invocation;");
+        await AssertDeniedAsRoleAsync(database, "sqlobserver_server", "SELECT invocation_id FROM audit.mcp_invocation;");
+    }
+
+    [Fact]
+    public async Task ActorBoundsUseUtf8BytesAndRejectControlsWithoutChangingAuditIdentity()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        foreach ((string actor, bool allowed) in new[]
+        {
+            (new string('a', 512), true), (new string('\u00e9', 256), true),
+            (new string('a', 513), false), (new string('\u00e9', 257), false),
+            (string.Empty, false), ("actor\nidentifier", false), (" actor", false),
+        })
+        {
+            await using var command = server.CreateCommand("SELECT invocation_id FROM audit.append_mcp_invocation(gen_random_uuid(), @actor, 'get_instance_health', 'get_instance_health', 'allowed', 'succeeded', 'completed', NULL, NULL, gen_random_uuid(), decode(repeat('00',32),'hex'), 0, 0, 'completed');");
+            command.Parameters.AddWithValue("actor", actor);
+            if (allowed)
+                Assert.IsType<Guid>(await command.ExecuteScalarAsync());
+            else
+                Assert.Equal("22023", (await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteScalarAsync())).SqlState);
+        }
     }
 
     private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync()
@@ -80,7 +105,7 @@ public sealed class M11McpAuditPostgreSqlIntegrationTests
         try
         {
             var runner = new PostgreSqlMigrationPort(database.DataSource);
-            MigrationBatchResult result = await runner.ApplyPendingAsync(new MigrationApplyRequest(256, Timeout), CancellationToken.None);
+            MigrationBatchResult result = await runner.ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;
         }
@@ -123,6 +148,16 @@ public sealed class M11McpAuditPostgreSqlIntegrationTests
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         PostgresException exception = await Assert.ThrowsAsync<PostgresException>(async () => await command.ExecuteNonQueryAsync());
         Assert.Equal("42501", exception.SqlState);
+        await transaction.RollbackAsync();
+    }
+
+    private static async Task AssertPrivilegeAbsentAsRoleAsync(RepositoryTestDatabase database, string role, string sql)
+    {
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        await using (var setRole = new NpgsqlCommand($"SET LOCAL ROLE {role};", connection, transaction)) await setRole.ExecuteNonQueryAsync();
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        Assert.False(Convert.ToBoolean(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture));
         await transaction.RollbackAsync();
     }
 }

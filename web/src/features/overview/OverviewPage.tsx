@@ -1,3 +1,4 @@
+import { RequestStatus } from "../../components/RequestStatus";
 import { useState } from 'react';
 import { aggregateValue, displayMetric, overviewEvidenceFooter, overviewHref, overviewResourceObservationText, rankedIssues, readOverviewScope } from './overviewModel';
 import { useOverviewAnalytics } from './useOverviewAnalytics';
@@ -35,8 +36,7 @@ export function OverviewPage({refresh,onAdd}: {refresh:number;onAdd:()=>void}) {
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={e=>navigate({compare:e.target.checked})}/>Compare previous period</label>
       <label className="overview-check"><input type="checkbox" checked={automatic} disabled={scope.range==='custom'} onChange={e=>setAutomatic(e.target.checked)}/>Refresh every 60s</label>
     </div>
-    {result.loading&&<p role="status" className="overview-coverage">Loading analytics for {scope.target?'the selected server':'all authorized servers'}…</p>}
-    {result.error&&<p role="alert" className="status-message">{result.error}</p>}
+    <RequestStatus loading={result.loading} error={result.error} hasData={Boolean(data)} updatedAt={data?.refreshedAtUtc} label="Overview" />
     {data&&<><div className="overview-coverage" role="status"><span className={current===data.evidence.length?'coverage-dot':'coverage-dot partial'}/><strong>{current}/{data.evidence.length} servers reporting current SQL core evidence</strong><span>{data.excludedTargets} disabled/retired excluded from All servers</span><small>Refreshed {new Date(data.refreshedAtUtc).toISOString().replace('T',' ')} · SQL core freshness does not imply coverage for other sources</small></div>
       {data.targets.length===0?<section className="panel overview-panel"><h2>Start monitoring your SQL environment</h2><p>Add a server to see workload trends, contention, and operational evidence.</p><button onClick={onAdd}>+ Add server</button></section>:<>
       <div className="kpi-grid overview-kpis"><section className="kpi"><p>Instances needing attention</p><strong>{data.evidence.some(e=>e.activeAlerts.value!==null||e.blockedSessions.value!==null)?new Set(data.evidence.filter(e=>e.issues.length).map(e=>e.targetId)).size:'—'}</strong><small>Observed exceptions · monitoring gaps shown separately</small></section>{([['activeAlerts','Active alerts'],['blockedSessions','Blocked sessions now'],['deadlocks','Deadlocks in window']] as const).map(([key,label])=>{const total=aggregateValue(data.evidence,key);return <section className="kpi" key={key}><p>{label}</p><strong>{total.text}</strong><small>{total.note}</small></section>;})}</div>

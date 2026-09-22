@@ -126,7 +126,6 @@ public sealed class RepositorySchemaCompletionIntegrationTests
         );
         """;
 
-    private static readonly RepositoryCallTimeout DefaultTimeout = new(TimeSpan.FromSeconds(30));
     private readonly PostgreSql18Fixture _fixture;
 
     public RepositorySchemaCompletionIntegrationTests(PostgreSql18Fixture fixture)
@@ -155,6 +154,8 @@ public sealed class RepositorySchemaCompletionIntegrationTests
         });
 
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        // pg_get_expr renders timestamptz bounds in the inspecting session's timezone.
+        await using (var utc = new NpgsqlCommand("SET TIME ZONE 'UTC';", connection)) await utc.ExecuteNonQueryAsync();
         await using (var registryCommand = new NpgsqlCommand(
             """
             SELECT
@@ -379,7 +380,7 @@ public sealed class RepositorySchemaCompletionIntegrationTests
         {
             var runner = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await runner.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
                 CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;

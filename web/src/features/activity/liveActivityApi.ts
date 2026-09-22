@@ -1,3 +1,4 @@
+import { responseFailure } from "../../api/responseFailure.ts";
 import { readBoundedBody } from "./activityParser.mjs";
 export interface LiveRow {
   identity: string; sessionId: number; requestId: number | null; databaseId: number | null; databaseName: string | null;
@@ -17,7 +18,7 @@ export async function readLive<T>(target: string, path: string, parameters: URLS
   const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(target)}/activity/live${path}?${parameters}`, {
     credentials: "same-origin", cache: "no-store", signal, headers: { Accept: "application/json" },
   });
-  if (!response.ok) throw new Error(response.status === 403 ? "You do not have permission to read this evidence." : "Collection evidence is unavailable. Displayed observations have been retained.");
+  if (!response.ok) throw responseFailure(response, response.status === 403 ? "You do not have permission to read this evidence." : "Collection evidence is unavailable. Displayed observations have been retained.");
   if (!(response.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) throw new Error("Invalid activity response.");
   return JSON.parse(await readBoundedBody(response, signal, 1024 * 1024)) as T;
 }

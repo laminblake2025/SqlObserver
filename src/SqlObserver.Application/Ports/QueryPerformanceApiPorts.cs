@@ -6,7 +6,11 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Application.Ports;
 
 public sealed record QueryPerformanceStatusRequest(MonitoredInstanceId TargetId, DateTimeOffset FromUtc, DateTimeOffset ToUtc, RepositoryCallTimeout Timeout);
-public sealed record TopQueryRequest(MonitoredInstanceId TargetId, DateTimeOffset FromUtc, DateTimeOffset ToUtc, QueryPerformanceMetric Metric, int Limit, QueryPerformanceCursorEnvelope? Cursor, RepositoryCallTimeout Timeout);
+public sealed record TopQueryRequest(MonitoredInstanceId TargetId, DateTimeOffset FromUtc, DateTimeOffset ToUtc, QueryPerformanceMetric Metric, int Limit, QueryPerformanceCursorEnvelope? Cursor, RepositoryCallTimeout Timeout)
+{
+    public int? DatabaseId { get; init; }
+    public QueryPerformanceSource? Source { get; init; }
+}
 public sealed record QueryHistoryRequest(MonitoredInstanceId TargetId, QueryOpaqueIdentity Query, DateTimeOffset FromUtc, DateTimeOffset ToUtc, int Limit, QueryPerformanceCursorEnvelope? Cursor, RepositoryCallTimeout Timeout);
 public sealed record QueryPlanMetadataRequest(MonitoredInstanceId TargetId, PlanOpaqueIdentity Plan, RepositoryCallTimeout Timeout);
 public sealed record TopQueryPage(IReadOnlyList<TopQueryDto> Items, bool HasMore, DateTimeOffset SnapshotUtc)

@@ -1,4 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
+using SqlObserver.Observability;
 using SqlObserver.Analytics;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector;
@@ -140,11 +144,52 @@ public sealed class M10AnalyticsDerivationWorkerTests
         Assert.True(store.CompletionTokenObserved);
     }
 
+    [Fact]
+    public async Task WorkerRecordsQueueAgeAndFailureCategoryWithoutTargetOrJobMetricLabels()
+    {
+        var observed = new ConcurrentQueue<(string Name, double Value, KeyValuePair<string, object?>[] Tags)>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ObservabilityContract.MeterName)
+                    owner.EnableMeasurementEvents(instrument);
+            },
+        };
+        listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) => observed.Enqueue((instrument.Name, value, tags.ToArray())));
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) => observed.Enqueue((instrument.Name, value, tags.ToArray())));
+        listener.Start();
+        await RunAsync("baseline", "host.cpu.percent", delayInput: true, jobDuration: TimeSpan.FromMilliseconds(100));
+        Assert.Contains(observed, value => value.Name == "sqlobserver.analytics.queue.age" && value.Value >= 60 && value.Value < 120);
+        Assert.Contains(observed, value => value.Name == "sqlobserver.analytics.failures" && value.Tags.Contains(new("failure.category", "timeout")));
+        Assert.All(observed, value => Assert.DoesNotContain(value.Tags, tag => tag.Key is "job.id" or "target.id"));
+    }
+
+    [Fact]
+    public async Task WorkerLogsSanitizedFailureCategoriesWithoutProviderExceptions()
+    {
+        DateTimeOffset to = DateTimeOffset.UtcNow;
+        var job = new AnalyticsDerivationJob(Guid.NewGuid(), new(Guid.NewGuid()), new(1), "evidence", to.AddDays(-1), to, to);
+        var store = new FakeStore(job) { ScheduleFailure = true };
+        var logger = new CapturingLogger();
+        using var worker = new AnalyticsDerivationWorker(store, new FakeLeases(), new(Guid.NewGuid()), new FakeAnalyticsRepository(), logger);
+        await worker.StartAsync(CancellationToken.None);
+        await store.ScheduleStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await worker.StopAsync(CancellationToken.None);
+        Assert.Contains(logger.Messages, entry => entry.Text.Contains("state_conflict", StringComparison.Ordinal));
+        Assert.All(logger.Messages, entry =>
+        {
+            Assert.Null(entry.Exception);
+            Assert.DoesNotContain("password", entry.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("SELECT", entry.Text, StringComparison.Ordinal);
+        });
+    }
+
     private static async Task<(FakeStore Store, FakeAnalyticsRepository Repository)> RunAsync(string kind, string metric, bool delayInput = false, TimeSpan? jobDuration = null)
     {
         var target = new MonitoredInstanceId(Guid.NewGuid());
         DateTimeOffset from = new(2026, 7, 1, 0, 0, 0, TimeSpan.Zero), to = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
-        var job = new AnalyticsDerivationJob(Guid.NewGuid(), target, new ObservationTargetRevision(1), kind, from, to, to.AddHours(1), MetricKey: metric, ForecastHorizon: TimeSpan.FromDays(1));
+        var job = new AnalyticsDerivationJob(Guid.NewGuid(), target, new ObservationTargetRevision(1), kind, from, to, to.AddHours(1), MetricKey: metric, ForecastHorizon: TimeSpan.FromDays(1), RequestedAtUtc: DateTimeOffset.UtcNow.AddMinutes(-1));
         var store = new FakeStore(job) { DelayInput = delayInput };
         var repository = new FakeAnalyticsRepository();
         using var worker = new AnalyticsDerivationWorker(store, new FakeLeases(), new WorkerExecutionId(Guid.NewGuid()), repository, NullLogger<AnalyticsDerivationWorker>.Instance, jobDuration);
@@ -175,7 +220,7 @@ public sealed class M10AnalyticsDerivationWorkerTests
         public ValueTask<int> ScheduleAsync(WorkerLeaseIdentity lease, CancellationToken cancellationToken)
         {
             controlCalls.Add("schedule"); ScheduleCount++; ScheduledLease = lease; ScheduleStarted.TrySetResult();
-            if (ScheduleFailure) return ValueTask.FromException<int>(new InvalidOperationException("schedule failed"));
+            if (ScheduleFailure) return ValueTask.FromException<int>(new InvalidOperationException("password=secret; SELECT private_data"));
             return BlockSchedule ? WaitForScheduleCancellationAsync(cancellationToken) : ValueTask.FromResult(ScheduleResult);
         }
         private async ValueTask<int> WaitForScheduleCancellationAsync(CancellationToken cancellationToken)
@@ -225,5 +270,14 @@ public sealed class M10AnalyticsDerivationWorkerTests
         public ValueTask<LeaseRenewalResult> RenewAsync(RenewWorkerLeaseRequest request, CancellationToken cancellationToken) => ValueTask.FromResult(LeaseRenewalResult.Renewed(new WorkerLease(Identity, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(1)), DateTimeOffset.UtcNow));
         public ValueTask<LeaseOwnershipStatus> AssertOwnershipAsync(AssertWorkerLeaseRequest request, CancellationToken cancellationToken) => ValueTask.FromResult(LeaseOwnershipStatus.Current);
         public ValueTask<LeaseReleaseStatus> ReleaseAsync(ReleaseWorkerLeaseRequest request, CancellationToken cancellationToken) { ReleaseCalled = true; return ValueTask.FromResult(LeaseReleaseStatus.Released); }
+    }
+
+    private sealed class CapturingLogger : ILogger<AnalyticsDerivationWorker>
+    {
+        public List<(string Text, Exception? Exception)> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add((formatter(state, exception), exception));
     }
 }

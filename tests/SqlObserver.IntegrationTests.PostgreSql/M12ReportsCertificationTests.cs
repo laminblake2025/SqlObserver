@@ -274,7 +274,7 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
         RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         try
         {
-            MigrationBatchResult migration = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+            MigrationBatchResult migration = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
             Assert.False(migration.HasFailures);
             return (database, await TargetAsync(database));
         }

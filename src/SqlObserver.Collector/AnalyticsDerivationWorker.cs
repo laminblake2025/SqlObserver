@@ -7,6 +7,7 @@ using SqlObserver.Analytics;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Analytics;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Observability;
 
 namespace SqlObserver.Collector;
 
@@ -76,8 +77,7 @@ public sealed class AnalyticsDerivationWorker(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception)
             {
-                logger.LogWarning("Analytics derivation cycle failed; queued work remains fenced for retry.");
-                _ = exception;
+                RecordFailure("cycle", exception);
             }
             try { await Task.Delay(PollInterval, stoppingToken).ConfigureAwait(false); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
@@ -95,6 +95,8 @@ public sealed class AnalyticsDerivationWorker(
         try
         {
             job.Validate();
+            if (job.RequestedAtUtc is { } requestedAt)
+                RuntimeDiagnostics.RecordAnalyticsQueueAge(job.JobKind, DateTimeOffset.UtcNow - requestedAt);
             await AssertLeaseAsync(lease, budgetCancellation.Token).ConfigureAwait(false);
             switch (job.JobKind)
             {
@@ -125,13 +127,14 @@ public sealed class AnalyticsDerivationWorker(
             // interruptions.  The repository owns attempt counting and may
             // terminalize the job after its configured maximum attempts.
             try { await CompleteAsync(job, lease, AnalyticsDerivationCompletion.Partial, "bounded_derivation_timeout").ConfigureAwait(false); }
-            catch (Exception exception) { logger.LogWarning("Analytics derivation timeout could not be recorded."); _ = exception; }
+            catch (Exception exception) { RecordFailure("completion", exception, job.JobId); }
+            RecordFailure("job", cycleCancellation.IsCancellationRequested ? "cancelled" : "timeout", job.JobId);
         }
         catch (Exception exception)
         {
             try { await CompleteAsync(job, lease, AnalyticsDerivationCompletion.Partial, "bounded_derivation_failure").ConfigureAwait(false); }
-            catch (Exception completionException) { logger.LogWarning("Analytics derivation failure could not be recorded."); _ = completionException; }
-            logger.LogWarning("Analytics derivation job failed under its bounded contract."); _ = exception;
+            catch (Exception completionException) { RecordFailure("completion", completionException, job.JobId); }
+            RecordFailure("job", exception, job.JobId);
         }
         finally { gate.Release(); }
     }
@@ -254,7 +257,7 @@ public sealed class AnalyticsDerivationWorker(
             }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        catch (Exception exception) { logger.LogWarning("Analytics derivation lease renewal failed; cancelling fenced work."); _ = exception; cancellation.Cancel(); }
+        catch (Exception exception) { RecordFailure("lease_renewal", exception); cancellation.Cancel(); }
     }
 
     private async ValueTask AssertLeaseAsync(WorkerLeaseIdentity identity, CancellationToken token)
@@ -269,6 +272,15 @@ public sealed class AnalyticsDerivationWorker(
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try { await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(identity, RepositoryTimeout), timeout.Token).ConfigureAwait(false); }
-        catch (Exception exception) { logger.LogWarning("Analytics derivation lease release failed; expiry will recover ownership."); _ = exception; }
+        catch (Exception exception) { RecordFailure("lease_release", exception); }
+    }
+
+    private void RecordFailure(string phase, Exception exception, Guid? jobId = null)
+        => RecordFailure(phase, RuntimeDiagnostics.FailureCategory(exception), jobId);
+
+    private void RecordFailure(string phase, string category, Guid? jobId = null)
+    {
+        RuntimeDiagnostics.RecordAnalyticsFailure(phase, category);
+        logger.LogWarning("Analytics derivation interrupted. Phase={Phase} FailureCategory={FailureCategory} JobId={JobId}", phase, category, jobId);
     }
 }

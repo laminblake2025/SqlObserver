@@ -56,6 +56,27 @@ public sealed class M7QueryPerformanceHttpContractTests : IClassFixture<M7QueryP
     }
 
     [Fact]
+    public async Task RankingCursorBindsDatabaseAndSourceFilters()
+    {
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        const string window = "fromUtc=2026-08-24T11:00:00Z&toUtc=2026-08-24T12:00:00Z";
+        string route = $"/api/v1/observation-targets/{M7QueryPerformanceApiFactory.TargetId:D}/query-performance/top?metric=cpu&{window}&limit=1";
+        HttpResponseMessage first = await client.GetAsync(route + "&databaseId=5&source=query_store");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(5, factory.Service.LastRequest!.DatabaseId);
+        Assert.Equal(QueryPerformanceSource.QueryStore, factory.Service.LastRequest.Source);
+        using var document = await System.Text.Json.JsonDocument.ParseAsync(await first.Content.ReadAsStreamAsync());
+        string cursor = Uri.EscapeDataString(document.RootElement.GetProperty("nextCursor").GetString()!);
+        HttpResponseMessage second = await client.GetAsync(route + $"&databaseId=5&source=query_store&cursor={cursor}");
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(5, factory.Service.LastCursor!.FilterDatabaseId);
+        Assert.Equal(QueryPerformanceSource.QueryStore, factory.Service.LastCursor.FilterSource);
+        foreach (string filters in new[] { "", "&databaseId=6&source=query_store", "&databaseId=5&source=plan_cache", "&databaseId=5" })
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync(route + filters + $"&cursor={cursor}")).StatusCode);
+    }
+
+    [Fact]
     public async Task RealHistoryRouteIssuesAndReplaysCursorWhenCpuIsNull()
     {
         using HttpClient client = factory.CreateClient();
@@ -91,6 +112,10 @@ public sealed class M7QueryPerformanceHttpContractTests : IClassFixture<M7QueryP
     [Theory]
     [InlineData("limit=0")]
     [InlineData("limit=201")]
+    [InlineData("databaseId=0")]
+    [InlineData("databaseId=32768")]
+    [InlineData("source=mixed")]
+    [InlineData("source=unavailable")]
     public async Task RealTopRouteRejectsInvalidBounds(string query)
     {
         using HttpClient client = factory.CreateClient();
@@ -115,6 +140,7 @@ public sealed class M7QueryPerformanceApiFactory : WebApplicationFactory<Program
 
 internal sealed class FakeM7QueryPerformanceService : IQueryPerformanceApiQueryService
 {
+    internal TopQueryRequest? LastRequest { get; private set; }
     internal QueryPerformanceCursorEnvelope? LastCursor { get; private set; }
     internal QueryPerformanceCursorEnvelope? LastHistoryCursor { get; private set; }
     private static readonly DateTimeOffset From = new(2026, 8, 24, 11, 0, 0, TimeSpan.Zero);
@@ -122,6 +148,7 @@ internal sealed class FakeM7QueryPerformanceService : IQueryPerformanceApiQueryS
     public ValueTask<QueryPerformanceStatusDto?> GetStatusAsync(AuthorizationContext authorization, QueryPerformanceStatusRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<QueryPerformanceStatusDto?>(new QueryPerformanceStatusDto(request.TargetId, To, QueryPerformanceSource.Unavailable, "unavailable", QueryCoverage.Unavailable, false, false, false, null, [], "deadline_exceeded", "deadline_exceeded", [new QueryPerformanceDatabaseCatalogDto(5, "SqlObserverLabSales"), new QueryPerformanceDatabaseCatalogDto(7, "SqlObserverLabPublisher")]));
     public ValueTask<TopQueryPage> GetTopAsync(AuthorizationContext authorization, TopQueryRequest request, CancellationToken cancellationToken)
     {
+        LastRequest = request;
         LastCursor = request.Cursor;
         var query = new QueryOpaqueIdentity(5, new string('a', 64));
         var plan = new PlanOpaqueIdentity(query, new string('b', 64));

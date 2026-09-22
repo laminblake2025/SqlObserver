@@ -37,7 +37,7 @@ public static class AlertEndpoints
             AlertActiveCursor? after = DecodeCursor(cursor, instanceId);
             AlertActivePage result = await service.ListActivePageAsync(resolver.Resolve(context.User), new MonitoredInstanceId(instanceId), limit, after, cancellationToken).ConfigureAwait(false);
             string? nextCursor = result.NextCursor is null ? null : EncodeCursor(result.NextCursor);
-            return Results.Ok(new { targetId = instanceId, snapshotUtc = result.SnapshotUtc, items = result.Items.Select(static row => new { alertId = row.AlertId, ruleId = row.RuleId, state = row.State.ToString().ToLowerInvariant(), firstObservedUtc = row.FirstObservedUtc, firedUtc = row.FiredUtc, acknowledgedUtc = row.AcknowledgedUtc, value = row.Value, reason = row.Reason, deliverySuppressed = row.DeliverySuppressed }), nextCursor });
+            return Results.Ok(new { targetId = instanceId, snapshotUtc = result.SnapshotUtc, items = result.Items.Select(static row => new { alertId = row.AlertId, ruleId = row.RuleId, ruleName = row.RuleName, state = row.State.ToString().ToLowerInvariant(), firstObservedUtc = row.FirstObservedUtc, firedUtc = row.FiredUtc, acknowledgedUtc = row.AcknowledgedUtc, value = row.Value, reason = row.Reason, deliverySuppressed = row.DeliverySuppressed }), nextCursor });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }

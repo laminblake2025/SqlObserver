@@ -579,6 +579,13 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         Assert.Equal(claimedObservationTimes.OrderBy(x => x).ToArray(), claimedObservationTimes);
         await using (NpgsqlConnection verify = await database.DataSource.OpenConnectionAsync())
         {
+            // The production repository fixes its transaction to UTC. Match that
+            // context when reconstructing identities containing timestamptz::text;
+            // the administrator connection may inherit a non-UTC server default.
+            await using (var utc = new NpgsqlCommand("SET TIME ZONE 'UTC';", verify))
+            {
+                await utc.ExecuteNonQueryAsync();
+            }
             await using var command = new NpgsqlCommand("SELECT count(*) FROM alerting.evaluation_queue q WHERE q.operation_id=alerting.canonical_operation_id(q.instance_id,q.rule_id,q.observed_at,q.observations->0->>'Reason') AND q.operation_id IN (SELECT unnest(@operations));", verify);
             command.Parameters.AddWithValue("operations", claimed.Select(x => x.OperationId).ToArray());
             Assert.Equal(204L, (long)(await command.ExecuteScalarAsync() ?? 0L));
@@ -613,6 +620,8 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
             Assert.Equal(204, expectedOperations.Count);
             Assert.Equal(203, expectedMetricOperations.Count);
             Assert.Single(expectedHealthOperations);
+            Assert.True(expectedMetricOperations.SetEquals(claimed.Where(x => x.Observations[0].SourceKind == "metric_threshold").Select(x => x.OperationId)), "Metric operation identities must match the seeded evidence.");
+            Assert.True(expectedHealthOperations.SetEquals(claimed.Where(x => x.Observations[0].SourceKind == "collector_health").Select(x => x.OperationId)), "Collector-health operation identities must match the UTC projection.");
             Assert.True(expectedOperations.SetEquals(claimed.Select(x => x.OperationId)));
             await using var drain = new NpgsqlCommand("SELECT count(*) FROM alerting.evaluation_queue WHERE completed_at IS NULL AND due_at<=clock_timestamp() AND (claimed_until IS NULL OR claimed_until<clock_timestamp());", verify);
             Assert.Equal(0L, (long)(await drain.ExecuteScalarAsync() ?? 0L));
@@ -1214,7 +1223,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         try
         {
             var runner = new PostgreSqlMigrationPort(database.DataSource);
-            MigrationBatchResult result = await runner.ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+            MigrationBatchResult result = await runner.ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
             Assert.False(result.HasFailures);
             await using var partitions = database.DataSource.CreateCommand("SELECT control.ensure_daily_metric_partition(current_date-1); SELECT control.ensure_daily_metric_partition(current_date);" );
             await partitions.ExecuteNonQueryAsync();

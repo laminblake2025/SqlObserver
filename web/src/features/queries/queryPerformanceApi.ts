@@ -1,5 +1,6 @@
+import { responseFailure } from "../../api/responseFailure.ts";
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceFilters, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -21,7 +22,7 @@ const metric = (value: unknown): value is number | null | undefined => value ===
 
 async function readJson(url: string, expectedTargetId: string, signal?: AbortSignal): Promise<unknown> {
   const response = await fetch(url, { signal, headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(response.status === 404 ? "Query performance evidence is unavailable." : "Query performance request failed.");
+  if (!response.ok) throw responseFailure(response, response.status === 404 ? "Query performance evidence is unavailable." : "Query performance request failed.");
   if (!/^application\/json(?:;|$)/iu.test(response.headers.get("content-type") ?? "")) throw new Error("Query performance response content type was invalid.");
   const length = Number(response.headers.get("content-length") ?? "0");
   if (!Number.isFinite(length) || length > maximumResponseBytes) throw new Error("Query performance response exceeded its bound.");
@@ -37,16 +38,18 @@ function item(value: unknown, metric: QueryPerformanceMetric = "cpu"): QueryPerf
   const metricKey = { cpu: "cpuMilliseconds", duration: "durationMilliseconds", executions: "executions", logical_reads: "logicalReads", writes: "writes", rows: "rows" }[metric];
   return { query: { databaseId: i.databaseId, queryFingerprint: i.queryFingerprint }, plan: typeof i.planFingerprint === "string" ? { planFingerprint: i.planFingerprint } : undefined, source: i.source as QueryPerformanceItem["source"], sourceState: String(i.sourceState), semantics: String(i.semantics), metrics: { [metricKey]: v as number | null }, intervalStartUtc: i.intervalStartUtc, intervalEndUtc: i.intervalEndUtc, coverage: String(i.coverage), fresh: i.fresh, truncated: i.truncated, contentAvailable: false, collectionRunId: i.collectionRunId, observationKey: i.observationKey };
 }
-export async function getQueryPerformanceTop(instanceId: string, metric: QueryPerformanceMetric, cursor?: string, fromUtc?: string, toUtc?: string, signal?: AbortSignal): Promise<QueryPerformancePage> {
+export async function getQueryPerformanceTop(instanceId: string, metric: QueryPerformanceMetric, cursor?: string, fromUtc?: string, toUtc?: string, signal?: AbortSignal, filters: QueryPerformanceFilters = {}): Promise<QueryPerformancePage> {
+  if (filters.databaseId !== undefined && (!Number.isInteger(filters.databaseId) || filters.databaseId <= 0 || filters.databaseId > 32767) || filters.source !== undefined && filters.source !== "query_store" && filters.source !== "plan_cache") throw new Error("Query performance filters were invalid.");
   if (!metrics.has(metric) || fromUtc !== undefined && (toUtc === undefined || !timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc) || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 24 * 60 * 60 * 1000)) throw new Error("Query performance top request bounds were invalid.");
   if (cursor !== undefined && (cursor.length === 0 || cursor.length > 1024)) throw new Error("Query performance cursor exceeded its bound.");
   if (cursor !== undefined && (fromUtc === undefined || toUtc === undefined)) throw new Error("Query performance cursor requires its bound window.");
   const windowQuery = fromUtc === undefined || toUtc === undefined ? "" : `&fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}`;
   const cursorQuery = cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`;
-  const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/top?metric=${metric}&limit=200${windowQuery}${cursorQuery}`, instanceId, signal) as { metric?: unknown; items?: unknown; snapshotUtc?: unknown; nextCursor?: unknown; fromUtc?: unknown; toUtc?: unknown };
+  const filterQuery = `${filters.databaseId === undefined ? "" : `&databaseId=${filters.databaseId}`}${filters.source === undefined ? "" : `&source=${filters.source}`}`;
+  const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/top?metric=${metric}&limit=200${windowQuery}${cursorQuery}${filterQuery}`, instanceId, signal) as { metric?: unknown; items?: unknown; snapshotUtc?: unknown; nextCursor?: unknown; fromUtc?: unknown; toUtc?: unknown };
   if (value.metric !== metric || !timestamp(value.snapshotUtc) || !Array.isArray(value.items) || value.items.length > 200 || value.nextCursor !== undefined && value.nextCursor !== null && (typeof value.nextCursor !== "string" || value.nextCursor.length === 0 || value.nextCursor.length > 1024) || typeof value.fromUtc !== "string" || typeof value.toUtc !== "string" || !timestamp(value.fromUtc) || !timestamp(value.toUtc) || fromUtc !== undefined && canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc) || toUtc !== undefined && canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)) throw new Error("Query performance top response was outside its bounds.");
   const effectiveFrom = value.fromUtc; const effectiveTo = value.toUtc;
-  const items = value.items.map(x => { const parsed = item(x, metric); if (effectiveFrom !== undefined && effectiveTo !== undefined && (Date.parse(parsed.intervalStartUtc) < Date.parse(effectiveFrom) || Date.parse(parsed.intervalEndUtc) > Date.parse(effectiveTo))) throw new Error("Query performance top item was outside its bound window."); return parsed; }); return { repositoryTimeUtc: value.snapshotUtc, items, nextCursor: typeof value.nextCursor === "string" ? value.nextCursor : undefined, fromUtc: effectiveFrom, toUtc: effectiveTo };
+  const items = value.items.map(x => { const parsed = item(x, metric); if (filters.databaseId !== undefined && parsed.query.databaseId !== filters.databaseId || filters.source !== undefined && parsed.source !== filters.source) throw new Error("Query performance item was outside its filter scope."); if (effectiveFrom !== undefined && effectiveTo !== undefined && (Date.parse(parsed.intervalStartUtc) < Date.parse(effectiveFrom) || Date.parse(parsed.intervalEndUtc) > Date.parse(effectiveTo))) throw new Error("Query performance top item was outside its bound window."); return parsed; }); return { repositoryTimeUtc: value.snapshotUtc, items, nextCursor: typeof value.nextCursor === "string" ? value.nextCursor : undefined, fromUtc: effectiveFrom, toUtc: effectiveTo };
 }
 export async function getQueryPerformance(instanceId: string, signal?: AbortSignal): Promise<QueryPerformancePage> {
   const metrics: QueryPerformanceMetric[] = ["cpu", "duration", "executions", "logical_reads", "writes", "rows"]; const to = new Date().toISOString(); const from = new Date(Date.parse(to) - 24 * 60 * 60 * 1000).toISOString(); const pages = await Promise.all(metrics.map(metric => getQueryPerformanceTop(instanceId, metric, undefined, from, to, signal))); const merged = new Map<string, QueryPerformanceItem>();

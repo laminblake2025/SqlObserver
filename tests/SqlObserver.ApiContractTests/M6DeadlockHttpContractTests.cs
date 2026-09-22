@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -42,6 +43,32 @@ public sealed class M6DeadlockHttpContractTests : IClassFixture<M6DeadlockApiFac
         using HttpClient client = CreateClient("viewer");
         HttpResponseMessage response = await client.GetAsync($"/api/v1/observation-targets/{M6DeadlockApiFactory.TargetId:D}/deadlocks?{query}");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ContinuationReusesTheFirstPageWindowAndRejectsExplicitConflicts()
+    {
+        factory.Service.Paginated = true;
+        try
+        {
+            using HttpClient client = CreateClient("viewer");
+            string endpoint = $"/api/v1/observation-targets/{M6DeadlockApiFactory.TargetId:D}/deadlocks?limit=1";
+            using HttpResponseMessage first = await client.GetAsync(endpoint);
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            using JsonDocument firstBody = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+            string cursor = Uri.EscapeDataString(firstBody.RootElement.GetProperty("nextCursor").GetString()!);
+            var firstWindow = factory.Service.LastWindow;
+            using HttpResponseMessage next = await client.GetAsync(endpoint + "&cursor=" + cursor);
+            Assert.Equal(HttpStatusCode.OK, next.StatusCode);
+            Assert.Equal(firstWindow, factory.Service.LastWindow);
+
+            foreach (string conflict in new[] { "&fromUtc=2020-01-01T00:00:00Z", "&toUtc=2020-01-01T01:00:00Z" })
+            {
+                using HttpResponseMessage invalid = await client.GetAsync(endpoint + "&cursor=" + cursor + conflict);
+                Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            }
+        }
+        finally { factory.Service.Paginated = false; }
     }
 
     [Fact]
@@ -104,12 +131,17 @@ internal sealed class FakeDeadlockQueryService : IDeadlockProjectionQueryService
 {
     internal bool Invalid { get; set; }
     internal bool InvalidDetailIdentity { get; set; }
+    internal bool Paginated { get; set; }
+    internal (DateTimeOffset From, DateTimeOffset To) LastWindow { get; private set; }
     private static readonly DateTimeOffset At = new(2026, 8, 23, 18, 0, 0, TimeSpan.Zero);
     public ValueTask<DeadlockPage?> ListDeadlocksAsync(ListDeadlocksQuery query, CancellationToken cancellationToken)
     {
         if (!query.Authorization.CanAccess(ApplicationRole.Viewer, query.TargetId)) throw new UnauthorizedAccessException();
         if (Invalid) throw new InvalidDataException("bounded projection contract failed");
-        return ValueTask.FromResult<DeadlockPage?>(new DeadlockPage(query.TargetId, At, [Summary(query.TargetId)], null));
+        LastWindow = (query.FromUtc, query.ToUtc);
+        DeadlockPageCursor? next = Paginated && query.Cursor is null
+            ? new(query.TargetId, At, M6DeadlockApiFactory.EventId, At, query.FromUtc, query.ToUtc) : null;
+        return ValueTask.FromResult<DeadlockPage?>(new DeadlockPage(query.TargetId, At, [Summary(query.TargetId)], next));
     }
     public ValueTask<DeadlockDetailDto?> GetDeadlockAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid eventId, RepositoryCallTimeout timeout, CancellationToken cancellationToken) { if (!authorization.CanAccess(ApplicationRole.Viewer, targetId)) throw new UnauthorizedAccessException(); if (InvalidDetailIdentity) throw new InvalidDataException("deadlock detail identity failed validation"); return ValueTask.FromResult<DeadlockDetailDto?>(new DeadlockDetailDto(Summary(targetId), [], [])); }
     private static DeadlockSummaryDto Summary(MonitoredInstanceId target, bool invalidIdentity = false) => new(target, invalidIdentity ? Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc") : M6DeadlockApiFactory.EventId, At, new string('f', 64), 0, 0, false, At);

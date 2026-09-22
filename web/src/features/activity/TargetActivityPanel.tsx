@@ -1,3 +1,6 @@
+import { RequestStatus } from "../../components/RequestStatus";
+import { useEvidenceResource } from "../../hooks/useEvidenceResource";
+import { windowLimitMessage, type InvestigationWindow } from "../../investigationWindow";
 import { useEffect, useRef, useState } from "react";
 import { LiveSessionsPanel } from "./LiveSessionsPanel";
 
@@ -8,34 +11,28 @@ export interface TargetActivityPanelProps {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
+  readonly refresh?: number;
+  readonly timeWindow?: InvestigationWindow;
+  readonly windowError?: string;
   readonly initialHistoryAtUtc?: string;
   readonly initialHistoryEventId?: string;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId }: TargetActivityPanelProps) {
-  const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
-  const [historyHours, setHistoryHours] = useState<1 | 6 | 24>(1);
-  const [message, setMessage] = useState<string>();
-  useEffect(() => {
-    const controller = new AbortController();
-    setSnapshot(undefined);
-    setMessage(undefined);
-    void getActivitySnapshot(instanceId, controller.signal, historyHours)
-      .then((next) => { if (!controller.signal.aborted) { setSnapshot(next); setMessage(undefined); } })
-      .catch((error: unknown) => { if (!controller.signal.aborted) { setMessage(error instanceof Error ? error.message : "Activity evidence is unavailable."); } });
-    return () => controller.abort();
-  }, [instanceId, historyHours]);
+export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, refresh = 0, timeWindow, windowError }: TargetActivityPanelProps) {
+  const rangeError = windowError ?? (timeWindow ? windowLimitMessage(timeWindow, 1, "Activity history") : undefined);
+  const result = useEvidenceResource(`${instanceId}:${timeWindow?.fromUtc}:${timeWindow?.toUtc}`, refresh, signal => getActivitySnapshot(instanceId, signal, 1, rangeError ? null : timeWindow));
+  const snapshot = result.data;
 
   return (
-    <section className="activity-screen" aria-labelledby="activity-heading" aria-live="polite">
-      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} />
+    <section className="activity-screen" aria-labelledby="activity-heading">
+      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}`} instanceId={instanceId} displayName={displayName} externalRefresh={refresh} timeWindow={timeWindow} windowError={rangeError} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} />
       <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Live sessions stay in the primary workspace. Historical waits and blocking pages remain bounded and expandable.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
-      <label>Blocking history window <select value={historyHours} onChange={event => setHistoryHours(Number(event.target.value) as 1 | 6 | 24)}><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24">Last 24 hours</option></select></label>
-      {message === undefined ? null : <p className="status-message">{message}</p>}
-      {snapshot === undefined && message === undefined ? <p>Loading bounded activity evidence…</p> : null}
+      <p className="table-note">Sessions, waits, requests, and current blocking show latest snapshots. Blocking history uses the selected investigation window (maximum 24 hours).</p>
+      {rangeError ? <p role="alert">{rangeError} Current activity remains available.</p> : null}
+      <RequestStatus loading={result.loading} error={result.error} updatedAt={result.updatedAt} hasData={Boolean(snapshot)} label="Activity evidence" onRetry={result.retry} />
       {snapshot === undefined ? null : <>
-        {snapshot.errors.map(error => <p role="status" key={error}>{error} Refresh to retry this section.</p>)}
+        {snapshot.errors.map(error => <RequestStatus key={error} loading={false} error={error} label="Activity section" onRetry={result.retry} />)}
         {snapshot.sessions && <Evidence page={snapshot.sessions} />}
         {snapshot.requests && <Evidence page={snapshot.requests} />}
         {snapshot.sessions && <ActivityTable title="Sessions" columns={["Session", "Status", "Database", "CPU ms", "Memory pages", "Reads/writes", "Elapsed ms"]} rows={snapshot.sessions.items.map((item) => [String(item.sessionId), item.status, String(item.databaseId ?? "—"), item.cpuMilliseconds, item.memoryUsagePages, `${item.reads}/${item.writes}`, item.totalElapsedMilliseconds])} />}
@@ -45,21 +42,24 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
         {snapshot.waits && <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />}
         {snapshot.blocking && <Evidence page={snapshot.blocking} />}
         {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "Root resolution"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
-        {snapshot.history && <BlockingHistory key={`${instanceId}/${historyHours}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
+        {snapshot.history && <BlockingHistory key={`${instanceId}/${timeWindow?.fromUtc}/${timeWindow?.toUtc}`} instanceId={instanceId} initialPage={snapshot.history} refresh={refresh} />}
       </>}
       </div></details>
     </section>
   );
 }
 
-function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: string; readonly initialPage: ActivityPage<BlockingHistoryItem> }) {
+function BlockingHistory({ instanceId, initialPage, refresh }: { readonly instanceId: string; readonly initialPage: ActivityPage<BlockingHistoryItem>; readonly refresh: number }) {
   const [page, setPage] = useState(initialPage);
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
   const [pageIndex, setPageIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | undefined>(undefined);
+  const previousRefresh = useRef(refresh);
   useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => { if (pageIndex === 0) setPage(initialPage); }, [initialPage]);
+  useEffect(() => { if (previousRefresh.current === refresh) return; previousRefresh.current = refresh; if (pageIndex > 0) void navigate(pageIndex, cursors[pageIndex]); }, [refresh]);
   const window = initialPage.fromUtc && initialPage.toUtc ? { fromUtc: initialPage.fromUtc, toUtc: initialPage.toUtc } : undefined;
   async function navigate(index: number, cursor?: string) {
     if (!window || request.current) return;
