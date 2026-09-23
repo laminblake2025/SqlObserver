@@ -49,7 +49,7 @@
     "src/SqlObserver.Reporting/ReportRendering.cs": "6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61",
     "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs": "6dce0d1b5dc6bbd930367059153872e5df3eaa38aeeb31650b0fdb1afd73b8ee",
     "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs": "9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74",
-    "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs": "5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22",
+    "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs": "253b2c8d9381fa20493486cda27da05b43a6cea86f760acd0f65b25912a7198d",
     "tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj": "1e42d8ee02bc687988cc17b44f6200f4bf04dc48d1c93b7e298b195e6c521910"
   }
 }
