@@ -48,16 +48,22 @@ Server and Collector:
    conflicts. Actor byte/control bounds and role privileges are preserved.
 
 The installer assessment catalog and dependent source/checksum pins include
-all three migrations. Earlier migration files remain unchanged. No deployment
-to the existing lab services was performed by this task. Deploy the updated
-Server with its matching web assets: the new query-filter UI requires the
-updated endpoint, and an older Server can ignore the added filter parameters.
+all three migrations. Earlier migration files remain unchanged. Deploy the
+updated Server with its matching web assets: the new query-filter UI requires
+the updated endpoint, and an older Server can ignore the added filter
+parameters.
 
 On September 22 at 18:41 UTC, the checksum-verifying runner applied 0078–0080
 to the existing WIN-QNGOV5GDM24 lab repository. A separate read-only ledger
 check confirmed all three filenames and hashes. Both application services
-remained running with their existing executable paths; the lab application
-binaries have not yet been upgraded.
+remained running while the database was upgraded. Later that day, commit
+`9ab5fc0` was published to the disposable lab as a matched Server, Collector
+and web candidate under `C:\SqlObserverLab\roadmap-9ab5fc0-20260922`.
+The deployment retained the existing configuration directories and service
+identities. Its switch script checked archive hashes, executable paths,
+service state, authenticated HTTPS and the candidate web asset, and keeps
+the former paths in `deployment-state.json` for rollback. Both services were
+still running on the candidate paths after the validation run.
 
 ## Verification
 
@@ -105,7 +111,8 @@ runs. The final group passed 133/133 in 22 minutes 24 seconds. A case-by-case
 audit of the focused and final TRX reports matched the complete selected test
 inventory with no missing cases and no remaining failures. The Docker-owned
 restart case was not selected on this Windows external-cluster runner. All
-temporary clusters stopped cleanly; the existing lab services remain unchanged.
+temporary clusters stopped cleanly. Those functional tests preceded the
+separate candidate service deployment.
 The coverage audit is in `artifacts/roadmap-postgres-coverage.json`, and the
 final report is `artifacts/roadmap-postgres-final.trx`.
 
@@ -130,6 +137,31 @@ to these requests. This run overlapped isolated integration testing on the same
 host, so it is not an unloaded capacity baseline. Core observation age was
 unavailable in these responses; end-to-end collection lag was not measured.
 
+On the deployed `9ab5fc0` candidate with the same single real target, 20
+Overview requests spaced ten seconds apart returned **20/20 HTTP 200** over
+199 seconds: p50 **185 ms**, p95 **1,111 ms**. Repository counters over the
+interval increased by 4,617 commits, 9,899 blocks read, 3,654,772 block hits
+and zero temporary bytes; they include concurrent collection and cannot be
+assigned to the API requests alone. This paced run used a one-hour fixed
+investigation window and authenticated HTTPS with certificate validation. It
+is a one-target observation, not a 5- or 10-target capacity result. The
+benchmark's original observation-age field was invalid because PowerShell
+converted an already parsed UTC date through local-time text. After fixing the
+script, a separate three-request sample measured maximum displayed core
+observation ages of **9, 20 and 30 seconds**. These are not source-change-to-UI
+latencies. Ten recent core collection runs all succeeded and took 0.5–9.6
+seconds from scheduled start to persistence in a separate read-only check.
+
+The candidate smoke check returned 200 for Overview, query status, ranking,
+a distinct ranking continuation row, a nonempty source filter, a nonempty
+database filter, and deadlock list. Reusing the unfiltered ranking cursor with
+a conflicting source filter returned 400. Overview showed current evidence. The lab had no
+deadlocks in the tested hour, so live deadlock continuation was not exercised;
+the browser regression covers that behavior. Both Windows services remained
+running under their original service identities and candidate executable
+paths after these checks. The TLS check covers this host and certificate at
+this point in time, not renewal or the full identity matrix.
+
 Reproduction:
 
 ```powershell
@@ -142,9 +174,12 @@ pnpm run benchmark:browser
 
 `tools/lab/run-roadmap-postgres-validation.ps1` runs the functional suite in an
 isolated Windows PostgreSQL cluster. `tools/lab/measure-roadmap-api.ps1` records
-latency and optional repository counter deltas without printing credentials.
+latency and optional repository counter deltas without printing credentials;
+`tools/lab/smoke-roadmap-candidate.ps1` checks authenticated candidate APIs.
 Raw local artifacts live under `artifacts/` and `web/.artifacts/`; lab results
-live under `C:\SqlObserverLab\roadmap-validation-20260922`.
+live under `C:\SqlObserverLab\roadmap-validation-20260922` and
+`C:\SqlObserverLab\roadmap-9ab5fc0-20260922`. The candidate benchmark and
+smoke JSON copies are in `artifacts/roadmap-9ab5fc0-20260922`.
 
 ## Remaining production qualification
 

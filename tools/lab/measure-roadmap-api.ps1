@@ -3,6 +3,9 @@ param(
     [Parameter(Mandatory)][uri] $BaseUri,
     [Parameter(Mandatory)][string] $OutputPath,
     [ValidateRange(3, 20)][int] $Iterations = 10,
+    [ValidateRange(0, 30)][int] $IntervalSeconds = 0,
+    [ValidateRange(1, 10)][int] $MaximumMinutes = 5,
+    [ValidatePattern('^[A-Za-z0-9._-]{1,64}$')][string] $DeploymentLabel = 'unlabeled',
     [string] $RepositorySettingsPath,
     [string] $PsqlPath = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 )
@@ -35,17 +38,22 @@ $before = Read-RepositoryCounters
 $samples = @()
 $total = [Diagnostics.Stopwatch]::StartNew()
 for ($i = 0; $i -lt $Iterations; $i++) {
-    if ($total.Elapsed.TotalMinutes -ge 5) { break }
+    if ($total.Elapsed.TotalMinutes -ge $MaximumMinutes) { break }
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $response = Invoke-WebRequest -Uri "$origin/api/v1/overview?$query" -UseDefaultCredentials -TimeoutSec 35 -SkipHttpErrorCheck
     $watch.Stop()
     $lag = $null
     if ([int]$response.StatusCode -eq 200) {
         $value = $response.Content | ConvertFrom-Json
-        $ages = @($value.evidence | Where-Object lastObservedUtc | ForEach-Object { [Math]::Max(0, ([DateTime]::UtcNow - [DateTime]::Parse($_.lastObservedUtc).ToUniversalTime()).TotalSeconds) })
+        # ConvertFrom-Json materializes ISO timestamps as DateTime; converting them
+        # to text first loses their UTC kind on a non-UTC lab host.
+        $ages = @($value.evidence | Where-Object lastObservedUtc | ForEach-Object { [Math]::Max(0, ([DateTimeOffset]::UtcNow - [DateTimeOffset]$_.lastObservedUtc).TotalSeconds) })
         if ($ages.Count) { $lag = ($ages | Measure-Object -Maximum).Maximum }
     }
     $samples += [ordered]@{ status = [int]$response.StatusCode; durationMs = $watch.Elapsed.TotalMilliseconds; maximumCoreObservationAgeSeconds = $lag }
+    if ($i -lt $Iterations - 1 -and $IntervalSeconds -gt 0 -and $total.Elapsed.TotalMinutes -lt $MaximumMinutes) {
+        Start-Sleep -Seconds $IntervalSeconds
+    }
 }
 $after = Read-RepositoryCounters
 $delta = $null
@@ -56,13 +64,15 @@ if ($null -ne $before -and $null -ne $after) {
 }
 $durations = @($samples.durationMs | Sort-Object)
 $result = [ordered]@{
-    kind = 'existing-deployment-read-only-benchmark'; measuredAtUtc = [DateTime]::UtcNow.ToString('o')
+    kind = 'deployed-build-read-only-benchmark'; measuredAtUtc = [DateTime]::UtcNow.ToString('o')
+    deploymentLabel = $DeploymentLabel
     registeredTargetsInFirstPage = $registered; inventoryTruncated = [bool]$inventory.nextCursor
-    iterations = $samples.Count; fromUtc = $start.ToString('o'); toUtc = $end.ToString('o')
+    iterations = $samples.Count; intervalSeconds = $IntervalSeconds; elapsedSeconds = $total.Elapsed.TotalSeconds
+    fromUtc = $start.ToString('o'); toUtc = $end.ToString('o')
     p50Ms = $durations[[int][Math]::Ceiling($durations.Count * 0.5) - 1]
     p95Ms = $durations[[int][Math]::Ceiling($durations.Count * 0.95) - 1]
     repositoryCounterDelta = $delta; samples = $samples
-    notes = @('Existing deployed build; not evidence of this working-tree build.', 'Repository counters include concurrent collector activity.', 'Observation age is not end-to-end ingestion lag.', 'Only the actually registered fleet size was exercised.')
+    notes = @('Deployment label is operator-supplied; confirm it against the installed service artifact.', 'Repository counters include concurrent collector activity.', 'Observation age is not end-to-end ingestion lag.', 'Only the actually registered fleet size was exercised.')
 }
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding utf8
 Write-Output "Measured $($samples.Count) requests for $registered registered targets. p50=$([Math]::Round($result.p50Ms,1))ms; p95=$([Math]::Round($result.p95Ms,1))ms."
