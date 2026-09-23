@@ -5,7 +5,7 @@ import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformanceSta
 
 test("query performance panel shows all source evidence by default", async () => {
   const panel = await readFile(new URL("../src/features/queries/TargetQueryPerformancePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /const \[source, setSource\] = useState\("mixed"\)/);
+  assert.match(panel, /const \[source, setSource\] = useState(?:<[^>]+>)?\("mixed"\)/);
   assert.match(panel, /<option value="mixed">All sources · evidence<\/option>/);
   assert.match(panel, /queryPerformanceDatabaseOptions/);
   assert.match(panel, /databaseName/);
@@ -112,4 +112,31 @@ test("query windows accept equivalent UTC precision but reject distinct instants
     responseFrom = "2026-09-04T01:00:00.0000001Z";
     await assert.rejects(() => getQueryPerformanceTop("precision", "cpu", undefined, "2026-09-04T01:00:00.000Z", "2026-09-04T02:00:00.000Z"), /outside its bounds/);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("ranking filters are sent to the server with the same bound window on every page", async () => {
+ const originalFetch=globalThis.fetch;
+ const requests=[];
+ globalThis.fetch=async input=>{
+  requests.push(new URL(String(input),"http://localhost"));
+  return new Response(JSON.stringify({targetId:"filtered",metric:"cpu",snapshotUtc:"2026-09-04T02:00:00Z",fromUtc:"2026-09-04T01:00:00Z",toUtc:"2026-09-04T02:00:00Z",items:[],nextCursor:null}),{headers:{"content-type":"application/json"}});
+ };
+ try {
+  for(const cursor of [undefined,"next-page"]) await getQueryPerformanceTop("filtered","cpu",cursor,"2026-09-04T01:00:00Z","2026-09-04T02:00:00Z",undefined,{databaseId:7,source:"plan_cache"});
+  assert.equal(requests.length,2);
+  for(const url of requests) {
+   assert.equal(url.searchParams.get("databaseId"),"7");
+   assert.equal(url.searchParams.get("source"),"plan_cache");
+   assert.equal(url.searchParams.get("fromUtc"),"2026-09-04T01:00:00Z");
+  }
+  assert.equal(requests[1].searchParams.get("cursor"),"next-page");
+  for(const filters of [{databaseId:0},{databaseId:32768},{source:"mixed"}]) await assert.rejects(()=>getQueryPerformanceTop("filtered","cpu",undefined,undefined,undefined,undefined,filters),/filters were invalid/);
+ } finally {globalThis.fetch=originalFetch;}
+});
+
+test("query request errors include a safe copyable correlation reference",async()=>{
+ const originalFetch=globalThis.fetch;
+ globalThis.fetch=async()=>new Response("provider details must never be displayed",{status:500,headers:{"X-Correlation-ID":"query-test-42"}});
+ try {await assert.rejects(()=>getQueryPerformanceTop("target","cpu"),/^Error: Query performance request failed\. Reference: query-test-42$/);}
+ finally {globalThis.fetch=originalFetch;}
 });

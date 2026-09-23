@@ -27,7 +27,9 @@ test("target detail exposes bounded repository health evidence", async () => {
   assert.match(panel, /evidence_stale: "The latest successful evidence is overdue"/);
   assert.match(panel, /Visibility gap:/);
   assert.match(panel, /refreshIntervalMilliseconds = 30_000/);
-  assert.match(panel, /request\?\.abort\(\)/);
+  const resource = await readFile(new URL("../src/hooks/useEvidenceResource.ts", import.meta.url), "utf8");
+  assert.match(resource, /controller\.abort\(\)/);
+  assert.match(panel, /useEvidenceResource/);
   assert.match(types, /readonly sourceRows: number/);
   assert.match(types, /readonly responseBytes: number/);
   assert.match(types, /readonly sampleLossKind: CollectorLossKind \| null/);
@@ -69,7 +71,9 @@ test("health fetch uses a target-scoped route and never reflects provider errors
   );
   assert.match(api, /\/health\/databases\?limit=\$\{String\(firstPageLimit\)\}/);
   assert.match(api, /\/health\/files\?limit=\$\{String\(firstPageLimit\)\}/);
-  assert.match(api, /Promise\.allSettled\(\[/);
+  assert.doesNotMatch(api, /getTargetHealthEvidence/);
+  const panel = await readFile(panelUrl, "utf8");
+  for (const section of ["target", "databases", "files"]) assert.match(panel, new RegExp(`const ${section} = useEvidenceResource`));
   assert.match(api, /credentials: "same-origin"/);
   assert.match(api, /signal,/);
   assert.match(api, /You are not authorized to view health for this target\./);

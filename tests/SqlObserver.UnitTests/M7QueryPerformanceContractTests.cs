@@ -190,6 +190,24 @@ public sealed class M7QueryPerformanceContractTests
         Assert.Equal(1, validRepository.TopCalls);
     }
 
+    [Fact]
+    public async Task QueryRankingRejectsFilterScopeMismatchBeforeCallingRepository()
+    {
+        var target = new MonitoredInstanceId(Guid.NewGuid());
+        var query = new QueryOpaqueIdentity(5, new string('f', 64));
+        var from = DateTimeOffset.UnixEpoch; var to = from.AddHours(1);
+        var repository = new NullMetricRepository(new TopQueryDto(target, query, null, QueryPerformanceSource.QueryStore, QueryStoreState.ReadWrite, QueryPerformanceMetric.CpuMilliseconds, 1, QueryMetricSemantics.QueryStoreInterval, from, from.AddMinutes(1), QueryCoverage.Complete, true, false, false));
+        var service = new QueryPerformanceApiQueryService(repository);
+        var authorization = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-7002"), AuthorizationPrincipalState.Active, [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForAllTargets())]);
+        var cursor = new QueryPerformanceCursorEnvelope(target, 5, from, to, QueryPerformanceMetric.CpuMilliseconds, from, from.AddMinutes(1), query.QueryFingerprint, 1, Guid.NewGuid(), null, new string('a', 32)) { FilterDatabaseId = 5, FilterSource = QueryPerformanceSource.QueryStore };
+        var request = new TopQueryRequest(target, from, to, QueryPerformanceMetric.CpuMilliseconds, 1, cursor, new RepositoryCallTimeout(TimeSpan.FromSeconds(1))) { DatabaseId = 5, Source = QueryPerformanceSource.QueryStore };
+        foreach (var mismatch in new[] { request with { DatabaseId = null }, request with { DatabaseId = 6 }, request with { Source = null }, request with { Source = QueryPerformanceSource.PlanCache } })
+            await Assert.ThrowsAsync<ArgumentException>(async () => await service.GetTopAsync(authorization, mismatch, CancellationToken.None));
+        Assert.Equal(0, repository.TopCalls);
+        Assert.Single((await service.GetTopAsync(authorization, request, CancellationToken.None)).Items);
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await service.GetTopAsync(authorization, request with { Cursor = null, DatabaseId = 6 }, CancellationToken.None));
+    }
+
     private sealed class NullMetricRepository(TopQueryDto item) : IQueryPerformanceApiRepositoryPort
     {
         public int TopCalls { get; private set; }

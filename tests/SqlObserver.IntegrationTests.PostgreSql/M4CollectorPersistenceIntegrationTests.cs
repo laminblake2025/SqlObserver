@@ -1037,7 +1037,7 @@ public sealed class M4CollectorPersistenceIntegrationTests
         {
             var migrations = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await migrations.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),
                 CancellationToken.None);
             Assert.False(
                 result.HasFailures,

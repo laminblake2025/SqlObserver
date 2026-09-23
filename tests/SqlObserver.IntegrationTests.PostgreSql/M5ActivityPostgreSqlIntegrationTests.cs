@@ -441,7 +441,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         {
             var runner = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await runner.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;
         }
@@ -467,7 +467,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     }
 
     private static Task ReconfigureTargetAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, long revision) =>
-        ExecuteAsync(database, "UPDATE control.observation_target SET revision = @revision, updated_at = clock_timestamp(), discovery_requested_at = clock_timestamp() WHERE instance_id = @target;", ("target", targetId.Value), ("revision", revision));
+        ExecuteAsync(database, "UPDATE control.observation_target SET revision = @revision, updated_at = statement_timestamp(), discovery_requested_at = statement_timestamp() WHERE instance_id = @target;", ("target", targetId.Value), ("revision", revision));
 
     private static Task BumpScheduleRevisionAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, string collectorId) =>
         ExecuteAsync(database, "UPDATE control.collector_schedule SET schedule_revision = schedule_revision + 1, collection_interval = collection_interval + interval '1 second' WHERE instance_id = @target AND collector_id = @collector;", ("target", targetId.Value), ("collector", collectorId));

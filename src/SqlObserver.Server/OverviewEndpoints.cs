@@ -8,7 +8,8 @@ public static class OverviewEndpoints
 {
     public static IEndpointRouteBuilder MapOverviewEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/overview", ReadAsync).RequireAuthorization();
+        endpoints.MapGet("/api/v1/overview", ReadAsync).RequireAuthorization()
+            .WithRequestTimeout(ServerRequestTimeouts.OverviewPolicyName);
         return endpoints;
     }
 
@@ -17,18 +18,20 @@ public static class OverviewEndpoints
         CancellationToken cancellationToken = default)
     {
         context.Response.Headers.CacheControl = "no-store";
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
-            var snapshot = await service.ReadAsync(new(resolver.Resolve(context.User), targetId, fromUtc, toUtc), deadline.Token);
+            var snapshot = await service.ReadAsync(new(resolver.Resolve(context.User), targetId, fromUtc, toUtc), cancellationToken);
             // One envelope keeps summary, rankings and trends together; no shared cross-user cache.
             if (JsonSerializer.SerializeToUtf8Bytes(snapshot).Length > 1_048_576) return Results.StatusCode(413);
             return Results.Ok(snapshot);
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }
-        catch (OperationCanceledException) { return Results.StatusCode(504); }
-        catch (Exception) { return Results.StatusCode(503); }
+        // Inventory's internal budget can expire while the HTTP request is still active.
+        // HTTP deadline and client-abort cancellation remain owned by the outer middleware.
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+        }
     }
 }

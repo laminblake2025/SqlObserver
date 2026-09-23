@@ -172,9 +172,3 @@ export interface DatabaseFileHealthPage {
   readonly items: readonly DatabaseFileHealthSummary[];
   readonly nextCursor: string | null;
 }
-
-export interface TargetHealthEvidence {
-  readonly target: TargetHealthSnapshot;
-  readonly databases: DatabaseHealthPage;
-  readonly files: DatabaseFileHealthPage;
-}

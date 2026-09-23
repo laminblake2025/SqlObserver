@@ -19,7 +19,7 @@ public sealed class QueryPerformanceWindowIntegrationTests(PostgreSql18Fixture f
     {
         await using var database = await fixture.CreateDatabaseAsync();
         var result = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
         Assert.False(result.HasFailures);
         await using (var index = database.DataSource.CreateCommand("SELECT pg_get_indexdef('events.ix_query_performance_query_ownership'::regclass);"))
         {
@@ -89,7 +89,7 @@ public sealed class QueryPerformanceWindowIntegrationTests(PostgreSql18Fixture f
         await using var database = await fixture.CreateDatabaseAsync();
         var migrations = new PostgreSqlMigrationPort(database.DataSource, PostgreSqlMigrationCatalog.LoadEmbedded());
         MigrationBatchResult result = await migrations.ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
         Assert.False(result.HasFailures);
 
         Guid target = Guid.NewGuid(), other = Guid.NewGuid();
@@ -154,7 +154,7 @@ public sealed class QueryPerformanceWindowIntegrationTests(PostgreSql18Fixture f
         await using var database = await fixture.CreateDatabaseAsync();
         var migrations = new PostgreSqlMigrationPort(database.DataSource, PostgreSqlMigrationCatalog.LoadEmbedded());
         MigrationBatchResult result = await migrations.ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
         Assert.False(result.HasFailures);
 
         Guid target = Guid.NewGuid();

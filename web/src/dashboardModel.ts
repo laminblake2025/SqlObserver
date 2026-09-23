@@ -23,8 +23,10 @@ export function readRoute(hash: string): DashboardRoute {
   return { page, target: params.get('target') ?? '' };
 }
 export function routeHref(page: Destination, target: string): string { return `#/${page}${target ? `?target=${encodeURIComponent(target)}` : ''}`; }
-export function activityHistoryHref(target: string, occurredAtUtc: string, eventId?: string): string {
+export function activityHistoryHref(target: string, occurredAtUtc: string, eventId?: string, scopeHash?: string): string {
   const query = new URLSearchParams();
+  const scope = new URLSearchParams(scopeHash?.split("?")[1]);
+  for (const key of ["range", "from", "to", "compare"]) { const value = scope.get(key); if (value) query.set(key, value); }
   if (target) query.set('target', target);
   query.set('at', occurredAtUtc);
   if (eventId !== undefined && guid.test(eventId)) query.set('event', eventId);

@@ -1,0 +1,37 @@
+name: SQL Server controlled lab
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  passive-lab:
+    # No PR code runs on a privileged lab host. Enable only after its owner has
+    # configured this label, protected environment, identity, and secret.
+    if: vars.SQLOBSERVER_SQLSERVER_LAB_ENABLED == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: [self-hosted, Windows, sqlobserver-lab]
+    environment: sqlobserver-lab
+    timeout-minutes: 30
+    env:
+      SQLOBSERVER_VALIDATION_PROFILE: Local
+      SQLOBSERVER_LOCAL_SQLSERVER: ${{ secrets.SQLOBSERVER_LOCAL_SQLSERVER }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Require explicit lab configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SQLOBSERVER_LOCAL_SQLSERVER)) { throw 'The controlled SQL Server lab is not configured.' }
+      - name: Run passive SQL Server integration tests
+        shell: pwsh
+        run: >-
+          dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj
+          --configuration Release -p:RestoreLockedMode=true
+          --filter 'Category=RequiresSqlServer'
+          --logger 'trx;LogFileName=sqlserver-lab.trx'
+          --results-directory TestResults/sqlserver-lab

@@ -1,7 +1,10 @@
+import { RequestStatus } from "./components/RequestStatus";
 import { useEffect, useMemo, useState } from "react";
 import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
+import { TimeRangeControls } from "./components/TimeRangeControls";
+import { investigationWindow } from "./investigationWindow";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
@@ -33,9 +36,9 @@ const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], 
 };
 
 type DirectTargetLookup =
-  | { readonly targetId: string; readonly refresh: number; readonly state: "loading" }
+  | { readonly targetId: string; readonly refresh: number; readonly state: "loading"; readonly target?: ObservationTargetSummary }
   | { readonly targetId: string; readonly refresh: number; readonly state: "resolved"; readonly target: ObservationTargetSummary }
-  | { readonly targetId: string; readonly refresh: number; readonly state: "error"; readonly message: string };
+  | { readonly targetId: string; readonly refresh: number; readonly state: "error"; readonly message: string; readonly target?: ObservationTargetSummary };
 
 export function App() {
   const [route, setRoute] = useState(() => readRoute(location.hash));
@@ -45,6 +48,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string>();
   const [refresh, setRefresh] = useState(0);
+  const [windowRevision, setWindowRevision] = useState(0);
   const [directTargetLookup, setDirectTargetLookup] = useState<DirectTargetLookup>();
   const [adding, setAdding] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
@@ -59,8 +63,6 @@ export function App() {
     const controller = new AbortController();
     setLoading(true);
     setMessage(undefined);
-    setTargets([]);
-    setNextCursor(undefined);
     void listObservationTargets(controller.signal, cursor)
       .then((page) => {
         if (!controller.signal.aborted) {
@@ -79,21 +81,25 @@ export function App() {
     return () => controller.abort();
   }, [cursor, refresh]);
 
-  const evidence = useFleetEvidence(targets, route.page === "servers");
+  const evidence = useFleetEvidence(targets, route.page === "servers", refresh);
   const listedTarget = targets.find((target) => target.instanceId === route.target);
   const targetPage = route.page !== "overview" && route.page !== "servers";
   const directLookupRequired = targetPage && Boolean(route.target) && !listedTarget;
   const currentDirectTargetLookup = directLookupRequired
-    ? directTargetLookup?.targetId === route.target && directTargetLookup.refresh === refresh
+    ? directTargetLookup?.targetId === route.target
       ? directTargetLookup
       : { targetId: route.target, state: "loading" as const }
     : undefined;
 
   useEffect(() => {
-    if (!targetPage || !route.target || listedTarget) return;
+    if (!targetPage || !route.target) return;
+    if (listedTarget) {
+      setDirectTargetLookup({ targetId: route.target, refresh, state: "resolved", target: listedTarget });
+      return;
+    }
     const targetId = route.target;
     const controller = new AbortController();
-    setDirectTargetLookup({ targetId, refresh, state: "loading" });
+    setDirectTargetLookup(previous => ({ targetId, refresh, state: "loading", target: previous?.targetId === targetId ? previous.target : undefined }));
     void getObservationTarget(targetId, controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return;
@@ -105,18 +111,21 @@ export function App() {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setDirectTargetLookup({ targetId, refresh, state: "error", message: targetLookupError(error) });
+          setDirectTargetLookup(previous => ({ targetId, refresh, state: "error", message: targetLookupError(error), target: previous?.targetId === targetId ? previous.target : undefined }));
         }
       });
     return () => controller.abort();
   }, [listedTarget, refresh, route.target, targetPage]);
 
-  const selected = listedTarget ?? (currentDirectTargetLookup?.state === "resolved" ? currentDirectTargetLookup.target : undefined);
+  const selected = listedTarget ?? (currentDirectTargetLookup && "target" in currentDirectTargetLookup ? currentDirectTargetLookup.target : undefined);
   const scope = readOverviewScope(location.hash);
+  // Relative presets are captured on entry; refreshing replays the same bounded investigation.
+  const windowCapturedAt = useMemo(() => Date.now(), [route.page, scope.target, scope.range, scope.from, scope.to, windowRevision]);
   const queryWindow = useMemo(
-    () => resolveQueryWindow(scope, Date.now()),
-    [route.page, scope.target, scope.range, scope.from, scope.to, refresh],
+    () => resolveQueryWindow(scope, windowCapturedAt),
+    [scope.target, scope.range, scope.from, scope.to, windowCapturedAt],
   );
+  const timeWindow = useMemo(() => investigationWindow(scope, windowCapturedAt), [scope.target, scope.range, scope.from, scope.to, windowCapturedAt]);
   const currentNavigation = route.page === "health" ? "servers" : route.page;
   const routeHref = (page: Destination, target = route.target) => overviewHref(scope, page, target);
   const closeTarget = () => {
@@ -139,6 +148,9 @@ export function App() {
     : route.page === "health"
       ? selected ? `Servers / ${selected.displayName} · target-scoped evidence` : "Select a server to inspect target-scoped evidence."
       : selected?.displayName ?? (route.page === "servers" ? "Registered targets and collection visibility" : "Select a server to inspect evidence.");
+
+  useEffect(() => { document.title = `${pageTitle} · SQL Observer`; }, [pageTitle]);
+  useEffect(() => { document.getElementById("main-content")?.focus(); }, [route.page, route.target]);
 
   return (
     <div className="app-layout">
@@ -202,32 +214,34 @@ export function App() {
                   </label>
                 ) : null}
                 <button className="secondary-button" type="button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>
-                  ↻ <span>Refresh</span>
+                  ↻ <span>{loading ? "Refreshing…" : "Refresh"}</span>
                 </button>
                 <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button>
               </div>
             }
           />
 
+          {targetPage && ["queries", "deadlocks", "activity", "reports"].includes(route.page) ? <div className="overview-controls"><TimeRangeControls scope={scope} fixed onChange={change => { location.hash = overviewHref({...scope, ...change}, route.page); }} /><span>{timeWindow.window ? `Fixed investigation UTC: ${timeWindow.window.fromUtc} to ${timeWindow.window.toUtc}. Refresh reloads this window.` : timeWindow.error}</span>{scope.range !== "custom" ? <button className="secondary-button" type="button" onClick={() => setWindowRevision(value => value + 1)}>Move window to now</button> : null}</div> : null}
+
           {route.page !== "overview" && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
-          {route.page !== "overview" && message ? <p role="alert" className="status-message">{message}</p> : null}
+          {route.page !== "overview" ? <RequestStatus loading={loading && targets.length > 0} error={message} hasData={targets.length > 0} label="Target inventory" /> : null}
           {targetPage && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
-          {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
+          {targetPage && currentDirectTargetLookup?.state === "error" ? <RequestStatus loading={false} error={currentDirectTargetLookup.message} hasData={Boolean(props)} label="Selected target" /> : null}
 
           {route.page === "overview" ? <OverviewPage refresh={refresh} onAdd={() => setAdding(true)} /> : null}
-          {route.page === "servers" && !loading && !message ? <ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} /> : null}
+          {route.page === "servers" ? <ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} /> : null}
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 
           {props ? (
-            <div className="target-surface" key={`${props.instanceId}:${route.page}:${refresh}`}>
-              {route.page === "health" && <TargetHealthPanel {...props} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} />}
+            <div className="target-surface" key={`${props.instanceId}:${route.page}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}:${windowRevision}`}>
+              {route.page === "health" && <TargetHealthPanel {...props} refresh={refresh} />}
+              {route.page === "activity" && <TargetActivityPanel {...props} refresh={refresh} timeWindow={timeWindow.window} windowError={timeWindow.error} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} refresh={refresh} timeWindow={queryWindow.window} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
-              {route.page === "deadlocks" && <TargetDeadlockPanel {...props} />}
-              {route.page === "alerts" && <TargetAlertsPanel {...props} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} />}
-              {route.page === "reports" && <ReportsPanel {...props} />}
+              {route.page === "deadlocks" && <TargetDeadlockPanel {...props} refresh={refresh} timeWindow={timeWindow.window} windowError={timeWindow.error} />}
+              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={refresh} />}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={refresh} />}
+              {route.page === "reports" && <ReportsPanel {...props} timeWindow={timeWindow.window} windowError={timeWindow.error} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={refresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>
           ) : null}

@@ -1,3 +1,4 @@
+import { responseFailure } from "../../api/responseFailure.ts";
 import type {
   ObservationTargetPage,
   ObservationTargetSummary,
@@ -40,10 +41,10 @@ export async function registerObservationTarget(
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     if (response.status === 429) {
-      throw new Error("Too many administrative requests. Wait briefly and retry.");
+      throw responseFailure(response, "Too many administrative requests. Wait briefly and retry.");
     }
 
-    throw new Error(`SqlObserver request failed with status ${response.status}.`);
+    throw responseFailure(response, `SqlObserver request failed with status ${response.status}.`);
   }
 
   return (await response.json()) as T;

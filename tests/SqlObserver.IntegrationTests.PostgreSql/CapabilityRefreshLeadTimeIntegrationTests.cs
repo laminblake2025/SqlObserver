@@ -13,7 +13,7 @@ public sealed class CapabilityRefreshLeadTimeIntegrationTests(PostgreSql18Fixtur
     {
         await using var database = await fixture.CreateDatabaseAsync();
         var migrated = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
-            new MigrationApplyRequest(MigrationBatchResult.MaximumResults,new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),CancellationToken.None);
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),CancellationToken.None);
         Assert.False(migrated.HasFailures);
         Guid fresh=Guid.NewGuid(),nearExpiry=Guid.NewGuid(),expired=Guid.NewGuid(),shortFresh=Guid.NewGuid();
         await using var seed=database.DataSource.CreateCommand("""

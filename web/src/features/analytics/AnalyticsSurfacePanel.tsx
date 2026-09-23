@@ -1,3 +1,4 @@
+import { RequestStatus } from "../../components/RequestStatus";
 import { EvidenceTable } from "../../components/EvidenceTable";
 import { useEffect, useState } from "react";
 import { AnalyticsRequestError, getAnalyticsSurface } from "./analyticsApi";
@@ -27,7 +28,8 @@ function canRetry(state: AnalyticsPanelState): boolean {
   return state === "degraded" || state === "stale" || state === "backfilling" || state === "cursor-invalid";
 }
 
-export function AnalyticsSurfacePanel({ targetId, surface, timeWindow }: { targetId: string; surface: AnalyticsSurface; timeWindow?: {fromUtc:string;toUtc:string} }) {
+export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, refresh = 0 }: { targetId: string; surface: AnalyticsSurface; refresh?: number; timeWindow?: {fromUtc:string;toUtc:string} }) {
+  const [updatedAt, setUpdatedAt] = useState<string>();
   const [state, setState] = useState<AnalyticsPanelState>("loading");
   const [page, setPage] = useState<AnalyticsSurfacePage | null>(null);
   const [paging, setPaging] = useState<Paging>({});
@@ -36,22 +38,22 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow }: { targe
 
   useEffect(() => {
     const controller = new AbortController();
-    setState("loading"); setPage(null); setError(null);
+    setState("loading"); setError(null);
     getAnalyticsSurface(targetId, surface, controller.signal, {...timeWindow,...paging}).then(value => {
       if (controller.signal.aborted) return;
-      setPage(value); setState(panelStateForSurface(value.state, value.items.length > 0));
+      setPage(value); setUpdatedAt(new Date().toISOString()); setState(panelStateForSurface(value.state, value.items.length > 0));
     }).catch((failure: unknown) => {
       if (controller.signal.aborted) return;
       const status = statusOf(failure); const hasCursor = paging.cursor !== undefined;
       setState(panelStateForRequestError(status, hasCursor)); setError(messageFor(failure, status, hasCursor));
     });
     return () => controller.abort();
-  }, [targetId, surface, paging, reload, timeWindow?.fromUtc, timeWindow?.toUtc]);
+  }, [targetId, surface, paging, reload, refresh, timeWindow?.fromUtc, timeWindow?.toUtc]);
 
-  const retry = () => { setState("loading"); setPage(null); setError(null); setReload(value => value + 1); };
+  const retry = () => { setState("loading"); setError(null); setReload(value => value + 1); };
   const restartPaging = () => {
     const hasPaging = paging.cursor !== undefined || paging.fromUtc !== undefined || paging.toUtc !== undefined;
-    setState("loading"); setPage(null); setError(null); setPaging({});
+    setState("loading"); setError(null); setPaging({});
     if (!hasPaging) setReload(value => value + 1);
   };
   const actions = canRetry(state) ? <div className="toolbar">
@@ -60,9 +62,8 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow }: { targe
   </div> : null;
   const statusText = analyticsStatusText(surface, state, error, messages);
 
-  if (state !== "ready" && state !== "partial" && state !== "degraded") return <section className="panel analytics-surface"><p role={error ? "alert" : "status"} className="status-message">{statusText}</p>{actions}</section>;
-  if (!page) return <section className="panel analytics-surface"><p role={error ? "alert" : "status"} className="status-message">{statusText}</p>{actions}</section>;
-  if (page.items.length === 0) return <section className="panel analytics-surface"><p className="empty-state">{surface === "jobs" || surface === "backfill" ? analyticsEmptyStateText(surface) : `${messages[state]} ${analyticsEmptyStateText(surface)}`}</p></section>;
+  if (!page) return <section className="panel analytics-surface"><RequestStatus loading={state === "loading"} error={error ?? undefined} updatedAt={updatedAt} label="Analytics evidence" onRetry={retry} />{!error && state !== "loading" ? <p role="status">{statusText}</p> : null}{actions}</section>;
+  if (page.items.length === 0) return <section className="panel analytics-surface"><RequestStatus loading={state === "loading"} error={error ?? undefined} updatedAt={updatedAt} hasData label="Analytics evidence" onRetry={retry} /><p className="empty-state">{surface === "jobs" || surface === "backfill" ? analyticsEmptyStateText(surface) : `${messages[state]} ${analyticsEmptyStateText(surface)}`}</p>{actions}</section>;
   const rows = surface.startsWith("replication/") ? page.items.map(item => ({
     "Observed (UTC)": new Date(String(item.observedAtUtc)).toISOString(),
     "Agent state": item.synchronizationState === "disabled" ? "Stopped" : item.synchronizationState,
@@ -72,5 +73,5 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow }: { targe
     "Evidence": { runId: item.runId, role: item.role, targetRevision: item.targetRevision, visibilityGap: item.visibilityGap }
   })) : page.items;
   const surfaceLabel = analyticsSurfaceLabel(surface);
-  return <section className="panel analytics-surface"><h2>{surfaceLabel}</h2><p>{page.state === "visibility_gap" ? "This history includes observations collected without a distribution database binding. Health and queue values are unavailable for those rows." : messages[state]}</p><EvidenceTable label={surfaceLabel} rows={rows}/><p>{analyticsScopeText(surface, page)}</p><div className="toolbar"><button type="button" disabled={!paging.cursor} onClick={restartPaging}>First page</button><button type="button" disabled={!page.nextCursor} onClick={() => setPaging({ cursor: page.nextCursor ?? undefined, fromUtc: page.fromUtc, toUtc: page.toUtc })}>Next evidence page</button></div></section>;
+  return <section className="panel analytics-surface"><h2>{surfaceLabel}</h2><RequestStatus loading={state === "loading"} error={error ?? undefined} updatedAt={updatedAt} hasData={Boolean(page)} label="Analytics evidence" onRetry={retry} /><p>{page.state === "visibility_gap" ? "This history includes observations collected without a distribution database binding. Health and queue values are unavailable for those rows." : messages[state]}</p><EvidenceTable label={surfaceLabel} rows={rows}/><p>{analyticsScopeText(surface, page)}</p><div className="toolbar"><button type="button" disabled={state === "loading" || !paging.cursor} onClick={restartPaging}>First page</button><button type="button" disabled={state === "loading" || !page.nextCursor} onClick={() => setPaging({ cursor: page.nextCursor ?? undefined, fromUtc: page.fromUtc, toUtc: page.toUtc })}>Next evidence page</button></div></section>;
 }

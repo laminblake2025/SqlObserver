@@ -13,8 +13,7 @@ test("alert filters keep all loaded states distinct from active and firing", () 
 
 test("alert panel exposes loading/error states and protects pending load-more", async () => {
   const panel = await readFile(new URL("../src/features/alerts/TargetAlertsPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /Loading target-scoped alerts/);
-  assert.match(panel, /role="alert"/);
-  assert.match(panel, /disabled=\{!nextCursor \|\| loadingMore\}/);
+  assert.match(panel, /<RequestStatus loading=\{loading\} error=\{error\}/);
+  assert.match(panel, /disabled=\{!nextCursor \|\| loadingMore \|\| loading\}/);
   assert.match(panel, /setError\(undefined\)/);
 });

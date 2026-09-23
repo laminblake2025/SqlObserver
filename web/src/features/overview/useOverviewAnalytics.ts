@@ -6,10 +6,11 @@ import type { OverviewScope, OverviewSnapshot } from './overviewTypes';
 export function useOverviewAnalytics(scope: OverviewScope, refresh: number, automatic: boolean) {
   const [tick, setTick] = useState(0);
   const [result, setResult] = useState<{key:string; data?:OverviewSnapshot; previous?:OverviewSnapshot; error?:string; comparisonError?:string; loading:boolean}>({key:'',loading:true});
-  const key = JSON.stringify([scope,refresh,tick]);
+  const key = JSON.stringify(scope);
+  const requestKey = JSON.stringify([key,refresh,tick]);
   useEffect(() => {
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout> | undefined;
-    setResult({key,loading:true});
+    setResult(previous => previous.key === key ? {...previous,loading:true,error:undefined,comparisonError:undefined} : {key,loading:true});
     void (async () => {
       try {
         const window = overviewWindow(scope,Date.now());
@@ -23,7 +24,7 @@ export function useOverviewAnalytics(scope: OverviewScope, refresh: number, auto
             if (!controller.signal.aborted) setResult({key,data,previous,loading:false});
           } catch { if (!controller.signal.aborted) setResult({key,data,loading:false,comparisonError:'Previous-period evidence is unavailable.'}); }
         }
-      } catch (error) { if (!controller.signal.aborted) setResult({key,loading:false,error:error instanceof Error ? error.message : 'Overview is unavailable.'}); }
+      } catch (error) { if (!controller.signal.aborted) setResult(previous => ({...(previous.key === key ? previous : {key}),loading:false,error:error instanceof Error ? error.message : 'Overview is unavailable.'})); }
       finally {
         if (!controller.signal.aborted && automatic && scope.range !== 'custom') timer=setTimeout(() => { if (!document.hidden) setTick(v => v+1); },60000);
       }
@@ -31,6 +32,6 @@ export function useOverviewAnalytics(scope: OverviewScope, refresh: number, auto
     const visible = () => { if (!document.hidden && automatic && scope.range !== 'custom') setTick(v => v+1); };
     document.addEventListener('visibilitychange',visible);
     return () => { controller.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange',visible); };
-  },[key,automatic]);
+  },[requestKey,automatic]);
   return result.key === key ? result : {key,loading:true} as typeof result;
 }

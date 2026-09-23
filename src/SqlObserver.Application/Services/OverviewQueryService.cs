@@ -26,14 +26,20 @@ public sealed class OverviewQueryService(
         DateTimeOffset cutoff = DateTimeOffset.UtcNow;
         var inventory = new List<ObservationTargetStatusSnapshot>();
         ObservationTargetListCursor? cursor = null;
-        do
+        // The complete inventory read has one budget, rather than five seconds per page.
+        using (var inventoryDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
-            var page = await targets.ListAsync(new(query.Authorization, 100, cursor, false, Timeout), cancellationToken);
-            inventory.AddRange(page.Targets);
-            if (page.NextCursor == cursor && cursor is not null) throw new InvalidDataException("Target cursor did not advance.");
-            cursor = page.NextCursor;
-            if (inventory.Count >= 1000 && cursor is not null) throw new InvalidOperationException("Overview scope exceeds the bounded inventory read.");
-        } while (cursor is not null);
+            inventoryDeadline.CancelAfter(Timeout.Value);
+            do
+            {
+                inventoryDeadline.Token.ThrowIfCancellationRequested();
+                var page = await targets.ListAsync(new(query.Authorization, 100, cursor, false, Timeout), inventoryDeadline.Token);
+                inventory.AddRange(page.Targets);
+                if (page.NextCursor == cursor && cursor is not null) throw new InvalidDataException("Target cursor did not advance.");
+                cursor = page.NextCursor;
+                if (inventory.Count >= 1000 && cursor is not null) throw new InvalidOperationException("Overview scope exceeds the bounded inventory read.");
+            } while (cursor is not null);
+        }
         inventory = inventory.DistinctBy(x => x.Target.TargetId).OrderBy(x => x.Target.DisplayName.Value, StringComparer.OrdinalIgnoreCase).ToList();
         var selected = inventory.Where(x => query.TargetId.HasValue ? x.Target.TargetId.Value == query.TargetId : x.Target.Lifecycle is not (ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired)).ToArray();
         if (query.TargetId.HasValue && selected.Length == 0) throw new UnauthorizedAccessException();

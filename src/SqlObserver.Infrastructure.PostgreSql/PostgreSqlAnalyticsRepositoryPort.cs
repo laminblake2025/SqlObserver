@@ -48,7 +48,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
         if (maximumJobs is < 1 or > AnalyticsJobBounds.MaximumConcurrency)
             throw new ArgumentOutOfRangeException(nameof(maximumJobs));
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT job_id,instance_id,target_revision,job_kind,from_utc,to_utc,source_cutoff_utc,generation,metric_key,horizon_seconds,dimensions_hash,rollup_interval FROM control.claim_m10_derivation_jobs(@work_key,@owner_execution_id,@fencing_token,@limit)", connection) { CommandTimeout = 5 };
+        await using var command = new NpgsqlCommand("SELECT job_id,instance_id,target_revision,job_kind,from_utc,to_utc,source_cutoff_utc,generation,metric_key,horizon_seconds,dimensions_hash,rollup_interval,requested_at FROM control.claim_m10_derivation_jobs_with_queue_age(@work_key,@owner_execution_id,@fencing_token,@limit)", connection) { CommandTimeout = 5 };
         command.Parameters.AddWithValue("work_key", lease.Key.Value); command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value); command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value); command.Parameters.AddWithValue("limit", maximumJobs);
         var jobs = new List<AnalyticsDerivationJob>(maximumJobs);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -57,7 +57,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
             TimeSpan? horizon = reader.IsDBNull(9) ? null : TimeSpan.FromSeconds(reader.GetDouble(9));
             string? dimensionHash = reader.IsDBNull(10) ? null : Convert.ToHexString(reader.GetFieldValue<byte[]>(10)).ToLowerInvariant();
             RollupInterval? rollupInterval = reader.IsDBNull(11) ? null : reader.GetString(11) switch { "5m" => SqlObserver.Domain.Analytics.RollupInterval.FiveMinutes, "hour" => SqlObserver.Domain.Analytics.RollupInterval.Hour, "day" => SqlObserver.Domain.Analytics.RollupInterval.Day, _ => throw new InvalidDataException("PostgreSQL returned an unknown derivation rollup interval.") };
-            var job = new AnalyticsDerivationJob(reader.GetGuid(0), new MonitoredInstanceId(reader.GetGuid(1)), new ObservationTargetRevision(reader.GetInt64(2)), reader.GetString(3), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? ReadUtc(reader, 5) : ReadUtc(reader, 6), reader.IsDBNull(7) ? 1 : reader.GetInt64(7), reader.IsDBNull(8) ? null : reader.GetString(8), horizon, dimensionHash, rollupInterval);
+            var job = new AnalyticsDerivationJob(reader.GetGuid(0), new MonitoredInstanceId(reader.GetGuid(1)), new ObservationTargetRevision(reader.GetInt64(2)), reader.GetString(3), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? ReadUtc(reader, 5) : ReadUtc(reader, 6), reader.IsDBNull(7) ? 1 : reader.GetInt64(7), reader.IsDBNull(8) ? null : reader.GetString(8), horizon, dimensionHash, rollupInterval, ReadUtc(reader, 12));
             job.Validate(); jobs.Add(job);
         }
         return jobs;

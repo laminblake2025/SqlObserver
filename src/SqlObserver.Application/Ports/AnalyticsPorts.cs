@@ -57,13 +57,15 @@ public sealed record AnalyticsDerivationJob(
     string? MetricKey = null,
     TimeSpan? ForecastHorizon = null,
     string? DimensionsSha256 = null,
-    RollupInterval? RollupInterval = null)
+    RollupInterval? RollupInterval = null,
+    DateTimeOffset? RequestedAtUtc = null)
 {
     public void Validate()
     {
         if (JobId == Guid.Empty || TargetId is null || TargetRevision.Value < 1 ||
             JobKind is not ("rollup" or "baseline" or "forecast" or "evidence" or "correlation" or "incident") ||
             FromUtc.Offset != TimeSpan.Zero || ToUtc.Offset != TimeSpan.Zero || SourceCutoffUtc.Offset != TimeSpan.Zero ||
+            RequestedAtUtc is { Offset: var requestedOffset } && requestedOffset != TimeSpan.Zero ||
             ToUtc <= FromUtc || ToUtc - FromUtc > TimeSpan.FromDays(90) || SourceCutoffUtc < ToUtc ||
             Generation < 1 || JobKind is ("baseline" or "forecast" or "rollup") && string.IsNullOrWhiteSpace(MetricKey) || MetricKey?.Length > 128 || MetricKey?.Any(c => !(char.IsLetterOrDigit(c) || c is '.' or '_' or '-')) == true ||
             DimensionsSha256 is { } dimensionHash && (dimensionHash.Length != 64 || !dimensionHash.All(Uri.IsHexDigit)) ||

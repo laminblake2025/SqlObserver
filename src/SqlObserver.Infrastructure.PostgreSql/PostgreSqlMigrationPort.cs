@@ -308,15 +308,16 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         }
     }
 
-    private static async Task RollbackWithoutMaskingAsync(NpgsqlTransaction transaction)
+    internal static async Task RollbackWithoutMaskingAsync(NpgsqlTransaction transaction)
     {
         try
         {
             await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
         }
-        catch (NpgsqlException)
+        catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
         {
-            // The original failure remains authoritative; disposing a broken connection releases its transaction.
+            // A broken connection or an already completed/disposed transaction cannot be rolled back.
+            // This cleanup must preserve the failure that caused it to run.
         }
     }
 

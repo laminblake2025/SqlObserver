@@ -28,6 +28,34 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     public M10AnalyticsPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => this.fixture = fixture;
 
     [Fact]
+    public async Task DerivationClaimsExposeQueueTimeOnlyThroughCollectorLeaseBoundary()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using (var functionOwner = database.DataSource.CreateCommand("SELECT pg_catalog.pg_get_userbyid(proowner) FROM pg_catalog.pg_proc WHERE oid='control.claim_m10_derivation_jobs_with_queue_age(text,uuid,bigint,integer)'::regprocedure"))
+            Assert.Equal("sqlobserver_migrator", await functionOwner.ExecuteScalarAsync());
+        Guid target = Guid.NewGuid(), jobId = Guid.NewGuid(), owner = Guid.NewGuid();
+        await InsertTargetAsync(database, target, "queue-age", 1);
+        DateTimeOffset requested = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds());
+        await ExecuteAsync(database, """
+            INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,requested_at,from_utc,to_utc,source_cutoff_utc,generation)
+            VALUES (@job,'evidence',@target,1,'analytics/derivation',@requested,@requested-interval '1 hour',@requested,@requested,1);
+            """, ("job", jobId), ("target", target), ("requested", requested));
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        (long token, _) = await AcquireLeaseAsync(collector, "analytics/derivation", owner);
+        var adapter = new PostgreSqlAnalyticsRepositoryPort(collector, new IdentityFingerprintKey(new byte[32]));
+        var lease = new SqlObserver.Domain.Coordination.WorkerLeaseIdentity(new("analytics/derivation"), new(owner), new(token));
+        AnalyticsDerivationJob claimed = Assert.Single(await adapter.ClaimAsync(lease, 1, CancellationToken.None));
+        Assert.Equal(jobId, claimed.JobId);
+        Assert.Equal(requested, claimed.RequestedAtUtc);
+        Assert.Equal(TimeSpan.Zero, claimed.RequestedAtUtc!.Value.Offset);
+        var stale = new SqlObserver.Domain.Coordination.WorkerLeaseIdentity(new("analytics/derivation"), new(owner), new(token + 1));
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(async () => await adapter.ClaimAsync(stale, 1, CancellationToken.None))).SqlState);
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        await using var forbidden = server.CreateCommand("SELECT * FROM control.claim_m10_derivation_jobs_with_queue_age('analytics/derivation',gen_random_uuid(),1,1)");
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, (await Assert.ThrowsAsync<PostgresException>(() => forbidden.ExecuteScalarAsync())).SqlState);
+    }
+
+    [Fact]
     public async Task BackfillInventoryFiltersBeforePagingAndBindsCursorsToItsSurface()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
@@ -641,7 +669,7 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         try
         {
             MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;
         }

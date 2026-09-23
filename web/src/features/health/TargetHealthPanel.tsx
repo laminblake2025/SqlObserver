@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Tabs } from "../../components/DiagnosticUi";
 
-import { getTargetHealthEvidence, HealthRequestError } from "./healthApi";
+import { getTargetHealth, getDatabaseHealth, getDatabaseFileHealth } from "./healthApi";
+import { useEvidenceResource } from "../../hooks/useEvidenceResource";
+import { RequestStatus } from "../../components/RequestStatus";
 import {
   coreMetricDefinition,
   formatCoreMetricValue,
@@ -17,7 +19,6 @@ import type {
   DatabaseFileHealthSummary,
   DatabaseHealthPage,
   DatabaseHealthSummary,
-  TargetHealthEvidence,
   TargetHealthState,
 } from "./healthTypes";
 
@@ -61,95 +62,26 @@ export interface TargetHealthPanelProps {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
+  readonly refresh?: number;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHealthPanelProps) {
-  const [evidence, setEvidence] = useState<TargetHealthEvidence>();
-  const [message, setMessage] = useState<string>();
-  const [loading, setLoading] = useState(true);
+export function TargetHealthPanel({ instanceId, displayName, onClose, refresh = 0 }: TargetHealthPanelProps) {
+  const target = useEvidenceResource(`${instanceId}:server`, refresh, signal => getTargetHealth(instanceId, signal), refreshIntervalMilliseconds);
+  const databases = useEvidenceResource(`${instanceId}:databases`, refresh, signal => getDatabaseHealth(instanceId, signal), refreshIntervalMilliseconds);
+  const files = useEvidenceResource(`${instanceId}:files`, refresh, signal => getDatabaseFileHealth(instanceId, signal), refreshIntervalMilliseconds);
   const [tab, setTab] = useState<"summary" | "databases" | "collection">("summary");
-  const snapshot = evidence?.target;
-
-  useEffect(() => {
-    let active = true;
-    let timer: number | undefined;
-    let request: AbortController | undefined;
-
-    async function refresh() {
-      const currentRequest = new AbortController();
-      request = currentRequest;
-      try {
-        const next = await getTargetHealthEvidence(instanceId, currentRequest.signal);
-        if (active) {
-          setEvidence(next);
-          setMessage(undefined);
-        }
-      } catch (error: unknown) {
-        if (active && currentRequest.signal.aborted === false) {
-          setMessage(getSafeMessage(error));
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-          timer = window.setTimeout(() => void refresh(), refreshIntervalMilliseconds);
-        }
-      }
-    }
-
-    setEvidence(undefined);
-    setMessage(undefined);
-    setLoading(true);
-    void refresh();
-    return () => {
-      active = false;
-      request?.abort();
-      if (timer !== undefined) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, [instanceId]);
-
-  return (
-    <section className="health-screen" aria-labelledby="health-heading" aria-live="polite">
-      <div className="health-heading-row">
-        <div>
-          <p className="eyebrow">Server summary · target-scoped snapshot</p>
-          <h3 id="health-heading">Health evidence for {displayName}</h3>
-        </div>
-        <button className="secondary-button" onClick={onClose} type="button">
-          Close
-        </button>
-      </div>
-
-      {loading && snapshot === undefined ? <p>Loading health evidence…</p> : null}
-      {message === undefined ? null : <p className="status-message">{message}</p>}
-      {evidence === undefined ? null : (
-        <>
-          <Tabs
-            label="Server summary sections"
-            tabs={[{ value: "summary", label: "Summary" }, { value: "databases", label: "Databases" }, { value: "collection", label: "Collection health" }]}
-            value={tab}
-            onChange={(value) => setTab(value as "summary" | "databases" | "collection")}
-          />
-          <div className="health-summary">
-            <span className={`health-state health-${evidence.target.state}`}>
-              {stateLabels[evidence.target.state]}
-            </span>
-            <p>
-              Evaluated using repository time: {formatTimestamp(evidence.target.repositoryTimeUtc)}
-            </p>
-          </div>
-          {tab === "summary" ? <>
-            <HealthMetricStrip metrics={evidence.target.coreMetrics} />
-            <CoreMetrics metrics={evidence.target.coreMetrics} />
-            <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
-          </> : null}
-          {tab === "databases" ? <><DatabaseHealth page={evidence.databases} /><DatabaseFileHealth page={evidence.files} /></> : null}
-          {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
-        </>
-      )}
-    </section>
-  );
+  const snapshot = target.data;
+  return <section className="health-screen" aria-labelledby="health-heading">
+    <div className="health-heading-row"><div><p className="eyebrow">Server summary · current snapshot</p><h3 id="health-heading">Health evidence for {displayName}</h3></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+    <p className="table-note">Current evidence; the investigation time range does not filter these snapshots.</p>
+    <Tabs label="Server summary sections" tabs={[{ value: "summary", label: "Summary" }, { value: "databases", label: "Databases" }, { value: "collection", label: "Collection health" }]} value={tab} onChange={value => setTab(value as typeof tab)} />
+    <RequestStatus loading={target.loading} error={target.error} updatedAt={target.updatedAt} hasData={Boolean(snapshot)} label="Server health" onRetry={target.retry} />
+    {snapshot ? <div className="health-summary"><span className={`health-state health-${snapshot.state}`}>{stateLabels[snapshot.state]}</span><p>Evaluated using repository time: {formatTimestamp(snapshot.repositoryTimeUtc)}</p></div> : null}
+    {tab === "summary" && snapshot ? <><HealthMetricStrip metrics={snapshot.coreMetrics} /><CoreMetrics metrics={snapshot.coreMetrics} /><details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{snapshot.collectors.map(collector => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details></> : null}
+    {tab === "databases" ? <><RequestStatus loading={databases.loading} error={databases.error} updatedAt={databases.updatedAt} hasData={Boolean(databases.data)} label="Database health" onRetry={databases.retry} />{databases.data ? <DatabaseHealth page={databases.data} /> : null}<RequestStatus loading={files.loading} error={files.error} updatedAt={files.updatedAt} hasData={Boolean(files.data)} label="File health" onRetry={files.retry} />{files.data ? <DatabaseFileHealth page={files.data} /> : null}</> : null}
+    {tab === "collection" && snapshot ? <div className="collector-grid">{snapshot.collectors.map(collector => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
+    {tab !== "databases" && (databases.error || files.error) ? <p role="status">Some database or file evidence is unavailable. Open Databases to inspect and retry each section.</p> : null}
+  </section>;
 }
 
 function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricSummary[] }) {
@@ -431,10 +363,4 @@ function isCurrentLossFree(collector: CollectorHealthSummary): boolean {
     collector.minimumLostBytes === null &&
     collector.rejectedRows === 0
   );
-}
-
-function getSafeMessage(error: unknown): string {
-  return error instanceof HealthRequestError
-    ? error.message
-    : "The health request failed safely.";
 }

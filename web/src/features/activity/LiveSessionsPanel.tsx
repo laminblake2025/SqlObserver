@@ -1,3 +1,5 @@
+import type { InvestigationWindow } from "../../investigationWindow";
+import { RequestStatus } from "../../components/RequestStatus";
 import { useEffect, useRef, useState } from "react";
 import { readLive, type LivePage, type LiveRow, type LiveSnapshot, type QueryDetail } from "./liveActivityApi";
 import { liveRequestKey, valueForLiveRequest } from "./liveEvidenceScope";
@@ -9,7 +11,7 @@ import { formatBlockingTarget, isBlockingRelationship } from "./blockingModel";
 // repository/capture latency so the exact triggered snapshot is returned.
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
-export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string }) {
+export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, externalRefresh = 0, timeWindow, windowError }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; externalRefresh?: number; timeWindow?: InvestigationWindow; windowError?: string }) {
   const [page, setPage] = useState<LivePage>();
   const [database, setDatabase] = useState("");
   const [login, setLogin] = useState(""); const [application, setApplication] = useState(""); const [status, setStatus] = useState("");
@@ -19,8 +21,8 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const [mode, setMode] = useState<"live" | "history">(() => requestedHistoryEnd === undefined ? "live" : "history"); const [paused, setPaused] = useState(false);
   const [visible, setVisible] = useState(!document.hidden); const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(false); const [error, setError] = useState<string>(); const [errorKey, setErrorKey] = useState<string>();
-  const [hours, setHours] = useState(0.25); const [history, setHistory] = useState<LiveSnapshot[]>([]);
-  const [historyEnd, setHistoryEnd] = useState(() => requestedHistoryEnd === undefined ? Date.now() : requestedHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS); const [minute, setMinute] = useState<number>();
+  const hours = requestedHistoryEnd !== undefined ? 0.25 : timeWindow ? (Date.parse(timeWindow.toUtc) - Date.parse(timeWindow.fromUtc)) / 3600000 : 0.25; const [history, setHistory] = useState<LiveSnapshot[]>([]);
+  const [historyEnd, setHistoryEnd] = useState(() => requestedHistoryEnd === undefined ? Date.parse(timeWindow?.toUtc ?? new Date().toISOString()) : requestedHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS); const [minute, setMinute] = useState<number>();
   const [preferredSnapshotId, setPreferredSnapshotId] = useState<string | null | undefined>(undefined);
   const [cursor, setCursor] = useState<string>(); const [cursorTrail, setCursorTrail] = useState<(string | undefined)[]>([]);
   const [selection, setSelection] = useState<{ row: LiveRow; observed: string; snapshot: string }>();
@@ -30,6 +32,8 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const queryRequest = useRef<AbortController | undefined>(undefined);
   const appliedHistoryAtUtc = useRef(initialHistoryAtUtc);
   const manual = useRef(false);
+  const previousRefresh = useRef(externalRefresh);
+  useEffect(() => { if (previousRefresh.current === externalRefresh) return; previousRefresh.current = externalRefresh; manual.current = true; setRefresh(value => value + 1); }, [externalRefresh]);
   const lastRequestKey = useRef("");
   const filterKey = JSON.stringify({ database, login, application, status, idle, system, blocked, sort, descending });
   const snapshots = new Map(history.map(value => [Math.floor(Date.parse(value.observedUtc) / 60000), value]));
@@ -61,13 +65,13 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     }
   }, [initialHistoryAtUtc]);
   useEffect(() => {
-    if (mode !== "history") return;
-    const controller = new AbortController(); setHistory([]); setError(undefined); setErrorKey(undefined);
+    if (mode !== "history" || (!initialHistoryAtUtc && windowError)) return;
+    const controller = new AbortController(); setError(undefined); setErrorKey(undefined);
     void readLive<LiveSnapshot[]>(instanceId, "/history", new URLSearchParams({ from: new Date(historyEnd - hours * 3600000).toISOString(), to: new Date(historyEnd).toISOString() }), controller.signal)
-      .then(value => { if (!controller.signal.aborted) { const event = initialHistoryEventId === undefined ? undefined : value.find(snapshot => snapshot.deadlockEventId === initialHistoryEventId); setHistory(value); setPreferredSnapshotId(event?.id ?? null); setMinute(Math.floor(Date.parse(event?.observedUtc ?? initialHistoryAtUtc ?? new Date(historyEnd).toISOString()) / 60000)); } })
+      .then(value => { if (!controller.signal.aborted) { const event = initialHistoryEventId === undefined ? undefined : value.find(snapshot => snapshot.deadlockEventId === initialHistoryEventId); setHistory(value); setPreferredSnapshotId(previous => previous === undefined ? event?.id ?? null : previous); setMinute(previous => previous ?? Math.floor(Date.parse(event?.observedUtc ?? initialHistoryAtUtc ?? new Date(historyEnd).toISOString()) / 60000)); } })
       .catch(() => { if (!controller.signal.aborted) { setError("Historical snapshots are unavailable."); setErrorKey(requestKeyRef.current); } });
     return () => controller.abort();
-  }, [instanceId, mode, hours, historyEnd, initialHistoryAtUtc, initialHistoryEventId]);
+  }, [instanceId, mode, hours, historyEnd, initialHistoryAtUtc, initialHistoryEventId, refresh, windowError]);
   useEffect(() => {
     if (!visible || (mode === "history" && !selectedSnapshot)) { setLoading(false); return; }
     if (mode === "live" && paused && !manual.current && lastRequestKey.current === requestKey) { setLoading(false); return; }
@@ -93,9 +97,9 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
         }
       }
     }
-    startLiveRefresh(poll, () => {
+    startLiveRefresh(poll, (failure) => {
       if (!disposed) {
-        setError("Refresh failed for the current request; retrying with backoff.");
+        setError(failure instanceof Error ? failure.message : "Refresh failed for the current request; retrying with backoff.");
         setErrorKey(requestKey);
       }
     }, controller.signal, mode === "live" && !paused && !cursor);
@@ -103,7 +107,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   }, [instanceId, filterKey, mode, selectedSnapshot?.id, paused, visible, refresh, cursor, hours, historyEnd]);
   const earliestMinute = Math.floor((historyEnd - hours * 3600000) / 60000);
   const latestMinute = Math.floor(historyEnd / 60000);
-  const minuteOptions = Array.from({ length: latestMinute - earliestMinute + 1 }, (_, index) => latestMinute - index);
+  const minuteOptions = Array.from({ length: hours <= 24 ? latestMinute - earliestMinute + 1 : 0 }, (_, index) => latestMinute - index);
   const gap = mode === "history" && !selectedSnapshot;
   function firstPage() { setCursor(undefined); setCursorTrail([]); }
   async function open(row: LiveRow) {
@@ -119,10 +123,12 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   return <section className="live-sessions panel" aria-label="Live sessions">
     <div className="health-heading-row"><div><p className="eyebrow">Activity · {displayName}</p><h3>Live sessions</h3></div><div className="toolbar">
       <button aria-pressed={mode === "live"} onClick={() => { setPreferredSnapshotId(null); setMode("live"); firstPage(); }}>Live</button>
-      <button aria-pressed={mode === "history"} onClick={() => { setPreferredSnapshotId(null); setHistoryEnd(Date.now()); setMode("history"); }}>History</button>
-      <button disabled={mode !== "live"} onClick={() => { if (paused) firstPage(); setPaused(!paused); }}>{paused ? "Resume" : "Pause"}</button>
-      <button disabled={loading || !visible} onClick={() => { manual.current = true; if (mode === "history") setHistoryEnd(Date.now()); else { firstPage(); setRefresh(value => value + 1); } }}>Refresh now</button>
+      <button aria-pressed={mode === "history"} onClick={() => { setPreferredSnapshotId(requestedHistoryEnd === undefined ? null : undefined); setHistoryEnd(requestedHistoryEnd === undefined ? Date.parse(timeWindow?.toUtc ?? new Date().toISOString()) : requestedHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS); setMode("history"); }}>History</button>
+      <button aria-pressed={paused} disabled={mode !== "live"} onClick={() => { if (paused) firstPage(); setPaused(!paused); }}>{paused ? "Resume" : "Pause"}</button>
+      <button disabled={loading || !visible} onClick={() => { manual.current = true; setRefresh(value => value + 1); }}>Refresh now</button>
     </div></div>
+    <p className="table-note">Live collection currently covers up to 10 active targets. Live mode shows current evidence; history uses the investigation range, up to 24 hours.</p>
+    {mode === "history" && !initialHistoryAtUtc && windowError ? <p role="alert">{windowError}</p> : null}
     <div className="live-filters">
       <label>Database <select value={database} onChange={event => setDatabase(event.target.value)}><option value="">All databases</option>{databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
       <label>Login <input maxLength={128} value={login} onChange={event => setLogin(event.target.value)} /></label>
@@ -135,16 +141,16 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <label><input type="checkbox" checked={descending} onChange={event => setDescending(event.target.checked)} /> Descending</label>
     </div>
     {mode === "history" && initialHistoryAtUtc && <p className="evidence-callout">Opened for the deadlock event at {formatUtc(initialHistoryAtUtc)}. Historical snapshots are minute-granular for cadence evidence; a deadlock-triggered capture is selected automatically when available.</p>}
-    {mode === "history" && <div className="toolbar"><label>History window <select value={hours} onChange={event => setHours(Number(event.target.value))}><option value={0.25}>15 minutes</option><option value={1}>1 hour</option><option value={6}>6 hours</option><option value={24}>24 hours</option></select></label>
+    {mode === "history" && <div className="toolbar"><span>History window: {new Date(historyEnd - hours * 3600000).toISOString()} to {new Date(historyEnd).toISOString()} (UTC)</span>
       <button disabled={minute === undefined || minute <= earliestMinute} onClick={() => { setPreferredSnapshotId(null); setMinute(value => value === undefined ? value : value - 1); }}>Previous minute</button>
       <label>Exact snapshot (UTC) <select value={minute ?? ""} onChange={event => { setPreferredSnapshotId(null); setMinute(Number(event.target.value)); }}><option value="" disabled>Select minute</option>{minuteOptions.map(value => <option key={value} value={value}>{snapshots.get(value)?.observedUtc ?? `${new Date(value * 60000).toISOString()} · gap`}{snapshots.get(value)?.deadlockEventId ? " · deadlock-triggered" : ""}</option>)}</select></label>
       <button disabled={minute === undefined || minute >= latestMinute} onClick={() => { setPreferredSnapshotId(null); setMinute(value => value === undefined ? value : value + 1); }}>Next minute</button></div>}
     <p role="status">{mode === "history" ? "Historical evidence · automatic refresh paused" : paused ? "Paused" : !visible ? "Hidden · refresh paused" : cursor ? "Browsing snapshot pages · refresh paused" : "Refresh every 10 seconds"}{loading ? " · Refreshing…" : ""}. Observed: {gap ? "No snapshot in this minute" : displayPage?.observedUtc ?? "Unavailable"}. Snapshot: {displayPage?.snapshotId ?? "Unavailable"}. {selectedSnapshot?.deadlockEventId ? "Deadlock-triggered snapshot." : ""} {displayPage?.state === "stale" || (displayPage !== undefined && displayError) ? "Stale evidence." : ""}</p>
-    {displayError && <p role="alert">{displayError}</p>}{displayPage?.truncated && <p role="status">Collection was truncated at 512 rows. Missing sessions may exist.</p>}
+    <RequestStatus loading={false} error={displayError} hasData={Boolean(displayPage)} label="Session evidence" />{displayPage?.truncated && <p role="status">Collection was truncated at 512 rows. Missing sessions may exist.</p>}
     <p>Cumulative CPU is milliseconds, not CPU percentage. Reads, writes and logical reads are cumulative counts. Memory is session memory for idle sessions and granted request memory for active requests. Short requests between samples may not appear.</p>
     {displayPage && <BlockingSnapshot page={displayPage} />}
     {gap ? <p className="empty-state">No successful snapshot was captured in this minute.</p> : <div className="live-table-scroll"><table><thead><tr>{["Session / request", "Database", "Login", "Client host / application", "Status / command", "CPU ms", "Memory bytes", "Logical reads", "Reads / writes", "Elapsed ms", "Wait / blocker", "Details"].map(title => <th key={title} scope="col">{title}</th>)}</tr></thead><tbody>{displayPage?.rows.map(row => <tr key={row.identity}>
-      <td>{row.sessionId} / {row.requestId ?? "idle"}</td><td>{row.databaseName ?? row.databaseId ?? "—"}</td><td>{row.login ?? "—"}</td><td>{row.clientHost ?? "—"}<br/>{row.application ?? "—"}</td><td>{row.status}<br/>{row.command}</td><td>{row.cpuMs}</td><td>{row.memoryBytes}</td><td>{row.logicalReads}</td><td>{row.reads} / {row.writes}</td><td>{row.elapsedMs}</td><td>{row.waitType ?? "—"} / {formatBlockingTarget(row.blocker)}</td><td><button onClick={() => void open(row)}>Inspect {row.sessionId}/{row.requestId ?? "idle"}</button></td>
+      <td>{row.sessionId} / {row.requestId ?? "idle"}</td><td>{row.databaseName ?? row.databaseId ?? "—"}</td><td>{row.login ?? "—"}</td><td>{row.clientHost ?? "—"}<br/>{row.application ?? "—"}</td><td>{row.status}<br/>{row.command}</td><td>{row.cpuMs}</td><td>{row.memoryBytes}</td><td>{row.logicalReads}</td><td>{row.reads} / {row.writes}</td><td>{row.elapsedMs}</td><td>{row.waitType ?? "—"} / {formatBlockingTarget(row.blocker)}</td><td><button aria-pressed={selection?.row.identity === row.identity && selection.snapshot === displayPage?.snapshotId} onClick={() => void open(row)}>Inspect {row.sessionId}/{row.requestId ?? "idle"}</button></td>
     </tr>)}</tbody></table>{displayPage?.rows.length === 0 && <p className="empty-state">{displayPage.state === "unavailable" ? "Collection evidence is unavailable for this observation." : "No sessions match these filters."}</p>}</div>}
     <nav aria-label="Live session pages"><button disabled={loading || cursorTrail.length === 0} onClick={() => { setCursor(cursorTrail.at(-1)); setCursorTrail(values => values.slice(0, -1)); }}>Previous page</button><button disabled={loading || gap || !displayPage?.nextCursor} onClick={() => { setCursorTrail(values => [...values, cursor]); setCursor(displayPage?.nextCursor ?? undefined); }}>Next page</button></nav>
     {selection && <aside className="live-details" aria-label="Session details"><div className="health-heading-row"><h4>Session {selection.row.sessionId} / {selection.row.requestId ?? "idle"}</h4><button onClick={() => { queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); }}>Close details</button></div>

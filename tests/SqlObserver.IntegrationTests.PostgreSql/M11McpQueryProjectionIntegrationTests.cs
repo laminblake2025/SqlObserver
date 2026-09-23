@@ -310,7 +310,8 @@ public sealed class M11McpQueryProjectionIntegrationTests
         new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection) { Parameters = { new NpgsqlParameter("scope", target.ToString()) } }.ExecuteNonQueryAsync();
 
     private static async Task InsertTargetAsync(RepositoryTestDatabase database, Guid target, string key, long revision) =>
-        await ExecuteAsync(database, "INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES(@target,@key,'M11 target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',@revision,clock_timestamp(),clock_timestamp());", ("target", target), ("key", key), ("revision", revision));
+        // One creation event must have one timestamp; independent wall-clock evaluations can violate update ordering.
+        await ExecuteAsync(database, "INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES(@target,@key,'M11 target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',@revision,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", key), ("revision", revision));
 
     private static async Task ExecuteAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] values)
     {
@@ -325,7 +326,7 @@ public sealed class M11McpQueryProjectionIntegrationTests
         RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
         try
         {
-            MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+            MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout), CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;
         }

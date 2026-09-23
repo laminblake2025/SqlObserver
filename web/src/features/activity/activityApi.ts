@@ -12,7 +12,7 @@ export async function getBlockingHistoryPage(instanceId: string, window: { reado
   return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/history?${parameters}`, parseHistory, instanceId, signal);
 }
 
-export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historyHours: 1 | 6 | 24 = 1): Promise<{
+export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historyHours: 1 | 6 | 24 = 1, historyWindow?: { readonly fromUtc: string; readonly toUtc: string } | null): Promise<{
   readonly sessions?: ActivityPage<ActivitySession>; readonly requests?: ActivityPage<ActivityRequest>;
   readonly waits?: ActivityPage<ActivityWait>; readonly blocking?: ActivityPage<BlockingEdge>;
   readonly history?: ActivityPage<BlockingHistoryItem>; readonly errors: readonly string[];
@@ -27,7 +27,7 @@ export async function getActivitySnapshot(instanceId: string, signal: AbortSigna
     read("Requests", getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal)),
     read("Waits", getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal)),
     read("Current blocking", getPage(`${base}/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal)),
-    read("Blocking history", getBlockingHistoryPage(instanceId, { fromUtc: new Date(now - historyHours * 3_600_000).toISOString(), toUtc: new Date(now).toISOString() }, signal)),
+    historyWindow === null ? Promise.resolve(undefined) : read("Blocking history", getBlockingHistoryPage(instanceId, historyWindow ?? { fromUtc: new Date(now - historyHours * 3_600_000).toISOString(), toUtc: new Date(now).toISOString() }, signal)),
   ]);
   return { sessions, requests, waits, blocking, history, errors };
 }

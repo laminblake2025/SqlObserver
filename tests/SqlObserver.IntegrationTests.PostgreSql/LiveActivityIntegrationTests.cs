@@ -16,7 +16,7 @@ public sealed class LiveActivityIntegrationTests(PostgreSql18Fixture fixture)
     {
         await using var database=await fixture.CreateDatabaseAsync();
         var timeout=new RepositoryCallTimeout(TimeSpan.FromSeconds(30));
-        var migrated=await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults,timeout),CancellationToken.None);
+        var migrated=await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, PostgreSql18Fixture.MigrationSetupTimeout),CancellationToken.None);
         Assert.False(migrated.HasFailures);
         Guid target=Guid.NewGuid();
         await using(var command=database.DataSource.CreateCommand("INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES(@id,@key,'Live test','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp())"))

@@ -80,7 +80,9 @@ test("analytics surface panel exposes retry and restart actions", async () => {
   const panel = await readFile(new URL("../src/features/analytics/AnalyticsSurfacePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /Retry/);
   assert.match(panel, /Restart paging/);
-  assert.match(panel, /role=\{error \? "alert" : "status"\}/);
+  assert.match(panel, /<RequestStatus/);
+  const status = await readFile(new URL("../src/components/RequestStatus.tsx", import.meta.url), "utf8");
+  assert.match(status, /role=\{error \? "alert" : "status"\}/);
 });
 
 test("jobs and backfill identify inventory scope without claiming UTC row filtering", () => {
