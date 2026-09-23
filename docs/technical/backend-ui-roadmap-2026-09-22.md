@@ -194,3 +194,9 @@ restore, interrupted installer migration recovery, the deployment identity
 matrix and TLS lifecycle qualification remain release gates. ADR-0016 and
 ADR-0017 are proposed records with unresolved packaging, identity and ownership
 decisions. Passing functional tests must not mark these gates certified.
+The lab repository measured 32.6 GB, while its only local volume had 16.1 GB
+free after the candidate deployment. A full backup plus independent restore
+was not attempted under that capacity constraint; it requires a separate
+destination and enough restore space. The successful forward-only 0078–0080
+upgrade and rollback-capable service switch do not certify interrupted
+installer recovery or data restore.
