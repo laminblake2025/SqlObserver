@@ -234,7 +234,7 @@ export function App() {
 
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}:${refresh}`}>
-              {route.page === "health" && <TargetHealthPanel {...props} />}
+              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={refresh} />}
               {route.page === "activity" && <TargetActivityPanel {...props} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}

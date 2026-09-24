@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Tabs } from "../../components/DiagnosticUi";
+import type { OverviewScope } from "../overview/overviewTypes";
+import { ServerDashboard } from "./ServerDashboard";
 
 import { getTargetHealthEvidence, HealthRequestError } from "./healthApi";
 import {
@@ -61,9 +63,11 @@ export interface TargetHealthPanelProps {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
+  readonly scope: OverviewScope;
+  readonly refresh: number;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh }: TargetHealthPanelProps) {
   const [evidence, setEvidence] = useState<TargetHealthEvidence>();
   const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -110,7 +114,8 @@ export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHe
   }, [instanceId]);
 
   return (
-    <section className="health-screen" aria-labelledby="health-heading" aria-live="polite">
+    <section className="health-screen" aria-labelledby="health-heading">
+      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh} />
       <div className="health-heading-row">
         <div>
           <p className="eyebrow">Server summary · target-scoped snapshot</p>
@@ -121,8 +126,8 @@ export function TargetHealthPanel({ instanceId, displayName, onClose }: TargetHe
         </button>
       </div>
 
-      {loading && snapshot === undefined ? <p>Loading health evidence…</p> : null}
-      {message === undefined ? null : <p className="status-message">{message}</p>}
+      {loading && snapshot === undefined ? <p role="status">Loading health evidence…</p> : null}
+      {message === undefined ? null : <p role="alert" className="status-message">{message}</p>}
       {evidence === undefined ? null : (
         <>
           <Tabs

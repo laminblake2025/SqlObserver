@@ -262,6 +262,24 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .target-health-button { grid-column: 1 / -1; justify-self: start; }
 
 /* Server summary */
+.server-dashboard { display: grid; gap: 16px; min-width: 0; }
+.server-dashboard .section-heading h3 { margin: 0; }
+.server-dashboard-controls { padding: 15px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.server-dashboard-mode, .server-dashboard-window { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.server-dashboard-mode { align-self: center; }
+.server-dashboard-window { margin: 0; }
+.server-dashboard-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.server-dashboard-investigate, .server-dashboard-chart, .server-dashboard-gaps { padding: 20px; }
+.server-dashboard-investigate h4, .server-dashboard-chart h4 { margin: 0 0 10px; }
+.server-dashboard-investigate ol { margin: 0; padding-left: 24px; }
+.server-dashboard-investigate li { padding: 9px 0; border-bottom: 1px solid var(--border); }
+.server-dashboard-investigate li:last-child { border: 0; }
+.server-dashboard-investigate a { color: var(--text); }
+.server-dashboard-investigate a > span, .server-dashboard-investigate a > small { display: block; margin-top: 3px; color: var(--muted); }
+.server-dashboard-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 16px; }
+.server-dashboard-chart { min-width: 0; }
+.server-dashboard-chart > small { color: var(--muted); }
+.server-dashboard-gaps ul { margin-bottom: 0; }
 .health-summary { align-items: center; margin: 15px 0 18px; padding: 13px 15px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px; }
 .health-summary p { margin: 0; color: var(--muted); }
 .health-metric-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin: 16px 0 20px; }
@@ -493,7 +511,7 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .scope-control { flex: 1 1 180px; }
   .scope-control select { width: 100%; min-width: 0; }
   h1 { font-size: 30px; }
-  .kpi-grid, .health-metric-strip, .operation-metrics { grid-template-columns: 1fr; }
+  .kpi-grid, .server-dashboard-kpis, .health-metric-strip, .operation-metrics { grid-template-columns: 1fr; }
   .overview-grid { grid-template-columns: 1fr; }
   .overview-controls > label, .overview-controls > label select, .overview-controls > label input { width: 100%; }
   .overview-controls label.overview-check { width: auto; }
