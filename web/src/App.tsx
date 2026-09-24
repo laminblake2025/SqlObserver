@@ -56,6 +56,9 @@ export function App() {
   const [directTargetLookup, setDirectTargetLookup] = useState<DirectTargetLookup>();
   const [adding, setAdding] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks" ||
+    (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
+  const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
   const requestedCursor = useRef<string | undefined>(undefined);
 
@@ -66,7 +69,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (livePaused || scope.range === "custom") return;
+    if (livePaused || isRewind) return;
     return startWorkspaceClock({
       setInterval: (callback, milliseconds) => window.setInterval(callback, milliseconds),
       clearInterval: timer => window.clearInterval(timer),
@@ -74,7 +77,7 @@ export function App() {
       removeVisibilityListener: callback => document.removeEventListener("visibilitychange", callback),
       isHidden: () => document.hidden,
     }, () => setLiveTick(value => value + 1), () => setLiveTick(wakeLiveTick));
-  }, [livePaused, scope.range]);
+  }, [livePaused, isRewind]);
 
   useEffect(() => {
     const targetId = route.target || null;
@@ -148,8 +151,6 @@ export function App() {
   }, [listedTarget, slowRefresh, route.target, targetPage]);
 
   const selected = listedTarget ?? (directTargetLookup?.targetId === route.target && directTargetLookup.state !== "error" ? directTargetLookup.target : undefined);
-  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks" ||
-    (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const changeTimeContext = (next: Partial<typeof scope>) => {
     const selectedScope = { ...scope, ...next };
     location.hash = route.page === "activity" && route.activityAtUtc
@@ -228,9 +229,9 @@ export function App() {
           <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">UTC <span className="topbar-separator">·</span> Read-only evidence</span></div>
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
             <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={route.page === "analytics" ? 7 : 31} />
-            <span className="topbar-time-mode">{scope.range === "custom" ? "Rewind · fixed UTC" : livePaused ? "Live · paused" : "Live · moving UTC"}</span>
+            <span className="topbar-time-mode">{isRewind ? "Rewind · fixed UTC" : livePaused ? "Live · paused" : "Live · moving UTC"}</span>
           </div>}
-          {scope.range !== "custom" && <button className="secondary-button" type="button" aria-pressed={livePaused} onClick={() => {
+          {!isRewind && <button className="secondary-button" type="button" aria-pressed={livePaused} onClick={() => {
             if (livePaused) setLiveTick(wakeLiveTick);
             setLivePaused(value => !value);
           }}>{livePaused ? "Resume live updates" : "Pause live updates"}</button>}
@@ -270,7 +271,7 @@ export function App() {
 
           {route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
           {fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} /> : null}
-          {route.page === "servers" && !loading && !message ? <ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} /> : null}
+          {route.page === "servers" && requestedCursor.current === cursor && !message && (!loading || targets.length > 0) ? <><ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} />{loading ? <p role="status">Refreshing server list…</p> : null}</> : null}
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 
           {props ? (

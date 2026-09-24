@@ -8,7 +8,9 @@ export interface FleetEvidence { readonly health?: TargetHealthSnapshot; readonl
 export function useFleetEvidence(targets: readonly ObservationTargetSummary[], enabled: boolean) {
   const [evidence, setEvidence] = useState<Readonly<Record<string, FleetEvidence>>>({});
   useEffect(() => {
-    const controller = new AbortController(); setEvidence({});
+    const controller = new AbortController();
+    const visibleIds = new Set(targets.map(target => target.instanceId));
+    setEvidence(current => Object.fromEntries(Object.entries(current).filter(([id]) => enabled && visibleIds.has(id))));
     if (!enabled) return () => controller.abort();
     let index = 0;
     async function worker() {
