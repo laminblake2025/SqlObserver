@@ -12,6 +12,127 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class LiveActivityIntegrationTests(PostgreSql18Fixture fixture)
 {
     [Fact]
+    public async Task CadenceClaimsProcessTwentyFiveTargetsWithoutHoldingSlotsForTenSeconds()
+    {
+        await using var database=await fixture.CreateDatabaseAsync();
+        var timeout=new RepositoryCallTimeout(TimeSpan.FromSeconds(30));
+        var migrated=await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults,timeout),CancellationToken.None);
+        Assert.False(migrated.HasFailures);
+        await using(var seed=database.DataSource.CreateCommand("""
+            INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+                authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
+            SELECT gen_random_uuid(),'live-cadence-'||g,'Live cadence','sql01',1433,interval '5 seconds',
+                'windows_integrated_service_identity','mandatory_validated','active',1,
+                statement_timestamp(),statement_timestamp(),statement_timestamp()
+            FROM generate_series(1,25) g
+            """))
+            await seed.ExecuteNonQueryAsync();
+
+        await using var collectorSource=database.CreateCollectorDataSource();
+        var repository=new PostgreSqlLiveActivityRepository(collectorSource);
+        var leases=new PostgreSqlWorkerLeasePort(collectorSource);
+        await using(var privileges=database.DataSource.CreateCommand("""
+            SELECT has_function_privilege('sqlobserver_collector','live_activity.claim_target(uuid,bigint,uuid,interval)','EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server','live_activity.claim_target(uuid,bigint,uuid,interval)','EXECUTE')
+              AND NOT has_table_privilege('sqlobserver_collector','live_activity.cadence_state','UPDATE')
+            """))
+            Assert.Equal(true,await privileges.ExecuteScalarAsync());
+        var owner=new WorkerExecutionId(Guid.NewGuid());
+        var duration=new WorkerLeaseDuration(TimeSpan.FromSeconds(30));
+        var seen=new HashSet<Guid>();
+        LiveActivityTarget? firstTarget=null;
+        WorkerLeaseIdentity? firstLease=null;
+        var started=System.Diagnostics.Stopwatch.StartNew();
+        while(seen.Count<25)
+        {
+            var targets=await repository.TargetsAsync(CancellationToken.None);
+            Assert.NotEmpty(targets);
+            foreach(var target in targets)
+            {
+                Assert.True(seen.Add(target.Id),"A target was selected again before its cadence elapsed.");
+                var claimed=await repository.ClaimAsync(target,owner,duration,CancellationToken.None);
+                Assert.Equal(LeaseAcquisitionStatus.Acquired,claimed.Status);
+                if(firstTarget is null) { firstTarget=target; firstLease=claimed.Lease!.Identity; }
+                Assert.Equal(LeaseReleaseStatus.Released,await leases.ReleaseAsync(new(claimed.Lease!.Identity,timeout),CancellationToken.None));
+            }
+        }
+        Assert.True(started.Elapsed<TimeSpan.FromSeconds(10),"Twenty-five targets could not be claimed within one sampling interval.");
+        Assert.Empty(await repository.TargetsAsync(CancellationToken.None));
+        Assert.Equal(LeaseAcquisitionStatus.Contended,(await repository.ClaimAsync(firstTarget!,new WorkerExecutionId(Guid.NewGuid()),duration,CancellationToken.None)).Status);
+
+        await using(var due=database.DataSource.CreateCommand("UPDATE live_activity.cadence_state SET next_due_at=clock_timestamp()-interval '1 second' WHERE target_id=@target"))
+        {
+            due.Parameters.AddWithValue("target",firstTarget!.Id);
+            Assert.Equal(1,await due.ExecuteNonQueryAsync());
+        }
+        var stale=await repository.ClaimAsync(firstTarget! with { Revision=2 },new WorkerExecutionId(Guid.NewGuid()),duration,CancellationToken.None);
+        Assert.Equal(LeaseAcquisitionStatus.Contended,stale.Status);
+        var races=await Task.WhenAll(
+            repository.ClaimAsync(firstTarget!,new WorkerExecutionId(Guid.NewGuid()),duration,CancellationToken.None),
+            repository.ClaimAsync(firstTarget!,new WorkerExecutionId(Guid.NewGuid()),duration,CancellationToken.None));
+        var afterDue=Assert.Single(races,result=>result.Status==LeaseAcquisitionStatus.Acquired);
+        Assert.Single(races,result=>result.Status==LeaseAcquisitionStatus.Contended);
+        Assert.True(afterDue.Lease!.Identity.FencingToken.Value>firstLease!.FencingToken.Value);
+        await repository.FailedAsync(firstTarget!.Id,afterDue.Lease.Identity,CancellationToken.None);
+        Assert.Equal(LeaseReleaseStatus.Released,await leases.ReleaseAsync(new(afterDue.Lease.Identity,timeout),CancellationToken.None));
+        await using(var backoff=database.DataSource.CreateCommand("""
+            SELECT consecutive_failures,next_due_at>clock_timestamp()+interval '9 seconds'
+            FROM live_activity.cadence_state WHERE target_id=@target
+            """))
+        {
+            backoff.Parameters.AddWithValue("target",firstTarget.Id);
+            await using var reader=await backoff.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal((short)1,reader.GetInt16(0));
+            Assert.True(reader.GetBoolean(1));
+        }
+        await using(var due=database.DataSource.CreateCommand("UPDATE live_activity.cadence_state SET next_due_at=clock_timestamp()-interval '1 second' WHERE target_id=@target"))
+        {
+            due.Parameters.AddWithValue("target",firstTarget.Id);
+            await due.ExecuteNonQueryAsync();
+        }
+        var retry=await repository.ClaimAsync(firstTarget,new WorkerExecutionId(Guid.NewGuid()),duration,CancellationToken.None);
+        Assert.Equal(LeaseAcquisitionStatus.Acquired,retry.Status);
+        await repository.FailedAsync(firstTarget.Id,retry.Lease!.Identity,CancellationToken.None);
+        Assert.Equal(LeaseReleaseStatus.Released,await leases.ReleaseAsync(new(retry.Lease.Identity,timeout),CancellationToken.None));
+        await using(var backoff=database.DataSource.CreateCommand("""
+            SELECT consecutive_failures,next_due_at>clock_timestamp()+interval '19 seconds'
+            FROM live_activity.cadence_state WHERE target_id=@target
+            """))
+        {
+            backoff.Parameters.AddWithValue("target",firstTarget.Id);
+            await using var reader=await backoff.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal((short)2,reader.GetInt16(0));
+            Assert.True(reader.GetBoolean(1));
+        }
+        await using(var due=database.DataSource.CreateCommand("UPDATE live_activity.cadence_state SET next_due_at=clock_timestamp()-interval '1 second' WHERE target_id=@target"))
+        {
+            due.Parameters.AddWithValue("target",firstTarget.Id);
+            await due.ExecuteNonQueryAsync();
+        }
+        var recovery=await repository.ClaimAsync(firstTarget,new WorkerExecutionId(Guid.NewGuid()),duration,CancellationToken.None);
+        Assert.Equal(LeaseAcquisitionStatus.Acquired,recovery.Status);
+        await repository.CommitAsync(firstTarget,recovery.Lease!.Identity,
+            new LiveActivityCapture(Guid.NewGuid(),DateTimeOffset.UtcNow,false,[],[]),CancellationToken.None);
+        Assert.Equal(LeaseReleaseStatus.Released,await leases.ReleaseAsync(new(recovery.Lease.Identity,timeout),CancellationToken.None));
+        await using(var recovered=database.DataSource.CreateCommand("""
+            SELECT cadence.consecutive_failures,collection.failed
+            FROM live_activity.cadence_state cadence
+            JOIN live_activity.collection_state collection ON collection.target_id=cadence.target_id
+            WHERE cadence.target_id=@target
+            """))
+        {
+            recovered.Parameters.AddWithValue("target",firstTarget.Id);
+            await using var reader=await recovered.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal((short)0,reader.GetInt16(0));
+            Assert.False(reader.GetBoolean(1));
+        }
+    }
+
+    [Fact]
     public async Task TargetSelectionRotatesAcrossTheFleetInsteadOfStarvingTargetsAfterTheFirstTen()
     {
         await using var database=await fixture.CreateDatabaseAsync();
@@ -126,7 +247,10 @@ public sealed class LiveActivityIntegrationTests(PostgreSql18Fixture fixture)
         Assert.Empty(await repository.HistoryAsync(target,minute.AddMinutes(-2),minute.AddMinutes(-1),CancellationToken.None));
         // Ten target evidence sets and ten viewers per target. Reads cannot create collection work.
         await using(var seed=database.DataSource.CreateCommand("INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) SELECT gen_random_uuid(),'live-extra-'||g,'Load target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp() FROM generate_series(1,9) g")) await seed.ExecuteNonQueryAsync();
-        var targets=await repository.TargetsAsync(CancellationToken.None); Assert.Equal(10,targets.Count);
+        var dueTargets=await repository.TargetsAsync(CancellationToken.None);
+        Assert.Equal(9,dueTargets.Count);
+        Assert.DoesNotContain(dueTargets,t=>t.Id==target);
+        var targets=dueTargets.Append(liveTarget).ToArray();
         var watch=System.Diagnostics.Stopwatch.StartNew();
         await Task.WhenAll(targets.Where(t=>t.Id!=target).Select(async t=>
         {

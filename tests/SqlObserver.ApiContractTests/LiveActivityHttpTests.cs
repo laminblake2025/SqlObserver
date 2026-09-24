@@ -49,6 +49,7 @@ public sealed class LiveActivityHttpTests
         public Task<ProtectedSensitivePayload?> QueryAsync(Guid targetId,Guid snapshotId,string identity,CancellationToken cancellationToken) {QueryReads++; return Task.FromResult<ProtectedSensitivePayload?>(null);}
         public Task AuditAsync(Guid targetId,Guid snapshotId,string actor,string outcome,CancellationToken cancellationToken) {AuditOutcome=outcome; return Task.CompletedTask;}
         public Task<IReadOnlyList<LiveActivityTarget>> TargetsAsync(CancellationToken cancellationToken)=>throw new NotSupportedException();
+        public Task<LeaseAcquisitionResult> ClaimAsync(LiveActivityTarget target,WorkerExecutionId owner,WorkerLeaseDuration duration,CancellationToken cancellationToken)=>throw new NotSupportedException();
         public Task CommitAsync(LiveActivityTarget target,WorkerLeaseIdentity lease,LiveActivityCapture capture,CancellationToken cancellationToken)=>throw new NotSupportedException();
         public Task<bool> HasDeadlockSnapshotAsync(Guid targetId,Guid eventId,CancellationToken cancellationToken)=>throw new NotSupportedException();
         public Task FailedAsync(Guid targetId,WorkerLeaseIdentity lease,CancellationToken cancellationToken)=>throw new NotSupportedException();
