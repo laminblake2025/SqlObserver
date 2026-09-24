@@ -1,6 +1,8 @@
 using Npgsql;
 using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
@@ -304,14 +306,25 @@ public sealed class MigrationIntegrationTests
         Assert.Collection(rankingMigration.Results,
             first => Assert.Equal(92, first.Migration.Number.Value),
             second => Assert.Equal(93, second.Migration.Number.Value));
+        MigrationBatchResult historyMigration = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(historyMigration.HasFailures);
+        Assert.Equal(94, Assert.Single(historyMigration.Results).Migration.Number.Value);
         Assert.Collection(await ReadTopCpuAsync(connection, target),
             first => Assert.Equal(20L, first), second => Assert.Equal(10L, second));
+        Assert.Collection(await ReadHistoryKeysAsync(database, target),
+            first => Assert.Equal(new string('2', 32), first),
+            second => Assert.Equal(new string('3', 32), second));
 
         Assert.Equal((1, false), await BackfillQueryIdentityAsync(connection, target, target, 1));
         Assert.Equal((0, true), await BackfillQueryIdentityAsync(connection, target, target, 1));
         Assert.Equal((0, true), await BackfillQueryIdentityAsync(connection, target, target, 1));
         Assert.Collection(await ReadTopCpuAsync(connection, target),
             first => Assert.Equal(20L, first), second => Assert.Equal(10L, second));
+        Assert.Collection(await ReadHistoryKeysAsync(database, target),
+            first => Assert.Equal(new string('2', 32), first),
+            second => Assert.Equal(new string('3', 32), second));
 
         PostgresException denied = await Assert.ThrowsAsync<PostgresException>(
             () => BackfillQueryIdentityAsync(connection, target, other, 1));
@@ -413,6 +426,33 @@ public sealed class MigrationIntegrationTests
         await reader.CloseAsync();
         await transaction.CommitAsync();
         return values;
+    }
+
+    private static async Task<IReadOnlyList<string>> ReadHistoryKeysAsync(RepositoryTestDatabase database, Guid target)
+    {
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var port = new PostgreSqlQueryPerformanceApiProjectionPort(server);
+        var targetId = new MonitoredInstanceId(target);
+        var query = new QueryOpaqueIdentity(5, new string('1', 64));
+        DateTimeOffset from = DateTimeOffset.UtcNow.AddMinutes(-10);
+        DateTimeOffset to = DateTimeOffset.UtcNow.AddMinutes(1);
+        var request = new QueryHistoryRequest(targetId, query, from, to, 1, null, DefaultTimeout);
+        QueryHistoryPage first = await port.GetHistoryAsync(request, CancellationToken.None);
+        QueryHistoryDto firstRow = Assert.Single(first.Items);
+        Assert.True(first.HasMore);
+        Assert.NotNull(firstRow.CollectionRunId);
+        Assert.NotNull(firstRow.ObservationKey);
+
+        var cursor = new QueryPerformanceCursorEnvelope(
+            targetId, query.DatabaseId, from, to, QueryPerformanceMetric.CpuMilliseconds,
+            first.SnapshotUtc, firstRow.IntervalEndUtc, query.QueryFingerprint,
+            null, firstRow.CollectionRunId, firstRow.PlanFingerprint, firstRow.ObservationKey);
+        QueryHistoryPage second = await port.GetHistoryAsync(
+            request with { Cursor = cursor }, CancellationToken.None);
+        QueryHistoryDto secondRow = Assert.Single(second.Items);
+        Assert.False(second.HasMore);
+        Assert.NotNull(secondRow.ObservationKey);
+        return [firstRow.ObservationKey, secondRow.ObservationKey];
     }
 
     [Fact]
