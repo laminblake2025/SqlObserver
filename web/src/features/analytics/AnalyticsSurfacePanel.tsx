@@ -1,5 +1,5 @@
 import { EvidenceTable } from "../../components/EvidenceTable";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnalyticsRequestError, getAnalyticsSurface } from "./analyticsApi";
 import { analyticsEmptyStateText, analyticsScopeText, analyticsStatusText } from "./analyticsScope";
 import { panelStateForRequestError, panelStateForSurface } from "./analyticsState";
@@ -27,14 +27,23 @@ function canRetry(state: AnalyticsPanelState): boolean {
   return state === "degraded" || state === "stale" || state === "backfilling" || state === "cursor-invalid";
 }
 
-export function AnalyticsSurfacePanel({ targetId, surface, timeWindow }: { targetId: string; surface: AnalyticsSurface; timeWindow?: {fromUtc:string;toUtc:string} }) {
+export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, refresh = 0 }: { targetId: string; surface: AnalyticsSurface; timeWindow?: {fromUtc:string;toUtc:string}; refresh?: number }) {
   const [state, setState] = useState<AnalyticsPanelState>("loading");
   const [page, setPage] = useState<AnalyticsSurfacePage | null>(null);
   const [paging, setPaging] = useState<Paging>({});
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const activeWindow = useRef<string | undefined>(undefined);
 
   useEffect(() => {
+    const windowKey = `${timeWindow?.fromUtc ?? ""}:${timeWindow?.toUtc ?? ""}`;
+    if (activeWindow.current !== undefined && activeWindow.current !== windowKey) {
+      activeWindow.current = windowKey;
+      setPaging({});
+      setState("loading"); setPage(null); setError(null);
+      return;
+    }
+    activeWindow.current = windowKey;
     const controller = new AbortController();
     setState("loading"); setPage(null); setError(null);
     getAnalyticsSurface(targetId, surface, controller.signal, {...timeWindow,...paging}).then(value => {
@@ -46,7 +55,7 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow }: { targe
       setState(panelStateForRequestError(status, hasCursor)); setError(messageFor(failure, status, hasCursor));
     });
     return () => controller.abort();
-  }, [targetId, surface, paging, reload, timeWindow?.fromUtc, timeWindow?.toUtc]);
+  }, [targetId, surface, paging, reload, refresh, timeWindow?.fromUtc, timeWindow?.toUtc]);
 
   const retry = () => { setState("loading"); setPage(null); setError(null); setReload(value => value + 1); };
   const restartPaging = () => {

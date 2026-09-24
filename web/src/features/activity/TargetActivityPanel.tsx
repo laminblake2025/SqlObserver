@@ -13,12 +13,13 @@ export interface TargetActivityPanelProps {
   readonly initialHistoryAtUtc?: string;
   readonly initialHistoryEventId?: string;
   readonly scope: OverviewScope;
+  readonly refresh: number;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope }: TargetActivityPanelProps) {
+export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh }: TargetActivityPanelProps) {
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
   const [message, setMessage] = useState<string>();
-  const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to]);
+  const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to, refresh]);
   const window = selected.state === "available" ? selected.window : undefined;
   const historyUnavailableReason = selected.state === "unavailable" ? selected.message : selected.liveSnapshotsAvailable ? undefined : "Session snapshots are retained for 24 hours; this selected window is older. Blocking history may still be available below.";
   const historySelection = window ?? null;
@@ -30,11 +31,11 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
       .then((next) => { if (!controller.signal.aborted) { setSnapshot(next); setMessage(undefined); } })
       .catch((error: unknown) => { if (!controller.signal.aborted) { setMessage(error instanceof Error ? error.message : "Activity evidence is unavailable."); } });
     return () => controller.abort();
-  }, [instanceId, window?.fromUtc, window?.toUtc]);
+  }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
 
   return (
     <section className="activity-screen" aria-labelledby="activity-heading">
-      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${window?.fromUtc ?? ""}:${window?.toUtc ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} />
+      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={refresh} />
       <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Blocking history follows the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
       <p className="activity-evidence">{window ? `Selected blocking-history window: ${window.fromUtc} to ${window.toUtc}.` : selected.state === "unavailable" ? selected.message : null}</p>

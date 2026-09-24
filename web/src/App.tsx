@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
@@ -36,7 +36,7 @@ const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], 
 };
 
 type DirectTargetLookup =
-  | { readonly targetId: string; readonly refresh: number; readonly state: "loading" }
+  | { readonly targetId: string; readonly refresh: number; readonly state: "loading"; readonly target?: ObservationTargetSummary }
   | { readonly targetId: string; readonly refresh: number; readonly state: "resolved"; readonly target: ObservationTargetSummary }
   | { readonly targetId: string; readonly refresh: number; readonly state: "error"; readonly message: string };
 
@@ -52,6 +52,7 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
+  const requestedCursor = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const change = () => setRoute(readRoute(location.hash));
@@ -73,7 +74,8 @@ export function App() {
     const controller = new AbortController();
     setLoading(true);
     setMessage(undefined);
-    setTargets([]);
+    if (requestedCursor.current !== cursor) setTargets([]);
+    requestedCursor.current = cursor;
     setNextCursor(undefined);
     void listObservationTargets(controller.signal, cursor)
       .then((page) => {
@@ -108,7 +110,10 @@ export function App() {
     if (!targetPage || !route.target || listedTarget) return;
     const targetId = route.target;
     const controller = new AbortController();
-    setDirectTargetLookup({ targetId, refresh, state: "loading" });
+    setDirectTargetLookup((previous) => ({
+      targetId, refresh, state: "loading",
+      target: previous?.targetId === targetId && previous.state !== "error" ? previous.target : undefined,
+    }));
     void getObservationTarget(targetId, controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return;
@@ -126,7 +131,7 @@ export function App() {
     return () => controller.abort();
   }, [listedTarget, refresh, route.target, targetPage]);
 
-  const selected = listedTarget ?? (currentDirectTargetLookup?.state === "resolved" ? currentDirectTargetLookup.target : undefined);
+  const selected = listedTarget ?? (directTargetLookup?.targetId === route.target && directTargetLookup.state !== "error" ? directTargetLookup.target : undefined);
   const scope = readOverviewScope(location.hash);
   const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
@@ -241,7 +246,7 @@ export function App() {
 
           {route.page !== "overview" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
           {route.page !== "overview" && !fleetAlertsPage && message ? <p role="alert" className="status-message">{message}</p> : null}
-          {targetPage && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
+          {targetPage && !props && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
 
           {route.page === "overview" ? <OverviewPage refresh={refresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
@@ -250,15 +255,15 @@ export function App() {
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 
           {props ? (
-            <div className="target-surface" key={`${props.instanceId}:${route.page}:${refresh}`}>
+            <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={refresh} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window}
+              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={refresh} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={refresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
-              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} />}
-              {route.page === "alerts" && <TargetAlertsPanel {...props} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} />}
+              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={refresh} />}
+              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={refresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={refresh} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={refresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>

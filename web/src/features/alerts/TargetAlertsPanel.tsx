@@ -10,7 +10,7 @@ import type { AlertFilter } from "./alertFilter";
 
 const acknowledgementAttempts = new AcknowledgementAttempts();
 
-export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowledge }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly canAcknowledge: boolean }) {
+export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowledge, refresh }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly canAcknowledge: boolean; readonly refresh: number }) {
   const [items, setItems] = useState<readonly ActiveAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -28,14 +28,13 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowl
     setLoading(true);
     setItems([]);
     setNextCursor(undefined);
-    setSelectedId(undefined);
     setError(undefined);
     setMessage(undefined);
     void getActiveAlerts(instanceId, controller.signal)
       .then((page) => { if (!controller.signal.aborted) { setItems(page.items); setNextCursor(page.nextCursor); setError(undefined); setLoading(false); } })
       .catch((failure: unknown) => { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "Alerts are unavailable."); setLoading(false); } });
     return () => controller.abort();
-  }, [instanceId, reload]);
+  }, [instanceId, reload, refresh]);
 
   const visible = useMemo(() => items.filter((item) => {
     return alertMatchesFilter(filter, item.state) && (ruleFilter === "" || item.ruleId.toLowerCase().includes(ruleFilter.toLowerCase()));

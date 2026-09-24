@@ -6,14 +6,16 @@ import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformanc
 import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus } from "./queryPerformanceTypes";
 
-export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow }: {
+export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, refresh }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
   readonly timeWindow: QueryWindow;
   readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
+  readonly refresh: number;
 }) {
   const selectionRequest = useRef<AbortController | null>(null);
   const historyRequest = useRef<AbortController | null>(null);
   const pagingRequest = useRef<AbortController | null>(null);
+  const activeQuery = useRef<{ readonly instanceId: string; readonly ranking: QueryPerformanceMetric; readonly fromUtc: string; readonly toUtc: string; readonly refresh: number } | undefined>(undefined);
   const [ranking, setRanking] = useState<QueryPerformanceMetric>("cpu");
   const [paging, setPaging] = useState(false);
   const [database, setDatabase] = useState("");
@@ -31,11 +33,22 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const [message, setMessage] = useState<string>();
   const metrics: QueryPerformanceMetric[] = ["cpu", "duration", "executions", "logical_reads", "writes", "rows"];
   useEffect(() => {
-    const c = new AbortController(); setPaging(false); setHistorySelection(undefined); setPage(undefined); setStatus(undefined); setHistory(undefined); setPlan(undefined); setMessage(undefined);
+    const previous = activeQuery.current;
+    const queryChanged = previous === undefined || previous.instanceId !== instanceId || previous.ranking !== ranking ||
+      (previous.refresh === refresh && (previous.fromUtc !== timeWindow.fromUtc || previous.toUtc !== timeWindow.toUtc));
+    activeQuery.current = { instanceId, ranking, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc, refresh };
+    const c = new AbortController(); setPaging(false); setPage(undefined); setStatus(undefined); setMessage(undefined);
+    if (queryChanged) { setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); }
     void getQueryPerformanceTop(instanceId, ranking, undefined, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setPage(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance evidence is unavailable."); });
     void getQueryPerformanceStatus(instanceId, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setStatus(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance status is unavailable."); });
     return () => c.abort();
-  }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc]);
+  }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
+  useEffect(() => {
+    if (!page || !historySelection || page.items.some(item => item.query.databaseId === historySelection.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint)) return;
+    setHistorySelection(undefined);
+    setHistory(undefined);
+    setPlan(undefined);
+  }, [page, historySelection]);
   const loadHistory = (selection: { databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string }, cursor?: string) => {
     historyRequest.current?.abort();
     const c = new AbortController(); historyRequest.current = c;

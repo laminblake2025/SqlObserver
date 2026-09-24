@@ -9,7 +9,7 @@ import { buildBlockingTree, formatBlockingTarget, type BlockingTreeNode } from "
 // repository/capture latency so the exact triggered snapshot is returned.
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
-export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, historyUnavailableReason, defaultHistorical = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; historyUnavailableReason?: string; defaultHistorical?: boolean }) {
+export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, historyUnavailableReason, defaultHistorical = false, refreshToken = 0 }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; historyUnavailableReason?: string; defaultHistorical?: boolean; refreshToken?: number }) {
   const [page, setPage] = useState<LivePage>();
   const [database, setDatabase] = useState("");
   const [login, setLogin] = useState(""); const [application, setApplication] = useState(""); const [status, setStatus] = useState("");
@@ -35,6 +35,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const queryRequest = useRef<AbortController | undefined>(undefined);
   const appliedHistoryAtUtc = useRef(initialHistoryAtUtc);
   const manual = useRef(false);
+  useEffect(() => { manual.current = true; }, [refreshToken]);
   const lastRequestKey = useRef("");
   const filterKey = JSON.stringify({ database, login, application, status, idle, system, blocked, sort, descending });
   const snapshots = new Map(history.map(value => [Math.floor(Date.parse(value.observedUtc) / 60000), value]));
@@ -72,7 +73,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       .then(value => { if (!controller.signal.aborted) { const event = initialHistoryEventId === undefined ? undefined : value.find(snapshot => snapshot.deadlockEventId === initialHistoryEventId); const latest = selectedHistoryWindow ? value.reduce<LiveSnapshot | undefined>((last, item) => !last || Date.parse(item.observedUtc) > Date.parse(last.observedUtc) ? item : last, undefined) : undefined; setHistory(value); setPreferredSnapshotId(event?.id ?? latest?.id ?? null); setMinute(Math.floor(Date.parse(event?.observedUtc ?? latest?.observedUtc ?? initialHistoryAtUtc ?? new Date(historyTo).toISOString()) / 60000)); } })
       .catch(() => { if (!controller.signal.aborted) { setError("Historical snapshots are unavailable."); setErrorKey(requestKeyRef.current); } });
     return () => controller.abort();
-  }, [instanceId, mode, historyFrom, historyTo, initialHistoryAtUtc, initialHistoryEventId, refresh]);
+  }, [instanceId, mode, historyFrom, historyTo, initialHistoryAtUtc, initialHistoryEventId, refresh, refreshToken]);
   useEffect(() => {
     if (!visible || (mode === "history" && !selectedSnapshot)) { setLoading(false); return; }
     if (mode === "live" && paused && !manual.current && lastRequestKey.current === requestKey) { setLoading(false); return; }
@@ -105,7 +106,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       }
     }, controller.signal, mode === "live" && !paused && !cursor);
     return () => { disposed = true; controller.abort(); };
-  }, [instanceId, filterKey, mode, selectedSnapshot?.id, paused, visible, refresh, cursor, hours, historyEnd]);
+  }, [instanceId, filterKey, mode, selectedSnapshot?.id, paused, visible, refresh, refreshToken, cursor, hours, historyEnd]);
   const earliestMinute = Math.floor(historyFrom / 60000);
   const latestMinute = Math.floor(historyTo / 60000);
   const minuteOptions = Array.from({ length: latestMinute - earliestMinute + 1 }, (_, index) => latestMinute - index);

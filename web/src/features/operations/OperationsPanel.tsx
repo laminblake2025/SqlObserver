@@ -26,7 +26,7 @@ const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly 
   availability: ["ag-replicas", "ag-databases"],
 };
 
-export function OperationsPanel({ instanceId }: { readonly instanceId: string }) {
+export function OperationsPanel({ instanceId, refresh }: { readonly instanceId: string; readonly refresh: number }) {
   const [cards, dispatch] = useReducer(operationsReducer, undefined, initialOperationsState);
   const [tab, setTab] = useState<OperationsTab>("backups");
   const controllers = useRef(new Map<OperationalKind, AbortController>());
@@ -57,7 +57,7 @@ export function OperationsPanel({ instanceId }: { readonly instanceId: string })
       controllers.current.forEach((controller) => controller.abort());
       controllers.current.clear();
     };
-  }, [instanceId]);
+  }, [instanceId, refresh]);
 
   const retry = (kind: OperationalKind) => {
     controllers.current.get(kind)?.abort();
@@ -90,7 +90,7 @@ export function OperationsPanel({ instanceId }: { readonly instanceId: string })
   return <section className="operations-screen" aria-label="Operational health">
     <div className="screen-intro"><div><p className="eyebrow">Operations · target-scoped projections</p><h2>Operational health</h2><p>Daily checks for recovery, jobs, TempDB, availability, and replication visibility. Each category retains its own loading, failure, retry, cancellation, and paging state.</p></div></div>
     <Tabs label="Operational health categories" tabs={tabs} value={tab} onChange={(value) => setTab(value as OperationsTab)} />
-    {tab === "replication" ? <ReplicationTab instanceId={instanceId} /> : <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>}
+    {tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} /> : <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>}
   </section>;
 }
 
@@ -162,8 +162,8 @@ function namedRows(kind: OperationalKind, items: readonly Record<string, unknown
   });
 }
 
-function ReplicationTab({ instanceId }: { readonly instanceId: string }) {
-  return <div className="replication-tab"><div className="evidence-callout">Replication retains the existing analytics client and rendering behavior. Status and historical evidence have independent snapshot and visibility states.</div><div className="replication-grid"><AnalyticsSurfacePanel targetId={instanceId} surface="replication/status" /><AnalyticsSurfacePanel targetId={instanceId} surface="replication/evidence" /></div></div>;
+function ReplicationTab({ instanceId, refresh }: { readonly instanceId: string; readonly refresh: number }) {
+  return <div className="replication-tab"><div className="evidence-callout">Replication retains the existing analytics client and rendering behavior. Status and historical evidence have independent snapshot and visibility states.</div><div className="replication-grid"><AnalyticsSurfacePanel targetId={instanceId} surface="replication/status" refresh={refresh} /><AnalyticsSurfacePanel targetId={instanceId} surface="replication/evidence" refresh={refresh} /></div></div>;
 }
 
 function formatUtcValue(value: unknown): string {

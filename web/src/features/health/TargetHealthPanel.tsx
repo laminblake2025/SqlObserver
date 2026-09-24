@@ -111,7 +111,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
         window.clearTimeout(timer);
       }
     };
-  }, [instanceId]);
+  }, [instanceId, refresh]);
 
   return (
     <section className="health-screen" aria-labelledby="health-heading">

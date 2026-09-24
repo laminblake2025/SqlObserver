@@ -7,8 +7,8 @@ import type { DeadlockDetail, DeadlockSummary } from "./deadlockTypes";
 import { overviewWindow } from "../overview/overviewModel";
 import type { OverviewScope } from "../overview/overviewTypes";
 
-export function TargetDeadlockPanel({ instanceId, displayName, onClose, scope }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly scope: OverviewScope }) {
-  const window = useMemo(() => { try { return overviewWindow(scope, Date.now()); } catch { return undefined; } }, [scope.range, scope.from, scope.to]);
+export function TargetDeadlockPanel({ instanceId, displayName, onClose, scope, refresh }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly scope: OverviewScope; readonly refresh: number }) {
+  const window = useMemo(() => { try { return overviewWindow(scope, Date.now()); } catch { return undefined; } }, [scope.range, scope.from, scope.to, refresh]);
   const [page, setPage] = useState<Awaited<ReturnType<typeof getDeadlocks>>>();
   const [detail, setDetail] = useState<DeadlockDetail>();
   const [selectedEventId, setSelectedEventId] = useState<string>();
@@ -22,19 +22,17 @@ export function TargetDeadlockPanel({ instanceId, displayName, onClose, scope }:
     const controller = new AbortController();
     listRequest.current = controller;
     setPage(undefined);
-    setDetail(undefined);
-    setSelectedEventId(undefined);
     setCursorTrail([]);
     setMessage(undefined);
     if (!window) { setMessage("Choose a valid UTC range of up to 31 days for deadlock history."); return () => controller.abort(); }
     void getDeadlocks(instanceId, controller.signal, undefined, window)
-      .then((next) => { if (!controller.signal.aborted) setPage(next); })
+      .then((next) => { if (!controller.signal.aborted) { setPage(next); if (next.items.length === 0) { setDetail(undefined); setSelectedEventId(undefined); } } })
       .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Deadlock evidence is unavailable."); });
     return () => {
       controller.abort();
       detailRequest.current?.abort();
     };
-  }, [instanceId, window?.fromUtc, window?.toUtc]);
+  }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
 
   useEffect(() => {
     if (!page || page.items.length === 0) return;

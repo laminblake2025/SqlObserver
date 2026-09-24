@@ -18,6 +18,6 @@ export function AnalyticsPage({targetId,scope,refresh,surface,onSurfaceChange}:{
     {inventory?<p role="status">{surface==='backfill'?'Backfill jobs only.':'All analytics jobs.'} Inventory is not filtered by the selected time range.</p>:<>
       {result.error?<p role="alert">{result.error}</p>:<p>UTC window: {result.window!.fromUtc} to {result.window!.toUtc}</p>}
     </>}
-    {(inventory||result.window)&&<AnalyticsSurfacePanel key={`${targetId}:${surface}:${inventory?'inventory':JSON.stringify(result.window)}`} targetId={targetId} surface={surface} timeWindow={inventory?undefined:result.window}/>}
+    {(inventory||result.window)&&<AnalyticsSurfacePanel key={`${targetId}:${surface}:${scope.range}:${scope.from ?? ''}:${scope.to ?? ''}`} targetId={targetId} surface={surface} timeWindow={inventory?undefined:result.window} refresh={refresh}/>}
   </>;
 }
