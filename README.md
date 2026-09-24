@@ -60,6 +60,7 @@ flowchart LR
 | React / TypeScript | Browser dashboard and investigation workflows |
 
 The API reads diagnostic evidence through application services and the repository. The collector owns monitored-target connections. PostgreSQL-backed leases coordinate background workers.
+The Alerts page lists current alerts across the caller's authorized servers, with a server drill-down and role-gated acknowledgement.
 
 See the [architecture overview](docs/architecture/overview.md), [architecture decisions](docs/adr/ADR-0001-modular-monolith.md), and [threat model](docs/architecture/threat-model.md).
 

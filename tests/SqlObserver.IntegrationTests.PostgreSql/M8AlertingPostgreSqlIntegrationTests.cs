@@ -4,11 +4,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SqlObserver.Alerting;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Domain.Alerting;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Application.Services;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -28,6 +30,66 @@ public sealed partial class M8AlertingPostgreSqlIntegrationTests
 
     private readonly PostgreSql18Fixture _fixture;
     public M8AlertingPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
+
+    [Fact]
+    public async Task FleetInboxPagesOnlyAcrossGrantedReadRoleTargets()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid viewerTarget = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        Guid auditorTarget = Guid.Parse("22222222-2222-4222-8222-222222222222");
+        Guid unrelatedTarget = Guid.Parse("33333333-3333-4333-8333-333333333333");
+        DateTimeOffset fired = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddMinutes(-5));
+        foreach (Guid target in new[] { viewerTarget, auditorTarget, unrelatedTarget })
+        {
+            await SeedTargetOnlyAsync(database, target);
+            await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+            await using var command = new NpgsqlCommand("""
+                WITH rule AS (
+                  INSERT INTO alerting.rule(rule_id,instance_id,name,kind,metric_id,comparison,threshold,hysteresis,confirmation_count,confirmation_window,evaluation_interval)
+                  VALUES(@rule,@target,'CPU high',1,'cpu.percent',1,80,5,1,interval '0 seconds',interval '15 seconds')
+                  RETURNING rule_id
+                )
+                INSERT INTO alerting.rule_state(instance_id,rule_id,alert_id,state,consecutive_matches,first_match_at,last_observed_at,fired_at,episode_started_at,last_value,reason,revision)
+                SELECT @target,rule_id,@alert,3,1,@fired,@fired,@fired,@fired,95,'threshold',1 FROM rule;
+                """, connection);
+            command.Parameters.AddWithValue("target", target);
+            command.Parameters.AddWithValue("rule", Guid.NewGuid());
+            command.Parameters.AddWithValue("alert", Guid.NewGuid());
+            command.Parameters.AddWithValue("fired", fired);
+            await command.ExecuteNonQueryAsync();
+        }
+        await using NpgsqlDataSource serverSource = database.CreateServerDataSource();
+        var repository = new PostgreSqlAlertRepositoryPort(serverSource);
+        var service = new AlertQueryService(repository);
+        var authorization = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-9001"),
+            AuthorizationPrincipalState.Active,
+            [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([new MonitoredInstanceId(viewerTarget)])),
+             new RoleAuthorizationGrant(ApplicationRole.Auditor, TargetAuthorizationScope.ForTargets([new MonitoredInstanceId(auditorTarget)])),
+             new RoleAuthorizationGrant(ApplicationRole.QueryTextReader, TargetAuthorizationScope.ForTargets([new MonitoredInstanceId(unrelatedTarget)]))]);
+        var seen = new List<FleetAlertItem>();
+        FleetAlertCursor? cursor = null;
+        do
+        {
+            FleetAlertPage page = await service.ListFleetActivePageAsync(authorization, 1, cursor, CancellationToken.None);
+            seen.AddRange(page.Items);
+            cursor = page.NextCursor;
+        } while (cursor is not null && seen.Count < 4);
+        Assert.Equal(2, seen.Count);
+        Assert.Equal(2, seen.Select(static item => item.Alert.AlertId).Distinct().Count());
+        Assert.Equal(new[] { viewerTarget, auditorTarget }.OrderBy(static id => id),
+            seen.Select(static item => item.Alert.TargetId.Value).OrderBy(static id => id));
+        Assert.All(seen, static item => Assert.Equal("CPU high", item.Alert.RuleName));
+        FleetAlertPage all = await repository.ListFleetActivePageAsync(TargetAuthorizationScope.ForAllTargets(), 10, null, Timeout(), CancellationToken.None);
+        Assert.Equal(3, all.Items.Count);
+        await using var grants = database.DataSource.CreateCommand("""
+            SELECT has_function_privilege('sqlobserver_server','reporting.list_fleet_active_alerts(uuid[],boolean,integer,timestamptz,uuid,uuid,timestamptz)','EXECUTE'),
+                   has_function_privilege('sqlobserver_collector','reporting.list_fleet_active_alerts(uuid[],boolean,integer,timestamptz,uuid,uuid,timestamptz)','EXECUTE');
+            """);
+        await using NpgsqlDataReader reader = await grants.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.True(reader.GetBoolean(0));
+        Assert.False(reader.GetBoolean(1));
+    }
 
     [Theory]
     [InlineData(false)]

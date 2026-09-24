@@ -6,6 +6,7 @@ import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
+import { FleetAlertsPage } from "./features/alerts/FleetAlertsPage";
 import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
 import { TargetHealthPanel } from "./features/health/TargetHealthPanel";
 import { OverviewPage } from "./features/overview/OverviewPage";
@@ -94,7 +95,8 @@ export function App() {
 
   const evidence = useFleetEvidence(targets, route.page === "servers");
   const listedTarget = targets.find((target) => target.instanceId === route.target);
-  const targetPage = route.page !== "overview" && route.page !== "servers";
+  const fleetAlertsPage = route.page === "alerts" && !route.target;
+  const targetPage = route.page !== "overview" && route.page !== "servers" && !fleetAlertsPage;
   const directLookupRequired = targetPage && Boolean(route.target) && !listedTarget;
   const currentDirectTargetLookup = directLookupRequired
     ? directTargetLookup?.targetId === route.target && directTargetLookup.refresh === refresh
@@ -143,7 +145,7 @@ export function App() {
   const currentNavigation = route.page === "health" ? "servers" : route.page;
   const routeHref = (page: Destination, target = route.target) => overviewHref(scope, page, target);
   const closeTarget = () => {
-    location.hash = routeHref("overview", route.target);
+    location.hash = route.page === "alerts" ? routeHref("alerts", "") : routeHref("overview", route.target);
   };
   const props = selected
     ? { instanceId: selected.instanceId, displayName: selected.displayName, onClose: closeTarget }
@@ -159,6 +161,8 @@ export function App() {
       : destinations[route.page];
   const pageSubtitle = route.page === "overview"
     ? "Find the most important exceptions across your SQL Server environment."
+    : fleetAlertsPage
+      ? "Review current alerts across the servers you can read."
     : route.page === "health"
       ? selected ? `Servers / ${selected.displayName} · target-scoped evidence` : "Select a server to inspect target-scoped evidence."
       : selected?.displayName ?? (route.page === "servers" ? "Registered targets and collection visibility" : "Select a server to inspect evidence.");
@@ -186,7 +190,7 @@ export function App() {
             <a
               key={key}
               aria-current={currentNavigation === key ? "page" : undefined}
-              href={routeHref(key, route.target)}
+              href={routeHref(key, key === "alerts" ? "" : route.target)}
             >
               <span aria-hidden="true">{navigationIcons[key]}</span>
               {destinations[key]}
@@ -235,12 +239,13 @@ export function App() {
             }
           />
 
-          {route.page !== "overview" && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
-          {route.page !== "overview" && message ? <p role="alert" className="status-message">{message}</p> : null}
+          {route.page !== "overview" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
+          {route.page !== "overview" && !fleetAlertsPage && message ? <p role="alert" className="status-message">{message}</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
 
           {route.page === "overview" ? <OverviewPage refresh={refresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
+          {fleetAlertsPage ? <FleetAlertsPage refresh={refresh} /> : null}
           {route.page === "servers" && !loading && !message ? <ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} /> : null}
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 

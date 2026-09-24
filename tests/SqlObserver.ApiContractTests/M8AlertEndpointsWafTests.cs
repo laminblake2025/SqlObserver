@@ -50,6 +50,27 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
     }
 
     [Fact]
+    public async Task FleetAlertEndpointPagesAndRequiresAuthentication()
+    {
+        using HttpClient client = CreateClient("viewer");
+        using HttpResponseMessage first = await client.GetAsync("/api/v1/alerts/active?limit=1");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        using var firstJson = System.Text.Json.JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        var item = Assert.Single(firstJson.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(M8AlertApiFactory.TargetId, item.GetProperty("targetId").GetGuid());
+        Assert.Equal("Test SQL", item.GetProperty("targetName").GetString());
+        Assert.Equal("metric.threshold", item.GetProperty("ruleName").GetString());
+        string cursor = firstJson.RootElement.GetProperty("nextCursor").GetString()!;
+        using HttpResponseMessage second = await client.GetAsync($"/api/v1/alerts/active?limit=1&cursor={Uri.EscapeDataString(cursor)}");
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        using HttpResponseMessage invalid = await client.GetAsync("/api/v1/alerts/active?cursor=invalid%2A");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using HttpClient anonymous = factory.CreateClient();
+        using HttpResponseMessage denied = await anonymous.GetAsync("/api/v1/alerts/active");
+        Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+    }
+
+    [Fact]
     public async Task MapAlertEndpointsReturns403409And503WithoutProviderDetails()
     {
         using HttpClient viewer = CreateClient("viewer");
@@ -248,6 +269,15 @@ internal sealed class FakeAlertQuery : IAlertQueryService
         AlertActiveDto item = Item(targetId);
         AlertActiveCursor? next = cursor is null ? new AlertActiveCursor(targetId, item.FiredUtc!.Value, item.AlertId, Snapshot) : null;
         return ValueTask.FromResult(new AlertActivePage([item], Snapshot, next));
+    }
+    public ValueTask<FleetAlertPage> ListFleetActivePageAsync(AuthorizationContext authorization, int limit, FleetAlertCursor? cursor, CancellationToken cancellationToken)
+    {
+        if (!authorization.CanAccess(ApplicationRole.Viewer, new MonitoredInstanceId(M8AlertApiFactory.TargetId)) &&
+            !authorization.CanAccess(ApplicationRole.Operator, new MonitoredInstanceId(M8AlertApiFactory.TargetId)))
+            throw new UnauthorizedAccessException();
+        AlertActiveDto item = Item(new MonitoredInstanceId(M8AlertApiFactory.TargetId));
+        FleetAlertCursor? next = cursor is null ? new FleetAlertCursor(item.FiredUtc!.Value, M8AlertApiFactory.TargetId, item.AlertId, Snapshot) : null;
+        return ValueTask.FromResult(new FleetAlertPage(cursor is null ? [new FleetAlertItem(item, "Test SQL")] : [], Snapshot, next));
     }
     private static AlertActiveDto Item(MonitoredInstanceId target) => new(M8AlertApiFactory.AlertId, Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), target, "metric.threshold", AlertState.Firing, Snapshot.AddMinutes(-5), Snapshot.AddMinutes(-4), null, 2, "threshold", false);
 }

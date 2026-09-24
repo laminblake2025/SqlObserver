@@ -71,6 +71,9 @@ public sealed record AlertEvaluationOutcome(int Evaluated, int Changed, int Supp
 public sealed record AlertEvaluationWork(Guid OperationId, IReadOnlyList<AlertObservation> Observations, DateTimeOffset DueAtUtc, string? WorkKey = null, WorkerExecutionId? OwnerExecutionId = null, FencingToken? LeaseFencing = null);
 public sealed record AlertActiveCursor(MonitoredInstanceId TargetId, DateTimeOffset SortAtUtc, Guid AlertId, DateTimeOffset SnapshotUtc);
 public sealed record AlertActivePage(IReadOnlyList<AlertActiveDto> Items, DateTimeOffset SnapshotUtc, AlertActiveCursor? NextCursor);
+public sealed record FleetAlertCursor(DateTimeOffset SortAtUtc, Guid TargetId, Guid AlertId, DateTimeOffset SnapshotUtc);
+public sealed record FleetAlertItem(AlertActiveDto Alert, string TargetName);
+public sealed record FleetAlertPage(IReadOnlyList<FleetAlertItem> Items, DateTimeOffset SnapshotUtc, FleetAlertCursor? NextCursor);
 public sealed record AlertDeliveryWork(Guid DeliveryId, Guid AlertId, Guid DestinationId, string Kind, string ConfigurationReference, byte[] Payload, int Attempt, DateTimeOffset DueAtUtc, MonitoredInstanceId? TargetId = null, WorkerLeaseIdentity? Lease = null, string? WorkKey = null, long? ConfigurationRevision = null, string? ConfigurationDigest = null);
 public sealed record AlertDeliveryResult(Guid DeliveryId, bool Succeeded, bool PermanentFailure, string Reason, DateTimeOffset CompletedAtUtc, MonitoredInstanceId? TargetId = null, int? ResponseCode = null, int? ResponseBytes = null);
 public sealed record AlertDeliveryCancellation(Guid DeliveryId, string Reason);
@@ -102,6 +105,8 @@ public interface IAlertRepositoryPort
         IReadOnlyList<AlertActiveDto> rows = await ListActiveAsync(targetId, limit, timeout, cancellationToken).ConfigureAwait(false);
         return new AlertActivePage(rows, cursor?.SnapshotUtc ?? DateTimeOffset.UtcNow, null);
     }
+    ValueTask<FleetAlertPage> ListFleetActivePageAsync(TargetAuthorizationScope scope, int limit, FleetAlertCursor? cursor, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The fleet alert read is not implemented by this repository.");
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AlertRuleWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(MaintenanceWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(MaintenanceCancellationRequest request, CancellationToken cancellationToken) => ValueTask.FromResult(new AdministrativeAuditReceipt(new AdministrativeAuditId(Guid.NewGuid()), DateTimeOffset.UtcNow));
@@ -143,6 +148,8 @@ public interface IAlertQueryService
         IReadOnlyList<AlertActiveDto> rows = await ListActiveAsync(authorization, targetId, limit, cancellationToken).ConfigureAwait(false);
         return new AlertActivePage(rows, cursor?.SnapshotUtc ?? DateTimeOffset.UtcNow, null);
     }
+    ValueTask<FleetAlertPage> ListFleetActivePageAsync(AuthorizationContext authorization, int limit, FleetAlertCursor? cursor, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The fleet alert read is not implemented by this service.");
 }
 
 public interface IAlertAdministrationService

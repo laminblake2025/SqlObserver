@@ -473,6 +473,11 @@ figure { margin: 0; }
 .table-card-heading p { margin: 0; color: var(--muted); font-size: 12px; }
 .alert-list .table-scroll { max-height: 620px; overflow: auto; }
 .alert-list .pager { padding: 14px 19px 18px; }
+.fleet-alerts-screen .alert-list th:first-child,
+.fleet-alerts-screen .alert-list td:first-child { min-width: 120px; }
+.fleet-alerts-screen .alert-list th:last-child,
+.fleet-alerts-screen .alert-list td:last-child { min-width: 90px; }
+.fleet-alerts-screen .state-pill { white-space: nowrap; }
 .detail-pane { min-width: 0; padding: 19px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 .detail-pane-heading { display: flex; align-items: start; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
 .detail-pane-heading h2 { margin-bottom: 4px; font-size: 20px; }

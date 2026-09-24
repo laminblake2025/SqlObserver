@@ -94,6 +94,7 @@ Infrastructure.PostgreSql / Infrastructure.SqlServer / Infrastructure.Windows
 ```
 
 Domain code has no dependency on database drivers, HTTP, Windows services, UI frameworks, or MCP SDKs. The MCP protocol is behind an adapter. Collector-specific SQL and manifests remain versioned, reviewable resources rather than hidden string fragments.
+The fleet alert inbox derives its target set from the caller's read-role grants. A bounded PostgreSQL projection pages current firing and acknowledged alerts across that set; acknowledgement still uses the existing target-scoped write path.
 
 ## Collection lifecycle
 

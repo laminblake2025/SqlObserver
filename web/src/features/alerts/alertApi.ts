@@ -1,5 +1,5 @@
-import { parseActiveAlerts, readJsonBounded } from "./alertRuntimeParser.ts";
-import type { ActiveAlertPage } from "./alertTypes.ts";
+import { parseActiveAlerts, parseFleetAlerts, readJsonBounded } from "./alertRuntimeParser.ts";
+import type { ActiveAlertPage, FleetAlertPage } from "./alertTypes.ts";
 // Runtime parser owns row.targetId !== targetId, row.items.length > 100, nextCursor === null,
 // isState/isUuid/isUtc and candidate.value !== undefined null validation.
 
@@ -9,6 +9,14 @@ export async function getActiveAlerts(instanceId: string, signal: AbortSignal, l
   const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/alerts/active?${query}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal });
   if (!response.ok) throw new Error(response.status === 403 ? "You are not authorized to view alerts for this target." : "Alerts are temporarily unavailable.");
   return parseActiveAlerts(await readJsonBounded(response), instanceId);
+}
+
+export async function getFleetActiveAlerts(signal: AbortSignal, limit = 100, cursor?: string): Promise<FleetAlertPage> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || cursor !== undefined && (cursor.length === 0 || cursor.length > 1024)) throw new Error("Invalid alert page request.");
+  const query = new URLSearchParams({ limit: String(limit) }); if (cursor) query.set("cursor", cursor);
+  const response = await fetch(`/api/v1/alerts/active?${query}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal });
+  if (!response.ok) throw new Error(response.status === 403 ? "You are not authorized to view fleet alerts." : "Fleet alerts are temporarily unavailable.");
+  return parseFleetAlerts(await readJsonBounded(response));
 }
 
 export async function acknowledgeAlert(instanceId: string, alertId: string, operationId: string, signal: AbortSignal): Promise<void> {

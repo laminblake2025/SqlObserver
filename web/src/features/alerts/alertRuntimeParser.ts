@@ -1,4 +1,4 @@
-import type { ActiveAlert, ActiveAlertPage, AlertState } from "./alertTypes";
+import type { ActiveAlert, ActiveAlertPage, AlertState, FleetAlert, FleetAlertPage } from "./alertTypes";
 
 export const MAX_ALERT_RESPONSE_BYTES = 256 * 1024;
 
@@ -24,16 +24,37 @@ export function parseActiveAlerts(value: unknown, targetId: string): ActiveAlert
   if (!value || typeof value !== "object") throw new Error("Alerts are unavailable.");
   const row = value as { targetId?: unknown; items?: unknown; nextCursor?: unknown; snapshotUtc?: unknown };
   if (row.targetId !== targetId || !Array.isArray(row.items) || row.items.length > 100 || row.nextCursor !== undefined && row.nextCursor !== null && (typeof row.nextCursor !== "string" || row.nextCursor.length === 0 || row.nextCursor.length > 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(row.nextCursor)) || row.snapshotUtc !== undefined && row.snapshotUtc !== null && (typeof row.snapshotUtc !== "string" || !isUtc(row.snapshotUtc))) throw new Error("Alerts response is invalid.");
-  const items = row.items.map((item): ActiveAlert => {
-    if (!item || typeof item !== "object") throw new Error("Alerts response is invalid.");
-    const candidate = item as Record<string, unknown>;
-    if (typeof candidate.alertId !== "string" || !isUuid(candidate.alertId) || typeof candidate.ruleId !== "string" || !isUuid(candidate.ruleId) || !isState(candidate.state) || typeof candidate.firstObservedUtc !== "string" || !isUtc(candidate.firstObservedUtc) || typeof candidate.deliverySuppressed !== "boolean") throw new Error("Alerts response is invalid.");
-    if (candidate.value !== undefined && candidate.value !== null && (typeof candidate.value !== "number" || !Number.isFinite(candidate.value))) throw new Error("Alerts response is invalid.");
-    if (candidate.reason !== undefined && candidate.reason !== null && typeof candidate.reason !== "string") throw new Error("Alerts response is invalid.");
-    return { alertId: candidate.alertId, ruleId: candidate.ruleId, state: candidate.state, firstObservedUtc: candidate.firstObservedUtc, firedUtc: optionalUtc(candidate.firedUtc), acknowledgedUtc: optionalUtc(candidate.acknowledgedUtc), value: candidate.value as number | null | undefined, reason: candidate.reason as string | undefined, deliverySuppressed: candidate.deliverySuppressed };
-  });
+  const items = row.items.map(parseAlert);
   return { targetId, items, nextCursor: row.nextCursor === null ? undefined : row.nextCursor as string | undefined, snapshotUtc: row.snapshotUtc === null ? undefined : row.snapshotUtc as string | undefined };
 }
+
+export function parseFleetAlerts(value: unknown): FleetAlertPage {
+  if (!value || typeof value !== "object") throw new Error("Alerts are unavailable.");
+  const page = value as { items?: unknown; nextCursor?: unknown; snapshotUtc?: unknown };
+  if (!Array.isArray(page.items) || page.items.length > 100 || !validCursor(page.nextCursor) ||
+      typeof page.snapshotUtc !== "string" || !isUtc(page.snapshotUtc)) throw new Error("Alerts response is invalid.");
+  const items = page.items.map((item): FleetAlert => {
+    const alert = parseAlert(item);
+    const candidate = item as Record<string, unknown>;
+    if (typeof candidate.targetId !== "string" || !isUuid(candidate.targetId) ||
+        typeof candidate.targetName !== "string" || candidate.targetName.length === 0 || candidate.targetName.length > 512)
+      throw new Error("Alerts response is invalid.");
+    return { ...alert, targetId: candidate.targetId, targetName: candidate.targetName };
+  });
+  return { items, nextCursor: page.nextCursor === null ? undefined : page.nextCursor as string | undefined, snapshotUtc: page.snapshotUtc };
+}
+
+function parseAlert(item: unknown): ActiveAlert {
+    if (!item || typeof item !== "object") throw new Error("Alerts response is invalid.");
+    const candidate = item as Record<string, unknown>;
+    if (typeof candidate.alertId !== "string" || !isUuid(candidate.alertId) || typeof candidate.ruleId !== "string" || !isUuid(candidate.ruleId) || typeof candidate.ruleName !== "string" || candidate.ruleName.length === 0 || !isState(candidate.state) || typeof candidate.firstObservedUtc !== "string" || !isUtc(candidate.firstObservedUtc) || typeof candidate.deliverySuppressed !== "boolean") throw new Error("Alerts response is invalid.");
+    if (candidate.value !== undefined && candidate.value !== null && (typeof candidate.value !== "number" || !Number.isFinite(candidate.value))) throw new Error("Alerts response is invalid.");
+    if (candidate.reason !== undefined && candidate.reason !== null && typeof candidate.reason !== "string") throw new Error("Alerts response is invalid.");
+    return { alertId: candidate.alertId, ruleId: candidate.ruleId, ruleName: candidate.ruleName, state: candidate.state, firstObservedUtc: candidate.firstObservedUtc, firedUtc: optionalUtc(candidate.firedUtc), acknowledgedUtc: optionalUtc(candidate.acknowledgedUtc), value: candidate.value as number | null | undefined, reason: candidate.reason as string | undefined, deliverySuppressed: candidate.deliverySuppressed };
+}
+
+const validCursor = (value: unknown): boolean => value === undefined || value === null ||
+  typeof value === "string" && value.length > 0 && value.length <= 1024 && /^[A-Za-z0-9+/]+={0,2}$/.test(value);
 
 const isUuid = (value: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const isUtc = (value: string): boolean =>

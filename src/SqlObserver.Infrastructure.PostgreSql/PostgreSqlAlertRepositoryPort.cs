@@ -5,6 +5,7 @@ using SqlObserver.Alerting;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Alerting;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Telemetry;
 
@@ -197,6 +198,66 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         bool more = rows.Count > limit; if (more) rows.RemoveAt(rows.Count - 1);
         AlertActiveCursor? next = more && rows.Count > 0 ? new AlertActiveCursor(targetId, rows[^1].FiredUtc ?? rows[^1].FirstObservedUtc, rows[^1].AlertId, snapshot) : null;
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return new AlertActivePage(rows, snapshot, next);
+    }
+
+    public async ValueTask<FleetAlertPage> ListFleetActivePageAsync(TargetAuthorizationScope scope, int limit, FleetAlertCursor? cursor, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        DateTimeOffset snapshot;
+        if (cursor is not null) snapshot = cursor.SnapshotUtc;
+        else
+        {
+            await using var snapshotCommand = new NpgsqlCommand("SELECT clock_timestamp();", connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            snapshot = PostgreSqlRuntimeSupport.ConvertUtcTimestamp(
+                await snapshotCommand.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Repository snapshot was not returned."));
+        }
+        await using var command = new NpgsqlCommand("""
+            SELECT alert_id,rule_id,target_id,target_name,rule_name,state,first_observed_at,
+                   fired_at,acknowledged_at,value,reason,delivery_suppressed
+            FROM reporting.list_fleet_active_alerts(@target_ids,@all_targets,@max_results,
+                 @after_at,@after_target,@after_alert_id,@snapshot_utc);
+            """, connection, transaction)
+        {
+            CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+        };
+        command.Parameters.Add("target_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid).Value = scope.TargetIds.Select(static target => target.Value).ToArray();
+        command.Parameters.AddWithValue("all_targets", scope.AllTargets);
+        command.Parameters.AddWithValue("max_results", limit);
+        command.Parameters.AddWithValue("after_at", (object?)cursor?.SortAtUtc ?? DBNull.Value);
+        command.Parameters.AddWithValue("after_target", (object?)cursor?.TargetId ?? DBNull.Value);
+        command.Parameters.AddWithValue("after_alert_id", (object?)cursor?.AlertId ?? DBNull.Value);
+        command.Parameters.AddWithValue("snapshot_utc", snapshot);
+        var rows = new List<FleetAlertItem>(limit + 1);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+        while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+        {
+            var alert = new AlertActiveDto(reader.GetGuid(0), reader.GetGuid(1),
+                new MonitoredInstanceId(reader.GetGuid(2)), reader.GetString(4),
+                (AlertState)reader.GetInt16(5), reader.GetFieldValue<DateTimeOffset>(6),
+                reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
+                reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
+                reader.IsDBNull(9) ? null : reader.GetDouble(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10), reader.GetBoolean(11));
+            rows.Add(new FleetAlertItem(alert, reader.GetString(3)));
+        }
+        await reader.DisposeAsync().ConfigureAwait(false);
+        bool more = rows.Count > limit;
+        if (more) rows.RemoveAt(rows.Count - 1);
+        FleetAlertCursor? next = more && rows.Count > 0
+            ? new FleetAlertCursor(rows[^1].Alert.FiredUtc ?? rows[^1].Alert.FirstObservedUtc,
+                rows[^1].Alert.TargetId.Value, rows[^1].Alert.AlertId, snapshot)
+            : null;
+        await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+        return new FleetAlertPage(rows, snapshot, next);
     }
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AlertRuleWriteRequest request, CancellationToken cancellationToken)
     {

@@ -12,6 +12,8 @@ public static class AlertEndpoints
 {
     public static IEndpointRouteBuilder MapAlertEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapGroup("/api/v1/alerts").RequireAuthorization()
+            .MapGet("/active", GetFleetActiveAsync);
         var group = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/alerts").RequireAuthorization();
         group.MapGet("/active", GetActiveAsync);
         group.MapPost("/{alertId:guid}/acknowledge", AcknowledgeAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
@@ -37,10 +39,58 @@ public static class AlertEndpoints
             AlertActiveCursor? after = DecodeCursor(cursor, instanceId);
             AlertActivePage result = await service.ListActivePageAsync(resolver.Resolve(context.User), new MonitoredInstanceId(instanceId), limit, after, cancellationToken).ConfigureAwait(false);
             string? nextCursor = result.NextCursor is null ? null : EncodeCursor(result.NextCursor);
-            return Results.Ok(new { targetId = instanceId, snapshotUtc = result.SnapshotUtc, items = result.Items.Select(static row => new { alertId = row.AlertId, ruleId = row.RuleId, state = row.State.ToString().ToLowerInvariant(), firstObservedUtc = row.FirstObservedUtc, firedUtc = row.FiredUtc, acknowledgedUtc = row.AcknowledgedUtc, value = row.Value, reason = row.Reason, deliverySuppressed = row.DeliverySuppressed }), nextCursor });
+            return Results.Ok(new { targetId = instanceId, snapshotUtc = result.SnapshotUtc, items = result.Items.Select(static row => new { alertId = row.AlertId, ruleId = row.RuleId, ruleName = row.RuleName, state = row.State.ToString().ToLowerInvariant(), firstObservedUtc = row.FirstObservedUtc, firedUtc = row.FiredUtc, acknowledgedUtc = row.AcknowledgedUtc, value = row.Value, reason = row.Reason, deliverySuppressed = row.DeliverySuppressed }), nextCursor });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static async Task<IResult> GetFleetActiveAsync(HttpContext context, IAlertQueryService service, WindowsGroupRoleResolver resolver, int limit = 100, string? cursor = null, CancellationToken cancellationToken = default)
+    {
+        if (limit is <= 0 or > 100) return Results.BadRequest();
+        try
+        {
+            FleetAlertCursor? after = DecodeFleetCursor(cursor);
+            FleetAlertPage page = await service.ListFleetActivePageAsync(resolver.Resolve(context.User), limit, after, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                snapshotUtc = page.SnapshotUtc,
+                items = page.Items.Select(static item => new
+                {
+                    targetId = item.Alert.TargetId.Value, targetName = item.TargetName,
+                    alertId = item.Alert.AlertId, ruleId = item.Alert.RuleId,
+                    ruleName = item.Alert.RuleName,
+                    state = item.Alert.State.ToString().ToLowerInvariant(),
+                    firstObservedUtc = item.Alert.FirstObservedUtc,
+                    firedUtc = item.Alert.FiredUtc,
+                    acknowledgedUtc = item.Alert.AcknowledgedUtc,
+                    value = item.Alert.Value, reason = item.Alert.Reason,
+                    deliverySuppressed = item.Alert.DeliverySuppressed,
+                }),
+                nextCursor = page.NextCursor is null ? null : EncodeFleetCursor(page.NextCursor),
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static string EncodeFleetCursor(FleetAlertCursor cursor) =>
+        Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+            $"{cursor.SnapshotUtc:O}|{cursor.SortAtUtc:O}|{cursor.TargetId:D}|{cursor.AlertId:D}"));
+
+    private static FleetAlertCursor? DecodeFleetCursor(string? value)
+    {
+        if (value is null) return null;
+        if (value.Length is 0 or > 1024) throw new ArgumentException("Cursor is outside its bounds.");
+        string[] parts;
+        try { parts = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value)).Split('|'); }
+        catch (FormatException exception) { throw new ArgumentException("Cursor is invalid.", exception); }
+        if (parts.Length != 4 || !TryCanonicalUtc(parts[0], out DateTimeOffset snapshot) ||
+            !TryCanonicalUtc(parts[1], out DateTimeOffset sortAt) || sortAt > snapshot ||
+            !AlertIdentifier.TryParseRfc4122(parts[2], out Guid target) ||
+            !AlertIdentifier.TryParseRfc4122(parts[3], out Guid alert))
+            throw new ArgumentException("Cursor binding is invalid.");
+        return new FleetAlertCursor(sortAt, target, alert, snapshot);
     }
 
     private static string EncodeCursor(AlertActiveCursor cursor) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{cursor.TargetId.Value:D}|{cursor.SnapshotUtc:O}|{cursor.SortAtUtc:O}|{cursor.AlertId:D}"));

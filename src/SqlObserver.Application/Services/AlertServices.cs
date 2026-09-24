@@ -29,6 +29,18 @@ public sealed class AlertQueryService(IAlertRepositoryPort repository) : IAlertQ
         if (cursor is not null && (cursor.TargetId.Value != targetId.Value || cursor.SnapshotUtc.Offset != TimeSpan.Zero)) throw new UnauthorizedAccessException();
         return repository.ListActivePageAsync(targetId, limit, cursor, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
     }
+
+    public ValueTask<FleetAlertPage> ListFleetActivePageAsync(AuthorizationContext authorization, int limit, FleetAlertCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        TargetAuthorizationScope scope = authorization.GetScopeForRoles(ReadRoles);
+        if (!scope.AllTargets && scope.TargetIds.Count == 0) throw new UnauthorizedAccessException();
+        if (cursor is not null && (cursor.SnapshotUtc.Offset != TimeSpan.Zero || cursor.SortAtUtc.Offset != TimeSpan.Zero ||
+            cursor.SortAtUtc > cursor.SnapshotUtc || cursor.TargetId == Guid.Empty || cursor.AlertId == Guid.Empty))
+            throw new ArgumentException("Fleet alert cursor is invalid.", nameof(cursor));
+        return repository.ListFleetActivePageAsync(scope, limit, cursor, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
 }
 
 public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit, IAlertDestinationApprovalPort? destinationApproval = null) : IAlertAdministrationService
