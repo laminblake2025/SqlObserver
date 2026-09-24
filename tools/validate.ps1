@@ -1337,7 +1337,8 @@ function Assert-RepositoryShape {
             throw "M9 manifest does not conform to the strict v5 schema: $manifestId"
         }
         foreach ($major in @('15','16','17')) {
-            if (@($manifest.requiredPermissionsByMajor.$major).Count -lt 1 -or @($manifest.requiredPermissionsByMajor.$major).Count -gt 2) { throw "M9 manifest permission bounds are invalid: $manifestId/$major" }
+            $maximumPermissions = if ($manifestId -ceq 'backups.status') { 3 } else { 2 }
+            if (@($manifest.requiredPermissionsByMajor.$major).Count -lt 1 -or @($manifest.requiredPermissionsByMajor.$major).Count -gt $maximumPermissions) { throw "M9 manifest permission bounds are invalid: $manifestId/$major" }
             if ($manifest.queryResources.supportedByMajor.$major -notmatch "^$([regex]::Escape($manifestId)).sqlserver$major-windows.v1.sql$") { throw "M9 manifest query resource is invalid: $manifestId/$major" }
         }
         if ($manifest.cadence.defaultIntervalSeconds -lt 30 -or $manifest.cadence.defaultIntervalSeconds -gt 300 -or
@@ -1352,9 +1353,9 @@ function Assert-RepositoryShape {
     }
     $m9BundleDigest = (Get-FileHash -LiteralPath $m9CollectorChecksumPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $runtimeRepositorySource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorRuntimeRepositoryPort.cs') -Raw
-    $m9MigrationSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0013_backups_jobs_tempdb_availability_groups.sql') -Raw
+    $m9MigrationSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0114_backup_permission_probe_binding.sql') -Raw
     if (([regex]::Matches($runtimeRepositorySource, [regex]::Escape('"' + $m9BundleDigest + '"'))).Count -ne 4 -or
-        ([regex]::Matches($m9MigrationSource, [regex]::Escape("'$m9BundleDigest'"))).Count -ne 4) {
+        ([regex]::Matches($m9MigrationSource, [regex]::Escape("'$m9BundleDigest'"))).Count -ne 1) {
         throw "M9 bundle digest does not match the checksum manifest: $m9BundleDigest"
     }
 

@@ -198,7 +198,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             if (_assetsV3 is not null)
             {
                 await using (var visibilityProbe = new SqlCommand(
-                    "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,N'SERVER',N'VIEW ANY DATABASE'),0));",
+                    "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,N'VIEW ANY DATABASE'),0));",
                     connection) { CommandTimeout = commandTimeout })
                 {
                     object? visibility = await visibilityProbe.ExecuteScalarAsync(timeout.Token).ConfigureAwait(false);

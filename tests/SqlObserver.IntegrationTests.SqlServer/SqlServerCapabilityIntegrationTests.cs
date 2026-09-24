@@ -259,6 +259,34 @@ public sealed class SqlServerCapabilityIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalBackupPermissionDiscoveryAgreesWithNativeBackupQuery()
+    {
+        var connectionFactory = new LabSqlServerConnectionFactory();
+        var discovery = new SqlServerCapabilityDiscoveryPort(
+            connectionFactory,
+            SqlServerCapabilityAssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV2AssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV3AssetCatalog.LoadEmbedded());
+        CapabilityDiscoveryRequest request = CreateLabRequest(TimeSpan.FromSeconds(10));
+        CapabilityProfile profile = await discovery.DiscoverAsync(request, CancellationToken.None);
+        PermissionEvidence visibility = Assert.Single(profile.Permissions,
+            static permission => permission.PermissionId.Value == "server.view-any-database");
+        Assert.Equal(PermissionEvidenceOutcome.Granted, visibility.Outcome);
+
+        await using SqlConnection connection = await connectionFactory.OpenConnectionAsync(
+            request.ConnectionPolicy, CancellationToken.None);
+        string query = SqlServerOperationalHealthAssetCatalog.LoadEmbedded().Get(
+            $"backups.status.sqlserver{profile.ServerIdentity!.Version.Major}-windows.v1.sql");
+        await using var command = new SqlCommand(query, connection) { CommandTimeout = 10 };
+        command.Parameters.Add("maximum_rows", SqlDbType.Int).Value = 1538;
+        await using SqlDataReader reader = await command.ExecuteReaderAsync(
+            CommandBehavior.SequentialAccess | CommandBehavior.SingleResult, CancellationToken.None);
+        Assert.Equal(10, reader.FieldCount);
+        Assert.True(await reader.ReadAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task DiscoveryTimeoutCancelsAnActuallyBlockedAdapterOperation()
     {
         var adapter = new SqlServerCapabilityDiscoveryPort(

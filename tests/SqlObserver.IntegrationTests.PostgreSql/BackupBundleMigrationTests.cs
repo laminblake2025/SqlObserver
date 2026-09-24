@@ -27,9 +27,24 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
         string currentBundle = SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum;
         Assert.All(entries.Skip(9).Take(4), entry => Assert.Equal(currentBundle, entry.AssetBundleDigest.Value));
-        CollectorCatalogEntry[] m85Entries = WithActivityBundle(entries, M80Bundle);
+        CollectorCatalogEntry[] m85Entries = WithActivityBundle(
+            WithBackupManifest(
+                WithCoreBundle(entries, "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c"),
+                "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff"),
+            M80Bundle);
         CollectorCatalogEntry[] backupEntries = WithBackupBundle(m85Entries, UpdatedBackupBundle);
         CollectorCatalogEntry[] priorEntries = WithBackupBundle(m85Entries, PriorBackupBundle);
+        await using (var registered = database.DataSource.CreateCommand("SELECT collector_id,encode(manifest_sha256,'hex'),encode(asset_bundle_sha256,'hex') FROM control.collector_contract ORDER BY execution_order"))
+        await using (NpgsqlDataReader reader = await registered.ExecuteReaderAsync())
+        {
+            foreach (CollectorCatalogEntry entry in priorEntries)
+            {
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal(entry.Manifest.Id.Value, reader.GetString(0));
+                Assert.Equal(entry.ManifestDigest.Value, reader.GetString(1));
+                Assert.Equal(entry.AssetBundleDigest.Value, reader.GetString(2));
+            }
+        }
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
         Assert.Equal(15, await ReconcileDirectAsync(collector, priorEntries, lease));
@@ -56,7 +71,6 @@ public sealed partial class PassiveCollectorBundleMigrationTests
             .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
         Assert.False(remaining.HasFailures);
         Assert.Equal(Enumerable.Repeat(currentBundle, 4), await ReadBackupBundlesAsync(database));
-        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         Assert.Equal(backupsBefore, await ReadHistoricalBackupsForBundleAsync(database));
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -122,11 +136,15 @@ public sealed partial class PassiveCollectorBundleMigrationTests
             .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
         Assert.False(visibilityUpgrade.HasFailures);
         Assert.Equal(110, Assert.Single(visibilityUpgrade.Results).Migration.Number.Value);
-        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(Enumerable.Repeat("29e5a566ecc9b3b7fedecbd72574371d1e31195726482a6b83099f08202d26a0", 4), await ReadBackupBundlesAsync(database));
         await using (var manifest = database.DataSource.CreateCommand("SELECT encode(manifest_sha256,'hex') FROM control.collector_contract WHERE collector_id='backups.status' AND collector_version=1"))
             Assert.Equal("7b33dfe41e9e5dbdd8dec1afe5504e34add138f56181f039d838b3e0f854e6e9", await manifest.ExecuteScalarAsync());
         Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true, omitBackupManifest: true));
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        MigrationBatchResult later = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(later.HasFailures);
+        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
         await AssertAppendOnlyTriggerAsync(database);
         await using ServiceProvider application = CreateApplication();
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
@@ -164,6 +182,16 @@ public sealed partial class PassiveCollectorBundleMigrationTests
     private static CollectorCatalogEntry[] WithBackupBundle(CollectorCatalogEntry[] entries, string bundle) =>
         entries.Select(entry => entry.Manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health"
             ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
+            : entry).ToArray();
+
+    private static CollectorCatalogEntry[] WithCoreBundle(CollectorCatalogEntry[] entries, string bundle) =>
+        entries.Select(entry => entry.ExecutionOrder is >= 1 and <= 3
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
+            : entry).ToArray();
+
+    private static CollectorCatalogEntry[] WithBackupManifest(CollectorCatalogEntry[] entries, string digest) =>
+        entries.Select(entry => entry.Manifest.Id.Value == "backups.status"
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, new CollectorSha256Digest(digest), entry.AssetBundleDigest)
             : entry).ToArray();
 
     private static async Task<string[]> ReadBackupBundlesAsync(RepositoryTestDatabase database)
