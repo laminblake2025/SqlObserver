@@ -56,3 +56,21 @@ test("blocking history requests stay within the selected bounded UTC window",asy
   await assert.rejects(getActivitySnapshot(target,new AbortController().signal,25),/Invalid blocking history window/u);
  }finally{globalThis.fetch=original;}
 });
+test("selected UTC window is sent unchanged, and unsupported history is skipped", async () => {
+ const original = globalThis.fetch;
+ const urls = [];
+ const window = {fromUtc:"2026-09-24T01:15:00.000Z",toUtc:"2026-09-24T03:45:00.000Z"};
+ try {
+  globalThis.fetch = async url => {urls.push(new URL(String(url),"https://lab.invalid"));return new Response(JSON.stringify({instanceId:target,repositoryTimeUtc:window.toUtc,evidence:null,items:[]}),{headers:{"content-type":"application/json"}});};
+  const selected = await getActivitySnapshot(target,new AbortController().signal,window);
+  assert.equal(selected.history?.items.length,0);
+  const history = urls.find(url => url.pathname.endsWith("/blocking/history"));
+  assert.equal(history.searchParams.get("fromUtc"),window.fromUtc);
+  assert.equal(history.searchParams.get("toUtc"),window.toUtc);
+  urls.length = 0;
+  const skipped = await getActivitySnapshot(target,new AbortController().signal,null);
+  assert.equal(skipped.history,undefined);
+  assert.equal(urls.length,4);
+  assert.equal(urls.some(url => url.pathname.endsWith("/blocking/history")),false);
+ } finally {globalThis.fetch=original;}
+});

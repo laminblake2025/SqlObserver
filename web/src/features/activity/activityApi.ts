@@ -12,22 +12,25 @@ export async function getBlockingHistoryPage(instanceId: string, window: { reado
   return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/history?${parameters}`, parseHistory, instanceId, signal);
 }
 
-export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historyHours: 1 | 6 | 24 = 1): Promise<{
+export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historySelection: 1 | 6 | 24 | { readonly fromUtc: string; readonly toUtc: string } | null = 1): Promise<{
   readonly sessions?: ActivityPage<ActivitySession>; readonly requests?: ActivityPage<ActivityRequest>;
   readonly waits?: ActivityPage<ActivityWait>; readonly blocking?: ActivityPage<BlockingEdge>;
   readonly history?: ActivityPage<BlockingHistoryItem>; readonly errors: readonly string[];
 }> {
-  if (![1, 6, 24].includes(historyHours)) throw new Error("Invalid blocking history window.");
+  if (typeof historySelection === "number" && ![1, 6, 24].includes(historySelection)) throw new Error("Invalid blocking history window.");
   const base = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity`;
   const now = Date.now();
   const errors: string[] = [];
   const read = async <T,>(name: string, operation: Promise<T>): Promise<T | undefined> => { try { return await operation; } catch (error) { if (signal.aborted) throw error; errors.push(`${name}: ${error instanceof Error ? error.message : "Evidence unavailable."}`); return undefined; } };
+  const historyWindow = typeof historySelection === "number"
+    ? { fromUtc: new Date(now - historySelection * 3_600_000).toISOString(), toUtc: new Date(now).toISOString() }
+    : historySelection;
   const [sessions, requests, waits, blocking, history] = await Promise.all([
     read("Sessions", getPage(`${base}/sessions?limit=${String(pageLimit)}`, parseSession, instanceId, signal)),
     read("Requests", getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal)),
     read("Waits", getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal)),
     read("Current blocking", getPage(`${base}/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal)),
-    read("Blocking history", getBlockingHistoryPage(instanceId, { fromUtc: new Date(now - historyHours * 3_600_000).toISOString(), toUtc: new Date(now).toISOString() }, signal)),
+    historyWindow === null ? Promise.resolve(undefined) : read("Blocking history", getBlockingHistoryPage(instanceId, historyWindow, signal)),
   ]);
   return { sessions, requests, waits, blocking, history, errors };
 }

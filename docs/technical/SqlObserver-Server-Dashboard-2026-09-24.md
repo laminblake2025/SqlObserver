@@ -16,10 +16,16 @@ UTC crosshair. Dragging across any chart writes a fixed custom window to the
 URL for all three; the time-range controls provide the same keyboard-accessible
 choice. Vertical lines mark ranked Overview issues within the window, rather
 than claiming to show every event. Baseline bands and a full event catalogue
-remain part of the planned chart replacement. Activity history
-currently retains and serves only 24 hours, so older dashboard issue links
-can correctly land on an explicit snapshot gap. Other current-only screens do
-not yet follow the historical window.
+remain part of the planned chart replacement. The Activity screen now uses
+the selected UTC window for blocking history when it is at most 24 hours.
+For a custom range, it opens session history at the latest available snapshot
+in that window. Preset ranges keep live sessions in front; the History button
+uses the selected range. Session snapshots are retained only 24 hours, so
+older windows name that limit while still allowing older blocking history
+when available. Ranges longer than 24 hours show an explicit limit instead of
+fetching an unrelated last-hour page. Current session, request, wait, and
+blocking reads remain clearly labeled as current snapshots. Other
+current-only screens do not yet follow the historical window.
 
 The dashboard adds a target-scoped Overview request alongside the existing
 health request. Overview currently composes live reads, so its known latency
@@ -30,3 +36,5 @@ did the production web build. A synthetic target was rendered and visually
 checked at desktop width; no live SQL Server or full browser suite was run.
 The chart interaction model tests passed, and a synthetic drag changed the URL
 to the selected custom window in the rendered app.
+Focused Activity URL-window and API tests, TypeScript validation, and the
+production web build passed after the Activity range integration.

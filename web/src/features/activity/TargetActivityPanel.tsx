@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LiveSessionsPanel } from "./LiveSessionsPanel";
 
 import { getActivitySnapshot, getBlockingHistoryPage } from "./activityApi";
+import { resolveActivityWindow } from "./activityWindowModel";
 import type { ActivityPage, BlockingHistoryItem } from "./activityTypes";
+import type { OverviewScope } from "../overview/overviewTypes";
 
 export interface TargetActivityPanelProps {
   readonly instanceId: string;
@@ -10,28 +12,32 @@ export interface TargetActivityPanelProps {
   readonly onClose: () => void;
   readonly initialHistoryAtUtc?: string;
   readonly initialHistoryEventId?: string;
+  readonly scope: OverviewScope;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId }: TargetActivityPanelProps) {
+export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope }: TargetActivityPanelProps) {
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
-  const [historyHours, setHistoryHours] = useState<1 | 6 | 24>(1);
   const [message, setMessage] = useState<string>();
+  const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to]);
+  const window = selected.state === "available" ? selected.window : undefined;
+  const historyUnavailableReason = selected.state === "unavailable" ? selected.message : selected.liveSnapshotsAvailable ? undefined : "Session snapshots are retained for 24 hours; this selected window is older. Blocking history may still be available below.";
+  const historySelection = window ?? null;
   useEffect(() => {
     const controller = new AbortController();
     setSnapshot(undefined);
     setMessage(undefined);
-    void getActivitySnapshot(instanceId, controller.signal, historyHours)
+    void getActivitySnapshot(instanceId, controller.signal, historySelection)
       .then((next) => { if (!controller.signal.aborted) { setSnapshot(next); setMessage(undefined); } })
       .catch((error: unknown) => { if (!controller.signal.aborted) { setMessage(error instanceof Error ? error.message : "Activity evidence is unavailable."); } });
     return () => controller.abort();
-  }, [instanceId, historyHours]);
+  }, [instanceId, window?.fromUtc, window?.toUtc]);
 
   return (
-    <section className="activity-screen" aria-labelledby="activity-heading" aria-live="polite">
-      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} />
-      <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Live sessions stay in the primary workspace. Historical waits and blocking pages remain bounded and expandable.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+    <section className="activity-screen" aria-labelledby="activity-heading">
+      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${window?.fromUtc ?? ""}:${window?.toUtc ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} />
+      <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Blocking history follows the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
-      <label>Blocking history window <select value={historyHours} onChange={event => setHistoryHours(Number(event.target.value) as 1 | 6 | 24)}><option value="1">Last hour</option><option value="6">Last 6 hours</option><option value="24">Last 24 hours</option></select></label>
+      <p className="activity-evidence">{window ? `Selected blocking-history window: ${window.fromUtc} to ${window.toUtc}.` : selected.state === "unavailable" ? selected.message : null}</p>
       {message === undefined ? null : <p className="status-message">{message}</p>}
       {snapshot === undefined && message === undefined ? <p>Loading bounded activity evidence…</p> : null}
       {snapshot === undefined ? null : <>
@@ -45,7 +51,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
         {snapshot.waits && <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />}
         {snapshot.blocking && <Evidence page={snapshot.blocking} />}
         {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "Root resolution"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
-        {snapshot.history && <BlockingHistory key={`${instanceId}/${historyHours}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
+        {snapshot.history && <BlockingHistory key={`${instanceId}/${window?.fromUtc}/${window?.toUtc}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
       </>}
       </div></details>
     </section>

@@ -9,14 +9,16 @@ import { buildBlockingTree, formatBlockingTarget, type BlockingTreeNode } from "
 // repository/capture latency so the exact triggered snapshot is returned.
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
-export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string }) {
+export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, historyUnavailableReason, defaultHistorical = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; historyUnavailableReason?: string; defaultHistorical?: boolean }) {
   const [page, setPage] = useState<LivePage>();
   const [database, setDatabase] = useState("");
   const [login, setLogin] = useState(""); const [application, setApplication] = useState(""); const [status, setStatus] = useState("");
   const [idle, setIdle] = useState(false); const [system, setSystem] = useState(false); const [blocked, setBlocked] = useState(false);
   const [sort, setSort] = useState("cpu"); const [descending, setDescending] = useState(true);
   const requestedHistoryEnd = parseHistoryAtUtc(initialHistoryAtUtc);
-  const [mode, setMode] = useState<"live" | "history">(() => requestedHistoryEnd === undefined ? "live" : "history"); const [paused, setPaused] = useState(false);
+  const expiredEvent = requestedHistoryEnd !== undefined && requestedHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS <= Date.now() - 24 * 3600000;
+  const sessionHistoryReason = expiredEvent ? "The linked deadlock is older than the 24-hour session snapshot retention window." : requestedHistoryEnd === undefined ? historyUnavailableReason : undefined;
+  const [mode, setMode] = useState<"live" | "history">(() => (requestedHistoryEnd !== undefined && !expiredEvent) || (defaultHistorical && selectedWindow && !sessionHistoryReason) ? "history" : "live"); const [paused, setPaused] = useState(false);
   const [visible, setVisible] = useState(!document.hidden); const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(false); const [error, setError] = useState<string>(); const [errorKey, setErrorKey] = useState<string>();
   const [hours, setHours] = useState(0.25); const [history, setHistory] = useState<LiveSnapshot[]>([]);
@@ -27,6 +29,9 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const [detail, setDetail] = useState<QueryDetail>(); const [detailError, setDetailError] = useState<string>();
   const [databaseOptions, setDatabaseOptions] = useState<LivePage["databases"]>([]);
   const [pageKey, setPageKey] = useState<string>();
+  const selectedHistoryWindow = requestedHistoryEnd !== undefined ? undefined : selectedWindow;
+  const historyFrom = selectedHistoryWindow ? Date.parse(selectedHistoryWindow.fromUtc) : historyEnd - hours * 3600000;
+  const historyTo = selectedHistoryWindow ? Date.parse(selectedHistoryWindow.toUtc) : historyEnd;
   const queryRequest = useRef<AbortController | undefined>(undefined);
   const appliedHistoryAtUtc = useRef(initialHistoryAtUtc);
   const manual = useRef(false);
@@ -37,7 +42,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const selectedSnapshot = preferredSnapshotId === undefined
     ? eventSnapshot ?? (minute === undefined ? undefined : snapshots.get(minute))
     : preferredSnapshotId === null ? (minute === undefined ? undefined : snapshots.get(minute)) : history.find(snapshot => snapshot.id === preferredSnapshotId);
-  const requestKey = liveRequestKey({ mode, filterKey, snapshotId: selectedSnapshot?.id, cursor, windowKey: mode === "history" ? `${historyEnd}/${hours}` : undefined });
+  const requestKey = liveRequestKey({ mode, filterKey, snapshotId: selectedSnapshot?.id, cursor, windowKey: mode === "history" ? `${historyFrom}/${historyTo}` : undefined });
   const requestKeyRef = useRef(requestKey);
   requestKeyRef.current = requestKey;
   const displayPage = valueForLiveRequest(page, pageKey, requestKey);
@@ -57,17 +62,17 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     if (nextHistoryEnd === undefined) {
       setMode("live"); setHistoryEnd(Date.now());
     } else {
-      setMode("history"); setHistoryEnd(nextHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS);
+      setMode(nextHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS <= Date.now() - 24 * 3600000 ? "live" : "history"); setHistoryEnd(nextHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS);
     }
   }, [initialHistoryAtUtc]);
   useEffect(() => {
     if (mode !== "history") return;
     const controller = new AbortController(); setHistory([]); setError(undefined); setErrorKey(undefined);
-    void readLive<LiveSnapshot[]>(instanceId, "/history", new URLSearchParams({ from: new Date(historyEnd - hours * 3600000).toISOString(), to: new Date(historyEnd).toISOString() }), controller.signal)
-      .then(value => { if (!controller.signal.aborted) { const event = initialHistoryEventId === undefined ? undefined : value.find(snapshot => snapshot.deadlockEventId === initialHistoryEventId); setHistory(value); setPreferredSnapshotId(event?.id ?? null); setMinute(Math.floor(Date.parse(event?.observedUtc ?? initialHistoryAtUtc ?? new Date(historyEnd).toISOString()) / 60000)); } })
+    void readLive<LiveSnapshot[]>(instanceId, "/history", new URLSearchParams({ from: new Date(historyFrom).toISOString(), to: new Date(historyTo).toISOString() }), controller.signal)
+      .then(value => { if (!controller.signal.aborted) { const event = initialHistoryEventId === undefined ? undefined : value.find(snapshot => snapshot.deadlockEventId === initialHistoryEventId); const latest = selectedHistoryWindow ? value.reduce<LiveSnapshot | undefined>((last, item) => !last || Date.parse(item.observedUtc) > Date.parse(last.observedUtc) ? item : last, undefined) : undefined; setHistory(value); setPreferredSnapshotId(event?.id ?? latest?.id ?? null); setMinute(Math.floor(Date.parse(event?.observedUtc ?? latest?.observedUtc ?? initialHistoryAtUtc ?? new Date(historyTo).toISOString()) / 60000)); } })
       .catch(() => { if (!controller.signal.aborted) { setError("Historical snapshots are unavailable."); setErrorKey(requestKeyRef.current); } });
     return () => controller.abort();
-  }, [instanceId, mode, hours, historyEnd, initialHistoryAtUtc, initialHistoryEventId]);
+  }, [instanceId, mode, historyFrom, historyTo, initialHistoryAtUtc, initialHistoryEventId, refresh]);
   useEffect(() => {
     if (!visible || (mode === "history" && !selectedSnapshot)) { setLoading(false); return; }
     if (mode === "live" && paused && !manual.current && lastRequestKey.current === requestKey) { setLoading(false); return; }
@@ -101,8 +106,8 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     }, controller.signal, mode === "live" && !paused && !cursor);
     return () => { disposed = true; controller.abort(); };
   }, [instanceId, filterKey, mode, selectedSnapshot?.id, paused, visible, refresh, cursor, hours, historyEnd]);
-  const earliestMinute = Math.floor((historyEnd - hours * 3600000) / 60000);
-  const latestMinute = Math.floor(historyEnd / 60000);
+  const earliestMinute = Math.floor(historyFrom / 60000);
+  const latestMinute = Math.floor(historyTo / 60000);
   const minuteOptions = Array.from({ length: latestMinute - earliestMinute + 1 }, (_, index) => latestMinute - index);
   const gap = mode === "history" && !selectedSnapshot;
   function firstPage() { setCursor(undefined); setCursorTrail([]); }
@@ -119,9 +124,9 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   return <section className="live-sessions panel" aria-label="Live sessions">
     <div className="health-heading-row"><div><p className="eyebrow">Activity · {displayName}</p><h3>Live sessions</h3></div><div className="toolbar">
       <button aria-pressed={mode === "live"} onClick={() => { setPreferredSnapshotId(null); setMode("live"); firstPage(); }}>Live</button>
-      <button aria-pressed={mode === "history"} onClick={() => { setPreferredSnapshotId(null); setHistoryEnd(Date.now()); setMode("history"); }}>History</button>
+      <button aria-pressed={mode === "history"} disabled={Boolean(sessionHistoryReason)} onClick={() => { setPreferredSnapshotId(null); if (!selectedHistoryWindow) setHistoryEnd(Date.now()); setMode("history"); }}>History</button>
       <button disabled={mode !== "live"} onClick={() => { if (paused) firstPage(); setPaused(!paused); }}>{paused ? "Resume" : "Pause"}</button>
-      <button disabled={loading || !visible} onClick={() => { manual.current = true; if (mode === "history") setHistoryEnd(Date.now()); else { firstPage(); setRefresh(value => value + 1); } }}>Refresh now</button>
+      <button disabled={loading || !visible} onClick={() => { manual.current = true; if (mode === "history" && !selectedHistoryWindow) setHistoryEnd(Date.now()); else { firstPage(); setRefresh(value => value + 1); } }}>Refresh now</button>
     </div></div>
     <div className="live-filters">
       <label>Database <select value={database} onChange={event => setDatabase(event.target.value)}><option value="">All databases</option>{databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
@@ -135,7 +140,9 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <label><input type="checkbox" checked={descending} onChange={event => setDescending(event.target.checked)} /> Descending</label>
     </div>
     {mode === "history" && initialHistoryAtUtc && <p className="evidence-callout">Opened for the deadlock event at {formatUtc(initialHistoryAtUtc)}. Historical snapshots are minute-granular for cadence evidence; a deadlock-triggered capture is selected automatically when available.</p>}
-    {mode === "history" && <div className="toolbar"><label>History window <select value={hours} onChange={event => setHours(Number(event.target.value))}><option value={0.25}>15 minutes</option><option value={1}>1 hour</option><option value={6}>6 hours</option><option value={24}>24 hours</option></select></label>
+    {sessionHistoryReason && mode === "live" && <p className="evidence-callout">{sessionHistoryReason} Showing current sessions.</p>}
+    {mode === "history" && selectedHistoryWindow && <p className="evidence-callout">Session snapshots in the selected UTC window: {selectedHistoryWindow.fromUtc} to {selectedHistoryWindow.toUtc}. Snapshots older than 24 hours are outside retention.</p>}
+    {mode === "history" && <div className="toolbar">{!selectedHistoryWindow && <label>History window <select value={hours} onChange={event => setHours(Number(event.target.value))}><option value={0.25}>15 minutes</option><option value={1}>1 hour</option><option value={6}>6 hours</option><option value={24}>24 hours</option></select></label>}
       <button disabled={minute === undefined || minute <= earliestMinute} onClick={() => { setPreferredSnapshotId(null); setMinute(value => value === undefined ? value : value - 1); }}>Previous minute</button>
       <label>Exact snapshot (UTC) <select value={minute ?? ""} onChange={event => { setPreferredSnapshotId(null); setMinute(Number(event.target.value)); }}><option value="" disabled>Select minute</option>{minuteOptions.map(value => <option key={value} value={value}>{snapshots.get(value)?.observedUtc ?? `${new Date(value * 60000).toISOString()} · gap`}{snapshots.get(value)?.deadlockEventId ? " · deadlock-triggered" : ""}</option>)}</select></label>
       <button disabled={minute === undefined || minute >= latestMinute} onClick={() => { setPreferredSnapshotId(null); setMinute(value => value === undefined ? value : value + 1); }}>Next minute</button></div>}
