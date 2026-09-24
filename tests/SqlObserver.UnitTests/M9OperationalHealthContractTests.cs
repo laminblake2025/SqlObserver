@@ -72,7 +72,7 @@ public sealed class M9OperationalHealthContractTests
     }
 
     [Fact]
-    public void M9BundleDigestMatchesEmbeddedManifestRuntimeAllowlistAndMigration()
+    public void M9BundleDigestMatchesEmbeddedManifestAndRuntimeAllowlist()
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
         string checksumPath = Path.Combine(root, "collectors/manifests/m9-operational-health.assets.sha256");
@@ -85,8 +85,8 @@ public sealed class M9OperationalHealthContractTests
         Assert.All(runtime.Skip(9).Take(4), digest => Assert.Equal(expected, digest));
         Assert.DoesNotContain(runtime.Skip(13), digest => digest == expected);
 
-        string migration = File.ReadAllText(Path.Combine(root, "database/migrations/0013_backups_jobs_tempdb_availability_groups.sql"));
-        Assert.Equal(4, Regex.Count(migration, $"'{Regex.Escape(expected)}'"));
+        // Forward bundle upgrades are exercised against real PostgreSQL;
+        // the originally applied 0013 migration retains its original digest.
     }
 
     [Fact]

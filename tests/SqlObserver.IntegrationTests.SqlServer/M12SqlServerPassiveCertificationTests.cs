@@ -215,7 +215,7 @@ public sealed class M12SqlServerPassiveCertificationTests
         Assert.Equal("56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191", SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de", SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f", SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484", SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("5cead2f81a535b7726c5eb6c6b4abac35cbc8cd85301b60e1867ba694e4a3e8e", SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36", SqlServerReplicationAssetCatalog.LoadEmbedded().BundleChecksum);
     }
 

@@ -201,6 +201,71 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
         Assert.Equal(10L, snapshot.Items[^1].BackupSetId);
     }
 
+    [Theory]
+    [InlineData(-300)]
+    [InlineData(330)]
+    [InlineData(-720)]
+    [InlineData(720)]
+    public async Task M9BackupCorrectionConvertsSignedMinuteOffset(int offsetMinutes)
+    {
+        DateTime local = new(2026, 8, 25, 12, 0, 0, DateTimeKind.Unspecified);
+        var reader = new FakeOperationalHealthRowReader(
+            [[new byte[32], 1, local, 100L, false, true, false, 9L, (short)offsetMinutes]]);
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
+        BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
+
+        Assert.Equal(new DateTimeOffset(local.AddMinutes(-offsetMinutes), TimeSpan.Zero), item.LastFinishUtc);
+        Assert.Equal(local, item.SourceLocalFinish);
+        Assert.False(item.SourceTimeUnknown);
+        Assert.Equal(BackupCoverage.Complete, item.Coverage);
+        Assert.Equal(9L, item.BackupSetId);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(127)]
+    [InlineData(735)]
+    [InlineData(-735)]
+    [InlineData(855)]
+    [InlineData(1)]
+    public async Task M9BackupCorrectionPreservesLocalTimeForUnknownOffset(int? offsetMinutes)
+    {
+        DateTime local = new(2026, 8, 25, 12, 0, 0, DateTimeKind.Unspecified);
+        var reader = new FakeOperationalHealthRowReader(
+            [[new byte[32], 1, local, 100L, false, true, false, 9L, offsetMinutes.HasValue ? (short)offsetMinutes.Value : null]]);
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
+        BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
+
+        Assert.Null(item.LastFinishUtc);
+        Assert.Equal(local, item.SourceLocalFinish);
+        Assert.True(item.SourceTimeUnknown);
+        Assert.Equal(BackupCoverage.Complete, item.Coverage);
+    }
+
+    [Theory]
+    [InlineData(null, BackupCoverage.NotSeenWithin35Days)]
+    [InlineData(9L, BackupCoverage.Unknown)]
+    public async Task M9BackupCorrectionPreservesMissingFinishAndCoverage(long? backupSetId, BackupCoverage coverage)
+    {
+        var reader = new FakeOperationalHealthRowReader(
+            [[new byte[32], 1, null, null, null, null, null, backupSetId, null]]);
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
+        BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
+
+        Assert.Null(item.LastFinishUtc);
+        Assert.Null(item.SourceLocalFinish);
+        Assert.False(item.SourceTimeUnknown);
+        Assert.Equal(coverage, item.Coverage);
+        Assert.Null(item.SizeBytes);
+        Assert.Null(item.CopyOnly);
+        Assert.Null(item.HasChecksum);
+        Assert.Null(item.IsDamaged);
+        Assert.Equal(backupSetId, item.BackupSetId);
+    }
+
     [Fact]
     public async Task M9AgentReaderOmitsSourceLocalTimeAndUsesStableFingerprint()
     {

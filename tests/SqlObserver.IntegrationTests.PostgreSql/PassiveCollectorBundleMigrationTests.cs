@@ -13,7 +13,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fixture)
+public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fixture)
 {
     private const string PriorBundle = "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e";
     private const string UpdatedBundle = "56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191";
@@ -61,9 +61,10 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
         Assert.Equal(Enumerable.Repeat(PriorBundle, 4).Append(PriorReplicationBundle), await ReadRepairedBundlesAsync(database));
         await using ServiceProvider application = CreateApplication();
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
+        CollectorCatalogEntry[] frozenM9Entries = WithBackupBundle(entries, PriorBackupBundle);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         WorkerLeaseIdentity lease = await AcquireCatalogLeaseAsync(collector);
-        PostgresException before = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, entries, lease));
+        PostgresException before = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, frozenM9Entries, lease));
         Assert.Equal("55000", before.SqlState);
 
         MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
@@ -75,6 +76,28 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
         Assert.Equal(registryBefore, await ReadPreservedRegistryAsync(database));
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         await AssertAppendOnlyTriggerAsync(database);
+        Assert.Equal(15, await ReconcileDirectAsync(collector, frozenM9Entries, lease));
+        CollectorCatalogEntry[] staleActivity = frozenM9Entries.Select(entry => entry.ExecutionOrder == 4
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(PriorBundle))
+            : entry).ToArray();
+        PostgresException staleActivitySql = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, staleActivity, lease));
+        Assert.Equal("55000", staleActivitySql.SqlState);
+        // Later forward migrations may now exist after this bounded 79->80
+        // upgrade. Apply them once without reapplying the bundle repair, then
+        // verify that a fully migrated repository has no pending work.
+        string registryBeforeRemaining = await ReadPreservedRegistryAsync(database, omitBackupBundle: true);
+        Assert.Equal(Enumerable.Repeat(PriorBackupBundle, 4), await ReadBackupBundlesAsync(database));
+        MigrationBatchResult remaining = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(remaining.HasFailures);
+        Assert.Equal(PostgreSqlMigrationCatalog.LoadEmbedded().Migrations
+            .Where(migration => migration.Descriptor.Number.Value > 80)
+            .Select(migration => migration.Descriptor.Number.Value),
+            remaining.Results.Select(result => result.Migration.Number.Value));
+        Assert.Equal(Enumerable.Repeat(UpdatedBundle, 4).Append(UpdatedReplicationBundle), await ReadRepairedBundlesAsync(database));
+        Assert.Equal(Enumerable.Repeat(UpdatedBackupBundle, 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBeforeRemaining, await ReadPreservedRegistryAsync(database, omitBackupBundle: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
         Assert.Equal(15, (await runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
         foreach (int staleOrder in new[] { 4, 15 })
@@ -83,26 +106,7 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
                 ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(staleOrder == 15 ? PriorReplicationBundle : PriorBundle))
                 : entry).ToArray();
             await Assert.ThrowsAsync<InvalidDataException>(() => runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(stale, lease, Timeout), CancellationToken.None).AsTask());
-            if (staleOrder == 4)
-            {
-                // M10 delegates only its first thirteen entries to the SQL digest
-                // gate; replication's exact digest is enforced by the runtime.
-                PostgresException staleSql = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, stale, lease));
-                Assert.Equal("55000", staleSql.SqlState);
-            }
         }
-        // Later forward migrations may now exist after this bounded 79->80
-        // upgrade. Apply them once without reapplying the bundle repair, then
-        // verify that a fully migrated repository has no pending work.
-        MigrationBatchResult remaining = await new PostgreSqlMigrationPort(database.DataSource)
-            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
-        Assert.False(remaining.HasFailures);
-        Assert.Equal(PostgreSqlMigrationCatalog.LoadEmbedded().Migrations
-            .Where(migration => migration.Descriptor.Number.Value > 80)
-            .Select(migration => migration.Descriptor.Number.Value),
-            remaining.Results.Select(result => result.Migration.Number.Value));
-        Assert.Equal(registryBefore, await ReadPreservedRegistryAsync(database));
-        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         MigrationBatchResult repeat = await new PostgreSqlMigrationPort(database.DataSource)
             .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
         Assert.False(repeat.HasFailures);
@@ -166,7 +170,7 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
             MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource)
                 .ApplyPendingAsync(new MigrationApplyRequest(maximum, Timeout), CancellationToken.None);
             Assert.False(result.HasFailures);
-            if (maximum == 79) Assert.Equal(79, result.Results.Count);
+            if (maximum is 79 or 84) Assert.Equal(maximum, result.Results.Count);
             return database;
         }
         catch
@@ -184,7 +188,7 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
         return Assert.IsType<WorkerLease>(acquired.Lease).Identity;
     }
 
-    private static async Task ReconcileDirectAsync(NpgsqlDataSource collector, CollectorCatalogEntry[] entries, WorkerLeaseIdentity lease)
+    private static async Task<int> ReconcileDirectAsync(NpgsqlDataSource collector, CollectorCatalogEntry[] entries, WorkerLeaseIdentity lease)
     {
         await using var command = collector.CreateCommand("SELECT * FROM control.reconcile_collector_catalog_m10(@ids,@versions,@manifests,@bundles,@orders,@work,@owner,@fence);");
         command.Parameters.AddWithValue("ids", entries.Select(entry => entry.Manifest.Id.Value).ToArray());
@@ -195,7 +199,11 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
         command.Parameters.AddWithValue("work", lease.Key.Value);
         command.Parameters.AddWithValue("owner", lease.Owner.Value);
         command.Parameters.AddWithValue("fence", lease.FencingToken.Value);
-        await command.ExecuteNonQueryAsync();
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(0, reader.GetInt32(0));
+        Assert.Equal(0, reader.GetInt32(1));
+        return reader.GetInt32(2);
     }
 
     private static async Task AssertAppendOnlyTriggerAsync(RepositoryTestDatabase database)
@@ -213,9 +221,10 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
         return Assert.IsType<string[]>(await command.ExecuteScalarAsync());
     }
 
-    private static async Task<string> ReadPreservedRegistryAsync(RepositoryTestDatabase database)
+    private static async Task<string> ReadPreservedRegistryAsync(RepositoryTestDatabase database, bool omitBackupBundle = false)
     {
-        await using var command = database.DataSource.CreateCommand("SELECT jsonb_agg(CASE WHEN c.collector_id IN ('activity.sessions','activity.requests','waits.server','blocking.current','replication.health') AND c.collector_version=1 THEN to_jsonb(c)-'asset_bundle_sha256' ELSE to_jsonb(c) END ORDER BY execution_order)::text FROM control.collector_contract c;");
+        await using var command = database.DataSource.CreateCommand("SELECT jsonb_agg(CASE WHEN c.collector_version=1 AND (c.collector_id IN ('activity.sessions','activity.requests','waits.server','blocking.current','replication.health') OR (@omit_backup AND c.collector_id IN ('backups.status','sql-agent.failures','tempdb.health','availability-groups.health'))) THEN to_jsonb(c)-'asset_bundle_sha256' ELSE to_jsonb(c) END ORDER BY execution_order)::text FROM control.collector_contract c;");
+        command.Parameters.AddWithValue("omit_backup", omitBackupBundle);
         return Assert.IsType<string>(await command.ExecuteScalarAsync());
     }
 
