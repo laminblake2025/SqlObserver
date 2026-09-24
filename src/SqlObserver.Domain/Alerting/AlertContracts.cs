@@ -37,7 +37,8 @@ public sealed class AlertRuleDefinition
         int confirmationCount,
         TimeSpan confirmationWindow,
         TimeSpan evaluationInterval,
-        bool enabled = true)
+        bool enabled = true,
+        int clearConfirmationCount = 1)
     {
         if (ruleId == Guid.Empty) throw new ArgumentException("Rule identity is required.", nameof(ruleId));
         Name = DomainValidation.RequireAsciiToken(name, nameof(name), MaximumNameLength,
@@ -47,10 +48,12 @@ public sealed class AlertRuleDefinition
         if (kind == AlertRuleKind.CollectorHealth && metricId is not null) throw new ArgumentException("Collector-health rules cannot carry a metric identifier.", nameof(metricId));
         if (!double.IsFinite(threshold) || !double.IsFinite(hysteresis) || hysteresis < 0) throw new ArgumentOutOfRangeException(nameof(threshold));
         if (confirmationCount is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(confirmationCount));
+        if (clearConfirmationCount is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(clearConfirmationCount));
         if (confirmationWindow < TimeSpan.Zero || confirmationWindow > TimeSpan.FromDays(7)) throw new ArgumentOutOfRangeException(nameof(confirmationWindow));
         if (evaluationInterval < TimeSpan.FromSeconds(1) || evaluationInterval > TimeSpan.FromHours(1)) throw new ArgumentOutOfRangeException(nameof(evaluationInterval));
         RuleId = ruleId; Kind = kind; MetricId = metricId; Comparison = comparison; Threshold = threshold; Hysteresis = hysteresis;
         ConfirmationCount = confirmationCount; ConfirmationWindow = confirmationWindow; EvaluationInterval = evaluationInterval; Enabled = enabled;
+        ClearConfirmationCount = clearConfirmationCount;
     }
 
     public Guid RuleId { get; }
@@ -61,6 +64,7 @@ public sealed class AlertRuleDefinition
     public double Threshold { get; }
     public double Hysteresis { get; }
     public int ConfirmationCount { get; }
+    public int ClearConfirmationCount { get; }
     public TimeSpan ConfirmationWindow { get; }
     public TimeSpan EvaluationInterval { get; }
     public bool Enabled { get; }
@@ -101,13 +105,16 @@ public sealed class AlertRuleState
     public AlertRuleState(Guid ruleId, MonitoredInstanceId targetId, AlertState state = AlertState.Normal,
         int consecutiveMatches = 0, DateTimeOffset? firstMatchUtc = null, DateTimeOffset? lastObservedUtc = null,
         DateTimeOffset? firedUtc = null, DateTimeOffset? acknowledgedUtc = null,
-        Guid? alertId = null, Guid? episodeId = null, Guid? lastOperationId = null, string? evidenceDigest = null, string? reason = null, string? lastReason = null, bool deliverySuppressed = false, DateTimeOffset? resolvedUtc = null, DateTimeOffset? episodeStartedUtc = null, string? acknowledgedBy = null, long revision = 1, double? lastValue = null)
+        Guid? alertId = null, Guid? episodeId = null, Guid? lastOperationId = null, string? evidenceDigest = null, string? reason = null, string? lastReason = null, bool deliverySuppressed = false, DateTimeOffset? resolvedUtc = null, DateTimeOffset? episodeStartedUtc = null, string? acknowledgedBy = null, long revision = 1, double? lastValue = null, int consecutiveClears = 0)
     {
         if (ruleId == Guid.Empty) throw new ArgumentException("Rule identity is required.", nameof(ruleId));
         ArgumentNullException.ThrowIfNull(targetId);
         if (!Enum.IsDefined(state) || consecutiveMatches < 0 || revision <= 0) throw new ArgumentOutOfRangeException(nameof(state));
+        if (consecutiveClears is < 0 or > 100 || consecutiveClears > 0 && state is not (AlertState.Firing or AlertState.Acknowledged))
+            throw new ArgumentOutOfRangeException(nameof(consecutiveClears));
         if (alertId == Guid.Empty || episodeId == Guid.Empty || lastOperationId == Guid.Empty) throw new ArgumentException("Alert identifiers cannot be empty.", nameof(alertId));
         RuleId = ruleId; TargetId = targetId; State = state; ConsecutiveMatches = consecutiveMatches; Revision = revision;
+        ConsecutiveClears = consecutiveClears;
         FirstMatchUtc = firstMatchUtc; LastObservedUtc = lastObservedUtc; FiredUtc = firedUtc; AcknowledgedUtc = acknowledgedUtc;
         LastValue = lastValue;
         AlertId = alertId; EpisodeId = episodeId; LastOperationId = lastOperationId; EvidenceDigest = evidenceDigest is null ? null : AlertEvidenceDigest.Validate(evidenceDigest); Reason = reason; LastReason = lastReason ?? reason; DeliverySuppressed = deliverySuppressed; ResolvedUtc = resolvedUtc; EpisodeStartedUtc = episodeStartedUtc; AcknowledgedBy = acknowledgedBy;
@@ -116,6 +123,7 @@ public sealed class AlertRuleState
     public MonitoredInstanceId TargetId { get; }
     public AlertState State { get; }
     public int ConsecutiveMatches { get; }
+    public int ConsecutiveClears { get; }
     public DateTimeOffset? FirstMatchUtc { get; }
     public DateTimeOffset? LastObservedUtc { get; }
     public DateTimeOffset? FiredUtc { get; }

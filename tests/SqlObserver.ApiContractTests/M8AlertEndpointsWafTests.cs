@@ -69,6 +69,95 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
     }
 
     [Fact]
+    public async Task RuleCreateDefaultsOmittedClearConfirmationCountToTwo()
+    {
+        using HttpClient admin = CreateClient("admin");
+        using HttpResponseMessage response = await admin.PostAsJsonAsync($"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules", RuleBody());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AlertRuleWriteRequest request = Assert.IsType<AlertRuleWriteRequest>(factory.Administration.LastRuleWriteRequest);
+        Assert.Equal(2, request.Rule.ClearConfirmationCount);
+        Assert.Null(request.ExpectedRevision);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(100)]
+    public async Task RuleCreateMapsExplicitClearConfirmationCount(int clearConfirmationCount)
+    {
+        using HttpClient admin = CreateClient("admin");
+        using HttpResponseMessage response = await admin.PostAsJsonAsync($"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules", RuleBody(clearConfirmationCount));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AlertRuleWriteRequest request = Assert.IsType<AlertRuleWriteRequest>(factory.Administration.LastRuleWriteRequest);
+        Assert.Equal(clearConfirmationCount, request.Rule.ClearConfirmationCount);
+    }
+
+    [Theory]
+    [InlineData("create", 0)]
+    [InlineData("create", 101)]
+    [InlineData("update", 0)]
+    [InlineData("update", 101)]
+    [InlineData("disable", 0)]
+    [InlineData("disable", 101)]
+    public async Task RuleWritesRejectClearConfirmationCountOutsideBounds(string operation, int clearConfirmationCount)
+    {
+        using HttpClient admin = CreateClient("admin");
+        int callsBefore = factory.Administration.UpsertRuleCalls;
+        Dictionary<string, object?> body = RuleBody(clearConfirmationCount, operation == "create" ? null : 7L);
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules";
+        using HttpResponseMessage response = operation switch
+        {
+            "create" => await admin.PostAsJsonAsync(path, body),
+            "update" => await admin.PutAsJsonAsync($"{path}/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", body),
+            _ => await admin.PostAsJsonAsync($"{path}/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/disable", body),
+        };
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(callsBefore, factory.Administration.UpsertRuleCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RuleUpdateAndDisableRequireExplicitClearConfirmationCount(bool disable)
+    {
+        using HttpClient admin = CreateClient("admin");
+        int callsBefore = factory.Administration.UpsertRuleCalls;
+        Dictionary<string, object?> body = RuleBody(expectedRevision: 7L);
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+        using HttpResponseMessage response = disable
+            ? await admin.PostAsJsonAsync($"{path}/disable", body)
+            : await admin.PutAsJsonAsync(path, body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(callsBefore, factory.Administration.UpsertRuleCalls);
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    [InlineData(true, 1)]
+    [InlineData(true, 2)]
+    public async Task RuleUpdateAndDisableMapExplicitClearConfirmationCount(bool disable, int clearConfirmationCount)
+    {
+        using HttpClient admin = CreateClient("admin");
+        Dictionary<string, object?> body = RuleBody(clearConfirmationCount, expectedRevision: 7L);
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+        using HttpResponseMessage response = disable
+            ? await admin.PostAsJsonAsync($"{path}/disable", body)
+            : await admin.PutAsJsonAsync(path, body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AlertRuleWriteRequest request = Assert.IsType<AlertRuleWriteRequest>(factory.Administration.LastRuleWriteRequest);
+        Assert.Equal(clearConfirmationCount, request.Rule.ClearConfirmationCount);
+        Assert.Equal(7L, request.ExpectedRevision);
+        Assert.Equal(!disable, request.Rule.Enabled);
+        Assert.Equal(disable ? AdministrativeAuditAction.RetireAlertRule : AdministrativeAuditAction.UpdateAlertRule, request.Audit.Action);
+    }
+
+    [Fact]
     public async Task DestinationCreateRequiresNullRevisionAndApprovalRequiresPositiveRevision()
     {
         using HttpClient admin = CreateClient("admin");
@@ -95,22 +184,28 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         return client;
     }
 
-    private static object RuleBody() => new
+    private static Dictionary<string, object?> RuleBody(int? clearConfirmationCount = null, long? expectedRevision = null)
     {
-        ruleId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-        name = "metric.threshold",
-        kind = "metric_threshold",
-        metricId = "engine.user_connections",
-        comparison = "greater_than_or_equal",
-        threshold = 1d,
-        hysteresis = 0d,
-        confirmationCount = 1,
-        confirmationSeconds = 0,
-        evaluationSeconds = 15,
-        enabled = true,
-        operationId = "ffffffff-ffff-4fff-8fff-ffffffffffff",
-        correlationId = "11111111-1111-4111-8111-111111111111",
-    };
+        var body = new Dictionary<string, object?>
+        {
+            ["ruleId"] = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            ["name"] = "metric.threshold",
+            ["kind"] = "metric_threshold",
+            ["metricId"] = "engine.user_connections",
+            ["comparison"] = "greater_than_or_equal",
+            ["threshold"] = 1d,
+            ["hysteresis"] = 0d,
+            ["confirmationCount"] = 1,
+            ["confirmationSeconds"] = 0,
+            ["evaluationSeconds"] = 15,
+            ["enabled"] = true,
+            ["operationId"] = "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            ["correlationId"] = "11111111-1111-4111-8111-111111111111",
+        };
+        if (clearConfirmationCount is not null) body["clearConfirmationCount"] = clearConfirmationCount;
+        if (expectedRevision is not null) body["expectedRevision"] = expectedRevision;
+        return body;
+    }
 }
 
 public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
@@ -163,7 +258,9 @@ internal sealed class FakeAlertAdministration : IAlertAdministrationService
 {
     internal FakeAlertAdministrationMode Mode { get; set; }
     internal int AcknowledgeCalls { get; private set; }
-    public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); return Run(); }
+    internal int UpsertRuleCalls { get; private set; }
+    internal AlertRuleWriteRequest? LastRuleWriteRequest { get; private set; }
+    public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); UpsertRuleCalls++; LastRuleWriteRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(AuthorizationContext authorization, MaintenanceWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); return Run(); }
     public ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(AuthorizationContext authorization, MaintenanceCancellationRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); return Run(); }
     public ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AuthorizationContext authorization, AlertAcknowledgeRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.Operator); AcknowledgeCalls++; return Run(); }

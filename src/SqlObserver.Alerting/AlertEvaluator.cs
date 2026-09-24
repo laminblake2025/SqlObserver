@@ -23,17 +23,23 @@ public static class AlertEvaluator
                 throw new AlertReplayConflictException("The operation identity was reused with divergent evidence.");
             return new AlertEvaluationResult(prior, null, prior.DeliverySuppressed, prior.Reason ?? "replayed", true);
         }
+        if (!rule.Enabled || (rule.Kind == AlertRuleKind.MetricThreshold ? observation.Value is null : observation.CollectorHealthy is null))
+            throw new ArgumentException("An enabled rule and known evidence are required.", nameof(observation));
         bool matches = IsMatch(rule, observation, prior.State);
+        bool active = prior.State is AlertState.Firing or AlertState.Acknowledged;
+        int clears = active && !matches ? Math.Min(rule.ClearConfirmationCount, prior.ConsecutiveClears + 1) : 0;
+        bool partialClear = clears > 0 && clears < rule.ClearConfirmationCount;
         DateTimeOffset now = observation.ObservedAtUtc;
         bool inMaintenance = maintenance is not null && maintenance.TargetId.Value == observation.TargetId.Value && maintenance.Contains(now);
-        int count = matches ? Math.Min(rule.ConfirmationCount, prior.ConsecutiveMatches + 1) : 0;
-        DateTimeOffset? first = matches ? prior.FirstMatchUtc ?? now : null;
+        int count = matches ? Math.Min(rule.ConfirmationCount, prior.ConsecutiveMatches + 1) : partialClear ? Math.Min(rule.ConfirmationCount, prior.ConsecutiveMatches) : 0;
+        DateTimeOffset? first = matches ? prior.FirstMatchUtc ?? now : partialClear ? prior.FirstMatchUtc : null;
         if (matches && prior.State is not (AlertState.Firing or AlertState.Acknowledged) && first is not null && now - first > rule.ConfirmationWindow) { count = 1; first = now; }
         AlertState next = prior.State;
         AlertEventKind? evt = null;
         if (!matches)
         {
-            if (prior.State is AlertState.Firing or AlertState.Acknowledged)
+            if (partialClear) next = prior.State;
+            else if (active)
             { next = AlertState.Resolved; evt = AlertEventKind.Resolved; }
             else next = AlertState.Normal;
         }
@@ -71,7 +77,8 @@ public static class AlertEvaluator
             episodeStartedUtc: next is AlertState.Normal or AlertState.Pending ? null : next == AlertState.Firing && (freshEpisode || prior.EpisodeStartedUtc is null) ? now : prior.EpisodeStartedUtc,
             acknowledgedBy: freshEpisode ? null : prior.AcknowledgedBy,
             revision: prior.Revision + 1,
-            lastValue: observation.Value);
+            lastValue: observation.Value,
+            consecutiveClears: partialClear ? clears : 0);
         return new AlertEvaluationResult(state, evt, inMaintenance, inMaintenance ? "maintenance" : "evaluated");
     }
 

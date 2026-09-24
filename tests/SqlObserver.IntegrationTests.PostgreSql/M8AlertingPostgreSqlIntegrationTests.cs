@@ -22,7 +22,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 /// </summary>
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class M8AlertingPostgreSqlIntegrationTests
+public sealed partial class M8AlertingPostgreSqlIntegrationTests
 {
     private sealed record ReplaySnapshot(string RuleState, string Outbox, string History, string Replay, string EvaluationQueue);
 
@@ -101,6 +101,169 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
             if(seconds==240) { Assert.Null(persisted.AlertId); Assert.Null(persisted.EpisodeStartedUtc); }
             if(seconds==300) { Assert.NotNull(persisted.AlertId); Assert.NotEqual(firstAlert,persisted.AlertId); }
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClearConfirmationSurvivesRepositoryRestartAndAcknowledgement(bool acknowledgeBetweenClears)
+    {
+        await using var database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), ruleId = Guid.NewGuid();
+        var targetId = new MonitoredInstanceId(target);
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("alerts/clear-restart"), new WorkerExecutionId(Guid.NewGuid()), new FencingToken(1));
+        await SeedTargetAndLeaseAsync(database, target, lease);
+        var rule = new AlertRuleDefinition(ruleId, "connections.clear", AlertRuleKind.MetricThreshold, new MetricId("engine.user_connections"), AlertComparison.GreaterThan, 20, 2, 1, TimeSpan.Zero, TimeSpan.FromSeconds(15), clearConfirmationCount: 2);
+        await using var serverSource = database.CreateServerDataSource();
+        var server = new PostgreSqlAlertRepositoryPort(serverSource);
+        await server.UpsertRuleAsync(new AlertRuleWriteRequest(rule, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.CreateAlertRule), Timeout()), CancellationToken.None);
+        await SeedApprovedDestinationAsync(database, target, Guid.NewGuid());
+        await using var collectorSource = database.CreateCollectorDataSource();
+        var repository = new PostgreSqlAlertRepositoryPort(collectorSource);
+        AlertRuleDefinition persistedRule = Assert.Single(await repository.ListRulesAsync(targetId, Timeout(), CancellationToken.None));
+        Assert.Equal(2, persistedRule.ClearConfirmationCount);
+        DateTimeOffset start = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddMinutes(-5));
+        var (_, firing) = await PersistClearConfirmationObservationAsync(database, repository, lease, persistedRule, targetId, start, 25);
+        Assert.Equal(AlertState.Firing, firing.State);
+        var (firstBatch, firstClear) = await PersistClearConfirmationObservationAsync(database, repository, lease, persistedRule, targetId, start.AddSeconds(30), 10);
+        Assert.Equal(AlertState.Firing, firstClear.State);
+        Assert.Equal(1, firstClear.ConsecutiveClears);
+        Assert.Equal(firing.AlertId, firstClear.AlertId);
+        Assert.Equal(firing.EpisodeId, firstClear.EpisodeId);
+        Assert.Equal(firing.FiredUtc, firstClear.FiredUtc);
+        Assert.Null(firstClear.ResolvedUtc);
+        Assert.Null(Assert.Single(firstBatch.Decisions!).Event);
+
+        await using (var beforeResolve = database.DataSource.CreateCommand("SELECT count(*) FROM alerting.delivery_outbox WHERE instance_id=@target AND event_kind=2"))
+        {
+            beforeResolve.Parameters.AddWithValue("target", target);
+            Assert.Equal(0L, (long)(await beforeResolve.ExecuteScalarAsync())!);
+        }
+        if (acknowledgeBetweenClears)
+        {
+            await server.AcknowledgeAsync(new AlertAcknowledgeRequest(firstClear.AlertId!.Value, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.AcknowledgeAlert), Timeout(), firstClear.Revision, ExpectedEpisodeId: firstClear.EpisodeId), CancellationToken.None);
+        }
+
+        await using var restartedSource = database.CreateCollectorDataSource();
+        var restarted = new PostgreSqlAlertRepositoryPort(restartedSource);
+        AlertRuleState restored = (await restarted.GetStateAsync(targetId, ruleId, Timeout(), CancellationToken.None))!;
+        Assert.Equal(acknowledgeBetweenClears ? AlertState.Acknowledged : AlertState.Firing, restored.State);
+        Assert.Equal(1, restored.ConsecutiveClears);
+        Assert.Equal(firstClear.AlertId, restored.AlertId);
+        var (secondBatch, resolved) = await PersistClearConfirmationObservationAsync(database, restarted, lease, persistedRule, targetId, start.AddSeconds(60), 10);
+        Assert.Equal(AlertState.Resolved, resolved.State);
+        Assert.Equal(0, resolved.ConsecutiveClears);
+        Assert.Equal(firstClear.AlertId, resolved.AlertId);
+        Assert.Equal(start.AddSeconds(60), resolved.ResolvedUtc);
+        Assert.Equal(AlertEventKind.Resolved, Assert.Single(secondBatch.Decisions!).Event);
+        if (acknowledgeBetweenClears)
+        {
+            Assert.Equal(restored.AcknowledgedUtc, resolved.AcknowledgedUtc);
+            Assert.Equal("S-1-5-18", resolved.AcknowledgedBy);
+        }
+        await using var afterResolve = database.DataSource.CreateCommand("SELECT count(*) FROM alerting.delivery_outbox WHERE instance_id=@target AND event_kind=2");
+        afterResolve.Parameters.AddWithValue("target", target);
+        Assert.Equal(1L, (long)(await afterResolve.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
+    public async Task ClearConfirmationMatchingResetAndPartialReplayRejectTamperedProgress()
+    {
+        await using var database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), ruleId = Guid.NewGuid();
+        var targetId = new MonitoredInstanceId(target);
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("alerts/clear-replay"), new WorkerExecutionId(Guid.NewGuid()), new FencingToken(1));
+        await SeedTargetAndLeaseAsync(database, target, lease);
+        var rule = new AlertRuleDefinition(ruleId, "connections.clear.replay", AlertRuleKind.MetricThreshold, new MetricId("engine.user_connections"), AlertComparison.GreaterThan, 20, 2, 1, TimeSpan.Zero, TimeSpan.FromSeconds(15), clearConfirmationCount: 2);
+        await using var serverSource = database.CreateServerDataSource();
+        await new PostgreSqlAlertRepositoryPort(serverSource).UpsertRuleAsync(new AlertRuleWriteRequest(rule, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.CreateAlertRule), Timeout()), CancellationToken.None);
+        await SeedApprovedDestinationAsync(database, target, Guid.NewGuid());
+        await using var collectorSource = database.CreateCollectorDataSource();
+        var repository = new PostgreSqlAlertRepositoryPort(collectorSource);
+        DateTimeOffset start = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddMinutes(-5));
+        await PersistClearConfirmationObservationAsync(database, repository, lease, rule, targetId, start, 25);
+        AlertEvaluationBatch partialBatch = await ClaimClearConfirmationObservationAsync(database, repository, lease, rule, targetId, start.AddSeconds(30), 10);
+        Assert.Equal(1, Assert.Single(partialBatch.Decisions!).State.ConsecutiveClears);
+
+        AlertEvaluationBatch TamperedBatch(int clearCount)
+        {
+            AlertEvaluationDecision decision = Assert.Single(partialBatch.Decisions!);
+            AlertRuleState state = decision.State;
+            var tampered = new AlertRuleState(state.RuleId, state.TargetId, state.State, state.ConsecutiveMatches, state.FirstMatchUtc, state.LastObservedUtc, state.FiredUtc, state.AcknowledgedUtc, state.AlertId, state.EpisodeId, state.LastOperationId, state.EvidenceDigest, state.Reason, state.LastReason, state.DeliverySuppressed, state.ResolvedUtc, state.EpisodeStartedUtc, state.AcknowledgedBy, state.Revision, state.LastValue, consecutiveClears: clearCount);
+            return partialBatch with { Decisions = [decision with { State = tampered }] };
+        }
+
+        ReplaySnapshot beforeTampering = await SnapshotReplayRowsAsync(database, target, ruleId);
+        foreach (int clearCount in new[] { 0, 2 })
+        {
+            PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(() => repository.EvaluateAndPersistAsync(TamperedBatch(clearCount), CancellationToken.None).AsTask());
+            Assert.Equal("22023", rejected.SqlState);
+            Assert.Equal(beforeTampering, await SnapshotReplayRowsAsync(database, target, ruleId));
+        }
+        Assert.Equal(1, (await repository.EvaluateAndPersistAsync(partialBatch, CancellationToken.None)).Evaluated);
+        var (_, matching) = await PersistClearConfirmationObservationAsync(database, repository, lease, rule, targetId, start.AddSeconds(60), 25);
+        Assert.Equal(AlertState.Firing, matching.State);
+        Assert.Equal(0, matching.ConsecutiveClears);
+        var (_, nextClear) = await PersistClearConfirmationObservationAsync(database, repository, lease, rule, targetId, start.AddSeconds(90), 10);
+        Assert.Equal(AlertState.Firing, nextClear.State);
+        Assert.Equal(1, nextClear.ConsecutiveClears);
+        var (_, resolved) = await PersistClearConfirmationObservationAsync(database, repository, lease, rule, targetId, start.AddSeconds(120), 10);
+        Assert.Equal(AlertState.Resolved, resolved.State);
+        Assert.Equal(0, resolved.ConsecutiveClears);
+
+        ReplaySnapshot beforeReplay = await SnapshotReplayRowsAsync(database, target, ruleId);
+        AlertEvaluationOutcome replay = await repository.EvaluateAndPersistAsync(partialBatch, CancellationToken.None);
+        Assert.Equal(0, replay.Evaluated);
+        Assert.Equal(0, replay.Changed);
+        Assert.Equal(beforeReplay, await SnapshotReplayRowsAsync(database, target, ruleId));
+        foreach (int clearCount in new[] { 0, 2 })
+        {
+            PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(() => repository.EvaluateAndPersistAsync(TamperedBatch(clearCount), CancellationToken.None).AsTask());
+            Assert.Equal("40001", rejected.SqlState);
+            Assert.Equal(beforeReplay, await SnapshotReplayRowsAsync(database, target, ruleId));
+        }
+    }
+
+    [Fact]
+    public async Task ClearConfirmationRuleUpdateAndDisableResetStoredProgress()
+    {
+        await using var database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), ruleId = Guid.NewGuid();
+        var targetId = new MonitoredInstanceId(target);
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("alerts/clear-admin"), new WorkerExecutionId(Guid.NewGuid()), new FencingToken(1));
+        await SeedTargetAndLeaseAsync(database, target, lease);
+        var rule = new AlertRuleDefinition(ruleId, "connections.clear.admin", AlertRuleKind.MetricThreshold, new MetricId("engine.user_connections"), AlertComparison.GreaterThan, 20, 2, 1, TimeSpan.Zero, TimeSpan.FromSeconds(15), clearConfirmationCount: 2);
+        await using var serverSource = database.CreateServerDataSource();
+        var server = new PostgreSqlAlertRepositoryPort(serverSource);
+        await server.UpsertRuleAsync(new AlertRuleWriteRequest(rule, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.CreateAlertRule), Timeout()), CancellationToken.None);
+        await SeedApprovedDestinationAsync(database, target, Guid.NewGuid());
+        await using var collectorSource = database.CreateCollectorDataSource();
+        var repository = new PostgreSqlAlertRepositoryPort(collectorSource);
+        DateTimeOffset start = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddMinutes(-5));
+        await PersistClearConfirmationObservationAsync(database, repository, lease, rule, targetId, start, 25);
+        var (_, beforeUpdate) = await PersistClearConfirmationObservationAsync(database, repository, lease, rule, targetId, start.AddSeconds(30), 10);
+        Assert.Equal(1, beforeUpdate.ConsecutiveClears);
+        var updated = new AlertRuleDefinition(ruleId, rule.Name, rule.Kind, rule.MetricId, rule.Comparison, rule.Threshold, rule.Hysteresis, rule.ConfirmationCount, rule.ConfirmationWindow, rule.EvaluationInterval, clearConfirmationCount: 3);
+        await server.UpsertRuleAsync(new AlertRuleWriteRequest(updated, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.UpdateAlertRule), Timeout(), ExpectedRevision: 1), CancellationToken.None);
+        AlertRuleState afterUpdate = (await repository.GetStateAsync(targetId, ruleId, Timeout(), CancellationToken.None))!;
+        Assert.Equal(AlertState.Firing, afterUpdate.State);
+        Assert.Equal(0, afterUpdate.ConsecutiveClears);
+        Assert.Equal(beforeUpdate.AlertId, afterUpdate.AlertId);
+        Assert.Equal(beforeUpdate.Revision + 1, afterUpdate.Revision);
+        AlertRuleDefinition persistedRule = Assert.Single(await repository.ListRulesAsync(targetId, Timeout(), CancellationToken.None));
+        Assert.Equal(3, persistedRule.ClearConfirmationCount);
+        var (_, beforeDisable) = await PersistClearConfirmationObservationAsync(database, repository, lease, persistedRule, targetId, start.AddSeconds(60), 10, ruleRevision: 2);
+        Assert.Equal(AlertState.Firing, beforeDisable.State);
+        Assert.Equal(1, beforeDisable.ConsecutiveClears);
+
+        var disabled = new AlertRuleDefinition(ruleId, updated.Name, updated.Kind, updated.MetricId, updated.Comparison, updated.Threshold, updated.Hysteresis, updated.ConfirmationCount, updated.ConfirmationWindow, updated.EvaluationInterval, enabled: false, clearConfirmationCount: updated.ClearConfirmationCount);
+        await server.UpsertRuleAsync(new AlertRuleWriteRequest(disabled, Guid.NewGuid().ToString("D"), Audit(targetId, AdministrativeAuditAction.RetireAlertRule), Timeout(), ExpectedRevision: 2), CancellationToken.None);
+        AlertRuleState afterDisable = (await repository.GetStateAsync(targetId, ruleId, Timeout(), CancellationToken.None))!;
+        Assert.Equal(AlertState.Resolved, afterDisable.State);
+        Assert.Equal(0, afterDisable.ConsecutiveClears);
+        Assert.Equal("rule_disabled", afterDisable.Reason);
+        Assert.Equal(beforeDisable.Revision + 1, afterDisable.Revision);
+        Assert.Empty(await repository.ListRulesAsync(targetId, Timeout(), CancellationToken.None));
     }
 
     [Fact]
@@ -1309,6 +1472,42 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         await SeedApprovedDestinationAsync(database, target, destination);
     }
 
+    private static async Task<AlertEvaluationBatch> ClaimClearConfirmationObservationAsync(
+        RepositoryTestDatabase database, PostgreSqlAlertRepositoryPort repository, WorkerLeaseIdentity lease,
+        AlertRuleDefinition rule, MonitoredInstanceId target, DateTimeOffset observedAt, double value, long ruleRevision = 1)
+    {
+        string sample = Guid.NewGuid().ToString("D");
+        Guid run = Guid.NewGuid();
+        var observation = new AlertObservation(target, rule.RuleId, observedAt, value, null, $"observed|sample={sample}|run={run:D}", sampleId: sample, runId: run, sourceKind: "metric_threshold", metricId: "engine.user_connections", sourceCollector: "engine.core", sourceVersion: "1", sourceSchemaVersion: 1, sourceDigest: new string('a', 64));
+        await SeedEvaluationQueueAsync(database, observation);
+        if (ruleRevision != 1)
+        {
+            await using var revision = database.DataSource.CreateCommand("UPDATE alerting.evaluation_queue SET rule_revision=@revision WHERE operation_id=@operation AND instance_id=@target AND rule_id=@rule");
+            revision.Parameters.AddWithValue("revision", ruleRevision);
+            revision.Parameters.AddWithValue("operation", observation.OperationId);
+            revision.Parameters.AddWithValue("target", target.Value);
+            revision.Parameters.AddWithValue("rule", rule.RuleId);
+            Assert.Equal(1, await revision.ExecuteNonQueryAsync());
+        }
+        AlertEvaluationWork work = Assert.Single(await repository.ClaimDueEvaluationsAsync(lease, 10, Timeout(), CancellationToken.None));
+        Assert.Equal(observation.OperationId, work.OperationId);
+        AlertRuleState prior = await repository.GetStateAsync(target, rule.RuleId, Timeout(), CancellationToken.None) ?? new AlertRuleState(rule.RuleId, target);
+        AlertEvaluationResult evaluated = AlertEvaluator.Evaluate(rule, prior, observation);
+        var decision = new AlertEvaluationDecision(observation, evaluated.State, evaluated.Event, evaluated.DeliverySuppressed, evaluated.Reason);
+        return new AlertEvaluationBatch([observation], lease, Timeout(), [decision], null, work.DueAtUtc, [work]);
+    }
+
+    private static async Task<(AlertEvaluationBatch Batch, AlertRuleState State)> PersistClearConfirmationObservationAsync(
+        RepositoryTestDatabase database, PostgreSqlAlertRepositoryPort repository, WorkerLeaseIdentity lease,
+        AlertRuleDefinition rule, MonitoredInstanceId target, DateTimeOffset observedAt, double value, long ruleRevision = 1)
+    {
+        AlertEvaluationBatch batch = await ClaimClearConfirmationObservationAsync(database, repository, lease, rule, target, observedAt, value, ruleRevision);
+        Assert.Equal(1, (await repository.EvaluateAndPersistAsync(batch, CancellationToken.None)).Evaluated);
+        AlertRuleState state = (await repository.GetStateAsync(target, rule.RuleId, Timeout(), CancellationToken.None))!;
+        Assert.NotNull(state);
+        return (batch, state);
+    }
+
     private static async Task SeedEvaluationQueueAsync(RepositoryTestDatabase database, AlertObservation observation)
     {
         var observations = new[]
@@ -1503,7 +1702,7 @@ public sealed class M8AlertingPostgreSqlIntegrationTests
         const string sql = """
             SELECT coalesce(jsonb_agg(jsonb_build_object(
                 'instance_id',instance_id,'rule_id',rule_id,'alert_id',alert_id,'state',state,
-                'consecutive_matches',consecutive_matches,'first_match_at',first_match_at,'last_observed_at',last_observed_at,
+                'consecutive_matches',consecutive_matches,'consecutive_clears',consecutive_clears,'first_match_at',first_match_at,'last_observed_at',last_observed_at,
                 'fired_at',fired_at,'acknowledged_at',acknowledged_at,'resolved_at',resolved_at,'episode_started_at',episode_started_at,
                 'acknowledged_by',acknowledged_by,'last_value',last_value,'reason',reason,'delivery_suppressed',delivery_suppressed,
                 'alert_episode_id',alert_episode_id,'last_operation_id',last_operation_id,'evidence_digest',encode(evidence_digest,'hex'),
