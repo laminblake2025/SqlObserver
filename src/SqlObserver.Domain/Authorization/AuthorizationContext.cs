@@ -184,6 +184,7 @@ public sealed class AuthorizationContext
 
     public IReadOnlyList<ApplicationRole> Roles => _roles;
 
+    /// <summary>The union of all grants, not a role-specific authorization decision.</summary>
     public TargetAuthorizationScope TargetScope { get; }
 
     public bool IsActive => PrincipalState == AuthorizationPrincipalState.Active;
@@ -198,6 +199,17 @@ public sealed class AuthorizationContext
         return IsActive &&
             _roleScopes.TryGetValue(role, out TargetAuthorizationScope? scope) &&
             scope.Contains(targetId);
+    }
+
+    /// <summary>Requires at least one permitted role granted on this exact target.</summary>
+    public void RequireAny(MonitoredInstanceId targetId, params ApplicationRole[] roles)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        ArgumentNullException.ThrowIfNull(roles);
+        if (!roles.Any(role => CanAccess(role, targetId)))
+        {
+            throw new UnauthorizedAccessException("The caller is not authorized for this observation target.");
+        }
     }
 
     public bool HasRoleForAllTargets(ApplicationRole role) =>

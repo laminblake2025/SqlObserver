@@ -8,20 +8,25 @@ namespace SqlObserver.Application.Services;
 
 public sealed class AlertQueryService(IAlertRepositoryPort repository) : IAlertQueryService
 {
+    private static readonly ApplicationRole[] ReadRoles =
+    [
+        ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator,
+        ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor,
+    ];
+
     public ValueTask<IReadOnlyList<AlertActiveDto>> ListActiveAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
         if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
-        bool readable = authorization.HasRole(ApplicationRole.Viewer) || authorization.HasRole(ApplicationRole.Operator) || authorization.HasRole(ApplicationRole.TargetAdministrator) || authorization.HasRole(ApplicationRole.SecurityAdministrator) || authorization.HasRole(ApplicationRole.Auditor);
-        if (!readable || !authorization.CanAccess(targetId)) throw new UnauthorizedAccessException();
+        authorization.RequireAny(targetId, ReadRoles);
         return repository.ListActiveAsync(targetId, limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
     }
     public ValueTask<AlertActivePage> ListActivePageAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, AlertActiveCursor? cursor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
         if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
-        bool readable = authorization.HasRole(ApplicationRole.Viewer) || authorization.HasRole(ApplicationRole.Operator) || authorization.HasRole(ApplicationRole.TargetAdministrator) || authorization.HasRole(ApplicationRole.SecurityAdministrator) || authorization.HasRole(ApplicationRole.Auditor);
-        if (!readable || !authorization.CanAccess(targetId) || cursor is not null && (cursor.TargetId.Value != targetId.Value || cursor.SnapshotUtc.Offset != TimeSpan.Zero)) throw new UnauthorizedAccessException();
+        authorization.RequireAny(targetId, ReadRoles);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value || cursor.SnapshotUtc.Offset != TimeSpan.Zero)) throw new UnauthorizedAccessException();
         return repository.ListActivePageAsync(targetId, limit, cursor, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
     }
 }

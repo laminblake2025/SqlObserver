@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Alerting;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
@@ -15,6 +16,8 @@ public sealed class OverviewQueryService(
     IOperationalHealthQueryService operations, IMetricSeriesQueryService metrics, IOverviewHistoryRepositoryPort history) : IOverviewQueryService
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(5));
+    private static readonly ApplicationRole[] ReadRoles =
+        [ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator];
     private const int MaxPages = 40;
     private static readonly OverviewValue Unknown = new(null, "unavailable", null);
 
@@ -23,12 +26,23 @@ public sealed class OverviewQueryService(
         if (query.FromUtc.Offset != TimeSpan.Zero || query.ToUtc.Offset != TimeSpan.Zero || query.ToUtc <= query.FromUtc ||
             query.ToUtc - query.FromUtc > TimeSpan.FromDays(31) || query.ToUtc > DateTimeOffset.UtcNow.AddMinutes(1))
             throw new ArgumentException("Select an increasing UTC window of at most 31 days.");
+        if (!ReadRoles.Any(query.Authorization.HasRole)) throw new UnauthorizedAccessException();
+        if (query.TargetId is { } selectedId)
+            query.Authorization.RequireAny(new MonitoredInstanceId(selectedId), ReadRoles);
+
+        // Inventory also permits audit/security roles. Restrict the Overview inventory
+        // before paging or loading capability profiles, preserving each read role's scope.
+        var inventoryAuthorization = new AuthorizationContext(
+            query.Authorization.ActorSid, query.Authorization.PrincipalState,
+            ReadRoles.Where(query.Authorization.HasRole)
+                .Select(role => new RoleAuthorizationGrant(role, query.Authorization.GetScopeForRoles([role])))
+                .ToArray());
         DateTimeOffset cutoff = DateTimeOffset.UtcNow;
         var inventory = new List<ObservationTargetStatusSnapshot>();
         ObservationTargetListCursor? cursor = null;
         do
         {
-            var page = await targets.ListAsync(new(query.Authorization, 100, cursor, false, Timeout), cancellationToken);
+            var page = await targets.ListAsync(new(inventoryAuthorization, 100, cursor, false, Timeout), cancellationToken);
             inventory.AddRange(page.Targets);
             if (page.NextCursor == cursor && cursor is not null) throw new InvalidDataException("Target cursor did not advance.");
             cursor = page.NextCursor;
@@ -37,8 +51,7 @@ public sealed class OverviewQueryService(
         inventory = inventory.DistinctBy(x => x.Target.TargetId).OrderBy(x => x.Target.DisplayName.Value, StringComparer.OrdinalIgnoreCase).ToList();
         var selected = inventory.Where(x => query.TargetId.HasValue ? x.Target.TargetId.Value == query.TargetId : x.Target.Lifecycle is not (ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired)).ToArray();
         if (query.TargetId.HasValue && selected.Length == 0) throw new UnauthorizedAccessException();
-        // Validate the entire scope before dispatching any evidence read, including roles on empty fleets.
-        if (!query.Authorization.IsActive || !new[] { Domain.Authorization.ApplicationRole.Viewer, Domain.Authorization.ApplicationRole.Operator, Domain.Authorization.ApplicationRole.TargetAdministrator }.Any(query.Authorization.HasRole)) throw new UnauthorizedAccessException();
+        // Validate the returned scope before dispatching any evidence read.
         foreach (var target in selected) MetricSeriesQueryService.Authorize(query.Authorization, target.Target.TargetId);
         using var concurrency = new SemaphoreSlim(8);
         using var evidenceDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

@@ -25,6 +25,9 @@ public sealed class WebInterfaceHttpContractTests
 
             using HttpResponseMessage denied = await anonymous.GetAsync("/");
             Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using HttpResponseMessage deniedAsset = await anonymous.GetAsync("/assets/entry-index-ABCDEFGH.js");
+            Assert.Equal(HttpStatusCode.Unauthorized, deniedAsset.StatusCode);
+            await EndpointAuthorizationAssertions.RequireAuthenticationAsync(factory.Services, webInterfaceConfigured: true);
 
             using HttpClient authenticated = factory.CreateClient(
                 new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
