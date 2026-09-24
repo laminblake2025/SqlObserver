@@ -20,6 +20,71 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     public M5ActivityPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
 
     [Fact]
+    public async Task UpgradeAndMaintenanceRegisterEveryAttachedM5Partition()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var ensure = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SELECT control.ensure_activity_daily_partitions(current_date+2);
+            SELECT control.ensure_blocking_monthly_partition((current_date+interval '1 month')::date);
+            """, connection))
+            await ensure.ExecuteNonQueryAsync();
+
+        await using var inspect = new NpgsqlCommand("""
+            SELECT
+              (SELECT count(*) FROM pg_catalog.pg_inherits i
+               JOIN pg_catalog.pg_class parent ON parent.oid=i.inhparent
+               JOIN pg_catalog.pg_namespace parent_ns ON parent_ns.oid=parent.relnamespace
+               JOIN pg_catalog.pg_class part ON part.oid=i.inhrelid
+               LEFT JOIN system.partition_registry r ON r.parent_schema=parent_ns.nspname::name
+                 AND r.parent_table=parent.relname::name AND r.partition_name=part.relname::name
+                 AND r.lifecycle_state='attached'
+               WHERE ((parent_ns.nspname='telemetry' AND parent.relname IN
+                 ('activity_session_snapshot','activity_request_snapshot','server_wait_snapshot'))
+                 OR (parent_ns.nspname='events' AND parent.relname='blocking_edge'))
+                 AND r.partition_name IS NULL),
+              (SELECT count(*) FROM system.partition_registry WHERE parent_schema='telemetry'
+                AND parent_table IN ('activity_session_snapshot','activity_request_snapshot','server_wait_snapshot')
+                AND range_start=(current_date+2)::timestamptz),
+              (SELECT count(*) FROM system.partition_registry WHERE parent_schema='events'
+                AND parent_table='blocking_edge'
+                AND range_start=date_trunc('month',current_date+interval '1 month'));
+            """, connection);
+        await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(0L, reader.GetInt64(0));
+        Assert.Equal(3L, reader.GetInt64(1));
+        Assert.Equal(1L, reader.GetInt64(2));
+    }
+
+    [Fact]
+    public async Task MaintenanceRejectsAnUnattachedTableWithTheExpectedPartitionName()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var spoof = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SET ROLE sqlobserver_migrator;
+            DO $$ BEGIN
+              EXECUTE format('CREATE TABLE telemetry.%I (marker integer)',
+                'activity_session_snapshot_'||to_char(current_date+2,'YYYYMMDD'));
+            END $$;
+            RESET ROLE;
+            """, connection))
+            await spoof.ExecuteNonQueryAsync();
+        await using var ensure = new NpgsqlCommand("SELECT control.ensure_activity_daily_partitions(current_date+2);", connection);
+        PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(() => ensure.ExecuteScalarAsync());
+        Assert.Equal("55000", rejected.SqlState);
+        await using var registry = new NpgsqlCommand("""
+            SELECT count(*) FROM system.partition_registry
+            WHERE parent_schema='telemetry' AND parent_table='activity_session_snapshot'
+              AND partition_name=('activity_session_snapshot_'||to_char(current_date+2,'YYYYMMDD'))::name;
+            """, connection);
+        Assert.Equal(0L, await registry.ExecuteScalarAsync());
+    }
+
+    [Fact]
     public async Task MigrationCreatesM5TablesFunctionsGrantsRlsAndAppendOnlyGuards()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
