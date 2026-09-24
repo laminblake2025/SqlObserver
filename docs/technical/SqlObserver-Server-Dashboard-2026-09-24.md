@@ -11,9 +11,12 @@ health snapshot and database/collection tabs remain below the timeline.
 
 An Activity issue link preserves the selected range and opens the activity
 history at the issue's UTC timestamp. The dashboard names collection gaps and
-the limits of host CPU and latest-snapshot evidence. Its charts still use the
-existing OverviewChart; baseline bands, event markers, shared crosshair, and
-drag selection remain part of the planned chart replacement. Activity history
+the limits of host CPU and latest-snapshot evidence. The three charts share a
+UTC crosshair. Dragging across any chart writes a fixed custom window to the
+URL for all three; the time-range controls provide the same keyboard-accessible
+choice. Vertical lines mark ranked Overview issues within the window, rather
+than claiming to show every event. Baseline bands and a full event catalogue
+remain part of the planned chart replacement. Activity history
 currently retains and serves only 24 hours, so older dashboard issue links
 can correctly land on an explicit snapshot gap. Other current-only screens do
 not yet follow the historical window.
@@ -25,3 +28,5 @@ remains until the planned precomputed latest-status projection replaces it.
 The focused URL-scope test and existing Overview and Health tests passed, as
 did the production web build. A synthetic target was rendered and visually
 checked at desktop width; no live SQL Server or full browser suite was run.
+The chart interaction model tests passed, and a synthetic drag changed the URL
+to the selected custom window in the rendered app.

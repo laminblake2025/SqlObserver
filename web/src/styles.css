@@ -230,6 +230,12 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .overview-servers .table-note { margin-bottom: 14px; }
 
 .overview-chart { min-height: 180px; }
+.chart-interactive { cursor: crosshair; touch-action: none; }
+.chart-event-marker line { stroke: var(--amber-border); stroke-width: 1.5; stroke-dasharray: 3 4; }
+.chart-event-marker circle { fill: var(--amber-border); }
+.chart-crosshair line { stroke: var(--teal-deep); stroke-width: 1; stroke-dasharray: 4 3; }
+.chart-crosshair text { fill: var(--teal-deep); font-size: 10px; font-weight: 700; }
+.chart-selection { fill: var(--teal); fill-opacity: .18; }
 .overview-legend { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 12px 0; color: var(--muted); font-size: 11px; }
 .overview-legend > span { display: flex; gap: 6px; align-items: center; }
 .overview-legend i { width: 8px; height: 8px; border-radius: 50%; }

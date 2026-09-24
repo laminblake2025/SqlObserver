@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { TimeRangeControls } from "../../components/TimeRangeControls";
 import { OverviewChart } from "../overview/OverviewChart";
 import { overviewEvidenceFooter, overviewHref, rankedIssues } from "../overview/overviewModel";
@@ -11,6 +12,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
   readonly scope: OverviewScope;
   readonly refresh: number;
 }) {
+  const [crosshairUtc, setCrosshairUtc] = useState<string | null>(null);
   const selectedScope = { ...scope, target: instanceId };
   const result = useOverviewAnalytics(selectedScope, refresh, scope.range !== "custom");
   const data = result.data;
@@ -27,6 +29,10 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
       previous={previous?.series.filter(series => series.metric === metric)}
       fromUtc={data!.fromUtc}
       toUtc={data!.toUtc}
+      markers={issues.filter(issue => issue.observedAtUtc).map(issue => ({ timeUtc: issue.observedAtUtc!, label: issue.title }))}
+      crosshairUtc={crosshairUtc}
+      onCrosshairChange={setCrosshairUtc}
+      onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }}
     />
     <small>{note}</small>
   </section>;
@@ -36,7 +42,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
     <div className="overview-controls server-dashboard-controls">
       <TimeRangeControls scope={selectedScope} onChange={change} />
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
-      <span className="server-dashboard-mode">{scope.range === "custom" ? "Rewind · fixed UTC window" : "Live · moving UTC window, refresh every 60 seconds"}</span>
+      <span className="server-dashboard-mode">{scope.range === "custom" ? "Rewind · fixed UTC window" : "Live · moving UTC window, refresh every 60 seconds"}. Drag a chart to select a shared window.</span>
     </div>
     {result.loading && <p role="status">Loading server timeline…</p>}
     {result.error && <p role="alert" className="status-message">{result.error}</p>}
