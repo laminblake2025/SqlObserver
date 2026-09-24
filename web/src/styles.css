@@ -318,6 +318,10 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .blocking-summary ul { margin: 0; padding-left: 20px; }
 .blocking-summary li { padding: 7px 0; }
 .blocking-summary li span { display: block; color: var(--muted); font-size: 12px; }
+.blocking-tree-group { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-warning); }
+.blocking-tree-group h5 { margin: 0 0 6px; font-size: 13px; }
+.blocking-tree-group > p { margin: 0 0 6px; color: var(--muted); }
+.blocking-tree-group li ul { margin-top: 4px; border-left: 1px solid var(--border-warning); }
 .activity-evidence { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .activity-section { margin-top: 16px; }
 .activity-section h4 { margin-bottom: 8px; }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { readLive, type LivePage, type LiveRow, type LiveSnapshot, type QueryDetail } from "./liveActivityApi";
 import { liveRequestKey, valueForLiveRequest } from "./liveEvidenceScope";
 import { startLiveRefresh } from "./liveRefresh";
-import { formatBlockingTarget, isBlockingRelationship } from "./blockingModel";
+import { buildBlockingTree, formatBlockingTarget, type BlockingTreeNode } from "./blockingModel";
 
 // The trigger accepts recently discovered events for up to five minutes. Keep
 // enough room after the event time for that bounded discovery window plus
@@ -159,10 +159,22 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
 }
 
 function BlockingSnapshot({ page }: { readonly page: LivePage }) {
-  const relationships = page.rows.filter((row) => isBlockingRelationship(row.blocker));
-  if (relationships.length === 0) return null;
-  const loadedSessions = new Set(page.rows.map((row) => row.sessionId));
-  return <section className="blocking-summary" aria-labelledby="blocking-summary-heading"><div className="section-heading"><div><h4 id="blocking-summary-heading">Blocking relationships in loaded snapshot</h4><p>Relationships are limited to the selected snapshot, filters, and loaded page.</p></div></div><ul>{relationships.map((row) => <li key={row.identity}><strong>Session {row.sessionId}</strong> waits on blocker <strong>{formatBlockingTarget(row.blocker)}</strong><span>{row.waitType ?? "Wait type unavailable"} · {typeof row.blocker === "number" && row.blocker > 0 && loadedSessions.has(row.blocker) ? "Blocker row is loaded." : "Details unavailable in loaded snapshot."}</span></li>)}</ul></section>;
+  const groups = buildBlockingTree(page.rows);
+  if (groups.length === 0) return null;
+  return <section className="blocking-summary" aria-labelledby="blocking-summary-heading"><div className="section-heading"><div><h4 id="blocking-summary-heading">Blocking tree · loaded snapshot</h4><p>Chains use only the selected snapshot, filters, and loaded page. A missing blocker may be on another page or excluded by filters{page.truncated ? ", or absent from truncated collection" : ""}.</p></div></div>
+    {groups.map(group => <div className="blocking-tree-group" key={group.key}>
+      <h5>{group.rootLabel}{group.key.startsWith("session:") ? group.rootLoaded ? " · row loaded" : " · row not loaded" : ""}</h5>
+      {group.issue && <p>{group.issue}</p>}
+      {group.nodes.length > 0 && <ul>{group.nodes.map(node => <BlockingTreeBranch key={node.sessionId} node={node} />)}</ul>}
+      {group.unresolvedRows.length > 0 && <ul>{group.unresolvedRows.map(row => <li key={row.identity}>Session {row.sessionId}/{row.requestId ?? "idle"} waits on {formatBlockingTarget(row.blocker)}<span>{row.waitType ?? "Wait type unavailable"}</span></li>)}</ul>}
+    </div>)}
+  </section>;
+}
+
+function BlockingTreeBranch({ node }: { readonly node: BlockingTreeNode }) {
+  return <li><strong>Session {node.sessionId}</strong><span>{node.rows.map(row => `${row.requestId ?? "idle"}: ${row.waitType ?? "wait unavailable"}`).join(" · ")}</span>
+    {node.children.length > 0 && <ul>{node.children.map(child => <BlockingTreeBranch key={child.sessionId} node={child} />)}</ul>}
+  </li>;
 }
 
 function mergeDatabaseOptions(current: LivePage["databases"], incoming: LivePage["databases"]): LivePage["databases"] {
