@@ -249,6 +249,9 @@ public sealed class TargetHealthHttpContractTests : IClassFixture<TargetHealthAp
         Assert.Equal("rows", file.FileType);
         Assert.Equal("9007199254740993", file.ReadCount);
         Assert.Equal("9007199254740994", file.WriteCount);
+        Assert.Equal("9007199254740997", file.IoStallMilliseconds);
+        Assert.Equal("9007199254740993", file.ReadStallMilliseconds);
+        Assert.Equal("4", file.WriteStallMilliseconds);
         Assert.Equal("17179869184", file.SizeBytes);
         Assert.Equal("database.files", page?.Collector.CollectorId);
         Assert.Equal("current", page?.Collector.State);
@@ -261,6 +264,8 @@ public sealed class TargetHealthHttpContractTests : IClassFixture<TargetHealthAp
             .GetFromJsonAsync<DatabaseFileHealthPageResponse>(
                 $"{route}&cursor={Uri.EscapeDataString(page!.NextCursor!)}");
         Assert.Equal(2, Assert.Single(second?.Items ?? []).FileId);
+        Assert.Null(Assert.Single(second!.Items).ReadStallMilliseconds);
+        Assert.Null(Assert.Single(second.Items).WriteStallMilliseconds);
         Assert.Null(second?.NextCursor);
     }
 
@@ -624,7 +629,9 @@ internal sealed class FakeHealthProjectionRepository : IHealthProjectionReposito
             bytesRead: 9_007_199_254_740_995,
             bytesWritten: 9_007_199_254_740_996,
             ioStallMilliseconds: 9_007_199_254_740_997,
-            RepositoryTime.AddMinutes(-1));
+            RepositoryTime.AddMinutes(-1),
+            readStallMilliseconds: fileId == 1 ? 9_007_199_254_740_993 : null,
+            writeStallMilliseconds: fileId == 1 ? 4 : null);
         return new DatabaseFileHealthItem(
             observation,
             collector);

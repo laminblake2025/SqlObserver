@@ -161,6 +161,8 @@ export interface DatabaseFileHealthSummary {
   readonly bytesRead: string;
   readonly bytesWritten: string;
   readonly ioStallMilliseconds: string;
+  readonly readStallMilliseconds: string | null;
+  readonly writeStallMilliseconds: string | null;
   readonly observedAtUtc: string;
   readonly collector: CollectorHealthSummary;
 }

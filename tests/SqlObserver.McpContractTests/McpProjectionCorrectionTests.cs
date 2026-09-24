@@ -193,17 +193,30 @@ public sealed class McpProjectionCorrectionTests
         AssertInvalidMutation(row, schema, item => item["failureAtUtc"] = FormatUtc(firstObserved));
     }
 
-    [Fact]
-    public void FileIoReportsExactCumulativeStallWithoutCallingItLatency()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FileIoReportsExactCumulativeStallWithoutCallingItLatency(bool splitKnown)
     {
         CollectorHealthProjection collector = Collector();
         var file = new DatabaseFileObservation(TargetId, Revision, 5, 7, new SqlServerObjectName("data"),
-            DatabaseFileType.Rows, DatabaseFileState.Online, 1024, null, 128, 0, 13, 17, 4096, 8192, LargeCounter, Now);
+            DatabaseFileType.Rows, DatabaseFileState.Online, 1024, null, 128, 0, 13, 17, 4096, 8192, LargeCounter, Now,
+            readStallMilliseconds: splitKnown ? LargeCounter - 17 : null, writeStallMilliseconds: splitKnown ? 17 : null);
         var page = new DatabaseFileHealthPage(TargetId, RunId, Revision, collector,
             [new DatabaseFileHealthItem(file, collector)], null, Now);
         JsonElement row = MapAndValidate("get_file_io", page).GetProperty("items")[0].GetProperty("observation");
 
         Assert.Equal(LargeCounter, row.GetProperty("ioStallMilliseconds").GetInt64());
+        if (splitKnown)
+        {
+            Assert.Equal(LargeCounter - 17, row.GetProperty("readStallMilliseconds").GetInt64());
+            Assert.Equal(17, row.GetProperty("writeStallMilliseconds").GetInt64());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, row.GetProperty("readStallMilliseconds").ValueKind);
+            Assert.Equal(JsonValueKind.Null, row.GetProperty("writeStallMilliseconds").ValueKind);
+        }
         Assert.Equal(13, row.GetProperty("readOperations").GetInt64());
         Assert.Equal(17, row.GetProperty("writeOperations").GetInt64());
         Assert.False(row.TryGetProperty("latencyMilliseconds", out _));
@@ -211,6 +224,12 @@ public sealed class McpProjectionCorrectionTests
         AssertInvalidMutation(row, schema, item => item.Remove("ioStallMilliseconds"));
         AssertInvalidMutation(row, schema, item => item["ioStallMilliseconds"] = 1.5);
         AssertInvalidMutation(row, schema, item => item["latencyMilliseconds"] = 1);
+        foreach (string field in new[] { "readStallMilliseconds", "writeStallMilliseconds" })
+        {
+            AssertInvalidMutation(row, schema, item => item.Remove(field));
+            AssertInvalidMutation(row, schema, item => item[field] = -1);
+            AssertInvalidMutation(row, schema, item => item[field] = 1.5);
+        }
     }
 
     [Theory]

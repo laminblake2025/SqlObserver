@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Infrastructure.SqlServer;
@@ -216,7 +218,7 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
                 : CollectorLossEvidence.None);
     }
 
-    private protected static DateTimeOffset ReadUtcMicrosecond(SqlDataReader reader, int ordinal)
+    private protected static DateTimeOffset ReadUtcMicrosecond(DbDataReader reader, int ordinal)
     {
         DateTime value = reader.GetDateTime(ordinal);
         long ticks = value.Ticks - (value.Ticks % TimeSpan.TicksPerMicrosecond);
@@ -625,48 +627,16 @@ public sealed class SqlServerDatabaseFilesCollector : SqlServerHealthCollector
                     break;
                 }
 
-                DateTimeOffset observedAt = ReadUtcMicrosecond(reader, 0);
-                int databaseId = reader.GetInt32(1);
-                int fileId = reader.GetInt32(2);
                 string logicalName = reader.GetString(3);
                 string type = reader.GetString(4);
                 string state = reader.GetString(5);
-                long sizeBytes = DecimalToInt64(reader.GetDecimal(6));
-                long? maximumSizeBytes = reader.IsDBNull(7)
-                    ? null
-                    : DecimalToInt64(reader.GetDecimal(7));
-                long rawGrowth = reader.GetInt32(8);
-                bool percentGrowth = reader.GetBoolean(9);
-                long readsTotal = reader.GetInt64(10);
-                long writesTotal = reader.GetInt64(11);
-                long bytesReadTotal = reader.GetInt64(12);
-                long bytesWrittenTotal = reader.GetInt64(13);
-                long readStall = reader.GetInt64(14);
-                long writeStall = reader.GetInt64(15);
                 int rowBytes = checked(160 + Utf8Bytes(logicalName) + Utf8Bytes(type) + Utf8Bytes(state));
                 if (!budget.TryAcceptResponseBytes(rowBytes))
                 {
                     break;
                 }
 
-                files.Add(new DatabaseFileObservation(
-                    request.TargetId,
-                    request.TargetRevision,
-                    databaseId,
-                    fileId,
-                    new SqlServerObjectName(logicalName),
-                    ParseFileType(type),
-                    ParseFileState(state),
-                    sizeBytes,
-                    maximumSizeBytes,
-                    percentGrowth ? 0 : checked(rawGrowth * 8192),
-                    percentGrowth ? checked((int)rawGrowth) : 0,
-                    readsTotal,
-                    writesTotal,
-                    bytesReadTotal,
-                    bytesWrittenTotal,
-                    checked(readStall + writeStall),
-                    observedAt));
+                files.Add(MapRow(reader, request.TargetId, request.TargetRevision));
             }
         }
         catch (Exception exception) when (exception is
@@ -685,6 +655,36 @@ public sealed class SqlServerDatabaseFilesCollector : SqlServerHealthCollector
             budget.ResponseBytes,
             budget.ByteLimitReached,
             budget.RowLimitReached);
+    }
+
+    internal static DatabaseFileObservation MapRow(
+        DbDataReader reader,
+        MonitoredInstanceId targetId,
+        ObservationTargetRevision targetRevision)
+    {
+        DateTimeOffset observedAt = ReadUtcMicrosecond(reader, 0);
+        int databaseId = reader.GetInt32(1);
+        int fileId = reader.GetInt32(2);
+        string logicalName = reader.GetString(3);
+        string type = reader.GetString(4);
+        string state = reader.GetString(5);
+        long sizeBytes = DecimalToInt64(reader.GetDecimal(6));
+        long? maximumSizeBytes = reader.IsDBNull(7) ? null : DecimalToInt64(reader.GetDecimal(7));
+        long rawGrowth = reader.GetInt32(8);
+        bool percentGrowth = reader.GetBoolean(9);
+        long readsTotal = reader.GetInt64(10);
+        long writesTotal = reader.GetInt64(11);
+        long bytesReadTotal = reader.GetInt64(12);
+        long bytesWrittenTotal = reader.GetInt64(13);
+        long readStall = reader.GetInt64(14);
+        long writeStall = reader.GetInt64(15);
+        return new DatabaseFileObservation(
+            targetId, targetRevision, databaseId, fileId, new SqlServerObjectName(logicalName),
+            ParseFileType(type), ParseFileState(state), sizeBytes, maximumSizeBytes,
+            percentGrowth ? 0 : checked(rawGrowth * 8192), percentGrowth ? checked((int)rawGrowth) : 0,
+            readsTotal, writesTotal, bytesReadTotal, bytesWrittenTotal,
+            checked(readStall + writeStall), observedAt,
+            readStallMilliseconds: readStall, writeStallMilliseconds: writeStall);
     }
 
     private static long DecimalToInt64(decimal value)

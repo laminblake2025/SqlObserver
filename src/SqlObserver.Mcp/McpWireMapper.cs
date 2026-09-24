@@ -171,7 +171,19 @@ internal static class McpWireMapper
     private static JsonNode Database(DatabaseHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
     private static JsonNode Database(DatabaseFileHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseFileItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
     private static JsonNode DatabaseItem(DatabaseHealthItem x) => O(("observation", O(("databaseId", x.Observation.DatabaseId), ("databaseName", x.Observation.Name.Value), ("state", E(x.Observation.State)), ("observedAtUtc", T(x.Observation.ObservedAtUtc)))), ("collector", Collector(x.Collector)));
-    private static JsonNode DatabaseFileItem(DatabaseFileHealthItem x) => O(("observation", O(("databaseId", x.Observation.DatabaseId), ("fileId", x.Observation.FileId), ("fileName", x.Observation.LogicalName.Value), ("sizeBytes", x.Observation.SizeBytes), ("readOperations", x.Observation.ReadCount), ("writeOperations", x.Observation.WriteCount), ("readBytes", x.Observation.BytesRead), ("writeBytes", x.Observation.BytesWritten), ("ioStallMilliseconds", x.Observation.IoStallMilliseconds), ("observedAtUtc", T(x.Observation.ObservedAtUtc)))), ("collector", Collector(x.Collector)));
+    private static JsonNode DatabaseFileItem(DatabaseFileHealthItem x)
+    {
+        DatabaseFileObservation file = x.Observation;
+        JsonObject observation = O(
+            ("databaseId", file.DatabaseId), ("fileId", file.FileId), ("fileName", file.LogicalName.Value),
+            ("sizeBytes", file.SizeBytes), ("readOperations", file.ReadCount), ("writeOperations", file.WriteCount),
+            ("readBytes", file.BytesRead), ("writeBytes", file.BytesWritten),
+            ("ioStallMilliseconds", file.IoStallMilliseconds), ("observedAtUtc", T(file.ObservedAtUtc)));
+        // Required nullable fields distinguish historical unknowns from zero.
+        observation["readStallMilliseconds"] = V(file.ReadStallMilliseconds);
+        observation["writeStallMilliseconds"] = V(file.WriteStallMilliseconds);
+        return O(("observation", observation), ("collector", Collector(x.Collector)));
+    }
     private static JsonNode? Cursor(object? cursor) => cursor switch
     {
         null => null,

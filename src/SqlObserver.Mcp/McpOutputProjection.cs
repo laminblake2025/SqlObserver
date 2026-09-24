@@ -95,7 +95,7 @@ internal static class McpOutputProjection
         ("get_query_history", "metrics") => ["cpuMilliseconds", "durationMilliseconds", "executions", "logicalReads", "writes", "rows"],
         ("get_database_health" or "get_file_io", "collector") => ["state", "reason", "status", "health", "targetId", "collectorId", "observedAtUtc", "lastSuccessAtUtc", "nextDueAtUtc"],
         ("get_database_health", "observation") => ["databaseId", "databaseName", "state", "observedAtUtc"],
-        ("get_file_io", "observation") => ["databaseId", "fileId", "fileName", "sizeBytes", "readOperations", "writeOperations", "readBytes", "writeBytes", "ioStallMilliseconds", "observedAtUtc"],
+        ("get_file_io", "observation") => ["databaseId", "fileId", "fileName", "sizeBytes", "readOperations", "writeOperations", "readBytes", "writeBytes", "ioStallMilliseconds", "readStallMilliseconds", "writeStallMilliseconds", "observedAtUtc"],
         ("get_metric_series" or "get_storage_forecast", "dimensions") => ["key", "value"],
         ("get_deadlock", "participants") => ["sessionId", "isVictim"],
         ("get_deadlock", "relations") => ["blockerSessionId", "waiterSessionId", "resourceCategory", "lockMode"],
@@ -231,6 +231,8 @@ internal static class McpOutputProjection
             if (field == "firstObservedAtUtc") return new JsonObject { ["type"] = "string", ["description"] = "Repository UTC first-observed time; not the source job execution time." };
             if (field == "failureFingerprint") return new JsonObject { ["type"] = "string", ["description"] = "Opaque failure fingerprint; not a message or error reason." };
         }
+        if (tool == "get_file_io" && path == "observation" && field is "readStallMilliseconds" or "writeStallMilliseconds")
+            return new JsonObject { ["type"] = new JsonArray("integer", "null"), ["minimum"] = 0, ["description"] = "Cumulative directional I/O stall milliseconds; null when the historical split was not collected. Not per-operation latency." };
         if (tool == "get_file_io" && path == "observation" && field == "ioStallMilliseconds")
             return new JsonObject { ["type"] = "integer", ["minimum"] = 0, ["description"] = "Cumulative read and write I/O stall time in milliseconds; not per-operation latency." };
         if (tool == "get_availability_health")
@@ -296,7 +298,7 @@ internal static class McpOutputProjection
         ("get_top_queries", "plan") or ("get_query_plan_metadata", "plan") => ["databaseId", "queryFingerprint", "planFingerprint"],
         ("get_database_health" or "get_file_io", "collector") => ["state", "reason", "status", "health", "targetId", "collectorId", "observedAtUtc"],
         ("get_database_health", "observation") => ["databaseId", "databaseName", "state", "observedAtUtc"],
-        ("get_file_io", "observation") => ["databaseId", "fileId", "fileName", "sizeBytes", "readOperations", "writeOperations", "readBytes", "writeBytes", "ioStallMilliseconds", "observedAtUtc"],
+        ("get_file_io", "observation") => ["databaseId", "fileId", "fileName", "sizeBytes", "readOperations", "writeOperations", "readBytes", "writeBytes", "ioStallMilliseconds", "readStallMilliseconds", "writeStallMilliseconds", "observedAtUtc"],
         ("get_metric_series" or "get_storage_forecast", "dimensions") => ["key", "value"],
         ("get_deadlock", "participants") => ["sessionId", "isVictim"],
         ("get_deadlock", "relations") => ["blockerSessionId", "waiterSessionId", "resourceCategory", "lockMode"],

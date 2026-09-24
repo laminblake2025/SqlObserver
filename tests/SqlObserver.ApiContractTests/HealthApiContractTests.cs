@@ -104,9 +104,11 @@ public sealed class HealthApiContractTests
         "MaximumSizeBytes",
         "ObservedAtUtc",
         "ReadCount",
+        "ReadStallMilliseconds",
         "SizeBytes",
         "State",
         "WriteCount",
+        "WriteStallMilliseconds",
     ];
 
     [Fact]

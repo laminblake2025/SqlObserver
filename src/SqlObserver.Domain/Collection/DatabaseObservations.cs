@@ -183,7 +183,9 @@ public sealed class DatabaseFileObservation : IIngestionRecord
         long bytesRead,
         long bytesWritten,
         long ioStallMilliseconds,
-        DateTimeOffset observedAtUtc)
+        DateTimeOffset observedAtUtc,
+        long? readStallMilliseconds = null,
+        long? writeStallMilliseconds = null)
     {
         ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(targetRevision);
@@ -220,6 +222,20 @@ public sealed class DatabaseFileObservation : IIngestionRecord
         ArgumentOutOfRangeException.ThrowIfNegative(bytesRead);
         ArgumentOutOfRangeException.ThrowIfNegative(bytesWritten);
         ArgumentOutOfRangeException.ThrowIfNegative(ioStallMilliseconds);
+        if (readStallMilliseconds.HasValue != writeStallMilliseconds.HasValue)
+        {
+            throw new ArgumentException("Read and write stall counters must be supplied together.", nameof(readStallMilliseconds));
+        }
+
+        if (readStallMilliseconds is long readStall && writeStallMilliseconds is long writeStall)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(readStall, nameof(readStallMilliseconds));
+            ArgumentOutOfRangeException.ThrowIfNegative(writeStall, nameof(writeStallMilliseconds));
+            if (checked(readStall + writeStall) != ioStallMilliseconds)
+            {
+                throw new ArgumentException("Read and write stall counters must equal the total I/O stall.", nameof(ioStallMilliseconds));
+            }
+        }
 
         TargetId = targetId;
         TargetRevision = targetRevision;
@@ -237,8 +253,10 @@ public sealed class DatabaseFileObservation : IIngestionRecord
         BytesRead = bytesRead;
         BytesWritten = bytesWritten;
         IoStallMilliseconds = ioStallMilliseconds;
+        ReadStallMilliseconds = readStallMilliseconds;
+        WriteStallMilliseconds = writeStallMilliseconds;
         ObservedAtUtc = DomainValidation.RequireUtcMicrosecondAligned(observedAtUtc, nameof(observedAtUtc));
-        EstimatedSizeBytes = checked(FixedEstimatedBytes + logicalName.Utf8Bytes);
+        EstimatedSizeBytes = checked(FixedEstimatedBytes + logicalName.Utf8Bytes + (readStallMilliseconds.HasValue ? 16 : 0));
     }
 
     public MonitoredInstanceId TargetId { get; }
@@ -257,6 +275,8 @@ public sealed class DatabaseFileObservation : IIngestionRecord
     public long BytesRead { get; }
     public long BytesWritten { get; }
     public long IoStallMilliseconds { get; }
+    public long? ReadStallMilliseconds { get; }
+    public long? WriteStallMilliseconds { get; }
     public DateTimeOffset ObservedAtUtc { get; }
     public int EstimatedSizeBytes { get; }
 }

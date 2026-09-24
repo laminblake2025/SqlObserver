@@ -273,6 +273,8 @@ function DatabaseFileHealthCard({ file }: { readonly file: DatabaseFileHealthSum
         <HealthFact label="Bytes read" value={formatExactInteger(file.bytesRead)} />
         <HealthFact label="Bytes written" value={formatExactInteger(file.bytesWritten)} />
         <HealthFact label="I/O stall ms" value={formatExactInteger(file.ioStallMilliseconds)} />
+        <HealthFact label="Read stall ms (total)" value={file.readStallMilliseconds === null ? "Not reported" : formatExactInteger(file.readStallMilliseconds)} />
+        <HealthFact label="Write stall ms (total)" value={file.writeStallMilliseconds === null ? "Not reported" : formatExactInteger(file.writeStallMilliseconds)} />
         <HealthFact label="Observed" value={formatTimestamp(file.observedAtUtc)} />
       </dl>
     </article>

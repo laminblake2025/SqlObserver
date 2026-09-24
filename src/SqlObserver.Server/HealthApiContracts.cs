@@ -66,6 +66,8 @@ public sealed record DatabaseFileHealthResponse(
     string BytesRead,
     string BytesWritten,
     string IoStallMilliseconds,
+    string? ReadStallMilliseconds,
+    string? WriteStallMilliseconds,
     DateTimeOffset ObservedAtUtc,
     CollectorHealthResponse Collector);
 

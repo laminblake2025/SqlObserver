@@ -210,6 +210,8 @@ public static class TargetHealthEndpoints
             FormatInt64(observation.BytesRead),
             FormatInt64(observation.BytesWritten),
             FormatInt64(observation.IoStallMilliseconds),
+            observation.ReadStallMilliseconds is long readStall ? FormatInt64(readStall) : null,
+            observation.WriteStallMilliseconds is long writeStall ? FormatInt64(writeStall) : null,
             observation.ObservedAtUtc,
             Map(item.Collector));
     }

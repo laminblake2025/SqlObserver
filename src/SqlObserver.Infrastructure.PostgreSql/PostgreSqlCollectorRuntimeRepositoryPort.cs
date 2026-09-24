@@ -55,7 +55,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private const string CommitCoreSql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
                persisted_bytes, committed_at
-        FROM control.commit_collection_run(
+        FROM control.commit_collection_run_v2(
             @run_id,
             @instance_id,
             @target_revision,
@@ -112,7 +112,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             @file_bytes_read,
             @file_bytes_written,
             @file_io_stall_ms,
-            @file_sizes);
+            @file_sizes,
+            @file_read_stall_ms,
+            @file_write_stall_ms);
         """;
     private const string CommitM9Sql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
@@ -912,6 +914,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddArray(command, "file_bytes_read", NpgsqlDbType.Bigint, files.Select(static item => item.BytesRead).ToArray());
         AddArray(command, "file_bytes_written", NpgsqlDbType.Bigint, files.Select(static item => item.BytesWritten).ToArray());
         AddArray(command, "file_io_stall_ms", NpgsqlDbType.Bigint, files.Select(static item => item.IoStallMilliseconds).ToArray());
+        AddArray(command, "file_read_stall_ms", NpgsqlDbType.Bigint, files.Select(static item => item.ReadStallMilliseconds).ToArray());
+        AddArray(command, "file_write_stall_ms", NpgsqlDbType.Bigint, files.Select(static item => item.WriteStallMilliseconds).ToArray());
         AddArray(command, "file_sizes", NpgsqlDbType.Integer, files.Select(static item => item.EstimatedSizeBytes).ToArray());
     }
 
