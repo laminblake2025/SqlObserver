@@ -12,7 +12,7 @@ namespace SqlObserver.Infrastructure.SqlServer;
 public class SqlServerReplicationCollector : ISqlServerCollector
 {
     private readonly SqlServerReplicationAssetCatalog assets;
-    private readonly SqlServerIntegratedConnectionFactory connections = new(SqlServerIntegratedConnectionFactory.CollectionApplicationName);
+    private readonly ISqlServerConnectionFactory connections = new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName);
     private readonly string? distributionDatabase;
     private readonly IReplicationDistributionBindingResolver? distributionBindingResolver;
     private readonly IdentityFingerprintKey fingerprintKey;
@@ -26,6 +26,10 @@ public class SqlServerReplicationCollector : ISqlServerCollector
 
     public SqlServerReplicationCollector(SqlServerReplicationAssetCatalog assets, string? registeredDistributionDatabase, IIdentityFingerprintKeyProvider keyProvider)
         : this(assets, registeredDistributionDatabase, (keyProvider ?? throw new ArgumentNullException(nameof(keyProvider))).GetRequiredKey()) { }
+
+    internal SqlServerReplicationCollector(SqlServerReplicationAssetCatalog assets, string? registeredDistributionDatabase, IdentityFingerprintKey fingerprintKey, ISqlServerConnectionFactory connections)
+        : this(assets, registeredDistributionDatabase, fingerprintKey)
+        => this.connections = connections ?? throw new ArgumentNullException(nameof(connections));
 
     /// <summary>Uses the exact persisted target/revision binding for each run.</summary>
     public SqlServerReplicationCollector(SqlServerReplicationAssetCatalog assets, IReplicationDistributionBindingResolver bindingResolver, IdentityFingerprintKey fingerprintKey)
@@ -99,7 +103,9 @@ public class SqlServerReplicationCollector : ISqlServerCollector
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
-        catch (SqlException exception) when (exception.Number is 229 or 297 or 300) { return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(exception.Number)) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(exception.Number)) { return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsTransient(exception.Number)) { return Failure(request, CollectorRunOutcome.TransientFailure, CollectorRunReason.TransientTargetFailure); }
         catch (SqlException) { return Failure(request, CollectorRunOutcome.PermanentFailure, CollectorRunReason.PermanentTargetFailure); }
         catch (InvalidDataException) { return Failure(request, CollectorRunOutcome.OutputInvalid, CollectorRunReason.OutputValidationFailed); }
     }
@@ -137,7 +143,7 @@ public class SqlServerReplicationCollector : ISqlServerCollector
             object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return value is int role && role == 1;
         }
-        catch (SqlException exception) when (exception.Number is 229 or 297 or 300)
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(exception.Number))
         {
             return false;
         }

@@ -158,7 +158,7 @@ public sealed class M10ReplicationContractTests
     public void ReplicationEmbeddedBundleMatchesTheLFManifestDigest()
     {
         SqlServerReplicationAssetCatalog catalog = SqlServerReplicationAssetCatalog.LoadEmbedded();
-        Assert.Equal("8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a", catalog.BundleChecksum);
+        Assert.Equal("e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36", catalog.BundleChecksum);
         Assert.Equal(ReplicationAssetNames, catalog.AssetNames);
     }
 

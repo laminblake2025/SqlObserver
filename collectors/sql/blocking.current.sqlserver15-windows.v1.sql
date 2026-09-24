@@ -11,6 +11,7 @@ FROM sys.dm_os_waiting_tasks AS waiting
 WHERE waiting.session_id > 0
   AND waiting.session_id <> @@SPID
   AND waiting.blocking_session_id <> 0
+  AND waiting.blocking_session_id <> waiting.session_id
   AND waiting.blocking_session_id <> @@SPID
   AND waiting.wait_type IS NOT NULL
 GROUP BY waiting.session_id, waiting.blocking_session_id, waiting.wait_type

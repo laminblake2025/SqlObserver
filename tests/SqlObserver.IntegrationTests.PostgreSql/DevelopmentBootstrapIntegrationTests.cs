@@ -65,7 +65,13 @@ public sealed class DevelopmentBootstrapIntegrationTests
         await AssertDeniedAsync(app, "CREATE TABLE control.development_escape(id integer);");
 
         // A foreign target blocks the whole bootstrap before either credentials or seed data change.
-        await using (var foreign = new NpgsqlCommand("INSERT INTO control.observation_target(instance_id,instance_key,display_name) VALUES('00000000-0000-4000-8000-000000000999','foreign.target','Not a sample');", admin))
+        await using (var foreign = new NpgsqlCommand(
+            """
+            INSERT INTO control.observation_target
+                (instance_id,instance_key,display_name,created_at,updated_at,discovery_requested_at)
+            VALUES ('00000000-0000-4000-8000-000000000999','foreign.target','Not a sample',
+                statement_timestamp(),statement_timestamp(),statement_timestamp());
+            """, admin))
             await foreign.ExecuteNonQueryAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => PostgreSqlDevelopmentBootstrap.ApplyAsync(
             "Development", bootstrap.ConnectionString, new string('x', 64), CancellationToken.None));

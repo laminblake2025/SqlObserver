@@ -19,17 +19,20 @@ public sealed class QueryPerformanceFallbackCoordinator
         QueryPerformanceReadResult queryStore;
         try { queryStore = await reader.ReadQueryStoreAsync(database, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) { throw; }
-        catch (SqlException ex) when (ex.Number == -2) { queryStore = new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreTimedOut, [], "query_store_timeout", false, false, 0, 0); }
-        catch (SqlException ex) when (ex.Number is 229 or 297 or 300) { queryStore = new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStorePermissionDenied, [], "query_store_permission_denied", false, false, 0, 0); }
-        catch (Exception ex) when (ex is TimeoutException or InvalidOperationException or System.Data.Common.DbException) { queryStore = new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreReadFailure, [], ex is TimeoutException ? "query_store_timeout" : "query_store_read_failure", false, false, 0, 0); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(ex.Number)) { queryStore = new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreTimedOut, [], "query_store_timeout", false, false, 0, 0, QueryStoreState.TimedOut); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(ex.Number)) { queryStore = new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStorePermissionDenied, [], "query_store_permission_denied", false, false, 0, 0, QueryStoreState.PermissionDenied); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsTransient(ex.Number)) { throw; }
+        catch (TimeoutException) { queryStore = new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreTimedOut, [], "query_store_timeout", false, false, 0, 0, QueryStoreState.TimedOut); }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Data.Common.DbException) { queryStore = new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreReadFailure, [], "query_store_read_failure", false, false, 0, 0, QueryStoreState.ReadFailure); }
         if (queryStore.Status is QueryPerformanceReadStatus.QueryStoreRows or QueryPerformanceReadStatus.QueryStoreEmpty) return queryStore;
         if (!planCachePermission) return queryStore;
         QueryPerformanceReadResult cache;
         try { cache = await reader.ReadPlanCacheAsync(database, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) { throw; }
         catch (TimeoutException) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.PlanCacheTimedOut, [], "plan_cache_timeout", true, false, 0, 0, queryStore.SourceState); }
-        catch (SqlException ex) when (ex.Number == -2) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.PlanCacheTimedOut, [], "plan_cache_timeout", true, false, 0, 0, queryStore.SourceState); }
-        catch (SqlException ex) when (ex.Number is 229 or 297 or 300) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.PlanCachePermissionDenied, [], "plan_cache_permission_denied", true, false, 0, 0, queryStore.SourceState); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(ex.Number)) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.PlanCacheTimedOut, [], "plan_cache_timeout", true, false, 0, 0, queryStore.SourceState); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(ex.Number)) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.PlanCachePermissionDenied, [], "plan_cache_permission_denied", true, false, 0, 0, queryStore.SourceState); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsTransient(ex.Number)) { throw; }
         catch (Exception ex) when (ex is InvalidOperationException or System.Data.Common.DbException) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.PlanCacheReadFailure, [], "plan_cache_read_failure", true, false, 0, 0, queryStore.SourceState); }
         // Preserve the Query Store probe/read state when reporting fallback rows;
         // the fallback source is explicit, but its trigger must remain visible.

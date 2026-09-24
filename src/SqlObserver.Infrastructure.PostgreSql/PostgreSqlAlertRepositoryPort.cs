@@ -100,7 +100,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         command.Parameters.AddWithValue("work_key", lease.Key.Value);
         command.Parameters.AddWithValue("owner_id", lease.Owner.Value);
         command.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool recovered = (bool)(await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false);
+        bool recovered = ScalarOrDefault(await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return recovered;
     }
@@ -295,7 +295,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         cmd.Transaction = transaction;
         cmd.CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout);
         cmd.Parameters.AddWithValue("delivery_id", result.DeliveryId); cmd.Parameters.AddWithValue("target_id", result.TargetId.Value); cmd.Parameters.AddWithValue("succeeded", result.Succeeded); cmd.Parameters.AddWithValue("permanent", result.PermanentFailure); cmd.Parameters.AddWithValue("reason", result.Reason); cmd.Parameters.AddWithValue("response_code", (object?)result.ResponseCode ?? DBNull.Value); cmd.Parameters.AddWithValue("response_bytes", (object?)result.ResponseBytes ?? DBNull.Value); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool applied = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false);
+        bool applied = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return applied ? result : result with { Succeeded = false, PermanentFailure = false, Reason = "lease_lost" };
     }
@@ -308,7 +308,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.renew_delivery(@delivery_id,@target_id,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", deliveryId); cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool renewed = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return renewed;
+        bool renewed = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return renewed;
     }
     public async ValueTask<bool> CancelDeliveryAsync(AlertDeliveryCancellation request, MonitoredInstanceId targetId, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
     {
@@ -319,7 +319,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.cancel_delivery(@delivery_id,@target_id,@reason,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", request.DeliveryId); cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("reason", request.Reason); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool cancelled = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return cancelled;
+        bool cancelled = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return cancelled;
     }
     public async ValueTask<bool> DeferDeliveryAsync(AlertDeliveryWork work, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
     {
@@ -331,7 +331,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, work.TargetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.defer_delivery(@delivery_id,@target_id,@reason,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", work.DeliveryId); cmd.Parameters.AddWithValue("target_id", work.TargetId.Value); cmd.Parameters.AddWithValue("reason", "maintenance"); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool result = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false);
+        bool result = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return result;
     }
@@ -346,7 +346,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, work.TargetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.renew_delivery_with_outcome(@delivery_id,@target_id,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", work.DeliveryId); cmd.Parameters.AddWithValue("target_id", work.TargetId.Value); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        string outcome = (string)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? "LostFence");
+        string outcome = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), "LostFence");
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return Enum.TryParse(outcome, ignoreCase: false, out AlertDeliveryLeaseOutcome typed) ? typed : AlertDeliveryLeaseOutcome.LostFence;
     }
@@ -404,10 +404,14 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, work.TargetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.recheck_delivery(@delivery_id,@target_id);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", work.DeliveryId); cmd.Parameters.AddWithValue("target_id", work.TargetId.Value);
-        string status = (string)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? "lease_lost");
+        string status = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), "lease_lost");
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return Enum.TryParse(status, ignoreCase: true, out AlertDeliveryReadiness readiness) ? readiness : AlertDeliveryReadiness.LeaseLost;
     }
+    // Npgsql returns DBNull for SQL NULL and null when no scalar row exists.
+    // Other runtime types still violate the typed repository contract.
+    private static T ScalarOrDefault<T>(object? value, T fallback) => value is null or DBNull ? fallback : (T)value;
+
     private async ValueTask<AdministrativeAuditReceipt> ExecuteAdminAsync(string sql, AdministrativeAuditEnvelope audit, string key, object payload, RepositoryCallTimeout timeout, CancellationToken token)
     {
         try

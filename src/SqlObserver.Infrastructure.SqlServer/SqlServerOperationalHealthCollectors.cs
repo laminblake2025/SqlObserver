@@ -10,11 +10,13 @@ namespace SqlObserver.Infrastructure.SqlServer;
 public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
 {
     private readonly SqlServerOperationalHealthAssetCatalog assets;
-    private readonly SqlServerIntegratedConnectionFactory connectionFactory;
+    private readonly ISqlServerConnectionFactory connectionFactory;
     protected SqlServerOperationalHealthCollector(SqlServerOperationalHealthAssetCatalog assets)
+        : this(assets, new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName)) { }
+    internal SqlServerOperationalHealthCollector(SqlServerOperationalHealthAssetCatalog assets, ISqlServerConnectionFactory connectionFactory)
     {
         this.assets = assets ?? throw new ArgumentNullException(nameof(assets));
-        this.connectionFactory = new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName);
+        this.connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     }
     public abstract CollectorManifest Manifest { get; }
     protected abstract string QueryName { get; }
@@ -67,8 +69,11 @@ public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
             CollectorLossEvidence effectiveLoss = degraded && !read.Loss.HasLoss ? new CollectorLossEvidence(CollectorLossKind.VisibilityIncomplete, 1, false) : read.Loss;
             return new CollectorExecutionResult(request.TargetId, request.TargetRevision, Manifest.Id, Manifest.ManifestVersion.Value, Manifest.OutputSchemaVersion.Value, effectiveLoss.HasLoss ? CollectorRunOutcome.Partial : CollectorRunOutcome.Succeeded, read.Loss.HasLoss ? CollectorRunReason.SourceRowLimit : degraded ? CollectorRunReason.VisibilityIncomplete : CollectorRunReason.Completed, payload, accounting, effectiveLoss);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
-        catch (SqlException exception) when (exception.Number is 229 or 297) { return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(exception.Number)) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(exception.Number)) { return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsTransient(exception.Number)) { return Failure(request, CollectorRunOutcome.TransientFailure, CollectorRunReason.TransientTargetFailure); }
         catch (SqlException) { return Failure(request, CollectorRunOutcome.PermanentFailure, CollectorRunReason.PermanentTargetFailure); }
     }
     protected static CollectorLossEvidence Loss(int rows, int maximum) => rows > maximum ? new CollectorLossEvidence(CollectorLossKind.SourceRowLimit, 1, false) : CollectorLossEvidence.None;

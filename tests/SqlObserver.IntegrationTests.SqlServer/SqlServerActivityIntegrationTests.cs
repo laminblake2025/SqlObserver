@@ -24,7 +24,7 @@ public sealed class SqlServerActivityIntegrationTests
         Assert.Equal(
             ["activity.sessions", "activity.requests", "waits.server", "blocking.current"],
             catalog.Collectors.Select(static asset => asset.Manifest.Id.Value));
-        Assert.Equal("86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e", catalog.BundleChecksum);
+        Assert.Equal("56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191", catalog.BundleChecksum);
         Assert.Equal(
             "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
             SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum);

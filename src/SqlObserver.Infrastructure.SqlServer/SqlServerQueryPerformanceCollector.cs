@@ -173,7 +173,8 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
                         }
                 }
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Invalid(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded, new QueryPerformanceTargetStatus("deadline_exceeded", "deadline_exceeded")); }
+            catch (OperationCanceledException) { throw; }
+            catch (SqlException) { throw; }
             catch (TimeoutException) { return Invalid(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded, new QueryPerformanceTargetStatus("deadline_exceeded", "deadline_exceeded")); }
             catch (Exception) { return Invalid(request, CollectorRunOutcome.PermanentFailure, CollectorRunReason.PermanentTargetFailure, new QueryPerformanceTargetStatus("inventory_failure", "inventory_read_failure")); }
             var targetResponseBudget = new SharedResponseBudget(Manifest.Limits.MaxResponseBytes);
@@ -331,9 +332,9 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { return Invalid(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
-        catch (SqlException ex) when (ex.Number == -2) { return Invalid(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
-        catch (SqlException ex) when (ex.Number is 229 or 297 or 300) { return Invalid(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
-        catch (SqlException ex) when (ex.Number is 20 or 53 or 64 or 233 or 10053 or 10054 or 10060 or 10928 or 10929 or 40197 or 40501 or 40613) { return Invalid(request, CollectorRunOutcome.TransientFailure, CollectorRunReason.TransientTargetFailure); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(ex.Number)) { return Invalid(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(ex.Number)) { return Invalid(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
+        catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsTransient(ex.Number)) { return Invalid(request, CollectorRunOutcome.TransientFailure, CollectorRunReason.TransientTargetFailure); }
         catch (SqlException) { return Invalid(request, CollectorRunOutcome.PermanentFailure, CollectorRunReason.PermanentTargetFailure); }
         catch (Exception) { return Invalid(request, CollectorRunOutcome.PermanentFailure, CollectorRunReason.PermanentTargetFailure); }
     }
@@ -444,8 +445,9 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
                 return new QueryPerformanceReadResult(database, status, parsed.Payload.QueryPerformance.Items, status == QueryPerformanceReadStatus.QueryStoreEmpty ? "query_store_empty" : "query_store_read", false, parsed.Loss.HasLoss, parsed.SourceRowsRead, parsed.ResponseBytes, state, parsed.Loss.Kind, parsed.Loss.MinimumLostItems, parsed.Loss.CountIsExact, parsed.Loss.MinimumLostBytes);
             }
             catch (OperationCanceledException) { throw; }
-            catch (SqlException ex) when (ex.Number is 229 or 297 or 300) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStorePermissionDenied, [], "query_store_permission_denied", false, false, 0, 0, QueryStoreState.PermissionDenied); }
-            catch (SqlException ex) when (ex.Number == -2) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreTimedOut, [], "query_store_timeout", false, false, 0, 0, QueryStoreState.TimedOut); }
+            catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(ex.Number)) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStorePermissionDenied, [], "query_store_permission_denied", false, false, 0, 0, QueryStoreState.PermissionDenied); }
+            catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(ex.Number)) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreTimedOut, [], "query_store_timeout", false, false, 0, 0, QueryStoreState.TimedOut); }
+            catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsTransient(ex.Number)) { throw; }
             catch (TimeoutException) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreTimedOut, [], "query_store_timeout", false, false, 0, 0, QueryStoreState.TimedOut); }
             catch (Exception) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreReadFailure, [], "query_store_read_failure", false, false, 0, 0, QueryStoreState.ReadFailure); }
         }
