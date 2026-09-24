@@ -10,6 +10,7 @@ internal static class McpOutputProjection
     // a newly added tool fail closed until its minimum projection is reviewed.
     private static readonly Dictionary<string, HashSet<string>> ToolFields = new(StringComparer.Ordinal)
     {
+        ["list_metric_catalog"] = Fields("version", "checksum", "items"),
         ["list_instances"] = Fields("targets", "nextCursor", "hasMore"),
         ["get_instance_capabilities"] = Fields("targetId", "capabilities", "state", "targetRevision", "snapshotUtc", "repositoryTimeUtc"),
         ["get_instance_health"] = Fields("targetId", "coreCollector", "repositoryTimeUtc", "state", "targetRevision", "snapshotUtc"),
@@ -40,6 +41,7 @@ internal static class McpOutputProjection
     private static readonly Dictionary<string, Dictionary<string, HashSet<string>>> ToolPathFields =
         new(StringComparer.Ordinal)
         {
+            ["list_metric_catalog"] = Paths("items"),
             ["list_instances"] = Paths("targets"),
             ["get_instance_capabilities"] = Paths("capabilities"),
             ["get_instance_health"] = Paths("coreCollector"),
@@ -106,6 +108,7 @@ internal static class McpOutputProjection
 
     private static IReadOnlyCollection<string> ItemFields(string tool) => tool switch
     {
+        "list_metric_catalog" => ["metricKey", "displayName", "unit", "source", "aggregation", "dimensionKeys"],
         "get_active_alerts" => ["alertId", "ruleId", "targetId", "ruleName", "state", "firstObservedUtc", "firedUtc", "acknowledgedUtc", "value", "reason", "deliverySuppressed"],
         "get_metric_series" => ["observedAtUtc", "value", "dimensions"],
         "get_wait_summary" => ["waitType", "waitingTasksCount", "waitTimeMilliseconds", "maximumWaitTimeMilliseconds", "signalWaitTimeMilliseconds", "waitingTasksDelta", "waitTimeMillisecondsDelta", "signalWaitTimeMillisecondsDelta", "baselineAvailable", "resetDetected", "observedAtUtc"],
@@ -149,6 +152,7 @@ internal static class McpOutputProjection
 
     public static IReadOnlyCollection<string> RequiredRootFields(string tool) => tool switch
     {
+        "list_metric_catalog" => ["version", "checksum", "items"],
         "list_instances" => ["targets", "hasMore"],
         "get_instance_capabilities" => ["targetId", "state", "targetRevision", "snapshotUtc", "repositoryTimeUtc"],
         "get_instance_health" => ["targetId", "coreCollector", "repositoryTimeUtc", "state", "snapshotUtc"],
@@ -199,6 +203,19 @@ internal static class McpOutputProjection
 
     public static JsonObject SchemaForField(string tool, string path, string field)
     {
+        if (tool == "list_metric_catalog")
+        {
+            if (path.Length == 0 && field == "version") return new JsonObject { ["type"] = "integer", ["minimum"] = 1 };
+            if (path.Length == 0 && field == "checksum") return new JsonObject { ["type"] = "string", ["pattern"] = "^[0-9a-f]{64}$" };
+            if (path == "items" && field == "source") return new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("host", "replication") };
+            if (path == "items" && field == "aggregation") return new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("gauge", "sum") };
+            if (path == "items" && field == "dimensionKeys") return new JsonObject
+            {
+                ["type"] = "array", ["uniqueItems"] = true,
+                ["items"] = new JsonObject { ["type"] = "string", ["minLength"] = 1, ["maxLength"] = 128 }
+            };
+            if (path == "items" && field is "metricKey" or "displayName" or "unit") return new JsonObject { ["type"] = "string", ["minLength"] = 1 };
+        }
         if (path == "dimensions" && field == "value") return new JsonObject { ["type"] = "string" };
         if (tool == "get_wait_summary" && path == "items" &&
             field is "waitingTasksDelta" or "waitTimeMillisecondsDelta" or "signalWaitTimeMillisecondsDelta")
@@ -289,6 +306,7 @@ internal static class McpOutputProjection
 
     private static string[] RequiredFields(string tool, string path) => (tool, path) switch
     {
+        ("list_metric_catalog", "items") => ["metricKey", "displayName", "unit", "source", "aggregation", "dimensionKeys"],
         ("list_instances", "targets") => ["targetId", "key", "displayName", "lifecycle", "revision", "createdAtUtc", "discoveryRequestedAtUtc", "updatedAtUtc"],
         ("get_instance_capabilities", "capabilities") => ["state", "status", "reason", "revision", "observedAtUtc"],
         ("get_instance_health", "coreCollector") => ["state", "reason", "status", "health", "targetId", "collectorId", "observedAtUtc"],

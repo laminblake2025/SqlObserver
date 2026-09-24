@@ -20,7 +20,7 @@ public sealed class McpBoundaryScaffoldTests
     {
         string[] expected =
         [
-            "list_instances", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
+            "list_instances", "list_metric_catalog", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
             "compare_metric_windows", "get_wait_summary", "get_active_sessions", "get_active_requests", "get_blocking_chain",
             "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
             "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
@@ -28,7 +28,7 @@ public sealed class McpBoundaryScaffoldTests
         ];
 
         Assert.Equal(expected.OrderBy(static n => n), SqlObserver.Mcp.McpCatalog.Definitions.Select(static d => d.Name).OrderBy(static n => n));
-        Assert.Equal(25, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
+        Assert.Equal(26, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
     }
 
     [Fact]
@@ -99,6 +99,7 @@ public sealed class McpBoundaryScaffoldTests
             if (schema.TryGetProperty("enum", out JsonElement values)) return JsonNode.Parse(values.EnumerateArray().First().GetRawText())!;
             if (schema.TryGetProperty("format", out JsonElement format) && format.GetString() == "uuid") return JsonValue.Create("11111111-1111-4111-8111-111111111111")!;
             if (schema.TryGetProperty("pattern", out JsonElement pattern) && pattern.GetString() == "^(0|[1-9][0-9]*)$") return JsonValue.Create("1")!;
+            if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9a-f]{64}$") return JsonValue.Create(new string('a', 64))!;
             if (schema.TryGetProperty("type", out JsonElement type))
             {
                 string selected = type.ValueKind == JsonValueKind.Array

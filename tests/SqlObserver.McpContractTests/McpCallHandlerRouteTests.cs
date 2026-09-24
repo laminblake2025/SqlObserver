@@ -50,7 +50,7 @@ public sealed class McpCallHandlerRouteTests
             Assert.True(result.IsError != true, definition.Name + " " + string.Join(" ", result.Content.OfType<TextContentBlock>().Select(static x => x.Text)));
         }
 
-        Assert.Equal(25, ((RecordingAuditPort)provider.GetRequiredService<IMcpInvocationAuditPort>()).Records.Count);
+        Assert.Equal(26, ((RecordingAuditPort)provider.GetRequiredService<IMcpInvocationAuditPort>()).Records.Count);
         foreach (DefaultProxy proxy in proxies.Values)
             Assert.NotEmpty(proxy.Methods);
 
@@ -200,9 +200,9 @@ public sealed class McpCallHandlerRouteTests
     {
         var args = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         void Put(string key, object value) => args[key] = JsonSerializer.SerializeToElement(value is DateTimeOffset time ? time.UtcDateTime.ToString("O") : value);
-        if (name != "list_instances") Put("instanceId", Instance);
+        if (name is not ("list_instances" or "list_metric_catalog")) Put("instanceId", Instance);
         if (name is "get_metric_series" or "get_blocking_history" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "search_diagnostic_events") { Put("fromUtc", from); Put("toUtc", to); }
-        if (name is not ("get_instance_health" or "get_instance_capabilities" or "get_deadlock" or "get_query_plan_metadata" or "compare_metric_windows" or "get_availability_health")) Put("limit", 1);
+        if (name is not ("list_metric_catalog" or "get_instance_health" or "get_instance_capabilities" or "get_deadlock" or "get_query_plan_metadata" or "compare_metric_windows" or "get_availability_health")) Put("limit", 1);
         if (name is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Put("metricKey", "host.cpu.percent");
         if (name == "get_deadlock") Put("eventId", Event);
         if (name == "get_incident_evidence") Put("threadId", Thread);

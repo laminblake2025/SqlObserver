@@ -45,6 +45,7 @@ internal static class McpWireMapper
     {
         return tool switch
         {
+        "list_metric_catalog" => value is MetricCatalogProjection catalog ? MetricCatalog(catalog) : null,
         "list_instances" => value is ObservationTargetPage p ? O(("targets", A(p.Targets, Target)), ("nextCursor", Cursor(p.NextCursor)), ("hasMore", p.NextCursor is not null)) : null,
         "get_instance_capabilities" => value is ObservationTargetStatusSnapshot s ? Status(s) : null,
         "get_instance_health" => value is InstanceHealthProjection h ? Health(h) : null,
@@ -168,6 +169,13 @@ internal static class McpWireMapper
     private static JsonNode Generation(IncidentGenerationItem x) => O(("threadId", Id(x.ThreadId)), ("generation", x.Generation), ("observedAtUtc", T(x.ObservedAtUtc)), ("correlationSha256", x.CorrelationSha256), ("supersedesPrevious", x.SupersedesPrevious), ("evidencePacketId", NullableId(x.EvidencePacketId)));
     private static JsonNode Diagnostic(DiagnosticEventSearchPage x) => O(("targetId", Id(x.TargetId)), ("fromUtc", T(x.FromUtc)), ("toUtc", T(x.ToUtc)), ("items", A(x.Items, DiagnosticItem)), ("hasMore", x.HasMore), ("nextCursor", Cursor(x.NextCursor)), ("targetRevision", x.TargetRevision.Value), ("snapshotUtc", T(x.SnapshotUtc)));
     private static JsonNode DiagnosticItem(DiagnosticEventItem x) => O(("occurredAtUtc", T(x.OccurredAtUtc)), ("eventId", Id(x.EventId)), ("eventKind", x.EventKind), ("severity", x.Severity), ("safeMetadata", O(("metricKey", x.SafeMetadata.MetricKey), ("participantCount", x.SafeMetadata.ParticipantCount), ("relationCount", x.SafeMetadata.RelationCount), ("parseTruncated", x.SafeMetadata.ParseTruncated))), ("collectedAtUtc", T(x.CollectedAtUtc)), ("targetRevision", x.TargetRevision.Value));
+    private static JsonNode MetricCatalog(MetricCatalogProjection catalog) => O(
+        ("version", catalog.Version), ("checksum", catalog.Checksum),
+        ("items", A(catalog.Items, static entry => O(
+            ("metricKey", entry.MetricKey), ("displayName", entry.DisplayName), ("unit", entry.Unit),
+            ("source", entry.Source), ("aggregation", entry.Aggregation),
+            ("dimensionKeys", new JsonArray(entry.DimensionKeys.Select(static key => (JsonNode?)JsonValue.Create(key)).ToArray()))))));
+
     private static JsonNode Database(DatabaseHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
     private static JsonNode Database(DatabaseFileHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseFileItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
     private static JsonNode DatabaseItem(DatabaseHealthItem x) => O(("observation", O(("databaseId", x.Observation.DatabaseId), ("databaseName", x.Observation.Name.Value), ("state", E(x.Observation.State)), ("observedAtUtc", T(x.Observation.ObservedAtUtc)))), ("collector", Collector(x.Collector)));

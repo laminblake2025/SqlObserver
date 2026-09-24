@@ -81,3 +81,8 @@ agent hit an account usage limit; the final source review was local.
 Incident discovery, a separate metric-catalog tool, dimension-selectable
 forecasts, actual Agent execution time, backup source corrections, split file
 stalls, and all-tools PostgreSQL/native certification remain later work.
+
+Follow-up: [metric-catalog discovery](SqlObserver-Mcp-Metric-Catalog-2026-09-24.md),
+[backup timestamp corrections](SqlObserver-Backup-Timestamp-Fix-2026-09-24.md),
+and [separate file stalls](SqlObserver-File-Stall-Fix-2026-09-24.md) have since
+landed. The counts and test evidence above describe this earlier checkpoint.

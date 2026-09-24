@@ -37,6 +37,7 @@ public sealed class McpCatalogValidationRegressionTests
     private static readonly (string Name, string Title, string Meaning, string Properties)[] Catalog =
     [
         ("list_instances", "List monitored instances", "Call this first", "limit cursor"),
+        ("list_metric_catalog", "List metric definitions", "supported metric definitions", ""),
         ("get_instance_capabilities", "Get capability discovery status", "discovery status", "instanceId"),
         ("get_instance_health", "Get instance collection health", "collection freshness", "instanceId"),
         ("get_active_alerts", "List active alerts", "cannot acknowledge", "instanceId limit cursor"),
@@ -97,7 +98,7 @@ public sealed class McpCatalogValidationRegressionTests
 
         Assert.Equal(protocol, client.NegotiatedProtocolVersion);
         Assert.Equal(Catalog.Select(x => x.Name).Order(StringComparer.Ordinal), tools.Select(x => x.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(25, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(26, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
         var titles = new HashSet<string>(StringComparer.Ordinal);
         foreach ((string name, string title, string meaning, string properties) in Catalog)
         {
@@ -113,7 +114,7 @@ public sealed class McpCatalogValidationRegressionTests
             JsonElement schema = actual.InputSchema;
             Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
             JsonElement advertised = schema.GetProperty("properties");
-            Assert.Equal(properties.Split(' ').Order(StringComparer.Ordinal), advertised.EnumerateObject().Select(x => x.Name).Order(StringComparer.Ordinal));
+            Assert.Equal(properties.Split(' ', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal), advertised.EnumerateObject().Select(x => x.Name).Order(StringComparer.Ordinal));
             foreach (JsonProperty property in advertised.EnumerateObject())
             {
                 string? description = property.Value.GetProperty("description").GetString();
@@ -411,7 +412,7 @@ public sealed class McpCatalogValidationRegressionTests
     private static Dictionary<string, JsonElement> Arguments(string tool)
     {
         var args = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        if (tool != "list_instances") Put(args, "instanceId", Target);
+        if (tool is not ("list_instances" or "list_metric_catalog")) Put(args, "instanceId", Target);
         if (WindowCaps.Any(row => (string)row[0] == tool)) Window(args, Start, Start.AddHours(1));
         if (tool is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Put(args, "metricKey", Metric);
         if (tool == "get_top_queries") Put(args, "metric", "cpuMilliseconds");

@@ -29,23 +29,24 @@ public sealed class M12McpProtocolCertificationTests
     private const string DeniedAttestationVariable = "SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION";
     private const string DeniedAttestationShaVariable = "SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION_SHA256";
     private const int MaximumChildOutputBytes = 64 * 1024;
-    // The reviewed 25-tool catalog includes input descriptions and output
+    // The reviewed 26-tool catalog includes input descriptions and output
     // schemas. Bound its two protocol frames separately from diagnostics.
     private const int MaximumStdioProtocolOutputBytes = 128 * 1024;
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
-    private const int ApprovedToolCount = 25;
-    private const string ApprovedCatalogDigest = "670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304";
-    private const string ApprovedContractSha256 = "1b5405af49782bf81febe3fd9cbd96d440d96bf7d024086ca5b4b1ed78f074f9";
-    private const string ApprovedContractSchemaSha256 = "abfcd4392f42a9fbfedd5aea96fc4e9cb15d3bf8e8dd83826a65cd1a4c366be6";
+    private const int ApprovedToolCount = 26;
+    private const string ApprovedCatalogDigest = "5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8";
+    private const string ApprovedContractSha256 = "ea554b58755380b5a635885a9d3b5f5422bb98ad1a5a2ea1724f058e18dad19d";
+    private const string ApprovedContractSchemaSha256 = "5087f2ebf9cccc57e4e1c5e3a74aaf911fc0736b1995fd87e0a48b5d221b3c92";
     private static readonly string[] ApprovedToolNames =
     [
         "list_instances", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
         "compare_metric_windows", "get_wait_summary", "get_active_sessions", "get_active_requests", "get_blocking_chain",
         "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
         "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
-        "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events"
+        "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
+        "list_metric_catalog"
     ];
     private static readonly string[] JsonRpcResponseProperties = ["jsonrpc", "id", "result", "error"];
     private static readonly string[] SafeResponseMediaTypes = ["application/json", "text/event-stream"];

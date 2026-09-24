@@ -10,8 +10,8 @@
     "contractId": { "const": "m12-mcp-protocol" },
     "currentProtocol": { "const": "2026-07-28" },
     "downlevelProtocol": { "const": "2025-11-25" },
-    "toolCount": { "const": 25 },
-    "catalogDigest": { "const": "670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304" },
-    "serverVersion": { "const": "m11-2.2.0+catalog-670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304" }
+    "toolCount": { "const": 26 },
+    "catalogDigest": { "const": "5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8" },
+    "serverVersion": { "const": "m11-2.2.0+catalog-5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8" }
   }
 }

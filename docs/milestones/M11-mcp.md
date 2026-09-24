@@ -9,7 +9,7 @@ SQL Server, collector, target-credential, or administrative-service dependency.
 
 ## Fixed authority
 
-The runtime catalog contains exactly these read-only tools:
+The runtime catalog contains exactly these 26 read-only tools:
 
 `list_instances`, `get_instance_capabilities`, `get_instance_health`,
 `get_active_alerts`, `get_metric_series`, `compare_metric_windows`,
@@ -19,7 +19,7 @@ The runtime catalog contains exactly these read-only tools:
 `get_query_plan_metadata`, `get_database_health`, `get_tempdb_health`,
 `get_file_io`, `get_storage_forecast`, `get_backup_status`,
 `get_job_failures`, `get_availability_health`, `get_incident_evidence`, and
-`search_diagnostic_events`.
+`search_diagnostic_events`, and `list_metric_catalog`.
 
 Registration is explicit and one-to-one with the catalog. Every schema is
 closed, every tool is annotated read-only, idempotent, non-destructive, and
@@ -33,8 +33,13 @@ prompt, sampling, root, elicitation, task, app, or administrative capability.
 principal. The Server resolves the principal through the existing Windows group
 role resolver; caller-supplied identities, roles, groups, target scopes, bearer
 tokens, and trusted identity headers are not inputs. Every tool then calls an
-authorized Application query service, which rejects inactive identities,
-missing roles, disabled targets, and cross-target access before repository I/O.
+authorized Application query service, which rejects inactive identities and
+missing roles. Instance reads reject disabled targets and cross-target access
+before repository I/O. The static `list_metric_catalog` call requires Viewer,
+Operator, or TargetAdministrator, accepts no arguments, reads no repository or
+instance data, and records a null target in its audit. Target-scoped read grants
+can discover these same embedded definitions without gaining additional target
+access.
 
 The stdio bridge accepts only a configured HTTPS `/mcp` URI without userinfo,
 query, fragment, redirect, or certificate-validation bypass. It uses Windows
@@ -56,6 +61,12 @@ provider errors, job commands/messages, physical paths, credentials, and
 arbitrary analytics JSON are excluded. Metric and diagnostic pagination freeze
 repository-clock snapshots and use complete tie keys, including equal-timestamp
 cases. The MCP bridge never opens the repository or a monitored target.
+
+`list_metric_catalog` returns the catalog version/checksum and enabled metric
+keys, display names, units, source, aggregation, and allowed dimension keys.
+It returns the complete bounded definition list without pagination. Definitions
+describe supported inputs; they do not report available samples or collection
+coverage on any instance.
 
 Successful calls expose a stable structured-output envelope, `{ data: ... }`,
 whose closed schema is advertised on every tool; the text content carries the

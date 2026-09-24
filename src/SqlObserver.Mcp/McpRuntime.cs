@@ -40,8 +40,8 @@ public static class McpCatalog
     public const string DownlevelProtocolVersion = "2025-11-25";
     // Reviewed catalog approval point. Digest is re-derived below and must
     // agree, so changing the catalog cannot silently retain this identity.
-    public const string ApprovedCatalogDigest = "670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304";
-    public const string ServerVersion = "m11-2.2.0+catalog-670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304";
+    public const string ApprovedCatalogDigest = "5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8";
+    public const string ServerVersion = "m11-2.2.0+catalog-5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {
@@ -49,7 +49,8 @@ public static class McpCatalog
         "compare_metric_windows", "get_wait_summary", "get_active_sessions", "get_active_requests", "get_blocking_chain",
         "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
         "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
-        "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events"
+        "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
+        "list_metric_catalog"
     }.Select(static name => new McpToolDefinition(name, McpCatalogDescriptions.Tool(name).Title, McpCatalogDescriptions.Tool(name).Description, SchemaFor(name))).ToArray();
 
     private static string SchemaFor(string name)
@@ -64,13 +65,13 @@ public static class McpCatalog
             if (key == "horizonDays") property["default"] = 30;
             properties[key] = property;
         }
-        if (name != "list_instances") Add("instanceId", "{\"type\":\"string\",\"format\":\"uuid\"}");
+        if (name is not ("list_instances" or "list_metric_catalog")) Add("instanceId", "{\"type\":\"string\",\"format\":\"uuid\"}");
         bool window = McpCursorContinuation.HasPagedWindow(name);
         if (window) { Add("fromUtc", "{\"type\":\"string\",\"format\":\"date-time\"}"); Add("toUtc", "{\"type\":\"string\",\"format\":\"date-time\"}"); }
         // The combined AG view is a bounded summary. Replica/database child
         // streams have independent orderings, so one merged MCP cursor would
         // not be a truthful continuation contract.
-        bool paged = name is not ("get_instance_health" or "get_instance_capabilities" or "get_deadlock" or "get_query_plan_metadata" or "compare_metric_windows" or "get_availability_health");
+        bool paged = name is not ("get_instance_health" or "get_instance_capabilities" or "get_deadlock" or "get_query_plan_metadata" or "compare_metric_windows" or "get_availability_health" or "list_metric_catalog");
         if (paged) Add("limit", $"{{\"type\":\"integer\",\"minimum\":1,\"maximum\":{LimitMaximum(name)}}}");
         if (paged) Add("cursor", $$"""{"type":"string","minLength":1,"maxLength":{{McpCursorSigner.MaximumTokenLength}},"pattern":"^[A-Za-z0-9_-]{1,{{McpCursorSigner.MaximumTokenLength}}}$"}""");
         if (name is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Add("metricKey", "{\"type\":\"string\",\"minLength\":1,\"maxLength\":128}");
@@ -85,7 +86,7 @@ public static class McpCatalog
         var root = new JsonObject { ["type"] = "object", ["properties"] = properties, ["additionalProperties"] = false };
         string[] required = name switch
         {
-            "list_instances" => [],
+            "list_instances" or "list_metric_catalog" => [],
             "get_deadlock" => ["instanceId", "eventId"],
             "get_incident_evidence" => ["instanceId", "threadId"],
             "get_metric_series" or "get_storage_forecast" => ["instanceId", "metricKey"],
@@ -360,7 +361,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
     private static McpAuditSnapshot CaptureAuditSnapshot(string toolName, IDictionary<string, JsonElement> arguments)
     {
         JsonElement parameters = JsonSerializer.SerializeToElement(arguments, AuditSnapshotOptions).Clone();
-        Guid? target = ReadAuditGuid(parameters, "instanceId");
+        Guid? target = toolName == "list_metric_catalog" ? null : ReadAuditGuid(parameters, "instanceId");
         Guid? incident = toolName == "get_incident_evidence" ? ReadAuditGuid(parameters, "threadId") : null;
         return new McpAuditSnapshot(parameters, target, incident);
     }
@@ -411,6 +412,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
         }
         object? value = name switch
         {
+            "list_metric_catalog" => MetricCatalogQueryService.Get(authorization),
             "list_instances" => await ListInstancesAsync(authorization, limit, continuation?.Read<ObservationTargetListCursor>(JsonOptions), timeout, token).ConfigureAwait(false),
             "get_instance_capabilities" when id.HasValue => await _services.GetRequiredService<IObservationTargetStatusQueryService>().GetAsync(new GetObservationTargetStatusQuery(authorization, new MonitoredInstanceId(id.Value), timeout), token).ConfigureAwait(false),
             "get_instance_health" when id.HasValue => await _services.GetRequiredService<IHealthProjectionQueryService>().GetInstanceAsync(new GetInstanceHealthQuery(authorization, new MonitoredInstanceId(id.Value), timeout), token).ConfigureAwait(false),

@@ -12,6 +12,7 @@ MCP clients need structured access to diagnostic evidence, but protocol input an
 Expose only these allowlisted, read-only diagnostic tools:
 
 - `list_instances`
+- `list_metric_catalog`
 - `get_instance_capabilities`
 - `get_instance_health`
 - `get_active_alerts`
@@ -42,6 +43,8 @@ There is no `execute_sql` tool. MCP cannot kill sessions, change configuration, 
 Protocol handling stays behind an adapter. At Milestone 11, use the latest stable official C# MCP SDK verified at implementation time. If the newest 2.x line remains preview, ship the current stable 1.x SDK and run compatibility tests against 2.x/current protocol behavior.
 
 The stdio bridge authenticates to `SqlObserver.Server`; it has no target or repository credential. Tools invoke approved application services that apply the same server-side RBAC, target scope, field filtering, UTC semantics, pagination, and time/row/byte/execution/concurrency limits as other clients. Every invocation, including denial and bounded failure, is audited without copying sensitive result content into the audit record.
+
+`list_metric_catalog` returns embedded metric definitions without reading instance data or the repository. It accepts no arguments and requires an active Viewer, Operator, or TargetAdministrator role, including grants scoped to particular targets. Its audit has no target identifier. Catalog membership does not establish collection availability on an instance; subsequent instance queries retain their exact target-scope checks.
 
 ## Consequences
 
