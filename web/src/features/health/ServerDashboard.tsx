@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { TimeRangeControls } from "../../components/TimeRangeControls";
 import { OverviewChart } from "../overview/OverviewChart";
 import { issueHref, overviewEvidenceFooter, overviewHref, rankedIssues } from "../overview/overviewModel";
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
@@ -39,9 +38,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
   return <section className="server-dashboard" aria-labelledby="server-dashboard-heading">
     <div className="section-heading"><div><p className="eyebrow">Server dashboard</p><h3 id="server-dashboard-heading">Investigate {displayName}</h3></div></div>
     <div className="overview-controls server-dashboard-controls">
-      <TimeRangeControls scope={selectedScope} onChange={change} />
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
-      <span className="server-dashboard-mode">{scope.range === "custom" ? "Rewind · fixed UTC window" : "Live · moving UTC window, refresh every 60 seconds"}. Drag a chart to select a shared window.</span>
+      <span className="server-dashboard-mode">Drag a chart to select a shared UTC window. Live ranges refresh every 60 seconds.</span>
     </div>
     {result.loading && <p role="status">Loading server timeline…</p>}
     {result.error && <p role="alert" className="status-message">{result.error}</p>}

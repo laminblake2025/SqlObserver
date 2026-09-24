@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { aggregateValue, displayMetric, issueHref, overviewEvidenceFooter, overviewHref, overviewResourceObservationText, rankedIssues, readOverviewScope } from './overviewModel';
 import { useOverviewAnalytics } from './useOverviewAnalytics';
 import { OverviewChart } from './OverviewChart';
-import { TimeRangeControls } from '../../components/TimeRangeControls';
 import type { OverviewResource } from './overviewTypes';
 
 const labels:Record<string,string>={'host.cpu.percent':'Host CPU','host.memory.available_bytes':'Available host memory','host.volume.free_bytes':'Volume free space','host.volume.read_latency_ms':'Volume read latency','host.volume.write_latency_ms':'Volume write latency','replication.latency_seconds':'Replication latency (worst subscription)'};
@@ -38,10 +37,9 @@ export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd
   const renderResources=(rows:readonly OverviewResource[],destination:string)=>rows.length ? <ul className="overview-resources">{rows.map((r,i)=><li key={`${r.targetId}:${r.label}:${i}`}><div><a href={href(destination,r.targetId)}>{r.server}</a><span>{Object.entries(labels).reduce((label,[key,name])=>label.replace(key,name),r.label)}</span></div><div><strong>{displayMetric(r.value)} <small>{r.unit}</small></strong><small>{overviewResourceObservationText(r,data?.refreshedAtUtc??'')}</small></div></li>)}</ul>:<p className="overview-empty">No observations available for this selection.</p>;
   return <div className="overview-page">
     <div className="overview-controls"><label>Server<select aria-label="Overview server" value={scope.target} onChange={e=>navigate({target:e.target.value})}><option value="">All servers</option>{scope.target&&!choices.some(t=>t.targetId===scope.target)&&<option value={scope.target}>Selected server</option>}{choices.map(t=><option key={t.targetId} value={t.targetId}>{t.displayName}{t.lifecycle!=='active'?` · ${t.lifecycle}`:''}</option>)}</select></label>
-      <TimeRangeControls scope={scope} onChange={navigate}/>
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={e=>navigate({compare:e.target.checked})}/>Compare previous period</label>
       <label className="overview-check"><input type="checkbox" checked={automatic} disabled={scope.range==='custom'} onChange={e=>setAutomatic(e.target.checked)}/>Refresh every 60s</label>
-      <span className="server-dashboard-mode">{scope.range==='custom'?'Rewind · fixed UTC window':'Live · moving UTC window'}. Drag a chart to select a shared window.</span>
+      <span className="server-dashboard-mode">Drag a chart to select a shared UTC window.</span>
     </div>
     {result.loading&&<p role="status" className="overview-coverage">Loading analytics for {scope.target?'the selected server':'all authorized servers'}…</p>}
     {result.error&&<p role="alert" className="status-message">{result.error}</p>}

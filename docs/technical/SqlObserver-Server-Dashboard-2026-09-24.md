@@ -37,6 +37,15 @@ Activity carry the issue's target, selected range, and observation time;
 other destinations keep the selected range without claiming an event-time
 snapshot.
 
+The UTC range control now sits in the workspace header on Overview, Server
+summary, Activity, Query performance, and Deadlocks. Navigation among those
+screens keeps the range in the URL, including an Activity event selection when
+the range changes. Current-only Alerts and Operations retain their own
+evidence semantics; the header does not imply that they have historical
+projections yet. Choosing Custom freezes the current window immediately, so
+the dashboard stays populated while a compact UTC editor is open. Applying
+the editor updates the URL and closes it.
+
 The dashboard adds a target-scoped Overview request alongside the existing
 health request. Overview currently composes live reads, so its known latency
 remains until the planned precomputed latest-status projection replaces it.
@@ -52,3 +61,5 @@ Focused Deadlocks URL-window, pagination, and navigation-link tests and
 TypeScript validation passed after the Deadlocks range integration.
 Focused fleet URL and chart interaction tests and the production web build
 passed after the fleet chart integration.
+The shared header was checked in the synthetic fleet browser at desktop
+width, including Custom selection and applying its prefilled UTC bounds.

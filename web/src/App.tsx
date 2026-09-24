@@ -3,6 +3,7 @@ import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
 import { PageHeading } from "./components/DiagnosticUi";
+import { TimeRangeControls } from "./components/TimeRangeControls";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
 import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
@@ -19,7 +20,7 @@ import { getObservationTarget, listObservationTargets } from "./features/targets
 import { canAcknowledgeAlert, canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
-import { destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
+import { activityHistoryHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
 
 const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], string>> = {
   overview: "⌂",
@@ -125,6 +126,13 @@ export function App() {
 
   const selected = listedTarget ?? (currentDirectTargetLookup?.state === "resolved" ? currentDirectTargetLookup.target : undefined);
   const scope = readOverviewScope(location.hash);
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks";
+  const changeTimeContext = (next: Partial<typeof scope>) => {
+    const selectedScope = { ...scope, ...next };
+    location.hash = route.page === "activity" && route.activityAtUtc
+      ? activityHistoryHref(route.target, route.activityAtUtc, route.activityEventId, selectedScope)
+      : overviewHref(selectedScope, route.page, route.target);
+  };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
   const canAddServer = canRegisterTarget(myAccess);
   const queryWindow = useMemo(
@@ -192,8 +200,11 @@ export function App() {
 
       <div className="workspace">
         <header className="topbar">
-          <span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span>
-          <span className="topbar-meta">UTC <span className="topbar-separator">·</span> Read-only evidence</span>
+          <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">UTC <span className="topbar-separator">·</span> Read-only evidence</span></div>
+          {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
+            <TimeRangeControls scope={scope} onChange={changeTimeContext} />
+            <span className="topbar-time-mode">{scope.range === "custom" ? "Rewind · fixed UTC" : "Live · moving UTC"}</span>
+          </div>}
         </header>
         <main id="main-content" tabIndex={-1} className="shell">
           <PageHeading
