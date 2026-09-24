@@ -16,7 +16,7 @@ import { ReportsPanel } from "./features/reports/ReportsPanel";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
 import { ServersPage } from "./features/targets/ServersPage";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
-import { canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
+import { canAcknowledgeAlert, canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
@@ -239,7 +239,7 @@ export function App() {
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
               {route.page === "deadlocks" && <TargetDeadlockPanel {...props} />}
-              {route.page === "alerts" && <TargetAlertsPanel {...props} />}
+              {route.page === "alerts" && <TargetAlertsPanel {...props} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={refresh} surface={surface} onSurfaceChange={setSurface} />}

@@ -45,6 +45,11 @@ export function canRegisterTarget(access: MyAccess | undefined): boolean {
   return access?.active === true && access.allTargetRoles.includes("TargetAdministrator");
 }
 
+export function canAcknowledgeAlert(access: MyAccess | undefined, targetId: string): boolean {
+  return access?.active === true && access.targetId?.toLowerCase() === targetId.toLowerCase()
+    && (access.targetRoles.includes("Operator") || access.targetRoles.includes("TargetAdministrator"));
+}
+
 export async function getMyAccess(targetId: string | null, signal: AbortSignal): Promise<MyAccess> {
   if (targetId !== null && !guid.test(targetId)) throw new Error("Access information is unavailable.");
   const query = targetId === null ? "" : `?targetId=${encodeURIComponent(targetId)}`;
