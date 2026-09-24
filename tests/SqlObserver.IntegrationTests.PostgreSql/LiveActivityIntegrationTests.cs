@@ -12,6 +12,45 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class LiveActivityIntegrationTests(PostgreSql18Fixture fixture)
 {
     [Fact]
+    public async Task TargetSelectionRotatesAcrossTheFleetInsteadOfStarvingTargetsAfterTheFirstTen()
+    {
+        await using var database=await fixture.CreateDatabaseAsync();
+        var timeout=new RepositoryCallTimeout(TimeSpan.FromSeconds(30));
+        var migrated=await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults,timeout),CancellationToken.None);
+        Assert.False(migrated.HasFailures);
+
+        await using(var seed=database.DataSource.CreateCommand("""
+            INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+                authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
+            SELECT gen_random_uuid(),'live-rotation-'||g,'Live rotation','sql01',1433,interval '5 seconds',
+                'windows_integrated_service_identity','mandatory_validated','active',1,
+                statement_timestamp(),statement_timestamp(),statement_timestamp()
+            FROM generate_series(1,25) g
+            """))
+            await seed.ExecuteNonQueryAsync();
+
+        await using var collectorSource=database.CreateCollectorDataSource();
+        var repository=new PostgreSqlLiveActivityRepository(collectorSource);
+        var seen=new HashSet<Guid>();
+        for(var cycle=0;cycle<3;cycle++)
+        {
+            var targets=await repository.TargetsAsync(CancellationToken.None);
+            Assert.Equal(10,targets.Count);
+            foreach(var target in targets) seen.Add(target.Id);
+            await using var captured=database.DataSource.CreateCommand("""
+                INSERT INTO live_activity.snapshot(id,target_id,revision,observed_at,truncated)
+                SELECT gen_random_uuid(),t.instance_id,t.revision,clock_timestamp(),false
+                FROM control.observation_target t WHERE t.instance_id=ANY(@ids)
+                """);
+            captured.Parameters.AddWithValue("ids",targets.Select(target=>target.Id).ToArray());
+            await captured.ExecuteNonQueryAsync();
+        }
+
+        Assert.Equal(25,seen.Count);
+    }
+
+    [Fact]
     public async Task FilteringPagingLifetimesMinuteSnapshotsAndExpiryAreRepositoryBounded()
     {
         await using var database=await fixture.CreateDatabaseAsync();
