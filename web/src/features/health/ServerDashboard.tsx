@@ -3,6 +3,7 @@ import { OverviewChart } from "../overview/OverviewChart";
 import { issueHref, overviewEvidenceFooter, overviewHref, rankedIssues } from "../overview/overviewModel";
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
+import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
   readonly instanceId: string;
@@ -62,6 +63,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
         {chart("host.cpu.percent", "Host CPU", "Host CPU is not SQL process CPU. SQL process CPU is not yet collected for this chart.")}
       </div>
+      <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={refresh} />
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       <p className="activity-evidence">{overviewEvidenceFooter(data)}</p>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
