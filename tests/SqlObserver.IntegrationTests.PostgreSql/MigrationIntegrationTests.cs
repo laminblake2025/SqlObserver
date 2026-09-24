@@ -202,10 +202,10 @@ public sealed class MigrationIntegrationTests
             INSERT INTO events.query_performance_query(collection_run_id,instance_id,database_id,query_fingerprint)
             SELECT id,target,5,decode(repeat('11',32),'hex')
             FROM (VALUES(@run,@target),(@otherRun,@other)) AS runs(id,target);
-            INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics)
-            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval'),
-                  (@run,5,decode(repeat('11',32),'hex'),decode(repeat('33',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval'),
-                  (@otherRun,5,decode(repeat('11',32),'hex'),decode(repeat('66',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval');
+            INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics,cpu_ms)
+            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval',10),
+                  (@run,5,decode(repeat('11',32),'hex'),decode(repeat('33',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval',10),
+                  (@otherRun,5,decode(repeat('11',32),'hex'),decode(repeat('66',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval',999);
             """, connection))
         {
             seed.Parameters.AddWithValue("target", target);
@@ -221,13 +221,23 @@ public sealed class MigrationIntegrationTests
         Assert.False(upgrade.HasFailures);
         Assert.Equal(89, Assert.Single(upgrade.Results).Migration.Number.Value);
 
+        await using (var newQuery = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_query(collection_run_id,instance_id,database_id,query_fingerprint)
+            VALUES(@run,@target,5,decode(repeat('22',32),'hex'));
+            """, connection))
+        {
+            newQuery.Parameters.AddWithValue("run", run);
+            newQuery.Parameters.AddWithValue("target", target);
+            await newQuery.ExecuteNonQueryAsync();
+        }
+
         await using (NpgsqlTransaction scoped = await connection.BeginTransactionAsync())
         {
             await using var newObservation = new NpgsqlCommand("""
             SET LOCAL ROLE sqlobserver_migrator;
             SELECT pg_catalog.set_config('sqlobserver.target_scope',@scope,true);
-            INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics)
-            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('44',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval');
+            INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics,cpu_ms)
+            VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('44',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval',20);
             """, connection, scoped);
             newObservation.Parameters.AddWithValue("run", run);
             newObservation.Parameters.AddWithValue("scope", target.ToString("D"));
@@ -287,9 +297,21 @@ public sealed class MigrationIntegrationTests
         }
 
         Assert.Equal((1, false), await BackfillQueryIdentityAsync(connection, target, target, 1));
+        MigrationBatchResult rankingMigration = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(2, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(rankingMigration.HasFailures);
+        Assert.Collection(rankingMigration.Results,
+            first => Assert.Equal(92, first.Migration.Number.Value),
+            second => Assert.Equal(93, second.Migration.Number.Value));
+        Assert.Collection(await ReadTopCpuAsync(connection, target),
+            first => Assert.Equal(20L, first), second => Assert.Equal(10L, second));
+
         Assert.Equal((1, false), await BackfillQueryIdentityAsync(connection, target, target, 1));
         Assert.Equal((0, true), await BackfillQueryIdentityAsync(connection, target, target, 1));
         Assert.Equal((0, true), await BackfillQueryIdentityAsync(connection, target, target, 1));
+        Assert.Collection(await ReadTopCpuAsync(connection, target),
+            first => Assert.Equal(20L, first), second => Assert.Equal(10L, second));
 
         PostgresException denied = await Assert.ThrowsAsync<PostgresException>(
             () => BackfillQueryIdentityAsync(connection, target, other, 1));
@@ -365,6 +387,32 @@ public sealed class MigrationIntegrationTests
         await reader.CloseAsync();
         await transaction.CommitAsync();
         return result;
+    }
+
+    private static async Task<IReadOnlyList<long>> ReadTopCpuAsync(NpgsqlConnection connection, Guid target)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_server;
+            SELECT pg_catalog.set_config('sqlobserver.target_scope',@scope,true);
+            """, connection, transaction))
+        {
+            setup.Parameters.AddWithValue("scope", target.ToString("D"));
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        await using var command = new NpgsqlCommand("""
+            SELECT cpu_ms FROM control.get_top_queries_projection(
+              @target,now()-interval '10 minutes',now()+interval '1 minute',
+              'cpu',10,NULL,NULL,NULL,NULL,NULL,NULL,NULL,now()+interval '1 minute');
+            """, connection, transaction);
+        command.Parameters.AddWithValue("target", target);
+        var values = new List<long>();
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync()) values.Add(reader.GetInt64(0));
+        await reader.CloseAsync();
+        await transaction.CommitAsync();
+        return values;
     }
 
     [Fact]
