@@ -125,13 +125,15 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0088`
+The migration catalog contains the exact, contiguous `0001` through `0089`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
 commits ordinary migrations and their ledger rows in one transaction. Migration
 `0088` builds a query-performance index concurrently outside a transaction;
 the runner checks the index and records the ledger only after a valid build.
+Migration `0089` adds a nullable query-observation target key and fills it on
+new inserts; historical observations await a bounded backfill.
 
 **Do not run the SQL files individually with `psql -f`.** Doing so bypasses the
 runner-owned migration mode, advisory lock, checksum validation, and

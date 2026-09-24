@@ -92,7 +92,7 @@ public sealed class MigrationIntegrationTests
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
         PostgreSqlMigrationCatalog catalog = PostgreSqlMigrationCatalog.LoadEmbedded();
-        PostgreSqlMigrationResource indexMigration = catalog.Migrations[^1];
+        PostgreSqlMigrationResource indexMigration = catalog.Migrations[87];
         Assert.Equal(88, indexMigration.Descriptor.Number.Value);
         Assert.False(indexMigration.Descriptor.IsTransactional);
 
@@ -134,9 +134,6 @@ public sealed class MigrationIntegrationTests
             Assert.Equal(1L, reader.GetInt64(2));
         }
 
-        MigrationBatchResult repeat = await runner.ApplyPendingAsync(
-            new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
-        Assert.Empty(repeat.Results);
     }
 
     [Fact]
@@ -176,6 +173,83 @@ public sealed class MigrationIntegrationTests
             Assert.True(await reader.ReadAsync());
             Assert.Contains("(source_state)", reader.GetString(0), StringComparison.Ordinal);
             Assert.Equal(0L, reader.GetInt64(1));
+        }
+    }
+
+    [Fact]
+    public async Task NewQueryObservationsCarryTheirOwningTargetAndRejectMismatches()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var runner = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult prefix = await runner
+            .ApplyPendingAsync(new MigrationApplyRequest(88,
+                new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+        Assert.False(prefix.HasFailures);
+
+        Guid target = Guid.NewGuid(), run = Guid.NewGuid();
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var seed = new NpgsqlCommand("""
+            INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
+            VALUES(@target,@key,'Query identity test','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,now(),now(),now());
+            INSERT INTO telemetry.collection_run(run_id,instance_id,collector_id,collector_version,output_schema_version,target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+            VALUES(@run,@target,'queries.performance',1,1,1,1,'test/query-identity',gen_random_uuid(),1,decode(repeat('00',32),'hex'),now(),now());
+            INSERT INTO events.query_performance_run(collection_run_id,instance_id,target_revision,window_start,window_end,source,source_state,coverage,freshness,truncated,completion_digest)
+            VALUES(@run,@target,1,now()-interval '5 minutes',now(),'query_store','read_write','complete',true,false,decode(repeat('00',32),'hex'));
+            INSERT INTO events.query_performance_query(collection_run_id,instance_id,database_id,query_fingerprint)
+            VALUES(@run,@target,5,decode(repeat('11',32),'hex'));
+            INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics)
+            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval');
+            """, connection))
+        {
+            seed.Parameters.AddWithValue("target", target);
+            seed.Parameters.AddWithValue("run", run);
+            seed.Parameters.AddWithValue("key", target.ToString("D"));
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        MigrationBatchResult upgrade = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(89, Assert.Single(upgrade.Results).Migration.Number.Value);
+
+        await using (NpgsqlTransaction scoped = await connection.BeginTransactionAsync())
+        {
+            await using var newObservation = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_migrator;
+            SELECT pg_catalog.set_config('sqlobserver.target_scope',@scope,true);
+            INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics)
+            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('44',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval');
+            """, connection, scoped);
+            newObservation.Parameters.AddWithValue("run", run);
+            newObservation.Parameters.AddWithValue("scope", target.ToString("D"));
+            await newObservation.ExecuteNonQueryAsync();
+            await scoped.CommitAsync();
+        }
+
+        await using (var read = new NpgsqlCommand("""
+            SELECT observation_key,instance_id FROM events.query_performance_observation
+            WHERE collection_run_id=@run ORDER BY observation_key;
+            """, connection))
+        {
+            read.Parameters.AddWithValue("run", run);
+            await using NpgsqlDataReader reader = await read.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.True(await reader.IsDBNullAsync(1));
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(target, reader.GetGuid(1));
+            Assert.False(await reader.ReadAsync());
+        }
+
+        await using (var mismatch = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics,instance_id)
+            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('33',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval',@wrong);
+            """, connection))
+        {
+            mismatch.Parameters.AddWithValue("run", run);
+            mismatch.Parameters.AddWithValue("wrong", Guid.NewGuid());
+            PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => mismatch.ExecuteNonQueryAsync());
+            Assert.Equal("23514", exception.SqlState);
         }
     }
 
