@@ -24,7 +24,7 @@ public sealed class SqlServerActivityIntegrationTests
         Assert.Equal(
             ["activity.sessions", "activity.requests", "waits.server", "blocking.current"],
             catalog.Collectors.Select(static asset => asset.Manifest.Id.Value));
-        Assert.Equal("56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191", catalog.BundleChecksum);
+        Assert.Equal("d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8", catalog.BundleChecksum);
         Assert.Equal(
             "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
             SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
@@ -81,6 +81,8 @@ public sealed class SqlServerActivityIntegrationTests
                 Assert.Contains("TOP (@maximum_rows)", sql, StringComparison.Ordinal);
                 Assert.Contains("ORDER BY", sql, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains(expectedDmvs[collectorIndex], sql, StringComparison.Ordinal);
+                if (collectorIndex == 2)
+                    Assert.Contains("AND waits.waiting_tasks_count > 0", sql, StringComparison.Ordinal);
                 int selectEnd = sql.IndexOf("\nFROM ", StringComparison.Ordinal);
                 Assert.True(selectEnd > 0);
                 Assert.DoesNotContain("@@SPID", sql[..selectEnd], StringComparison.Ordinal);

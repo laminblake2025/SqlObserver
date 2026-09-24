@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0107`
+The migration catalog contains the exact, contiguous `0001` through `0109`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -134,6 +134,11 @@ commits ordinary migrations and their ledger rows in one transaction. Migration
 the runner checks the index and records the ledger only after a valid build.
 Migration `0106` uses the same guarded concurrent-index mode for fleet alert
 reads; `0107` adds the bounded projection function granted to the Server role.
+Migration `0108` rebinds the pinned M5 activity bundle after the wait collector
+stops returning wait types whose cumulative task count is zero. It does not
+rewrite historical wait snapshots or collector schedules.
+Migration `0109` binds the current backup and availability-group assets after
+their earlier source update, preserving historical runs and schedules.
 Migration `0089` adds a nullable query-observation target key and fills it on
 new inserts. Migrations `0090`–`0091` add a target-ordered index and a bounded
 database backfill operation for historical observations. The backfill is not

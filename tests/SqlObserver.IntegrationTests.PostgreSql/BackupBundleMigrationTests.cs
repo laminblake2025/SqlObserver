@@ -27,8 +27,9 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
         string currentBundle = SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum;
         Assert.All(entries.Skip(9).Take(4), entry => Assert.Equal(currentBundle, entry.AssetBundleDigest.Value));
-        CollectorCatalogEntry[] backupEntries = WithBackupBundle(entries, UpdatedBackupBundle);
-        CollectorCatalogEntry[] priorEntries = WithBackupBundle(entries, PriorBackupBundle);
+        CollectorCatalogEntry[] m85Entries = WithActivityBundle(entries, M80Bundle);
+        CollectorCatalogEntry[] backupEntries = WithBackupBundle(m85Entries, UpdatedBackupBundle);
+        CollectorCatalogEntry[] priorEntries = WithBackupBundle(m85Entries, PriorBackupBundle);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
         Assert.Equal(15, await ReconcileDirectAsync(collector, priorEntries, lease));
@@ -99,6 +100,51 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         await AssertAppendOnlyTriggerAsync(database);
     }
 
+    [Fact]
+    public async Task CurrentOperationalBundleUpgradePreservesHistoricalRunsAndSchedules()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(108);
+        await SeedHistoricalRunAsync(database);
+        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: true);
+        string historyBefore = await ReadHistoryAndSchedulesAsync(database);
+        Assert.Equal(Enumerable.Repeat("8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593", 4), await ReadBackupBundlesAsync(database));
+
+        MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(109, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        await AssertAppendOnlyTriggerAsync(database);
+    }
+
+    [Fact]
+    public async Task CurrentOperationalBundleUpgradeRejectsUnexpectedPriorPinAtomically()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(108);
+        await using (var corrupt = database.DataSource.CreateCommand("""
+            ALTER TABLE control.collector_contract DISABLE TRIGGER collector_contract_append_only;
+            UPDATE control.collector_contract SET asset_bundle_sha256=decode(repeat('ff',32),'hex')
+            WHERE collector_id='availability-groups.health' AND collector_version=1;
+            ALTER TABLE control.collector_contract ENABLE TRIGGER collector_contract_append_only;
+            """)) await corrupt.ExecuteNonQueryAsync();
+        string[] before = await ReadBackupBundlesAsync(database);
+
+        MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        MigrationExecutionResult failure = Assert.Single(result.Results);
+        Assert.Equal(109, failure.Migration.Number.Value);
+        Assert.Equal(MigrationOutcome.Failed, failure.Outcome);
+        Assert.Equal("postgres_55000", failure.FailureCode);
+        Assert.Equal(before, await ReadBackupBundlesAsync(database));
+        await using var ledger = database.DataSource.CreateCommand("SELECT max(migration_number) FROM system.schema_migration;");
+        Assert.Equal(108, Assert.IsType<int>(await ledger.ExecuteScalarAsync()));
+        await AssertAppendOnlyTriggerAsync(database);
+    }
+
     private static CollectorCatalogEntry[] WithBackupBundle(CollectorCatalogEntry[] entries, string bundle) =>
         entries.Select(entry => entry.Manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health"
             ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
@@ -112,7 +158,15 @@ public sealed partial class PassiveCollectorBundleMigrationTests
 
     private static async Task<string> ReadBackupBundleRegistryAsync(RepositoryTestDatabase database, bool omitBundle)
     {
-        await using var command = database.DataSource.CreateCommand("SELECT jsonb_agg(CASE WHEN @omit_bundle AND collector_id IN ('backups.status','sql-agent.failures','tempdb.health','availability-groups.health') AND collector_version=1 THEN to_jsonb(c)-'asset_bundle_sha256' ELSE to_jsonb(c) END ORDER BY collector_id,collector_version)::text FROM control.collector_contract c");
+        await using var command = database.DataSource.CreateCommand("""
+            SELECT jsonb_agg(CASE WHEN @omit_bundle AND collector_version=1
+                AND collector_id IN ('backups.status','sql-agent.failures','tempdb.health',
+                    'availability-groups.health','activity.sessions','activity.requests',
+                    'waits.server','blocking.current')
+                THEN to_jsonb(c)-'asset_bundle_sha256' ELSE to_jsonb(c) END
+                ORDER BY collector_id,collector_version)::text
+            FROM control.collector_contract c;
+            """);
         command.Parameters.AddWithValue("omit_bundle", omitBundle);
         return Assert.IsType<string>(await command.ExecuteScalarAsync());
     }

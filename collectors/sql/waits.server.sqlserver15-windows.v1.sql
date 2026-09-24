@@ -9,6 +9,7 @@ SELECT TOP (@maximum_rows)
     waits.signal_wait_time_ms
 FROM sys.dm_os_wait_stats AS waits
 WHERE waits.wait_type IS NOT NULL
+  AND waits.waiting_tasks_count > 0
   AND LEN(RTRIM(waits.wait_type)) BETWEEN 1 AND 120
   AND RTRIM(waits.wait_type) COLLATE Latin1_General_100_BIN2 LIKE N'[A-Za-z]%'
   AND RTRIM(waits.wait_type) COLLATE Latin1_General_100_BIN2 NOT LIKE N'%[^A-Za-z0-9_]%'

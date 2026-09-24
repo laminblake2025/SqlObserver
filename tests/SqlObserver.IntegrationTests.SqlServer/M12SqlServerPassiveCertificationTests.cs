@@ -2,6 +2,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
@@ -152,7 +153,7 @@ public sealed class M12SqlServerPassiveCertificationTests
         if (collectorId is "queries.performance" or "sql-agent.failures") Assert.DoesNotContain("TOP (@maximum_rows)", sql, StringComparison.OrdinalIgnoreCase);
 
         // GRANT and DENY remain explicitly forbidden alongside all other mutation verbs; START EVENT SESSION and STOP EVENT SESSION are also rejected.
-        string normalized = sql.ToUpperInvariant();
+        string normalized = Regex.Replace(sql.ToUpperInvariant(), @"'(?:''|[^'])*'", "''");
         Assert.DoesNotMatch(@"\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC|EXECUTE|DBCC|BACKUP|RESTORE|GRANT|REVOKE|DENY|RECONFIGURE|KILL)\b", normalized);
         Assert.DoesNotMatch(@"\b(PHYSICAL_NAME|XP_|SP_OA|OPENROWSET|OPENDATASOURCE|OPENQUERY)\b", normalized);
         Assert.DoesNotMatch(@"\b(START|STOP)\s+EVENT\s+SESSION\b", normalized);
@@ -174,6 +175,12 @@ public sealed class M12SqlServerPassiveCertificationTests
     {
         Assert.ThrowsAny<Exception>(() => ValidateSelectedQuery("engine.core", "SET NOCOUNT ON;\nSELECT name FROM sys.databases ORDER BY name;"));
         Assert.ThrowsAny<Exception>(() => ValidateSelectedQuery("engine.core", "SET NOCOUNT ON;\nSELECT TOP (@maximum_rows) name FROM sys.databases; UPDATE sys.objects SET name=name ORDER BY name;"));
+    }
+
+    [Fact]
+    public void SelectedAssetValidatorAllowsDiagnosticWordsInsideStringLiterals()
+    {
+        ValidateSelectedQuery("waits.server", "SET NOCOUNT ON;\nSELECT TOP (@maximum_rows) N'backup status' AS note FROM sys.dm_os_wait_stats ORDER BY wait_type;");
     }
 
     [Fact]
@@ -212,10 +219,10 @@ public sealed class M12SqlServerPassiveCertificationTests
     private static void AssertProductionCatalogBundles()
     {
         Assert.Equal("34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c", SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191", SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8", SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de", SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f", SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593", SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("689ae4dc9b8c0f2c15ce1064c0a823e47b79fec62d21d11c48a7804b4e4c1919", SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36", SqlServerReplicationAssetCatalog.LoadEmbedded().BundleChecksum);
     }
 
