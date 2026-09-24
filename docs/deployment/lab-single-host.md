@@ -391,6 +391,13 @@ descriptor and the web interface is disabled. `/api/v1/service` always returns
 that descriptor. Do not expose Vite, add an unauthenticated proxy, bypass the
 certificate, or grant the Server write access to the copied web build.
 
+With Windows authentication, `GET /health` returns `alive` when the Server
+process is responding. `GET /ready` checks PostgreSQL compatibility through the
+configured repository connection and returns `ready` (HTTP 200) or `not_ready`
+(HTTP 503). Neither endpoint reports SQL Server target health. The readiness
+response is not cached and does not expose repository version or connection
+details.
+
 ## 9. Register a target after all gates pass
 
 When PostgreSQL migrations, API hosting, authentication, HTTPS, and the

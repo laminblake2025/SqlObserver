@@ -136,10 +136,10 @@ internal static class EndpointAuthorizationAssertions
             string route = endpoint.RoutePattern.RawText ?? endpoint.DisplayName ?? "unnamed route";
             Assert.True(endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null, $"Anonymous route: {route}");
             IReadOnlyList<IAuthorizeData> metadata = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
-            // Scaffold descriptors deliberately use the authenticated fallback policy.
+            // Service identity and liveness use the authenticated fallback policy.
             // Diagnostic, administrative, web and MCP endpoints must declare authorization.
-            bool scaffold = route is "/health" or "/api/v1/service" || route == "/" && !webInterfaceConfigured;
-            if (!scaffold) Assert.True(metadata.Count > 0, $"Missing authorization metadata: {route}");
+            bool serviceStatus = route is "/health" or "/api/v1/service" || route == "/" && !webInterfaceConfigured;
+            if (!serviceStatus) Assert.True(metadata.Count > 0, $"Missing authorization metadata: {route}");
             AuthorizationPolicy? policy = await AuthorizationPolicy.CombineAsync(
                 provider, metadata, endpoint.Metadata.GetOrderedMetadata<AuthorizationPolicy>());
             Assert.True(policy?.Requirements.OfType<DenyAnonymousAuthorizationRequirement>().Any() == true,

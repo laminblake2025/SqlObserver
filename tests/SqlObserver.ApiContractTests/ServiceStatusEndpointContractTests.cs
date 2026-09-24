@@ -1,11 +1,11 @@
 namespace SqlObserver.ApiContractTests;
 
-public sealed class ScaffoldEndpointContractTests
+public sealed class ServiceStatusEndpointContractTests
 {
     [Fact]
     public void HealthDescriptorExposesLivenessWithoutClaimingDependencyHealth()
     {
-        var descriptor = new Server.ScaffoldEndpoints.HealthDescriptor("alive");
+        var descriptor = new Server.ServiceStatusEndpoints.HealthDescriptor("alive");
 
         Assert.Equal("alive", descriptor.Status);
         Assert.NotEqual("healthy", descriptor.Status);
@@ -14,16 +14,16 @@ public sealed class ScaffoldEndpointContractTests
     [Fact]
     public void ServiceDescriptorIdentifiesTheService()
     {
-        var descriptor = new Server.ScaffoldEndpoints.ServiceDescriptor("SqlObserver", "scaffold");
+        var descriptor = new Server.ServiceStatusEndpoints.ServiceDescriptor("SqlObserver", "running");
 
         Assert.Equal("SqlObserver", descriptor.Name);
-        Assert.Equal("scaffold", descriptor.Status);
+        Assert.Equal("running", descriptor.Status);
     }
 
     [Fact]
     public void ServerAssemblyDoesNotReferenceTheTargetAdapter()
     {
-        string[] references = typeof(Server.ScaffoldEndpoints).Assembly
+        string[] references = typeof(Server.ServiceStatusEndpoints).Assembly
             .GetReferencedAssemblies()
             .Select(static assembly => assembly.Name ?? string.Empty)
             .ToArray();

@@ -1866,7 +1866,7 @@ function Assert-RepositoryShape {
         'src/SqlObserver.Observability/SqlObserver.Observability.csproj' = '60576c36aab91800264f4e35c58943fded212a53c029a90171a87e897f0828c5'
         'src/SqlObserver.Observability/ObservabilityContracts.cs' = '7113bcc81e331cf73417d4538ac713e03b2cee8e23d2294edf123e945f544a21'
         'src/SqlObserver.Observability/packages.lock.json' = '9921a06f61fbd419a030273ecc8a58e96cffaf02bcf95e1c07088e62098b2468'
-        'src/SqlObserver.Server/Program.cs' = '2577d6628455f9cf8c6b50d40b0ace5707690c261493210c7fc079277b5fb4cb'
+        'src/SqlObserver.Server/Program.cs' = '36bc4c6a1301160e42de90bbf328e9fa9747eb42c20abaacbc67043c011190ab'
         'src/SqlObserver.Server/ServerServiceRegistration.cs' = '6486f74a42216f3e8686019afe3a74f3cf991a8af8be9c125c955590560e1939'
         'src/SqlObserver.Server/SqlObserver.Server.csproj' = '168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93'
         'src/SqlObserver.Server/packages.lock.json' = 'f398f1863d3a8164d26059be0b6e82b3c48ebe6f856d675d6d20034452e512fd'

@@ -15,6 +15,7 @@ using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
+using SqlObserver.Observability;
 using SqlObserver.Security;
 using SqlObserver.Server;
 
@@ -34,10 +35,36 @@ public sealed class TargetHealthHttpContractTests : IClassFixture<TargetHealthAp
     {
         using HttpClient client = CreateClient("viewer");
 
-        ScaffoldEndpoints.HealthDescriptor? result = await client
-            .GetFromJsonAsync<ScaffoldEndpoints.HealthDescriptor>("/health");
+        ServiceStatusEndpoints.HealthDescriptor? result = await client
+            .GetFromJsonAsync<ServiceStatusEndpoints.HealthDescriptor>("/health");
 
         Assert.Equal("alive", result?.Status);
+    }
+
+    [Theory]
+    [InlineData(true, HttpStatusCode.OK, "ready")]
+    [InlineData(false, HttpStatusCode.ServiceUnavailable, "not_ready")]
+    public async Task ReadinessRequiresAuthenticationAndReportsRepositoryState(bool ready, HttpStatusCode expectedStatus, string expectedBody)
+    {
+        var monitor = new FixedReadinessMonitor(ready);
+        using WebApplicationFactory<Program> host = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IRepositoryReadinessMonitor>();
+                services.AddSingleton<IRepositoryReadinessMonitor>(monitor);
+            }));
+        using HttpClient client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using HttpResponseMessage unauthorized = await client.GetAsync("/ready");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+        Assert.Equal(0, monitor.Calls);
+
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        using HttpResponseMessage response = await client.GetAsync("/ready");
+        Assert.Equal(expectedStatus, response.StatusCode);
+        Assert.Equal(expectedBody, (await response.Content.ReadFromJsonAsync<ServiceStatusEndpoints.ReadinessDescriptor>())?.Status);
+        Assert.Equal(1, monitor.Calls);
+        Assert.Equal(TimeSpan.FromSeconds(5), monitor.LastTimeout);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
     }
 
     [Fact]
@@ -325,6 +352,21 @@ public sealed class TargetHealthHttpContractTests : IClassFixture<TargetHealthAp
         }
 
         return client;
+    }
+
+    private sealed class FixedReadinessMonitor(bool ready) : IRepositoryReadinessMonitor
+    {
+        public int Calls { get; private set; }
+        public TimeSpan LastTimeout { get; private set; }
+
+        public ValueTask<RepositoryReadinessObservation> CheckAsync(RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+        {
+            Calls++;
+            LastTimeout = timeout.Value;
+            return ValueTask.FromResult(new RepositoryReadinessObservation(ready, ready ? 18 : 0,
+                ready ? PostgreSqlCompatibilityStatus.Compatible : PostgreSqlCompatibilityStatus.RequiredCapabilityMissing,
+                DateTimeOffset.UtcNow));
+        }
     }
 }
 

@@ -154,7 +154,7 @@ app.UseAuthorization();
 app.UseMiddleware<ApiMutationOriginMiddleware>();
 app.UseRateLimiter();
 app.UseMiddleware<RequestBodyLimitMiddleware>();
-app.MapSqlObserverScaffoldEndpoints(includeRootDescriptor: webInterface is null);
+app.MapSqlObserverServiceStatusEndpoints(includeRootDescriptor: webInterface is null);
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
 app.MapOverviewEndpoints();
