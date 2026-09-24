@@ -891,13 +891,23 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
     }
 
     [Theory]
-    [InlineData(-600)]
-    [InlineData(600)]
-    public async Task CommitRecordsClockSkewAsVisibleLossAndAdvancesTheSchedule(int secondsFromRepositoryTime)
+    [InlineData(-600, 0)]
+    [InlineData(600, 0)]
+    [InlineData(-600, 1)]
+    [InlineData(600, 1)]
+    public async Task CommitRecordsClockSkewAsVisibleLossAndAdvancesTheSchedule(int secondsFromRepositoryTime, int priorFailures)
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         var targetId = new MonitoredInstanceId(Guid.NewGuid());
         await InsertActiveTargetAsync(database, targetId, revision: 1);
+        if (priorFailures > 0)
+        {
+            await using NpgsqlConnection setup = await database.DataSource.OpenConnectionAsync();
+            await using var setFailures = new NpgsqlCommand("UPDATE control.collector_schedule SET consecutive_failure_count = @failures WHERE instance_id = @target AND collector_id = 'engine.core'", setup);
+            setFailures.Parameters.AddWithValue("failures", priorFailures);
+            setFailures.Parameters.AddWithValue("target", targetId.Value);
+            Assert.Equal(1, await setFailures.ExecuteNonQueryAsync());
+        }
         await using NpgsqlDataSource collectorDataSource = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorDataSource);
         var leases = new PostgreSqlWorkerLeasePort(collectorDataSource);
@@ -930,6 +940,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             SELECT outcome.outcome, outcome.reason_code, gap.reason_code,
                    gap.lost_row_count, gap.count_is_exact,
                    schedule.active_run_id, schedule.next_due_at > clock_timestamp(),
+                   schedule.consecutive_failure_count,
                    (SELECT count(*) FROM telemetry.raw_metric_sample AS sample
                     WHERE sample.collection_run_id = @run_id)
             FROM telemetry.collection_run_outcome AS outcome
@@ -949,7 +960,8 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
         Assert.True(reader.GetBoolean(4));
         Assert.True(reader.IsDBNull(5));
         Assert.True(reader.GetBoolean(6));
-        Assert.Equal(0, reader.GetInt64(7));
+        Assert.Equal(0, reader.GetInt32(7));
+        Assert.Equal(0, reader.GetInt64(8));
         Assert.False(await reader.ReadAsync());
     }
 

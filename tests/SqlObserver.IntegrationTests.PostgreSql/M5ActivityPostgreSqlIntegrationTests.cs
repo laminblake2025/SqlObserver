@@ -534,6 +534,98 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(replacement, Timeout), CancellationToken.None);
     }
 
+    [Theory]
+    [InlineData(-600)]
+    [InlineData(600)]
+    public async Task ActivityClockSkewRecordsGapAndAdvancesScheduleAfterPriorFailure(int secondsFromRepositoryTime)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        MonitoredInstanceId targetId = new(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId);
+        await using (NpgsqlConnection setup = await database.DataSource.OpenConnectionAsync())
+        {
+            await using var setFailures = new NpgsqlCommand("UPDATE control.collector_schedule SET consecutive_failure_count = 1 WHERE instance_id = @target AND collector_id = 'activity.sessions'", setup);
+            setFailures.Parameters.AddWithValue("target", targetId.Value);
+            Assert.Equal(1, await setFailures.ExecuteNonQueryAsync());
+        }
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        (CollectorDueWorkItem work, WorkerLeaseIdentity lease, CollectorRunId runId, CommitCollectorRunRequest prepared) =
+            await PrepareActivityCommitAsync(database, targetId, runtime, leases);
+        DateTimeOffset observedAt = work.RepositoryTimeUtc.AddSeconds(secondsFromRepositoryTime);
+        observedAt = new DateTimeOffset(observedAt.Ticks - observedAt.Ticks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
+        var observation = new ActivitySessionObservation(targetId, work.TargetRevision, 71,
+            ActivitySessionStatus.Running, true, 5, 0, 1, 2, 3, 4, 5, 6, observedAt);
+        var payload = new CollectorPayload(activitySessions: new ActivitySessionObservationBatch([observation]));
+        var commit = new CommitCollectorRunRequest(work, prepared.Summary, payload,
+            prepared.NextCircuit, lease, Timeout);
+
+        CollectorRunCommitResult saved = await runtime.CommitRunAsync(commit, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, saved.Status);
+        Assert.Equal(0, saved.InsertedCount);
+        Assert.Equal(payload.ItemCount, saved.RejectedCount);
+        Assert.Equal(CollectorRunCommitStatus.Replayed,
+            (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var evidence = new NpgsqlCommand("""
+            SELECT outcome.outcome, outcome.reason_code, gap.reason_code,
+                   gap.lost_row_count, gap.count_is_exact,
+                   schedule.active_run_id, schedule.next_due_at > clock_timestamp(),
+                   schedule.consecutive_failure_count,
+                   (SELECT count(*) FROM telemetry.activity_session_snapshot
+                    WHERE collection_run_id = @run)
+            FROM telemetry.collection_run_outcome outcome
+            JOIN telemetry.visibility_gap gap ON gap.run_id = outcome.run_id
+            JOIN control.collector_schedule schedule
+              ON schedule.instance_id = @target AND schedule.collector_id = 'activity.sessions'
+            WHERE outcome.run_id = @run
+            """, connection);
+        evidence.Parameters.AddWithValue("run", runId.Value);
+        evidence.Parameters.AddWithValue("target", targetId.Value);
+        await using NpgsqlDataReader reader = await evidence.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal("output_invalid", reader.GetString(0));
+        Assert.Equal("output_validation_failed", reader.GetString(1));
+        Assert.Equal("target_clock_skew", reader.GetString(2));
+        Assert.Equal(payload.ItemCount, reader.GetInt64(3));
+        Assert.True(reader.GetBoolean(4));
+        Assert.True(reader.IsDBNull(5));
+        Assert.True(reader.GetBoolean(6));
+        Assert.Equal(0, reader.GetInt32(7));
+        Assert.Equal(0, reader.GetInt64(8));
+        Assert.False(await reader.ReadAsync());
+    }
+
+    [Fact]
+    public async Task ActivityClockSkewUpgradePreservesCommittedSessionAndReplay()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        Assert.False((await migrations.ApplyPendingAsync(new MigrationApplyRequest(117, Timeout),
+            CancellationToken.None)).HasFailures);
+        MonitoredInstanceId targetId = new(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        (CollectorDueWorkItem _, WorkerLeaseIdentity _, CollectorRunId runId, CommitCollectorRunRequest commit) =
+            await PrepareActivityCommitAsync(database, targetId, runtime, leases);
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
+
+        MigrationBatchResult upgrade = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+        Assert.False(upgrade.HasFailures,
+            upgrade.Results.FirstOrDefault(item => item.Outcome == MigrationOutcome.Failed)?.FailureCode);
+        Assert.Equal(118, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(CollectorRunCommitStatus.Replayed,
+            (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
+        Assert.Equal(2L, await CountRowsForRunAsync(database, runId.Value));
+    }
+
     [Fact]
     public async Task ActivityCommitRejectsTargetRevisionFenceWithoutPersistingRows()
     {
