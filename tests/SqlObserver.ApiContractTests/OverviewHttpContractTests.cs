@@ -44,6 +44,24 @@ public sealed class OverviewHttpContractTests : IClassFixture<OverviewApiFactory
     {
         using var client=Client();Assert.Equal(HttpStatusCode.BadRequest,(await client.GetAsync("/api/v1/overview?"+query)).StatusCode);
     }
+
+    [Fact]
+    public async Task OverviewCanFinishAfterTheGlobalFifteenSecondTimeout()
+    {
+        using var host = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IOverviewQueryService>();
+            services.AddSingleton<IOverviewQueryService, DelayedOverviewHttpStub>();
+        }));
+        using var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.Timeout = TimeSpan.FromSeconds(25);
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/overview?fromUtc=2026-09-04T00:00:00Z&toUtc=2026-09-05T00:00:00Z");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
 }
 public sealed class OverviewApiFactory : WebApplicationFactory<Program>
 {
@@ -63,4 +81,13 @@ public sealed class OverviewHttpStub : IOverviewQueryService
 {
     public Task<OverviewSnapshot> ReadAsync(OverviewQuery query,CancellationToken cancellationToken) =>
         Task.FromResult(new OverviewSnapshot(DateTimeOffset.UtcNow,query.FromUtc,query.ToUtc,query.TargetId,[],0,[]));
+}
+
+public sealed class DelayedOverviewHttpStub : IOverviewQueryService
+{
+    public async Task<OverviewSnapshot> ReadAsync(OverviewQuery query, CancellationToken cancellationToken)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(16), cancellationToken);
+        return new OverviewSnapshot(DateTimeOffset.UtcNow, query.FromUtc, query.ToUtc, query.TargetId, [], 0, []);
+    }
 }

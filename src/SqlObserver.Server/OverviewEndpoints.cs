@@ -8,7 +8,9 @@ public static class OverviewEndpoints
 {
     public static IEndpointRouteBuilder MapOverviewEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/overview", ReadAsync).RequireAuthorization();
+        endpoints.MapGet("/api/v1/overview", ReadAsync)
+            .RequireAuthorization()
+            .WithRequestTimeout(TimeSpan.FromSeconds(35));
         return endpoints;
     }
 
