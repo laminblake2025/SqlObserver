@@ -1,3 +1,5 @@
+import type { OverviewScope } from './features/overview/overviewTypes';
+
 export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', operations: 'Operations', analytics: 'Analytics', reports: 'Reports' } as const;
 export type Destination = keyof typeof destinations;
 export const navigationDestinations = ['overview', 'servers', 'activity', 'queries', 'deadlocks', 'alerts', 'operations', 'analytics', 'reports'] as const satisfies readonly Destination[];
@@ -23,9 +25,14 @@ export function readRoute(hash: string): DashboardRoute {
   return { page, target: params.get('target') ?? '' };
 }
 export function routeHref(page: Destination, target: string): string { return `#/${page}${target ? `?target=${encodeURIComponent(target)}` : ''}`; }
-export function activityHistoryHref(target: string, occurredAtUtc: string, eventId?: string): string {
+export function activityHistoryHref(target: string, occurredAtUtc: string, eventId?: string, scope?: OverviewScope): string {
   const query = new URLSearchParams();
   if (target) query.set('target', target);
+  if (scope) {
+    query.set('range', scope.range);
+    if (scope.range === 'custom') { if (scope.from) query.set('from', scope.from); if (scope.to) query.set('to', scope.to); }
+    if (scope.compare) query.set('compare', '1');
+  }
   query.set('at', occurredAtUtc);
   if (eventId !== undefined && guid.test(eventId)) query.set('event', eventId);
   return `#/activity?${query}`;

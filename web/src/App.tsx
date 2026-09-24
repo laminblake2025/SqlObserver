@@ -238,7 +238,7 @@ export function App() {
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
-              {route.page === "deadlocks" && <TargetDeadlockPanel {...props} />}
+              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} />}
               {route.page === "alerts" && <TargetAlertsPanel {...props} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} />}
               {route.page === "reports" && <ReportsPanel {...props} />}

@@ -25,7 +25,10 @@ older windows name that limit while still allowing older blocking history
 when available. Ranges longer than 24 hours show an explicit limit instead of
 fetching an unrelated last-hour page. Current session, request, wait, and
 blocking reads remain clearly labeled as current snapshots. Other
-current-only screens do not yet follow the historical window.
+current-only screens do not yet follow the historical window. The Deadlocks
+list now queries the selected UTC range, including each paginated request,
+and its event-to-Activity link preserves that range. Alert and operations
+screens still use current snapshots or their own time controls.
 
 The dashboard adds a target-scoped Overview request alongside the existing
 health request. Overview currently composes live reads, so its known latency
@@ -38,3 +41,5 @@ The chart interaction model tests passed, and a synthetic drag changed the URL
 to the selected custom window in the rendered app.
 Focused Activity URL-window and API tests, TypeScript validation, and the
 production web build passed after the Activity range integration.
+Focused Deadlocks URL-window, pagination, and navigation-link tests and
+TypeScript validation passed after the Deadlocks range integration.
