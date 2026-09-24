@@ -12,6 +12,39 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed partial class M4CollectorPersistenceIntegrationTests
 {
     [Fact]
+    public async Task CoreCommitAcceptsStartMarkerAfterFileStallUpgrade()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var target = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, target, 1);
+        await MakeDueAsync(database, target, "engine.core");
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        CollectorDueWorkItem work = Assert.Single(
+            (await runtime.ListDueAsync(new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            item => item.TargetId == target && item.CollectorId.Value == "engine.core");
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var run = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(work, run, lease, DefaultTimeout), CancellationToken.None)).Status);
+
+        CollectorPayload basePayload = CreateEnginePayload(work);
+        MetricSample marker = new(new MetricSampleId(Guid.NewGuid()), target,
+            new MetricId("engine.start_time_key"), basePayload.Metrics[0].ObservedAtUtc, 1);
+        CollectorPayload payload = new(basePayload.Metrics.Append(marker).ToArray());
+        CollectorRunCommitResult result = await runtime.CommitRunAsync(
+            CreateSuccessCommit(work, run, lease, payload), CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, result.Status);
+
+        await using var count = database.DataSource.CreateCommand(
+            "SELECT count(*) FROM telemetry.raw_metric_sample WHERE instance_id=@target AND collection_run_id=@run");
+        count.Parameters.AddWithValue("target", target.Value);
+        count.Parameters.AddWithValue("run", run.Value);
+        Assert.Equal(9L, (long)(await count.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
     public async Task FileStallUpgradePreservesLegacyReplayAndResumesBackfillAtChangedRowShape()
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();

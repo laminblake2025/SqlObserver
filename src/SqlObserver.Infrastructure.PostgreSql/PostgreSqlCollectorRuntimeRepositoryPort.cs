@@ -117,6 +117,72 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             @file_read_stall_ms,
             @file_write_stall_ms);
         """;
+    // The legacy core function was upgraded in migration 0035 to accept the
+    // startup marker. The v2 function introduced for directional file stalls
+    // retained the earlier eight-metric rule, so engine.core must keep using
+    // its nine-metric commit path until that separate contract is upgraded.
+    private const string CommitEngineCoreSql = """
+        SELECT result_status, inserted_count, duplicate_count, rejected_count,
+               persisted_bytes, committed_at
+        FROM control.commit_collection_run(
+            @run_id,
+            @instance_id,
+            @target_revision,
+            @collector_id,
+            @collector_version,
+            @output_schema_version,
+            @schedule_revision,
+            @scheduled_at,
+            @work_key,
+            @owner_execution_id,
+            @fencing_token,
+            @request_digest,
+            @outcome,
+            @reason_code,
+            @duration_ms,
+            @attempt_count,
+            @source_row_count,
+            @output_item_count,
+            @response_bytes,
+            @output_bytes,
+            @loss_kind,
+            @minimum_lost_items,
+            @loss_count_is_exact,
+            @minimum_lost_bytes,
+            @next_circuit_state,
+            @next_consecutive_failures,
+            @metric_observed_ats,
+            @metric_sample_ids,
+            @metric_keys,
+            @metric_values,
+            @metric_dimensions,
+            @metric_sizes,
+            @database_observed_ats,
+            @database_ids,
+            @database_names,
+            @database_states,
+            @database_recovery_models,
+            @database_user_access,
+            @database_is_read_only,
+            @database_compatibility_levels,
+            @database_sizes,
+            @file_observed_ats,
+            @file_database_ids,
+            @file_ids,
+            @file_logical_names,
+            @file_types,
+            @file_states,
+            @file_size_bytes,
+            @file_maximum_size_bytes,
+            @file_growth_bytes,
+            @file_growth_percents,
+            @file_read_counts,
+            @file_write_counts,
+            @file_bytes_read,
+            @file_bytes_written,
+            @file_io_stall_ms,
+            @file_sizes);
+        """;
     private const string CommitM9Sql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
                persisted_bytes, committed_at
@@ -630,7 +696,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             }
             string m9Sql = request.Work.CollectorId.Value switch { "backups.status" => CommitBackupsM9Sql, "sql-agent.failures" => CommitAgentM9Sql, "tempdb.health" => CommitTempDbM9Sql, "availability-groups.health" => CommitAgM9Sql, _ => CommitM9Sql };
             await using var command = new NpgsqlCommand(
-                queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : m9Collector ? m9Sql : CommitCoreSql,
+                queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : m9Collector ? m9Sql : request.Work.CollectorId.Value == "engine.core" ? CommitEngineCoreSql : CommitCoreSql,
                 connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
