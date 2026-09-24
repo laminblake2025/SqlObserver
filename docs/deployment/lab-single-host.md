@@ -217,6 +217,23 @@ SELECT * FROM control.backfill_query_observation_identity('<target-uuid>'::uuid,
 COMMIT;
 ```
 
+After the fleet backfill reports `complete = true`, run the identity cutover in
+one transaction. The function validates every historical observation before
+requiring `instance_id` and replacing the temporary RLS owner join. If any
+NULL identity remains, validation fails and the policy changes roll back.
+
+```sql
+BEGIN;
+SET LOCAL ROLE sqlobserver_migrator;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '5min';
+SELECT control.finalize_query_observation_identity();
+COMMIT;
+```
+
+On a large repository, a timeout leaves the prior read path in place. Retry
+the cutover during a maintenance window after confirming the backfill is done.
+
 **Do not run the SQL files individually with `psql -f`.** Doing so bypasses the
 runner-owned migration mode, advisory lock, checksum validation, and
 `system.schema_migration` ledger contract.

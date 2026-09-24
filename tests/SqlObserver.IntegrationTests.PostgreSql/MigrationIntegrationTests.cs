@@ -377,6 +377,23 @@ public sealed class MigrationIntegrationTests
             CancellationToken.None);
         Assert.False(validationMigration.HasFailures);
         Assert.Equal(96, Assert.Single(validationMigration.Results).Migration.Number.Value);
+        MigrationBatchResult cutoverMigration = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(15, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(cutoverMigration.HasFailures);
+        Assert.Equal(111, cutoverMigration.Results[^1].Migration.Number.Value);
+        await using (var cutoverGrants = new NpgsqlCommand("""
+            SELECT NOT has_function_privilege('sqlobserver_server',
+                     'control.finalize_query_observation_identity()','EXECUTE'),
+                   NOT has_function_privilege('sqlobserver_collector',
+                     'control.finalize_query_observation_identity()','EXECUTE');
+            """, connection))
+        await using (NpgsqlDataReader reader = await cutoverGrants.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.True(reader.GetBoolean(0));
+            Assert.True(reader.GetBoolean(1));
+        }
         await using (var pendingConstraint = new NpgsqlCommand("""
             SELECT convalidated FROM pg_catalog.pg_constraint
             WHERE conrelid='events.query_performance_observation'::regclass
@@ -388,11 +405,62 @@ public sealed class MigrationIntegrationTests
         PostgresException pendingIdentity = await Assert.ThrowsAsync<PostgresException>(
             () => ValidateQueryObservationIdentityAsync(connection));
         Assert.Equal("23514", pendingIdentity.SqlState);
+        await using (var pendingPolicy = new NpgsqlCommand("""
+            SELECT qual LIKE '%instance_id IS NULL%'
+            FROM pg_catalog.pg_policies
+            WHERE schemaname='events' AND tablename='query_performance_observation'
+              AND policyname='query_performance_observation_server';
+            """, connection))
+        {
+            Assert.Equal(true, await pendingPolicy.ExecuteScalarAsync());
+        }
 
         Assert.Equal((1, 1, false), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
         Assert.Equal((1, 0, true), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
         Assert.Equal((0, 0, true), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
         await ValidateQueryObservationIdentityAsync(connection);
+        await using (var directPolicies = new NpgsqlCommand("""
+            SELECT count(*) = 3 AND bool_and(qual NOT LIKE '%instance_id IS NULL%')
+            FROM pg_catalog.pg_policies
+            WHERE schemaname='events' AND tablename='query_performance_observation'
+              AND policyname IN ('query_performance_observation_collector',
+                                 'query_performance_observation_server',
+                                 'query_performance_observation_migrator');
+            """, connection))
+        {
+            Assert.Equal(true, await directPolicies.ExecuteScalarAsync());
+        }
+        Assert.Collection(await ReadTopCpuAsync(connection, target),
+            first => Assert.Equal(20L, first), second => Assert.Equal(10L, second));
+        Assert.Collection(await ReadHistoryKeysAsync(database, target),
+            first => Assert.Equal(new string('2', 32), first),
+            second => Assert.Equal(new string('3', 32), second));
+        await ValidateQueryObservationIdentityAsync(connection);
+        await using (NpgsqlTransaction scoped = await connection.BeginTransactionAsync())
+        {
+            await using var afterCutover = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT pg_catalog.set_config('sqlobserver.target_scope',@scope,true);
+                INSERT INTO events.query_performance_observation(
+                    collection_run_id,database_id,query_fingerprint,observation_key,
+                    source,source_state,interval_start,interval_end,observed_at,semantics,cpu_ms)
+                VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('77',16),'hex'),
+                    'query_store','read_write',now()-interval '5 minutes',now(),now(),
+                    'query_store_interval',30);
+                """, connection, scoped);
+            afterCutover.Parameters.AddWithValue("scope", target.ToString("D"));
+            afterCutover.Parameters.AddWithValue("run", run);
+            await afterCutover.ExecuteNonQueryAsync();
+            await scoped.CommitAsync();
+        }
+        await using (var insertedIdentity = new NpgsqlCommand("""
+            SELECT instance_id FROM events.query_performance_observation
+            WHERE collection_run_id=@run AND observation_key=decode(repeat('77',16),'hex');
+            """, connection))
+        {
+            insertedIdentity.Parameters.AddWithValue("run", run);
+            Assert.Equal(target, await insertedIdentity.ExecuteScalarAsync());
+        }
         await using (var requiredIdentity = new NpgsqlCommand("""
             SELECT constraint_row.convalidated, attribute.attnotnull
             FROM pg_catalog.pg_constraint AS constraint_row
@@ -502,10 +570,7 @@ public sealed class MigrationIntegrationTests
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
         await using var command = new NpgsqlCommand("""
             SET LOCAL ROLE sqlobserver_migrator;
-            ALTER TABLE events.query_performance_observation
-              VALIDATE CONSTRAINT ck_query_observation_instance_present;
-            ALTER TABLE events.query_performance_observation
-              ALTER COLUMN instance_id SET NOT NULL;
+            SELECT control.finalize_query_observation_identity();
             """, connection, transaction);
         await command.ExecuteNonQueryAsync();
         await transaction.CommitAsync();
