@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0095`
+The migration catalog contains the exact, contiguous `0001` through `0096`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -143,6 +143,10 @@ Migration `0094` applies the same keyed/legacy split to query history.
 Migration `0095` adds a migrator-only fleet backfill call. It visits at most ten
 incomplete targets per transaction and updates at most 1,000 historical rows
 per target. It does not run automatically.
+Migration `0096` adds a `NOT VALID` target-identity check. It rejects new NULL
+observations without scanning historical rows during the migration. A later
+cutover must validate the check and set the column `NOT NULL` only after fleet
+backfill reports completion; neither step runs automatically here.
 
 After upgrading, a migration administrator can backfill the fleet in bounded
 transactions. Repeat this transaction until `complete` is `true`:

@@ -372,9 +372,42 @@ public sealed class MigrationIntegrationTests
             Assert.True(reader.GetBoolean(1));
         }
 
+        MigrationBatchResult validationMigration = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(validationMigration.HasFailures);
+        Assert.Equal(96, Assert.Single(validationMigration.Results).Migration.Number.Value);
+        await using (var pendingConstraint = new NpgsqlCommand("""
+            SELECT convalidated FROM pg_catalog.pg_constraint
+            WHERE conrelid='events.query_performance_observation'::regclass
+              AND conname='ck_query_observation_instance_present';
+            """, connection))
+        {
+            Assert.Equal(false, await pendingConstraint.ExecuteScalarAsync());
+        }
+        PostgresException pendingIdentity = await Assert.ThrowsAsync<PostgresException>(
+            () => ValidateQueryObservationIdentityAsync(connection));
+        Assert.Equal("23514", pendingIdentity.SqlState);
+
         Assert.Equal((1, 1, false), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
         Assert.Equal((1, 0, true), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
         Assert.Equal((0, 0, true), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
+        await ValidateQueryObservationIdentityAsync(connection);
+        await using (var requiredIdentity = new NpgsqlCommand("""
+            SELECT constraint_row.convalidated, attribute.attnotnull
+            FROM pg_catalog.pg_constraint AS constraint_row
+            JOIN pg_catalog.pg_attribute AS attribute
+              ON attribute.attrelid=constraint_row.conrelid
+             AND attribute.attname='instance_id'
+            WHERE constraint_row.conrelid='events.query_performance_observation'::regclass
+              AND constraint_row.conname='ck_query_observation_instance_present';
+            """, connection))
+        await using (NpgsqlDataReader reader = await requiredIdentity.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.True(reader.GetBoolean(0));
+            Assert.True(reader.GetBoolean(1));
+        }
         await using (var fleetResult = new NpgsqlCommand("""
             SELECT instance_id FROM events.query_performance_observation
             WHERE collection_run_id=@otherRun;
@@ -462,6 +495,20 @@ public sealed class MigrationIntegrationTests
         Assert.Equal(priorScope.ToString("D"), await scopeCheck.ExecuteScalarAsync());
         await transaction.CommitAsync();
         return result;
+    }
+
+    private static async Task ValidateQueryObservationIdentityAsync(NpgsqlConnection connection)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        await using var command = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_migrator;
+            ALTER TABLE events.query_performance_observation
+              VALIDATE CONSTRAINT ck_query_observation_instance_present;
+            ALTER TABLE events.query_performance_observation
+              ALTER COLUMN instance_id SET NOT NULL;
+            """, connection, transaction);
+        await command.ExecuteNonQueryAsync();
+        await transaction.CommitAsync();
     }
 
     private static async Task<IReadOnlyList<long>> ReadTopCpuAsync(NpgsqlConnection connection, Guid target)
