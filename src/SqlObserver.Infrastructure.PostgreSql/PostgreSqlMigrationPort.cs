@@ -6,7 +6,8 @@ namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>
 /// Applies the verified embedded migration prefix under one bounded session advisory lock.
-/// Each migration and its ledger insert commit in exactly one transaction.
+/// Transactional migrations commit with their ledger entry. Concurrent-index migrations
+/// run outside a transaction and rebuild safely if a prior attempt missed the ledger insert.
 /// </summary>
 public sealed class PostgreSqlMigrationPort : IMigrationPort
 {
@@ -26,6 +27,20 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         VALUES (@migration_number, @migration_name, @sha256);
         """;
     private const string RepositoryClockSql = "SELECT clock_timestamp();";
+    private const string ValidIndexSql = """
+        SELECT i.indisvalid AND i.indisready
+        FROM pg_catalog.pg_index AS i
+        WHERE i.indexrelid = pg_catalog.to_regclass(@index_name);
+        """;
+    private const string ExistingIndexSql = """
+        SELECT pg_catalog.pg_get_indexdef(i.indexrelid),
+               i.indrelid = pg_catalog.to_regclass(@table_name),
+               i.indisunique,
+               pg_catalog.pg_get_userbyid(c.relowner) = 'sqlobserver_migrator'
+        FROM pg_catalog.pg_index AS i
+        JOIN pg_catalog.pg_class AS c ON c.oid = i.indexrelid
+        WHERE i.indexrelid = pg_catalog.to_regclass(@index_name);
+        """;
 
     private static readonly TimeSpan LockRetryInterval = TimeSpan.FromMilliseconds(50);
 
@@ -83,6 +98,34 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
                             request.Timeout,
                             timeout.Token)
                         .ConfigureAwait(false);
+
+                    if (!migration.Descriptor.IsTransactional)
+                    {
+                        try
+                        {
+                            await ApplyConcurrentIndexAsync(connection, migration, request.Timeout, timeout.Token)
+                                .ConfigureAwait(false);
+                            DateTimeOffset completedAt = await ReadRepositoryClockAsync(
+                                connection, request.Timeout, timeout.Token).ConfigureAwait(false);
+                            results.Add(new MigrationExecutionResult(
+                                migration.Descriptor, MigrationOutcome.Applied, startedAt, completedAt));
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+                        {
+                            DateTimeOffset completedAt = await TryReadRepositoryClockAsync(
+                                connection, request.Timeout, startedAt, timeout.Token).ConfigureAwait(false);
+                            results.Add(new MigrationExecutionResult(
+                                migration.Descriptor, MigrationOutcome.Failed, startedAt, completedAt,
+                                PostgreSqlRuntimeSupport.GetSafeFailureCode(exception)));
+                            break;
+                        }
+
+                        continue;
+                    }
 
                     await using NpgsqlTransaction transaction = await connection
                         .BeginTransactionAsync(timeout.Token)
@@ -172,6 +215,131 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         {
             throw PostgreSqlRuntimeSupport.CreateTimeoutException("migration", exception);
         }
+    }
+
+    private static async Task ApplyConcurrentIndexAsync(
+        NpgsqlConnection connection,
+        PostgreSqlMigrationResource migration,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        ConcurrentIndexSpec index = migration.ConcurrentIndex
+            ?? throw new InvalidOperationException("A nontransactional migration must declare its index.");
+        bool roleSet = false;
+        Exception? resetFailure = null;
+        try
+        {
+            await ExecuteMigrationCommandAsync(connection, "SET ROLE sqlobserver_migrator;", timeout, cancellationToken)
+                .ConfigureAwait(false);
+            roleSet = true;
+            await ExecuteMigrationCommandAsync(connection, "SET lock_timeout = '5s';", timeout, cancellationToken)
+                .ConfigureAwait(false);
+            await ExecuteMigrationCommandAsync(connection, "SET statement_timeout = '5min';", timeout, cancellationToken)
+                .ConfigureAwait(false);
+
+            await EnsureExistingIndexMatchesAsync(connection, index, timeout, cancellationToken)
+                .ConfigureAwait(false);
+
+            // A failed concurrent build can leave an invalid index. A completed build can
+            // likewise precede a crash before the ledger insert. Rebuild either case.
+            await ExecuteMigrationCommandAsync(connection,
+                $"DROP INDEX CONCURRENTLY IF EXISTS {index.IndexName};", timeout, cancellationToken)
+                .ConfigureAwait(false);
+            await ExecuteMigrationCommandAsync(connection, migration.Sql, timeout, cancellationToken)
+                .ConfigureAwait(false);
+
+            await using var validityCommand = new NpgsqlCommand(ValidIndexSql, connection)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            validityCommand.Parameters.AddWithValue("index_name", index.IndexName);
+            if (await validityCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not true)
+            {
+                throw new InvalidOperationException("Concurrent index build did not produce a valid ready index.");
+            }
+        }
+        finally
+        {
+            if (roleSet)
+            {
+                try
+                {
+                    await ExecuteMigrationCommandAsync(connection,
+                        "RESET ROLE; RESET lock_timeout; RESET statement_timeout;",
+                        timeout, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+                {
+                    NpgsqlConnection.ClearPool(connection);
+                    resetFailure = exception;
+                }
+            }
+        }
+
+        if (resetFailure is not null)
+        {
+            throw new InvalidOperationException("Migration session state could not be reset.", resetFailure);
+        }
+
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            await using var ledgerCommand = new NpgsqlCommand(InsertLedgerSql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            ledgerCommand.Parameters.AddWithValue("migration_number", migration.Descriptor.Number.Value);
+            ledgerCommand.Parameters.AddWithValue("migration_name", migration.FileName);
+            ledgerCommand.Parameters.AddWithValue("sha256", migration.ChecksumHex);
+            await ledgerCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static async Task EnsureExistingIndexMatchesAsync(
+        NpgsqlConnection connection,
+        ConcurrentIndexSpec index,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(ExistingIndexSql, connection)
+        {
+            CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+        };
+        command.Parameters.AddWithValue("index_name", index.IndexName);
+        command.Parameters.AddWithValue("table_name", index.TableName);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        string expectedSuffix = $"USING btree ({index.Columns})";
+        if (!reader.GetBoolean(1) || reader.GetBoolean(2) || !reader.GetBoolean(3) ||
+            !reader.GetString(0).EndsWith(expectedSuffix, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("An unrelated index already uses the migration index name.");
+        }
+    }
+
+    private static async Task ExecuteMigrationCommandAsync(
+        NpgsqlConnection connection,
+        string sql,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(sql, connection)
+        {
+            CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+        };
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task EnsureSupportedServerVersionAsync(

@@ -88,6 +88,98 @@ public sealed class MigrationIntegrationTests
     }
 
     [Fact]
+    public async Task ConcurrentIndexMigrationRebuildsUnrecordedIndexBeforeRecordingLedger()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        PostgreSqlMigrationCatalog catalog = PostgreSqlMigrationCatalog.LoadEmbedded();
+        PostgreSqlMigrationResource indexMigration = catalog.Migrations[^1];
+        Assert.Equal(88, indexMigration.Descriptor.Number.Value);
+        Assert.False(indexMigration.Descriptor.IsTransactional);
+
+        var runner = new PostgreSqlMigrationPort(database.DataSource, catalog);
+        MigrationBatchResult prefix = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(87, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(prefix.HasFailures);
+
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        {
+            await using var preexisting = new NpgsqlCommand("""
+                SET ROLE sqlobserver_migrator;
+                CREATE INDEX ix_query_performance_run_target_commit
+                    ON events.query_performance_run (instance_id, committed_at, collection_run_id);
+                RESET ROLE;
+                """, connection);
+            await preexisting.ExecuteNonQueryAsync();
+        }
+
+        MigrationBatchResult applied = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(applied.HasFailures);
+        Assert.Single(applied.Results);
+
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var verify = new NpgsqlCommand("""
+            SELECT i.indisvalid, i.indisready,
+                   (SELECT count(*) FROM system.schema_migration WHERE migration_number=88)
+            FROM pg_catalog.pg_index AS i
+            WHERE i.indexrelid='events.ix_query_performance_run_target_commit'::regclass;
+            """, connection))
+        await using (NpgsqlDataReader reader = await verify.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.True(reader.GetBoolean(0));
+            Assert.True(reader.GetBoolean(1));
+            Assert.Equal(1L, reader.GetInt64(2));
+        }
+
+        MigrationBatchResult repeat = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
+        Assert.Empty(repeat.Results);
+    }
+
+    [Fact]
+    public async Task ConcurrentIndexMigrationDoesNotDropAnUnrelatedIndexWithTheSameName()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var runner = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult prefix = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(87, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(prefix.HasFailures);
+
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var preexisting = new NpgsqlCommand("""
+            SET ROLE sqlobserver_migrator;
+            CREATE INDEX ix_query_performance_run_target_commit
+                ON events.query_performance_run (source_state);
+            RESET ROLE;
+            """, connection))
+        {
+            await preexisting.ExecuteNonQueryAsync();
+        }
+
+        MigrationBatchResult failed = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.True(failed.HasFailures);
+        Assert.Single(failed.Results);
+
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var verify = new NpgsqlCommand("""
+            SELECT pg_catalog.pg_get_indexdef('events.ix_query_performance_run_target_commit'::regclass),
+                   (SELECT count(*) FROM system.schema_migration WHERE migration_number=88);
+            """, connection))
+        await using (NpgsqlDataReader reader = await verify.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.Contains("(source_state)", reader.GetString(0), StringComparison.Ordinal);
+            Assert.Equal(0L, reader.GetInt64(1));
+        }
+    }
+
+    [Fact]
     public async Task MigrationsCreateNineSchemasAndNoLoginRoles()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
