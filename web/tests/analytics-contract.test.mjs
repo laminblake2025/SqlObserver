@@ -32,3 +32,10 @@ test("retention policy enforces bounded server TimeSpan and floor/revision", () 
   assert.throws(() => parseRetentionPolicy({ ...base, revision: 0 }));
   assert.throws(() => parseRetentionPolicy({ ...base, policy: { ...base.policy, minimumPartitionsToKeep: 0 } }));
 });
+
+test("retention parser accepts canonical M5 policies and preview rows", () => {
+  const policy = parseRetentionPolicy({ policy: { dataClass: "m5_waits", enabled: false, retainFor: null, minimumPartitionsToKeep: 3 }, revision: 1, readAtUtc: "2026-08-26T01:00:00Z" });
+  assert.equal(policy.policy.dataClass, "m5_waits");
+  const preview = parseRetentionPreview({ entries: [{ dataClass: "m5_waits", parentSchema: "telemetry", parentTable: "server_wait_snapshot", partitionName: "server_wait_snapshot_20260825", rangeStartUtc: "2026-08-25T00:00:00Z", rangeEndUtc: "2026-08-26T00:00:00Z", eligible: false, reason: "retention_disabled" }], truncated: false, nextCursor: null, evaluatedAtUtc: "2026-08-26T01:00:00Z" });
+  assert.equal(preview.entries[0].parentTable, "server_wait_snapshot");
+});

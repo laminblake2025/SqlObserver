@@ -24,6 +24,7 @@ public static class AnalyticsEndpoints
     private static readonly JsonSerializerOptions MutationJsonOptions = new(JsonSerializerDefaults.Web) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
     private static readonly HashSet<string> RetentionDataClasses = new(StringComparer.Ordinal)
     {
+        "m5_activity", "m5_requests", "m5_waits", "m5_blocking",
         "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence"
     };
     private static readonly HashSet<string> MutationReceiptStates = new(StringComparer.Ordinal)

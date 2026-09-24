@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0102`
+The migration catalog contains the exact, contiguous `0001` through `0103`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -170,6 +170,11 @@ the existing M5 maintenance functions create them.
 Migration `0102` limits the analytics dependency hold in retention preview,
 detach, and drop to jobs whose source windows overlap the partition. Jobs
 without a usable window continue to hold retention until resolved.
+Migration `0103` maps M5 activity and blocking policies to their written
+partitioned parents and adds policies for request and wait partitions. It
+refuses an upgrade if either legacy M5 policy has been configured; disable it
+and clear its retention duration before upgrading so the target change is
+reviewed explicitly. The new policies remain disabled until configured.
 
 After upgrading, a migration administrator can backfill the fleet in bounded
 transactions. Repeat this transaction until `complete` is `true`:

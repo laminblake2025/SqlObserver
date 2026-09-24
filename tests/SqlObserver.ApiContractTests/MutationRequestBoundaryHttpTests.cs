@@ -250,18 +250,20 @@ public sealed class MutationRequestBoundaryHttpTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task TypedPolicyPutEnforcesOriginWithoutBreakingValidJson(bool hostile)
+    [InlineData(false, "m10_rollups")]
+    [InlineData(true, "m10_rollups")]
+    [InlineData(false, "m5_waits")]
+    [InlineData(true, "m5_waits")]
+    public async Task TypedPolicyPutEnforcesOriginWithoutBreakingValidJson(bool hostile, string dataClass)
     {
         using var factory = new MutationBoundaryFactory();
         using HttpClient client = factory.Client();
         string json = JsonSerializer.Serialize(new
         {
-            dataClass = "m10_rollups", enabled = true, retainFor = "30.00:00:00",
+            dataClass, enabled = true, retainFor = "30.00:00:00",
             minimumPartitionsToKeep = 3, expectedRevision = 1, changeReason = "HTTP boundary test"
         });
-        using HttpRequestMessage request = Request("/api/v1/retention/policies/m10_rollups", json);
+        using HttpRequestMessage request = Request($"/api/v1/retention/policies/{dataClass}", json);
         request.Method = HttpMethod.Put;
         BrowserHeaders(request, hostile ? "https://attacker.example" : SameOrigin, hostile ? "cross-site" : "same-origin");
         using HttpResponseMessage response = await client.SendAsync(request);
