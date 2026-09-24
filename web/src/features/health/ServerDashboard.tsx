@@ -18,6 +18,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data) : [];
+  const memorySeries = (source: typeof evidence) => source?.series
+    .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "host.memory.available_bytes")
+    .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes" ? "SQL process used" : "Host available" })) ?? [];
   const change = (next: Partial<OverviewScope>) => {
     location.hash = overviewHref({ ...selectedScope, ...next }, "health", instanceId);
   };
@@ -62,6 +65,19 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
         {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
         {chart("host.cpu.percent", "Host CPU", "Host CPU is not SQL process CPU. SQL process CPU is not yet collected for this chart.")}
+        <section className="panel server-dashboard-chart">
+          <h4>Memory pressure</h4>
+          <OverviewChart
+            series={memorySeries(evidence)}
+            previous={memorySeries(previous)}
+            fromUtc={data.fromUtc}
+            toUtc={data.toUtc}
+            crosshairUtc={crosshairUtc}
+            onCrosshairChange={setCrosshairUtc}
+            onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }}
+          />
+          <small>GiB. SQL process physical memory is used memory; host available memory is free memory. They are separate measurements and need not add up to total host memory.</small>
+        </section>
       </div>
       <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={refresh} />
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}

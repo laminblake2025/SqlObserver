@@ -1202,6 +1202,10 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
         var result = await history.ReadAsync(targetId, 1, cutoff.AddHours(-1), cutoff, cutoff, CancellationToken.None);
         var connections = Assert.Single(result, x => x.Metric == "engine.user_connections");
         Assert.Equal(3, connections.Points.Sum(x => x.Samples));
+        var sqlMemory = Assert.Single(result, x => x.Metric == "engine.process_physical_memory_bytes");
+        Assert.Equal("GiB", sqlMemory.Unit);
+        Assert.Equal(3, sqlMemory.Points.Sum(x => x.Samples));
+        Assert.All(sqlMemory.Points.Where(x => x.Value.HasValue), x => Assert.True(x.Value > 0));
         var rates = Assert.Single(result, x => x.Metric == "engine.batch_requests_per_second");
         Assert.Equal(includeMarker ? 1 : 0, rates.Points.Sum(x => x.Samples));
         if (includeMarker) Assert.Equal(100 / (observed[1] - observed[0]).TotalSeconds, Assert.Single(rates.Points, x => x.Value.HasValue).Value!.Value, precision: 5);

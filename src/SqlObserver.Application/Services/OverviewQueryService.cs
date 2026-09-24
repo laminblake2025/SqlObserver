@@ -159,6 +159,7 @@ public sealed class OverviewQueryService(
             foreach (var item in await history.ReadAsync(id, target.Revision.Value, query.FromUtc, query.ToUtc, cutoff, ct) ?? [])
             {
                 if (item.TargetId != id.Value) throw new InvalidDataException("Overview history crossed target scope.");
+                if (!query.TargetId.HasValue && item.Metric == "engine.process_physical_memory_bytes") continue;
                 series.Add(item with { Label = target.DisplayName.Value });
             }
         });
