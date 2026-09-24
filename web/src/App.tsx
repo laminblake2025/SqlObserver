@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
+import { CommandPalette } from "./components/CommandPalette";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
@@ -55,6 +56,7 @@ export function App() {
   const { slow: slowRefresh, blocking: blockingRefresh } = refreshCadence(refresh, liveTick);
   const [directTargetLookup, setDirectTargetLookup] = useState<DirectTargetLookup>();
   const [adding, setAdding] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
   const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
@@ -66,6 +68,17 @@ export function App() {
     const change = () => setRoute(readRoute(location.hash));
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
+  }, []);
+
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        if (!event.repeat) setCommandPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
   }, []);
 
   useEffect(() => {
@@ -227,6 +240,7 @@ export function App() {
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">UTC <span className="topbar-separator">·</span> Read-only evidence</span></div>
+          <button className="secondary-button topbar-search" type="button" onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search servers <kbd>Ctrl+K</kbd></button>
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
             <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={route.page === "analytics" ? 7 : 31} />
             <span className="topbar-time-mode">{isRewind ? "Rewind · fixed UTC" : livePaused ? "Live · paused" : "Live · moving UTC"}</span>
@@ -292,6 +306,7 @@ export function App() {
         <footer className="app-footer">SQL Observer <span>·</span> Bounded evidence <span>·</span> UTC timestamps <span>·</span> Pre-release validation</footer>
       </div>
 
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} scope={scope} />
       <Drawer open={adding && canAddServer} onClose={() => setAdding(false)}>
         <TargetOnboarding onRegistered={(target) => {
           setTargets((current) => [target, ...current.filter((candidate) => candidate.instanceId !== target.instanceId)].slice(0, 50));

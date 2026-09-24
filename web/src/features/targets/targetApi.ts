@@ -9,8 +9,9 @@ const targetsPath = "/api/v1/observation-targets";
 export async function listObservationTargets(
   signal: AbortSignal,
   cursor?: string,
+  limit = 50,
 ): Promise<ObservationTargetPage> {
-  const response = await fetch(`${targetsPath}?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
+  const response = await fetch(`${targetsPath}?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
     signal,

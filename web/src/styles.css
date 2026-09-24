@@ -111,6 +111,20 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .time-range-popover > p { flex-basis: 100%; margin: 0; }
 .topbar-meta { color: var(--muted-deep); font-weight: 650; }
 .topbar-separator { margin: 0 7px; color: #a8b7c5; }
+.topbar-search { white-space: nowrap; }
+.topbar-search kbd { margin-left: 8px; padding: 2px 5px; color: var(--muted-deep); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 4px; font: inherit; font-size: 10px; }
+.command-palette { width: min(620px, calc(100vw - 28px)); max-height: min(720px, calc(100vh - 48px)); padding: 20px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 24px 64px rgb(11 30 51 / 24%); }
+.command-palette::backdrop { background: rgb(11 30 51 / 52%); }
+.command-palette-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.command-palette-header h2 { margin-bottom: 4px; }
+.command-palette-header p { margin-bottom: 16px; color: var(--muted); font-size: 13px; }
+.command-palette input[type="search"] { width: 100%; }
+.command-palette-status { margin: 12px 0 8px; color: var(--muted-deep); font-size: 12px; }
+.command-palette-results { display: grid; gap: 4px; max-height: 430px; overflow: auto; }
+.command-palette-result { display: grid; gap: 3px; width: 100%; min-height: 58px; padding: 9px 12px; text-align: left; border-color: transparent; }
+.command-palette-result:hover, .command-palette-result:focus-visible { background: var(--surface-hover); border-color: var(--border-teal); }
+.command-palette-result span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.command-palette-empty { padding: 14px; color: var(--muted); }
 .shell { width: 100%; max-width: 1840px; margin: 0 auto; padding: 30px 36px 38px; background: var(--canvas); }
 .page-heading { display: flex; align-items: end; justify-content: space-between; gap: 28px; margin-bottom: 28px; }
 .page-heading-copy { min-width: 0; }
