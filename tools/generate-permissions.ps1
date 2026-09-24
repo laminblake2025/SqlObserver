@@ -19,6 +19,9 @@ param(
 
     [string] $DistributionDatabase,
 
+    [ValidateNotNullOrEmpty()]
+    [string] $QueryStoreDatabase,
+
     [switch] $Force
 )
 
@@ -53,6 +56,17 @@ function Assert-WindowsPrincipal {
 }
 
 Assert-WindowsPrincipal -Value $Principal
+
+if ($PSBoundParameters.ContainsKey('QueryStoreDatabase')) {
+    if ($Operation -ne 'Grant') {
+        throw 'QueryStoreDatabase supports Grant only; removal requires DBA review of existing grant and user provenance.'
+    }
+    if ($QueryStoreDatabase.Length -gt 128 -or $QueryStoreDatabase -cne $QueryStoreDatabase.Trim() -or
+        $QueryStoreDatabase -in @('master', 'model', 'msdb', 'tempdb') -or
+        @($QueryStoreDatabase.ToCharArray() | Where-Object { [char]::IsControl($_) }).Count -gt 0) {
+        throw 'QueryStoreDatabase must be a trimmed user database name of at most 128 characters without control characters.'
+    }
+}
 
 if ($DistributionDatabase -and -not $Replication) {
     throw 'DistributionDatabase requires the explicit -Replication option.'
@@ -300,13 +314,70 @@ GRANT VIEW ANY DEFINITION TO [$principalIdentifier];
 "@
 }
 
+if ($PSBoundParameters.ContainsKey('QueryStoreDatabase')) {
+    $queryStoreLiteral = $QueryStoreDatabase.Replace("'", "''", [StringComparison]::Ordinal)
+    $queryStoreIdentifier = $QueryStoreDatabase.Replace(']', ']]', [StringComparison]::Ordinal)
+    $queryStorePermission = if ($SqlServerMajorVersion -eq 15) { 'VIEW DATABASE STATE' } else { 'VIEW DATABASE PERFORMANCE STATE' }
+    $script += @"
+
+-- Explicit Query Store observation access for one operator-selected database.
+-- This maps the existing Windows login and grants read-only database visibility.
+-- It never enables Query Store, alters its settings, or grants database roles.
+-- Re-run separately for each selected database. Removal is manual because
+-- existing users and grants may support other DBA-approved workloads.
+USE [master];
+IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'$queryStoreLiteral' AND database_id > 4 AND state = 0)
+BEGIN
+    THROW 51003, 'The selected Query Store user database must exist and be online.', 1;
+END;
+USE [$queryStoreIdentifier];
+IF EXISTS
+(
+    SELECT 1 FROM sys.database_principals AS database_principal
+    WHERE database_principal.name = @sqlobserver_principal
+      AND (database_principal.sid IS NULL OR database_principal.sid <> SUSER_SID(@sqlobserver_principal)
+           OR database_principal.type NOT IN (N'U', N'G')
+           OR database_principal.authentication_type_desc NOT IN (N'INSTANCE', N'WINDOWS'))
+)
+BEGIN
+    THROW 51003, 'The selected database principal is not mapped to the intended Windows login.', 1;
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @sqlobserver_principal)
+BEGIN
+    CREATE USER [$principalIdentifier] FOR LOGIN [$principalIdentifier];
+END;
+IF NOT EXISTS
+(
+    SELECT 1 FROM sys.database_principals AS database_principal
+    WHERE database_principal.name = @sqlobserver_principal
+      AND database_principal.sid = SUSER_SID(@sqlobserver_principal)
+      AND database_principal.type IN (N'U', N'G')
+      AND database_principal.authentication_type_desc IN (N'INSTANCE', N'WINDOWS')
+)
+BEGIN
+    THROW 51003, 'The selected database principal could not be verified against the intended Windows login.', 1;
+END;
+GRANT CONNECT TO [$principalIdentifier];
+GRANT $queryStorePermission TO [$principalIdentifier];
+"@
+}
+
 $script = $script.Replace("`r`n", "`n", [StringComparison]::Ordinal).Replace("`r", "`n", [StringComparison]::Ordinal)
 if (-not $script.EndsWith("`n", [StringComparison]::Ordinal)) {
     $script += "`n"
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    [Console]::Out.Write($script)
+    # A redirected host may inherit an ASCII/OEM encoding. Database and
+    # principal identifiers must survive stdout just as they do UTF-8 files.
+    $previousConsoleEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+        [Console]::Out.Write($script)
+    }
+    finally {
+        [Console]::OutputEncoding = $previousConsoleEncoding
+    }
     return
 }
 

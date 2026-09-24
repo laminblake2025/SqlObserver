@@ -42,6 +42,31 @@ The repository stores append-only attempts, profiles, allowlisted capability rea
 
 No service code executes generated permission SQL, changes Query Store, creates or changes Extended Events sessions, changes blocked-process settings, or performs any other target mutation.
 
+Query Store access in a user database is an explicit opt-in:
+
+```powershell
+pwsh ./tools/generate-permissions.ps1 -SqlServerMajorVersion 16 `
+    -Principal 'CONTOSO\sqlobserver$' -QueryStoreDatabase 'Accounting' `
+    -OutputPath ./accounting-permissions.sql
+```
+
+The additional section maps that database user to the existing Windows login,
+verifies its SID and principal type, and grants `CONNECT` plus `VIEW DATABASE
+STATE` on SQL Server 2019 or `VIEW DATABASE PERFORMANCE STATE` on SQL Server
+2022/2025. These are the documented
+[Query Store runtime-statistics permissions](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-query-store-runtime-stats-transact-sql).
+Run the generator separately for each selected database. It accepts quoted and
+Unicode names, rejects system databases, and emits UTF-8 SQL without enabling or
+reconfiguring Query Store. The database must already exist and be online when
+the DBA applies the plan. Without this option, user-database permissions stay
+outside the generated plan.
+
+`-QueryStoreDatabase` supports `Grant` only. Review existing user and grant
+provenance before manual removal; the generator cannot determine whether other
+workloads depend on that access. The generated plans are not transactional and
+should be reviewed before application. Read-only replicas may require applying
+the database-user change on their writable primary.
+
 ## Security and operational assumptions
 
 - Windows group membership is mapped to bounded application roles and target scopes by SID. Authentication alone grants no application access.
