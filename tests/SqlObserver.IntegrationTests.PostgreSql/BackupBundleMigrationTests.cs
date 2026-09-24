@@ -105,7 +105,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(108);
         await SeedHistoricalRunAsync(database);
-        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: true);
+        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: true, omitBackupManifest: true);
         string historyBefore = await ReadHistoryAndSchedulesAsync(database);
         Assert.Equal(Enumerable.Repeat("8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593", 4), await ReadBackupBundlesAsync(database));
 
@@ -114,16 +114,32 @@ public sealed partial class PassiveCollectorBundleMigrationTests
 
         Assert.False(upgrade.HasFailures);
         Assert.Equal(109, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(Enumerable.Repeat("689ae4dc9b8c0f2c15ce1064c0a823e47b79fec62d21d11c48a7804b4e4c1919", 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true, omitBackupManifest: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+
+        MigrationBatchResult visibilityUpgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+        Assert.False(visibilityUpgrade.HasFailures);
+        Assert.Equal(110, Assert.Single(visibilityUpgrade.Results).Migration.Number.Value);
         Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
-        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
+        await using (var manifest = database.DataSource.CreateCommand("SELECT encode(manifest_sha256,'hex') FROM control.collector_contract WHERE collector_id='backups.status' AND collector_version=1"))
+            Assert.Equal("7b33dfe41e9e5dbdd8dec1afe5504e34add138f56181f039d838b3e0f854e6e9", await manifest.ExecuteScalarAsync());
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true, omitBackupManifest: true));
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         await AssertAppendOnlyTriggerAsync(database);
+        await using ServiceProvider application = CreateApplication();
+        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var lease = await AcquireCatalogLeaseAsync(collector);
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        Assert.Equal(15, (await runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
     }
 
     [Fact]
     public async Task CurrentOperationalBundleUpgradeRejectsUnexpectedPriorPinAtomically()
     {
-        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(108);
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(109);
         await using (var corrupt = database.DataSource.CreateCommand("""
             ALTER TABLE control.collector_contract DISABLE TRIGGER collector_contract_append_only;
             UPDATE control.collector_contract SET asset_bundle_sha256=decode(repeat('ff',32),'hex')
@@ -136,12 +152,12 @@ public sealed partial class PassiveCollectorBundleMigrationTests
             .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
 
         MigrationExecutionResult failure = Assert.Single(result.Results);
-        Assert.Equal(109, failure.Migration.Number.Value);
+        Assert.Equal(110, failure.Migration.Number.Value);
         Assert.Equal(MigrationOutcome.Failed, failure.Outcome);
         Assert.Equal("postgres_55000", failure.FailureCode);
         Assert.Equal(before, await ReadBackupBundlesAsync(database));
         await using var ledger = database.DataSource.CreateCommand("SELECT max(migration_number) FROM system.schema_migration;");
-        Assert.Equal(108, Assert.IsType<int>(await ledger.ExecuteScalarAsync()));
+        Assert.Equal(109, Assert.IsType<int>(await ledger.ExecuteScalarAsync()));
         await AssertAppendOnlyTriggerAsync(database);
     }
 
@@ -156,18 +172,22 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         return Assert.IsType<string[]>(await command.ExecuteScalarAsync());
     }
 
-    private static async Task<string> ReadBackupBundleRegistryAsync(RepositoryTestDatabase database, bool omitBundle)
+    private static async Task<string> ReadBackupBundleRegistryAsync(RepositoryTestDatabase database, bool omitBundle, bool omitBackupManifest = false)
     {
         await using var command = database.DataSource.CreateCommand("""
             SELECT jsonb_agg(CASE WHEN @omit_bundle AND collector_version=1
                 AND collector_id IN ('backups.status','sql-agent.failures','tempdb.health',
                     'availability-groups.health','activity.sessions','activity.requests',
                     'waits.server','blocking.current')
-                THEN to_jsonb(c)-'asset_bundle_sha256' ELSE to_jsonb(c) END
+                THEN CASE WHEN @omit_backup_manifest AND collector_id='backups.status'
+                    THEN to_jsonb(c)-'asset_bundle_sha256'-'manifest_sha256'
+                    ELSE to_jsonb(c)-'asset_bundle_sha256' END
+                ELSE to_jsonb(c) END
                 ORDER BY collector_id,collector_version)::text
             FROM control.collector_contract c;
             """);
         command.Parameters.AddWithValue("omit_bundle", omitBundle);
+        command.Parameters.AddWithValue("omit_backup_manifest", omitBackupManifest);
         return Assert.IsType<string>(await command.ExecuteScalarAsync());
     }
 

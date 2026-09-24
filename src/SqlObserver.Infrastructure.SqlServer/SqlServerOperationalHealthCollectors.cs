@@ -46,6 +46,7 @@ public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
         {
             string permission = request.CapabilityProfile.ServerIdentity.Version.Major == 15 ? "server.view-state" : "server.view-performance-state";
             if (request.CapabilityProfile.Permissions.FirstOrDefault(x => x.PermissionId.Value == permission)?.Outcome != PermissionEvidenceOutcome.Granted ||
+                request.CapabilityProfile.Permissions.FirstOrDefault(x => x.PermissionId.Value == "server.view-any-database")?.Outcome != PermissionEvidenceOutcome.Granted ||
                 request.CapabilityProfile.Permissions.FirstOrDefault(x => x.PermissionId.Value == "msdb.backupset.select")?.Outcome != PermissionEvidenceOutcome.Granted)
                 return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing);
         }
@@ -138,6 +139,7 @@ public static class M9Manifest
             [
                 new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-state"), PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(15, 15)),
                 new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-performance-state"), PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(16, 17)),
+                new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, supported),
                 new CollectorPermissionRequirement(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, supported),
             ];
         }

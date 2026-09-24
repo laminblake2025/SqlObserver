@@ -31,6 +31,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
     private static readonly SqlServerPermissionId PerformanceReaderMembershipPermissionId =
         new("server.performance-reader-role-membership");
     private static readonly SqlServerPermissionId BackupsetSelectPermissionId = new("msdb.backupset.select");
+    private static readonly SqlServerPermissionId ViewAnyDatabasePermissionId = new("server.view-any-database");
     private static readonly SqlServerPermissionId SysjobhistorySelectPermissionId = new("msdb.sysjobhistory.select");
 
     private readonly ISqlServerConnectionFactory _connectionFactory;
@@ -196,6 +197,14 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
 
             if (_assetsV3 is not null)
             {
+                await using (var visibilityProbe = new SqlCommand(
+                    "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,N'SERVER',N'VIEW ANY DATABASE'),0));",
+                    connection) { CommandTimeout = commandTimeout })
+                {
+                    object? visibility = await visibilityProbe.ExecuteScalarAsync(timeout.Token).ConfigureAwait(false);
+                    detail = detail with { HasViewAnyDatabase = visibility is true };
+                    budget.AddFixedBytes(1);
+                }
                 string originalDatabase = connection.Database;
                 try
                 {
@@ -755,6 +764,10 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                         ? PermissionEvidenceOutcome.Granted
                         : PermissionEvidenceOutcome.Denied),
                 new PermissionEvidence(
+                    ViewAnyDatabasePermissionId,
+                    PermissionEvidenceScope.Server,
+                    detail.HasViewAnyDatabase ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied),
+                new PermissionEvidence(
                     BackupsetSelectPermissionId,
                     PermissionEvidenceScope.Database,
                     detail.HasBackupsetSelect ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied),
@@ -1115,5 +1128,6 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         int ContractVersion = 2,
         bool HasReplicationFeature = false,
         bool HasHostBindingFeature = false,
-        bool? HasReplicationMonitorPermission = null);
+        bool? HasReplicationMonitorPermission = null,
+        bool HasViewAnyDatabase = false);
 }

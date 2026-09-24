@@ -121,6 +121,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
     private const string ReplicationCapabilityId = "feature.replication";
     private const string HostBindingCapabilityId = "feature.host-binding";
     private const string BackupsetSelectPermissionId = "msdb.backupset.select";
+    private const string ViewAnyDatabasePermissionId = "server.view-any-database";
     private const string SysjobhistorySelectPermissionId = "msdb.sysjobhistory.select";
     private const string ViewServerStatePermissionId = "server.view-state";
     private const string ViewServerPerformanceStatePermissionId = "server.view-performance-state";
@@ -448,11 +449,13 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         {
             bool hasHistoryEvidence = permissions.ContainsKey(BackupsetSelectPermissionId) &&
                 permissions.ContainsKey(SysjobhistorySelectPermissionId);
-            if (permissions.Count != (hasHistoryEvidence ? 4 : 2) ||
+            if (permissions.Count != (hasHistoryEvidence ? 5 : 3) ||
+                !permissions.TryGetValue(ViewAnyDatabasePermissionId, out PermissionEvidence? databaseVisibility) ||
+                databaseVisibility.Outcome is not (PermissionEvidenceOutcome.Granted or PermissionEvidenceOutcome.Denied) ||
                 !permissions.TryGetValue(ReplicationMonitorPermissionId, out PermissionEvidence? replication) ||
                 replication.Outcome is not (PermissionEvidenceOutcome.Granted or PermissionEvidenceOutcome.NotApplicable))
             {
-                throw new InvalidDataException("Capability discovery v3 omitted replication permission evidence.");
+                throw new InvalidDataException("Capability discovery v3 omitted required permission evidence.");
             }
 
             PermissionEvidence required = permissions[majorVersion == 15
@@ -566,6 +569,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         ViewServerStatePermissionId or
         ViewServerPerformanceStatePermissionId or
         PerformanceReaderMembershipPermissionId or
+        ViewAnyDatabasePermissionId or
         BackupsetSelectPermissionId or
         SysjobhistorySelectPermissionId or
         ReplicationMonitorPermissionId;

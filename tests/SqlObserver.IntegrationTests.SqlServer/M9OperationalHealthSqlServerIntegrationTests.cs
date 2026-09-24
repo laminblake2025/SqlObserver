@@ -325,17 +325,32 @@ public sealed partial class M9OperationalHealthSqlServerIntegrationTests
     }
 
     [Fact]
-    public async Task M9BackupRuntimeGateRequiresVersionSpecificViewAndBackupsetPermissions()
+    public async Task M9BackupRuntimeGateRequiresVersionSpecificViewDatabaseVisibilityAndBackupsetPermissions()
     {
         var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         foreach (int major in new[] { 15, 16, 17 })
         {
             string view = major == 15 ? "server.view-state" : "server.view-performance-state";
-            var missingView = await collector.CollectAsync(CreateRequest(major, [new PermissionEvidence(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Granted)]), CancellationToken.None);
+            var missingView = await collector.CollectAsync(CreateRequest(major,
+            [
+                new PermissionEvidence(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+                new PermissionEvidence(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Granted),
+            ]), CancellationToken.None);
             Assert.Equal(CollectorRunOutcome.PermissionDenied, missingView.Outcome);
-            var missingBackupset = await collector.CollectAsync(CreateRequest(major, [new PermissionEvidence(new SqlServerPermissionId(view), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted)]), CancellationToken.None);
+            var missingBackupset = await collector.CollectAsync(CreateRequest(major,
+            [
+                new PermissionEvidence(new SqlServerPermissionId(view), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+                new PermissionEvidence(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            ]), CancellationToken.None);
             Assert.Equal(CollectorRunOutcome.PermissionDenied, missingBackupset.Outcome);
+            var missingDatabaseVisibility = await collector.CollectAsync(CreateRequest(major,
+            [
+                new PermissionEvidence(new SqlServerPermissionId(view), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+                new PermissionEvidence(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Granted),
+            ]), CancellationToken.None);
+            Assert.Equal(CollectorRunOutcome.PermissionDenied, missingDatabaseVisibility.Outcome);
             Assert.Contains(collector.Manifest.RequiredPermissions, requirement => requirement.PermissionId.Value == view && requirement.ApplicableVersions.MinimumMajor == (major == 15 ? 15 : 16) && requirement.ApplicableVersions.MaximumMajor == (major == 15 ? 15 : 17));
+            Assert.Contains(collector.Manifest.RequiredPermissions, requirement => requirement.PermissionId.Value == "server.view-any-database" && requirement.Scope == PermissionEvidenceScope.Server && requirement.ApplicableVersions.MinimumMajor == 15 && requirement.ApplicableVersions.MaximumMajor == 17);
             Assert.Contains(collector.Manifest.RequiredPermissions, requirement => requirement.PermissionId.Value == "msdb.backupset.select" && requirement.ApplicableVersions.MinimumMajor == 15 && requirement.ApplicableVersions.MaximumMajor == 17);
         }
     }

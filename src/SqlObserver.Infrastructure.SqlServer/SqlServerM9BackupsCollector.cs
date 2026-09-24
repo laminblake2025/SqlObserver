@@ -8,7 +8,7 @@ namespace SqlObserver.Infrastructure.SqlServer;
 public sealed class SqlServerBackupsStatusCollector : SqlServerOperationalHealthCollector
 {
     public SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog assets) : base(assets) { }
-    public override CollectorManifest Manifest { get; } = M9Manifest.Create("backups.status", "SQL Server backup status", CollectorOutputKind.BackupsStatus, [SqlServerEngineEdition.Standard, SqlServerEngineEdition.Enterprise, SqlServerEngineEdition.Express], 300, 60, 1537, 1_048_576, ["server.view-state", "msdb.backupset.select"]);
+    public override CollectorManifest Manifest { get; } = M9Manifest.Create("backups.status", "SQL Server backup status", CollectorOutputKind.BackupsStatus, [SqlServerEngineEdition.Standard, SqlServerEngineEdition.Enterprise, SqlServerEngineEdition.Express], 300, 60, 1537, 1_048_576, ["server.view-state", "server.view-any-database", "msdb.backupset.select"]);
     protected override string QueryName => "backups.status";
     protected override async ValueTask<(IOperationalHealthSnapshot Snapshot, int Rows, int Items, int Bytes, CollectorLossEvidence Loss)> ReadAsync(CollectorExecutionRequest request, IOperationalHealthRowReader reader, CancellationToken cancellationToken)
     {
