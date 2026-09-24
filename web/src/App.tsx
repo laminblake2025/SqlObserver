@@ -22,6 +22,7 @@ import { canAcknowledgeAlert, canRegisterTarget, getMyAccess, type MyAccess } fr
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { activityHistoryHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
+import { refreshCadence, startWorkspaceClock, wakeLiveTick } from "./liveRefreshSchedule";
 
 const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], string>> = {
   overview: "⌂",
@@ -42,12 +43,16 @@ type DirectTargetLookup =
 
 export function App() {
   const [route, setRoute] = useState(() => readRoute(location.hash));
+  const scope = readOverviewScope(location.hash);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string>();
   const [refresh, setRefresh] = useState(0);
+  const [liveTick, setLiveTick] = useState(0);
+  const [livePaused, setLivePaused] = useState(false);
+  const { slow: slowRefresh, blocking: blockingRefresh } = refreshCadence(refresh, liveTick);
   const [directTargetLookup, setDirectTargetLookup] = useState<DirectTargetLookup>();
   const [adding, setAdding] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
@@ -59,6 +64,17 @@ export function App() {
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
+
+  useEffect(() => {
+    if (livePaused || scope.range === "custom") return;
+    return startWorkspaceClock({
+      setInterval: (callback, milliseconds) => window.setInterval(callback, milliseconds),
+      clearInterval: timer => window.clearInterval(timer),
+      addVisibilityListener: callback => document.addEventListener("visibilitychange", callback),
+      removeVisibilityListener: callback => document.removeEventListener("visibilitychange", callback),
+      isHidden: () => document.hidden,
+    }, () => setLiveTick(value => value + 1), () => setLiveTick(wakeLiveTick));
+  }, [livePaused, scope.range]);
 
   useEffect(() => {
     const targetId = route.target || null;
@@ -93,7 +109,7 @@ export function App() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [cursor, refresh]);
+  }, [cursor, slowRefresh]);
 
   const evidence = useFleetEvidence(targets, route.page === "servers");
   const listedTarget = targets.find((target) => target.instanceId === route.target);
@@ -101,7 +117,7 @@ export function App() {
   const targetPage = route.page !== "overview" && route.page !== "servers" && !fleetAlertsPage;
   const directLookupRequired = targetPage && Boolean(route.target) && !listedTarget;
   const currentDirectTargetLookup = directLookupRequired
-    ? directTargetLookup?.targetId === route.target && directTargetLookup.refresh === refresh
+    ? directTargetLookup?.targetId === route.target && directTargetLookup.refresh === slowRefresh
       ? directTargetLookup
       : { targetId: route.target, state: "loading" as const }
     : undefined;
@@ -111,28 +127,27 @@ export function App() {
     const targetId = route.target;
     const controller = new AbortController();
     setDirectTargetLookup((previous) => ({
-      targetId, refresh, state: "loading",
+      targetId, refresh: slowRefresh, state: "loading",
       target: previous?.targetId === targetId && previous.state !== "error" ? previous.target : undefined,
     }));
     void getObservationTarget(targetId, controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return;
         if (value.instanceId !== targetId) {
-          setDirectTargetLookup({ targetId, refresh, state: "error", message: "The selected server is unavailable." });
+          setDirectTargetLookup({ targetId, refresh: slowRefresh, state: "error", message: "The selected server is unavailable." });
           return;
         }
-        setDirectTargetLookup({ targetId, refresh, state: "resolved", target: value });
+        setDirectTargetLookup({ targetId, refresh: slowRefresh, state: "resolved", target: value });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setDirectTargetLookup({ targetId, refresh, state: "error", message: targetLookupError(error) });
+          setDirectTargetLookup({ targetId, refresh: slowRefresh, state: "error", message: targetLookupError(error) });
         }
       });
     return () => controller.abort();
-  }, [listedTarget, refresh, route.target, targetPage]);
+  }, [listedTarget, slowRefresh, route.target, targetPage]);
 
   const selected = listedTarget ?? (directTargetLookup?.targetId === route.target && directTargetLookup.state !== "error" ? directTargetLookup.target : undefined);
-  const scope = readOverviewScope(location.hash);
   const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const changeTimeContext = (next: Partial<typeof scope>) => {
@@ -145,7 +160,7 @@ export function App() {
   const canAddServer = canRegisterTarget(myAccess);
   const queryWindow = useMemo(
     () => resolveQueryWindow(scope, Date.now()),
-    [route.page, scope.target, scope.range, scope.from, scope.to, refresh],
+    [route.page, scope.target, scope.range, scope.from, scope.to, slowRefresh],
   );
   const currentNavigation = route.page === "health" ? "servers" : route.page;
   const routeHref = (page: Destination, target = route.target) => overviewHref(scope, page, target);
@@ -213,8 +228,12 @@ export function App() {
           <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">UTC <span className="topbar-separator">·</span> Read-only evidence</span></div>
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
             <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={route.page === "analytics" ? 7 : 31} />
-            <span className="topbar-time-mode">{scope.range === "custom" ? "Rewind · fixed UTC" : "Live · moving UTC"}</span>
+            <span className="topbar-time-mode">{scope.range === "custom" ? "Rewind · fixed UTC" : livePaused ? "Live · paused" : "Live · moving UTC"}</span>
           </div>}
+          {scope.range !== "custom" && <button className="secondary-button" type="button" aria-pressed={livePaused} onClick={() => {
+            if (livePaused) setLiveTick(wakeLiveTick);
+            setLivePaused(value => !value);
+          }}>{livePaused ? "Resume live updates" : "Pause live updates"}</button>}
         </header>
         <main id="main-content" tabIndex={-1} className="shell">
           <PageHeading
@@ -249,23 +268,23 @@ export function App() {
           {targetPage && !props && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
 
-          {route.page === "overview" ? <OverviewPage refresh={refresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
-          {fleetAlertsPage ? <FleetAlertsPage refresh={refresh} /> : null}
+          {route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
+          {fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} /> : null}
           {route.page === "servers" && !loading && !message ? <ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} /> : null}
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
-              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={refresh} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={refresh} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={refresh}
+              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} />}
+              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
-              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={refresh} />}
-              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={refresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={refresh} />}
+              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh} />}
+              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={slowRefresh} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
-              {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={refresh} surface={surface} onSurfaceChange={setSurface} />}
+              {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>
           ) : null}
         </main>

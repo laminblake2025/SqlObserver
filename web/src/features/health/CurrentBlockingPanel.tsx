@@ -15,10 +15,8 @@ export function CurrentBlockingPanel({ instanceId, scope, refresh }: {
 
   useEffect(() => {
     let active = true;
-    let controller: AbortController | undefined;
-    let timer: number | undefined;
+    const controller = new AbortController();
     async function poll() {
-      controller = new AbortController();
       try {
         const next = await getCurrentBlockingPage(instanceId, controller.signal);
         if (active) { setPage(next); setError(undefined); }
@@ -26,14 +24,11 @@ export function CurrentBlockingPanel({ instanceId, scope, refresh }: {
         if (active && !controller.signal.aborted) {
           setError(failure instanceof Error ? failure.message : "Current blocking is unavailable.");
         }
-      } finally {
-        if (active) timer = window.setTimeout(() => void poll(), 30_000);
       }
     }
-    setPage(undefined);
     setError(undefined);
     void poll();
-    return () => { active = false; controller?.abort(); if (timer !== undefined) window.clearTimeout(timer); };
+    return () => { active = false; controller.abort(); };
   }, [instanceId, refresh]);
 
   const groups = page ? groupBlockingEdges(page.items) : [];

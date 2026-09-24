@@ -26,7 +26,8 @@ test("target detail exposes bounded repository health evidence", async () => {
   assert.match(panel, /Stale evidence/);
   assert.match(panel, /evidence_stale: "The latest successful evidence is overdue"/);
   assert.match(panel, /Visibility gap:/);
-  assert.match(panel, /refreshIntervalMilliseconds = 30_000/);
+  assert.match(onboarding, /startWorkspaceClock/);
+  assert.doesNotMatch(panel, /setTimeout\(/);
   assert.match(panel, /request\?\.abort\(\)/);
   assert.match(types, /readonly sourceRows: number/);
   assert.match(types, /readonly responseBytes: number/);

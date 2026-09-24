@@ -5,15 +5,16 @@ import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
 
-export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
+export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
+  readonly blockingRefresh: number;
 }) {
   const [crosshairUtc, setCrosshairUtc] = useState<string | null>(null);
   const selectedScope = { ...scope, target: instanceId };
-  const result = useOverviewAnalytics(selectedScope, refresh, scope.range !== "custom");
+  const result = useOverviewAnalytics(selectedScope, refresh);
   const data = result.data;
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
@@ -81,7 +82,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
           <small>GiB. SQL process physical memory is used memory; OS available memory via SQL and host available memory are free memory. They are separate measurements and need not add up to total host memory.</small>
         </section>
       </div>
-      <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={refresh} />
+      <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={blockingRefresh} />
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       <p className="activity-evidence">{overviewEvidenceFooter(data)}</p>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}

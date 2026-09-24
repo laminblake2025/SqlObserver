@@ -14,9 +14,12 @@ export interface TargetActivityPanelProps {
   readonly initialHistoryEventId?: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
+  readonly manualRefresh: number;
+  readonly sessionTick: number;
+  readonly livePaused: boolean;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh }: TargetActivityPanelProps) {
+export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused }: TargetActivityPanelProps) {
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
   const [message, setMessage] = useState<string>();
   const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to, refresh]);
@@ -35,7 +38,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
 
   return (
     <section className="activity-screen" aria-labelledby="activity-heading">
-      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={refresh} />
+      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} />
       <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Blocking history follows the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
       <p className="activity-evidence">{window ? `Selected blocking-history window: ${window.fromUtc} to ${window.toUtc}.` : selected.state === "unavailable" ? selected.message : null}</p>

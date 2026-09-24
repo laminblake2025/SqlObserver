@@ -8,13 +8,12 @@ const labels:Record<string,string>={'host.cpu.percent':'Host CPU','host.memory.a
 export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd:()=>void;canAddServer:boolean}) {
   const scope=readOverviewScope(location.hash);
   const [crosshairUtc,setCrosshairUtc]=useState<string|null>(null);
-  const [automatic,setAutomatic]=useState(false);
   const [workload,setWorkload]=useState('engine.batch_requests_per_second');
   const [workloadView,setWorkloadView]=useState<'server'|'database'>('database');
   const [resourceMetric,setResourceMetric]=useState('host.cpu.percent');
   const [contention,setContention]=useState('blocking.sessions');
   const [serverSearch,setServerSearch]=useState('');
-  const result=useOverviewAnalytics(scope,refresh,automatic); const data=result.data;
+  const result=useOverviewAnalytics(scope,refresh); const data=result.data;
   // Keep the authorized selector choices while evidence reloads; no old evidence is shown under a new selection.
   const [choices,setChoices]=useState(data?.targets??[]);
   if (data && choices!==data.targets) setChoices(data.targets);
@@ -38,7 +37,6 @@ export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd
   return <div className="overview-page">
     <div className="overview-controls"><label>Server<select aria-label="Overview server" value={scope.target} onChange={e=>navigate({target:e.target.value})}><option value="">All servers</option>{scope.target&&!choices.some(t=>t.targetId===scope.target)&&<option value={scope.target}>Selected server</option>}{choices.map(t=><option key={t.targetId} value={t.targetId}>{t.displayName}{t.lifecycle!=='active'?` · ${t.lifecycle}`:''}</option>)}</select></label>
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={e=>navigate({compare:e.target.checked})}/>Compare previous period</label>
-      <label className="overview-check"><input type="checkbox" checked={automatic} disabled={scope.range==='custom'} onChange={e=>setAutomatic(e.target.checked)}/>Refresh every 60s</label>
       <span className="server-dashboard-mode">Drag a chart to select a shared UTC window.</span>
     </div>
     {result.loading&&<p role="status" className="overview-coverage">Loading analytics for {scope.target?'the selected server':'all authorized servers'}…</p>}

@@ -23,8 +23,6 @@ import type {
   TargetHealthState,
 } from "./healthTypes";
 
-const refreshIntervalMilliseconds = 30_000;
-
 const stateLabels: Readonly<Record<TargetHealthState, string>> = {
   pending: "No data yet",
   current: "Current evidence",
@@ -65,9 +63,11 @@ export interface TargetHealthPanelProps {
   readonly onClose: () => void;
   readonly scope: OverviewScope;
   readonly refresh: number;
+  readonly healthRefresh: number;
+  readonly blockingRefresh: number;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh }: TargetHealthPanelProps) {
   const [evidence, setEvidence] = useState<TargetHealthEvidence>();
   const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -76,7 +76,6 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
 
   useEffect(() => {
     let active = true;
-    let timer: number | undefined;
     let request: AbortController | undefined;
 
     async function refresh() {
@@ -93,29 +92,22 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           setMessage(getSafeMessage(error));
         }
       } finally {
-        if (active) {
-          setLoading(false);
-          timer = window.setTimeout(() => void refresh(), refreshIntervalMilliseconds);
-        }
+        if (active) setLoading(false);
       }
     }
 
-    setEvidence(undefined);
     setMessage(undefined);
     setLoading(true);
     void refresh();
     return () => {
       active = false;
       request?.abort();
-      if (timer !== undefined) {
-        window.clearTimeout(timer);
-      }
     };
-  }, [instanceId, refresh]);
+  }, [instanceId, healthRefresh]);
 
   return (
     <section className="health-screen" aria-labelledby="health-heading">
-      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh} />
+      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh} blockingRefresh={blockingRefresh} />
       <div className="health-heading-row">
         <div>
           <p className="eyebrow">Server summary · target-scoped snapshot</p>
