@@ -41,8 +41,8 @@ public sealed class McpCursorRegressionTests
         Dictionary<string, JsonElement> arguments = Arguments(tool);
         DateTimeOffset now = DateTimeOffset.UtcNow.AddHours(-1);
         DateTimeOffset to = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
-        if ((mode & 1) != 0) arguments["fromUtc"] = JsonSerializer.SerializeToElement(to.AddHours(-1));
-        if ((mode & 2) != 0) arguments["toUtc"] = JsonSerializer.SerializeToElement(to);
+        if ((mode & 1) != 0) arguments["fromUtc"] = JsonSerializer.SerializeToElement(to.AddHours(-1).UtcDateTime.ToString("O"));
+        if ((mode & 2) != 0) arguments["toUtc"] = JsonSerializer.SerializeToElement(to.UtcDateTime.ToString("O"));
         string original = JsonSerializer.Serialize(arguments);
         CallToolResult first = await handler.ExecuteAsync(tool, arguments, User, CancellationToken.None);
         AssertSuccess(first);
@@ -135,7 +135,7 @@ public sealed class McpCursorRegressionTests
         using ServiceProvider provider = Provider(tool, out RecordingProxy proxy);
         Dictionary<string, JsonElement> arguments = Arguments(tool);
         object cursor = tool == "get_metric_series"
-            ? new MetricSeriesCursor(Target, "cpu", Snapshot, Run, "{}", Snapshot, new ObservationTargetRevision(3))
+            ? new MetricSeriesCursor(Target, "host.cpu.percent", Snapshot, Run, "{}", Snapshot, new ObservationTargetRevision(3))
             : new McpRawCursor("legacy-raw-cursor");
         string token = Signer.Encode(JsonSerializer.SerializeToElement(cursor, Options), tool, arguments);
         arguments["cursor"] = JsonSerializer.SerializeToElement(token);
@@ -159,7 +159,7 @@ public sealed class McpCursorRegressionTests
         arguments["cursor"] = JsonSerializer.SerializeToElement(token);
         if (change == "limit") arguments["limit"] = JsonSerializer.SerializeToElement(2);
         if (change == "instanceId") arguments["instanceId"] = JsonSerializer.SerializeToElement(Run);
-        if (change == "fromUtc") arguments["fromUtc"] = JsonSerializer.SerializeToElement(Window(proxy.Requests[0]).From);
+        if (change == "fromUtc") arguments["fromUtc"] = JsonSerializer.SerializeToElement(Window(proxy.Requests[0]).From.UtcDateTime.ToString("O"));
         CallToolResult second = await handler.ExecuteAsync(tool, arguments, User, CancellationToken.None);
         Assert.True(second.IsError);
         Assert.Single(proxy.Requests);
@@ -171,9 +171,9 @@ public sealed class McpCursorRegressionTests
         const string tool = "get_metric_series";
         using ServiceProvider provider = Provider(tool, out RecordingProxy proxy);
         Dictionary<string, JsonElement> arguments = Arguments(tool);
-        arguments["fromUtc"] = JsonSerializer.SerializeToElement(Snapshot.AddHours(-1));
-        arguments["toUtc"] = JsonSerializer.SerializeToElement(Snapshot);
-        var cursor = new MetricSeriesCursor(Target, "cpu", Snapshot.AddMinutes(-1), Run, "{}", Snapshot, new ObservationTargetRevision(3));
+        arguments["fromUtc"] = JsonSerializer.SerializeToElement(Snapshot.AddHours(-1).UtcDateTime.ToString("O"));
+        arguments["toUtc"] = JsonSerializer.SerializeToElement(Snapshot.UtcDateTime.ToString("O"));
+        var cursor = new MetricSeriesCursor(Target, "host.cpu.percent", Snapshot.AddMinutes(-1), Run, "{}", Snapshot, new ObservationTargetRevision(3));
         arguments["cursor"] = JsonSerializer.SerializeToElement(Signer.Encode(JsonSerializer.SerializeToElement(cursor, Options), tool, arguments));
         CallToolResult result = await new McpCallHandler(provider).ExecuteAsync(tool, arguments, User, CancellationToken.None);
         AssertSuccess(result);
@@ -192,14 +192,14 @@ public sealed class McpCursorRegressionTests
         const string tool = "get_metric_series";
         using ServiceProvider provider = Provider(tool, out RecordingProxy proxy);
         Dictionary<string, JsonElement> arguments = Arguments(tool);
-        var cursor = new MetricSeriesCursor(Target, "cpu", Snapshot.AddMinutes(-1), Run, "{}", Snapshot, new ObservationTargetRevision(3));
+        var cursor = new MetricSeriesCursor(Target, "host.cpu.percent", Snapshot.AddMinutes(-1), Run, "{}", Snapshot, new ObservationTargetRevision(3));
         JsonObject payload = JsonSerializer.SerializeToNode(cursor, Options)!.AsObject();
         JsonObject context = new() { ["fromUtc"] = Snapshot.AddHours(-1).ToString("O"), ["toUtc"] = Snapshot.ToString("O") };
         if (problem == "missing-bound") context.Remove("toUtc");
         if (problem == "unknown-context-field") context["unexpected"] = true;
         if (problem == "non-utc") context["toUtc"] = Snapshot.ToOffset(TimeSpan.FromHours(1)).ToString("O");
         if (problem == "reverse") context["fromUtc"] = Snapshot.AddHours(1).ToString("O");
-        if (problem == "explicit-mismatch") arguments["fromUtc"] = JsonSerializer.SerializeToElement(Snapshot.AddHours(-2));
+        if (problem == "explicit-mismatch") arguments["fromUtc"] = JsonSerializer.SerializeToElement(Snapshot.AddHours(-2).UtcDateTime.ToString("O"));
         if (problem == "unknown-cursor-field") payload["unexpected"] = true;
         payload["__mcpWindow"] = context;
         arguments["cursor"] = JsonSerializer.SerializeToElement(Signer.Encode(JsonSerializer.SerializeToElement(payload), tool, arguments));
@@ -212,7 +212,7 @@ public sealed class McpCursorRegressionTests
     {
         var args = new Dictionary<string, JsonElement> { ["limit"] = JsonSerializer.SerializeToElement(1) };
         if (tool != "list_instances") args["instanceId"] = JsonSerializer.SerializeToElement(Target.Value);
-        if (tool == "get_metric_series") args["metricKey"] = JsonSerializer.SerializeToElement("cpu");
+        if (tool == "get_metric_series") args["metricKey"] = JsonSerializer.SerializeToElement("host.cpu.percent");
         if (tool == "get_top_queries") args["metric"] = JsonSerializer.SerializeToElement("cpuMilliseconds");
         if (tool == "get_query_history") { args["databaseId"] = JsonSerializer.SerializeToElement(1); args["queryFingerprint"] = JsonSerializer.SerializeToElement(new string('a', 64)); }
         return args;
@@ -259,7 +259,7 @@ public sealed class McpCursorRegressionTests
         DateTimeOffset tie = from.AddMicroseconds(1);
         return tool switch
         {
-            "get_metric_series" => new MetricSeriesPage(Target, "cpu", from, to, [], "complete", revision, Snapshot, more ? new MetricSeriesCursor(Target, "cpu", tie, Run, "{}", Snapshot, revision) : null) { HasMore = more },
+            "get_metric_series" => new MetricSeriesPage(Target, "host.cpu.percent", from, to, [], "complete", revision, Snapshot, more ? new MetricSeriesCursor(Target, "host.cpu.percent", tie, Run, "{}", Snapshot, revision) : null) { HasMore = more },
             "get_job_failures" => new SqlAgentFailureSnapshot(Target, revision, run, Snapshot, OperationalObservationState.Complete, [], 0, false, from, to) { NextCursor = more ? "repository-raw-cursor" : null },
             "get_blocking_history" => new BlockingHistoryPage(Target, from, to, [], more ? new BlockingHistoryCursor(Target, from, to, tie, run, 1, BlockingBlockerKind.Session, 2, new SqlServerWaitType("LCK")) : null, Snapshot),
             "search_deadlocks" => new DeadlockPage(Target, Snapshot, [], more ? new DeadlockPageCursor(Target, tie, Run, Snapshot, from, to) : null),

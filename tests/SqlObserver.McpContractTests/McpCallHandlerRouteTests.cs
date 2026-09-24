@@ -199,18 +199,18 @@ public sealed class McpCallHandlerRouteTests
     private static Dictionary<string, JsonElement> Args(string name, DateTimeOffset from, DateTimeOffset to)
     {
         var args = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        void Put(string key, object value) => args[key] = JsonSerializer.SerializeToElement(value);
+        void Put(string key, object value) => args[key] = JsonSerializer.SerializeToElement(value is DateTimeOffset time ? time.UtcDateTime.ToString("O") : value);
         if (name != "list_instances") Put("instanceId", Instance);
-        if (name is "get_metric_series" or "compare_metric_windows" or "get_blocking_history" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "search_diagnostic_events") { Put("fromUtc", from); Put("toUtc", to); }
+        if (name is "get_metric_series" or "get_blocking_history" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "search_diagnostic_events") { Put("fromUtc", from); Put("toUtc", to); }
         if (name is not ("get_instance_health" or "get_instance_capabilities" or "get_deadlock" or "get_query_plan_metadata" or "compare_metric_windows" or "get_availability_health")) Put("limit", 1);
-        if (name is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Put("metricKey", "batch_requests_sec");
+        if (name is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Put("metricKey", "host.cpu.percent");
         if (name == "get_deadlock") Put("eventId", Event);
         if (name == "get_incident_evidence") Put("threadId", Thread);
         if (name == "get_storage_forecast") Put("horizonDays", 30);
         if (name == "get_top_queries") Put("metric", "cpuMilliseconds");
         if (name is "get_query_history" or "get_query_plan_metadata") { Put("databaseId", 1); Put("queryFingerprint", Fingerprint); }
         if (name == "get_query_plan_metadata") Put("planFingerprint", Fingerprint);
-        if (name == "compare_metric_windows") { Put("leftFromUtc", from.AddHours(-2)); Put("leftToUtc", from.AddHours(-1)); Put("rightFromUtc", from); Put("rightToUtc", to); Put("limit", 1); }
+        if (name == "compare_metric_windows") { Put("leftFromUtc", from - (to - from)); Put("leftToUtc", from); Put("rightFromUtc", from); Put("rightToUtc", to); Put("limit", 1); }
         return args;
     }
 

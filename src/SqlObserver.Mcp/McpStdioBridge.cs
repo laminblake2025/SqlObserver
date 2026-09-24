@@ -17,7 +17,7 @@ public static class McpStdioBridge
     // must fail closed until this reviewed value is changed as policy.
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-2C2B4B9D35DC2958F9102CDEDE7AAF450A737DF6E582D0E51BEB2B26085B6529";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304";
     public static async Task<int> RunAsync(string endpointText, string[] args, CancellationToken cancellationToken = default)
     {
         using var httpHandler = new HttpClientHandler { UseDefaultCredentials = true, AllowAutoRedirect = false, UseCookies = false, CheckCertificateRevocationList = true };
@@ -91,7 +91,7 @@ public static class McpStdioBridge
                         Name = "SqlObserver.McpStdio",
                         Version = ApprovedServerVersion
                     };
-                    options.ServerInstructions = "Read-only SQL Observer diagnostics through the authenticated server; all calls are authorized, bounded, and audited.";
+                    options.ServerInstructions = McpCatalogDescriptions.ServerInstructions;
                 })
                 .WithStreamServerTransport(input, output).WithTools(McpCatalog.CreateTools());
             await builder.Build().RunAsync(cancellationToken).ConfigureAwait(false);

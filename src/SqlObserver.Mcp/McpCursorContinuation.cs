@@ -35,8 +35,8 @@ internal sealed class McpCursorContinuation
     public T Read<T>(JsonSerializerOptions options) where T : class
     {
         try { return JsonSerializer.Deserialize<T>(payload, options) ?? throw new ArgumentException("Cursor is invalid."); }
-        catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
-        { throw new ArgumentException("Cursor is invalid.", exception); }
+        catch (Exception exception) when (exception is ArgumentException or JsonException or NotSupportedException or InvalidOperationException)
+        { throw new McpInputValidationException(McpInputValidation.InvalidCursor); }
     }
 }
 

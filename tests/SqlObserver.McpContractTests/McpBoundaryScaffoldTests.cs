@@ -95,6 +95,10 @@ public sealed class McpBoundaryScaffoldTests
         static JsonNode Build(JsonElement schema)
         {
             if (schema.TryGetProperty("oneOf", out JsonElement alternatives)) return Build(alternatives.EnumerateArray().First());
+            if (schema.TryGetProperty("const", out JsonElement constant)) return JsonNode.Parse(constant.GetRawText())!;
+            if (schema.TryGetProperty("enum", out JsonElement values)) return JsonNode.Parse(values.EnumerateArray().First().GetRawText())!;
+            if (schema.TryGetProperty("format", out JsonElement format) && format.GetString() == "uuid") return JsonValue.Create("11111111-1111-4111-8111-111111111111")!;
+            if (schema.TryGetProperty("pattern", out JsonElement pattern) && pattern.GetString() == "^(0|[1-9][0-9]*)$") return JsonValue.Create("1")!;
             if (schema.TryGetProperty("type", out JsonElement type))
             {
                 string selected = type.ValueKind == JsonValueKind.Array

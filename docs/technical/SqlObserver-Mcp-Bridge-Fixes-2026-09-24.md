@@ -86,3 +86,9 @@ is in `artifacts/revamp-mcp-bridge-reviewed/test-results/` and
 No SQL migration, collector bundle, dependency, tool catalog, or protocol-version
 approval changes are part of this batch. Native executable/TLS/Negotiate
 certification remains separate work.
+
+GitHub CI passed for bridge checkpoint `61556a637c074bf679ce1393a59d9b50b8b8180c`:
+Windows ran 1,874 .NET and 147 frontend tests; Linux ran 240 PostgreSQL tests and
+one operational-health journey, with zero failures or skips. The certification
+matrix check also passed. See
+[CI run 35962060813](https://github.com/laminblake2025/SqlObserver/actions/runs/35962060813).

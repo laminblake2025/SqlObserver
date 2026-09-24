@@ -29,13 +29,16 @@ public sealed class M12McpProtocolCertificationTests
     private const string DeniedAttestationVariable = "SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION";
     private const string DeniedAttestationShaVariable = "SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION_SHA256";
     private const int MaximumChildOutputBytes = 64 * 1024;
+    // The reviewed 25-tool catalog includes input descriptions and output
+    // schemas. Bound its two protocol frames separately from diagnostics.
+    private const int MaximumStdioProtocolOutputBytes = 128 * 1024;
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
     private const int ApprovedToolCount = 25;
-    private const string ApprovedCatalogDigest = "2C2B4B9D35DC2958F9102CDEDE7AAF450A737DF6E582D0E51BEB2B26085B6529";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-2C2B4B9D35DC2958F9102CDEDE7AAF450A737DF6E582D0E51BEB2B26085B6529";
-    private const string ApprovedContractSha256 = "5c8b1dcba1316e9afd2f310c6508901ea7b06220b7b666d14e0c696788d2c107";
-    private const string ApprovedContractSchemaSha256 = "c8dacff55d837e666d0a5b9a5ab7835a1b176912afde891022b8108b0e304cfd";
+    private const string ApprovedCatalogDigest = "670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-670C8BB620C599FBFA605C2DB6BFAB3827722AEA23D42EDE8DF82386D4F1F304";
+    private const string ApprovedContractSha256 = "1b5405af49782bf81febe3fd9cbd96d440d96bf7d024086ca5b4b1ed78f074f9";
+    private const string ApprovedContractSchemaSha256 = "abfcd4392f42a9fbfedd5aea96fc4e9cb15d3bf8e8dd83826a65cd1a4c366be6";
     private static readonly string[] ApprovedToolNames =
     [
         "list_instances", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
@@ -695,7 +698,7 @@ public sealed class M12McpProtocolCertificationTests
         try
         {
             observedProcessIds = child.ProcessIds;
-            outputTask = ReadBoundedAsync(child.Output, MaximumChildOutputBytes);
+            outputTask = ReadBoundedAsync(child.Output, MaximumStdioProtocolOutputBytes);
             errorTask = ReadBoundedAsync(child.Error, MaximumChildOutputBytes);
             byte[] request = Encoding.UTF8.GetBytes(CreateStdioProtocolTranscript(protocol));
             await child.Input.WriteAsync(request);
@@ -721,7 +724,7 @@ public sealed class M12McpProtocolCertificationTests
 
     internal static void AssertStdioProtocolOutput(byte[] output, string protocol)
     {
-        Assert.InRange(output.Length, 1, MaximumChildOutputBytes);
+        Assert.InRange(output.Length, 1, MaximumStdioProtocolOutputBytes);
         string stdout = new UTF8Encoding(false, true).GetString(output);
         Assert.DoesNotContain('\r', stdout);
         Assert.EndsWith("\n", stdout, StringComparison.Ordinal);

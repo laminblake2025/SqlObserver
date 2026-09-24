@@ -30,7 +30,7 @@ public static class McpComposition
                     Name = "SqlObserver.Server",
                     Version = McpCatalog.ServerVersion
                 };
-                options.ServerInstructions = "Read-only SQL Observer diagnostics; all calls are authenticated, authorized, bounded, and audited.";
+                options.ServerInstructions = McpCatalogDescriptions.ServerInstructions;
             })
             .WithHttpTransport(options =>
             {
