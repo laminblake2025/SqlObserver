@@ -28,6 +28,138 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     public M10AnalyticsPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => this.fixture = fixture;
 
     [Fact]
+    public async Task RetentionPreviewBlocksOnlyJobsOverlappingItsPartitionWindow()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid();
+        await InsertTargetAsync(database, target, "retention-window", 1);
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var clock = new NpgsqlCommand("SELECT (current_date-1)::timestamptz;", connection);
+        await using NpgsqlDataReader clockReader = await clock.ExecuteReaderAsync();
+        Assert.True(await clockReader.ReadAsync());
+        DateTimeOffset start = clockReader.GetFieldValue<DateTimeOffset>(0);
+        await clockReader.CloseAsync();
+        DateTimeOffset previewAt = start.AddDays(20);
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',@expires,sha256(convert_to('test','UTF8')));",
+            ("id", Guid.NewGuid()), ("expires", previewAt.AddDays(1)));
+
+        Guid disjoint = Guid.NewGuid();
+        await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status) VALUES(@job,'baseline',@target,1,'analytics/derivation',@from,@to,'queued');",
+            ("job", disjoint), ("target", target), ("from", start.AddDays(10)), ("to", start.AddDays(11)));
+        Assert.Equal((true, "eligible"), await PreviewAsync());
+
+        Guid overlapping = Guid.NewGuid();
+        await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status) VALUES(@job,'baseline',@target,1,'analytics/derivation',@from,@to,'queued');",
+            ("job", overlapping), ("target", target), ("from", start.AddHours(1)), ("to", start.AddHours(2)));
+        Assert.Equal((false, "dependency_pending"), await PreviewAsync());
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='succeeded' WHERE job_id=@job;", ("job", overlapping));
+        Assert.Equal((true, "eligible"), await PreviewAsync());
+
+        Guid unknown = Guid.NewGuid();
+        await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,status) VALUES(@job,'baseline',@target,1,'analytics/derivation','queued');",
+            ("job", unknown), ("target", target));
+        Assert.Equal((false, "dependency_pending"), await PreviewAsync());
+
+        async Task<(bool Eligible, string Reason)> PreviewAsync()
+        {
+            await using var preview = new NpgsqlCommand("SELECT eligible,reason FROM system.preview_m10_retention(@now,NULL) WHERE data_class='m10_rollups' AND range_start=@start;", connection);
+            preview.Parameters.AddWithValue("now", previewAt);
+            preview.Parameters.AddWithValue("start", start);
+            await using NpgsqlDataReader reader = await preview.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            return (reader.GetBoolean(0), reader.GetString(1));
+        }
+    }
+
+    [Fact]
+    public async Task RetentionDetachAndDropRespectPartitionJobWindow()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), execution = Guid.NewGuid();
+        await InsertTargetAsync(database, target, "retention-lifecycle", 1);
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SET ROLE sqlobserver_migrator;
+            DO $$ DECLARE d date:=current_date-3; n text:=format('metric_rollup_v2_p%s',to_char(d,'YYYYMMDD')); BEGIN
+              EXECUTE format('CREATE TABLE analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                n,d::timestamptz,(d+1)::timestamptz);
+              INSERT INTO system.partition_registry(parent_schema,parent_table,partition_schema,partition_name,partition_granularity,range_start,range_end)
+              VALUES('analytics','metric_rollup_v2','analytics',n,'day',d::timestamptz,(d+1)::timestamptz);
+            END $$;
+            RESET ROLE;
+            """, admin))
+            await setup.ExecuteNonQueryAsync();
+        await using var bounds = new NpgsqlCommand("SELECT range_start,partition_name::text FROM system.partition_registry WHERE parent_schema='analytics' AND parent_table='metric_rollup_v2' AND range_start=(current_date-3)::timestamptz;", admin);
+        await using NpgsqlDataReader boundsReader = await bounds.ExecuteReaderAsync();
+        Assert.True(await boundsReader.ReadAsync());
+        DateTimeOffset start = boundsReader.GetFieldValue<DateTimeOffset>(0);
+        string partition = boundsReader.GetString(1);
+        await boundsReader.CloseAsync();
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));", ("id", Guid.NewGuid()));
+
+        Guid disjoint = Guid.NewGuid(), overlapping = Guid.NewGuid();
+        await AddJobAsync(disjoint, start.AddDays(10), start.AddDays(11));
+        await AddJobAsync(overlapping, start.AddHours(1), start.AddHours(2));
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        await using NpgsqlConnection serverConnection = await server.OpenConnectionAsync();
+        PostgresException blocked = await Assert.ThrowsAsync<PostgresException>(() => RetentionAsync("detach", Guid.NewGuid()));
+        Assert.Equal("55000", blocked.SqlState);
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='succeeded' WHERE job_id=@job;", ("job", overlapping));
+        Assert.True(await RetentionAsync("detach", Guid.NewGuid()));
+        await ExecuteAsync(database, "UPDATE system.retention_execution SET drop_after=clock_timestamp()-interval '1 minute' WHERE execution_id=@execution;", ("execution", execution));
+
+        Guid secondOverlap = Guid.NewGuid();
+        await AddJobAsync(secondOverlap, start.AddHours(3), start.AddHours(4));
+        Assert.False(await RetentionAsync("drop", Guid.NewGuid()));
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='succeeded' WHERE job_id=@job;", ("job", secondOverlap));
+        Assert.True(await RetentionAsync("drop", Guid.NewGuid()));
+        await using var outcome = new NpgsqlCommand("SELECT lifecycle_state FROM system.partition_registry WHERE parent_schema='analytics' AND parent_table='metric_rollup_v2' AND partition_name=@partition;", admin);
+        outcome.Parameters.AddWithValue("partition", partition);
+        Assert.Equal("dropped", await outcome.ExecuteScalarAsync());
+
+        async Task AddJobAsync(Guid id, DateTimeOffset from, DateTimeOffset to) =>
+            await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status) VALUES(@job,'baseline',@target,1,'analytics/derivation',@from,@to,'queued');",
+                ("job", id), ("target", target), ("from", from), ("to", to));
+
+        async Task<bool> RetentionAsync(string operation, Guid operationId)
+        {
+            await using NpgsqlTransaction transaction = await serverConnection.BeginTransactionAsync();
+            try
+            {
+                await using var context = new NpgsqlCommand("""
+                    SELECT set_config('sqlobserver.role','SecurityAdministrator',true),
+                           set_config('sqlobserver.authorization_scope','global',true),
+                           set_config('sqlobserver.actor_sid','S-1-5-21-1-2-3-1001',true),
+                           set_config('sqlobserver.retention_operation_id',@operation,true),
+                           set_config('sqlobserver.retention_request_digest',repeat('a',64),true),
+                           set_config('sqlobserver.retention_correlation_id',@correlation,true),
+                           set_config('sqlobserver.retention_change_reason','retention window regression',true);
+                    """, serverConnection, transaction);
+                context.Parameters.AddWithValue("operation", operationId.ToString());
+                context.Parameters.AddWithValue("correlation", Guid.NewGuid().ToString());
+                await context.ExecuteNonQueryAsync();
+                string sql = operation == "detach"
+                    ? "SELECT system.detach_m10_partition('analytics','metric_rollup_v2',@partition,@execution);"
+                    : "SELECT system.drop_m10_partition(@execution);";
+                await using var command = new NpgsqlCommand(sql, serverConnection, transaction);
+                command.Parameters.AddWithValue("execution", execution);
+                if (operation == "detach") command.Parameters.AddWithValue("partition", partition);
+                bool result = (bool)(await command.ExecuteScalarAsync())!;
+                await transaction.CommitAsync();
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+    }
+
+    [Fact]
     public async Task PartitionMaintenanceExtendsOnlyActiveM10Streams()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
