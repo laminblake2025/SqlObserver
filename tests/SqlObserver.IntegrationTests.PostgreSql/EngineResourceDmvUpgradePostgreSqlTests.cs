@@ -12,6 +12,47 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed partial class M4CollectorPersistenceIntegrationTests
 {
     [Fact]
+    public async Task MemoryGrantUpgradePreservesElevenMetricRunsAndExposesPendingGrantHistory()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        Assert.False((await migrations.ApplyPendingAsync(new MigrationApplyRequest(114, DefaultTimeout), CancellationToken.None)).HasFailures);
+        var target = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, target, 1);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+
+        CollectorDueWorkItem oldWork = await DueCoreAsync(database, runtime, target);
+        await CommitSuccessAsync(runtime, leases, oldWork, WithMetrics(CreateEnginePayload(oldWork), target,
+            ("engine.start_time_key", 1),
+            ("engine.os_available_memory_bytes", 4 * 1073741824d),
+            ("engine.scheduler_runnable_tasks", 3)));
+        string historical = await ResourceRunSummaryAsync(database, target);
+
+        MigrationBatchResult upgrade = await migrations.ApplyPendingAsync(new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
+        Assert.False(upgrade.HasFailures, upgrade.Results.FirstOrDefault(x => x.Outcome == MigrationOutcome.Failed)?.FailureCode);
+        Assert.Equal(115, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(historical, await ResourceRunSummaryAsync(database, target));
+
+        CollectorDueWorkItem currentWork = await DueCoreAsync(database, runtime, target);
+        await CommitSuccessAsync(runtime, leases, currentWork, WithMetrics(CreateEnginePayload(currentWork), target,
+            ("engine.start_time_key", 1),
+            ("engine.os_available_memory_bytes", 4 * 1073741824d),
+            ("engine.scheduler_runnable_tasks", 3),
+            ("engine.memory_grants_pending", 2)));
+        Assert.Equal(23, await ResourceMetricCountAsync(database, target));
+
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow;
+        var history = new PostgreSqlOverviewHistoryPort(server);
+        var series = await history.ReadAsync(target, 1, cutoff.AddHours(-1), cutoff.AddSeconds(1), cutoff, CancellationToken.None);
+        OverviewSeries grants = Assert.Single(series, item => item.Metric == "engine.memory_grants_pending");
+        Assert.Equal("grants", grants.Unit);
+        Assert.Equal(2d, Assert.Single(grants.Points).Value);
+    }
+
+    [Fact]
     public async Task CoreResourceUpgradePreservesHistoricalRunsAndAcceptsBoundedDmvMetrics()
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();

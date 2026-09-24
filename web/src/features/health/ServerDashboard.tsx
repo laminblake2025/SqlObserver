@@ -66,6 +66,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
         {chart("host.cpu.percent", "Host CPU", "Host CPU is not SQL process CPU. SQL process CPU is not yet collected for this chart.")}
         {chart("engine.scheduler_runnable_tasks", "SQL scheduler pressure", "Runnable tasks waiting for CPU across visible online SQL schedulers. This is a point-in-time queue, not SQL process CPU percent.")}
+        {chart("engine.memory_grants_pending", "SQL memory grant pressure", "Queries waiting for execution memory grants. This is a point-in-time count; a zero means none were waiting at the sample time.")}
         <section className="panel server-dashboard-chart">
           <h4>Memory pressure</h4>
           <OverviewChart

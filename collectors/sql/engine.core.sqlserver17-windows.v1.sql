@@ -47,6 +47,12 @@ WITH metric_values AS
 
     UNION ALL
 
+    SELECT N'engine.memory_grants_pending', CONVERT(float, COUNT_BIG(*))
+    FROM sys.dm_exec_query_memory_grants AS grant_request
+    WHERE grant_request.grant_time IS NULL
+
+    UNION ALL
+
     SELECT N'engine.scheduler_runnable_tasks', CONVERT(float, COALESCE(SUM(CONVERT(bigint, scheduler.runnable_tasks_count)), 0))
     FROM sys.dm_os_schedulers AS scheduler
     WHERE scheduler.status = N'VISIBLE ONLINE'

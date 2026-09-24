@@ -28,7 +28,7 @@ public sealed class PostgreSqlOverviewHistoryPort(NpgsqlDataSource dataSource) :
             {
                 if (++count > 4000) throw new InvalidDataException("Overview history exceeded its bound.");
                 string key = reader.GetString(0);
-                if (key is not ("engine.user_connections" or "engine.batch_requests_per_second" or "engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" or "engine.scheduler_runnable_tasks")) throw new InvalidDataException();
+                if (key is not ("engine.user_connections" or "engine.batch_requests_per_second" or "engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" or "engine.memory_grants_pending" or "engine.scheduler_runnable_tasks")) throw new InvalidDataException();
                 if (!groups.TryGetValue(key, out var points)) groups[key] = points = [];
                 double? value = reader.IsDBNull(2) ? null : reader.GetDouble(2);
                 if (key is "engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes") value /= 1073741824d;
@@ -36,7 +36,7 @@ public sealed class PostgreSqlOverviewHistoryPort(NpgsqlDataSource dataSource) :
             }
         }
         await transaction.CommitAsync(cancellationToken);
-        return groups.Select(g => new OverviewSeries(targetId.Value, "", g.Key, g.Key is "engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" ? "GiB" : g.Key == "engine.scheduler_runnable_tasks" ? "tasks" : g.Key.EndsWith("per_second", StringComparison.Ordinal) ? "batches/sec" : "connections",
+        return groups.Select(g => new OverviewSeries(targetId.Value, "", g.Key, g.Key is "engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" ? "GiB" : g.Key == "engine.memory_grants_pending" ? "grants" : g.Key == "engine.scheduler_runnable_tasks" ? "tasks" : g.Key.EndsWith("per_second", StringComparison.Ordinal) ? "batches/sec" : "connections",
             g.Value.Any(x => x.Value.HasValue) ? "observed" : "no_data", null, g.Value)).ToArray();
     }
 

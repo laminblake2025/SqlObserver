@@ -24,7 +24,7 @@ public sealed class M12SqlServerCertificationProducerTests
         Assert.Contains("M12-SQLSERVER-PRODUCER-HOST", source, StringComparison.Ordinal);
         Assert.Contains("function Resolve-M12CanonicalRoot", source, StringComparison.Ordinal);
         Assert.Contains("Assert-M12TrustedTree $requestedFull", source, StringComparison.Ordinal);
-        Assert.Contains("440b381fc5b4297038d227cf496e712882ce1fd87ec4420b9768c4a5f3e1a74f", source, StringComparison.Ordinal);
+        Assert.Contains("c2b4b44438c528ed1582ea52d3d309cfeeab5b661ebc02e9da85123465ce75bf", source, StringComparison.Ordinal);
         Assert.Contains("5539bba4fe0139b92aadbcd6203526cb3377b689d732e68c70aff60bac843406", source, StringComparison.Ordinal);
         Assert.Contains("function Read-M12ClosedJson", source, StringComparison.Ordinal);
         Assert.Contains("JsonDocument", source, StringComparison.Ordinal);
