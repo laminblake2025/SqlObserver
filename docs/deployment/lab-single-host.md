@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0104`
+The migration catalog contains the exact, contiguous `0001` through `0105`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -180,6 +180,14 @@ one-hour backoff. It rechecks the policy revision, detached partition identity,
 reader leases, analytics dependencies, and recovery attestation before dropping.
 After 20 failed attempts the execution enters `failed` and requires operator
 review; it does not retry indefinitely.
+Migration `0105` adds a collector-only retention step with a fixed
+`retention/maintenance` lease key. The worker runs one eligible detach or due
+drop per transaction, records `system` audit activity, and checks the lease
+again before commit. The existing 24-hour detach grace, policy revision,
+reader lease, analytics dependency, and recovery-attestation gates still apply.
+Policies remain disabled until a SecurityAdministrator explicitly enables and
+configures each data class; enabling a policy now starts scheduled removal of
+eligible partitions after its configured retention window.
 
 After upgrading, a migration administrator can backfill the fleet in bounded
 transactions. Repeat this transaction until `complete` is `true`:

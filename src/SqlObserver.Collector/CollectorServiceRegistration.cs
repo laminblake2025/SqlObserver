@@ -186,6 +186,7 @@ public static class CollectorServiceRegistration
         services.AddSingleton<ILiveActivityCollector, SqlServerLiveActivityCollector>();
         services.AddHostedService<LiveActivityWorker>();
         services.AddHostedService<CollectionWorker>();
+        services.AddHostedService<RetentionMaintenanceWorker>();
         services.AddHostedService<AlertEvaluationWorker>();
         services.AddHostedService<AlertDeliveryWorker>();
         services.AddHostedService<ReportExpiryWorker>();

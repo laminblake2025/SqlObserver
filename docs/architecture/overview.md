@@ -49,7 +49,7 @@ The ASP.NET Core host serves API endpoints, built web assets, reports, Windows I
 
 ### `SqlObserver.Collector`
 
-The Windows Worker Service schedules and executes collector contracts, discovers target capabilities, ingests batches, evaluates alerts, computes rollups and baselines, and maintains repository partitions. Retention detach and drop remain guarded administrative operations; an unattended retention worker is planned. PostgreSQL leases prevent overlapping ownership across worker processes. A target/collector pair never overlaps, and each execution is cancellable and bounded by timeout, rows, bytes, and estimated cost.
+The Windows Worker Service schedules and executes collector contracts, discovers target capabilities, ingests batches, evaluates alerts, computes rollups and baselines, and maintains repository partitions. Its retention worker runs one policy-gated detach or drop per fenced lease and records a system audit actor. SecurityAdministrator retention operations remain a separate, audited path. PostgreSQL leases prevent overlapping ownership across worker processes. A target/collector pair never overlaps, and each execution is cancellable and bounded by timeout, rows, bytes, and estimated cost.
 
 The default target path is passive and read-only. The worker cannot grant itself target permissions or apply enhanced setup.
 

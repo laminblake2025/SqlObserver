@@ -9,6 +9,7 @@ using SqlObserver.Domain.Telemetry;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Security;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Coordination;
 using SqlObserver.Infrastructure.PostgreSql;
 using System.Text.Json;
 
@@ -186,6 +187,84 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
                 await transaction.RollbackAsync();
                 throw;
             }
+        }
+    }
+
+    [Fact]
+    public async Task FencedSystemRetentionStepUsesItsOwnAuditActorAndGraceGate()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SET ROLE sqlobserver_migrator;
+            DO $$ DECLARE d date:=current_date-3; n text:=format('metric_rollup_v2_p%s',to_char(d,'YYYYMMDD')); BEGIN
+              EXECUTE format('CREATE TABLE analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                n,d::timestamptz,(d+1)::timestamptz);
+              INSERT INTO system.partition_registry(parent_schema,parent_table,partition_schema,partition_name,partition_granularity,range_start,range_end)
+              VALUES('analytics','metric_rollup_v2','analytics',n,'day',d::timestamptz,(d+1)::timestamptz);
+            END $$;
+            RESET ROLE;
+            """, admin))
+            await setup.ExecuteNonQueryAsync();
+        await using var nameCommand = new NpgsqlCommand("SELECT partition_name::text FROM system.partition_registry WHERE parent_schema='analytics' AND parent_table='metric_rollup_v2' AND range_start=(current_date-3)::timestamptz;", admin);
+        string partition = (string)(await nameCommand.ExecuteScalarAsync())!;
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlConnection worker = await collector.OpenConnectionAsync();
+        var retention = new PostgreSqlPartitionMaintenancePort(collector);
+        Guid owner = Guid.NewGuid();
+        await using var acquire = new NpgsqlCommand("SELECT fencing_token FROM control.acquire_worker_lease('retention/maintenance',@owner,interval '30 seconds');", worker);
+        acquire.Parameters.AddWithValue("owner", owner);
+        long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        Assert.Equal("idle", await StepAsync(fence));
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));", ("id", Guid.NewGuid()));
+        PostgresException stale = await Assert.ThrowsAsync<PostgresException>(() => StepAsync(fence + 1));
+        Assert.Equal("55000", stale.SqlState);
+        Assert.Equal("detached", await StepAsync(fence));
+        Assert.Equal("idle", await StepAsync(fence));
+
+        await using var executionCommand = new NpgsqlCommand("SELECT execution_id FROM system.retention_execution WHERE partition_name=@partition AND state='grace';", admin);
+        executionCommand.Parameters.AddWithValue("partition", partition);
+        Guid execution = (Guid)(await executionCommand.ExecuteScalarAsync())!;
+        await ExecuteAsync(database, "UPDATE system.retention_execution SET drop_after=clock_timestamp()-interval '1 minute' WHERE execution_id=@execution;", ("execution", execution));
+        await ExecuteAsync(database, $"CREATE VIEW analytics.retention_system_dependency AS SELECT count(*) FROM analytics.\"{partition}\";");
+        Assert.Equal("retry", await StepAsync(fence));
+        await ExecuteAsync(database, "DROP VIEW analytics.retention_system_dependency;");
+        Assert.Equal("idle", await StepAsync(fence));
+        await ExecuteAsync(database, "INSERT INTO system.retention_drop_retry(execution_id,error_code,error_detail,next_attempt_at) VALUES(@execution,'TEST','elapsed backoff',clock_timestamp()-interval '1 minute');", ("execution", execution));
+        Assert.Equal("dropped", await StepAsync(fence));
+
+        await using var audit = new NpgsqlCommand("SELECT action_name,actor_kind,actor_identifier,correlation_id,outcome FROM audit.activity WHERE subject_identifier=@partition ORDER BY occurred_at;", admin);
+        audit.Parameters.AddWithValue("partition", partition);
+        await using NpgsqlDataReader reader = await audit.ExecuteReaderAsync();
+        var actions = new List<string>();
+        while (await reader.ReadAsync())
+        {
+            Assert.Equal("system", reader.GetString(1));
+            Assert.Equal("collector/retention", reader.GetString(2));
+            Assert.Equal(execution, reader.GetGuid(3));
+            actions.Add($"{reader.GetString(0)}:{reader.GetString(4)}");
+        }
+        Assert.Collection(actions,
+            action => Assert.Equal("retention.partition.detach:succeeded", action),
+            action => Assert.Equal("retention.partition.drop:failed", action),
+            action => Assert.Equal("retention.partition.drop:succeeded", action));
+        await reader.CloseAsync();
+        await using var grants = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_collector','system.run_m10_retention_step(uuid,bigint)','EXECUTE'),has_function_privilege('sqlobserver_server','system.run_m10_retention_step(uuid,bigint)','EXECUTE');", admin);
+        await using NpgsqlDataReader grantReader = await grants.ExecuteReaderAsync();
+        Assert.True(await grantReader.ReadAsync());
+        Assert.True(grantReader.GetBoolean(0));
+        Assert.False(grantReader.GetBoolean(1));
+
+        async Task<string> StepAsync(long token)
+        {
+            var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("retention/maintenance"),
+                new WorkerExecutionId(owner), new FencingToken(token));
+            SystemRetentionStepOutcome result = await retention.RunSystemRetentionStepAsync(
+                lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), CancellationToken.None);
+            return result.ToString().ToLowerInvariant();
         }
     }
 
