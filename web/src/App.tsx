@@ -248,7 +248,8 @@ export function App() {
             <div className="target-surface" key={`${props.instanceId}:${route.page}:${refresh}`}>
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={refresh} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} />}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window}
+                onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
               {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} />}
               {route.page === "alerts" && <TargetAlertsPanel {...props} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}

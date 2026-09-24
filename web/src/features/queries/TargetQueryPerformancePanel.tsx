@@ -6,7 +6,11 @@ import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformanc
 import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus } from "./queryPerformanceTypes";
 
-export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly timeWindow: QueryWindow }) {
+export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow }: {
+  readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
+  readonly timeWindow: QueryWindow;
+  readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
+}) {
   const selectionRequest = useRef<AbortController | null>(null);
   const historyRequest = useRef<AbortController | null>(null);
   const pagingRequest = useRef<AbortController | null>(null);
@@ -72,7 +76,19 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       <label>Database <select value={database} onChange={event => { selectionRequest.current?.abort(); historyRequest.current?.abort(); setDatabase(event.target.value); setPlan(undefined); setHistory(undefined); setHistorySelection(undefined); }}><option value="">All loaded databases</option>{databaseOptions.map(option => <option key={option.databaseId} value={option.databaseId}>{option.databaseName ?? `Database ID ${option.databaseId}`}</option>)}</select></label>
       <label>Source <select value={source} onChange={event => { selectionRequest.current?.abort(); historyRequest.current?.abort(); setSource(event.target.value); setPlan(undefined); setHistory(undefined); setHistorySelection(undefined); }}><option value="mixed">All sources · evidence</option><option value="query_store">Query Store · interval</option><option value="plan_cache">Plan cache · row semantics</option></select></label>
       {selectedItem && <div className="kpi-grid">{[["CPU ms", selectedMetrics?.cpuMilliseconds], ["Duration ms", selectedMetrics?.durationMilliseconds], ["Executions", selectedMetrics?.executions], ["Logical reads", selectedMetrics?.logicalReads]].map(([label,value]) => <section className="kpi" key={label}><p>{label}</p><strong>{value ?? "—"}</strong><small>Selected observation · {selectedItem.semantics}</small></section>)}</div>}
-      <div className="query-investigation"><section className="panel"><h2>Query duration history</h2>{history ? (source === "mixed" ? <p>Select Query Store or Plan cache to chart one source with consistent semantics.</p> : <ObservationChart items={history.items.filter(x => x.source === source && x.semantics === selectedItem?.semantics).map(x => ({time: x.intervalEndUtc, value: x.metrics.durationMilliseconds ?? null}))} label={`Duration (ms) · ${selectedItem?.semantics ?? "semantics unavailable"}`}/>) : <p>Select a query to load its bounded history.</p>}</section><section className="panel"><h2>Selected query</h2><p className="fingerprint">{historySelection?.queryFingerprint ?? "No query selected"}</p><p>{displayDatabase(historySelection?.databaseId)} · {source.replaceAll("_", " ")}</p><p>{selectedItem?.semantics ?? "Semantics unavailable"} · {selectedItem?.coverage ?? "Coverage unavailable"}</p><p className="fingerprint">Plan: {plan?.planFingerprint ?? "Metadata unavailable"}</p><p>Query text unavailable</p><p>Plan content unavailable</p></section></div>
+      <div className="query-investigation"><section className="panel"><h2>Query CPU and duration history</h2>
+        {history ? (source === "mixed" ? <p>Select Query Store or Plan cache to chart one source with consistent semantics.</p> :
+          <ObservationChart
+            label={`Query activity (ms) · ${selectedItem?.semantics ?? "semantics unavailable"}`}
+            fromUtc={historySelection?.fromUtc ?? timeWindow.fromUtc}
+            toUtc={historySelection?.toUtc ?? timeWindow.toUtc}
+            series={[
+              { id: "duration", label: "Duration (ms)", items: history.items.filter(x => x.source === source && x.semantics === selectedItem?.semantics).map(x => ({ time: x.intervalEndUtc, value: x.metrics.durationMilliseconds ?? null })) },
+              { id: "cpu", label: "CPU (ms)", items: history.items.filter(x => x.source === source && x.semantics === selectedItem?.semantics).map(x => ({ time: x.intervalEndUtc, value: x.metrics.cpuMilliseconds ?? null })) },
+            ]}
+            onSelectWindow={onSelectWindow}
+          />) : <p>Select a query to load its bounded history.</p>}
+      </section><section className="panel"><h2>Selected query</h2><p className="fingerprint">{historySelection?.queryFingerprint ?? "No query selected"}</p><p>{displayDatabase(historySelection?.databaseId)} · {source.replaceAll("_", " ")}</p><p>{selectedItem?.semantics ?? "Semantics unavailable"} · {selectedItem?.coverage ?? "Coverage unavailable"}</p><p className="fingerprint">Plan: {plan?.planFingerprint ?? "Metadata unavailable"}</p><p>Query text unavailable</p><p>Plan content unavailable</p></section></div>
       <div className="table-scroll"><table><caption>Bounded ranked observations · CPU and duration in milliseconds · unavailable values are not zero</caption><thead><tr>{["Database / query", "Source", "Semantics", "CPU ms", "Duration ms", "Executions", "Reads / writes / rows", "Coverage"].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
         {rows.map(x => <tr key={`${x.collectionRunId}-${x.observationKey}`} className={historySelection?.queryFingerprint === x.query.queryFingerprint && historySelection.databaseId === x.query.databaseId ? "selected-row" : ""}><td><button className="fingerprint" type="button" onClick={() => select(x.query.databaseId, x.query.queryFingerprint, x.intervalStartUtc, x.intervalEndUtc, x.plan?.planFingerprint)}>{displayDatabase(x.query.databaseId)} / {x.query.queryFingerprint.slice(0, 12)}…</button></td><td>{x.source} · {x.sourceState}</td><td>{x.semantics}</td><td>{x.metrics.cpuMilliseconds ?? "—"}</td><td>{x.metrics.durationMilliseconds ?? "—"}</td><td>{x.metrics.executions ?? "—"}</td><td>{x.metrics.logicalReads ?? "—"} / {x.metrics.writes ?? "—"} / {x.metrics.rows ?? "—"}</td><td>{x.coverage} · {x.fresh ? "fresh at snapshot" : "stale"}{x.truncated ? " · truncated" : ""}</td></tr>)}
       </tbody></table>{rows.length === 0 && <p className="empty-state">No {source.replaceAll("_", " ")} observations in this bounded page.</p>}</div>

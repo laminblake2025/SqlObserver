@@ -244,6 +244,15 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .chart-crosshair line { stroke: var(--teal-deep); stroke-width: 1; stroke-dasharray: 4 3; }
 .chart-crosshair text { fill: var(--teal-deep); font-size: 10px; font-weight: 700; }
 .chart-selection { fill: var(--teal); fill-opacity: .18; }
+.observation-chart { min-height: 190px; }
+.chart-baseline-band { fill: var(--teal); fill-opacity: .12; }
+.chart-threshold { stroke: var(--amber-border); stroke-width: 1.5; stroke-dasharray: 6 3; vector-effect: non-scaling-stroke; }
+.observation-legend { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 12px 0; color: var(--muted); font-size: 11px; }
+.observation-legend > span { display: flex; gap: 6px; align-items: center; }
+.observation-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.observation-legend .baseline-swatch { background: var(--teal); opacity: .35; border-radius: 2px; }
+.observation-legend .threshold-swatch { background: var(--amber-border); border-radius: 2px; }
+.chart-nearest { color: var(--muted-deep); font-size: 12px; overflow-wrap: anywhere; }
 .overview-legend { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 12px 0; color: var(--muted); font-size: 11px; }
 .overview-legend > span { display: flex; gap: 6px; align-items: center; }
 .overview-legend i { width: 8px; height: 8px; border-radius: 50%; }
