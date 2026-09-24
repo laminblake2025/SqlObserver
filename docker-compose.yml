@@ -1,0 +1,22 @@
+name: sqlobserver-development
+
+services:
+  postgres:
+    image: postgres:18.4-bookworm@sha256:7e6103cf85f88f7a0eddb3ec0b1ba8940eba098ed118ade25a729ca9daee5568
+    environment:
+      POSTGRES_DB: sqlobserver_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SQLOBSERVER_DEV_POSTGRES_PASSWORD:?Run tools/dev-up.ps1 to create development credentials}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      # PostgreSQL 18's official image uses a versioned directory below this mount.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sqlobserver_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres-data:

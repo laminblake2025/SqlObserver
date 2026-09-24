@@ -85,6 +85,7 @@ There is intentionally no Server-to-target, MCP-to-repository, or MCP-to-target 
 | Malicious package, migration, collector SQL, or build input | Reviewed pinned dependencies; central management; checksums; immutable migrations; provenance and CI policy | Dependency review, checksum verification, clean build |
 | Transport interception or server spoofing | TLS with validated identity; Kerberos/service principal correctness; no insecure fallback | Certificate, downgrade, and SPN tests |
 | Cross-environment data disclosure | Separate identities/configuration and repository boundaries; explicit environment labeling; no production data in tests | Deployment review and isolation tests |
+| Synthetic development identity reaches real data or a remote browser | Explicit Development-only opt-in; fixed loopback listener, peer and Host checks; dedicated `sqlobserver_dev` repository/login; reject forwarding headers and cross-origin requests; fixed claims with normal scoped RBAC | Startup refusal and real-handler HTTP tests; [ADR-0020](../adr/ADR-0020-development-authentication.md) |
 
 ## Security invariants
 

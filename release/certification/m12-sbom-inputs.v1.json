@@ -23,7 +23,7 @@
     { "path": "src/SqlObserver.Collectors/packages.lock.json", "sha256": "023cc2c4278661751fa386518c7dc09d3c16c9ba7a61e9ddc3a1c4ee1b542d43" },
     { "path": "src/SqlObserver.Domain/SqlObserver.Domain.csproj", "sha256": "746b4f8da0f5e08f1c3da291a17fb3d1e5da684a9bfe5fae0d5b8f1f69a1d02d" },
     { "path": "src/SqlObserver.Domain/packages.lock.json", "sha256": "03eeadc5ef377c17f787ab65f41fb4c8a9c936bb7f7f4171111fdeec8a81cb46" },
-    { "path": "src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj", "sha256": "19bb291b68369215f8f7ebe98306465c61d5282d623f332d9659ec80ca5fc20d" },
+    { "path": "src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj", "sha256": "0aafe107efa720b60b3a354c35d2961ae3abd04490737b6b1413dd4e94b5af2c" },
     { "path": "src/SqlObserver.Infrastructure.PostgreSql/packages.lock.json", "sha256": "8e59cdd654f5c8f859219cb3c27a94915981e6dec3dec2f6048af724e22de3ec" },
     { "path": "src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj", "sha256": "79019c2fa9dd885ea5bb847683975d7b08a09b08c8493417fd23d60d402b4fdb" },
     { "path": "src/SqlObserver.Infrastructure.SqlServer/packages.lock.json", "sha256": "d88448631e3fa9946bd3e2ede2f5d705f1849a523e64b7018b9dba08ff08ec14" },
@@ -42,7 +42,7 @@
     { "path": "src/SqlObserver.Server/SqlObserver.Server.csproj", "sha256": "168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93" },
     { "path": "src/SqlObserver.Server/packages.lock.json", "sha256": "f398f1863d3a8164d26059be0b6e82b3c48ebe6f856d675d6d20034452e512fd" },
     { "path": "web/contracts/web-asset-manifest.v1.schema.json", "sha256": "1f1e5b785dde79c492773f7298074fbf4668a1cebe75764cecdf97983fed682a" },
-    { "path": "web/package.json", "sha256": "676cf5e580463badfbe4343c4ed4ac4053b88d44163db5fd2188fd99fa8dd60a" },
+    { "path": "web/package.json", "sha256": "49711b7a1b57777236cd8ce9d2f80db90b39b19fd5eb1f1338ac31b87fbfbdc2" },
     { "path": "web/pnpm-lock.yaml", "sha256": "304a2af3b197e2faae956ff7a2600ab669f9bbc376c55c34e6cad6695ced3527" },
     { "path": "web/tools/web-asset-manifest.mjs", "sha256": "04370684e850b3cf9aaa0c5ed6db61dcdd6fb6fbbb7d0e67c8f5cb3197dcf17a" }
   ]

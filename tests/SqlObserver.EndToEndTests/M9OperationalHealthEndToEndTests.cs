@@ -86,6 +86,7 @@ public sealed class M9OperationalHealthEndToEndTests
             {
                 seed.Parameters.AddWithValue("target", target); seed.Parameters.AddWithValue("key", $"m9.e2e.{target:N}"); await seed.ExecuteNonQueryAsync();
             }
+            await PrimeBackupPrerequisiteAsync(dataSource, target);
             await CommitBackupProjectionAsync(dataSource, target);
             await using PostgreSqlTargetControlPlane controlPlane = PostgreSqlTargetControlPlane.Create(isolatedConnectionString, "SqlObserver.EndToEndTests.Host", new IdentityFingerprintKey(Enumerable.Repeat((byte)0xA5, IdentityFingerprintKey.RequiredLength).ToArray()));
             WebApplicationBuilder builder = WebApplication.CreateBuilder(); builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
@@ -176,6 +177,21 @@ public sealed class M9OperationalHealthEndToEndTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetBackupsAsync(Denied, request, CancellationToken.None).AsTask());
         SqlAgentFailureSnapshot page = (await service.GetAgentFailuresAsync(Viewer, request, CancellationToken.None))!;
         Assert.All(page.Items, item => { Assert.False(item.ContentAvailable); Assert.Equal(item.DetectedAtUtc, item.FirstObservedAtUtc); Assert.Null(item.MessageId); });
+    }
+
+    private static async Task PrimeBackupPrerequisiteAsync(NpgsqlDataSource dataSource, Guid target)
+    {
+        // This journey starts at backup collection. The scheduler requires a
+        // successful core observation before admitting an operational collector.
+        await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            UPDATE control.collector_schedule
+            SET last_outcome='succeeded',last_succeeded_at=clock_timestamp(),
+                next_due_at=clock_timestamp()+interval '1 day'
+            WHERE instance_id=@target AND collector_id='engine.core';
+            """, connection);
+        command.Parameters.AddWithValue("target", target);
+        Assert.Equal(1, await command.ExecuteNonQueryAsync());
     }
 
     private static async Task CommitBackupProjectionAsync(NpgsqlDataSource dataSource, Guid target)

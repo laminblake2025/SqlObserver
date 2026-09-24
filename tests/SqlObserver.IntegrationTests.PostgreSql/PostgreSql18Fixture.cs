@@ -19,24 +19,13 @@ public sealed class PostgreSql18Fixture : IAsyncLifetime
 
     public PostgreSql18Fixture()
     {
-        string? profile = Environment.GetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE");
-        string? releaseConnection = Environment.GetEnvironmentVariable("SQLOBSERVER_RELEASE_POSTGRES");
-        if (string.Equals(profile, "Release", StringComparison.OrdinalIgnoreCase))
+        string? externalConnection = ResolveExternalConnection(
+            Environment.GetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE"),
+            Environment.GetEnvironmentVariable("SQLOBSERVER_LOCAL_POSTGRES"),
+            Environment.GetEnvironmentVariable("SQLOBSERVER_RELEASE_POSTGRES"));
+        if (externalConnection is not null)
         {
-            if (string.IsNullOrWhiteSpace(releaseConnection))
-                throw new InvalidOperationException("SQLOBSERVER_RELEASE_POSTGRES is required for Release PostgreSQL evidence.");
-            try
-            {
-                var builder = new NpgsqlConnectionStringBuilder(releaseConnection);
-                if (string.IsNullOrWhiteSpace(builder.Host) || string.IsNullOrWhiteSpace(builder.Database))
-                    throw new InvalidOperationException("SQLOBSERVER_RELEASE_POSTGRES must specify Host and Database.");
-                builder.Pooling = false;
-                _adminConnectionString = builder.ConnectionString;
-            }
-            catch (ArgumentException exception)
-            {
-                throw new InvalidOperationException("SQLOBSERVER_RELEASE_POSTGRES is malformed.", exception);
-            }
+            _adminConnectionString = externalConnection;
             return;
         }
 
@@ -48,6 +37,37 @@ public sealed class PostgreSql18Fixture : IAsyncLifetime
             .WithCleanUp(true)
             .Build();
         _adminConnectionString = string.Empty;
+    }
+
+    // The CI service and local development repository are reached through a
+    // published loopback port. Release always requires its own explicit contract;
+    // it must never fall back to Local or silently start a disposable container.
+    internal static string? ResolveExternalConnection(string? profile, string? localConnection, string? releaseConnection)
+    {
+        bool releaseProfile = string.Equals(profile, "Release", StringComparison.OrdinalIgnoreCase);
+        string settingName = releaseProfile ? "SQLOBSERVER_RELEASE_POSTGRES" : "SQLOBSERVER_LOCAL_POSTGRES";
+        string? selected = releaseProfile ? releaseConnection : localConnection;
+        if (string.IsNullOrWhiteSpace(selected))
+        {
+            if (releaseProfile)
+                throw new InvalidOperationException("SQLOBSERVER_RELEASE_POSTGRES is required for Release PostgreSQL evidence.");
+            return null;
+        }
+
+        try
+        {
+            var builder = new NpgsqlConnectionStringBuilder(selected) { Pooling = false, IncludeErrorDetail = false };
+            if (string.IsNullOrWhiteSpace(builder.Host) || string.IsNullOrWhiteSpace(builder.Database))
+                throw new InvalidOperationException($"{settingName} must specify Host and Database.");
+            if (!releaseProfile && builder.Host is not "127.0.0.1" and not "::1" &&
+                !string.Equals(builder.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("SQLOBSERVER_LOCAL_POSTGRES must use a single loopback host.");
+            return builder.ConnectionString;
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidOperationException($"{settingName} is malformed.", exception);
+        }
     }
 
     public Task InitializeAsync() => _container is null ? Task.CompletedTask : _container.StartAsync();

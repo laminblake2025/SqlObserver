@@ -21,5 +21,9 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
+    proxy: {
+      // Keep the browser's Host/Origin and credentials together for the local API.
+      "/api": { target: "http://127.0.0.1:5080", changeOrigin: false, xfwd: false },
+    },
   },
 });

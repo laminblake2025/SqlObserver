@@ -16,11 +16,17 @@ using SqlObserver.Observability;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddWindowsService(options => options.ServiceName = "SqlObserver Server");
-AuthenticationBuilder authentication = builder.Services
-    .AddAuthentication(NegotiateDefaults.AuthenticationScheme);
-if (!builder.Environment.IsEnvironment("ContractTesting"))
+if (DevelopmentAuthentication.ValidateConfiguration(builder.Environment, builder.Configuration))
 {
-    authentication.AddNegotiate();
+    builder.Services.AddAuthentication(DevelopmentAuthentication.SchemeName)
+        .AddScheme<AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>(
+            DevelopmentAuthentication.SchemeName, static _ => { });
+}
+else
+{
+    AuthenticationBuilder authentication = builder.Services
+        .AddAuthentication(NegotiateDefaults.AuthenticationScheme);
+    if (!builder.Environment.IsEnvironment("ContractTesting")) authentication.AddNegotiate();
 }
 builder.Services.AddAuthorizationBuilder().SetFallbackPolicy(
     new AuthorizationPolicyBuilder()

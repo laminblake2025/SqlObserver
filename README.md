@@ -140,6 +140,7 @@ The 15 runtime-registered collectors, in execution order, are `engine.core`, `da
 - [Architecture and process boundaries](docs/architecture/overview.md)
 - [Platform scope and qualification](docs/architecture/support-matrix.md)
 - [Lab deployment](docs/deployment/lab-single-host.md)
+- [Local development, browser fixtures, and PostgreSQL tests](docs/development.md)
 - [Operator runbooks](docs/runbooks/README.md)
 - [M12 release and certification status](docs/milestones/M12-reports-installer-release.md)
 - [Backlog and milestone dependencies](BACKLOG.md)
