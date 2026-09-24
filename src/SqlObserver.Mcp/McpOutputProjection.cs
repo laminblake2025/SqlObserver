@@ -127,7 +127,7 @@ internal static class McpOutputProjection
         "get_tempdb_health" => ["fileId", "sizeBytes", "usedBytes", "freeBytes", "state"],
         "get_storage_forecast" => ["forecastId", "metricKey", "horizonStartUtc", "horizonEndUtc", "estimate", "lowerBound", "upperBound", "slopePerDay", "confidence", "residual", "model", "sourceGeneration", "visibilityState", "dimensionsSha256"],
         "get_backup_status" => ["backupType", "backupAtUtc", "state", "databaseFingerprint", "sizeBytes", "sourceTimeUnknown"],
-        "get_job_failures" => ["jobId", "firstObservedAtUtc", "state", "failureFingerprint"],
+        "get_job_failures" => ["jobId", "firstObservedAtUtc", "state", "failureFingerprint", "stepId", "runStatus", "isJobOutcome", "countsAsJobFailure"],
         "get_availability_health" => ["kind", "groupFingerprint", "replicaFingerprint", "databaseFingerprint", "role", "operationalState", "connectedState", "synchronizationState", "databaseState", "visibilityScope", "stateAvailable"],
         "get_incident_evidence" => ["occurredAtUtc", "packetId", "evidenceKind", "sourceRunId", "sourceDigest", "identityDigest", "sourceCutoffDigest", "sourceCutoffUtc", "confidence", "visibilityState"],
         "search_diagnostic_events" => ["occurredAtUtc", "eventId", "eventKind", "severity", "safeMetadata", "collectedAtUtc", "targetRevision"],
@@ -255,6 +255,10 @@ internal static class McpOutputProjection
         }
         if (tool == "get_job_failures" && path == "items")
         {
+            if (field == "stepId") return new JsonObject { ["type"] = "integer", ["minimum"] = 0, ["description"] = "Zero identifies the job outcome; positive IDs identify step records." };
+            if (field == "runStatus") return new JsonObject { ["type"] = "integer", ["description"] = "SQL Agent history status: 0 failed, 2 retry, 3 cancelled." };
+            if (field == "isJobOutcome") return new JsonObject { ["type"] = "boolean", ["description"] = "True for a job outcome record (stepId zero); false for a step record." };
+            if (field == "countsAsJobFailure") return new JsonObject { ["type"] = "boolean", ["description"] = "True only for a failed job outcome. Count distinct failureFingerprint values with this flag; step failures, retries, and cancellations do not count as failed jobs." };
             if (field == "jobId") return new JsonObject { ["type"] = "string", ["format"] = "uuid", ["description"] = "SQL Agent job identifier; not a job name." };
             if (field == "firstObservedAtUtc") return new JsonObject { ["type"] = "string", ["description"] = "Repository UTC first-observed time; not the source job execution time." };
             if (field == "failureFingerprint") return new JsonObject { ["type"] = "string", ["description"] = "Opaque failure fingerprint; not a message or error reason." };
@@ -348,7 +352,7 @@ internal static class McpOutputProjection
         ("get_tempdb_health", "items") => ["fileId", "sizeBytes", "usedBytes", "freeBytes", "state"],
         ("get_storage_forecast", "items") => ["metricKey", "horizonStartUtc", "horizonEndUtc", "confidence", "residual", "model", "sourceGeneration", "visibilityState", "dimensionsSha256"],
         ("get_backup_status", "items") => ["backupType", "backupAtUtc", "state", "databaseFingerprint", "sizeBytes", "sourceTimeUnknown"],
-        ("get_job_failures", "items") => ["jobId", "firstObservedAtUtc", "state", "failureFingerprint"],
+        ("get_job_failures", "items") => ["jobId", "firstObservedAtUtc", "state", "failureFingerprint", "stepId", "runStatus", "isJobOutcome", "countsAsJobFailure"],
         ("get_availability_health", "items") => ["kind", "groupFingerprint", "visibilityScope", "stateAvailable"],
         ("get_incident_evidence", "items") => ["occurredAtUtc", "packetId", "evidenceKind", "sourceDigest", "identityDigest", "sourceCutoffDigest", "confidence", "visibilityState"],
         ("search_diagnostic_events", "items") => ["occurredAtUtc", "eventId", "eventKind", "severity", "safeMetadata", "collectedAtUtc", "targetRevision"],

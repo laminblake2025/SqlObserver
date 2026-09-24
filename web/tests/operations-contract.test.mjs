@@ -31,6 +31,20 @@ test("M9 reader enforces streamed response bytes before parser execution", async
   await assert.rejects(() => readBoundedJson(huge, "backups", target));
 });
 
+test("Agent classification preserves job and step records and rejects inconsistent flags", () => {
+  const row = { jobId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", historyInstanceId: 1, stepId: 0, runStatus: 0, failureKind: "Failed", retryAttempt: 0, durationSeconds: 1, firstObservedAtUtc: "2026-08-25T12:00:00Z", failureFingerprint: "a".repeat(64), contentAvailable: false, isJobOutcome: true, countsAsJobFailure: true };
+  const steps = [row, { ...row, stepId: 1, isJobOutcome: false, countsAsJobFailure: false }, { ...row, stepId: 1, runStatus: 2, failureKind: "Retry", isJobOutcome: false, countsAsJobFailure: false }, { ...row, runStatus: 3, failureKind: "Cancelled", countsAsJobFailure: false }];
+  assert.deepEqual(parseOperationalPage({ ...base("agent"), items: steps }, "agent", target).items, steps);
+  for (const altered of [{ ...row, isJobOutcome: "true" }, { ...row, countsAsJobFailure: "false" }, { ...row, stepId: 1 }, { ...row, runStatus: 2 }, { ...row, failureKind: "Retry" }, { ...row, isJobOutcome: null }]) {
+    assert.throws(() => parseOperationalPage({ ...base("agent"), items: [altered] }, "agent", target), /agent classification/);
+  }
+});
+
+test("Agent classification remains optional for older responses", () => {
+  const row = { jobId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", historyInstanceId: 1, stepId: 1, runStatus: 0, failureKind: "Failed", retryAttempt: 0, durationSeconds: 1, firstObservedAtUtc: "2026-08-25T12:00:00Z", failureFingerprint: "a".repeat(64), contentAvailable: false };
+  assert.deepEqual(parseOperationalPage({ ...base("agent"), items: [row] }, "agent", target).items, [row]);
+});
+
 test("M9 API and panel retain six distinct routes and no response reflection", async () => {
   const api = await readFile(new URL("../src/features/operations/operationsApi.ts", import.meta.url), "utf8");
   const panel = await readFile(new URL("../src/features/operations/OperationsPanel.tsx", import.meta.url), "utf8");

@@ -31,7 +31,8 @@ public sealed class OverviewQueryServiceTests
         return new(new(new(guid), new($"sql{index}"), new($"SQL {index:D2}"), new(new(new("sql.example.test"), tcpPort:1433), new(TimeSpan.FromSeconds(5))), lifecycle, new(1), At, At, At), null);
     }
     private static OverviewQueryService Service(IReadOnlyList<ObservationTargetStatusSnapshot> inventory, IAlertQueryService? alertService = null,
-        IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null)
+        IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null,
+        IOperationalHealthQueryService? operationsService = null)
     {
         var targets = OverviewStub.Create<IObservationTargetStatusQueryService>((_,args) =>
         {
@@ -39,7 +40,7 @@ public sealed class OverviewQueryServiceTests
             return ValueTask.FromResult(new ObservationTargetStatusPage(inventory.Where(t=>query.Authorization.CanAccess(t.Target.TargetId)).ToArray(),null));
         });
         return new(targets, OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
-            activityService??OverviewStub.Create<IActivityProjectionQueryService>(),OverviewStub.Create<IDeadlockProjectionQueryService>(),OverviewStub.Create<IOperationalHealthQueryService>(),
+            activityService??OverviewStub.Create<IActivityProjectionQueryService>(),OverviewStub.Create<IDeadlockProjectionQueryService>(),operationsService??OverviewStub.Create<IOperationalHealthQueryService>(),
             OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>());
     }
 
@@ -110,6 +111,89 @@ public sealed class OverviewQueryServiceTests
         });
         var result=await Service([target],alerts).ReadAsync(new(Auth(),null,At.AddHours(-1),At),CancellationToken.None);
         Assert.Equal(2,calls);Assert.Equal(9,Assert.Single(result.Evidence).ActiveAlerts.Value);Assert.Equal("current",result.Evidence[0].ActiveAlerts.State);
+    }
+
+    [Fact]
+    public async Task AgentJobFailureCountsDeduplicateOutcomesAndExcludeStepDiagnostics()
+    {
+        var target = Target(1);
+        Guid failedJob = Guid.NewGuid(), diagnosticOnlyJob = Guid.NewGuid();
+        SqlAgentFailureObservation firstOutcome = AgentObservation(target, failedJob, 1, 0, 0, AgentFailureKind.Failed);
+        SqlAgentFailureObservation[] observations =
+        [
+            firstOutcome,
+            firstOutcome,
+            AgentObservation(target, failedJob, 2, 0, 0, AgentFailureKind.Failed),
+            AgentObservation(target, failedJob, 3, 1, 0, AgentFailureKind.Failed),
+            AgentObservation(target, diagnosticOnlyJob, 4, 1, 0, AgentFailureKind.Failed),
+            AgentObservation(target, diagnosticOnlyJob, 5, 1, 2, AgentFailureKind.Retry),
+            AgentObservation(target, diagnosticOnlyJob, 6, 0, 3, AgentFailureKind.Cancelled),
+        ];
+
+        OverviewTargetEvidence evidence = await ReadAgentEvidenceAsync(target, observations);
+        OverviewResource failures = Assert.Single(evidence.Resources, resource => resource.Label == "SQL Agent failures");
+        Assert.Equal(2d, failures.Value);
+        OverviewIssue issue = Assert.Single(evidence.Issues, item => item.Title == "SQL Agent failures");
+        Assert.Equal("1 jobs affected in the selected window", issue.Detail);
+        Assert.Equal("operations", issue.Destination);
+    }
+
+    [Theory]
+    [InlineData(1, 0, AgentFailureKind.Failed)]
+    [InlineData(1, 2, AgentFailureKind.Retry)]
+    [InlineData(0, 3, AgentFailureKind.Cancelled)]
+    [InlineData(0, 0, AgentFailureKind.Retry)]
+    [InlineData(0, 2, AgentFailureKind.Failed)]
+    public async Task AgentJobFailureCountsDoNotPromoteDiagnosticsOrInconsistentOutcomes(int stepId, int runStatus, AgentFailureKind kind)
+    {
+        var target = Target(1);
+        SqlAgentFailureObservation observation = AgentObservation(target, Guid.NewGuid(), 1, stepId, runStatus, kind);
+
+        OverviewTargetEvidence evidence = await ReadAgentEvidenceAsync(target, [observation]);
+
+        Assert.Equal(0d, Assert.Single(evidence.Resources, resource => resource.Label == "SQL Agent failures").Value);
+        Assert.DoesNotContain(evidence.Issues, issue => issue.Title == "SQL Agent failures");
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "more-agent-records")]
+    public async Task AgentJobFailureCountsRetainPartialCoverage(bool truncated, string? nextCursor)
+    {
+        var target = Target(1);
+        SqlAgentFailureObservation stepFailure = AgentObservation(target, Guid.NewGuid(), 1, 1, 0, AgentFailureKind.Failed);
+
+        OverviewTargetEvidence evidence = await ReadAgentEvidenceAsync(target, [stepFailure], truncated, nextCursor);
+
+        OverviewResource failures = Assert.Single(evidence.Resources, resource => resource.Label == "SQL Agent failures");
+        Assert.Equal(0d, failures.Value);
+        Assert.Equal("partial", failures.State);
+        Assert.DoesNotContain(evidence.Issues, issue => issue.Title == "SQL Agent failures");
+    }
+
+    private static SqlAgentFailureObservation AgentObservation(ObservationTargetStatusSnapshot target, Guid jobId,
+        long historyId, int stepId, int runStatus, AgentFailureKind kind) =>
+        new(target.Target.TargetId, target.Target.Revision, jobId, historyId, stepId, runStatus, kind,
+            null, null, runStatus == 2 ? 1 : 0, 3, At,
+            SqlAgentFailureIdentity.Compute(1, target.Target.TargetId, target.Target.Revision, jobId, historyId, stepId, runStatus));
+
+    private static async Task<OverviewTargetEvidence> ReadAgentEvidenceAsync(ObservationTargetStatusSnapshot target,
+        SqlAgentFailureObservation[] observations, bool truncated = false, string? nextCursor = null)
+    {
+        var snapshot = new SqlAgentFailureSnapshot(target.Target.TargetId, target.Target.Revision, new CollectorRunId(Guid.NewGuid()),
+            At, OperationalObservationState.Complete, observations, observations.Length, truncated, At.AddHours(-1), At)
+        { NextCursor = nextCursor };
+        var operations = OverviewStub.Create<IOperationalHealthQueryService>((method, _) => method!.Name switch
+        {
+            nameof(IOperationalHealthQueryService.GetAgentFailuresAsync) => ValueTask.FromResult<SqlAgentFailureSnapshot?>(snapshot),
+            nameof(IOperationalHealthQueryService.GetBackupsAsync) => ValueTask.FromResult<BackupStatusSnapshot?>(null),
+            nameof(IOperationalHealthQueryService.GetTempDbAsync) => ValueTask.FromResult<TempDbSnapshot?>(null),
+            nameof(IOperationalHealthQueryService.GetAvailabilityGroupReplicasAsync) => ValueTask.FromResult<AvailabilityGroupsSnapshot?>(null),
+            _ => throw new InvalidOperationException($"Unexpected operational health method {method.Name}")
+        });
+        OverviewSnapshot result = await Service([target], operationsService: operations)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At), CancellationToken.None);
+        return Assert.Single(result.Evidence);
     }
 
     [Fact]

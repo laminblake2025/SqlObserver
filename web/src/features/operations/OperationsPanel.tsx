@@ -143,6 +143,8 @@ function namedRows(kind: OperationalKind, items: readonly Record<string, unknown
     };
     if (kind === "agent") return {
       "Job identifier": item.jobId,
+      "Record scope": item.isJobOutcome === true ? "Job outcome" : item.isJobOutcome === false ? "Job step" : "Not reported",
+      "Counts as failed job": typeof item.countsAsJobFailure === "boolean" ? item.countsAsJobFailure : "Not reported",
       "History instance": item.historyInstanceId,
       "Step": item.stepId,
       "Run status": item.runStatus,

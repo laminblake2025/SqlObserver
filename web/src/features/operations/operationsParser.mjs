@@ -6,6 +6,7 @@ const STATES = new Set(["Complete", "Partial", "Degraded", "Unsupported", "Permi
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX = /^[0-9a-f]{64}$/i;
 const AGENT_ITEM_KEYS = new Set([
+  "isJobOutcome", "countsAsJobFailure", "IsJobOutcome", "CountsAsJobFailure",
   "jobId", "historyInstanceId", "stepId", "runStatus", "failureKind", "messageId", "severity", "retryAttempt", "durationSeconds", "firstObservedAtUtc", "contentAvailable", "failureFingerprint",
   "JobId", "HistoryInstanceId", "StepId", "RunStatus", "FailureKind", "MessageId", "Severity", "RetryAttempt", "DurationSeconds", "FirstObservedAtUtc", "ContentAvailable", "FailureFingerprint",
 ]);
@@ -65,6 +66,13 @@ function validateAgent(item) {
   integer(field(item, "historyInstanceId", "HistoryInstanceId"), "agent history"); integer(field(item, "stepId", "StepId"), "agent step"); integer(field(item, "retryAttempt", "RetryAttempt"), "agent retry"); integer(field(item, "durationSeconds", "DurationSeconds"), "agent duration");
   if (field(item, "contentAvailable", "ContentAvailable") !== false) fail("agent sensitive content");
   if (!utc(field(item, "firstObservedAtUtc", "FirstObservedAtUtc"))) fail("agent first observed");
+  const classifications = [
+    ["isJobOutcome", "IsJobOutcome", field(item, "stepId", "StepId") === 0],
+    ["countsAsJobFailure", "CountsAsJobFailure", field(item, "stepId", "StepId") === 0 && field(item, "runStatus", "RunStatus") === 0 && field(item, "failureKind", "FailureKind") === "Failed"],
+  ];
+  for (const [lower, upper, expected] of classifications) {
+    for (const key of [lower, upper]) if (Object.hasOwn(item, key) && item[key] !== expected) fail("agent classification");
+  }
 }
 function optionalInteger(value, lower, upper, name) {
   const candidate = field(value, lower, upper);

@@ -271,8 +271,9 @@ public sealed class OverviewQueryService(
             var agent = await operations.GetAgentFailuresAsync(query.Authorization, request with { FromUtc = query.FromUtc, ToUtc = query.ToUtc }, ct);
             if (agent is not null)
             {
-                Resource("SQL Agent failures", agent.Items.Select(x => x.FailureFingerprint).Distinct().Count(), "observed events", agent.Truncated || agent.NextCursor is not null ? "partial" : agent.State.ToString().ToLowerInvariant(), agent.ObservedAtUtc);
-                if (agent.Items.Count > 0) Issue("SQL Agent failures", $"{agent.Items.Select(x => x.JobId).Distinct().Count()} jobs affected in the selected window", "operations", 2, agent.ObservedAtUtc);
+                var failedOutcomes = agent.Items.Where(SqlAgentFailureSemantics.CountsAsJobFailure).DistinctBy(x => x.FailureFingerprint).ToArray();
+                Resource("SQL Agent failures", failedOutcomes.Length, "failed job outcomes", agent.Truncated || agent.NextCursor is not null ? "partial" : agent.State.ToString().ToLowerInvariant(), agent.ObservedAtUtc);
+                if (failedOutcomes.Length > 0) Issue("SQL Agent failures", $"{failedOutcomes.Select(x => x.JobId).Distinct().Count()} jobs affected in the selected window", "operations", 2, agent.ObservedAtUtc);
             }
         });
         QueueRead("Availability groups", async ct =>

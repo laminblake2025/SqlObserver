@@ -152,7 +152,8 @@ internal static class McpWireMapper
         return result;
     }
     private static JsonNode Job(SqlAgentFailureObservation x) => O(("jobId", Id(x.JobId)),
-        ("firstObservedAtUtc", T(x.FirstObservedAtUtc)), ("state", E(x.FailureKind)), ("failureFingerprint", x.FailureFingerprint));
+        ("firstObservedAtUtc", T(x.FirstObservedAtUtc)), ("state", E(x.FailureKind)), ("failureFingerprint", x.FailureFingerprint),
+        ("stepId", x.StepId), ("runStatus", x.RunStatus), ("isJobOutcome", SqlAgentFailureSemantics.IsJobOutcome(x)), ("countsAsJobFailure", SqlAgentFailureSemantics.CountsAsJobFailure(x)));
     private static JsonNode File(TempDbFileObservation x) => O(("fileId", x.FileId), ("sizeBytes", x.SizeBytes), ("usedBytes", x.UsedBytes), ("freeBytes", x.FreeBytes), ("state", E(x.State)));
     private static JsonNode Availability(AvailabilityGroupsSnapshot x) => O(
         ("items", new JsonArray(x.Replicas.Select(Replica).Concat(x.Databases.Select(Database)).ToArray())),
