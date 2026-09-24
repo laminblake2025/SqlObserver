@@ -33,3 +33,10 @@ export function overviewChartRange(
   return Number.isFinite(minimum) && Number.isFinite(maximum) && maximum > minimum
     ? { minimum, maximum } : null;
 }
+
+export function formatOverviewChartValue(value: number | null, range: OverviewChartRange): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const tickStep = (range.maximum - range.minimum) / 4;
+  const decimals = Math.min(10, Math.max(2, Math.ceil(-Math.log10(tickStep)) + 1));
+  return value.toLocaleString(undefined, { maximumFractionDigits: decimals });
+}

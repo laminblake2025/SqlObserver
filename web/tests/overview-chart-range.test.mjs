@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { overviewChartRange } from "../src/features/overview/overviewChartRange.ts";
+import { formatOverviewChartValue, overviewChartRange } from "../src/features/overview/overviewChartRange.ts";
 
 const from = "2026-09-24T00:00:00Z", to = "2026-09-24T01:00:00Z";
 const series = (points) => [{ targetId: "server", label: "Memory", metric: "memory", unit: "GiB", state: "current", dimension: null, points }];
@@ -28,4 +28,13 @@ test("zero, negative and missing values produce finite honest ranges", () => {
   const negative = overviewChartRange(series([{ timeUtc: from, value: -20 }, { timeUtc: "2026-09-24T00:30:00Z", value: -10 }]), undefined, from, to);
   assert.ok(negative && negative.minimum < -20 && negative.maximum < 0);
   assert.equal(overviewChartRange(series([{ timeUtc: from, value: null }, { timeUtc: to, value: 1 }]), undefined, from, to), null);
+});
+
+test("narrow ranges keep distinct axis labels and readable values", () => {
+  const range = overviewChartRange(series([
+    { timeUtc: from, value: 10.001 }, { timeUtc: "2026-09-24T00:30:00Z", value: 10.002 },
+  ]), undefined, from, to);
+  assert.ok(range);
+  assert.notEqual(formatOverviewChartValue(10.001, range), formatOverviewChartValue(10.002, range));
+  assert.equal(formatOverviewChartValue(null, range), "—");
 });

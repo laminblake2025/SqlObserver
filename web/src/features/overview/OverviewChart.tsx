@@ -1,7 +1,6 @@
 import { useState, type PointerEvent } from 'react';
-import { displayMetric } from './overviewModel';
 import { chartSelection, chartUtcAtX, chartX } from './chartTimeModel';
-import { overviewChartRange } from './overviewChartRange';
+import { formatOverviewChartValue, overviewChartRange } from './overviewChartRange';
 import type { OverviewSeries } from './overviewTypes';
 
 const colors = ['var(--series-1)','var(--series-2)','var(--series-3)','var(--series-4)','var(--series-5)','var(--series-6)','var(--series-7)','var(--series-8)','var(--series-9)','var(--series-10)'];
@@ -45,14 +44,14 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     onPointerUp={event=>{if(dragStart===null)return;const value=pointX(event);setDragStart(null);setDragEnd(null);if(value!==null){const selected=chartSelection(dragStart,value,fromUtc,toUtc);if(selected)onSelectWindow?.(selected);}}}
     onPointerCancel={()=>{setDragStart(null);setDragEnd(null);}}
     onPointerLeave={()=>{if(dragStart===null)onCrosshairChange?.(null);}}>
-    {ticks.map(f=>{const value=range.minimum+f*(range.maximum-range.minimum);return <g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(value)} y2={y(value)}/><text x="0" y={y(value)+4}>{displayMetric(value)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*570} x2={48+f*570} y1={25} y2={180}/></g>;})}
+    {ticks.map(f=>{const value=range.minimum+f*(range.maximum-range.minimum);return <g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(value)} y2={y(value)}/><text x="0" y={y(value)+4}>{formatOverviewChartValue(value,range)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*570} x2={48+f*570} y1={25} y2={180}/></g>;})}
     {all.map(({s,shift})=>{
       const color=colorFor(s);
       const points=plotPoints(s,shift,from,to,x,y);
       return <g key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}`}>
         {lineSegments(points).map((d,index)=><path className="chart-series" d={d} fill="none" key={index} stroke={color} strokeDasharray={shift ? "5 5" : undefined} strokeLinecap="round" strokeLinejoin="round" strokeOpacity={shift ? .48 : .95} strokeWidth={shift ? 1.75 : 2.5}/>)}
         {points.filter((point): point is PlotPoint => point !== null).map(point=><circle className="chart-marker" cx={point.x} cy={point.y} fill={shift ? "var(--surface)" : color} key={`${point.timeUtc}:${shift}`} r={shift ? 1.5 : 2} stroke={color} strokeWidth={shift ? 1 : 1.25}>
-          <title>{s.label} {s.dimension} · {point.timeUtc} · {displayMetric(point.value)} {s.unit} · {point.samples} samples{shift?' · previous period':''}</title>
+          <title>{s.label} {s.dimension} · {point.timeUtc} · {formatOverviewChartValue(point.value,range)} {s.unit} · {point.samples} samples{shift?' · previous period':''}</title>
         </circle>)}
       </g>;
     })}
@@ -64,7 +63,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   <small>Vertical scale follows observed values and may not start at zero.</small>
   {previous?.length ? <small>Dashed lines: previous equal-length window shifted for comparison. Observed bucket means; gaps and changing coverage can affect comparisons.</small> : null}
   {markers.length>0&&<small>Event lines mark ranked issues returned for this window; they are not a complete event history.</small>}
-  <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table><thead><tr><th>Server / resource</th><th>UTC</th><th>Value</th><th>Samples</th><th>Period</th></tr></thead><tbody>{all.flatMap(({s,shift})=>s.points.map(p=><tr key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}:${p.timeUtc}`}><td>{s.label} {s.dimension}</td><td>{p.timeUtc}</td><td>{displayMetric(p.value)} {s.unit}</td><td>{p.samples}</td><td>{shift?'Previous':'Selected'}</td></tr>))}</tbody></table></div></details></figure>;
+  <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table><thead><tr><th>Server / resource</th><th>UTC</th><th>Value</th><th>Samples</th><th>Period</th></tr></thead><tbody>{all.flatMap(({s,shift})=>s.points.map(p=><tr key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}:${p.timeUtc}`}><td>{s.label} {s.dimension}</td><td>{p.timeUtc}</td><td>{formatOverviewChartValue(p.value,range)} {s.unit}</td><td>{p.samples}</td><td>{shift?'Previous':'Selected'}</td></tr>))}</tbody></table></div></details></figure>;
 }
 
 function seriesIdentity(series: OverviewSeries): string {
