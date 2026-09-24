@@ -177,7 +177,7 @@ public sealed class MigrationIntegrationTests
     }
 
     [Fact]
-    public async Task NewQueryObservationsCarryTheirOwningTargetAndRejectMismatches()
+    public async Task QueryObservationIdentityUpgradeBackfillsBoundedlyWithoutCrossTargetMutation()
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
         var runner = new PostgreSqlMigrationPort(database.DataSource);
@@ -187,23 +187,31 @@ public sealed class MigrationIntegrationTests
         Assert.False(prefix.HasFailures);
 
         Guid target = Guid.NewGuid(), run = Guid.NewGuid();
+        Guid other = Guid.NewGuid(), otherRun = Guid.NewGuid();
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using (var seed = new NpgsqlCommand("""
             INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
-            VALUES(@target,@key,'Query identity test','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,now(),now(),now());
+            SELECT id,id::text,'Query identity test','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,now(),now(),now()
+            FROM (VALUES(@target),(@other)) AS targets(id);
             INSERT INTO telemetry.collection_run(run_id,instance_id,collector_id,collector_version,output_schema_version,target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
-            VALUES(@run,@target,'queries.performance',1,1,1,1,'test/query-identity',gen_random_uuid(),1,decode(repeat('00',32),'hex'),now(),now());
+            SELECT id,target,'queries.performance',1,1,1,1,'test/query-identity',gen_random_uuid(),1,decode(repeat('00',32),'hex'),now(),now()
+            FROM (VALUES(@run,@target),(@otherRun,@other)) AS runs(id,target);
             INSERT INTO events.query_performance_run(collection_run_id,instance_id,target_revision,window_start,window_end,source,source_state,coverage,freshness,truncated,completion_digest)
-            VALUES(@run,@target,1,now()-interval '5 minutes',now(),'query_store','read_write','complete',true,false,decode(repeat('00',32),'hex'));
+            SELECT id,target,1,now()-interval '5 minutes',now(),'query_store','read_write','complete',true,false,decode(repeat('00',32),'hex')
+            FROM (VALUES(@run,@target),(@otherRun,@other)) AS runs(id,target);
             INSERT INTO events.query_performance_query(collection_run_id,instance_id,database_id,query_fingerprint)
-            VALUES(@run,@target,5,decode(repeat('11',32),'hex'));
+            SELECT id,target,5,decode(repeat('11',32),'hex')
+            FROM (VALUES(@run,@target),(@otherRun,@other)) AS runs(id,target);
             INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics)
-            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval');
+            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval'),
+                  (@run,5,decode(repeat('11',32),'hex'),decode(repeat('33',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval'),
+                  (@otherRun,5,decode(repeat('11',32),'hex'),decode(repeat('66',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval');
             """, connection))
         {
             seed.Parameters.AddWithValue("target", target);
             seed.Parameters.AddWithValue("run", run);
-            seed.Parameters.AddWithValue("key", target.ToString("D"));
+            seed.Parameters.AddWithValue("other", other);
+            seed.Parameters.AddWithValue("otherRun", otherRun);
             await seed.ExecuteNonQueryAsync();
         }
 
@@ -237,13 +245,15 @@ public sealed class MigrationIntegrationTests
             Assert.True(await reader.ReadAsync());
             Assert.True(await reader.IsDBNullAsync(1));
             Assert.True(await reader.ReadAsync());
+            Assert.True(await reader.IsDBNullAsync(1));
+            Assert.True(await reader.ReadAsync());
             Assert.Equal(target, reader.GetGuid(1));
             Assert.False(await reader.ReadAsync());
         }
 
         await using (var mismatch = new NpgsqlCommand("""
             INSERT INTO events.query_performance_observation(collection_run_id,database_id,query_fingerprint,observation_key,source,source_state,interval_start,interval_end,observed_at,semantics,instance_id)
-            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('33',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval',@wrong);
+            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('55',16),'hex'),'query_store','read_write',now()-interval '5 minutes',now(),now(),'query_store_interval',@wrong);
             """, connection))
         {
             mismatch.Parameters.AddWithValue("run", run);
@@ -251,6 +261,110 @@ public sealed class MigrationIntegrationTests
             PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => mismatch.ExecuteNonQueryAsync());
             Assert.Equal("23514", exception.SqlState);
         }
+
+        MigrationBatchResult backfillMigration = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(2, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(backfillMigration.HasFailures);
+        Assert.Collection(backfillMigration.Results,
+            first => Assert.Equal(90, first.Migration.Number.Value),
+            second => Assert.Equal(91, second.Migration.Number.Value));
+
+        await using (var grants = new NpgsqlCommand("""
+            SELECT NOT has_function_privilege('sqlobserver_server',
+                       'control.backfill_query_observation_identity(uuid,integer)','EXECUTE'),
+                   NOT has_function_privilege('sqlobserver_collector',
+                       'control.backfill_query_observation_identity(uuid,integer)','EXECUTE'),
+                   NOT has_table_privilege('sqlobserver_server',
+                       'events.query_performance_observation','UPDATE');
+            """, connection))
+        await using (NpgsqlDataReader reader = await grants.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.True(reader.GetBoolean(0));
+            Assert.True(reader.GetBoolean(1));
+            Assert.True(reader.GetBoolean(2));
+        }
+
+        Assert.Equal((1, false), await BackfillQueryIdentityAsync(connection, target, target, 1));
+        Assert.Equal((1, false), await BackfillQueryIdentityAsync(connection, target, target, 1));
+        Assert.Equal((0, true), await BackfillQueryIdentityAsync(connection, target, target, 1));
+        Assert.Equal((0, true), await BackfillQueryIdentityAsync(connection, target, target, 1));
+
+        PostgresException denied = await Assert.ThrowsAsync<PostgresException>(
+            () => BackfillQueryIdentityAsync(connection, target, other, 1));
+        Assert.Equal("42501", denied.SqlState);
+
+        await using (var verify = new NpgsqlCommand("""
+            SELECT count(*) FILTER (WHERE instance_id=@target),count(*),
+                   (SELECT processed_rows FROM system.query_observation_identity_backfill WHERE instance_id=@target)
+            FROM events.query_performance_observation WHERE collection_run_id=@run;
+            """, connection))
+        {
+            verify.Parameters.AddWithValue("target", target);
+            verify.Parameters.AddWithValue("run", run);
+            await using NpgsqlDataReader reader = await verify.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(3L, reader.GetInt64(0));
+            Assert.Equal(3L, reader.GetInt64(1));
+            Assert.Equal(2L, reader.GetInt64(2));
+        }
+
+        await using (var otherTarget = new NpgsqlCommand("""
+            SELECT instance_id IS NULL FROM events.query_performance_observation
+            WHERE collection_run_id=@otherRun;
+            """, connection))
+        {
+            otherTarget.Parameters.AddWithValue("otherRun", otherRun);
+            Assert.Equal(true, await otherTarget.ExecuteScalarAsync());
+        }
+
+        await using (var mutate = new NpgsqlCommand("""
+            UPDATE events.query_performance_observation SET cpu_ms=42
+            WHERE collection_run_id=@run;
+            """, connection))
+        {
+            mutate.Parameters.AddWithValue("run", run);
+            PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => mutate.ExecuteNonQueryAsync());
+            Assert.Equal("55000", exception.SqlState);
+        }
+
+        await using (var mutateRun = new NpgsqlCommand("""
+            UPDATE events.query_performance_run SET coverage='complete'
+            WHERE collection_run_id=@run;
+            """, connection))
+        {
+            mutateRun.Parameters.AddWithValue("run", run);
+            PostgresException exception = await Assert.ThrowsAsync<PostgresException>(() => mutateRun.ExecuteNonQueryAsync());
+            Assert.Equal("55000", exception.SqlState);
+        }
+    }
+
+    private static async Task<(int UpdatedRows, bool Complete)> BackfillQueryIdentityAsync(
+        NpgsqlConnection connection, Guid scope, Guid requestedTarget, int limit)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_migrator;
+            SELECT pg_catalog.set_config('sqlobserver.target_scope',@scope,true);
+            """, connection, transaction))
+        {
+            setup.Parameters.AddWithValue("scope", scope.ToString("D"));
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        await using var command = new NpgsqlCommand("""
+            SELECT updated_rows,complete
+            FROM control.backfill_query_observation_identity(@target,@limit);
+            """, connection, transaction);
+        command.Parameters.AddWithValue("target", requestedTarget);
+        command.Parameters.AddWithValue("limit", limit);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        var result = (reader.GetInt32(0), reader.GetBoolean(1));
+        await reader.CloseAsync();
+        await transaction.CommitAsync();
+        return result;
     }
 
     [Fact]

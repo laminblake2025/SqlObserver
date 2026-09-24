@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0089`
+The migration catalog contains the exact, contiguous `0001` through `0092`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -133,7 +133,23 @@ commits ordinary migrations and their ledger rows in one transaction. Migration
 `0088` builds a query-performance index concurrently outside a transaction;
 the runner checks the index and records the ledger only after a valid build.
 Migration `0089` adds a nullable query-observation target key and fills it on
-new inserts; historical observations await a bounded backfill.
+new inserts. Migrations `0090`–`0091` add a target-ordered index and a bounded
+database backfill operation for historical observations. The backfill is not
+run automatically by the migration runner.
+Migration `0092` adds a concurrent target/time index for the eventual read-path
+cutover; current reads retain their existing ownership checks.
+
+After upgrading, a migration administrator can backfill one target in bounded
+transactions. Replace the UUID in both places and repeat until `complete` is
+`true`:
+
+```sql
+BEGIN;
+SET LOCAL ROLE sqlobserver_migrator;
+SELECT set_config('sqlobserver.target_scope','<target-uuid>',true);
+SELECT * FROM control.backfill_query_observation_identity('<target-uuid>'::uuid,1000);
+COMMIT;
+```
 
 **Do not run the SQL files individually with `psql -f`.** Doing so bypasses the
 runner-owned migration mode, advisory lock, checksum validation, and
