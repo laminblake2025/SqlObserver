@@ -164,7 +164,9 @@ public sealed class AnalyticsDerivationWorker(
     private async Task DeriveForecastAsync(AnalyticsDerivationJob job, WorkerLeaseIdentity lease, CancellationToken token)
     {
         AnalyticsForecastInput input = await store.ReadForecastInputsAsync(job, token).ConfigureAwait(false);
-        TimeSpan horizon = job.ForecastHorizon ?? TimeSpan.FromDays(1);
+        // Legacy queued jobs predate the scheduler's explicit horizon. Their
+        // source cutoff is yesterday, so a one-day fallback expires immediately.
+        TimeSpan horizon = job.ForecastHorizon ?? TimeSpan.FromDays(30);
         ForecastResult result = input.DailyRollups.Count > 0
             ? ForecastV1.Compute(job.MetricKey!, input.DailyRollups, job.SourceCutoffUtc, horizon, input.Capacity, job.DimensionsSha256)
             // Compatibility for non-production adapters. PostgreSQL's

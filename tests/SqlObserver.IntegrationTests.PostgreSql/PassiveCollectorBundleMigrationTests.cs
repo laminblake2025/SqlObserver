@@ -91,6 +91,18 @@ public sealed class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fix
                 Assert.Equal("55000", staleSql.SqlState);
             }
         }
+        // Later forward migrations may now exist after this bounded 79->80
+        // upgrade. Apply them once without reapplying the bundle repair, then
+        // verify that a fully migrated repository has no pending work.
+        MigrationBatchResult remaining = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(remaining.HasFailures);
+        Assert.Equal(PostgreSqlMigrationCatalog.LoadEmbedded().Migrations
+            .Where(migration => migration.Descriptor.Number.Value > 80)
+            .Select(migration => migration.Descriptor.Number.Value),
+            remaining.Results.Select(result => result.Migration.Number.Value));
+        Assert.Equal(registryBefore, await ReadPreservedRegistryAsync(database));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         MigrationBatchResult repeat = await new PostgreSqlMigrationPort(database.DataSource)
             .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
         Assert.False(repeat.HasFailures);

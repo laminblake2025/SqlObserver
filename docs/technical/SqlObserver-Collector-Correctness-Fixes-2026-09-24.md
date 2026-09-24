@@ -132,6 +132,12 @@ single cancellation finding was corrected and its follow-up found no additional
 actionable issue in that correction. The separate full PostgreSQL selection
 above exercises repository behavior omitted by the Local profile.
 
+[GitHub validation run 35955268418](https://github.com/laminblake2025/SqlObserver/actions/runs/35955268418)
+passed for exact commit `0af7c517aab335d0a099b52afaaac6003de53bf8`.
+Windows passed the 1,689 selected .NET tests; Linux passed 216 PostgreSQL
+functional tests and one operational-health end-to-end test, with no failures
+or skips. These are Local validation results.
+
 These results cover .NET behavior and disposable PostgreSQL. The changed SQL
 Server assets still require live SQL Server qualification. They do not establish
 production certification, repair backup age or Agent event times, or replace the
