@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readRoute } from "../src/dashboardModel.ts";
-import { issueHref } from "../src/features/health/serverDashboardModel.ts";
-import { readOverviewScope } from "../src/features/overview/overviewModel.ts";
+import { issueHref, readOverviewScope } from "../src/features/overview/overviewModel.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
 const scope = { target, range: "custom", from: "2026-09-23T10:00:00Z", to: "2026-09-23T11:00:00Z", compare: true };

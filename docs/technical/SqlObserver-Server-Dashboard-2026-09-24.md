@@ -30,6 +30,13 @@ list now queries the selected UTC range, including each paginated request,
 and its event-to-Activity link preserves that range. Alert and operations
 screens still use current snapshots or their own time controls.
 
+The fleet Overview workload, contention, and resource charts also share a
+UTC crosshair. Dragging any of them selects one fixed custom range in the URL.
+Their event lines mark the limited ranked-issue list. Fleet issue links to
+Activity carry the issue's target, selected range, and observation time;
+other destinations keep the selected range without claiming an event-time
+snapshot.
+
 The dashboard adds a target-scoped Overview request alongside the existing
 health request. Overview currently composes live reads, so its known latency
 remains until the planned precomputed latest-status projection replaces it.
@@ -43,3 +50,5 @@ Focused Activity URL-window and API tests, TypeScript validation, and the
 production web build passed after the Activity range integration.
 Focused Deadlocks URL-window, pagination, and navigation-link tests and
 TypeScript validation passed after the Deadlocks range integration.
+Focused fleet URL and chart interaction tests and the production web build
+passed after the fleet chart integration.

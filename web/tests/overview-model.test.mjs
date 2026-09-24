@@ -1,12 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readOverviewScope,overviewHref,overviewWindow,aggregateValue,rankedIssues,overviewEvidenceFooter,overviewResourceObservationText} from '../src/features/overview/overviewModel.ts';
+import {readOverviewScope,overviewHref,issueHref,overviewWindow,aggregateValue,rankedIssues,overviewEvidenceFooter,overviewResourceObservationText} from '../src/features/overview/overviewModel.ts';
+import {readRoute} from '../src/dashboardModel.ts';
 const now=Date.parse('2026-09-05T12:00:00Z');
 test('scope, comparison and fixed UTC ranges survive drill-down and URL reload',()=>{
  const scope={target:'server-one',range:'custom',from:'2026-09-01T00:00:00Z',to:'2026-09-02T00:00:00Z',compare:true};
  assert.deepEqual(readOverviewScope(overviewHref(scope,'activity')),scope);
  assert.equal(readOverviewScope(overviewHref(scope,'overview','')).target,'');
  assert.deepEqual(overviewWindow(scope,now),{fromUtc:new Date(scope.from).toISOString(),toUtc:new Date(scope.to).toISOString()});
+});
+test('fleet issue drill-down carries its own target, selected window, and observation time',()=>{
+ const scope={target:'',range:'custom',from:'2026-09-01T00:00:00Z',to:'2026-09-02T00:00:00Z',compare:true};
+ const at='2026-09-01T11:30:00Z';
+ const href=issueHref(scope,'server-two','activity',at);
+ assert.deepEqual(readOverviewScope(href),{...scope,target:'server-two'});
+ assert.deepEqual(readRoute(href),{page:'activity',target:'server-two',activityAtUtc:at});
+ const alerts=issueHref(scope,'server-two','alerts',at);
+ assert.equal(readRoute(alerts).activityAtUtc,undefined);
 });
 test('all servers defaults to 24h and windows reject invalid and future inputs',()=>{
  const scope=readOverviewScope('#/overview');assert.equal(scope.target,'');assert.equal(scope.range,'24h');

@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { TimeRangeControls } from "../../components/TimeRangeControls";
 import { OverviewChart } from "../overview/OverviewChart";
-import { overviewEvidenceFooter, overviewHref, rankedIssues } from "../overview/overviewModel";
+import { issueHref, overviewEvidenceFooter, overviewHref, rankedIssues } from "../overview/overviewModel";
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
-import { issueHref } from "./serverDashboardModel";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
   readonly instanceId: string;

@@ -13,6 +13,10 @@ export function overviewHref(scope: OverviewScope, page = 'overview', target = s
   if (scope.compare) query.set('compare', '1');
   return `#/${page}?${query}`;
 }
+export function issueHref(scope: OverviewScope, target: string, destination: string, observedAtUtc: string | null): string {
+  const href = overviewHref(scope, destination, target);
+  return destination === 'activity' && observedAtUtc ? `${href}&at=${encodeURIComponent(observedAtUtc)}` : href;
+}
 export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: string; toUtc: string} {
   const end = scope.range === 'custom' ? Date.parse(scope.to ?? '') : now;
   const start = scope.range === 'custom' ? Date.parse(scope.from ?? '') : end - ({'1h': 1, '6h': 6, '24h': 24, '7d': 168}[scope.range]) * 3600000;
