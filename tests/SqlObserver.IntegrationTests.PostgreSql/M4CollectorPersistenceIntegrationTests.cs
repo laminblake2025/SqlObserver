@@ -893,7 +893,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
     [Theory]
     [InlineData(-600)]
     [InlineData(600)]
-    public async Task CommitRejectsObservationOutsideRunClockSkew(int secondsFromRepositoryTime)
+    public async Task CommitRecordsClockSkewAsVisibleLossAndAdvancesTheSchedule(int secondsFromRepositoryTime)
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         var targetId = new MonitoredInstanceId(Guid.NewGuid());
@@ -917,11 +917,40 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             TimeSpan.Zero);
         CollectorPayload payload = CreateEnginePayload(work.TargetId, observedAt);
 
-        PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(async () =>
-            await runtime.CommitRunAsync(
-                CreateSuccessCommit(work, runId, lease, payload),
-                CancellationToken.None));
-        Assert.Equal("22023", rejected.SqlState);
+        CommitCollectorRunRequest commit = CreateSuccessCommit(work, runId, lease, payload);
+        CollectorRunCommitResult saved = await runtime.CommitRunAsync(commit, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, saved.Status);
+        Assert.Equal(0, saved.InsertedCount);
+        Assert.Equal(payload.ItemCount, saved.RejectedCount);
+        Assert.Equal(CollectorRunCommitStatus.Replayed,
+            (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT outcome.outcome, outcome.reason_code, gap.reason_code,
+                   gap.lost_row_count, gap.count_is_exact,
+                   schedule.active_run_id, schedule.next_due_at > clock_timestamp(),
+                   (SELECT count(*) FROM telemetry.raw_metric_sample AS sample
+                    WHERE sample.collection_run_id = @run_id)
+            FROM telemetry.collection_run_outcome AS outcome
+            JOIN telemetry.visibility_gap AS gap ON gap.run_id = outcome.run_id
+            JOIN control.collector_schedule AS schedule
+              ON schedule.instance_id = @target_id AND schedule.collector_id = 'engine.core'
+            WHERE outcome.run_id = @run_id
+            """, connection);
+        command.Parameters.AddWithValue("run_id", runId.Value);
+        command.Parameters.AddWithValue("target_id", targetId.Value);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal("output_invalid", reader.GetString(0));
+        Assert.Equal("output_validation_failed", reader.GetString(1));
+        Assert.Equal("target_clock_skew", reader.GetString(2));
+        Assert.Equal(payload.ItemCount, reader.GetInt64(3));
+        Assert.True(reader.GetBoolean(4));
+        Assert.True(reader.IsDBNull(5));
+        Assert.True(reader.GetBoolean(6));
+        Assert.Equal(0, reader.GetInt64(7));
+        Assert.False(await reader.ReadAsync());
     }
 
     [Fact]
