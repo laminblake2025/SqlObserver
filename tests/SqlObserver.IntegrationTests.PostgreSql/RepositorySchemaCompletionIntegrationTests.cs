@@ -8,6 +8,19 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 public sealed class PostgreSqlMigrationCatalogCompletionTests
 {
+    [Fact]
+    public void CatalogAcceptsMoreThanOneApplyBatchInItsChecksumManifest()
+    {
+        MethodInfo parser = typeof(PostgreSqlMigrationCatalog).GetMethod(
+            "ParseManifest", BindingFlags.NonPublic | BindingFlags.Static) ??
+            throw new InvalidOperationException("The migration checksum parser is missing.");
+        string manifest = string.Concat(Enumerable.Range(1, 257)
+            .Select(number => $"{new string('a', 64)}  {number:D4}_example.sql\n"));
+        var entries = Assert.IsAssignableFrom<System.Collections.IEnumerable>(parser.Invoke(null, [manifest]));
+
+        Assert.Equal(257, entries.Cast<object>().Count());
+    }
+
     public static TheoryData<string> TransactionControlStatements => new()
     {
         "/* leading */ BEGIN\nTRANSACTION;",

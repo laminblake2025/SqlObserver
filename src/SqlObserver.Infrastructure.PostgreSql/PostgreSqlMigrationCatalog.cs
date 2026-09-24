@@ -38,7 +38,7 @@ public sealed class PostgreSqlMigrationResource
 public sealed partial class PostgreSqlMigrationCatalog
 {
     private const int MaximumMigrationBytes = 4 * 1024 * 1024;
-    private const int MaximumManifestBytes = 64 * 1024;
+    private const int MaximumManifestBytes = 2 * 1024 * 1024;
     private const string ManifestFileName = "checksums.sha256";
 
     private static ReadOnlySpan<byte> Utf8ByteOrderMark => [0xEF, 0xBB, 0xBF];
@@ -153,10 +153,10 @@ public sealed partial class PostgreSqlMigrationCatalog
             result.Add(new MigrationManifestEntry(fileName, checksum));
         }
 
-        if (result.Count is 0 or > MigrationBatchResult.MaximumResults)
+        if (result.Count is 0 or > MigrationNumber.MaximumValue)
         {
             throw new InvalidDataException(
-                $"The migration manifest must contain between 1 and {MigrationBatchResult.MaximumResults} entries.");
+                $"The migration manifest must contain between 1 and {MigrationNumber.MaximumValue} entries.");
         }
 
         return result;

@@ -66,6 +66,8 @@ gap-free four-digit sequence and `checksums.sha256` contains exactly one lowerca
 SHA-256 followed by two spaces and the filename for every migration. Checksums are
 computed from committed LF bytes. A released file and its historical checksum are
 never edited; repair uses a new numbered forward migration.
+The catalog and ledger can hold the full four-digit sequence (up to 9,999
+migrations); each apply request still returns at most 256 migration results.
 
 Files under `database/functions` and `database/views` are non-deployable review indexes
 pointing to the matching numbered migration, not a runtime discovery or execution

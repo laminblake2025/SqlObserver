@@ -8,6 +8,22 @@ namespace SqlObserver.UnitTests;
 
 public sealed class M12LifecycleAssessmentContractTests
 {
+    [Fact]
+    public void AssessmentAcceptsHistoryBeyondOneApplyBatch()
+    {
+        var request = new MigrationAssessmentRequest(257, new RepositoryCallTimeout(TimeSpan.FromSeconds(1)));
+        MigrationHistoryEntry[] history = Enumerable.Range(1, 257)
+            .Select(number => new MigrationHistoryEntry(number, $"{number:D4}_example.sql", new string('a', 64)))
+            .ToArray();
+        var result = new MigrationAssessmentResult(MigrationAssessmentStatus.Pending, history,
+            new DateTimeOffset(2026, 9, 24, 12, 0, 0, TimeSpan.Zero), "pending_migrations", nextMigrationNumber: 258);
+
+        Assert.Equal(257, request.MaxHistory);
+        Assert.Equal(257, result.ObservedHistoryCount);
+        Assert.Equal(257, result.History.Count);
+        Assert.Equal(256, MigrationBatchResult.MaximumResults);
+    }
+
     // Production-default options; enum attributes and null-property attributes
     // must make the wire shape conform without test-local converters.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);

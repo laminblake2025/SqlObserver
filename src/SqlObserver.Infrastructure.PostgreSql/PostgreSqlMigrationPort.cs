@@ -226,9 +226,9 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         RepositoryCallTimeout timeout,
         CancellationToken cancellationToken,
         NpgsqlTransaction? transaction = null,
-        int maxHistory = MigrationBatchResult.MaximumResults)
+        int maxHistory = MigrationNumber.MaximumValue)
     {
-        if (maxHistory is <= 0 or > MigrationBatchResult.MaximumResults)
+        if (maxHistory is <= 0 or > MigrationNumber.MaximumValue)
             throw new ArgumentOutOfRangeException(nameof(maxHistory));
         await using (var existsCommand = new NpgsqlCommand(LedgerExistsSql, connection, transaction)
         {

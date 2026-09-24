@@ -18,6 +18,34 @@ public sealed class MigrationIntegrationTests
     }
 
     [Fact]
+    public async Task AssessmentReadsMoreThanOneBatchOfLedgerHistoryAndRejectsUnknownFutureRows()
+    {
+        await using var database = await _fixture.CreateDatabaseAsync();
+        PostgreSqlMigrationCatalog catalog = PostgreSqlMigrationCatalog.LoadEmbedded();
+        MigrationBatchResult applied = await new PostgreSqlMigrationPort(database.DataSource, catalog).ApplyPendingAsync(
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+        Assert.False(applied.HasFailures);
+        Assert.Equal(catalog.Migrations.Count, applied.Results.Count);
+
+        await using (var insert = database.DataSource.CreateCommand("""
+            INSERT INTO system.schema_migration(migration_number,migration_name,sha256)
+            SELECT n,lpad(n::text,4,'0') || '_future.sql',repeat('a',64)
+            FROM generate_series(@first,257) AS n;
+            """))
+        {
+            insert.Parameters.AddWithValue("first", catalog.Migrations.Count + 1);
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        var assessment = new PostgreSqlMigrationAssessmentPort(database.DataSource, catalog);
+        MigrationAssessmentResult result = await assessment.AssessAsync(
+            new MigrationAssessmentRequest(257, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+        Assert.Equal(MigrationAssessmentStatus.Unknown, result.Status);
+        Assert.Equal(257, result.ObservedHistoryCount);
+        Assert.Equal(catalog.Migrations.Count, result.History.Count);
+    }
+
+    [Fact]
     public async Task EmbeddedCatalogAndPostgreSql184MigrateIdempotently()
     {
         PostgreSqlMigrationCatalog catalog = PostgreSqlMigrationCatalog.LoadEmbedded();
