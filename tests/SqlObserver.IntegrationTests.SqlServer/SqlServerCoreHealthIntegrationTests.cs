@@ -67,8 +67,10 @@ public sealed class SqlServerCoreHealthIntegrationTests
             [
                 "engine.batch_requests_total",
                 "engine.committed_memory_bytes",
+                "engine.os_available_memory_bytes",
                 "engine.page_life_expectancy_seconds",
                 "engine.process_physical_memory_bytes",
+                "engine.scheduler_runnable_tasks",
                 "engine.sql_compilations_total",
                 "engine.sql_recompilations_total",
                 "engine.start_time_key",
@@ -78,7 +80,7 @@ public sealed class SqlServerCoreHealthIntegrationTests
             SqlServerCoreEngineCollector.OutputContract.Metrics
                 .Select(static metric => metric.MetricId.Value)
                 .Order(StringComparer.Ordinal));
-        Assert.Equal(9, SqlServerCoreEngineCollector.OutputContract.MaxMetricSamples);
+        Assert.Equal(11, SqlServerCoreEngineCollector.OutputContract.MaxMetricSamples);
         Assert.Equal(1_000, SqlServerDatabaseInventoryCollector.OutputContract.MaxDatabaseObservations);
         Assert.Equal(1_000, SqlServerDatabaseFilesCollector.OutputContract.MaxDatabaseFileObservations);
     }
@@ -115,7 +117,7 @@ public sealed class SqlServerCoreHealthIntegrationTests
         Assert.Equal(before, after);
 
         CollectorExecutionResult core = results[0];
-        Assert.Equal(9, core.Payload.Metrics.Count);
+        Assert.Equal(11, core.Payload.Metrics.Count);
         Assert.Equal(
             SqlServerCoreEngineCollector.OutputContract.Metrics
                 .Select(static metric => metric.MetricId.Value)

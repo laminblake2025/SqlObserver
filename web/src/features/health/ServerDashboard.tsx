@@ -19,8 +19,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data) : [];
   const memorySeries = (source: typeof evidence) => source?.series
-    .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "host.memory.available_bytes")
-    .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes" ? "SQL process used" : "Host available" })) ?? [];
+    .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "engine.os_available_memory_bytes" || item.metric === "host.memory.available_bytes")
+    .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes" ? "SQL process used" : item.metric === "engine.os_available_memory_bytes" ? "OS available via SQL" : "Host available" })) ?? [];
   const change = (next: Partial<OverviewScope>) => {
     location.hash = overviewHref({ ...selectedScope, ...next }, "health", instanceId);
   };
@@ -65,6 +65,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
         {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
         {chart("host.cpu.percent", "Host CPU", "Host CPU is not SQL process CPU. SQL process CPU is not yet collected for this chart.")}
+        {chart("engine.scheduler_runnable_tasks", "SQL scheduler pressure", "Runnable tasks waiting for CPU across visible online SQL schedulers. This is a point-in-time queue, not SQL process CPU percent.")}
         <section className="panel server-dashboard-chart">
           <h4>Memory pressure</h4>
           <OverviewChart
@@ -76,7 +77,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh }: {
             onCrosshairChange={setCrosshairUtc}
             onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }}
           />
-          <small>GiB. SQL process physical memory is used memory; host available memory is free memory. They are separate measurements and need not add up to total host memory.</small>
+          <small>GiB. SQL process physical memory is used memory; OS available memory via SQL and host available memory are free memory. They are separate measurements and need not add up to total host memory.</small>
         </section>
       </div>
       <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={refresh} />

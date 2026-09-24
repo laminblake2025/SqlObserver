@@ -1807,7 +1807,7 @@ function Assert-RepositoryShape {
     foreach ($m12SqlPath in @($m12SqlContractPath,$m12SqlSchemaPath,$m12SqlPinPath)) { if (-not (Test-Path -LiteralPath $m12SqlPath -PathType Leaf)) { throw 'M12 SQL Server passive contract asset is missing.' } }
     $m12SqlContractHash = (Get-FileHash -LiteralPath $m12SqlContractPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $m12SqlSchemaHash = (Get-FileHash -LiteralPath $m12SqlSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12SqlContractHash -cne 'a5310947a8ce8cae80df2b21a6e42dfd231f69cdaf8f9377c36b0956d047ad64' -or $m12SqlSchemaHash -cne '5539bba4fe0139b92aadbcd6203526cb3377b689d732e68c70aff60bac843406') { throw 'M12 SQL Server passive contract/schema checksum does not match the approved pin.' }
+    if ($m12SqlContractHash -cne '440b381fc5b4297038d227cf496e712882ce1fd87ec4420b9768c4a5f3e1a74f' -or $m12SqlSchemaHash -cne '5539bba4fe0139b92aadbcd6203526cb3377b689d732e68c70aff60bac843406') { throw 'M12 SQL Server passive contract/schema checksum does not match the approved pin.' }
     $m12SqlPin = Get-Content -LiteralPath $m12SqlPinPath -Raw
     if ($m12SqlPin -cne "$m12SqlContractHash  m12-sqlserver-passive-contract.v1.json`n$m12SqlSchemaHash  m12-sqlserver-passive-contract.v1.schema.json`n") { throw 'M12 SQL Server passive contract pin is not exact LF-closed.' }
     $m12SqlContract = Get-Content -LiteralPath $m12SqlContractPath -Raw | ConvertFrom-Json
@@ -1824,7 +1824,7 @@ function Assert-RepositoryShape {
     $m12ReportsTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs'
     foreach ($m12ReportsPath in @($m12ReportsContractPath, $m12ReportsSchemaPath, $m12ReportsPinPath, $m12ReportsProducerPath, $m12ReportsTestPath)) { if (-not (Test-Path -LiteralPath $m12ReportsPath -PathType Leaf)) { throw 'M12 reports certification asset is missing.' } }
     $m12ReportsContractHash = (Get-FileHash -LiteralPath $m12ReportsContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ReportsSchemaHash = (Get-FileHash -LiteralPath $m12ReportsSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12ReportsContractHash -cne '11235074ac08184abb71f01cad57e6884e6717291e5a98b697955e548d013a7d' -or $m12ReportsSchemaHash -cne '80defd27f366b29b46e48bba9d9a7eec2934a41a2aaf5ca38a79ab979e4354ad') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
+    if ($m12ReportsContractHash -cne 'b80c377d075d1fb144683fa5f3169fd92d3a7733891b5fb2f1b9f9b1954bc4df' -or $m12ReportsSchemaHash -cne '80defd27f366b29b46e48bba9d9a7eec2934a41a2aaf5ca38a79ab979e4354ad') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
     if ([IO.File]::ReadAllText($m12ReportsPinPath) -cne "$m12ReportsContractHash  m12-reports-contract.v1.json`n$m12ReportsSchemaHash  m12-reports-contract.v1.schema.json`n") { throw 'M12 reports contract pin is not exact LF-closed.' }
     $m12ReportsSchema = Get-Content -LiteralPath $m12ReportsSchemaPath -Raw | ConvertFrom-Json; $m12ReportsContract = Get-Content -LiteralPath $m12ReportsContractPath -Raw | ConvertFrom-Json
     if ($m12ReportsSchema.additionalProperties -ne $false -or $m12ReportsContract.'$schema' -cne 'm12-reports-contract.v1.schema.json' -or $m12ReportsContract.producerId -cne 'm12-reports-harness') { throw 'M12 reports contract/schema must be closed and self-identifying.' }
@@ -1834,7 +1834,7 @@ function Assert-RepositoryShape {
         'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
         'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
         'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
-        'database/migrations/checksums.sha256' = 'c1ea9b9ed38a33b958862ec59034fe363dcda4fd0728cdcef34cb972ee00e5a7'
+        'database/migrations/checksums.sha256' = 'b7c4e87adfd6a972785764f037336e1abd371f4759069171e5b2be7349c1dd8a'
         'src/SqlObserver.Reporting/ReportContracts.cs' = '95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8'
         'src/SqlObserver.Reporting/ReportRendering.cs' = '6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61'
         'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '6dce0d1b5dc6bbd930367059153872e5df3eaa38aeeb31650b0fdb1afd73b8ee'

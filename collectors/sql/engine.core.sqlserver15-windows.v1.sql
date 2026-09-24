@@ -42,6 +42,18 @@ WITH metric_values AS
 
     UNION ALL
 
+    SELECT N'engine.os_available_memory_bytes', CONVERT(float, memory.available_physical_memory_kb) * 1024.0
+    FROM sys.dm_os_sys_memory AS memory
+
+    UNION ALL
+
+    SELECT N'engine.scheduler_runnable_tasks', CONVERT(float, COALESCE(SUM(CONVERT(bigint, scheduler.runnable_tasks_count)), 0))
+    FROM sys.dm_os_schedulers AS scheduler
+    WHERE scheduler.status = N'VISIBLE ONLINE'
+      AND scheduler.scheduler_id < 1048576
+
+    UNION ALL
+
     SELECT N'engine.committed_memory_bytes', CONVERT(float, info.committed_kb) * 1024.0
     FROM sys.dm_os_sys_info AS info
 

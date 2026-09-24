@@ -95,7 +95,7 @@ public sealed class OverviewQueryService(
             if (snapshot is null) { gaps.Add("No SQL collection snapshot"); return; }
             if (snapshot.TargetId != id) throw new InvalidDataException();
             if (snapshot.CoreCollector.State != CollectorHealthState.Current) gaps.Add($"SQL collection {snapshot.CoreCollector.State.ToString().ToLowerInvariant()}");
-            foreach (var pair in new[] { ("engine.user_connections", "Connections", "connections"), ("engine.process_physical_memory_bytes", "SQL physical memory", "GiB") })
+            foreach (var pair in new[] { ("engine.user_connections", "Connections", "connections"), ("engine.process_physical_memory_bytes", "SQL physical memory", "GiB"), ("engine.os_available_memory_bytes", "OS available memory via SQL", "GiB"), ("engine.scheduler_runnable_tasks", "SQL runnable tasks", "tasks") })
             {
                 var metric = snapshot.CoreMetrics.Where(x => x.MetricId.Value == pair.Item1 && x.Dimensions.Count == 0).OrderByDescending(x => x.ObservedAtUtc).FirstOrDefault();
                 Resource(pair.Item2, metric is null ? null : metric.Value / (pair.Item3 == "GiB" ? 1073741824d : 1), pair.Item3, snapshot.CoreCollector.State.ToString().ToLowerInvariant(), metric?.ObservedAtUtc);
@@ -159,7 +159,7 @@ public sealed class OverviewQueryService(
             foreach (var item in await history.ReadAsync(id, target.Revision.Value, query.FromUtc, query.ToUtc, cutoff, ct) ?? [])
             {
                 if (item.TargetId != id.Value) throw new InvalidDataException("Overview history crossed target scope.");
-                if (!query.TargetId.HasValue && item.Metric == "engine.process_physical_memory_bytes") continue;
+                if (!query.TargetId.HasValue && item.Metric is ("engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" or "engine.scheduler_runnable_tasks")) continue;
                 series.Add(item with { Label = target.DisplayName.Value });
             }
         });
