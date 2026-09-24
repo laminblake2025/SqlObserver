@@ -1,6 +1,7 @@
 import { useState, type PointerEvent } from 'react';
 import { displayMetric } from './overviewModel';
 import { chartSelection, chartUtcAtX, chartX } from './chartTimeModel';
+import { overviewChartRange } from './overviewChartRange';
 import type { OverviewSeries } from './overviewTypes';
 
 const colors = ['var(--series-1)','var(--series-2)','var(--series-3)','var(--series-4)','var(--series-5)','var(--series-6)','var(--series-7)','var(--series-8)','var(--series-9)','var(--series-10)'];
@@ -23,11 +24,10 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   const [dragStart,setDragStart]=useState<number|null>(null);
   const [dragEnd,setDragEnd]=useState<number|null>(null);
   const from=Date.parse(fromUtc), to=Date.parse(toUtc);
-  const current=series.flatMap(s=>s.points.filter(p=>p.value!==null && Number.isFinite(p.value)));
-  if (!current.length) return <p className="overview-empty">No comparable observations in this window. Missing samples are not plotted as zero.</p>;
-  const max=Math.max(1,...current.map(p=>p.value!),...(previous??[]).flatMap(s=>s.points.map(p=>p.value??0)));
+  const range=overviewChartRange(series,previous,fromUtc,toUtc);
+  if (!range) return <p className="overview-empty">No comparable observations in this window. Missing samples are not plotted as zero.</p>;
   const x=(time:string,shift=0)=>48+(Date.parse(time)+shift-from)/(to-from)*570;
-  const y=(value:number)=>180-value/max*155;
+  const y=(value:number)=>180-(value-range.minimum)/(range.maximum-range.minimum)*155;
   const ticks=[0,.25,.5,.75,1];
   const colorOrder=[...new Set([...series,...(previous??[])].map(seriesIdentity))].sort();
   const colorByIdentity=new Map(colorOrder.map((identity,index)=>[identity,index]));
@@ -45,7 +45,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     onPointerUp={event=>{if(dragStart===null)return;const value=pointX(event);setDragStart(null);setDragEnd(null);if(value!==null){const selected=chartSelection(dragStart,value,fromUtc,toUtc);if(selected)onSelectWindow?.(selected);}}}
     onPointerCancel={()=>{setDragStart(null);setDragEnd(null);}}
     onPointerLeave={()=>{if(dragStart===null)onCrosshairChange?.(null);}}>
-    {ticks.map(f=><g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(max*f)} y2={y(max*f)}/><text x="0" y={y(max*f)+4}>{displayMetric(max*f)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*570} x2={48+f*570} y1={25} y2={180}/></g>)}
+    {ticks.map(f=>{const value=range.minimum+f*(range.maximum-range.minimum);return <g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(value)} y2={y(value)}/><text x="0" y={y(value)+4}>{displayMetric(value)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*570} x2={48+f*570} y1={25} y2={180}/></g>;})}
     {all.map(({s,shift})=>{
       const color=colorFor(s);
       const points=plotPoints(s,shift,from,to,x,y);
@@ -61,6 +61,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     {crosshairX!==null&&<g className="chart-crosshair" pointerEvents="none"><line x1={crosshairX} x2={crosshairX} y1="25" y2="180"/><text x={crosshairX>500?crosshairX-5:crosshairX+5} y="18" textAnchor={crosshairX>500?'end':'start'}>{new Date(crosshairTime).toISOString().slice(5,19).replace('T',' ')} UTC</text></g>}
     <text x="48" y="210">{new Date(from).toISOString().slice(5,16).replace('T',' ')} UTC</text><text x="465" y="210">{new Date(to).toISOString().slice(5,16).replace('T',' ')} UTC</text>
   </svg><figcaption className="overview-legend">{series.map(s=><span key={`${s.targetId}:${s.metric}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
+  <small>Vertical scale follows observed values and may not start at zero.</small>
   {previous?.length ? <small>Dashed lines: previous equal-length window shifted for comparison. Observed bucket means; gaps and changing coverage can affect comparisons.</small> : null}
   {markers.length>0&&<small>Event lines mark ranked issues returned for this window; they are not a complete event history.</small>}
   <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table><thead><tr><th>Server / resource</th><th>UTC</th><th>Value</th><th>Samples</th><th>Period</th></tr></thead><tbody>{all.flatMap(({s,shift})=>s.points.map(p=><tr key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}:${p.timeUtc}`}><td>{s.label} {s.dimension}</td><td>{p.timeUtc}</td><td>{displayMetric(p.value)} {s.unit}</td><td>{p.samples}</td><td>{shift?'Previous':'Selected'}</td></tr>))}</tbody></table></div></details></figure>;
@@ -73,7 +74,7 @@ function seriesIdentity(series: OverviewSeries): string {
 function plotPoints(series: OverviewSeries, shift: number, from: number, to: number, x: (time: string, shift?: number) => number, y: (value: number) => number): readonly (PlotPoint | null)[] {
   return series.points
     .filter(point => Date.parse(point.timeUtc) + shift >= from && Date.parse(point.timeUtc) + shift < to)
-    .map(point => point.value === null ? null : {
+    .map(point => point.value === null || !Number.isFinite(point.value) ? null : {
       timeUtc: point.timeUtc,
       value: point.value,
       samples: point.samples,
