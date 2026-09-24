@@ -159,7 +159,7 @@ public sealed class OverviewQueryService(
             foreach (var item in await history.ReadAsync(id, target.Revision.Value, query.FromUtc, query.ToUtc, cutoff, ct) ?? [])
             {
                 if (item.TargetId != id.Value) throw new InvalidDataException("Overview history crossed target scope.");
-                if (!query.TargetId.HasValue && item.Metric is ("engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" or "engine.memory_grants_pending" or "engine.scheduler_runnable_tasks")) continue;
+                if (!query.TargetId.HasValue && item.Metric is ("engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" or "engine.memory_grants_pending" or "engine.scheduler_runnable_tasks" or "engine.sql_scheduler_cpu_percent")) continue;
                 series.Add(item with { Label = target.DisplayName.Value });
             }
         });

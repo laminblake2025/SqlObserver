@@ -71,17 +71,19 @@ public sealed class SqlServerCoreHealthIntegrationTests
                 "engine.os_available_memory_bytes",
                 "engine.page_life_expectancy_seconds",
                 "engine.process_physical_memory_bytes",
+                "engine.scheduler_cpu_milliseconds_total",
                 "engine.scheduler_runnable_tasks",
                 "engine.sql_compilations_total",
                 "engine.sql_recompilations_total",
                 "engine.start_time_key",
                 "engine.target_memory_bytes",
                 "engine.user_connections",
+                "engine.visible_scheduler_count",
             ],
             SqlServerCoreEngineCollector.OutputContract.Metrics
                 .Select(static metric => metric.MetricId.Value)
                 .Order(StringComparer.Ordinal));
-        Assert.Equal(12, SqlServerCoreEngineCollector.OutputContract.MaxMetricSamples);
+        Assert.Equal(14, SqlServerCoreEngineCollector.OutputContract.MaxMetricSamples);
         Assert.Equal(1_000, SqlServerDatabaseInventoryCollector.OutputContract.MaxDatabaseObservations);
         Assert.Equal(1_000, SqlServerDatabaseFilesCollector.OutputContract.MaxDatabaseFileObservations);
     }
@@ -118,7 +120,9 @@ public sealed class SqlServerCoreHealthIntegrationTests
         Assert.Equal(before, after);
 
         CollectorExecutionResult core = results[0];
-        Assert.Equal(12, core.Payload.Metrics.Count);
+        Assert.Equal(14, core.Payload.Metrics.Count);
+        Assert.True(core.Payload.Metrics.Single(sample => sample.MetricId.Value == "engine.visible_scheduler_count").Value > 0);
+        Assert.True(core.Payload.Metrics.Single(sample => sample.MetricId.Value == "engine.scheduler_cpu_milliseconds_total").Value >= 0);
         Assert.Equal(
             SqlServerCoreEngineCollector.OutputContract.Metrics
                 .Select(static metric => metric.MetricId.Value)

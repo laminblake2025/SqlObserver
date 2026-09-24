@@ -19,7 +19,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 [Trait("Category", "RequiresPostgreSql")]
 public sealed partial class M4CollectorPersistenceIntegrationTests
 {
-    private const string BundleDigest = "75621c2f975603bd3ea769af5c721523dfa8a15dda2b8933e2e97e470f5cc9c7";
+    private const string BundleDigest = "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17";
     private static readonly string[] EngineCoreMetricIds =
     [
         "engine.batch_requests_total",

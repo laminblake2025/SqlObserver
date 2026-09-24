@@ -352,11 +352,13 @@ public sealed class SqlServerCoreEngineCollector : SqlServerHealthCollector
             new CollectorMetricOutputContract(new MetricId("engine.os_available_memory_bytes"), []),
             new CollectorMetricOutputContract(new MetricId("engine.memory_grants_pending"), []),
             new CollectorMetricOutputContract(new MetricId("engine.scheduler_runnable_tasks"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.scheduler_cpu_milliseconds_total"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.visible_scheduler_count"), []),
             new CollectorMetricOutputContract(new MetricId("engine.committed_memory_bytes"), []),
             new CollectorMetricOutputContract(new MetricId("engine.target_memory_bytes"), []),
             new CollectorMetricOutputContract(new MetricId("engine.start_time_key"), []),
         ],
-        maxMetricSamples: 12,
+        maxMetricSamples: 14,
         maxDatabaseObservations: 0,
         maxDatabaseFileObservations: 0);
 
@@ -371,6 +373,8 @@ public sealed class SqlServerCoreEngineCollector : SqlServerHealthCollector
         "engine.os_available_memory_bytes",
         "engine.memory_grants_pending",
         "engine.scheduler_runnable_tasks",
+        "engine.scheduler_cpu_milliseconds_total",
+        "engine.visible_scheduler_count",
         "engine.committed_memory_bytes",
         "engine.target_memory_bytes",
         "engine.start_time_key",

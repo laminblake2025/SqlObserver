@@ -12,6 +12,49 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed partial class M4CollectorPersistenceIntegrationTests
 {
     [Fact]
+    public async Task SchedulerCpuUpgradePreservesOlderRunsAndDerivesBoundedWorkloadPercent()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        Assert.False((await migrations.ApplyPendingAsync(new MigrationApplyRequest(115, DefaultTimeout), CancellationToken.None)).HasFailures);
+        var target = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, target, 1);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        DateTimeOffset now = MicrosecondNow();
+
+        CollectorDueWorkItem historicalWork = await DueCoreAsync(database, runtime, target);
+        await CommitSuccessAsync(runtime, leases, historicalWork, WithMetrics(CreateEnginePayload(target, now.AddSeconds(-120)), target,
+            ("engine.start_time_key", 1), ("engine.os_available_memory_bytes", 4 * 1073741824d),
+            ("engine.scheduler_runnable_tasks", 3), ("engine.memory_grants_pending", 2)));
+        string historical = await ResourceRunSummaryAsync(database, target);
+
+        MigrationBatchResult upgrade = await migrations.ApplyPendingAsync(new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
+        Assert.False(upgrade.HasFailures, upgrade.Results.FirstOrDefault(x => x.Outcome == MigrationOutcome.Failed)?.FailureCode);
+        Assert.Equal(116, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(historical, await ResourceRunSummaryAsync(database, target));
+
+        foreach (var sample in new[] { (At: now.AddSeconds(-90), Cpu: 100_000d, Schedulers: 4d), (At: now.AddSeconds(-30), Cpu: 220_000d, Schedulers: 4d), (At: now.AddSeconds(-10), Cpu: 250_000d, Schedulers: 5d) })
+        {
+            CollectorDueWorkItem work = await DueCoreAsync(database, runtime, target);
+            await CommitSuccessAsync(runtime, leases, work, WithMetrics(CreateEnginePayload(target, sample.At), target,
+                ("engine.start_time_key", 1), ("engine.os_available_memory_bytes", 4 * 1073741824d),
+                ("engine.scheduler_runnable_tasks", 3), ("engine.memory_grants_pending", 2),
+                ("engine.scheduler_cpu_milliseconds_total", sample.Cpu), ("engine.visible_scheduler_count", sample.Schedulers)));
+        }
+
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow;
+        var history = new PostgreSqlOverviewHistoryPort(server);
+        var series = await history.ReadAsync(target, 1, cutoff.AddMinutes(-3), cutoff.AddSeconds(1), cutoff, CancellationToken.None);
+        OverviewSeries cpu = Assert.Single(series, item => item.Metric == "engine.sql_scheduler_cpu_percent");
+        Assert.Equal("%", cpu.Unit);
+        Assert.Equal(1, cpu.Points.Sum(point => point.Samples));
+        Assert.Equal(50d, Assert.Single(cpu.Points, point => point.Value.HasValue).Value!.Value, precision: 5);
+    }
+
+    [Fact]
     public async Task MemoryGrantUpgradePreservesElevenMetricRunsAndExposesPendingGrantHistory()
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();

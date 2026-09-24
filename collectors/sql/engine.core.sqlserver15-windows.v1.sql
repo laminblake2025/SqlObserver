@@ -60,6 +60,22 @@ WITH metric_values AS
 
     UNION ALL
 
+    -- Cumulative non-preemptive worker CPU; derive a rate between matching
+    -- scheduler-count and server-start epochs in the repository.
+    SELECT N'engine.scheduler_cpu_milliseconds_total', CONVERT(float, COALESCE(SUM(CONVERT(bigint, scheduler.total_cpu_usage_ms)), 0))
+    FROM sys.dm_os_schedulers AS scheduler
+    WHERE scheduler.status = N'VISIBLE ONLINE'
+      AND scheduler.scheduler_id < 1048576
+
+    UNION ALL
+
+    SELECT N'engine.visible_scheduler_count', CONVERT(float, COUNT_BIG(*))
+    FROM sys.dm_os_schedulers AS scheduler
+    WHERE scheduler.status = N'VISIBLE ONLINE'
+      AND scheduler.scheduler_id < 1048576
+
+    UNION ALL
+
     SELECT N'engine.committed_memory_bytes', CONVERT(float, info.committed_kb) * 1024.0
     FROM sys.dm_os_sys_info AS info
 

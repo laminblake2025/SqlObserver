@@ -348,9 +348,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static readonly string[] RequiredBundleDigests =
     [
-        "75621c2f975603bd3ea769af5c721523dfa8a15dda2b8933e2e97e470f5cc9c7",
-        "75621c2f975603bd3ea769af5c721523dfa8a15dda2b8933e2e97e470f5cc9c7",
-        "75621c2f975603bd3ea769af5c721523dfa8a15dda2b8933e2e97e470f5cc9c7",
+        "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17",
+        "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17",
+        "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17",
         "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
         "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
         "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
