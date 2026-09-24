@@ -116,6 +116,12 @@ the previous checkpoint's live PostgreSQL 240/240 result remains applicable to
 those unchanged paths. Local and contract-only checks do not constitute live
 release certification.
 
+[GitHub CI run 35959833606](https://github.com/laminblake2025/SqlObserver/actions/runs/35959833606)
+passed for exact checkpoint `1e693044ecd231a90b84e38fe84c6bc9058fa4ef`: Windows
+1,852 .NET and 147 frontend tests, Linux 240 PostgreSQL tests plus one
+operational-health E2E test, with zero failures/skips in selected suites.
+The native SQL lab was unconfigured.
+
 These repairs do not change backup collection at the SQL source, redesign
 application cursor formats, add tools, or implement the planned real-server
 WebApplicationFactory/PostgreSQL and Windows Negotiate lab certification.

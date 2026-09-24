@@ -537,35 +537,77 @@ public sealed class M12McpProtocolCertificationTests
     private static async Task AssertProtocolRevisionsAsync(Uri endpoint, HttpClient http)
     {
         foreach (string protocol in new[] { ApprovedCurrentProtocol, ApprovedDownlevelProtocol })
-        {
-            using HttpRequestMessage request = new(HttpMethod.Post, endpoint)
-            {
-                Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{protocol}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"m12-certification\",\"version\":\"1\"}}}}}}", Encoding.UTF8, "application/json")
-            };
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-            using HttpResponseMessage response = await http.SendAsync(request);
-            Assert.True(response.IsSuccessStatusCode);
-            Assert.Contains(response.Content.Headers.ContentType?.MediaType, SafeResponseMediaTypes);
-            byte[] bytes = await response.Content.ReadAsByteArrayAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.InRange(bytes.Length, 1, MaximumChildOutputBytes);
-            JsonElement result = ParseJsonRpcResponse(bytes);
-            Assert.Equal("2.0", result.GetProperty("jsonrpc").GetString());
-            Assert.Equal(1, result.GetProperty("id").GetInt32());
-            Assert.Equal(protocol, result.GetProperty("result").GetProperty("protocolVersion").GetString());
-            Assert.Equal(ApprovedServerVersion, result.GetProperty("result").GetProperty("serverInfo").GetProperty("version").GetString());
-        }
+            await AssertProtocolRevisionAsync(endpoint, http, protocol);
     }
 
-    private static JsonElement ParseJsonRpcResponse(byte[] bytes)
+    internal static async Task AssertProtocolRevisionAsync(Uri endpoint, HttpClient http, string protocol)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(CreateHandshakeRequest(protocol), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("MCP-Protocol-Version", protocol);
+        if (protocol == ApprovedCurrentProtocol) request.Headers.Add("Mcp-Method", "server/discover");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        using HttpResponseMessage response = await http.SendAsync(request);
+        Assert.True(response.IsSuccessStatusCode);
+        Assert.Contains(response.Content.Headers.ContentType?.MediaType, SafeResponseMediaTypes);
+        byte[] bytes = await response.Content.ReadAsByteArrayAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.InRange(bytes.Length, 1, MaximumChildOutputBytes);
+        JsonElement result = ParseJsonRpcResponse(bytes);
+        Assert.Equal("2.0", result.GetProperty("jsonrpc").GetString());
+        Assert.Equal(1, result.GetProperty("id").GetInt32());
+        AssertHandshakeResult(result.GetProperty("result"), protocol);
+    }
+
+    internal static string CreateHandshakeRequest(string protocol) => protocol switch
+    {
+        ApprovedCurrentProtocol => JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 1, method = "server/discover", @params = new { _meta = CurrentMetadata() } }),
+        ApprovedDownlevelProtocol => JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = protocol, capabilities = new { }, clientInfo = new { name = "m12-certification", version = "1" } } }),
+        _ => throw new ArgumentException("Unapproved certification protocol.", nameof(protocol))
+    };
+
+    private static Dictionary<string, object> CurrentMetadata() => new(StringComparer.Ordinal)
+    {
+        ["io.modelcontextprotocol/protocolVersion"] = ApprovedCurrentProtocol,
+        ["io.modelcontextprotocol/clientInfo"] = new { name = "m12-certification", version = "1" },
+        ["io.modelcontextprotocol/clientCapabilities"] = new { }
+    };
+
+    internal static string CreateStdioProtocolTranscript(string protocol)
+    {
+        string initialized = protocol == ApprovedDownlevelProtocol ? "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n" : string.Empty;
+        object parameters = protocol == ApprovedCurrentProtocol ? new { _meta = CurrentMetadata() } : new { };
+        string tools = JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 2, method = "tools/list", @params = parameters });
+        return CreateHandshakeRequest(protocol) + "\n" + initialized + tools + "\n";
+    }
+
+    private static void AssertHandshakeResult(JsonElement result, string protocol)
+    {
+        if (protocol == ApprovedCurrentProtocol)
+            Assert.Contains(ApprovedCurrentProtocol, result.GetProperty("supportedVersions").EnumerateArray().Select(static value => value.GetString()));
+        else
+            Assert.Equal(ApprovedDownlevelProtocol, result.GetProperty("protocolVersion").GetString());
+        Assert.Equal(ApprovedServerVersion, HandshakeServerInfo(result, protocol).GetProperty("version").GetString());
+        Assert.True(result.GetProperty("capabilities").TryGetProperty("tools", out _));
+        Assert.False(string.IsNullOrWhiteSpace(result.GetProperty("instructions").GetString()));
+    }
+
+    private static JsonElement HandshakeServerInfo(JsonElement result, string protocol) => protocol == ApprovedCurrentProtocol
+        ? result.GetProperty("_meta").GetProperty("io.modelcontextprotocol/serverInfo")
+        : result.GetProperty("serverInfo");
+
+    internal static JsonElement ParseJsonRpcResponse(byte[] bytes)
     {
         string text = new UTF8Encoding(false, true).GetString(bytes);
-        string[] lines = text.Split('\n');
+        string[] lines = text.Split('\n').Select(static line => line.TrimEnd('\r')).ToArray();
         if (lines.Length > 1 && lines[^1].Length == 0) lines = lines[..^1];
         string[] dataLines = lines.Where(static value => value.StartsWith("data:", StringComparison.Ordinal)).Select(static value => value[5..].Trim()).ToArray();
         if (dataLines.Length > 0)
         {
-            Assert.All(lines, value => Assert.True(string.IsNullOrWhiteSpace(value) || value.StartsWith("data:", StringComparison.Ordinal)));
+            Assert.All(lines, value => Assert.True(string.IsNullOrWhiteSpace(value) || value.StartsWith("data:", StringComparison.Ordinal) || value == "event: message"));
+            Assert.InRange(lines.Count(static value => value == "event: message"), 0, 1);
             lines = dataLines;
         }
         else lines = lines.Select(static value => value.Trim()).ToArray();
@@ -630,6 +672,12 @@ public sealed class M12McpProtocolCertificationTests
 
     private static async Task AssertActualStdioChildAsync(string endpointText)
     {
+        foreach (string protocol in new[] { ApprovedCurrentProtocol, ApprovedDownlevelProtocol })
+            await AssertActualStdioChildAsync(endpointText, protocol);
+    }
+
+    private static async Task AssertActualStdioChildAsync(string endpointText, string protocol)
+    {
         string root = FindRoot();
         string full = Path.GetFullPath(Path.Combine(root, "src", "SqlObserver.McpStdio", "bin", "Release", "net10.0", "SqlObserver.McpStdio.exe"));
         Assert.True(File.Exists(full));
@@ -649,7 +697,7 @@ public sealed class M12McpProtocolCertificationTests
             observedProcessIds = child.ProcessIds;
             outputTask = ReadBoundedAsync(child.Output, MaximumChildOutputBytes);
             errorTask = ReadBoundedAsync(child.Error, MaximumChildOutputBytes);
-            byte[] request = Encoding.UTF8.GetBytes($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{ApprovedCurrentProtocol}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"m12-certification\",\"version\":\"1\"}}}}}}\n{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}}\n{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{{}}}}\n");
+            byte[] request = Encoding.UTF8.GetBytes(CreateStdioProtocolTranscript(protocol));
             await child.Input.WriteAsync(request);
             await child.Input.FlushAsync();
             await Task.WhenAny(Task.WhenAll(outputTask, errorTask), Task.Delay(TimeSpan.FromSeconds(10)));
@@ -668,7 +716,13 @@ public sealed class M12McpProtocolCertificationTests
         Assert.False(error.Truncated);
         Assert.NotEmpty(output.Bytes);
         Assert.Empty(error.Bytes);
-        string stdout = new UTF8Encoding(false, true).GetString(output.Bytes);
+        AssertStdioProtocolOutput(output.Bytes, protocol);
+    }
+
+    internal static void AssertStdioProtocolOutput(byte[] output, string protocol)
+    {
+        Assert.InRange(output.Length, 1, MaximumChildOutputBytes);
+        string stdout = new UTF8Encoding(false, true).GetString(output);
         Assert.DoesNotContain('\r', stdout);
         Assert.EndsWith("\n", stdout, StringComparison.Ordinal);
         string protocolOutput = stdout[..^1];
@@ -685,9 +739,9 @@ public sealed class M12McpProtocolCertificationTests
                 AssertClosedJsonRpcSuccess(responseRoot);
                 Assert.True(responseRoot.TryGetProperty("id", out _));
             }
-            JsonElement initialize = responses.Select(static x => x.RootElement).Single(x => x.GetProperty("id").GetInt32() == 1);
-            Assert.Equal(ApprovedServerVersion, initialize.GetProperty("result").GetProperty("serverInfo").GetProperty("version").GetString());
-            Assert.Equal(ApprovedCurrentProtocol, initialize.GetProperty("result").GetProperty("protocolVersion").GetString());
+            JsonElement handshake = responses.Select(static x => x.RootElement).Single(x => x.GetProperty("id").GetInt32() == 1);
+            AssertHandshakeResult(handshake.GetProperty("result"), protocol);
+            Assert.Equal("SqlObserver.McpStdio", HandshakeServerInfo(handshake.GetProperty("result"), protocol).GetProperty("name").GetString());
             JsonElement tools = responses.Select(static x => x.RootElement).Single(x => x.GetProperty("id").GetInt32() == 2).GetProperty("result").GetProperty("tools");
             Assert.Equal(ApprovedToolCount, tools.GetArrayLength());
             Assert.Equal(ApprovedToolNames.OrderBy(static x => x), tools.EnumerateArray().Select(x => x.GetProperty("name").GetString()).OrderBy(static x => x));
