@@ -40,8 +40,8 @@ public static class McpCatalog
     public const string DownlevelProtocolVersion = "2025-11-25";
     // Reviewed catalog approval point. Digest is re-derived below and must
     // agree, so changing the catalog cannot silently retain this identity.
-    public const string ApprovedCatalogDigest = "984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C";
-    public const string ServerVersion = "m11-2.2.0+catalog-984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C";
+    public const string ApprovedCatalogDigest = "1AD2819475AADBC4D3C396DD6EEF6817EE721EF282757BCA882B9C7B6E5EC2C0";
+    public const string ServerVersion = "m11-2.2.0+catalog-1AD2819475AADBC4D3C396DD6EEF6817EE721EF282757BCA882B9C7B6E5EC2C0";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {

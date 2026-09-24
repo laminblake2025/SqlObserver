@@ -35,10 +35,10 @@ public sealed class M12McpProtocolCertificationTests
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
     private const int ApprovedToolCount = 27;
-    private const string ApprovedCatalogDigest = "984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C";
-    private const string ApprovedContractSha256 = "95c304644bd26dc497022856c2153bbbc1b6eb0313121256b0c035442e9f7605";
-    private const string ApprovedContractSchemaSha256 = "70ad81e0069eaf57b06bf542e9ce3c7e62ad80fd6c2439b157582a3c72ab28b4";
+    private const string ApprovedCatalogDigest = "1AD2819475AADBC4D3C396DD6EEF6817EE721EF282757BCA882B9C7B6E5EC2C0";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-1AD2819475AADBC4D3C396DD6EEF6817EE721EF282757BCA882B9C7B6E5EC2C0";
+    private const string ApprovedContractSha256 = "acc600b8c7ed9032a1d2ae0c84480498e7f8a5b3fc5a1c017abee59514772cff";
+    private const string ApprovedContractSchemaSha256 = "019cf6c97219a2ca5640cf19360b69048b1b1e886e83428d8d90ee0acc6c44bc";
     private static readonly string[] ApprovedToolNames =
     [
         "list_instances", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",

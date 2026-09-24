@@ -39,4 +39,26 @@ public sealed class McpAgentClassificationTests
         Assert.Equal(row.FirstObservedAtUtc, item.GetProperty("firstObservedAtUtc").GetDateTimeOffset());
         JsonSchemaAssertions.AssertValid(structured, McpCatalog.OutputSchema("get_job_failures"), "get_job_failures");
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AgentSourceStartIsAnOffsetFreeLocalClockValueOrExplicitlyUnknown(bool known)
+    {
+        var target = new MonitoredInstanceId(Guid.Parse("11111111-1111-4111-8111-111111111111"));
+        DateTimeOffset observed = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
+        var row = new SqlAgentFailureObservation(target, new ObservationTargetRevision(1),
+            Guid.Parse("22222222-2222-4222-8222-222222222222"), 1, 0, 0, AgentFailureKind.Failed,
+            null, null, 0, 1, observed, new string('a', 64))
+        { SourceLocalStart = known ? new DateTime(2026, 11, 1, 1, 30, 0, DateTimeKind.Unspecified) : null };
+        var snapshot = new SqlAgentFailureSnapshot(target, new ObservationTargetRevision(1), null, observed,
+            OperationalObservationState.Complete, [row], 1, false, observed.AddHours(-1), observed);
+        var result = McpResults.Json(snapshot, Options, "get_job_failures", new Dictionary<string, JsonElement>(), null);
+        Assert.False(result.IsError);
+        JsonElement structured = result.StructuredContent!.Value;
+        JsonElement item = Assert.Single(structured.GetProperty("data").GetProperty("items").EnumerateArray());
+        Assert.Equal(known ? "2026-11-01T01:30:00" : null, item.GetProperty("sourceLocalStart").GetString());
+        Assert.Equal(observed, item.GetProperty("firstObservedAtUtc").GetDateTimeOffset());
+        JsonSchemaAssertions.AssertValid(structured, McpCatalog.OutputSchema("get_job_failures"), "get_job_failures");
+    }
 }

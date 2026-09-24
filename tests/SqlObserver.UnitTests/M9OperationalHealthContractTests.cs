@@ -176,10 +176,11 @@ public sealed class M9OperationalHealthContractTests
     }
 
     [Fact]
-    public void AgentSourceTimeRemainsUnresolvedAndCoverageHasNoFabricatedWindow()
+    public void LegacyAgentObservationHasUnknownSourceTimeAndNoFabricatedWindow()
     {
         var target = new MonitoredInstanceId(Guid.NewGuid());
         var observation = new SqlAgentFailureObservation(target, new ObservationTargetRevision(1), Guid.NewGuid(), 4, 1, 0, AgentFailureKind.Failed, null, null, 0, 1, DateTimeOffset.UtcNow, new string('a', 64));
+        Assert.Null(observation.SourceLocalStart);
         Assert.Equal(observation.DetectedAtUtc, observation.FirstObservedAtUtc);
         var snapshot = new SqlAgentFailureSnapshot(target, new ObservationTargetRevision(1), null, observation.FirstObservedAtUtc, OperationalObservationState.Complete, [observation], 1, false, null, null);
         Assert.Null(snapshot.CoverageFromUtc);

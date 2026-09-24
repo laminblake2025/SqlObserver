@@ -290,10 +290,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191",
         "57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de",
         "ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f",
-        "5cead2f81a535b7726c5eb6c6b4abac35cbc8cd85301b60e1867ba694e4a3e8e",
-        "5cead2f81a535b7726c5eb6c6b4abac35cbc8cd85301b60e1867ba694e4a3e8e",
-        "5cead2f81a535b7726c5eb6c6b4abac35cbc8cd85301b60e1867ba694e4a3e8e",
-        "5cead2f81a535b7726c5eb6c6b4abac35cbc8cd85301b60e1867ba694e4a3e8e",
+        "8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593",
+        "8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593",
+        "8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593",
+        "8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593",
         "cf629310626827ea9b91baab7ef21427d20c230adfaeff472ddfd26d1ebfee26",
         "e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36",
     ];
@@ -957,12 +957,22 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         if (snapshot is BackupStatusSnapshot backups)
             return new { kind = "backups_status", observedAtUtc = backups.ObservedAtUtc, state = (int)backups.State, sourceRowsRead = backups.SourceRowsRead, truncated = backups.Truncated, items = backups.Items.Select(x => new { x.DatabaseFingerprint, kind = (int)x.Kind, x.LastFinishUtc, x.SourceLocalFinish, x.SourceTimeUnknown, x.SizeBytes, x.CopyOnly, x.HasChecksum, x.IsDamaged, coverage = (int)x.Coverage, x.BackupSetId }) };
         if (snapshot is SqlAgentFailureSnapshot agent)
-            return new { kind = "sql_agent_failures", observedAtUtc = agent.ObservedAtUtc, state = (int)agent.State, sourceRowsRead = agent.SourceRowsRead, truncated = agent.Truncated, coverageFromUtc = (DateTimeOffset?)null, coverageToUtc = (DateTimeOffset?)null, items = agent.Items.Select(x => new { x.JobId, x.HistoryInstanceId, x.StepId, x.RunStatus, failureKind = (int)x.FailureKind, x.MessageId, x.Severity, x.RetryAttempt, x.DurationSeconds, x.FirstObservedAtUtc, x.FailureFingerprint }) };
+            return new { kind = "sql_agent_failures", observedAtUtc = agent.ObservedAtUtc, state = (int)agent.State, sourceRowsRead = agent.SourceRowsRead, truncated = agent.Truncated, coverageFromUtc = (DateTimeOffset?)null, coverageToUtc = (DateTimeOffset?)null, items = agent.Items.Select(BuildAgentFailurePayload) };
         if (snapshot is TempDbSnapshot tempdb)
             return new { kind = "tempdb_health", observedAtUtc = tempdb.ObservedAtUtc, state = (int)tempdb.State, tempdb.TotalBytes, tempdb.UsedBytes, tempdb.LogTotalBytes, tempdb.LogUsedBytes, tempdb.Truncated, files = tempdb.Files.Select(x => new { x.FileId, x.SizeBytes, x.UsedBytes, x.FreeBytes, state = (int)x.State }) };
         if (snapshot is AvailabilityGroupsSnapshot groups)
             return new { kind = "availability_groups_health", observedAtUtc = groups.ObservedAtUtc, state = (int)groups.State, visibilityScope = (int)groups.VisibilityScope, groups.Truncated, replicas = groups.Replicas.Select(x => new { x.GroupFingerprint, x.ReplicaFingerprint, x.Role, x.OperationalState, x.ConnectedState, visibilityScope = (int)x.VisibilityScope, x.StateAvailable }), databases = groups.Databases.Select(x => new { x.GroupFingerprint, x.DatabaseFingerprint, x.SynchronizationState, x.DatabaseState, visibilityScope = (int)x.VisibilityScope, x.StateAvailable }) };
         return new { observedAtUtc = DateTimeOffset.UtcNow, state = (int)OperationalObservationState.NoData, sourceRowsRead = 0, truncated = false, items = Array.Empty<object>() };
+    }
+
+    private static object BuildAgentFailurePayload(SqlAgentFailureObservation item)
+    {
+        // Preserve the exact legacy shape and property order for immutable
+        // completion digests when this source field was not collected.
+        if (item.SourceLocalStart is not { } local)
+            return new { item.JobId, item.HistoryInstanceId, item.StepId, item.RunStatus, failureKind = (int)item.FailureKind, item.MessageId, item.Severity, item.RetryAttempt, item.DurationSeconds, item.FirstObservedAtUtc, item.FailureFingerprint };
+        return new { item.JobId, item.HistoryInstanceId, item.StepId, item.RunStatus, failureKind = (int)item.FailureKind, item.MessageId, item.Severity, item.RetryAttempt, item.DurationSeconds, item.FirstObservedAtUtc, item.FailureFingerprint,
+            sourceLocalStart = local.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) };
     }
 
     private static void AddQueryPerformanceCommitParameters(NpgsqlCommand command, CommitCollectorRunRequest request)

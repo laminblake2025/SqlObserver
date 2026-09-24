@@ -95,7 +95,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
             .Select(migration => migration.Descriptor.Number.Value),
             remaining.Results.Select(result => result.Migration.Number.Value));
         Assert.Equal(Enumerable.Repeat(UpdatedBundle, 4).Append(UpdatedReplicationBundle), await ReadRepairedBundlesAsync(database));
-        Assert.Equal(Enumerable.Repeat(UpdatedBackupBundle, 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
         Assert.Equal(registryBeforeRemaining, await ReadPreservedRegistryAsync(database, omitBackupBundle: true));
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);

@@ -45,6 +45,19 @@ test("Agent classification remains optional for older responses", () => {
   assert.deepEqual(parseOperationalPage({ ...base("agent"), items: [row] }, "agent", target).items, [row]);
 });
 
+test("Agent source execution start accepts only valid offset-free server clock values", () => {
+  const row = { jobId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", historyInstanceId: 1, stepId: 1, runStatus: 0, failureKind: "Failed", retryAttempt: 0, durationSeconds: 1, firstObservedAtUtc: "2026-08-25T12:00:00Z", failureFingerprint: "a".repeat(64), contentAvailable: false };
+  const parse = item => parseOperationalPage({ ...base("agent"), items: [item] }, "agent", target).items[0];
+  for (const value of ["2026-11-01T01:30:00", "2026-03-08T02:30:00", "2024-02-29T23:59:59", "0001-01-01T00:00:00", "9999-12-31T23:59:59"])
+    assert.equal(parse({ ...row, sourceLocalStart: value }).sourceLocalStart, value);
+  assert.equal(parse({ ...row, sourceLocalStart: null }).sourceLocalStart, null);
+  assert.equal(parse(row).sourceLocalStart, undefined);
+  assert.equal(parse({ ...row, SourceLocalStart: "2026-11-01T01:30:00" }).SourceLocalStart, "2026-11-01T01:30:00");
+  for (const value of ["2026-11-01T01:30:00Z", "2026-11-01T01:30:00+01:00", "2026-11-01T01:30:00.1", "2026-02-29T01:30:00", "2026-13-01T01:30:00", "0000-01-01T00:00:00", "2026-01-01T24:00:00", "2026-01-01T00:60:00", "2026-01-01T00:00:60", 20261101])
+    assert.throws(() => parse({ ...row, sourceLocalStart: value }), /agent source local start/);
+  assert.throws(() => parse({ ...row, sourceLocalStart: null, SourceLocalStart: "2026-11-01T01:30:00" }), /agent source local start/);
+});
+
 test("M9 API and panel retain six distinct routes and no response reflection", async () => {
   const api = await readFile(new URL("../src/features/operations/operationsApi.ts", import.meta.url), "utf8");
   const panel = await readFile(new URL("../src/features/operations/OperationsPanel.tsx", import.meta.url), "utf8");

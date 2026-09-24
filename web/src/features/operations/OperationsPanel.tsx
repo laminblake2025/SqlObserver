@@ -116,7 +116,7 @@ function OperationCard({ card, onRetry, onLoadMore, onCancel }: { readonly card:
 }
 
 function OperationCoverage({ page, kind }: { readonly page: OperationalPage; readonly kind: OperationalKind }) {
-  return <div className="operation-coverage"><span>Snapshot observed {formatUtc(page.observedAtUtc)}</span>{page.truncated ? <strong>Partial capture · additional rows may be missing</strong> : null}{page.visibilityScope ? <span>Visibility: {page.visibilityScope}</span> : null}{page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatUtc(page.coverageFromUtc ?? "")} to {formatUtc(page.coverageToUtc ?? "")}</span> : null}{kind === "agent" ? <small>Job names/messages and source-local timestamps are unavailable; timestamps are labeled first observed in UTC.</small> : null}</div>;
+  return <div className="operation-coverage"><span>Snapshot observed {formatUtc(page.observedAtUtc)}</span>{page.truncated ? <strong>Partial capture · additional rows may be missing</strong> : null}{page.visibilityScope ? <span>Visibility: {page.visibilityScope}</span> : null}{page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatUtc(page.coverageFromUtc ?? "")} to {formatUtc(page.coverageToUtc ?? "")}</span> : null}{kind === "agent" ? <small>Execution start uses the SQL Server local clock without a time-zone offset. Job names and messages are unavailable.</small> : null}</div>;
 }
 
 function TempDbSummary({ page }: { readonly page: OperationalPage }) {
@@ -152,6 +152,7 @@ function namedRows(kind: OperationalKind, items: readonly Record<string, unknown
       Severity: item.severity,
       "Retry attempt": item.retryAttempt,
       "Duration seconds": item.durationSeconds,
+      "Execution started (server local)": item.sourceLocalStart ?? item.SourceLocalStart ?? "Not reported",
       "First observed (UTC)": formatUtcValue(item.firstObservedAtUtc),
       "Failure fingerprint": item.failureFingerprint,
     };

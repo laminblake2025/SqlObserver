@@ -138,6 +138,28 @@ public sealed class M9OperationalHealthApiContractTests : IClassFixture<M9Operat
         finally { factory.Repository.AgentStepId = 1; }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AgentHttpProjectionKeepsSourceLocalTimeSeparateFromFirstObservedUtc(bool known)
+    {
+        factory.Repository.AgentSourceLocalStart = known
+            ? new DateTime(2026, 11, 1, 1, 30, 0, DateTimeKind.Unspecified)
+            : null;
+        try
+        {
+            using HttpClient client = CreateClient("viewer");
+            using HttpResponseMessage response = await client.GetAsync(Route("sql-agent/failures"));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            JsonElement item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
+            Assert.Equal(known ? "2026-11-01T01:30:00" : null, item.GetProperty("sourceLocalStart").GetString());
+            Assert.EndsWith("Z", item.GetProperty("firstObservedAtUtc").GetString(), StringComparison.Ordinal);
+            Assert.Equal("firstObservedUtc", body.RootElement.GetProperty("coverage").GetString());
+        }
+        finally { factory.Repository.AgentSourceLocalStart = null; }
+    }
+
     [Fact]
     public async Task MissingTargetIsHonestNotFoundAndNoDataIsExplicit()
     {
@@ -277,6 +299,7 @@ internal sealed class M9OperationalHealthRepository : IOperationalHealthReposito
     internal M9RepositoryMode Mode { get; set; }
     internal bool NoData { get; set; }
     internal int AgentStepId { get; set; } = 1;
+    internal DateTime? AgentSourceLocalStart { get; set; }
     internal bool CancellationObserved { get; private set; }
     internal TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource<bool> CancellationObservedTask { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -307,7 +330,7 @@ internal sealed class M9OperationalHealthRepository : IOperationalHealthReposito
     private MonitoredInstanceId Target(OperationalHealthRequest request) => new(Mode == M9RepositoryMode.Drift ? M9OperationalHealthApiFactory.DriftTarget : request.TargetId.Value);
     private string? Cursor(OperationalHealthRequest request, string route) => NoData || request.Cursor is not null ? null : new OperationalHealthCursor(request.TargetId, Observed, route + "-page-2").Encode();
     public ValueTask<BackupStatusSnapshot?> GetBackupsAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<BackupStatusSnapshot?>(Read(request, () => new BackupStatusSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, NoData ? [] : [new BackupStatusObservation(Target(request), Revision, new string('a', 64), BackupKind.Full, Observed, null, false, 100, false, true, false, BackupCoverage.Complete) { BackupSetId = request.Cursor is null ? 1 : 2 }], 1, false) { NextCursor = Cursor(request, "backups") }, cancellationToken));
-    public ValueTask<SqlAgentFailureSnapshot?> GetAgentFailuresAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<SqlAgentFailureSnapshot?>(Read(request, () => new SqlAgentFailureSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, NoData ? [] : [new SqlAgentFailureObservation(Target(request), Revision, Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), request.Cursor is null ? 1 : 2, AgentStepId, 0, AgentFailureKind.Failed, null, null, 0, 1, new DateTime(2026, 8, 25), TimeSpan.FromMinutes(1), Observed, new string('b', 64))], 1, false, request.FromUtc, request.ToUtc) { NextCursor = Cursor(request, "agent") }, cancellationToken));
+    public ValueTask<SqlAgentFailureSnapshot?> GetAgentFailuresAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<SqlAgentFailureSnapshot?>(Read(request, () => new SqlAgentFailureSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, NoData ? [] : [new SqlAgentFailureObservation(Target(request), Revision, Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), request.Cursor is null ? 1 : 2, AgentStepId, 0, AgentFailureKind.Failed, null, null, 0, 1, new DateTime(2026, 8, 25), TimeSpan.FromMinutes(1), Observed, new string('b', 64)) { SourceLocalStart = AgentSourceLocalStart }], 1, false, request.FromUtc, request.ToUtc) { NextCursor = Cursor(request, "agent") }, cancellationToken));
     public ValueTask<TempDbSnapshot?> GetTempDbAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<TempDbSnapshot?>(Read(request, () => new TempDbSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, 100, 50, 50, 25, [], false), cancellationToken));
     public ValueTask<TempDbSnapshot?> GetTempDbFilesAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<TempDbSnapshot?>(Read(request, () => new TempDbSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, null, null, null, null, NoData ? [] : [new TempDbFileObservation(Target(request), Revision, request.Cursor is null ? 1 : 2, 100, 50, 50, TempDbComponentState.Healthy)], false) { NextCursor = Cursor(request, "tempdb-files") }, cancellationToken));
     public ValueTask<AvailabilityGroupsSnapshot?> GetAvailabilityGroupsAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => GetAvailabilityGroupReplicasAsync(request, cancellationToken);

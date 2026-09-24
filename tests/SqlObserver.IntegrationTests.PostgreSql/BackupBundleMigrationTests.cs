@@ -25,13 +25,14 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         Assert.Equal(Enumerable.Repeat(PriorBackupBundle, 4), await ReadBackupBundlesAsync(database));
         await using ServiceProvider application = CreateApplication();
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
-        Assert.Equal(UpdatedBackupBundle, SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.All(entries.Skip(9).Take(4), entry => Assert.Equal(UpdatedBackupBundle, entry.AssetBundleDigest.Value));
+        string currentBundle = SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum;
+        Assert.All(entries.Skip(9).Take(4), entry => Assert.Equal(currentBundle, entry.AssetBundleDigest.Value));
+        CollectorCatalogEntry[] backupEntries = WithBackupBundle(entries, UpdatedBackupBundle);
         CollectorCatalogEntry[] priorEntries = WithBackupBundle(entries, PriorBackupBundle);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
         Assert.Equal(15, await ReconcileDirectAsync(collector, priorEntries, lease));
-        PostgresException beforeUpgrade = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, entries, lease));
+        PostgresException beforeUpgrade = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, backupEntries, lease));
         Assert.Equal("55000", beforeUpgrade.SqlState);
 
         MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
@@ -44,11 +45,22 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         Assert.Equal(backupsBefore, await ReadHistoricalBackupsForBundleAsync(database));
         await AssertAppendOnlyTriggerAsync(database);
+        Assert.Equal(15, await ReconcileDirectAsync(collector, backupEntries, lease));
+        PostgresException stale = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, priorEntries, lease));
+        Assert.Equal("55000", stale.SqlState);
+
+        // The Agent source-time migration advances the same four pins later.
+        // Keep the 84->85 assertion frozen, then validate the current runtime.
+        MigrationBatchResult remaining = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(remaining.HasFailures);
+        Assert.Equal(Enumerable.Repeat(currentBundle, 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        Assert.Equal(backupsBefore, await ReadHistoricalBackupsForBundleAsync(database));
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
         Assert.Equal(15, (await runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
         await Assert.ThrowsAsync<InvalidDataException>(() => runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(priorEntries, lease, Timeout), CancellationToken.None).AsTask());
-        PostgresException stale = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, priorEntries, lease));
-        Assert.Equal("55000", stale.SqlState);
     }
 
     [Theory]

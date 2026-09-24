@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 
 namespace SqlObserver.IntegrationTests.SqlServer;
 
-public sealed class M9OperationalHealthSqlServerIntegrationTests
+public sealed partial class M9OperationalHealthSqlServerIntegrationTests
 {
     private static readonly string[] CollectorIds = ["backups.status", "sql-agent.failures", "tempdb.health", "availability-groups.health"];
     [Fact]
@@ -82,7 +82,7 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
     }
 
     [Fact]
-    public void M9SqlAssetsDeriveAvailabilityGroupVisibilityAndOmitAgentSourceTime()
+    public void M9SqlAssetsDeriveAvailabilityGroupVisibilityAndReadAgentSourceStart()
     {
         SqlServerOperationalHealthAssetCatalog catalog = SqlServerOperationalHealthAssetCatalog.LoadEmbedded();
         foreach (int major in new[] { 15, 16, 17 })
@@ -91,8 +91,8 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
             string agent = catalog.Get($"sql-agent.failures.sqlserver{major}-windows.v1.sql");
             Assert.Contains("local_role", ag, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("visibility_scope", ag, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("run_date", agent, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("run_time", agent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("h.run_date", agent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("h.run_time", agent, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -267,11 +267,11 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
     }
 
     [Fact]
-    public async Task M9AgentReaderOmitsSourceLocalTimeAndUsesStableFingerprint()
+    public async Task M9AgentReaderPreservesUnknownSourceTimeAndUsesStableFingerprint()
     {
         Guid job = Guid.NewGuid();
         var reader = new FakeOperationalHealthRowReader(
-            [[job, 42L, 1, 1, 500, 16, 3, 10203]]);
+            [[job, 42L, 1, 0, 500, 16, 3, 10203, null, null]]);
         var collector = new SqlServerSqlAgentFailuresCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
         var snapshot = Assert.IsType<SqlAgentFailureSnapshot>(result.Snapshot);

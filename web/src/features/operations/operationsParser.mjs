@@ -7,14 +7,26 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const HEX = /^[0-9a-f]{64}$/i;
 const AGENT_ITEM_KEYS = new Set([
   "isJobOutcome", "countsAsJobFailure", "IsJobOutcome", "CountsAsJobFailure",
-  "jobId", "historyInstanceId", "stepId", "runStatus", "failureKind", "messageId", "severity", "retryAttempt", "durationSeconds", "firstObservedAtUtc", "contentAvailable", "failureFingerprint",
-  "JobId", "HistoryInstanceId", "StepId", "RunStatus", "FailureKind", "MessageId", "Severity", "RetryAttempt", "DurationSeconds", "FirstObservedAtUtc", "ContentAvailable", "FailureFingerprint",
+  "jobId", "historyInstanceId", "stepId", "runStatus", "failureKind", "messageId", "severity", "retryAttempt", "durationSeconds", "firstObservedAtUtc", "sourceLocalStart", "contentAvailable", "failureFingerprint",
+  "JobId", "HistoryInstanceId", "StepId", "RunStatus", "FailureKind", "MessageId", "Severity", "RetryAttempt", "DurationSeconds", "FirstObservedAtUtc", "SourceLocalStart", "ContentAvailable", "FailureFingerprint",
 ]);
 const utc = value => typeof value === "string" && /Z$/.test(value) && Number.isFinite(Date.parse(value));
 const field = (object, lower, upper) => object[lower] ?? object[upper];
 const fail = message => { throw new TypeError(`Invalid operational-health response: ${message}`); };
 const integer = (value, name, min = 0) => { if (!Number.isSafeInteger(value) || value < min) fail(name); return value; };
 const string = (value, name, max = 1024) => { if (typeof value !== "string" || value.length === 0 || value.length > max) fail(name); return value; };
+function sourceLocalClock(value) {
+  if (typeof value !== "string") return false;
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})$/.exec(value);
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match;
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+  const hour = Number(hourText), minute = Number(minuteText), second = Number(secondText);
+  if (year < 1 || month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= monthDays[month - 1];
+}
 
 export function parseOperationalPage(value, kind = "backups", expectedTargetId = undefined) {
   // Keep the test/runtime API forgiving about argument order while retaining a strict payload contract.
@@ -66,6 +78,9 @@ function validateAgent(item) {
   integer(field(item, "historyInstanceId", "HistoryInstanceId"), "agent history"); integer(field(item, "stepId", "StepId"), "agent step"); integer(field(item, "retryAttempt", "RetryAttempt"), "agent retry"); integer(field(item, "durationSeconds", "DurationSeconds"), "agent duration");
   if (field(item, "contentAvailable", "ContentAvailable") !== false) fail("agent sensitive content");
   if (!utc(field(item, "firstObservedAtUtc", "FirstObservedAtUtc"))) fail("agent first observed");
+  for (const key of ["sourceLocalStart", "SourceLocalStart"])
+    if (Object.hasOwn(item, key) && item[key] !== null && !sourceLocalClock(item[key])) fail("agent source local start");
+  if (Object.hasOwn(item, "sourceLocalStart") && Object.hasOwn(item, "SourceLocalStart") && item.sourceLocalStart !== item.SourceLocalStart) fail("agent source local start");
   const classifications = [
     ["isJobOutcome", "IsJobOutcome", field(item, "stepId", "StepId") === 0],
     ["countsAsJobFailure", "CountsAsJobFailure", field(item, "stepId", "StepId") === 0 && field(item, "runStatus", "RunStatus") === 0 && field(item, "failureKind", "FailureKind") === "Failed"],
