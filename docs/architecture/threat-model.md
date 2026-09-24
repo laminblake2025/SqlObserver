@@ -73,6 +73,8 @@ There is intentionally no Server-to-target, MCP-to-repository, or MCP-to-target 
 | SQL injection against target or repository | Parameterized values; strict identifier allowlists; no arbitrary-SQL API/MCP tool | Injection corpus, code analysis, contract tests |
 | MCP used as a control plane or data bypass | Fixed read-only allowlist; service-layer reads; normal RBAC; no direct credentials; no state-changing tools; audit every call | Tool inventory snapshot, authorization/limit/audit contract tests |
 | Authorization bypass or confused deputy | Windows authentication plus server-side RBAC; audience-bound service identities; object-scope checks; deny by default | Cross-role/cross-scope tests and denied-attempt audits |
+| Cross-site request forgery using ambient Windows credentials | Unsafe `/api/v1` requests reject supplied cross-origin, null, or malformed Origin and non-same-origin Fetch Metadata before body processing; manually parsed mutations require `application/json`; typed mutations retain framework JSON checks | Real-pipeline tests for every manual JSON mutation, typed policy updates, conflicting browser headers, and valid same-origin/native requests |
+| Anonymous or rate-exempt report rejection floods audit storage | Authentication/authorization and the principal mutation limiter run before report pre-validation; rejected authenticated report bodies write one bounded terminal audit | Real-pipeline tests for unauthenticated, malformed, oversized, rate-limited, and exact-limit requests, with and without a trailing slash or Content-Length |
 | Stored or reflected script/markup injection | Treat diagnostic text/XML as untrusted; inert rendering; context encoding; safe XML parser; sanitize derived graphics | Malicious query/plan/deadlock fixtures and browser security tests |
 | Prompt injection through captured diagnostic text | Never interpret captured text as instruction; isolate it as quoted data; allowlisted MCP tools unaffected by content | Adversarial MCP/query-text contract tests |
 | XML entity expansion, external retrieval, or parser exhaustion | Disable DTD/external entities/network resolution; byte/depth/time bounds; parse defensively | XXE, entity expansion, depth, and oversized payload tests |
@@ -103,6 +105,8 @@ remain residual environment risks for M12.
 - Query Store, Extended Events, and blocked-process configuration are never changed automatically.
 - MCP has no arbitrary execution or administrative side effect and no database credential.
 - Every MCP call and administrative write is audited without copying unrestricted sensitive content into audit storage.
+- Report body rejection audits require an authenticated request that has passed the mutation limiter. Requests stopped at authentication, origin validation, or rate limiting never write a report audit row.
+- Request digests protect mutation integrity and replay identity; they are not CSRF tokens. Headerless native JSON clients remain supported. Browser origin checks compare scheme, host, and effective port to the request authority; cross-origin API deployments require a separate reviewed contract.
 - Limits and cancellation exist at every externally driven resource boundary.
 - All diagnostic strings and structured plans/XML remain data, never instructions.
 - All persisted timestamps are UTC.

@@ -156,7 +156,8 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.{target:N}"));
+        // All three timestamps share one statement time to satisfy the target ordering constraint.
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
 
         NpgsqlDataSource collector = database.CreateCollectorDataSource();
@@ -214,7 +215,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 invalid target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.invalid.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 invalid target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.invalid.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -247,7 +248,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 degraded TempDB target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.tempdb.degraded.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 degraded TempDB target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.tempdb.degraded.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
 
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
@@ -277,7 +278,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid(), job = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 agent target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.agent.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 agent target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.agent.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -316,7 +317,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 agent page target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.agent.page.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 agent page target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.agent.page.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -355,7 +356,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 tempdb page target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.tempdb.page.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 tempdb page target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.tempdb.page.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -395,7 +396,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 AG target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.ag.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 AG target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.ag.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -464,7 +465,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 projection target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.projection.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 projection target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.projection.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         await using (NpgsqlConnection grantConnection = await server.OpenConnectionAsync())
@@ -494,7 +495,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid target = Guid.NewGuid();
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 backup page target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.backup.page.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 backup page target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.backup.page.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -730,7 +731,7 @@ public sealed class M9OperationalHealthPostgreSqlIntegrationFixtureTests
 
     private static async Task<CollectorRunId> CommitBackupForTargetAsync(RepositoryTestDatabase database, Guid target, string key)
     {
-        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 scope target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,clock_timestamp(),clock_timestamp());", ("target", target), ("key", $"m9.{key}.{target:N}"));
+        await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 scope target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.{key}.{target:N}"));
         await PrimeOperationalPrerequisitesAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);

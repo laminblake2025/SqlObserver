@@ -25,7 +25,7 @@ public sealed class RequestBodyLimitMiddleware
         Guid targetId = Guid.Empty;
         bool reportCreate = context.Request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase)
             && context.Request.Path.Value is string path
-            && path.EndsWith("/reports", StringComparison.OrdinalIgnoreCase)
+            && path.TrimEnd('/').EndsWith("/reports", StringComparison.OrdinalIgnoreCase)
             && Guid.TryParse(context.Request.RouteValues["instanceId"]?.ToString(), out targetId);
         if (context.Request.ContentLength is > MaximumRequestBytes)
         {

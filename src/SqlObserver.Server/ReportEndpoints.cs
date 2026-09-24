@@ -15,7 +15,7 @@ public static class ReportEndpoints
         RouteGroupBuilder catalog = endpoints.MapGroup("/api/v1/reports").RequireAuthorization();
         catalog.MapGet("/catalog", CatalogAsync);
         RouteGroupBuilder target = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/reports").RequireAuthorization();
-        target.MapPost("/", CreateAsync);
+        target.MapPost("/", CreateAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         target.MapGet("/{runId:guid}", GetRunAsync);
         target.MapGet("/{runId:guid}/{section}", ReadPageAsync);
         target.MapGet("/{runId:guid}/html", HtmlAsync);
