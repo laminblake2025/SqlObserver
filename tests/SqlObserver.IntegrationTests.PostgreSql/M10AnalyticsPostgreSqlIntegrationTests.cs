@@ -99,6 +99,8 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         await boundsReader.CloseAsync();
         await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
         await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));", ("id", Guid.NewGuid()));
+        await using (var privilege = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_collector','system.drop_m10_partition(uuid)','EXECUTE');", admin))
+            Assert.False((bool)(await privilege.ExecuteScalarAsync())!);
 
         Guid disjoint = Guid.NewGuid(), overlapping = Guid.NewGuid();
         await AddJobAsync(disjoint, start.AddDays(10), start.AddDays(11));
@@ -115,10 +117,38 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         await AddJobAsync(secondOverlap, start.AddHours(3), start.AddHours(4));
         Assert.False(await RetentionAsync("drop", Guid.NewGuid()));
         await ExecuteAsync(database, "UPDATE control.analytics_job SET status='succeeded' WHERE job_id=@job;", ("job", secondOverlap));
+
+        await ExecuteAsync(database, $"CREATE VIEW analytics.retention_drop_dependency AS SELECT count(*) FROM analytics.\"{partition}\";");
+        Assert.False(await RetentionAsync("drop", Guid.NewGuid()));
+        await using (var failed = new NpgsqlCommand("SELECT state,attempt FROM system.retention_execution WHERE execution_id=@execution;", admin))
+        {
+            failed.Parameters.AddWithValue("execution", execution);
+            await using NpgsqlDataReader reader = await failed.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("retry", reader.GetString(0));
+            Assert.Equal(1, reader.GetInt32(1));
+        }
+        await ExecuteAsync(database, "DROP VIEW analytics.retention_drop_dependency;");
+        Assert.False(await RetentionAsync("drop", Guid.NewGuid()));
+        await using (var retry = new NpgsqlCommand("SELECT error_code,attempt FROM system.retention_drop_retry JOIN system.retention_execution USING(execution_id) WHERE execution_id=@execution ORDER BY retry_id DESC LIMIT 1;", admin))
+        {
+            retry.Parameters.AddWithValue("execution", execution);
+            await using NpgsqlDataReader reader = await retry.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("2BP01", reader.GetString(0));
+            Assert.Equal(1, reader.GetInt32(1));
+        }
+        await ExecuteAsync(database, "INSERT INTO system.retention_drop_retry(execution_id,error_code,error_detail,next_attempt_at) VALUES(@execution,'TEST','elapsed backoff',clock_timestamp()-interval '1 minute');", ("execution", execution));
         Assert.True(await RetentionAsync("drop", Guid.NewGuid()));
         await using var outcome = new NpgsqlCommand("SELECT lifecycle_state FROM system.partition_registry WHERE parent_schema='analytics' AND parent_table='metric_rollup_v2' AND partition_name=@partition;", admin);
         outcome.Parameters.AddWithValue("partition", partition);
         Assert.Equal("dropped", await outcome.ExecuteScalarAsync());
+        await using var recovery = new NpgsqlCommand("SELECT state,attempt FROM system.retention_execution WHERE execution_id=@execution;", admin);
+        recovery.Parameters.AddWithValue("execution", execution);
+        await using NpgsqlDataReader recoveryReader = await recovery.ExecuteReaderAsync();
+        Assert.True(await recoveryReader.ReadAsync());
+        Assert.Equal("dropped", recoveryReader.GetString(0));
+        Assert.Equal(1, recoveryReader.GetInt32(1));
 
         async Task AddJobAsync(Guid id, DateTimeOffset from, DateTimeOffset to) =>
             await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status) VALUES(@job,'baseline',@target,1,'analytics/derivation',@from,@to,'queued');",
