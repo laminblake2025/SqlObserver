@@ -1,6 +1,4 @@
 import { useMemo } from 'react';
-import { TimeRangeControls } from '../../components/TimeRangeControls';
-import { overviewHref } from '../overview/overviewModel';
 import type { OverviewScope } from '../overview/overviewTypes';
 import { AnalyticsSurfacePanel } from './AnalyticsSurfacePanel';
 import { analyticsSurfaceCatalog } from './analyticsSurfaceCatalog';
@@ -18,7 +16,6 @@ export function AnalyticsPage({targetId,scope,refresh,surface,onSurfaceChange}:{
       {analyticsSurfaceCatalog.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
     </select></label>
     {inventory?<p role="status">{surface==='backfill'?'Backfill jobs only.':'All analytics jobs.'} Inventory is not filtered by the selected time range.</p>:<>
-      <div className="overview-controls"><TimeRangeControls scope={scope} maximumDays={7} onChange={change=>{location.hash=overviewHref({...scope,...change},'analytics');}}/></div>
       {result.error?<p role="alert">{result.error}</p>:<p>UTC window: {result.window!.fromUtc} to {result.window!.toUtc}</p>}
     </>}
     {(inventory||result.window)&&<AnalyticsSurfacePanel key={`${targetId}:${surface}:${inventory?'inventory':JSON.stringify(result.window)}`} targetId={targetId} surface={surface} timeWindow={inventory?undefined:result.window}/>}

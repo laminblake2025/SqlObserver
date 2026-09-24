@@ -126,7 +126,8 @@ export function App() {
 
   const selected = listedTarget ?? (currentDirectTargetLookup?.state === "resolved" ? currentDirectTargetLookup.target : undefined);
   const scope = readOverviewScope(location.hash);
-  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks";
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks" ||
+    (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const changeTimeContext = (next: Partial<typeof scope>) => {
     const selectedScope = { ...scope, ...next };
     location.hash = route.page === "activity" && route.activityAtUtc
@@ -202,7 +203,7 @@ export function App() {
         <header className="topbar">
           <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">UTC <span className="topbar-separator">·</span> Read-only evidence</span></div>
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
-            <TimeRangeControls scope={scope} onChange={changeTimeContext} />
+            <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={route.page === "analytics" ? 7 : 31} />
             <span className="topbar-time-mode">{scope.range === "custom" ? "Rewind · fixed UTC" : "Live · moving UTC"}</span>
           </div>}
         </header>
