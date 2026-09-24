@@ -17,7 +17,7 @@ flowchart TB
     end
 
     subgraph AppZone[SqlObserver application zone]
-        Server[SqlObserver.Server\nASP.NET Core + web + SignalR + MCP HTTP]
+        Server[SqlObserver.Server\nASP.NET Core + web + MCP HTTP]
         Bridge[SqlObserver.McpStdio\nlocal stdio bridge]
         Worker[SqlObserver.Collector\nWindows Worker Service]
     end
@@ -45,11 +45,11 @@ The server does not connect to monitored SQL Server instances. The MCP bridge do
 
 ### `SqlObserver.Server`
 
-The ASP.NET Core host serves API endpoints, built web assets, SignalR updates, reports, Windows Integrated Authentication, role-based authorization, and the MCP-over-HTTP adapter. It owns presentation and transport concerns but delegates policy and query behavior to application services. Administrative writes and every MCP invocation are audited.
+The ASP.NET Core host serves API endpoints, built web assets, reports, Windows Integrated Authentication, role-based authorization, and the MCP-over-HTTP adapter. The browser refreshes diagnostic evidence through bounded API reads; SignalR updates remain planned. The host owns presentation and transport concerns but delegates policy and query behavior to application services. Administrative writes and every MCP invocation are audited.
 
 ### `SqlObserver.Collector`
 
-The Windows Worker Service schedules and executes collector contracts, discovers target capabilities, ingests batches, evaluates alerts, computes rollups and baselines, manages repository partitions and retention, and eventually correlates incident evidence. PostgreSQL leases prevent overlapping ownership across worker processes. A target/collector pair never overlaps, and each execution is cancellable and bounded by timeout, rows, bytes, and estimated cost.
+The Windows Worker Service schedules and executes collector contracts, discovers target capabilities, ingests batches, evaluates alerts, computes rollups and baselines, and maintains repository partitions. Retention detach and drop remain guarded administrative operations; an unattended retention worker is planned. PostgreSQL leases prevent overlapping ownership across worker processes. A target/collector pair never overlaps, and each execution is cancellable and bounded by timeout, rows, bytes, and estimated cost.
 
 The default target path is passive and read-only. The worker cannot grant itself target permissions or apply enhanced setup.
 
@@ -77,7 +77,7 @@ The repository holds configuration, authorization metadata, telemetry, events, d
 | `audit` | MCP-call and administrative-write audit evidence |
 | `system` | Repository version, migration checksums, partition catalog, and internal health |
 
-Production schema changes are immutable, numbered SQL migrations with checksums; automatic ORM schema generation is prohibited. High-volume raw telemetry uses native daily range partitions. Lower-volume events use monthly partitions. BRIN indexes serve time-oriented scans and B-tree indexes serve justified instance/time access paths. High-volume ingestion uses PostgreSQL binary `COPY`. Query text and plans are deduplicated and referenced by stable internal identifiers. Every persisted timestamp is UTC.
+Production schema changes are immutable, numbered SQL migrations with checksums; automatic ORM schema generation is prohibited. High-volume raw telemetry uses native daily range partitions. Lower-volume events use monthly partitions. BRIN indexes serve time-oriented scans and B-tree indexes serve justified instance/time access paths. High-volume metric and event ingestion uses PostgreSQL binary `COPY` into transaction-local staging. Sensitivity-controlled query text and plan storage remains planned; the collector currently marks that content unavailable. Repository observation times are UTC.
 
 ## Module boundaries
 

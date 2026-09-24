@@ -53,8 +53,8 @@ flowchart LR
 
 | Component | Responsibility |
 | --- | --- |
-| `SqlObserver.Server` | ASP.NET Core API, web assets, SignalR, authentication, authorization, reports, and MCP HTTP endpoint |
-| `SqlObserver.Collector` | Scheduling, collection, ingestion, alerts, analytics, partition maintenance, and retention |
+| `SqlObserver.Server` | ASP.NET Core API, web assets, authentication, authorization, reports, and MCP HTTP endpoint |
+| `SqlObserver.Collector` | Scheduling, collection, ingestion, alerts, analytics, and partition maintenance |
 | `SqlObserver.McpStdio` | Local bridge to the server; no direct repository or monitored-target connection |
 | PostgreSQL 18.x | Configuration, telemetry, analytics, alert state, reporting data, and audit records |
 | React / TypeScript | Browser dashboard and investigation workflows |
