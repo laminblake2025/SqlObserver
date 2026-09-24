@@ -9,7 +9,7 @@ SQL Server, collector, target-credential, or administrative-service dependency.
 
 ## Fixed authority
 
-The runtime catalog contains exactly these 26 read-only tools:
+The runtime catalog contains exactly these 27 read-only tools:
 
 `list_instances`, `get_instance_capabilities`, `get_instance_health`,
 `get_active_alerts`, `get_metric_series`, `compare_metric_windows`,
@@ -19,7 +19,7 @@ The runtime catalog contains exactly these 26 read-only tools:
 `get_query_plan_metadata`, `get_database_health`, `get_tempdb_health`,
 `get_file_io`, `get_storage_forecast`, `get_backup_status`,
 `get_job_failures`, `get_availability_health`, `get_incident_evidence`, and
-`search_diagnostic_events`, and `list_metric_catalog`.
+`search_diagnostic_events`, `list_metric_catalog`, and `list_incidents`.
 
 Registration is explicit and one-to-one with the catalog. Every schema is
 closed, every tool is annotated read-only, idempotent, non-destructive, and
@@ -67,6 +67,16 @@ keys, display names, units, source, aggregation, and allowed dimension keys.
 It returns the complete bounded definition list without pagination. Definitions
 describe supported inputs; they do not report available samples or collection
 coverage on any instance.
+
+`list_incidents` discovers thread IDs within a UTC opening-time window of up to
+31 days (default: last 24 hours), with at most 100 items per page. It returns
+opening times and generation counts/latest observation times at its snapshot,
+without summaries or evidence payloads. Pass a thread ID to
+`get_incident_evidence`, which takes its own repository snapshot. Continuations
+freeze the window, snapshot, target revision, and full ordering key; an incident
+publication revision rejects changed result sets with `cursor_stale`. Restart
+without a cursor after this response. Incidents opened before the selected
+window are excluded regardless of whether they remain active.
 
 Successful calls expose a stable structured-output envelope, `{ data: ... }`,
 whose closed schema is advertised on every tool; the text content carries the

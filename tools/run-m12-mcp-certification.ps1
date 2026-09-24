@@ -25,11 +25,11 @@ $MaximumJsonBytes = 32768
 $MaximumTotalJsonBytes = 65536
 $ApprovedCurrentProtocol = '2026-07-28'
 $ApprovedDownlevelProtocol = '2025-11-25'
-$ApprovedToolCount = 26
-$ApprovedCatalogDigest = '5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8'
-$ApprovedServerVersion = 'm11-2.2.0+catalog-5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8'
-$ApprovedContractSha256 = 'ea554b58755380b5a635885a9d3b5f5422bb98ad1a5a2ea1724f058e18dad19d'
-$ApprovedContractSchemaSha256 = '5087f2ebf9cccc57e4e1c5e3a74aaf911fc0736b1995fd87e0a48b5d221b3c92'
+$ApprovedToolCount = 27
+$ApprovedCatalogDigest = '984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C'
+$ApprovedServerVersion = 'm11-2.2.0+catalog-984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C'
+$ApprovedContractSha256 = '95c304644bd26dc497022856c2153bbbc1b6eb0313121256b0c035442e9f7605'
+$ApprovedContractSchemaSha256 = '70ad81e0069eaf57b06bf542e9ce3c7e62ad80fd6c2439b157582a3c72ab28b4'
 
 if ($IsWindows -and -not ('M12OutputFile' -as [type])) {
     Add-Type -TypeDefinition @'

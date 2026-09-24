@@ -13,6 +13,7 @@ Expose only these allowlisted, read-only diagnostic tools:
 
 - `list_instances`
 - `list_metric_catalog`
+- `list_incidents`
 - `get_instance_capabilities`
 - `get_instance_health`
 - `get_active_alerts`
@@ -47,6 +48,14 @@ The stdio bridge authenticates to `SqlObserver.Server`; it has no target or repo
 `list_metric_catalog` returns embedded metric definitions without reading instance data or the repository. It accepts no arguments and requires an active Viewer, Operator, or TargetAdministrator role, including grants scoped to particular targets. Its audit has no target identifier. Catalog membership does not establish collection availability on an instance; subsequent instance queries retain their exact target-scope checks.
 
 ## Consequences
+
+`list_incidents` is an instance-scoped metadata projection for Viewer, Operator,
+or TargetAdministrator grants on that instance. It returns thread identities,
+opening times, and generation counts/times at a fixed snapshot, without summary
+JSON or evidence content. Its signed cursor binds the target revision, opening
+window, repository snapshot, publication revision, and complete ordering key.
+Incident mutations invalidate continuations for that target/revision; callers
+restart when `cursor_stale` is returned. Evidence retrieval uses its own snapshot.
 
 - MCP adds a diagnostic representation without creating an alternative data or authorization path.
 - Tool schemas and allowlists need snapshot/contract tests; new tools require security review and an ADR update when authority changes.

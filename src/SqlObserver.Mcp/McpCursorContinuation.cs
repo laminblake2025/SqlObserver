@@ -23,14 +23,14 @@ internal sealed class McpCursorContinuation
         else
         {
             payload = authenticatedPayload;
-            if (tool is "search_diagnostic_events" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "get_blocking_history")
+            if (tool is "search_diagnostic_events" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "get_blocking_history" or "list_incidents")
                 Window = McpCursorWindow.Parse(payload);
         }
     }
 
     public McpCursorWindow? Window { get; }
     public static bool NeedsPrivateWindow(string tool) => tool is "get_metric_series" or "get_job_failures";
-    public static bool HasPagedWindow(string tool) => NeedsPrivateWindow(tool) || tool is "search_diagnostic_events" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "get_blocking_history";
+    public static bool HasPagedWindow(string tool) => NeedsPrivateWindow(tool) || tool is "search_diagnostic_events" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "get_blocking_history" or "list_incidents";
 
     public T Read<T>(JsonSerializerOptions options) where T : class
     {

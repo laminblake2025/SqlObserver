@@ -38,6 +38,7 @@ public sealed class McpCatalogValidationRegressionTests
     [
         ("list_instances", "List monitored instances", "Call this first", "limit cursor"),
         ("list_metric_catalog", "List metric definitions", "supported metric definitions", ""),
+        ("list_incidents", "List incident threads", "cursor_stale", "instanceId fromUtc toUtc limit cursor"),
         ("get_instance_capabilities", "Get capability discovery status", "discovery status", "instanceId"),
         ("get_instance_health", "Get instance collection health", "collection freshness", "instanceId"),
         ("get_active_alerts", "List active alerts", "cannot acknowledge", "instanceId limit cursor"),
@@ -60,7 +61,7 @@ public sealed class McpCatalogValidationRegressionTests
         ("get_backup_status", "Get backup observations", "opaque database fingerprint", "instanceId limit cursor"),
         ("get_job_failures", "Get observed Agent failures", "not the job's execution time", "instanceId fromUtc toUtc limit cursor"),
         ("get_availability_health", "Get availability group health", "Replica and database rows have different fields", "instanceId"),
-        ("get_incident_evidence", "Get incident evidence", "thread ID obtained outside", "instanceId limit cursor threadId"),
+        ("get_incident_evidence", "Get incident evidence", "threadId returned by list_incidents", "instanceId limit cursor threadId"),
         ("search_diagnostic_events", "Search diagnostic events", "not a SQL Server error-log", "instanceId fromUtc toUtc limit cursor")
     ];
 
@@ -75,6 +76,7 @@ public sealed class McpCatalogValidationRegressionTests
     public static TheoryData<string, int, string> WindowCaps => new()
     {
         { "get_metric_series", 744, "31 days" },
+        { "list_incidents", 744, "31 days" },
         { "search_deadlocks", 744, "31 days" },
         { "get_blocking_history", 24, "24 hours" },
         { "get_top_queries", 168, "7 days" },
@@ -98,7 +100,7 @@ public sealed class McpCatalogValidationRegressionTests
 
         Assert.Equal(protocol, client.NegotiatedProtocolVersion);
         Assert.Equal(Catalog.Select(x => x.Name).Order(StringComparer.Ordinal), tools.Select(x => x.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(26, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(27, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
         var titles = new HashSet<string>(StringComparer.Ordinal);
         foreach ((string name, string title, string meaning, string properties) in Catalog)
         {
@@ -466,7 +468,7 @@ public sealed class McpCatalogValidationRegressionTests
         Type[] interfaces = [typeof(IObservationTargetQueryService), typeof(IObservationTargetStatusQueryService),
             typeof(IHealthProjectionQueryService), typeof(IAlertQueryService), typeof(IActivityProjectionQueryService),
             typeof(IDeadlockProjectionQueryService), typeof(IMetricSeriesQueryService), typeof(IStorageForecastQueryService),
-            typeof(IDiagnosticEventQueryService), typeof(IIncidentEvidenceQueryService), typeof(IAnalyticsQueryService),
+            typeof(IDiagnosticEventQueryService), typeof(IIncidentListQueryService), typeof(IIncidentEvidenceQueryService), typeof(IAnalyticsQueryService),
             typeof(IQueryPerformanceApiQueryService), typeof(IOperationalHealthQueryService)];
         foreach (Type serviceType in interfaces)
         {

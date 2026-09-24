@@ -74,6 +74,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IStorageForecastProjectionRepositoryPort StorageForecastProjections => (IStorageForecastProjectionRepositoryPort)Analytics;
     public IDiagnosticEventProjectionRepositoryPort DiagnosticEventProjections => (IDiagnosticEventProjectionRepositoryPort)Analytics;
     public IIncidentEvidenceProjectionRepositoryPort IncidentEvidenceProjections => (IIncidentEvidenceProjectionRepositoryPort)Analytics;
+    public IIncidentListProjectionRepositoryPort IncidentListProjections => (IIncidentListProjectionRepositoryPort)Analytics;
 
     public IAnalyticsDerivationStore AnalyticsDerivation { get; }
 

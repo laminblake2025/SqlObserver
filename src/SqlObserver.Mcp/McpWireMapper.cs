@@ -46,6 +46,7 @@ internal static class McpWireMapper
         return tool switch
         {
         "list_metric_catalog" => value is MetricCatalogProjection catalog ? MetricCatalog(catalog) : null,
+        "list_incidents" => value is IncidentListPage incidents ? IncidentList(incidents) : null,
         "list_instances" => value is ObservationTargetPage p ? O(("targets", A(p.Targets, Target)), ("nextCursor", Cursor(p.NextCursor)), ("hasMore", p.NextCursor is not null)) : null,
         "get_instance_capabilities" => value is ObservationTargetStatusSnapshot s ? Status(s) : null,
         "get_instance_health" => value is InstanceHealthProjection h ? Health(h) : null,
@@ -164,6 +165,13 @@ internal static class McpWireMapper
         ("groupFingerprint", x.GroupFingerprint), ("databaseFingerprint", x.DatabaseFingerprint),
         ("synchronizationState", x.SynchronizationState), ("databaseState", x.DatabaseState),
         ("visibilityScope", E(x.VisibilityScope)), ("stateAvailable", x.StateAvailable));
+    private static JsonNode IncidentList(IncidentListPage x) => O(("targetId", Id(x.TargetId)), ("fromUtc", T(x.FromUtc)), ("toUtc", T(x.ToUtc)), ("items", A(x.Items, IncidentListItem)), ("targetRevision", x.TargetRevision.Value), ("snapshotUtc", T(x.SnapshotUtc)), ("publicationRevision", x.PublicationRevision), ("hasMore", x.HasMore), ("nextCursor", Cursor(x.NextCursor)));
+    private static JsonObject IncidentListItem(IncidentListItem x)
+    {
+        JsonObject item = O(("threadId", Id(x.ThreadId)), ("openedAtUtc", T(x.OpenedAtUtc)), ("generationCount", x.GenerationCount));
+        item["latestGenerationObservedAtUtc"] = T(x.LatestGenerationObservedAtUtc);
+        return item;
+    }
     private static JsonNode Incident(IncidentEvidencePage x) => O(("targetId", Id(x.TargetId)), ("threadId", Id(x.ThreadId)), ("items", A(x.Items, IncidentItem)), ("generations", A(x.Generations, Generation)), ("targetRevision", x.TargetRevision.Value), ("snapshotUtc", T(x.SnapshotUtc)), ("hasMore", x.HasMore), ("nextCursor", Cursor(x.NextCursor)));
     private static JsonNode IncidentItem(IncidentEvidenceItem x) => O(("occurredAtUtc", T(x.OccurredAtUtc)), ("packetId", Id(x.PacketId)), ("evidenceKind", x.EvidenceKind), ("sourceRunId", NullableId(x.SourceRunId)), ("sourceDigest", x.SourceDigest), ("identityDigest", x.IdentityDigest), ("sourceCutoffDigest", x.SourceCutoffDigest), ("sourceCutoffUtc", T(x.SourceCutoffUtc)), ("confidence", x.Confidence), ("visibilityState", x.VisibilityState));
     private static JsonNode Generation(IncidentGenerationItem x) => O(("threadId", Id(x.ThreadId)), ("generation", x.Generation), ("observedAtUtc", T(x.ObservedAtUtc)), ("correlationSha256", x.CorrelationSha256), ("supersedesPrevious", x.SupersedesPrevious), ("evidencePacketId", NullableId(x.EvidencePacketId)));
@@ -208,6 +216,7 @@ internal static class McpWireMapper
         DeadlockPageCursor x => O(("targetId", ValueObject(Id(x.TargetId))), ("occurredAtUtc", T(x.OccurredAtUtc)), ("eventId", Id(x.EventId)), ("snapshotCollectedAtUtc", T(x.SnapshotCollectedAtUtc)), ("fromUtc", T(x.FromUtc)), ("toUtc", T(x.ToUtc))),
         DatabaseHealthCursor x => O(("targetId", ValueObject(Id(x.TargetId))), ("snapshotRunId", ValueObject(Id(x.SnapshotRunId))), ("snapshotTargetRevision", NumberObject(x.SnapshotTargetRevision.Value)), ("databaseId", x.DatabaseId)),
         DatabaseFileHealthCursor x => O(("targetId", ValueObject(Id(x.TargetId))), ("snapshotRunId", ValueObject(Id(x.SnapshotRunId))), ("snapshotTargetRevision", NumberObject(x.SnapshotTargetRevision.Value)), ("databaseId", x.DatabaseId), ("fileId", x.FileId)),
+        IncidentListCursor x => O(("targetId", ValueObject(Id(x.TargetId))), ("targetRevision", NumberObject(x.TargetRevision.Value)), ("fromUtc", T(x.FromUtc)), ("toUtc", T(x.ToUtc)), ("snapshotUtc", T(x.SnapshotUtc)), ("publicationRevision", x.PublicationRevision), ("openedAtUtc", T(x.OpenedAtUtc)), ("threadId", Id(x.ThreadId))),
         IncidentEvidenceCursor x => O(("targetId", ValueObject(Id(x.TargetId))), ("targetRevision", NumberObject(x.TargetRevision.Value)), ("threadId", Id(x.ThreadId)), ("snapshotUtc", T(x.SnapshotUtc)), ("evidenceOccurredAtUtc", T(x.EvidenceOccurredAtUtc)), ("evidencePacketId", NullableId(x.EvidencePacketId)), ("generation", x.Generation)),
         QueryPerformanceCursorEnvelope x => O(("targetId", ValueObject(Id(x.TargetId))), ("databaseId", x.DatabaseId), ("fromUtc", T(x.FromUtc)), ("toUtc", T(x.ToUtc)), ("metric", E(x.Metric)), ("metricValue", x.MetricValue), ("snapshotUtc", T(x.SnapshotUtc)), ("intervalEndUtc", T(x.IntervalEndUtc)), ("queryFingerprint", x.QueryFingerprint), ("collectionRunId", x.CollectionRunId is null ? null : Id(x.CollectionRunId)), ("planFingerprint", x.PlanFingerprint), ("observationKey", x.ObservationKey)),
         string x => O(("value", x)),

@@ -40,8 +40,8 @@ public static class McpCatalog
     public const string DownlevelProtocolVersion = "2025-11-25";
     // Reviewed catalog approval point. Digest is re-derived below and must
     // agree, so changing the catalog cannot silently retain this identity.
-    public const string ApprovedCatalogDigest = "5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8";
-    public const string ServerVersion = "m11-2.2.0+catalog-5A96BDA0790C7D0B326CB5A10C7B33D773026D0BB15A21C0A676ED3322BF1AA8";
+    public const string ApprovedCatalogDigest = "984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C";
+    public const string ServerVersion = "m11-2.2.0+catalog-984319BD896C532E6E4B942334318FF5AB00E768677824023CCCEA180BF1DC2C";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {
@@ -50,7 +50,7 @@ public static class McpCatalog
         "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
         "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
         "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
-        "list_metric_catalog"
+        "list_metric_catalog", "list_incidents"
     }.Select(static name => new McpToolDefinition(name, McpCatalogDescriptions.Tool(name).Title, McpCatalogDescriptions.Tool(name).Description, SchemaFor(name))).ToArray();
 
     private static string SchemaFor(string name)
@@ -113,7 +113,7 @@ public static class McpCatalog
     {
         "get_blocking_history" => TimeSpan.FromHours(24),
         "get_top_queries" or "get_query_history" or "get_job_failures" or "search_diagnostic_events" => TimeSpan.FromDays(7),
-        "get_metric_series" or "search_deadlocks" => TimeSpan.FromDays(31),
+        "get_metric_series" or "search_deadlocks" or "list_incidents" => TimeSpan.FromDays(31),
         _ => throw new ArgumentOutOfRangeException(nameof(name))
     };
 
@@ -311,6 +311,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
         catch (McpApplicationResponseOversizeException) { outcome = McpInvocationOutcome.Oversize; reason = McpInvocationAuditReason.ResponseOversize; result = McpResults.Error("response_too_large", "The response exceeds its byte limit."); }
         catch (UnauthorizedAccessException) { outcome = McpInvocationOutcome.Denied; reason = McpInvocationAuditReason.AuthorizationDenied; result = McpResults.Error("forbidden", "The caller is not authorized for this projection."); }
         catch (McpInputValidationException exception) { outcome = McpInvocationOutcome.Invalid; reason = McpInvocationAuditReason.InvalidRequest; result = McpResults.Error("invalid_request", exception.Message); }
+        catch (IncidentListChangedException) { outcome = McpInvocationOutcome.Invalid; reason = McpInvocationAuditReason.InvalidRequest; result = McpResults.Error("cursor_stale", "Incidents changed. Restart list_incidents without a cursor."); }
         catch (ArgumentException) { outcome = McpInvocationOutcome.Invalid; reason = McpInvocationAuditReason.InvalidRequest; result = McpResults.Error("invalid_request", "The request is invalid."); }
         catch (TimeoutException) { outcome = McpInvocationOutcome.Timeout; reason = McpInvocationAuditReason.Timeout; result = McpResults.Error("request_timed_out", "The request exceeded its execution limit."); }
         catch { outcome = McpInvocationOutcome.RepositoryFailure; reason = McpInvocationAuditReason.RepositoryFailure; result = McpResults.Error("request_failed", "The projection could not be completed."); }
@@ -413,6 +414,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
         object? value = name switch
         {
             "list_metric_catalog" => MetricCatalogQueryService.Get(authorization),
+            "list_incidents" when id.HasValue => await _services.GetRequiredService<IIncidentListQueryService>().ListAsync(new IncidentListQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, timeout, Cursor: continuation?.Read<IncidentListCursor>(JsonOptions)), token).ConfigureAwait(false),
             "list_instances" => await ListInstancesAsync(authorization, limit, continuation?.Read<ObservationTargetListCursor>(JsonOptions), timeout, token).ConfigureAwait(false),
             "get_instance_capabilities" when id.HasValue => await _services.GetRequiredService<IObservationTargetStatusQueryService>().GetAsync(new GetObservationTargetStatusQuery(authorization, new MonitoredInstanceId(id.Value), timeout), token).ConfigureAwait(false),
             "get_instance_health" when id.HasValue => await _services.GetRequiredService<IHealthProjectionQueryService>().GetInstanceAsync(new GetInstanceHealthQuery(authorization, new MonitoredInstanceId(id.Value), timeout), token).ConfigureAwait(false),

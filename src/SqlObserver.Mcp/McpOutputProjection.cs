@@ -11,6 +11,7 @@ internal static class McpOutputProjection
     private static readonly Dictionary<string, HashSet<string>> ToolFields = new(StringComparer.Ordinal)
     {
         ["list_metric_catalog"] = Fields("version", "checksum", "items"),
+        ["list_incidents"] = Fields("targetId", "fromUtc", "toUtc", "items", "targetRevision", "snapshotUtc", "publicationRevision", "hasMore", "nextCursor"),
         ["list_instances"] = Fields("targets", "nextCursor", "hasMore"),
         ["get_instance_capabilities"] = Fields("targetId", "capabilities", "state", "targetRevision", "snapshotUtc", "repositoryTimeUtc"),
         ["get_instance_health"] = Fields("targetId", "coreCollector", "repositoryTimeUtc", "state", "targetRevision", "snapshotUtc"),
@@ -42,6 +43,7 @@ internal static class McpOutputProjection
         new(StringComparer.Ordinal)
         {
             ["list_metric_catalog"] = Paths("items"),
+            ["list_incidents"] = Paths("items"),
             ["list_instances"] = Paths("targets"),
             ["get_instance_capabilities"] = Paths("capabilities"),
             ["get_instance_health"] = Paths("coreCollector"),
@@ -109,6 +111,7 @@ internal static class McpOutputProjection
     private static IReadOnlyCollection<string> ItemFields(string tool) => tool switch
     {
         "list_metric_catalog" => ["metricKey", "displayName", "unit", "source", "aggregation", "dimensionKeys"],
+        "list_incidents" => ["threadId", "openedAtUtc", "latestGenerationObservedAtUtc", "generationCount"],
         "get_active_alerts" => ["alertId", "ruleId", "targetId", "ruleName", "state", "firstObservedUtc", "firedUtc", "acknowledgedUtc", "value", "reason", "deliverySuppressed"],
         "get_metric_series" => ["observedAtUtc", "value", "dimensions"],
         "get_wait_summary" => ["waitType", "waitingTasksCount", "waitTimeMilliseconds", "maximumWaitTimeMilliseconds", "signalWaitTimeMilliseconds", "waitingTasksDelta", "waitTimeMillisecondsDelta", "signalWaitTimeMillisecondsDelta", "baselineAvailable", "resetDetected", "observedAtUtc"],
@@ -153,6 +156,7 @@ internal static class McpOutputProjection
     public static IReadOnlyCollection<string> RequiredRootFields(string tool) => tool switch
     {
         "list_metric_catalog" => ["version", "checksum", "items"],
+        "list_incidents" => ["targetId", "fromUtc", "toUtc", "items", "targetRevision", "snapshotUtc", "publicationRevision", "hasMore"],
         "list_instances" => ["targets", "hasMore"],
         "get_instance_capabilities" => ["targetId", "state", "targetRevision", "snapshotUtc", "repositoryTimeUtc"],
         "get_instance_health" => ["targetId", "coreCollector", "repositoryTimeUtc", "state", "snapshotUtc"],
@@ -203,6 +207,13 @@ internal static class McpOutputProjection
 
     public static JsonObject SchemaForField(string tool, string path, string field)
     {
+        if (tool == "list_incidents")
+        {
+            if (field is "publicationRevision" or "generationCount") return new JsonObject { ["type"] = "integer", ["minimum"] = 0 };
+            if (path == "items" && field == "latestGenerationObservedAtUtc") return new JsonObject { ["type"] = new JsonArray("string", "null"), ["format"] = "date-time" };
+            if (path == "items" && field == "threadId") return new JsonObject { ["type"] = "string", ["format"] = "uuid" };
+            if (field is "openedAtUtc" or "fromUtc" or "toUtc" or "snapshotUtc") return new JsonObject { ["type"] = "string", ["format"] = "date-time" };
+        }
         if (tool == "list_metric_catalog")
         {
             if (path.Length == 0 && field == "version") return new JsonObject { ["type"] = "integer", ["minimum"] = 1 };
@@ -307,6 +318,7 @@ internal static class McpOutputProjection
     private static string[] RequiredFields(string tool, string path) => (tool, path) switch
     {
         ("list_metric_catalog", "items") => ["metricKey", "displayName", "unit", "source", "aggregation", "dimensionKeys"],
+        ("list_incidents", "items") => ["threadId", "openedAtUtc", "latestGenerationObservedAtUtc", "generationCount"],
         ("list_instances", "targets") => ["targetId", "key", "displayName", "lifecycle", "revision", "createdAtUtc", "discoveryRequestedAtUtc", "updatedAtUtc"],
         ("get_instance_capabilities", "capabilities") => ["state", "status", "reason", "revision", "observedAtUtc"],
         ("get_instance_health", "coreCollector") => ["state", "reason", "status", "health", "targetId", "collectorId", "observedAtUtc"],

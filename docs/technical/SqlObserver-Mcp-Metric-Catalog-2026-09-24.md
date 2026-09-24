@@ -15,3 +15,7 @@ Seventeen new checks initially produced 16 failures and one passing audit-withho
 Asset verification passed: 25 manifests, 250 direct pins, 37 nested contract pins, and 41 SBOM inputs. No database migration, full Local validation, full MCP suite, or broad CI run was needed for this metadata-only change. Native Windows authentication and SQL Server release qualification are not claimed.
 
 Incident discovery and all-tools PostgreSQL/native certification remain open work.
+
+Follow-up: [incident discovery](SqlObserver-Mcp-Incident-Discovery-2026-09-24.md)
+adds the 27th tool and supersedes the catalog identity above. The verification
+counts in this report describe the earlier metric-catalog change.

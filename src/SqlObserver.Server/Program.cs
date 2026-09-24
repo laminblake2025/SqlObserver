@@ -85,6 +85,8 @@ builder.Services.AddSingleton<IDiagnosticEventProjectionRepositoryPort>(static s
     services.GetRequiredService<PostgreSqlTargetControlPlane>().DiagnosticEventProjections);
 builder.Services.AddSingleton<IIncidentEvidenceProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().IncidentEvidenceProjections);
+builder.Services.AddSingleton<IIncidentListProjectionRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().IncidentListProjections);
 builder.Services.AddSingleton<IWorkerLeasePort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().WorkerLeases);
 builder.Services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
@@ -128,6 +130,7 @@ builder.Services.AddSingleton<IMetricSeriesQueryService, MetricSeriesQueryServic
 builder.Services.AddSingleton<IStorageForecastQueryService, StorageForecastQueryService>();
 builder.Services.AddSingleton<IDiagnosticEventQueryService, DiagnosticEventQueryService>();
 builder.Services.AddSingleton<IIncidentEvidenceQueryService, IncidentEvidenceQueryService>();
+builder.Services.AddSingleton<IIncidentListQueryService, IncidentListQueryService>();
 builder.Services.AddSingleton<IReportRepository>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Reports);
 builder.Services.AddSingleton<IReportAuditPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().ReportAudit);
 builder.Services.AddSingleton<IPostgreSqlCompatibilityPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Compatibility);
