@@ -11,8 +11,7 @@ export async function getActiveAlerts(instanceId: string, signal: AbortSignal, l
   return parseActiveAlerts(await readJsonBounded(response), instanceId);
 }
 
-export async function acknowledgeAlert(instanceId: string, alertId: string, signal: AbortSignal): Promise<void> {
-  const operationId = crypto.randomUUID();
+export async function acknowledgeAlert(instanceId: string, alertId: string, operationId: string, signal: AbortSignal): Promise<void> {
   const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/alerts/${encodeURIComponent(alertId)}/acknowledge`, { method: "POST", credentials: "same-origin", headers: { "Accept": "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ operationId }), signal });
   if (!response.ok) throw new Error(response.status === 403 ? "You are not authorized to acknowledge alerts." : "The alert could not be acknowledged.");
 }

@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { DetailPane, EvidenceStatus } from "../../components/DiagnosticUi";
 import { overviewHref, readOverviewScope } from "../overview/overviewModel";
 import { acknowledgeAlert, getActiveAlerts } from "./alertApi";
+import { AcknowledgementAttempts } from "./acknowledgementAttempts";
 import { alertMatchesFilter } from "./alertFilter";
 import type { ActiveAlert, AlertState } from "./alertTypes";
 
 import type { AlertFilter } from "./alertFilter";
+
+const acknowledgementAttempts = new AcknowledgementAttempts();
 
 export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowledge }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly canAcknowledge: boolean }) {
   const [items, setItems] = useState<readonly ActiveAlert[]>([]);
@@ -67,7 +70,8 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowl
     setBusy(item.alertId);
     setMessage(undefined);
     try {
-      await acknowledgeAlert(instanceId, item.alertId, controller.signal);
+      await acknowledgeAlert(instanceId, item.alertId, acknowledgementAttempts.tokenFor(instanceId, item.alertId, item.firstObservedUtc), controller.signal);
+      acknowledgementAttempts.complete(instanceId, item.alertId, item.firstObservedUtc);
       setItems((current) => current.map((candidate) => candidate.alertId === item.alertId ? { ...candidate, state: "acknowledged" as AlertState } : candidate));
       setMessage("Acknowledgement recorded. Monitoring continues; the server-provided acknowledgement timestamp will appear on refresh.");
     } catch (error: unknown) {
