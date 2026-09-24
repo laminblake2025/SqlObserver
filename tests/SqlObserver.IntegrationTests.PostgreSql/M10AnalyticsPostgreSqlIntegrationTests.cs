@@ -28,6 +28,32 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     public M10AnalyticsPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => this.fixture = fixture;
 
     [Fact]
+    public async Task PartitionMaintenanceExtendsOnlyActiveM10Streams()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using var maintain = collector.CreateCommand("SELECT control.ensure_m10_partition_set(current_date+1);");
+        Assert.Equal(33, (int)(await maintain.ExecuteScalarAsync())!);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var inspect = new NpgsqlCommand("""
+            SELECT parent_schema::text, parent_table::text
+            FROM system.partition_registry
+            WHERE partition_granularity='day'
+              AND range_start=(current_date+8)::timestamptz
+            ORDER BY parent_schema,parent_table;
+            """, connection);
+        await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+        var parents = new List<string>();
+        while (await reader.ReadAsync())
+            parents.Add($"{reader.GetString(0)}.{reader.GetString(1)}");
+        Assert.Equal(3, parents.Count);
+        Assert.Equal("analytics.metric_rollup_v2", parents[0]);
+        Assert.Equal("telemetry.host_metric_snapshot_v2", parents[1]);
+        Assert.Equal("telemetry.replication_snapshot_v2", parents[2]);
+    }
+
+    [Fact]
     public async Task BackfillInventoryFiltersBeforePagingAndBindsCursorsToItsSurface()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
