@@ -19,6 +19,7 @@ public static class ObservationTargetEndpoints
     public static IEndpointRouteBuilder MapObservationTargetEndpoints(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
+        endpoints.MapGet("/api/v1/me", MeAsync).RequireAuthorization();
 
         RouteGroupBuilder group = endpoints.MapGroup(RoutePrefix).RequireAuthorization();
         group.MapGet("/", ListAsync);
@@ -32,6 +33,28 @@ public static class ObservationTargetEndpoints
         group.MapPost("/{instanceId:guid}/rediscovery", RediscoverAsync)
             .RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         return endpoints;
+    }
+
+    private static IResult MeAsync(HttpContext context, WindowsGroupRoleResolver resolver, Guid? targetId = null)
+    {
+        if (targetId == Guid.Empty) return Results.BadRequest();
+        try
+        {
+            AuthorizationContext authorization = resolver.Resolve(context.User);
+            var target = targetId is { } id ? new MonitoredInstanceId(id) : null;
+            string[] grantedRoles = authorization.IsActive
+                ? authorization.Roles.Select(static role => role.ToString()).ToArray()
+                : [];
+            string[] allTargetRoles = authorization.Roles
+                .Where(authorization.HasRoleForAllTargets)
+                .Select(static role => role.ToString()).ToArray();
+            string[] targetRoles = target is null
+                ? []
+                : authorization.Roles.Where(role => authorization.CanAccess(role, target))
+                    .Select(static role => role.ToString()).ToArray();
+            return Results.Ok(new { active = authorization.IsActive, grantedRoles, allTargetRoles, targetId, targetRoles });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
     }
 
     private static async Task<IResult> ListAsync(

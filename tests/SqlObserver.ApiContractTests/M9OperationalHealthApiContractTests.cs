@@ -161,6 +161,41 @@ public sealed class M9OperationalHealthApiContractTests : IClassFixture<M9Operat
     }
 
     [Fact]
+    public async Task MeReportsRoleScopesForTheExactSelectedTarget()
+    {
+        using HttpClient client = CreateClient("mixed");
+        using HttpResponseMessage first = await client.GetAsync($"/api/v1/me?targetId={M9OperationalHealthApiFactory.Target:D}");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        using JsonDocument onViewerTarget = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        Assert.True(onViewerTarget.RootElement.GetProperty("active").GetBoolean());
+        Assert.Equal(["Viewer", "Auditor"], onViewerTarget.RootElement.GetProperty("grantedRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        Assert.Empty(onViewerTarget.RootElement.GetProperty("allTargetRoles").EnumerateArray());
+        Assert.Equal(["Viewer"], onViewerTarget.RootElement.GetProperty("targetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+
+        using HttpResponseMessage second = await client.GetAsync($"/api/v1/me?targetId={M9OperationalHealthApiFactory.MissingTarget:D}");
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        using JsonDocument onAuditorTarget = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        Assert.Equal(["Auditor"], onAuditorTarget.RootElement.GetProperty("targetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        using HttpResponseMessage noTarget = await client.GetAsync("/api/v1/me");
+        using JsonDocument withoutTarget = JsonDocument.Parse(await noTarget.Content.ReadAsStringAsync());
+        Assert.Empty(withoutTarget.RootElement.GetProperty("targetRoles").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task MeRequiresAuthenticationAndRejectsInvalidTargetIds()
+    {
+        using HttpClient anonymous = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/v1/me")).StatusCode);
+        using HttpClient client = CreateClient("viewer");
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/me?targetId=not-a-guid")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/v1/me?targetId={Guid.Empty:D}")).StatusCode);
+        using HttpResponseMessage response = await client.GetAsync($"/api/v1/me?targetId={M9OperationalHealthApiFactory.Target:D}");
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(["Viewer"], body.RootElement.GetProperty("allTargetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        Assert.Equal(["Viewer"], body.RootElement.GetProperty("targetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+    }
+
+    [Fact]
     public async Task MissingTargetIsHonestNotFoundAndNoDataIsExplicit()
     {
         using HttpClient client = CreateClient("viewer");
@@ -286,6 +321,8 @@ public sealed class M9OperationalHealthApiFactory : WebApplicationFactory<Progra
             new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.OperatorSid), [ApplicationRole.Operator], true),
             new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.AdminSid), [ApplicationRole.TargetAdministrator], true),
             new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.ScopeSid), [ApplicationRole.Viewer], false, [new MonitoredInstanceId(MissingTarget)]),
+            new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.MixedViewerSid), [ApplicationRole.Viewer], false, [new MonitoredInstanceId(Target)]),
+            new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.MixedAuditorSid), [ApplicationRole.Auditor], false, [new MonitoredInstanceId(MissingTarget)]),
         ]));
         services.PostConfigure<OperationalHealthServerOptions>(options => options.RequestTimeout = TimeSpan.FromMilliseconds(50));
         services.AddAuthentication(options => { options.DefaultAuthenticateScheme = M9AuthenticationHandler.SchemeName; options.DefaultChallengeScheme = M9AuthenticationHandler.SchemeName; }).AddScheme<AuthenticationSchemeOptions, M9AuthenticationHandler>(M9AuthenticationHandler.SchemeName, static _ => { });
@@ -342,12 +379,14 @@ internal sealed class M9AuthenticationHandler(IOptionsMonitor<AuthenticationSche
 {
     internal const string SchemeName = "M9.Tests"; internal const string IdentityHeader = "X-SqlObserver-M9-Identity";
     internal const string ViewerSid = "S-1-5-21-9101"; internal const string OperatorSid = "S-1-5-21-9102"; internal const string AdminSid = "S-1-5-21-9103"; internal const string ScopeSid = "S-1-5-21-9104";
+    internal const string MixedViewerSid = "S-1-5-21-9105"; internal const string MixedAuditorSid = "S-1-5-21-9106";
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(IdentityHeader, out var values) || values.Count != 1) return Task.FromResult(AuthenticateResult.NoResult());
-        string? sid = values[0] switch { "viewer" => ViewerSid, "operator" => OperatorSid, "administrator" => AdminSid, "scope" => ScopeSid, "denied" => "S-1-5-21-9199", _ => null };
+        string? sid = values[0] switch { "viewer" => ViewerSid, "operator" => OperatorSid, "administrator" => AdminSid, "scope" => ScopeSid, "mixed" => MixedViewerSid, "denied" => "S-1-5-21-9199", _ => null };
         if (sid is null) return Task.FromResult(AuthenticateResult.Fail("unknown identity"));
-        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, "S-1-5-21-9200"), new Claim(ClaimTypes.GroupSid, sid) };
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, "S-1-5-21-9200"), new(ClaimTypes.GroupSid, sid) };
+        if (values[0] == "mixed") claims.Add(new Claim(ClaimTypes.GroupSid, MixedAuditorSid));
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName)), SchemeName)));
     }
 }

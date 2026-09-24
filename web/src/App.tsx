@@ -16,6 +16,7 @@ import { ReportsPanel } from "./features/reports/ReportsPanel";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
 import { ServersPage } from "./features/targets/ServersPage";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
+import { canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
@@ -48,12 +49,23 @@ export function App() {
   const [directTargetLookup, setDirectTargetLookup] = useState<DirectTargetLookup>();
   const [adding, setAdding] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
+  const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
 
   useEffect(() => {
     const change = () => setRoute(readRoute(location.hash));
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
+
+  useEffect(() => {
+    const targetId = route.target || null;
+    const controller = new AbortController();
+    setAccess(undefined);
+    void getMyAccess(targetId, controller.signal)
+      .then(value => { if (!controller.signal.aborted) setAccess({ targetId, value }); })
+      .catch(() => { if (!controller.signal.aborted) setAccess(undefined); });
+    return () => controller.abort();
+  }, [route.target]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -113,6 +125,8 @@ export function App() {
 
   const selected = listedTarget ?? (currentDirectTargetLookup?.state === "resolved" ? currentDirectTargetLookup.target : undefined);
   const scope = readOverviewScope(location.hash);
+  const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
+  const canAddServer = canRegisterTarget(myAccess);
   const queryWindow = useMemo(
     () => resolveQueryWindow(scope, Date.now()),
     [route.page, scope.target, scope.range, scope.from, scope.to, refresh],
@@ -204,7 +218,7 @@ export function App() {
                 <button className="secondary-button" type="button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>
                   ↻ <span>Refresh</span>
                 </button>
-                <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button>
+                {canAddServer ? <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button> : null}
               </div>
             }
           />
@@ -214,7 +228,7 @@ export function App() {
           {targetPage && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
 
-          {route.page === "overview" ? <OverviewPage refresh={refresh} onAdd={() => setAdding(true)} /> : null}
+          {route.page === "overview" ? <OverviewPage refresh={refresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
           {route.page === "servers" && !loading && !message ? <ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} /> : null}
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 
@@ -235,7 +249,7 @@ export function App() {
         <footer className="app-footer">SQL Observer <span>·</span> Bounded evidence <span>·</span> UTC timestamps <span>·</span> Pre-release validation</footer>
       </div>
 
-      <Drawer open={adding} onClose={() => setAdding(false)}>
+      <Drawer open={adding && canAddServer} onClose={() => setAdding(false)}>
         <TargetOnboarding onRegistered={(target) => {
           setTargets((current) => [target, ...current.filter((candidate) => candidate.instanceId !== target.instanceId)].slice(0, 50));
           setAdding(false);
