@@ -15,7 +15,8 @@ public sealed class DatabaseFileStallTests
         using DataTableReader reader = table.CreateDataReader();
         Assert.True(reader.Read());
 
-        DatabaseFileObservation observation = SqlServerDatabaseFilesCollector.MapRow(reader, M4TestData.TargetId, M4TestData.TargetRevision);
+        DatabaseFileObservation observation = SqlServerDatabaseFilesCollector.MapRow(
+            reader, M4TestData.TargetId, M4TestData.TargetRevision, out int rowBytes);
 
         Assert.Equal(readStall, observation.ReadStallMilliseconds);
         Assert.Equal(writeStall, observation.WriteStallMilliseconds);
@@ -23,6 +24,7 @@ public sealed class DatabaseFileStallTests
         Assert.Equal(13, observation.ReadCount);
         Assert.Equal(29, observation.WriteCount);
         Assert.Equal(DatabaseFileObservation.FixedEstimatedBytes + observation.LogicalName.Utf8Bytes + 16, observation.EstimatedSizeBytes);
+        Assert.Equal(160 + observation.LogicalName.Utf8Bytes + "ROWS"u8.Length + "ONLINE"u8.Length, rowBytes);
     }
 
     [Fact]

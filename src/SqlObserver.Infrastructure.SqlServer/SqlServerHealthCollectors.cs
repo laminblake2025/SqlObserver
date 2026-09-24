@@ -631,16 +631,15 @@ public sealed class SqlServerDatabaseFilesCollector : SqlServerHealthCollector
                     break;
                 }
 
-                string logicalName = reader.GetString(3);
-                string type = reader.GetString(4);
-                string state = reader.GetString(5);
-                int rowBytes = checked(160 + Utf8Bytes(logicalName) + Utf8Bytes(type) + Utf8Bytes(state));
+                // SequentialAccess permits each column to be consumed only in ordinal order.
+                DatabaseFileObservation observation = MapRow(
+                    reader, request.TargetId, request.TargetRevision, out int rowBytes);
                 if (!budget.TryAcceptResponseBytes(rowBytes))
                 {
                     break;
                 }
 
-                files.Add(MapRow(reader, request.TargetId, request.TargetRevision));
+                files.Add(observation);
             }
         }
         catch (Exception exception) when (exception is
@@ -664,7 +663,8 @@ public sealed class SqlServerDatabaseFilesCollector : SqlServerHealthCollector
     internal static DatabaseFileObservation MapRow(
         DbDataReader reader,
         MonitoredInstanceId targetId,
-        ObservationTargetRevision targetRevision)
+        ObservationTargetRevision targetRevision,
+        out int rowBytes)
     {
         DateTimeOffset observedAt = ReadUtcMicrosecond(reader, 0);
         int databaseId = reader.GetInt32(1);
@@ -672,6 +672,7 @@ public sealed class SqlServerDatabaseFilesCollector : SqlServerHealthCollector
         string logicalName = reader.GetString(3);
         string type = reader.GetString(4);
         string state = reader.GetString(5);
+        rowBytes = checked(160 + Utf8Bytes(logicalName) + Utf8Bytes(type) + Utf8Bytes(state));
         long sizeBytes = DecimalToInt64(reader.GetDecimal(6));
         long? maximumSizeBytes = reader.IsDBNull(7) ? null : DecimalToInt64(reader.GetDecimal(7));
         long rawGrowth = reader.GetInt32(8);
