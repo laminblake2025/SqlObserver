@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0094`
+The migration catalog contains the exact, contiguous `0001` through `0095`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -140,9 +140,21 @@ Migration `0092` adds a concurrent target/time index. Migration `0093` lets
 top-query ranking and observation RLS use the target key for populated rows,
 while historical NULL rows retain exact query-ownership checks during backfill.
 Migration `0094` applies the same keyed/legacy split to query history.
+Migration `0095` adds a migrator-only fleet backfill call. It visits at most ten
+incomplete targets per transaction and updates at most 1,000 historical rows
+per target. It does not run automatically.
 
-After upgrading, a migration administrator can backfill one target in bounded
-transactions. Replace the UUID in both places and repeat until `complete` is
+After upgrading, a migration administrator can backfill the fleet in bounded
+transactions. Repeat this transaction until `complete` is `true`:
+
+```sql
+BEGIN;
+SET LOCAL ROLE sqlobserver_migrator;
+SELECT * FROM control.backfill_query_observation_identity_fleet(5,1000);
+COMMIT;
+```
+
+For one target, replace the UUID in both places and repeat until `complete` is
 `true`:
 
 ```sql

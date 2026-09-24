@@ -354,6 +354,36 @@ public sealed class MigrationIntegrationTests
             Assert.Equal(true, await otherTarget.ExecuteScalarAsync());
         }
 
+        MigrationBatchResult fleetMigration = await runner.ApplyPendingAsync(
+            new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(fleetMigration.HasFailures);
+        Assert.Equal(95, Assert.Single(fleetMigration.Results).Migration.Number.Value);
+        await using (var fleetGrants = new NpgsqlCommand("""
+            SELECT NOT has_function_privilege('sqlobserver_server',
+                       'control.backfill_query_observation_identity_fleet(integer,integer)','EXECUTE'),
+                   NOT has_function_privilege('sqlobserver_collector',
+                       'control.backfill_query_observation_identity_fleet(integer,integer)','EXECUTE');
+            """, connection))
+        await using (NpgsqlDataReader reader = await fleetGrants.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.True(reader.GetBoolean(0));
+            Assert.True(reader.GetBoolean(1));
+        }
+
+        Assert.Equal((1, 1, false), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
+        Assert.Equal((1, 0, true), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
+        Assert.Equal((0, 0, true), await BackfillFleetQueryIdentityAsync(connection, target, 1, 1));
+        await using (var fleetResult = new NpgsqlCommand("""
+            SELECT instance_id FROM events.query_performance_observation
+            WHERE collection_run_id=@otherRun;
+            """, connection))
+        {
+            fleetResult.Parameters.AddWithValue("otherRun", otherRun);
+            Assert.Equal(other, await fleetResult.ExecuteScalarAsync());
+        }
+
         await using (var mutate = new NpgsqlCommand("""
             UPDATE events.query_performance_observation SET cpu_ms=42
             WHERE collection_run_id=@run;
@@ -398,6 +428,38 @@ public sealed class MigrationIntegrationTests
         Assert.True(await reader.ReadAsync());
         var result = (reader.GetInt32(0), reader.GetBoolean(1));
         await reader.CloseAsync();
+        await transaction.CommitAsync();
+        return result;
+    }
+
+    private static async Task<(int ProcessedTargets, int UpdatedRows, bool Complete)>
+        BackfillFleetQueryIdentityAsync(NpgsqlConnection connection, Guid priorScope,
+            int maxTargets, int rowsPerTarget)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_migrator;
+            SELECT pg_catalog.set_config('sqlobserver.target_scope',@scope,true);
+            """, connection, transaction))
+        {
+            setup.Parameters.AddWithValue("scope", priorScope.ToString("D"));
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        await using var command = new NpgsqlCommand("""
+            SELECT processed_targets,updated_rows,complete
+            FROM control.backfill_query_observation_identity_fleet(@maxTargets,@rowsPerTarget);
+            """, connection, transaction);
+        command.Parameters.AddWithValue("maxTargets", maxTargets);
+        command.Parameters.AddWithValue("rowsPerTarget", rowsPerTarget);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        var result = (reader.GetInt32(0), reader.GetInt32(1), reader.GetBoolean(2));
+        await reader.CloseAsync();
+        await using var scopeCheck = new NpgsqlCommand(
+            "SELECT pg_catalog.current_setting('sqlobserver.target_scope')",
+            connection, transaction);
+        Assert.Equal(priorScope.ToString("D"), await scopeCheck.ExecuteScalarAsync());
         await transaction.CommitAsync();
         return result;
     }
