@@ -242,6 +242,9 @@ BEGIN
 $replicationGrantSection
     -- Grant section: $permissionName
 $grantStatement
+    -- Database identity is required to match backup history after a rename or restore.
+    -- Public normally has this metadata permission, but hardened instances may revoke it.
+    GRANT VIEW ANY DATABASE TO [$principalIdentifier];
     -- M9 read-only history permissions; this plan never adds an Agent server role.
     -- The database principal is created only when it is absent and must map to
     -- the already-provisioned Windows login.  No login or server role is created.

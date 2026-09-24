@@ -59,7 +59,7 @@ public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
             {
                 CommandTimeout = Math.Max(1, (int)Math.Ceiling(budget.TotalSeconds))
             };
-            command.Parameters.Add("maximum_rows", SqlDbType.Int).Value = QueryName == "availability-groups.health" ? Manifest.Limits.MaxRows + 1 : Manifest.Limits.MaxRows;
+            command.Parameters.Add("maximum_rows", SqlDbType.Int).Value = QueryName is "availability-groups.health" or "backups.status" ? Manifest.Limits.MaxRows + 1 : Manifest.Limits.MaxRows;
             command.Parameters.Add("scan_rows", SqlDbType.Int).Value = QueryName == "sql-agent.failures" ? 4096 : Manifest.Limits.MaxRows;
             await using SqlDataReader reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.SingleResult, deadline.Token).ConfigureAwait(false);
             var read = await ReadAsync(request, new SqlDataReaderOperationalHealthRowReader(reader), deadline.Token).ConfigureAwait(false);

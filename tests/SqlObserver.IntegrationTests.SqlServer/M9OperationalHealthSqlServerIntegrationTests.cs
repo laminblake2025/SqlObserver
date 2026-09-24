@@ -189,8 +189,8 @@ public sealed partial class M9OperationalHealthSqlServerIntegrationTests
     {
         var reader = new FakeOperationalHealthRowReader(
             [
-                [new byte[16], 1, new DateTime(2026, 8, 25, 12, 0, 0), 100L, true, true, false, 9L, (short)127],
-                [new byte[16], 2, new DateTime(2026, 8, 25, 13, 0, 0), 200L, false, true, false, 10L, (short)127],
+                [new byte[16], 1, new DateTime(2026, 8, 25, 12, 0, 0), 100L, true, true, false, 9L, (short)127, false],
+                [new byte[16], 2, new DateTime(2026, 8, 25, 13, 0, 0), 200L, false, true, false, 10L, (short)127, false],
             ]);
         var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
@@ -210,7 +210,7 @@ public sealed partial class M9OperationalHealthSqlServerIntegrationTests
     {
         DateTime local = new(2026, 8, 25, 12, 0, 0, DateTimeKind.Unspecified);
         var reader = new FakeOperationalHealthRowReader(
-            [[new byte[32], 1, local, 100L, false, true, false, 9L, (short)offsetMinutes]]);
+            [[new byte[32], 1, local, 100L, false, true, false, 9L, (short)offsetMinutes, false]]);
         var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
         BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
@@ -233,7 +233,7 @@ public sealed partial class M9OperationalHealthSqlServerIntegrationTests
     {
         DateTime local = new(2026, 8, 25, 12, 0, 0, DateTimeKind.Unspecified);
         var reader = new FakeOperationalHealthRowReader(
-            [[new byte[32], 1, local, 100L, false, true, false, 9L, offsetMinutes.HasValue ? (short)offsetMinutes.Value : null]]);
+            [[new byte[32], 1, local, 100L, false, true, false, 9L, offsetMinutes.HasValue ? (short)offsetMinutes.Value : null, false]]);
         var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
         BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
@@ -245,12 +245,13 @@ public sealed partial class M9OperationalHealthSqlServerIntegrationTests
     }
 
     [Theory]
-    [InlineData(null, BackupCoverage.NotSeenWithin35Days)]
-    [InlineData(9L, BackupCoverage.Unknown)]
-    public async Task M9BackupCorrectionPreservesMissingFinishAndCoverage(long? backupSetId, BackupCoverage coverage)
+    [InlineData(null, false, BackupCoverage.NotSeenWithin35Days)]
+    [InlineData(null, true, BackupCoverage.Unknown)]
+    [InlineData(9L, false, BackupCoverage.Unknown)]
+    public async Task M9BackupCorrectionPreservesMissingFinishAndCoverage(long? backupSetId, bool identityUnknown, BackupCoverage coverage)
     {
         var reader = new FakeOperationalHealthRowReader(
-            [[new byte[32], 1, null, null, null, null, null, backupSetId, null]]);
+            [[new byte[32], 1, null, null, null, null, null, backupSetId, null, identityUnknown]]);
         var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
         BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);

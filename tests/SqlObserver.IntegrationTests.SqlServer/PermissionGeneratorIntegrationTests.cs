@@ -38,6 +38,7 @@ public sealed class PermissionGeneratorIntegrationTests
         Assert.Contains("CREATE USER", first.StandardOutput, StringComparison.Ordinal);
         Assert.Contains("SUSER_SNAME(database_principal.sid)", first.StandardOutput, StringComparison.Ordinal);
         Assert.Contains("GRANT SELECT ON OBJECT::[dbo].[backupset]", first.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("GRANT VIEW ANY DATABASE TO [CONTOSO\\sqlobserver$];", first.StandardOutput, StringComparison.Ordinal);
         Assert.Contains("GRANT SELECT ON OBJECT::[dbo].[sysjobhistory]", first.StandardOutput, StringComparison.Ordinal);
         Assert.Contains("IF CONVERT(int, SERVERPROPERTY(N'EngineEdition')) IN (2, 3)", first.StandardOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("SQLAgentReaderRole", first.StandardOutput, StringComparison.Ordinal);

@@ -25,6 +25,7 @@ public sealed class SqlServerBackupsStatusCollector : SqlServerOperationalHealth
             bool? copyOnly = reader.IsDBNull(4) ? null : reader.GetBoolean(4), checksum = reader.IsDBNull(5) ? null : reader.GetBoolean(5), damaged = reader.IsDBNull(6) ? null : reader.GetBoolean(6);
             long? backupSetId = reader.IsDBNull(7) ? null : reader.GetInt64(7);
             short? offset = reader.IsDBNull(8) ? null : reader.GetInt16(8);
+            bool identityUnknown = reader.GetBoolean(9);
             DateTimeOffset? finishUtc = null;
             bool sourceTimeUnknown = false;
             if (local.HasValue)
@@ -34,7 +35,7 @@ public sealed class SqlServerBackupsStatusCollector : SqlServerOperationalHealth
                 sourceTimeUnknown = converted.SourceTimeUnknown;
             }
             BackupCoverage coverage = local.HasValue ? BackupCoverage.Complete
-                : backupSetId.HasValue ? BackupCoverage.Unknown : BackupCoverage.NotSeenWithin35Days;
+                : backupSetId.HasValue || identityUnknown ? BackupCoverage.Unknown : BackupCoverage.NotSeenWithin35Days;
             items.Add(new BackupStatusObservation(request.TargetId, request.TargetRevision,
                 fingerprint, kind, finishUtc, local, sourceTimeUnknown, size,
                 copyOnly, checksum, damaged, coverage)

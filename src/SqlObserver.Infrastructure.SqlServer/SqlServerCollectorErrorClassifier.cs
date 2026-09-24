@@ -6,7 +6,7 @@ internal static class SqlServerCollectorErrorClassifier
     // Command timeouts consume the current deadline; they are not retries.
     internal static bool IsCommandTimeout(int number) => number == -2;
 
-    internal static bool IsPermissionDenied(int number) => number is 229 or 297 or 300 or 916;
+    internal static bool IsPermissionDenied(int number) => number is 229 or 297 or 300 or 916 or 51005;
 
     // Eligibility only: the execution engine owns attempt limits and the original
     // deadline. Authentication failures and unknown SQL errors remain permanent.
