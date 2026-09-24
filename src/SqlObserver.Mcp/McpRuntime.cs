@@ -40,8 +40,8 @@ public static class McpCatalog
     public const string DownlevelProtocolVersion = "2025-11-25";
     // Reviewed catalog approval point. Digest is re-derived below and must
     // agree, so changing the catalog cannot silently retain this identity.
-    public const string ApprovedCatalogDigest = "3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C";
-    public const string ServerVersion = "m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C";
+    public const string ApprovedCatalogDigest = "2C2B4B9D35DC2958F9102CDEDE7AAF450A737DF6E582D0E51BEB2B26085B6529";
+    public const string ServerVersion = "m11-2.2.0+catalog-2C2B4B9D35DC2958F9102CDEDE7AAF450A737DF6E582D0E51BEB2B26085B6529";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {
@@ -57,14 +57,14 @@ public static class McpCatalog
         var properties = new JsonObject();
         void Add(string key, string json) => properties[key] = JsonNode.Parse(json);
         if (name != "list_instances") Add("instanceId", "{\"type\":\"string\",\"format\":\"uuid\"}");
-        bool window = name is "get_metric_series" or "compare_metric_windows" or "get_blocking_history" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "search_diagnostic_events";
+        bool window = McpCursorContinuation.HasPagedWindow(name) || name == "compare_metric_windows";
         if (window) { Add("fromUtc", "{\"type\":\"string\",\"format\":\"date-time\"}"); Add("toUtc", "{\"type\":\"string\",\"format\":\"date-time\"}"); }
         // The combined AG view is a bounded summary. Replica/database child
         // streams have independent orderings, so one merged MCP cursor would
         // not be a truthful continuation contract.
         bool paged = name is not ("get_instance_health" or "get_instance_capabilities" or "get_deadlock" or "get_query_plan_metadata" or "compare_metric_windows" or "get_availability_health");
         if (paged) Add("limit", $"{{\"type\":\"integer\",\"minimum\":1,\"maximum\":{LimitMaximum(name)}}}");
-        if (paged) Add("cursor", "{\"type\":\"string\",\"minLength\":1,\"maxLength\":1024,\"pattern\":\"^[A-Za-z0-9_-]{1,1024}$\"}");
+        if (paged) Add("cursor", $$"""{"type":"string","minLength":1,"maxLength":{{McpCursorSigner.MaximumTokenLength}},"pattern":"^[A-Za-z0-9_-]{1,{{McpCursorSigner.MaximumTokenLength}}}$"}""");
         if (name is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Add("metricKey", "{\"type\":\"string\",\"minLength\":1,\"maxLength\":128}");
         if (name is "get_deadlock") Add("eventId", "{\"type\":\"string\",\"format\":\"uuid\"}");
         if (name is "get_incident_evidence") Add("threadId", "{\"type\":\"string\",\"format\":\"uuid\"}");
@@ -97,7 +97,7 @@ public static class McpCatalog
     {
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             JsonSerializer.SerializeToUtf8Bytes(Definitions, DigestJsonOptions)));
-        return digest == ApprovedCatalogDigest ? digest : throw new InvalidOperationException("The MCP catalog digest is not the approved identity.");
+        return digest == ApprovedCatalogDigest ? digest : throw new InvalidOperationException($"The MCP catalog digest is not the approved identity: {digest}.");
     }
 
     public static int LimitMaximum(string name) => name switch
@@ -228,7 +228,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
     private static readonly SemaphoreSlim Global = new(32, 32);
     private static readonly ConcurrentDictionary<string, ActorGate> Actors = new(StringComparer.Ordinal);
     private static readonly object ActorRegistrySync = new();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { MaxDepth = 32, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { MaxDepth = 32, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) } };
     private readonly IServiceProvider _services = services;
 
     private readonly record struct McpAuditSnapshot(JsonElement Parameters, Guid? TargetId, Guid? IncidentId);
@@ -388,43 +388,53 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
         WindowsGroupRoleResolver resolver = _services.GetService<WindowsGroupRoleResolver>() ?? throw new UnauthorizedAccessException();
         AuthorizationContext authorization = resolver.Resolve(user);
         Guid? id = ReadGuid(args, "instanceId");
-        DateTimeOffset to = ReadUtc(args, "toUtc") ?? DateTimeOffset.UtcNow;
-        DateTimeOffset from = ReadUtc(args, "fromUtc") ?? to.AddDays(-1);
+        McpCursorContinuation? continuation = ReadContinuation(name, args, signer);
+        DateTimeOffset? requestedFrom = ReadUtc(args, "fromUtc"), requestedTo = ReadUtc(args, "toUtc");
+        McpCursorWindow? frozen = continuation?.Window;
+        if (frozen is not null && (requestedFrom is not null && requestedFrom != frozen.FromUtc || requestedTo is not null && requestedTo != frozen.ToUtc))
+            throw new ArgumentException("Cursor and explicit time window do not match.");
+        // Old metric/raw cursors did not retain default bounds. Only an entirely
+        // explicit request can safely continue one of those legacy tokens.
+        if (continuation is not null && McpCursorContinuation.HasPagedWindow(name) && frozen is null && (requestedFrom is null || requestedTo is null))
+            throw new ArgumentException("Cursor has no preserved time window; restart from the first page.");
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset to = requestedTo ?? frozen?.ToUtc ?? now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
+        DateTimeOffset from = requestedFrom ?? frozen?.FromUtc ?? to.AddDays(-1);
         int limit = ReadLimit(name, args);
         string metric = args.TryGetValue("metricKey", out JsonElement metricValue) ? metricValue.GetString() ?? string.Empty : string.Empty;
         RepositoryCallTimeout timeout = new(TimeSpan.FromSeconds(5));
-        bool hasWindow = name is "get_metric_series" or "compare_metric_windows" or "get_blocking_history" or "search_deadlocks" or "get_top_queries" or "get_query_history" or "search_diagnostic_events";
+        bool hasWindow = McpCursorContinuation.HasPagedWindow(name) || name == "compare_metric_windows";
         if (hasWindow && (from >= to || to - from > TimeSpan.FromDays(31))) throw new ArgumentException("Invalid time window.");
         object? value = name switch
         {
-            "list_instances" => await ListInstancesAsync(authorization, limit, ReadCursor<ObservationTargetListCursor>(name, args, signer), timeout, token).ConfigureAwait(false),
+            "list_instances" => await ListInstancesAsync(authorization, limit, continuation?.Read<ObservationTargetListCursor>(JsonOptions), timeout, token).ConfigureAwait(false),
             "get_instance_capabilities" when id.HasValue => await _services.GetRequiredService<IObservationTargetStatusQueryService>().GetAsync(new GetObservationTargetStatusQuery(authorization, new MonitoredInstanceId(id.Value), timeout), token).ConfigureAwait(false),
             "get_instance_health" when id.HasValue => await _services.GetRequiredService<IHealthProjectionQueryService>().GetInstanceAsync(new GetInstanceHealthQuery(authorization, new MonitoredInstanceId(id.Value), timeout), token).ConfigureAwait(false),
-            "get_active_alerts" when id.HasValue => await _services.GetRequiredService<IAlertQueryService>().ListActivePageAsync(authorization, new MonitoredInstanceId(id.Value), limit, ReadCursor<AlertActiveCursor>(name, args, signer), token).ConfigureAwait(false),
-            "get_database_health" when id.HasValue => await _services.GetRequiredService<IHealthProjectionQueryService>().ListDatabasesAsync(new ListDatabaseHealthQuery(authorization, new MonitoredInstanceId(id.Value), limit, ReadCursor<DatabaseHealthCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
-            "get_file_io" when id.HasValue => await _services.GetRequiredService<IHealthProjectionQueryService>().ListDatabaseFilesAsync(new ListDatabaseFileHealthQuery(authorization, new MonitoredInstanceId(id.Value), limit, ReadCursor<DatabaseFileHealthCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
-            "get_tempdb_health" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetTempDbAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, ReadRawCursor(args, name, signer), timeout), token).ConfigureAwait(false),
-            "get_backup_status" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetBackupsAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, ReadRawCursor(args, name, signer), timeout), token).ConfigureAwait(false),
-            "get_job_failures" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetAgentFailuresAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, ReadRawCursor(args, name, signer), timeout), token).ConfigureAwait(false),
+            "get_active_alerts" when id.HasValue => await _services.GetRequiredService<IAlertQueryService>().ListActivePageAsync(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<AlertActiveCursor>(JsonOptions), token).ConfigureAwait(false),
+            "get_database_health" when id.HasValue => await _services.GetRequiredService<IHealthProjectionQueryService>().ListDatabasesAsync(new ListDatabaseHealthQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<DatabaseHealthCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "get_file_io" when id.HasValue => await _services.GetRequiredService<IHealthProjectionQueryService>().ListDatabaseFilesAsync(new ListDatabaseFileHealthQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<DatabaseFileHealthCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "get_tempdb_health" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetTempDbAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<McpRawCursor>(JsonOptions).Value, timeout), token).ConfigureAwait(false),
+            "get_backup_status" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetBackupsAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<McpRawCursor>(JsonOptions).Value, timeout), token).ConfigureAwait(false),
+            "get_job_failures" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetAgentFailuresAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<McpRawCursor>(JsonOptions).Value, timeout), token).ConfigureAwait(false),
             "get_availability_health" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetAvailabilityGroupsAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, null, timeout), token).ConfigureAwait(false),
-            "get_wait_summary" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListWaitSummaryAsync(new ListServerWaitSummaryQuery(authorization, new MonitoredInstanceId(id.Value), limit, ReadCursor<ServerWaitSummaryCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
-            "get_active_sessions" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListSessionsAsync(new ListActivitySessionsQuery(authorization, new MonitoredInstanceId(id.Value), limit, ReadCursor<ActivitySessionCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
-            "get_active_requests" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListRequestsAsync(new ListActivityRequestsQuery(authorization, new MonitoredInstanceId(id.Value), limit, ReadCursor<ActivityRequestCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
-            "get_blocking_chain" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListCurrentBlockingAsync(new ListCurrentBlockingQuery(authorization, new MonitoredInstanceId(id.Value), limit, ReadCursor<BlockingEdgeCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
-            "get_blocking_history" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListBlockingHistoryAsync(new ListBlockingHistoryQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, ReadCursor<BlockingHistoryCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
-            "search_deadlocks" when id.HasValue => await _services.GetRequiredService<IDeadlockProjectionQueryService>().ListDeadlocksAsync(new ListDeadlocksQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, ReadCursor<DeadlockPageCursor>(name, args, signer), timeout), token).ConfigureAwait(false),
+            "get_wait_summary" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListWaitSummaryAsync(new ListServerWaitSummaryQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<ServerWaitSummaryCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "get_active_sessions" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListSessionsAsync(new ListActivitySessionsQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<ActivitySessionCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "get_active_requests" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListRequestsAsync(new ListActivityRequestsQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<ActivityRequestCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "get_blocking_chain" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListCurrentBlockingAsync(new ListCurrentBlockingQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<BlockingEdgeCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "get_blocking_history" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListBlockingHistoryAsync(new ListBlockingHistoryQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<BlockingHistoryCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "search_deadlocks" when id.HasValue => await _services.GetRequiredService<IDeadlockProjectionQueryService>().ListDeadlocksAsync(new ListDeadlocksQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<DeadlockPageCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
             "get_deadlock" when id.HasValue && ReadGuid(args, "eventId").HasValue => await _services.GetRequiredService<IDeadlockProjectionQueryService>().GetDeadlockAsync(authorization, new MonitoredInstanceId(id.Value), ReadGuid(args, "eventId")!.Value, timeout, token).ConfigureAwait(false),
-            "get_metric_series" when id.HasValue => await _services.GetRequiredService<IMetricSeriesQueryService>().GetAsync(new MetricSeriesQuery(authorization, new MonitoredInstanceId(id.Value), metric, from, to, limit, timeout, Cursor: ReadCursor<MetricSeriesCursor>(name, args, signer)), token).ConfigureAwait(false),
-            "get_storage_forecast" when id.HasValue => await _services.GetRequiredService<IStorageForecastQueryService>().GetAsync(new StorageForecastQuery(authorization, new MonitoredInstanceId(id.Value), metric, TimeSpan.FromDays(ReadInt(args, "horizonDays", 30)), limit, timeout, Cursor: ReadCursor<StorageForecastCursor>(name, args, signer)), token).ConfigureAwait(false),
-            "search_diagnostic_events" when id.HasValue => await _services.GetRequiredService<IDiagnosticEventQueryService>().SearchAsync(new DiagnosticEventSearchQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, timeout, Cursor: ReadCursor<DiagnosticEventCursor>(name, args, signer)), token).ConfigureAwait(false),
-            "get_incident_evidence" when id.HasValue && ReadGuid(args, "threadId").HasValue => await _services.GetRequiredService<IIncidentEvidenceQueryService>().GetAsync(new IncidentEvidenceQuery(authorization, new MonitoredInstanceId(id.Value), ReadGuid(args, "threadId")!.Value, limit, timeout, Cursor: ReadCursor<IncidentEvidenceCursor>(name, args, signer)), token).ConfigureAwait(false),
+            "get_metric_series" when id.HasValue => await _services.GetRequiredService<IMetricSeriesQueryService>().GetAsync(new MetricSeriesQuery(authorization, new MonitoredInstanceId(id.Value), metric, from, to, limit, timeout, Cursor: continuation?.Read<MetricSeriesCursor>(JsonOptions)), token).ConfigureAwait(false),
+            "get_storage_forecast" when id.HasValue => await _services.GetRequiredService<IStorageForecastQueryService>().GetAsync(new StorageForecastQuery(authorization, new MonitoredInstanceId(id.Value), metric, TimeSpan.FromDays(ReadInt(args, "horizonDays", 30)), limit, timeout, Cursor: continuation?.Read<StorageForecastCursor>(JsonOptions)), token).ConfigureAwait(false),
+            "search_diagnostic_events" when id.HasValue => await _services.GetRequiredService<IDiagnosticEventQueryService>().SearchAsync(new DiagnosticEventSearchQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, timeout, Cursor: continuation?.Read<DiagnosticEventCursor>(JsonOptions)), token).ConfigureAwait(false),
+            "get_incident_evidence" when id.HasValue && ReadGuid(args, "threadId").HasValue => await _services.GetRequiredService<IIncidentEvidenceQueryService>().GetAsync(new IncidentEvidenceQuery(authorization, new MonitoredInstanceId(id.Value), ReadGuid(args, "threadId")!.Value, limit, timeout, Cursor: continuation?.Read<IncidentEvidenceCursor>(JsonOptions)), token).ConfigureAwait(false),
             "compare_metric_windows" when id.HasValue => await _services.GetRequiredService<IAnalyticsQueryService>().CompareAsync(authorization, new AnalyticsQueryRequest(new MonitoredInstanceId(id.Value), metric, from, to, limit, timeout), ReadUtc(args, "leftFromUtc")!.Value, ReadUtc(args, "leftToUtc")!.Value, ReadUtc(args, "rightFromUtc")!.Value, ReadUtc(args, "rightToUtc")!.Value, token).ConfigureAwait(false),
-            "get_top_queries" when id.HasValue => await _services.GetRequiredService<IQueryPerformanceApiQueryService>().GetTopAsync(authorization, new TopQueryRequest(new MonitoredInstanceId(id.Value), from, to, ReadMetric(args), limit, ReadQueryCursor(name, args, signer), timeout), token).ConfigureAwait(false),
-            "get_query_history" when id.HasValue => await _services.GetRequiredService<IQueryPerformanceApiQueryService>().GetHistoryAsync(authorization, new QueryHistoryRequest(new MonitoredInstanceId(id.Value), new QueryOpaqueIdentity(ReadInt(args, "databaseId", 0), ReadString(args, "queryFingerprint")!), from, to, limit, ReadQueryCursor(name, args, signer), timeout), token).ConfigureAwait(false),
+            "get_top_queries" when id.HasValue => await _services.GetRequiredService<IQueryPerformanceApiQueryService>().GetTopAsync(authorization, new TopQueryRequest(new MonitoredInstanceId(id.Value), from, to, ReadMetric(args), limit, continuation?.Read<QueryPerformanceCursorEnvelope>(JsonOptions), timeout), token).ConfigureAwait(false),
+            "get_query_history" when id.HasValue => await _services.GetRequiredService<IQueryPerformanceApiQueryService>().GetHistoryAsync(authorization, new QueryHistoryRequest(new MonitoredInstanceId(id.Value), new QueryOpaqueIdentity(ReadInt(args, "databaseId", 0), ReadString(args, "queryFingerprint")!), from, to, limit, continuation?.Read<QueryPerformanceCursorEnvelope>(JsonOptions), timeout), token).ConfigureAwait(false),
             "get_query_plan_metadata" when id.HasValue => await _services.GetRequiredService<IQueryPerformanceApiQueryService>().GetPlanAsync(authorization, new QueryPlanMetadataRequest(new MonitoredInstanceId(id.Value), new PlanOpaqueIdentity(new QueryOpaqueIdentity(ReadInt(args, "databaseId", 0), ReadString(args, "queryFingerprint")!), ReadString(args, "planFingerprint")!), timeout), token).ConfigureAwait(false),
             _ => throw new KeyNotFoundException("No handler is registered for this catalog tool.")
         };
-        return McpResults.Json(value, JsonOptions, name, args, signer);
+        return McpResults.JsonWithWindow(value, JsonOptions, name, args, signer, McpCursorContinuation.NeedsPrivateWindow(name) ? new McpCursorWindow(from, to) : null);
     }
 
     private async ValueTask<object> ListInstancesAsync(AuthorizationContext authorization, int limit, ObservationTargetListCursor? cursor, RepositoryCallTimeout timeout, CancellationToken token)
@@ -459,18 +469,15 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
     }
     private static int ReadInt(IDictionary<string, JsonElement> args, string name, int fallback) => args.TryGetValue(name, out JsonElement value) ? value.GetInt32() : fallback;
     private static string? ReadString(IDictionary<string, JsonElement> args, string name) => args.TryGetValue(name, out JsonElement value) ? value.GetString() : null;
-    private static T? ReadCursor<T>(string tool, IDictionary<string, JsonElement> args, McpCursorSigner? signer) where T : class
+    private static McpCursorContinuation? ReadContinuation(string tool, IDictionary<string, JsonElement> args, McpCursorSigner? signer)
     {
         string? text = ReadString(args, "cursor");
         if (text is null) return null;
         if (string.IsNullOrWhiteSpace(text)) throw new ArgumentException("Cursor is invalid.");
         if (signer is null) throw new InvalidOperationException("MCP cursor signing is not configured.");
-        try { return signer.Decode<T>(text, tool, args, JsonOptions); }
+        try { return new McpCursorContinuation(tool, signer.DecodePayload(text, tool, args)); }
         catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException) { throw new ArgumentException("Cursor is invalid.", exception); }
     }
-    private static QueryPerformanceCursorEnvelope? ReadQueryCursor(string tool, IDictionary<string, JsonElement> args, McpCursorSigner? signer) => ReadCursor<QueryPerformanceCursorEnvelope>(tool, args, signer);
-    private static string? ReadRawCursor(IDictionary<string, JsonElement> args, string tool, McpCursorSigner? signer) =>
-        ReadCursor<McpRawCursor>(tool, args, signer)?.Value;
     private static QueryPerformanceMetric ReadMetric(IDictionary<string, JsonElement> args) => ReadString(args, "metric") switch
     {
         "cpuMilliseconds" => QueryPerformanceMetric.CpuMilliseconds,
@@ -526,7 +533,7 @@ public sealed class McpRawCursor
 /// <summary>Integrity-protected, bounded, request-bound cursor encoding.</summary>
 public sealed class McpCursorSigner
 {
-    public const int MaximumTokenLength = 1024;
+    public const int MaximumTokenLength = 2048;
     private readonly byte[] key;
     public McpCursorSigner(byte[] key)
     {
@@ -562,7 +569,7 @@ public sealed class McpCursorSigner
         }
         else if (node is JsonArray array) foreach (JsonNode? item in array) EncodeNextCursor(item, tool, arguments);
     }
-    private JsonElement DecodePayload(string token, string tool, IDictionary<string, JsonElement> arguments)
+    internal JsonElement DecodePayload(string token, string tool, IDictionary<string, JsonElement> arguments)
     {
         if (token.Length is 0 or > MaximumTokenLength || token.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_')) throw new ArgumentException("Cursor is invalid.");
         try
@@ -596,7 +603,8 @@ public static class McpResults
         return JsonCore(value, options, tool, arguments, signer);
     }
     internal static CallToolResult JsonWire(JsonNode value, JsonSerializerOptions options, string tool, IDictionary<string, JsonElement>? arguments, McpCursorSigner signer) => JsonCore(value, options, tool, arguments, signer);
-    private static CallToolResult JsonCore(object? value, JsonSerializerOptions options, string? tool = null, IDictionary<string, JsonElement>? arguments = null, McpCursorSigner? signer = null)
+    internal static CallToolResult JsonWithWindow(object? value, JsonSerializerOptions options, string tool, IDictionary<string, JsonElement> arguments, McpCursorSigner? signer, McpCursorWindow? window) => JsonCore(value, options, tool, arguments, signer, window);
+    private static CallToolResult JsonCore(object? value, JsonSerializerOptions options, string? tool = null, IDictionary<string, JsonElement>? arguments = null, McpCursorSigner? signer = null, McpCursorWindow? window = null)
     {
         // Application contracts are intentionally not MCP contracts.  Keep the
         // conversion explicit and typed so a newly-added property can never
@@ -610,7 +618,16 @@ public static class McpResults
         // an undecodable empty cursor.
         if (tool is not null && arguments is not null)
         {
-            if (signer is null && payload is JsonObject objectPayload && objectPayload.Any(static pair => string.Equals(pair.Key, "nextCursor", StringComparison.Ordinal))) throw new InvalidOperationException("MCP cursor signing is not configured.");
+            if (payload is JsonObject objectPayload)
+            {
+                if (signer is null) objectPayload.Remove("nextCursor");
+                else if (window is not null && objectPayload["nextCursor"] is JsonNode cursor)
+                {
+                    JsonObject contextualCursor = cursor is JsonObject typed ? typed : new JsonObject { ["value"] = cursor.GetValue<string>() };
+                    contextualCursor[McpCursorContinuation.WindowProperty] = window.ToJson();
+                    if (cursor is not JsonObject) objectPayload["nextCursor"] = contextualCursor;
+                }
+            }
             signer?.EncodeNextCursor(payload, tool, arguments);
         }
         // Projection is deliberately selected by the catalog name.  This is an
@@ -679,10 +696,10 @@ internal static class McpWireMapper
     {
         return tool switch
         {
-        "list_instances" => value is ObservationTargetPage p ? O(("targets", A(p.Targets, Target)), ("nextCursor", Cursor(p.NextCursor))) : null,
+        "list_instances" => value is ObservationTargetPage p ? O(("targets", A(p.Targets, Target)), ("nextCursor", Cursor(p.NextCursor)), ("hasMore", p.NextCursor is not null)) : null,
         "get_instance_capabilities" => value is ObservationTargetStatusSnapshot s ? Status(s) : null,
         "get_instance_health" => value is InstanceHealthProjection h ? Health(h) : null,
-        "get_active_alerts" => value is AlertActivePage a ? O(("items", A(a.Items, Alert)), ("snapshotUtc", T(a.SnapshotUtc)), ("nextCursor", Cursor(a.NextCursor))) : null,
+        "get_active_alerts" => value is AlertActivePage a ? O(("items", A(a.Items, Alert)), ("snapshotUtc", T(a.SnapshotUtc)), ("nextCursor", Cursor(a.NextCursor)), ("hasMore", a.NextCursor is not null)) : null,
         "get_metric_series" => value is MetricSeriesPage m ? Metric(m) : null,
         "compare_metric_windows" => value is WindowComparisonResult c ? O(("leftValue", c.LeftValue), ("rightValue", c.RightValue), ("delta", c.Delta), ("percent", c.Percent), ("leftSamples", c.LeftSamples), ("rightSamples", c.RightSamples), ("complete", c.Complete)) : null,
         "get_wait_summary" => value is ServerWaitSummaryPage w ? Activity(w, Wait) : null,
@@ -746,7 +763,12 @@ internal static class McpWireMapper
             _ => O(("items", new JsonArray(items.ToArray())))
         };
     }
-    private static JsonNode Backup(BackupStatusObservation x) => O(("backupType", E(x.Kind)), ("backupAtUtc", T(x.LastFinishUtc)), ("state", E(x.Coverage)), ("databaseName", x.DatabaseFingerprint), ("value", x.SizeBytes));
+    private static JsonNode Backup(BackupStatusObservation x)
+    {
+        JsonObject result = O(("backupType", E(x.Kind)), ("state", E(x.Coverage)), ("databaseName", x.DatabaseFingerprint), ("value", x.SizeBytes));
+        result["backupAtUtc"] = T(x.LastFinishUtc);
+        return result;
+    }
     private static JsonNode Job(SqlAgentFailureObservation x) => O(("jobName", Id(x.JobId)), ("failureAtUtc", T(x.DetectedAtUtc)), ("state", E(x.FailureKind)), ("reason", x.FailureFingerprint));
     private static JsonNode File(TempDbFileObservation x) => O(("fileId", x.FileId), ("sizeBytes", x.SizeBytes), ("usedBytes", x.UsedBytes), ("freeBytes", x.FreeBytes), ("state", E(x.State)));
     private static JsonNode Availability(AvailabilityGroupsSnapshot x) => O(("items", new JsonArray(x.Replicas.Select(Replica).Concat(x.Databases.Select(Database)).ToArray())), ("state", E(x.State)), ("snapshotUtc", T(x.ObservedAtUtc)), ("truncated", x.Truncated));
@@ -757,8 +779,8 @@ internal static class McpWireMapper
     private static JsonNode Generation(IncidentGenerationItem x) => O(("threadId", Id(x.ThreadId)), ("generation", x.Generation), ("observedAtUtc", T(x.ObservedAtUtc)), ("correlationSha256", x.CorrelationSha256), ("supersedesPrevious", x.SupersedesPrevious), ("evidencePacketId", NullableId(x.EvidencePacketId)));
     private static JsonNode Diagnostic(DiagnosticEventSearchPage x) => O(("targetId", Id(x.TargetId)), ("fromUtc", T(x.FromUtc)), ("toUtc", T(x.ToUtc)), ("items", A(x.Items, DiagnosticItem)), ("hasMore", x.HasMore), ("nextCursor", Cursor(x.NextCursor)), ("targetRevision", x.TargetRevision.Value), ("snapshotUtc", T(x.SnapshotUtc)));
     private static JsonNode DiagnosticItem(DiagnosticEventItem x) => O(("occurredAtUtc", T(x.OccurredAtUtc)), ("eventId", Id(x.EventId)), ("eventKind", x.EventKind), ("severity", x.Severity), ("safeMetadata", O(("metricKey", x.SafeMetadata.MetricKey), ("participantCount", x.SafeMetadata.ParticipantCount), ("relationCount", x.SafeMetadata.RelationCount), ("parseTruncated", x.SafeMetadata.ParseTruncated))), ("collectedAtUtc", T(x.CollectedAtUtc)), ("targetRevision", x.TargetRevision.Value));
-    private static JsonNode Database(DatabaseHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
-    private static JsonNode Database(DatabaseFileHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseFileItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
+    private static JsonNode Database(DatabaseHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
+    private static JsonNode Database(DatabaseFileHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseFileItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
     private static JsonNode DatabaseItem(DatabaseHealthItem x) => O(("observation", O(("databaseId", x.Observation.DatabaseId), ("databaseName", x.Observation.Name.Value), ("state", E(x.Observation.State)), ("observedAtUtc", T(x.Observation.ObservedAtUtc)))), ("collector", Collector(x.Collector)));
     private static JsonNode DatabaseFileItem(DatabaseFileHealthItem x) => O(("observation", O(("databaseId", x.Observation.DatabaseId), ("fileId", x.Observation.FileId), ("fileName", x.Observation.LogicalName.Value), ("sizeBytes", x.Observation.SizeBytes), ("readOperations", x.Observation.ReadCount), ("writeOperations", x.Observation.WriteCount), ("readBytes", x.Observation.BytesRead), ("writeBytes", x.Observation.BytesWritten), ("latencyMilliseconds", x.Observation.IoStallMilliseconds), ("observedAtUtc", T(x.Observation.ObservedAtUtc)))), ("collector", Collector(x.Collector)));
     private static JsonNode? Cursor(object? cursor) => cursor switch
@@ -791,10 +813,10 @@ internal static class McpOutputProjection
     // a newly added tool fail closed until its minimum projection is reviewed.
     private static readonly Dictionary<string, HashSet<string>> ToolFields = new(StringComparer.Ordinal)
     {
-        ["list_instances"] = Fields("targets", "nextCursor"),
+        ["list_instances"] = Fields("targets", "nextCursor", "hasMore"),
         ["get_instance_capabilities"] = Fields("targetId", "capabilities", "state", "targetRevision", "snapshotUtc", "repositoryTimeUtc"),
         ["get_instance_health"] = Fields("targetId", "coreCollector", "repositoryTimeUtc", "state", "targetRevision", "snapshotUtc"),
-        ["get_active_alerts"] = Fields("items", "snapshotUtc", "nextCursor"),
+        ["get_active_alerts"] = Fields("items", "snapshotUtc", "nextCursor", "hasMore"),
         ["get_metric_series"] = Fields("targetId", "metricKey", "fromUtc", "toUtc", "items", "state", "targetRevision", "snapshotUtc", "hasMore", "nextCursor"),
         ["compare_metric_windows"] = Fields("leftValue", "rightValue", "delta", "percent", "leftSamples", "rightSamples", "complete"),
         ["get_wait_summary"] = Fields("items", "evidence", "snapshotUtc", "nextCursor", "hasMore"),
@@ -807,9 +829,9 @@ internal static class McpOutputProjection
         ["get_top_queries"] = Fields("items", "snapshotUtc", "nextCursor", "hasMore"),
         ["get_query_history"] = Fields("items", "snapshotUtc", "nextCursor", "hasMore"),
         ["get_query_plan_metadata"] = Fields("targetId", "plan", "source", "observedAtUtc", "coverage", "contentAvailable"),
-        ["get_database_health"] = Fields("targetId", "items", "snapshotRunId", "snapshotTargetRevision", "collector", "nextCursor", "repositoryTimeUtc"),
+        ["get_database_health"] = Fields("targetId", "items", "snapshotRunId", "snapshotTargetRevision", "collector", "nextCursor", "repositoryTimeUtc", "hasMore"),
         ["get_tempdb_health"] = Fields("items", "state", "snapshotUtc", "nextCursor", "hasMore"),
-        ["get_file_io"] = Fields("targetId", "items", "snapshotRunId", "snapshotTargetRevision", "collector", "nextCursor", "repositoryTimeUtc"),
+        ["get_file_io"] = Fields("targetId", "items", "snapshotRunId", "snapshotTargetRevision", "collector", "nextCursor", "repositoryTimeUtc", "hasMore"),
         ["get_storage_forecast"] = Fields("targetId", "metricKey", "horizon", "items", "state", "targetRevision", "snapshotUtc", "hasMore", "nextCursor"),
         ["get_backup_status"] = Fields("items", "state", "snapshotUtc", "nextCursor", "hasMore"),
         ["get_job_failures"] = Fields("items", "state", "snapshotUtc", "nextCursor", "hasMore"),
@@ -930,10 +952,10 @@ internal static class McpOutputProjection
 
     public static IReadOnlyCollection<string> RequiredRootFields(string tool) => tool switch
     {
-        "list_instances" => ["targets"],
+        "list_instances" => ["targets", "hasMore"],
         "get_instance_capabilities" => ["targetId", "state", "targetRevision", "snapshotUtc", "repositoryTimeUtc"],
         "get_instance_health" => ["targetId", "coreCollector", "repositoryTimeUtc", "state", "snapshotUtc"],
-        "get_active_alerts" => ["items", "snapshotUtc"],
+        "get_active_alerts" => ["items", "snapshotUtc", "hasMore"],
         "get_metric_series" => ["targetId", "metricKey", "fromUtc", "toUtc", "items", "state", "targetRevision", "snapshotUtc", "hasMore"],
         "compare_metric_windows" => ["complete"],
         "get_wait_summary" or "get_active_sessions" or "get_active_requests" or "get_blocking_chain" => ["items", "snapshotUtc", "hasMore"],
@@ -942,7 +964,7 @@ internal static class McpOutputProjection
         "search_deadlocks" => ["items", "snapshotUtc", "hasMore"],
         "get_top_queries" or "get_query_history" => ["items", "snapshotUtc", "hasMore"],
         "get_query_plan_metadata" => ["targetId", "plan", "source", "observedAtUtc", "coverage", "contentAvailable"],
-        "get_database_health" or "get_file_io" => ["targetId", "items", "collector", "repositoryTimeUtc"],
+        "get_database_health" or "get_file_io" => ["targetId", "items", "collector", "repositoryTimeUtc", "hasMore"],
         "get_tempdb_health" or "get_backup_status" or "get_job_failures" => ["items", "state", "snapshotUtc", "hasMore"],
         "get_storage_forecast" => ["targetId", "metricKey", "horizon", "items", "state", "targetRevision", "snapshotUtc", "hasMore"],
         "get_availability_health" => ["items", "state", "snapshotUtc", "truncated"],
@@ -1002,7 +1024,8 @@ internal static class McpOutputProjection
             "hasMore" or "isVictim" or "isUserProcess" or "baselineAvailable" or "resetDetected" or "fresh" or "truncated" or "contentAvailable" or "acknowledged" or "supersedesPrevious" or "deliverySuppressed" or "parseTruncated" or "complete" or "countIsExact" => "boolean",
             _ => "string"
         };
-        bool nullable = field is "retiredAtUtc" or "firedUtc" or "acknowledgedUtc" or "sourceRunId" or "evidencePacketId" or "collectionRunId" or "planFingerprint" or "forecastId" or "reason" or "value" or "lowerBound" or "upperBound" or "slopePerDay";
+        bool nullable = field is "retiredAtUtc" or "firedUtc" or "acknowledgedUtc" or "sourceRunId" or "evidencePacketId" or "collectionRunId" or "planFingerprint" or "forecastId" or "reason" or "value" or "lowerBound" or "upperBound" or "slopePerDay"
+            || (tool == "get_backup_status" && path == "items" && field == "backupAtUtc");
         return nullable ? new JsonObject { ["type"] = new JsonArray(type, "null") } : new JsonObject { ["type"] = type };
     }
 

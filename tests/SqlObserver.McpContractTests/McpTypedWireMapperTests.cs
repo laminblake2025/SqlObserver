@@ -252,33 +252,6 @@ public sealed class McpTypedWireMapperTests
     private static ObservationTarget Target() => new(TargetId, new ObservationTargetKey("target"), new ObservationTargetDisplayName("target-name"), new SqlServerConnectionPolicy(new SqlServerEndpoint(new SqlServerHostName("sql"), tcpPort: 1433), new SqlServerConnectTimeout(TimeSpan.FromSeconds(5))), ObservationTargetLifecycle.Active, new ObservationTargetRevision(3), Now, Now, Now);
     private static CollectorHealthProjection Collector() => new(TargetId, new CollectorId("core"), 1, 1, CollectorHealthState.Current, CollectorHealthReason.None, CollectorCircuitSnapshot.Closed(Now), null, 1, 0, 0, 1, Now, Now, Now, Now.AddHours(1), Now);
 
-    private static void AssertSchema(JsonElement value, JsonElement schema, string tool)
-    {
-        if (value.ValueKind == JsonValueKind.Object && schema.TryGetProperty("required", out JsonElement required))
-            foreach (JsonElement requiredField in required.EnumerateArray())
-                Assert.True(value.TryGetProperty(requiredField.GetString()!, out _), $"{tool}: required field {requiredField.GetString()} is missing.");
-        string? type = schema.TryGetProperty("type", out JsonElement t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
-        if (schema.TryGetProperty("type", out JsonElement declared) && declared.ValueKind == JsonValueKind.Array)
-        {
-            string actual = PrimitiveType(value);
-            string[] allowed = declared.EnumerateArray().Select(x => x.GetString()!).ToArray();
-            Assert.True(allowed.Contains(actual) || actual == "integer" && allowed.Contains("number"), $"{tool}: expected one of {string.Join(',', allowed)}, got {actual}");
-        }
-        else if (type is not null)
-        {
-            string actual = PrimitiveType(value);
-            Assert.True(type == actual || type == "number" && actual == "integer", $"{tool}: expected {type}, got {actual}");
-        }
-        if (value.ValueKind == JsonValueKind.Object && schema.TryGetProperty("properties", out JsonElement properties))
-            foreach (JsonProperty p in value.EnumerateObject()) if (properties.TryGetProperty(p.Name, out JsonElement child))
-                try { AssertSchema(p.Value, child, tool); } catch (Xunit.Sdk.XunitException ex) { throw new Xunit.Sdk.XunitException($"{tool} field {p.Name}: {ex.Message}"); }
-        if (value.ValueKind == JsonValueKind.Array && schema.TryGetProperty("items", out JsonElement item)) foreach (JsonElement child in value.EnumerateArray()) AssertSchema(child, item, tool);
-    }
-
-    private static string PrimitiveType(JsonElement value) => value.ValueKind switch
-    {
-        JsonValueKind.Object => "object", JsonValueKind.Array => "array", JsonValueKind.String => "string",
-        JsonValueKind.Number => value.TryGetInt64(out _) ? "integer" : "number",
-        JsonValueKind.True or JsonValueKind.False => "boolean", _ => "null"
-    };
+    private static void AssertSchema(JsonElement value, JsonElement schema, string tool) =>
+        JsonSchemaAssertions.AssertValid(value, schema, tool);
 }

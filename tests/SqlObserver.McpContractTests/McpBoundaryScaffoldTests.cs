@@ -134,25 +134,8 @@ public sealed class McpBoundaryScaffoldTests
                 foreach (JsonElement item in value.EnumerateArray()) AssertNoSensitive(item, tool);
         }
 
-        static void AssertSchemaCompatible(JsonElement value, JsonElement schema, string tool)
-        {
-            if (schema.TryGetProperty("type", out JsonElement type) && type.ValueKind == JsonValueKind.Array)
-            {
-                string actual = value.ValueKind switch { JsonValueKind.Object => "object", JsonValueKind.Array => "array", JsonValueKind.String => "string", JsonValueKind.Number => value.TryGetInt64(out _) ? "integer" : "number", JsonValueKind.True or JsonValueKind.False => "boolean", _ => "null" };
-                string[] allowed = type.EnumerateArray().Select(x => x.GetString()!).ToArray();
-                Assert.True(allowed.Contains(actual) || actual == "integer" && allowed.Contains("number"), $"{tool}: expected one of {string.Join(',', allowed)}, got {actual}");
-            }
-            else if (schema.TryGetProperty("type", out type) && type.ValueKind == JsonValueKind.String)
-            {
-                string actual = value.ValueKind switch { JsonValueKind.Object => "object", JsonValueKind.Array => "array", JsonValueKind.String => "string", JsonValueKind.Number => value.TryGetInt64(out _) ? "integer" : "number", JsonValueKind.True or JsonValueKind.False => "boolean", _ => "null" };
-                Assert.True(type.GetString() == actual || actual == "integer" && type.GetString() == "number", $"{tool}: expected {type.GetString()}, got {actual}");
-            }
-            if (value.ValueKind == JsonValueKind.Object && schema.TryGetProperty("properties", out JsonElement properties))
-                foreach (JsonProperty property in value.EnumerateObject())
-                    if (properties.TryGetProperty(property.Name, out JsonElement propertySchema)) AssertSchemaCompatible(property.Value, propertySchema, tool);
-            if (value.ValueKind == JsonValueKind.Array && schema.TryGetProperty("items", out JsonElement itemSchema))
-                foreach (JsonElement item in value.EnumerateArray()) AssertSchemaCompatible(item, itemSchema, tool);
-        }
+        static void AssertSchemaCompatible(JsonElement value, JsonElement schema, string tool) =>
+            JsonSchemaAssertions.AssertValid(value, schema, tool);
     }
 
     [Fact]

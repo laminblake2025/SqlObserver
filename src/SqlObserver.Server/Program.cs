@@ -134,7 +134,7 @@ builder.Services.AddSingleton<IPostgreSqlCompatibilityPort>(static services => s
 builder.Services.AddSingleton<IRepositoryReadinessMonitor, PostgreSqlRepositoryReadinessMonitor>();
 builder.Services.AddSingleton<IReportService, ReportService>();
 builder.Services.AddSingleton<ReportCursorProtector>();
-builder.Services.AddSqlObserverMcp();
+builder.Services.AddSqlObserverMcp(builder.Configuration);
 // Contract-test hosts intentionally do not configure (or open) the production
 // PostgreSQL control plane.  Resolving the hosted worker in that environment
 // would eagerly construct its repository/lease dependencies and can turn an

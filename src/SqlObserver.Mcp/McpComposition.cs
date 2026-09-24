@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using ModelContextProtocol.AspNetCore;
 using SqlObserver.Audit;
 using SqlObserver.Application.Ports;
@@ -10,14 +12,15 @@ namespace SqlObserver.Mcp;
 /// <summary>Composes the official SDK while keeping SDK types inside the MCP adapter.</summary>
 public static class McpComposition
 {
-    public static IServiceCollection AddSqlObserverMcp(this IServiceCollection services)
+    public static IServiceCollection AddSqlObserverMcp(this IServiceCollection services, IConfiguration? configuration = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddHttpContextAccessor();
-        // Cursor signing is deliberately opt-in and server-owned. A missing or
-        // malformed deployment key leaves cursor-bearing calls fail-closed.
-        string? configuredKey = Environment.GetEnvironmentVariable("SQLOBSERVER_MCP_CURSOR_KEY");
-        if (TryReadCursorKey(configuredKey, out byte[]? cursorKey)) services.AddSingleton(new McpCursorSigner(cursorKey!));
+        // Resolve configuration after host/test registrations are complete. An
+        // explicitly configured malformed key must not fall back to another key.
+        services.AddSingleton(provider => McpCursorSigningConfiguration.Read(configuration ?? provider.GetService<IConfiguration>()));
+        services.TryAddSingleton(provider => provider.GetRequiredService<McpCursorSigningConfiguration>().Signer!);
+        services.AddHostedService<McpCursorStartupDiagnostics>();
         services.AddSingleton<IMcpCallHandler, McpCallHandler>();
         services.AddSingleton<IMcpInvocationAuditService, McpInvocationAuditService>();
         services.AddMcpServer(options =>
@@ -43,17 +46,4 @@ public static class McpComposition
         return endpoints.MapMcp("/mcp");
     }
 
-    private static bool TryReadCursorKey(string? value, out byte[]? key)
-    {
-        key = null;
-        try
-        {
-            if (value is null) return false;
-            byte[] decoded = Convert.FromBase64String(value);
-            if (decoded.Length is < 32 or > 4096) return false;
-            key = decoded;
-            return true;
-        }
-        catch (FormatException) { return false; }
-    }
 }

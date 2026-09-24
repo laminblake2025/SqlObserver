@@ -15,7 +15,7 @@ public static class McpStdioBridge
     // must fail closed until this reviewed value is changed as policy.
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-3787BD8A9511035F08781766E684083EF18F0CB7047BBF8FD8D1B50B61418D0C";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-2C2B4B9D35DC2958F9102CDEDE7AAF450A737DF6E582D0E51BEB2B26085B6529";
     public static async Task<int> RunAsync(string endpointText, string[] args, CancellationToken cancellationToken = default)
     {
         if (!TryValidateEndpoint(endpointText, out Uri? endpoint))

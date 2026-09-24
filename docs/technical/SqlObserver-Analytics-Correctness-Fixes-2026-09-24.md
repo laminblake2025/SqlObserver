@@ -124,3 +124,8 @@ pwsh ./tools/validate.ps1 -Profile Local -TestResultsDirectory artifacts/revamp-
 Log: `artifacts/revamp-analytics-reviewed-local.log`. The separate live PostgreSQL
 run above covers repository behavior omitted from the Local profile. No live SQL
 Server or production certification claim is made by this batch.
+
+[GitHub CI run 35957388654](https://github.com/laminblake2025/SqlObserver/actions/runs/35957388654)
+also passed for exact checkpoint `c4f776a248693d5247c91fbd4b1d1d6ce7644261`:
+Windows 1,713 .NET and 147 frontend tests, Linux 240 PostgreSQL tests plus one
+operational-health E2E test. The native SQL lab lane was unconfigured.

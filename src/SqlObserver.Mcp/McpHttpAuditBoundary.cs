@@ -1,8 +1,8 @@
 using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using SqlObserver.Audit;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Auditing;
@@ -50,7 +50,7 @@ public sealed class McpHttpAuditBoundaryMiddleware
                 if (metadata.Invocation)
                     await AuditAndFailClosedAsync(context, originalBody, metadata, ClassifyFailure(context, metadataFailure)).ConfigureAwait(false);
                 else
-                    await WriteSafeFailureAsync(context, originalBody, ClassifyFailure(context, metadataFailure)).ConfigureAwait(false);
+                    await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, ClassifyFailure(context, metadataFailure)).ConfigureAwait(false);
                 return;
             }
             if (metadata.ReadFailed)
@@ -60,7 +60,7 @@ public sealed class McpHttpAuditBoundaryMiddleware
                         ? (McpInvocationOutcome.Cancelled, McpInvocationAuditReason.Cancelled)
                         : (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure)).ConfigureAwait(false);
                 else
-                    await WriteSafeFailureAsync(context, originalBody, metadata.ReadCancelled
+                    await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, metadata.ReadCancelled
                         ? (McpInvocationOutcome.Cancelled, McpInvocationAuditReason.Cancelled)
                         : (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure)).ConfigureAwait(false);
                 return;
@@ -94,12 +94,12 @@ public sealed class McpHttpAuditBoundaryMiddleware
                 try { await AppendPendingAsync(context, pending, classification, classification.Item1 == McpInvocationOutcome.Succeeded ? captured.Length : 0).ConfigureAwait(false); }
                 catch
                 {
-                    await WriteSafeFailureAsync(context, originalBody, (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure), auditUnavailable: true).ConfigureAwait(false);
+                    await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure), auditUnavailable: true).ConfigureAwait(false);
                     return;
                 }
                 if (downstreamFailure is not null)
                 {
-                    await WriteSafeFailureAsync(context, originalBody, classification).ConfigureAwait(false);
+                    await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, classification).ConfigureAwait(false);
                     return;
                 }
                 await CopyResponseAsync(captured, originalBody, CancellationToken.None).ConfigureAwait(false);
@@ -111,7 +111,7 @@ public sealed class McpHttpAuditBoundaryMiddleware
             if (context.Items.ContainsKey(HandledItemKey))
             {
                 if (downstreamFailure is null) await CopyResponseAsync(captured, originalBody, CancellationToken.None).ConfigureAwait(false);
-                else await WriteSafeFailureAsync(context, originalBody, ClassifyFailure(context, downstreamFailure)).ConfigureAwait(false);
+                else await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, ClassifyFailure(context, downstreamFailure)).ConfigureAwait(false);
                 return;
             }
 
@@ -120,7 +120,7 @@ public sealed class McpHttpAuditBoundaryMiddleware
                 // initialize, tools/list, notifications, and other protocol
                 // control methods deliberately have no tool-audit row.
                 if (downstreamFailure is null) await CopyResponseAsync(captured, originalBody, context.RequestAborted).ConfigureAwait(false);
-                else await WriteSafeFailureAsync(context, originalBody, ClassifyFailure(context, downstreamFailure)).ConfigureAwait(false);
+                else await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, ClassifyFailure(context, downstreamFailure)).ConfigureAwait(false);
                 return;
             }
 
@@ -137,13 +137,13 @@ public sealed class McpHttpAuditBoundaryMiddleware
             catch
             {
                 // Never copy a captured response when required auditing fails.
-                await WriteSafeFailureAsync(context, originalBody, (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure), auditUnavailable: true).ConfigureAwait(false);
+                await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure), auditUnavailable: true).ConfigureAwait(false);
                 return;
             }
 
             if (downstreamFailure is not null)
             {
-                await WriteSafeFailureAsync(context, originalBody, (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure)).ConfigureAwait(false);
+                await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, (McpInvocationOutcome.RepositoryFailure, McpInvocationAuditReason.RepositoryFailure)).ConfigureAwait(false);
                 return;
             }
 
@@ -190,7 +190,11 @@ public sealed class McpHttpAuditBoundaryMiddleware
             JsonElement root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
                 return ProtocolMetadata.InvalidRequest;
-            JsonElement requestId = root.TryGetProperty("id", out JsonElement id) ? id.Clone() : JsonSerializer.SerializeToElement<object?>(null);
+            // Match the SDK's string/Int64 identity representation. An invalid
+            // or absent ID cannot be safely correlated in a generated error.
+            JsonElement requestId = root.TryGetProperty("id", out JsonElement id) &&
+                (id.ValueKind == JsonValueKind.String || (id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out _)))
+                ? id.Clone() : JsonSerializer.SerializeToElement<object?>(null);
             if (!root.TryGetProperty("method", out JsonElement methodElement) || methodElement.ValueKind != JsonValueKind.String)
                 return ProtocolMetadata.InvalidRequest with { RequestId = requestId };
             string method = methodElement.GetString() ?? string.Empty;
@@ -267,7 +271,7 @@ public sealed class McpHttpAuditBoundaryMiddleware
         bool auditFailed = false;
         try { await AppendAsync(context, metadata, classification.Outcome, classification.Reason).ConfigureAwait(false); }
         catch { auditFailed = true; }
-        await WriteSafeFailureAsync(context, originalBody, classification, auditUnavailable: auditFailed, statusOverride).ConfigureAwait(false);
+        await WriteSafeFailureAsync(context, originalBody, metadata.RequestId, classification, auditUnavailable: auditFailed, statusOverride).ConfigureAwait(false);
     }
 
     private static async ValueTask AppendAsync(HttpContext context, ProtocolMetadata metadata, McpInvocationOutcome outcome, McpInvocationAuditReason reason)
@@ -333,19 +337,10 @@ public sealed class McpHttpAuditBoundaryMiddleware
         context.Response.ContentType = "application/json";
         captured.SetLength(0);
         captured.Position = 0;
-        using var writer = new Utf8JsonWriter(captured);
-        writer.WriteStartObject();
-        writer.WriteString("jsonrpc", "2.0");
-        writer.WritePropertyName("id");
-        requestId.WriteTo(writer);
-        writer.WriteStartObject("error");
-        writer.WriteString("code", "response_too_large");
-        writer.WriteString("message", "The response exceeds its byte limit.");
-        writer.WriteEndObject();
-        writer.WriteEndObject();
+        captured.Write(SerializeError(requestId, McpErrorCode.InternalError, "response_too_large", "The response exceeds its byte limit."));
     }
 
-    private static async ValueTask WriteSafeFailureAsync(HttpContext context, Stream originalBody, (McpInvocationOutcome Outcome, McpInvocationAuditReason Reason) classification, bool auditUnavailable = false, int? statusOverride = null)
+    private static async ValueTask WriteSafeFailureAsync(HttpContext context, Stream originalBody, JsonElement requestId, (McpInvocationOutcome Outcome, McpInvocationAuditReason Reason) classification, bool auditUnavailable = false, int? statusOverride = null)
     {
         context.Response.Body = originalBody;
         if (context.Response.HasStarted) { context.Abort(); return; }
@@ -358,7 +353,7 @@ public sealed class McpHttpAuditBoundaryMiddleware
             _ => StatusCodes.Status503ServiceUnavailable,
         };
         context.Response.ContentType = "application/json";
-        (string code, string message) = auditUnavailable
+        (string reason, string message) = auditUnavailable
             ? ("audit_unavailable", "The required invocation audit could not be recorded.")
             : classification.Outcome switch
         {
@@ -369,8 +364,35 @@ public sealed class McpHttpAuditBoundaryMiddleware
             McpInvocationOutcome.Timeout => ("request_timed_out", "The request exceeded its execution limit."),
             _ => ("request_failed", "The request could not be completed."),
         };
-        byte[] safe = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { code, message }));
+        McpErrorCode code = auditUnavailable ? McpErrorCode.InternalError : classification.Outcome switch
+        {
+            McpInvocationOutcome.Invalid => McpErrorCode.InvalidRequest,
+            McpInvocationOutcome.UnknownTool => McpErrorCode.InvalidParams,
+            _ => McpErrorCode.InternalError,
+        };
+        byte[] safe = SerializeError(requestId, code, reason, message);
         try { await originalBody.WriteAsync(safe, CancellationToken.None).ConfigureAwait(false); } catch (Exception) { }
+    }
+
+    private static byte[] SerializeError(JsonElement requestId, McpErrorCode code, string reason, string message)
+    {
+        using var body = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(body))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("jsonrpc", "2.0");
+            writer.WritePropertyName("id");
+            requestId.WriteTo(writer);
+            writer.WriteStartObject("error");
+            writer.WriteNumber("code", (int)code);
+            writer.WriteString("message", message);
+            writer.WriteStartObject("data");
+            writer.WriteString("reason", reason);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+        return body.ToArray();
     }
 
     private static async ValueTask CopyResponseAsync(MemoryStream captured, Stream destination, CancellationToken cancellationToken)

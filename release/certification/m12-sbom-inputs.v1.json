@@ -5,7 +5,7 @@
   "roots": ["src/SqlObserver.Server/SqlObserver.Server.csproj", "src/SqlObserver.Collector/SqlObserver.Collector.csproj", "src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj"],
   "files": [
     { "path": "Directory.Build.props", "sha256": "2a39c4516797245bbfdec3b55ccf11b50028bb6e3656e005eec8c2d5e46601d8" },
-    { "path": "Directory.Packages.props", "sha256": "4cf413c59bb6ace1d19a4a42a6d5be47cc3072fb4376495ecded1230e334908d" },
+    { "path": "Directory.Packages.props", "sha256": "5699d9704833cac0565ca7f91db7545f85594859dad1bc2c7f263361a9032280" },
     { "path": "global.json", "sha256": "285a6b6549620a67b92fbd0f1b2ef176934afb80a87cf66e49527b607eac4de4" },
     { "path": "src/SqlObserver.Alerting/SqlObserver.Alerting.csproj", "sha256": "99b65575d049cf4c7f00c32a01829eff676bf3a7bbad13ab0b66942f8d0e1a83" },
     { "path": "src/SqlObserver.Alerting/packages.lock.json", "sha256": "023cc2c4278661751fa386518c7dc09d3c16c9ba7a61e9ddc3a1c4ee1b542d43" },
