@@ -387,6 +387,7 @@ internal static class M12CollectorTelemetryScenarios
     {
         public ValueTask<CollectorCatalogReconcileResult> ReconcileCatalogAsync(ReconcileCollectorCatalogRequest request, CancellationToken token) => ValueTask.FromResult(new CollectorCatalogReconcileResult(request.Entries.Count, 0, 0, RepositoryTime));
         public ValueTask<CollectorDueWorkBatch> ListDueAsync(ListDueCollectorWorkRequest request, CancellationToken token) => ValueTask.FromResult(new CollectorDueWorkBatch([work], false));
+        public ValueTask<CollectorClaimedWork?> ClaimDueAsync(ClaimDueCollectorWorkRequest request, CancellationToken token) => throw new NotSupportedException();
         public ValueTask<CollectorRunStartResult> BeginRunAsync(BeginCollectorRunRequest request, CancellationToken token) => ValueTask.FromResult(new CollectorRunStartResult(CollectorRunStartStatus.Started, RepositoryTime, RepositoryTime));
         public ValueTask<CollectorRunCommitResult> CommitRunAsync(CommitCollectorRunRequest request, CancellationToken token) => ValueTask.FromResult(new CollectorRunCommitResult(CollectorRunCommitStatus.Committed, request.Payload.ItemCount, 0, 0, request.Payload.EstimatedSizeBytes, RepositoryTime));
     }

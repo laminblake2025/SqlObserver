@@ -168,7 +168,7 @@ public static class CollectorServiceRegistration
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
         services.AddSingleton<IDeadlockActivitySnapshotTrigger, DeadlockActivitySnapshotTrigger>();
-        services.AddSingleton(static provider => new CollectorScheduler(
+        services.AddSingleton(provider => new CollectorScheduler(
             provider.GetRequiredService<CollectorRegistry>(),
             provider.GetRequiredService<ICollectorRuntimeRepositoryPort>(),
             provider.GetRequiredService<IWorkerLeasePort>(),
@@ -176,7 +176,7 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<WorkerExecutionId>(),
             new CollectorSchedulerOptions(
                 maxItemsPerCycle: ListDueCollectorWorkRequest.MaximumItems,
-                maxConcurrency: 4,
+                maxConcurrency: ReadMaxConcurrency(configuration),
                 new WorkerLeaseDuration(TimeSpan.FromSeconds(30)),
                 new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),
             provider.GetRequiredService<IDeadlockActivitySnapshotTrigger>()));
@@ -198,6 +198,16 @@ public static class CollectorServiceRegistration
             services.AddHostedService<AnalyticsDerivationWorker>();
         }
         return services;
+    }
+
+    private static int ReadMaxConcurrency(IConfiguration configuration)
+    {
+        string? configured = configuration["SqlObserver:Collector:MaxConcurrency"];
+        if (string.IsNullOrWhiteSpace(configured)) return 16;
+        if (!int.TryParse(configured, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out int value) || value is < 1 or > 64)
+            throw new InvalidOperationException("SqlObserver:Collector:MaxConcurrency must be an integer from 1 to 64.");
+        return value;
     }
 
     private static CollectorRegistry CreateRegistry(IServiceProvider provider)

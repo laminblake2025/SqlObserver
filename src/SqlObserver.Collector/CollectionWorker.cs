@@ -5,7 +5,7 @@ using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.Collector;
 
-/// <summary>Reconciles the immutable collector catalog and runs bounded due-work cycles.</summary>
+/// <summary>Reconciles the immutable collector catalog and continuously fills bounded dispatch slots.</summary>
 public sealed partial class CollectionWorker : BackgroundService
 {
     private static readonly WorkerLeaseKey CatalogLeaseKey = new("collector/catalog/reconcile");
@@ -44,23 +44,26 @@ public sealed partial class CollectionWorker : BackgroundService
     {
         long lastReconcileTimestamp = 0;
         bool catalogReady = false;
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            if (!catalogReady ||
-                _timeProvider.GetElapsedTime(lastReconcileTimestamp) >= ReconcileInterval)
+            while (!stoppingToken.IsCancellationRequested)
             {
-                catalogReady = await ReconcileCatalogSafelyAsync(stoppingToken).ConfigureAwait(false);
-                lastReconcileTimestamp = _timeProvider.GetTimestamp();
-            }
+                if (!catalogReady ||
+                    _timeProvider.GetElapsedTime(lastReconcileTimestamp) >= ReconcileInterval)
+                {
+                    catalogReady = await ReconcileCatalogSafelyAsync(stoppingToken).ConfigureAwait(false);
+                    lastReconcileTimestamp = _timeProvider.GetTimestamp();
+                }
 
-            CollectorSchedulerCycleResult? result = catalogReady
-                ? await RunCycleSafelyAsync(stoppingToken).ConfigureAwait(false)
-                : null;
-            TimeSpan delay = result is { HasMore: true, DueCount: > 0 }
-                ? ActiveCycleDelay
-                : IdleCycleDelay;
-            await Task.Delay(delay, _timeProvider, stoppingToken).ConfigureAwait(false);
+                int dispatched = catalogReady
+                    ? await DispatchSafelyAsync(stoppingToken).ConfigureAwait(false)
+                    : 0;
+                TimeSpan delay = dispatched > 0 || _scheduler.ActiveDispatchCount > 0
+                    ? ActiveCycleDelay : IdleCycleDelay;
+                await Task.Delay(delay, _timeProvider, stoppingToken).ConfigureAwait(false);
+            }
         }
+        finally { await _scheduler.DrainAsync().ConfigureAwait(false); }
     }
 
     private async Task<bool> ReconcileCatalogSafelyAsync(CancellationToken cancellationToken)
@@ -129,23 +132,19 @@ public sealed partial class CollectionWorker : BackgroundService
         }
     }
 
-    private async Task<CollectorSchedulerCycleResult?> RunCycleSafelyAsync(
+    private async Task<int> DispatchSafelyAsync(
         CancellationToken cancellationToken)
     {
         try
         {
-            CollectorSchedulerCycleResult result = await _scheduler.RunCycleAsync(cancellationToken)
+            int dispatched = await _scheduler.DispatchAvailableAsync(cancellationToken)
                 .ConfigureAwait(false);
-            if (result.DueCount > 0)
+            if (dispatched > 0)
             {
-                LogCycleCompleted(
-                    _logger,
-                    result.DueCount,
-                    result.CommittedCount,
-                    result.HasMore);
+                LogDispatchStarted(_logger, dispatched);
             }
 
-            return result;
+            return dispatched;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -154,7 +153,7 @@ public sealed partial class CollectionWorker : BackgroundService
         catch (Exception exception)
         {
             LogCycleFailure(_logger, exception.GetType().Name);
-            return null;
+            return 0;
         }
     }
 
@@ -186,12 +185,8 @@ public sealed partial class CollectionWorker : BackgroundService
     [LoggerMessage(
         EventId = 3102,
         Level = LogLevel.Information,
-        Message = "Collector cycle completed. Due={DueCount} Committed={CommittedCount} HasMore={HasMore}")]
-    private static partial void LogCycleCompleted(
-        ILogger logger,
-        int dueCount,
-        int committedCount,
-        bool hasMore);
+        Message = "Collector dispatch started. Claimed={ClaimedCount}")]
+    private static partial void LogDispatchStarted(ILogger logger, int claimedCount);
 
     [LoggerMessage(
         EventId = 3103,

@@ -36,6 +36,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string ReconcileM9Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m9(", StringComparison.Ordinal);
     private static readonly string ReconcileM10Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m10(", StringComparison.Ordinal);
     private const string ListDueSql = "SELECT * FROM control.list_due_collector_work(@max_items);";
+    private const string ClaimDueSql = "SELECT * FROM control.claim_due_collector_work(@owner_execution_id,@ttl);";
     private const string BeginSql = """
         SELECT result_status, started_at, repository_time
         FROM control.begin_collection_run(
@@ -477,6 +478,70 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
             throw PostgreSqlRuntimeSupport.CreateTimeoutException("collector due-list", exception);
+        }
+    }
+
+    public async ValueTask<CollectorClaimedWork?> ClaimDueAsync(
+        ClaimDueCollectorWorkRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Owner);
+        ArgumentNullException.ThrowIfNull(request.LeaseDuration);
+        ArgumentNullException.ThrowIfNull(request.Timeout);
+        using CancellationTokenSource timeout = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout,cancellationToken);
+        WorkerLeaseIdentity? identity=null;
+        try
+        {
+            DueRow row;
+            WorkerLease lease;
+            DateTimeOffset leaseRepositoryTime;
+            await using(NpgsqlConnection connection=await _dataSource.OpenConnectionAsync(timeout.Token).ConfigureAwait(false))
+            await using(var command=new NpgsqlCommand(ClaimDueSql,connection)
+            {
+                CommandTimeout=PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
+            })
+            {
+                command.Parameters.AddWithValue("owner_execution_id",request.Owner.Value);
+                command.Parameters.AddWithValue("ttl",request.LeaseDuration.Value);
+                await using NpgsqlDataReader reader=await command.ExecuteReaderAsync(timeout.Token).ConfigureAwait(false);
+                if(!await reader.ReadAsync(timeout.Token).ConfigureAwait(false)) return null;
+                identity=new WorkerLeaseIdentity(
+                    new WorkerLeaseKey("collector/run/"+reader.GetString(9)+"/"+reader.GetGuid(0).ToString("N")),
+                    request.Owner,new FencingToken(reader.GetInt64(19)));
+                row=ReadDueRow(reader);
+                lease=new WorkerLease(identity,
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,20),
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,21),
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,22));
+                leaseRepositoryTime=PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,23);
+            }
+
+            CapabilityProfileBatch profiles=await _capabilityProfiles.GetLatestForTargetsAsync(
+                new GetLatestCapabilityProfilesRequest([row.TargetId],request.Timeout),timeout.Token).ConfigureAwait(false);
+            CapabilityProfile? profile=profiles.Profiles.SingleOrDefault();
+            if(profile is not null && profile.TargetRevision!=row.TargetRevision) profile=null;
+            var work=new CollectorDueWorkItem(row.TargetId,row.TargetRevision,row.ConnectionPolicy,
+                row.CollectorId,row.CollectorVersion,row.OutputSchemaVersion,row.ScheduleRevision,
+                row.ScheduledAtUtc,row.RepositoryTimeUtc,row.Circuit,profile);
+            return new CollectorClaimedWork(work,lease,leaseRepositoryTime);
+        }
+        catch
+        {
+            if(identity is not null)
+            {
+                try
+                {
+                    await using var release=_dataSource.CreateCommand("SELECT control.release_worker_lease(@key,@owner,@fence)");
+                    release.CommandTimeout=5;
+                    release.Parameters.AddWithValue("key",identity.Key.Value);
+                    release.Parameters.AddWithValue("owner",identity.Owner.Value);
+                    release.Parameters.AddWithValue("fence",identity.FencingToken.Value);
+                    await release.ExecuteScalarAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch { /* The bounded lease expiry remains the recovery path. */ }
+            }
+            throw;
         }
     }
 

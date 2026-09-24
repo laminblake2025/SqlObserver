@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0098`
+The migration catalog contains the exact, contiguous `0001` through `0099`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -155,6 +155,11 @@ Migration `0098` adds a collector-only, fenced live-activity claim. It records
 the next due time with lease acquisition, so a completed capture releases its
 worker slot immediately. Failed captures use repository-backed retry delays of
 10, 20, 40, then 80 seconds; a successful cadence capture clears the backoff.
+Migration `0099` claims one due collector schedule with `SKIP LOCKED` and a
+fenced worker lease in the same transaction. The Collector fills free execution
+slots continuously rather than waiting for a 16-item batch. Set
+`SqlObserver__Collector__MaxConcurrency` to 1–64 to tune the global limit;
+the default is 16.
 
 After upgrading, a migration administrator can backfill the fleet in bounded
 transactions. Repeat this transaction until `complete` is `true`:

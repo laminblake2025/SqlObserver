@@ -37,6 +37,75 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
     public M4CollectorPersistenceIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
 
     [Fact]
+    public async Task DueWorkClaimsSkipLockedRowsAndHoldDistinctFencedLeasesAcrossCollectors()
+    {
+        await using RepositoryTestDatabase database=await CreateMigratedDatabaseAsync();
+        var ids=Enumerable.Range(0,20).Select(_=>new MonitoredInstanceId(Guid.NewGuid())).ToArray();
+        foreach(var id in ids) await InsertActiveTargetAsync(database,id,revision:1);
+        await using NpgsqlDataSource collectorSource=database.CreateCollectorDataSource();
+        var runtime=new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases=new PostgreSqlWorkerLeasePort(collectorSource);
+        var request=new ClaimDueCollectorWorkRequest(new WorkerExecutionId(Guid.NewGuid()),
+            new WorkerLeaseDuration(TimeSpan.FromSeconds(30)),DefaultTimeout);
+        CollectorDueWorkBatch initial=await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16,DefaultTimeout),CancellationToken.None);
+        CollectorDueWorkItem firstDue=Assert.Single(initial.Items.Take(1));
+
+        await using(var leaseLockConnection=await database.DataSource.OpenConnectionAsync())
+        await using(var leaseLockTransaction=await leaseLockConnection.BeginTransactionAsync())
+        {
+            await using(var leaseLock=new NpgsqlCommand("""
+                SELECT pg_advisory_xact_lock(hashtextextended('sqlobserver:lease:'||@key,0))
+                """,leaseLockConnection,leaseLockTransaction))
+            {
+                leaseLock.Parameters.AddWithValue("key","collector/run/"+firstDue.CollectorId.Value+"/"+firstDue.TargetId.Value.ToString("N"));
+                await leaseLock.ExecuteNonQueryAsync();
+            }
+            var watch=System.Diagnostics.Stopwatch.StartNew();
+            Assert.Null(await runtime.ClaimDueAsync(request,CancellationToken.None));
+            Assert.True(watch.Elapsed<TimeSpan.FromSeconds(2),"Claim waited on an active lease while holding a schedule lock.");
+            await leaseLockTransaction.RollbackAsync();
+        }
+
+        await using NpgsqlConnection lockingConnection=await database.DataSource.OpenConnectionAsync();
+        await using NpgsqlTransaction lockingTransaction=await lockingConnection.BeginTransactionAsync();
+        await using(var lockCommand=new NpgsqlCommand("""
+            SELECT 1 FROM control.collector_schedule
+            WHERE instance_id=@target AND collector_id=@collector FOR UPDATE
+            """,lockingConnection,lockingTransaction))
+        {
+            lockCommand.Parameters.AddWithValue("target",firstDue.TargetId.Value);
+            lockCommand.Parameters.AddWithValue("collector",firstDue.CollectorId.Value);
+            Assert.Equal(1,await lockCommand.ExecuteScalarAsync());
+        }
+        CollectorClaimedWork skipped=Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(request,CancellationToken.None));
+        Assert.NotEqual((firstDue.TargetId.Value,firstDue.CollectorId.Value),
+            (skipped.Work.TargetId.Value,skipped.Work.CollectorId.Value));
+        await lockingTransaction.CommitAsync();
+
+        var claimed=new List<CollectorClaimedWork> { skipped };
+        for(int i=1;i<20;i++)
+            claimed.Add(Assert.IsType<CollectorClaimedWork>(await runtime.ClaimDueAsync(request,CancellationToken.None)));
+        Assert.Equal(20,claimed.Select(item=>(item.Work.TargetId.Value,item.Work.CollectorId.Value)).Distinct().Count());
+        Assert.Null(await runtime.ClaimDueAsync(request,CancellationToken.None));
+        await using(var privilege=database.DataSource.CreateCommand("""
+            SELECT has_function_privilege('sqlobserver_collector','control.claim_due_collector_work(uuid,interval)','EXECUTE')
+             AND NOT has_function_privilege('sqlobserver_server','control.claim_due_collector_work(uuid,interval)','EXECUTE')
+            """))
+            Assert.Equal(true,await privilege.ExecuteScalarAsync());
+
+        CollectorClaimedWork released=claimed[0];
+        Assert.Equal(LeaseReleaseStatus.Released,await leases.ReleaseAsync(
+            new ReleaseWorkerLeaseRequest(released.Lease.Identity,DefaultTimeout),CancellationToken.None));
+        CollectorClaimedWork reclaimed=Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(request,CancellationToken.None));
+        Assert.Equal((released.Work.TargetId.Value,released.Work.CollectorId.Value),
+            (reclaimed.Work.TargetId.Value,reclaimed.Work.CollectorId.Value));
+        Assert.True(reclaimed.Lease.Identity.FencingToken.Value>released.Lease.Identity.FencingToken.Value);
+    }
+
+    [Fact]
     public async Task MigrationBackfillsExistingActiveTargetsWithPendingSchedules()
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
@@ -125,9 +194,8 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             CancellationToken.None);
         Assert.Equal(3, reconciled.UnchangedCount);
 
-        CollectorSchedulerCycleResult cycle = await scheduler.RunCycleAsync(CancellationToken.None);
-        Assert.Equal(1, cycle.DueCount);
-        Assert.Equal(1, cycle.CommittedCount);
+        Assert.Equal(1,await scheduler.DispatchAvailableAsync(CancellationToken.None));
+        await scheduler.DrainAsync();
 
         var health = new PostgreSqlHealthProjectionPort(serverDataSource);
         InstanceHealthProjection projection = Assert.IsType<InstanceHealthProjection>(

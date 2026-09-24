@@ -19,7 +19,7 @@ public sealed class CollectorSchedulerOptions
             throw new ArgumentOutOfRangeException(nameof(maxItemsPerCycle));
         }
 
-        if (maxConcurrency <= 0 || maxConcurrency > maxItemsPerCycle)
+        if (maxConcurrency is <= 0 or > 64)
         {
             throw new ArgumentOutOfRangeException(nameof(maxConcurrency));
         }
@@ -99,6 +99,13 @@ public sealed class CollectorScheduler
     private readonly CollectorSchedulerOptions _options;
     private readonly IDeadlockActivitySnapshotTrigger? _deadlockActivitySnapshotTrigger;
     private readonly ConcurrentDictionary<string, byte> _inFlight = new(StringComparer.Ordinal);
+    private readonly object _dispatchGate = new();
+    private readonly HashSet<Task<CollectorWorkDisposition>> _activeDispatches = [];
+
+    public int ActiveDispatchCount
+    {
+        get { lock (_dispatchGate) return _activeDispatches.Count; }
+    }
 
     public CollectorScheduler(
         CollectorRegistry registry,
@@ -154,28 +161,74 @@ public sealed class CollectorScheduler
         return new CollectorSchedulerCycleResult(batch.Items.Count, batch.HasMore, dispositions);
     }
 
+    /// <summary>Fill free slots with repository-claimed work without awaiting slower active collectors.</summary>
+    public async ValueTask<int> DispatchAvailableAsync(CancellationToken cancellationToken)
+    {
+        int freeSlots;
+        lock (_dispatchGate)
+        {
+            _activeDispatches.RemoveWhere(static task =>
+            {
+                if (!task.IsCompleted) return false;
+                _ = task.Exception;
+                return true;
+            });
+            freeSlots = _options.MaxConcurrency - _activeDispatches.Count;
+        }
+
+        int dispatched = 0;
+        var request = new ClaimDueCollectorWorkRequest(
+            _workerExecutionId, _options.LeaseDuration, _options.RepositoryTimeout);
+        for (int index = 0; index < freeSlots; index++)
+        {
+            CollectorClaimedWork? claimed = await _repository.ClaimDueAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+            if (claimed is null) break;
+
+            Task<CollectorWorkDisposition> task = Task.Run(
+                async () => await ProcessWorkAsync(claimed.Work, cancellationToken, claimed)
+                    .ConfigureAwait(false), CancellationToken.None);
+            lock (_dispatchGate) _activeDispatches.Add(task);
+            dispatched++;
+        }
+        return dispatched;
+    }
+
+    public async Task DrainAsync()
+    {
+        Task<CollectorWorkDisposition>[] active;
+        lock (_dispatchGate) active = [.. _activeDispatches];
+        try { await Task.WhenAll(active).ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+    }
+
     private async ValueTask<CollectorWorkDisposition> ProcessWorkAsync(
         CollectorDueWorkItem work,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CollectorClaimedWork? claimed = null)
     {
         if (!_registry.TryGet(work.CollectorId, out CollectorRegistration? registration) || registration is null)
         {
+            if (claimed is not null) await ReleaseWithoutMaskingAsync(claimed.Lease.Identity).ConfigureAwait(false);
             return CollectorWorkDisposition.CollectorNotRegistered;
         }
 
         string localKey = string.Concat(work.CollectorId.Value, "/", work.TargetId.Value.ToString("N"));
         if (!_inFlight.TryAdd(localKey, 0))
         {
+            if (claimed is not null) await ReleaseWithoutMaskingAsync(claimed.Lease.Identity).ConfigureAwait(false);
             return CollectorWorkDisposition.LocallyOverlapping;
         }
 
-        WorkerLeaseIdentity? leaseIdentity = null;
+        WorkerLeaseIdentity? leaseIdentity = claimed?.Lease.Identity;
         try
         {
             SchedulingLagMilliseconds.Record(
                 Math.Max(0, (work.RepositoryTimeUtc - work.ScheduledAtUtc).TotalMilliseconds),
                 new KeyValuePair<string, object?>("collector.id", work.CollectorId.Value));
-            LeaseAcquisitionResult acquisition = await _leases.AcquireAsync(
+            LeaseAcquisitionResult acquisition = claimed is not null
+                ? LeaseAcquisitionResult.Acquired(claimed.Lease, claimed.LeaseRepositoryTimeUtc)
+                : await _leases.AcquireAsync(
                     new AcquireWorkerLeaseRequest(
                         new WorkerLeaseKey(string.Concat("collector/run/", localKey)),
                         _workerExecutionId,
