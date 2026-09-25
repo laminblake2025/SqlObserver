@@ -46,8 +46,10 @@ without sysadmin. The existing
 permission; the default script does not. Require that option in the volume
 deployment instructions and explicitly document the grant in the eventual
 `storage.volume` manifest; otherwise an apparently successful empty source
-read could conceal every volume. The source parser now rejects zero visible
-files as invalid evidence. The temporary login was removed after the probe.
+read could conceal every volume. The pinned source now checks the grant before
+reading and raises the collector's permission-denied error when it is absent;
+the parser also rejects zero visible files as invalid evidence. The temporary
+login was removed after the probe.
 SQL Server 2019/2025 and failover still need the same proof.
 
 - [Microsoft `sys.dm_os_volume_stats` reference](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-os-volume-stats-transact-sql)

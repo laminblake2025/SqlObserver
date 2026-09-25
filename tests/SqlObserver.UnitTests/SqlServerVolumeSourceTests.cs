@@ -131,6 +131,9 @@ public sealed class SqlServerVolumeSourceTests
         string query = SqlServerVolumeCapacitySource.LoadPinnedQuery();
         Assert.Contains("TOP (@maximum_rows + 1)", query, StringComparison.Ordinal);
         Assert.Contains("OUTER APPLY sys.dm_os_volume_stats", query, StringComparison.Ordinal);
+        Assert.Contains("HAS_PERMS_BY_NAME(NULL,NULL,'VIEW ANY DEFINITION')", query, StringComparison.Ordinal);
+        Assert.Contains("THROW 51005", query, StringComparison.Ordinal);
+        Assert.True(SqlServerCollectorErrorClassifier.IsPermissionDenied(51005));
         Assert.Contains("ORDER BY files.database_id, files.file_id", query, StringComparison.Ordinal);
         Assert.DoesNotContain("physical_name", query, StringComparison.OrdinalIgnoreCase);
     }

@@ -19,7 +19,7 @@ internal sealed record SqlVolumeSourceRead(
 internal static class SqlServerVolumeCapacitySource
 {
     private const string ResourceName = "SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.sqlserver15-17-windows.v1.sql";
-    private const string QuerySha256 = "cdbfe9086b388a8dc240a0059f7b0d93af765a20203a2c98eb5e63dd08280125";
+    private const string QuerySha256 = "0b8be57ac4225687a9e267138a46683b1dcbbc7391df8a8b1550f1f6dfd94a75";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     internal static string LoadPinnedQuery()

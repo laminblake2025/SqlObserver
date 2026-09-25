@@ -1,5 +1,10 @@
 SET NOCOUNT ON;
 
+-- sys.master_files silently filters rows without metadata visibility. Reject
+-- the read before any filtered set can be mistaken for complete capacity.
+IF COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,'VIEW ANY DEFINITION'),0) <> 1
+    THROW 51005,'VIEW ANY DEFINITION is required for complete SQL volume capacity.',1;
+
 WITH bounded_files AS
 (
     SELECT TOP (@maximum_rows + 1)
