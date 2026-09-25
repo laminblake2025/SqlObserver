@@ -8,6 +8,7 @@ using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.SensitiveData;
 
 namespace SqlObserver.Infrastructure.SqlServer;
 
@@ -27,13 +28,14 @@ public static class QueryPerformanceSourceSelector
 public sealed class SqlServerQueryPerformanceCollectorAssetCatalog
 {
     private const string Prefix = "SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.";
-    private static readonly string[] Names = ["collector-manifest.v4.schema.json", "queries.performance.v1.json", "queries.performance.sqlserver15-windows.v1.sql", "queries.performance.sqlserver16-windows.v1.sql", "queries.performance.sqlserver17-windows.v1.sql"];
+    private static readonly string[] Names = ["collector-manifest.v4.schema.json", "queries.performance.v1.json", "queries.performance.sqlserver15-windows.v1.sql", "queries.performance.sqlserver16-windows.v1.sql", "queries.performance.sqlserver17-windows.v1.sql", "queries.performance.text.sqlserver15-windows.v1.sql", "queries.performance.text.sqlserver16-windows.v1.sql", "queries.performance.text.sqlserver17-windows.v1.sql"];
     private readonly SqlServerCollectorAsset asset;
     private static readonly int[] ExpectedVersions = [15, 16, 17];
-    private SqlServerQueryPerformanceCollectorAssetCatalog(SqlServerCollectorAsset asset, string checksum, string fallbackMode, IReadOnlyDictionary<int, IReadOnlyList<string>> fallbackPermissions) { this.asset = asset; BundleChecksum = checksum; FallbackMode = fallbackMode; FallbackPermissionsByMajor = fallbackPermissions; }
+    private SqlServerQueryPerformanceCollectorAssetCatalog(SqlServerCollectorAsset asset, string checksum, string fallbackMode, IReadOnlyDictionary<int, IReadOnlyList<string>> fallbackPermissions, IReadOnlyDictionary<int, string> textQueriesByMajor) { this.asset = asset; BundleChecksum = checksum; FallbackMode = fallbackMode; FallbackPermissionsByMajor = fallbackPermissions; TextQueriesByMajor = textQueriesByMajor; }
     public string BundleChecksum { get; }
     public string FallbackMode { get; }
     public IReadOnlyDictionary<int, IReadOnlyList<string>> FallbackPermissionsByMajor { get; }
+    public IReadOnlyDictionary<int, string> TextQueriesByMajor { get; }
     public SqlServerCollectorAsset Asset => asset;
     public SqlServerCollectorAsset Get(CollectorId id) => id.Value == "queries.performance" ? asset : throw new KeyNotFoundException("The collector is not in the verified M7 bundle.");
     public static SqlServerQueryPerformanceCollectorAssetCatalog LoadEmbedded(Assembly? assembly = null)
@@ -44,9 +46,16 @@ public sealed class SqlServerQueryPerformanceCollectorAssetCatalog
         if (lines.Length != Names.Length) throw new InvalidDataException("M7 checksum manifest has an unexpected asset count.");
         for (int i = 0; i < Names.Length; i++) { string[] p = lines[i].Split("  ", StringSplitOptions.None); string actual = Convert.ToHexString(SHA256.HashData(bytes[i])).ToLowerInvariant(); if (p.Length != 2 || p[1] != Names[i] || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(actual), Encoding.ASCII.GetBytes(p[0]))) throw new InvalidDataException("M7 asset checksum failed."); }
         var queries = new Dictionary<int, string> { [15] = Encoding.UTF8.GetString(bytes[2]), [16] = Encoding.UTF8.GetString(bytes[3]), [17] = Encoding.UTF8.GetString(bytes[4]) };
+        var textQueries = new Dictionary<int, string> { [15] = Encoding.UTF8.GetString(bytes[5]), [16] = Encoding.UTF8.GetString(bytes[6]), [17] = Encoding.UTF8.GetString(bytes[7]) };
         ValidateManifestJson(Encoding.UTF8.GetString(bytes[1]), queries);
+        foreach (string query in textQueries.Values)
+            if (!query.Contains("sys.query_store_query_text", StringComparison.Ordinal) ||
+                !query.Contains("has_restricted_text = 0", StringComparison.Ordinal) ||
+                !query.Contains("is_part_of_encrypted_module = 0", StringComparison.Ordinal) ||
+                !query.Contains("DATALENGTH", StringComparison.Ordinal))
+                throw new InvalidDataException("M7 query text asset lacks its reviewed source filters.");
         (CollectorManifest manifest, string fallbackMode, IReadOnlyDictionary<int, IReadOnlyList<string>> fallbackPermissions) = ParseManifest(Encoding.UTF8.GetString(bytes[1]));
-        return new SqlServerQueryPerformanceCollectorAssetCatalog(new SqlServerCollectorAsset(manifest, Encoding.UTF8.GetString(bytes[1]), Convert.ToHexString(SHA256.HashData(bytes[1])).ToLowerInvariant(), queries), Convert.ToHexString(SHA256.HashData(Read(assembly, "m7-query-performance.assets.sha256"))).ToLowerInvariant(), fallbackMode, fallbackPermissions);
+        return new SqlServerQueryPerformanceCollectorAssetCatalog(new SqlServerCollectorAsset(manifest, Encoding.UTF8.GetString(bytes[1]), Convert.ToHexString(SHA256.HashData(bytes[1])).ToLowerInvariant(), queries), Convert.ToHexString(SHA256.HashData(Read(assembly, "m7-query-performance.assets.sha256"))).ToLowerInvariant(), fallbackMode, fallbackPermissions, textQueries);
     }
     private static (CollectorManifest Manifest, string FallbackMode, IReadOnlyDictionary<int, IReadOnlyList<string>> Permissions) ParseManifest(string json)
     {
@@ -76,7 +85,17 @@ public sealed class SqlServerQueryPerformanceCollectorAssetCatalog
         JsonElement cadence = root.GetProperty("cadence"); if (cadence.GetProperty("defaultIntervalSeconds").GetInt32() != 300 || cadence.GetProperty("minimumIntervalSeconds").GetInt32() != 60 || !cadence.GetProperty("nonOverlappingPerTarget").GetBoolean()) throw new InvalidDataException("M7 cadence is invalid.");
         JsonElement requiredPermissions = root.GetProperty("requiredPermissionsByMajor"); JsonElement fallback = root.GetProperty("fallback"); if (fallback.GetProperty("mode").GetString() != "plan-cache" || !fallback.GetProperty("singleAttempt").GetBoolean()) throw new InvalidDataException("M7 fallback contract is invalid.");
         foreach (string version in new[] { "15", "16", "17" }) { string expectedDatabase = version == "15" ? "database.view-state" : "database.view-performance-state"; string expectedServer = version == "15" ? "server.view-state" : "server.view-performance-state"; if (requiredPermissions.GetProperty(version).GetArrayLength() != 1 || requiredPermissions.GetProperty(version)[0].GetString() != expectedDatabase || fallback.GetProperty("permissionsByMajor").GetProperty(version).GetArrayLength() != 1 || fallback.GetProperty("permissionsByMajor").GetProperty(version)[0].GetString() != expectedServer) throw new InvalidDataException("M7 permission contract is invalid."); }
-        JsonElement resources = root.GetProperty("queryResources").GetProperty("supportedByMajor"); if (resources.GetProperty("15").GetString() != "queries.performance.sqlserver15-windows.v1.sql" || resources.GetProperty("16").GetString() != "queries.performance.sqlserver16-windows.v1.sql" || resources.GetProperty("17").GetString() != "queries.performance.sqlserver17-windows.v1.sql") throw new InvalidDataException("M7 SQL resource contract is invalid.");
+        JsonElement resourceRoot = root.GetProperty("queryResources");
+        JsonElement resources = resourceRoot.GetProperty("supportedByMajor"); if (resources.GetProperty("15").GetString() != "queries.performance.sqlserver15-windows.v1.sql" || resources.GetProperty("16").GetString() != "queries.performance.sqlserver16-windows.v1.sql" || resources.GetProperty("17").GetString() != "queries.performance.sqlserver17-windows.v1.sql") throw new InvalidDataException("M7 SQL resource contract is invalid.");
+        JsonElement textContract = resourceRoot.GetProperty("queryText");
+        if (textContract.GetProperty("maximumTextsPerTarget").GetInt32() != 32 || textContract.GetProperty("maximumUtf16Bytes").GetInt32() != 8192)
+            throw new InvalidDataException("M7 text source bounds are invalid.");
+        foreach (string version in new[] { "15", "16", "17" })
+        {
+            if (textContract.GetProperty("supportedByMajor").GetProperty(version).GetString() != $"queries.performance.text.sqlserver{version}-windows.v1.sql" ||
+                textContract.GetProperty("serverPermissionByMajor").GetProperty(version).GetString() != (version == "15" ? "server.view-state" : "server.view-performance-state"))
+                throw new InvalidDataException("M7 text source resource or permission is invalid.");
+        }
         if (queries.Count != 3 || queries.Keys.Order().SequenceEqual(ExpectedVersions) == false) throw new InvalidDataException("M7 query assets are incomplete.");
     }
     private static byte[] Read(Assembly assembly, string name) { Stream? stream = assembly.GetManifestResourceStream(Prefix + name) ?? (name == "collector-manifest.v4.schema.json" ? assembly.GetManifestResourceStream("SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.collector-manifest.v4.schema.json") : null); using (stream ?? throw new InvalidDataException("M7 asset unavailable.")) { if (stream.Length > 4 * 1024 * 1024) throw new InvalidDataException("M7 asset exceeds size bound."); using var m = new MemoryStream(); stream.CopyTo(m); return m.ToArray(); } }
@@ -127,16 +146,25 @@ internal sealed class QueryPerformanceLossAccumulator
     }
 }
 
-/// <summary>Reads bounded, metadata-only Query Store rows. No SQL text, handles or plan XML are selected.</summary>
+/// <summary>Reads bounded Query Store metadata and separately protected query text.</summary>
 public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollectorBase
 {
     private const string InventorySql = "SELECT TOP (257) database_id,name FROM sys.databases WHERE state=0 AND user_access=0 AND database_id>4 ORDER BY database_id;";
     internal const string PlanCacheSql = "SELECT TOP (@probe_rows) CONVERT(int,pa.value),CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),CONCAT(CONVERT(varchar(20),s.query_hash),':cache:',CONVERT(varchar(20),pa.value)))),2),CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(max),CONCAT(CONVERT(varchar(20),s.query_hash),':plan:',CONVERT(varchar(30),s.plan_generation_num),':created:',CONVERT(varchar(33),s.creation_time,126)))),2),CONVERT(varchar(16),'plan_cache'),CONVERT(varchar(32),'read_failure'),CONVERT(bigint,SUM(s.total_worker_time)/1000),CONVERT(bigint,SUM(s.total_elapsed_time)/1000),CONVERT(bigint,SUM(s.execution_count)),CONVERT(bigint,SUM(s.total_logical_reads)),CONVERT(bigint,SUM(s.total_logical_writes)),CONVERT(bigint,NULL),@sample_start,@sample_end,@sample_end,CONVERT(bit,0),CONVERT(bit,0) FROM sys.dm_exec_query_stats s CROSS APPLY sys.dm_exec_plan_attributes(s.plan_handle) pa WHERE pa.attribute='dbid' AND CONVERT(int,pa.value) IN (SELECT database_id FROM sys.databases WHERE database_id>4 AND state=0 AND user_access=0) GROUP BY pa.value,s.query_hash,s.plan_generation_num,s.creation_time ORDER BY SUM(s.total_worker_time) DESC,s.query_hash,s.plan_generation_num,s.creation_time;";
     public static CollectorOutputContract OutputContract { get; } = new(new CollectorOutputSchemaVersion(1), [], 0, 0, 0, maxQueryPerformanceObservations: QueryPerformanceObservationBatch.MaximumItems);
     private readonly ISqlServerQueryPerformanceExecutionPort? executionPort;
+    private readonly IQuerySensitiveContentProtector contentProtector;
     public SqlServerQueryPerformanceCollector() : this(SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded()) { }
-    public SqlServerQueryPerformanceCollector(SqlServerQueryPerformanceCollectorAssetCatalog catalog) : this(catalog, null) { }
-    internal SqlServerQueryPerformanceCollector(SqlServerQueryPerformanceCollectorAssetCatalog catalog, ISqlServerQueryPerformanceExecutionPort? executionPort) : base(catalog.Asset, new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName)) => this.executionPort = executionPort;
+    public SqlServerQueryPerformanceCollector(SqlServerQueryPerformanceCollectorAssetCatalog catalog) : this(catalog, null, null) { }
+    public SqlServerQueryPerformanceCollector(SqlServerQueryPerformanceCollectorAssetCatalog catalog, IQuerySensitiveContentProtector protector) : this(catalog, null, protector) { }
+    internal SqlServerQueryPerformanceCollector(SqlServerQueryPerformanceCollectorAssetCatalog catalog, ISqlServerQueryPerformanceExecutionPort? executionPort) : this(catalog, executionPort, null) { }
+    internal SqlServerQueryPerformanceCollector(SqlServerQueryPerformanceCollectorAssetCatalog catalog, ISqlServerQueryPerformanceExecutionPort? executionPort, IQuerySensitiveContentProtector? protector) : base(catalog.Asset, new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName))
+    {
+        this.executionPort = executionPort;
+        contentProtector = protector ?? new UnavailableQuerySensitiveContentProtector();
+        textQueryByMajor = catalog.TextQueriesByMajor;
+    }
+    private readonly IReadOnlyDictionary<int, string> textQueryByMajor;
     public override async ValueTask<CollectorExecutionResult> CollectAsync(CollectorExecutionRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -417,7 +445,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
 
     private sealed class DatabaseReader : IQueryPerformanceDatabaseReader, IQueryPerformanceSourceReader
     {
-        private readonly SqlServerQueryPerformanceCollector owner; private readonly CollectorExecutionRequest request; private readonly int major; private readonly SharedResponseBudget targetResponseBudget; private readonly QueryPerformanceSingleFlight<QueryPerformancePlanCacheSample> planCacheSample; private QueryPerformancePlanCacheSample? completedPlanCacheSample;
+        private readonly SqlServerQueryPerformanceCollector owner; private readonly CollectorExecutionRequest request; private readonly int major; private readonly SharedResponseBudget targetResponseBudget; private readonly QueryPerformanceSingleFlight<QueryPerformancePlanCacheSample> planCacheSample; private QueryPerformancePlanCacheSample? completedPlanCacheSample; private int reservedTextCandidates;
         public DatabaseReader(SqlServerQueryPerformanceCollector owner, CollectorExecutionRequest request, int major, SharedResponseBudget targetResponseBudget) { this.owner = owner; this.request = request; this.major = major; this.targetResponseBudget = targetResponseBudget ?? throw new ArgumentNullException(nameof(targetResponseBudget)); planCacheSample = new QueryPerformanceSingleFlight<QueryPerformancePlanCacheSample>(LoadPlanCacheAsync); }
         public QueryPerformancePlanCacheSample? CompletedPlanCacheSample => completedPlanCacheSample;
         public ValueTask<QueryPerformanceReadResult> ReadDatabaseAsync(SqlServerDatabaseIdentity database, CancellationToken cancellationToken) => targetResponseBudget.IsExhausted ? ValueTask.FromResult(new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.OutputCapped, [], "output_capped", false, true, 0, 0, QueryStoreState.ReadFailure, CollectorLossKind.ResponseByteLimit)) : QueryPerformanceFallbackCoordinator.ReadAsync(database, this, CanUsePlanCache(), cancellationToken);
@@ -442,7 +470,20 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
                 if (!await reader.NextResultAsync(token).ConfigureAwait(false)) return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStoreEmpty, [], "query_store_empty", false, false, 0, 0, state);
                 ActivityCollectorReadResult parsed = await owner.ReadPayloadAsync(request, reader, targetResponseBudget, token).ConfigureAwait(false);
                 QueryPerformanceReadStatus status = parsed.Payload.QueryPerformance.Items.Count == 0 ? (parsed.Loss.Kind == CollectorLossKind.ResponseByteLimit ? QueryPerformanceReadStatus.OutputCapped : QueryPerformanceReadStatus.QueryStoreEmpty) : QueryPerformanceReadStatus.QueryStoreRows;
-                return new QueryPerformanceReadResult(database, status, parsed.Payload.QueryPerformance.Items, status == QueryPerformanceReadStatus.QueryStoreEmpty ? "query_store_empty" : "query_store_read", false, parsed.Loss.HasLoss, parsed.SourceRowsRead, parsed.ResponseBytes, state, parsed.Loss.Kind, parsed.Loss.MinimumLostItems, parsed.Loss.CountIsExact, parsed.Loss.MinimumLostBytes);
+                IReadOnlyList<QueryPerformanceObservation> observations = parsed.Payload.QueryPerformance.Items;
+                int textBytes = 0;
+                if (observations.Count > 0 && owner.contentProtector.IsAvailable && CanReadQueryStoreText())
+                {
+                    await reader.DisposeAsync().ConfigureAwait(false);
+                    try
+                    {
+                        (observations, textBytes) = await CaptureQueryTextAsync(connection, observations, token).ConfigureAwait(false);
+                    }
+                    catch (SqlException) when (!token.IsCancellationRequested) { }
+                    catch (TimeoutException) when (!token.IsCancellationRequested) { }
+                    catch (CryptographicException) when (!token.IsCancellationRequested) { }
+                }
+                return new QueryPerformanceReadResult(database, status, observations, status == QueryPerformanceReadStatus.QueryStoreEmpty ? "query_store_empty" : "query_store_read", false, parsed.Loss.HasLoss, parsed.SourceRowsRead, checked(parsed.ResponseBytes + textBytes), state, parsed.Loss.Kind, parsed.Loss.MinimumLostItems, parsed.Loss.CountIsExact, parsed.Loss.MinimumLostBytes);
             }
             catch (OperationCanceledException) { throw; }
             catch (SqlException ex) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(ex.Number)) { return new QueryPerformanceReadResult(database, QueryPerformanceReadStatus.QueryStorePermissionDenied, [], "query_store_permission_denied", false, false, 0, 0, QueryStoreState.PermissionDenied); }
@@ -473,6 +514,80 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
             string required = major == 15 ? "server.view-state" : "server.view-performance-state";
             return request.CapabilityProfile.Permissions.Any(x => x.Scope == PermissionEvidenceScope.Server && x.Outcome == PermissionEvidenceOutcome.Granted && x.PermissionId.Value == required);
         }
+        private bool CanReadQueryStoreText()
+        {
+            string required = major == 15 ? "server.view-state" : "server.view-performance-state";
+            return request.CapabilityProfile.Permissions.Any(x => x.Scope == PermissionEvidenceScope.Server &&
+                x.Outcome == PermissionEvidenceOutcome.Granted && x.PermissionId.Value == required);
+        }
+
+        private bool TryReserveTextCandidate()
+        {
+            while (true)
+            {
+                int current = Volatile.Read(ref reservedTextCandidates);
+                if (current >= 32) return false;
+                if (Interlocked.CompareExchange(ref reservedTextCandidates, current + 1, current) == current) return true;
+            }
+        }
+
+        private async ValueTask<(IReadOnlyList<QueryPerformanceObservation> Observations, int ResponseBytes)> CaptureQueryTextAsync(
+            SqlConnection connection, IReadOnlyList<QueryPerformanceObservation> observations, CancellationToken token)
+        {
+            var candidates = new Dictionary<long, (int Index, string Fingerprint)>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int index = 0; index < observations.Count; index++)
+            {
+                QueryPerformanceObservation item = observations[index];
+                if (item.QueryTextSourceId is not long textId || !seen.Add(item.Query.QueryFingerprint)) continue;
+                if (!TryReserveTextCandidate()) break;
+                candidates.TryAdd(textId, (index, item.Query.QueryFingerprint));
+            }
+            if (candidates.Count == 0) return (observations, 0);
+
+            await using var command = new SqlCommand(owner.textQueryByMajor[major], connection)
+            {
+                CommandTimeout = Math.Max(1, (int)owner.Manifest.Limits.CommandTimeout.TotalSeconds)
+            };
+            long[] ids = candidates.Keys.ToArray();
+            for (int index = 0; index < 32; index++)
+                command.Parameters.Add($"text_id_{index}", System.Data.SqlDbType.BigInt).Value =
+                    index < ids.Length ? ids[index] : 0L;
+            var updated = observations.ToArray();
+            int responseBytes = 0;
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(
+                System.Data.CommandBehavior.SequentialAccess, token).ConfigureAwait(false);
+            while (await reader.ReadAsync(token).ConfigureAwait(false))
+            {
+                long textId = reader.GetInt64(0);
+                if (!candidates.TryGetValue(textId, out var candidate)) continue;
+                long charCount = reader.GetChars(1, 0, null, 0, 0);
+                if (charCount is <= 0 or > 4096) continue;
+                var chars = new char[(int)charCount];
+                byte[]? bytes = null;
+                try
+                {
+                    if (reader.GetChars(1, 0, chars, 0, chars.Length) != chars.Length) continue;
+                    var encoder = new UTF8Encoding(false, true);
+                    bytes = new byte[encoder.GetByteCount(chars)];
+                    if (bytes.Length is 0 or > 16 * 1024) continue;
+                    encoder.GetBytes(chars, bytes);
+                    if (!targetResponseBudget.TryAcceptOptional(bytes.Length)) continue;
+                    responseBytes = checked(responseBytes + bytes.Length);
+                    ProtectedSensitivePayload? protectedText = await owner.contentProtector.ProtectAsync(
+                        request.TargetId.Value, SensitivePayloadKind.QueryText, bytes, token).ConfigureAwait(false);
+                    if (protectedText is not null)
+                        updated[candidate.Index] = updated[candidate.Index].WithProtectedContent(protectedText);
+                }
+                catch (EncoderFallbackException) { }
+                finally
+                {
+                    Array.Clear(chars);
+                    if (bytes is not null) CryptographicOperations.ZeroMemory(bytes);
+                }
+            }
+            return (updated, responseBytes);
+        }
     }
 
     /// <summary>Builds one database view over the completed target-wide sample without copying global loss.</summary>
@@ -502,6 +617,13 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
     {
         (ActivityCollectorReadResult result, IReadOnlyDictionary<int, QueryPerformancePlanCacheDatabaseAccounting> perDatabase, int invalidRows, int invalidBytes) = await ReadPayloadCoreAsync(request, reader, true, targetResponseBudget, cancellationToken).ConfigureAwait(false);
         return new QueryPerformancePlanCacheParseResult(result.Payload.QueryPerformance.Items, result.SourceRowsRead, result.ResponseBytes, result.Loss, perDatabase, invalidRows, invalidBytes);
+    }
+
+    internal async ValueTask<IReadOnlyList<QueryPerformanceObservation>> ReadQueryStorePayloadForTestsAsync(
+        CollectorExecutionRequest request, DbDataReader reader, CancellationToken cancellationToken)
+    {
+        var parsed = await ReadPayloadCoreAsync(request, reader, false, null, cancellationToken).ConfigureAwait(false);
+        return parsed.Result.Payload.QueryPerformance.Items;
     }
 
     private async ValueTask<(ActivityCollectorReadResult Result, IReadOnlyDictionary<int, QueryPerformancePlanCacheDatabaseAccounting> PerDatabase, int InvalidRows, int InvalidBytes)> ReadPayloadCoreAsync(CollectorExecutionRequest request, DbDataReader reader, bool collectPlanCacheAccounting, SharedResponseBudget? targetResponseBudget, CancellationToken cancellationToken)
@@ -562,7 +684,8 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
                 plansByQuery[(databaseId, query)] = planCount + 1;
                 QueryPerformanceMetricSet metrics = new(ReadLong(reader, 5), ReadLong(reader, 6), ReadLong(reader, 7), ReadLong(reader, 8), ReadLong(reader, 9), ReadLong(reader, 10));
                 DateTimeOffset start = ReadUtc(reader, 11), end = ReadUtc(reader, 12), observed = ReadUtc(reader, 13); QueryStoreState state = ParseState(reader.IsDBNull(4) ? "unsupported" : reader.GetString(4)); QueryPerformanceSource source = reader.IsDBNull(3) || reader.GetString(3) != "query_store" ? QueryPerformanceSource.PlanCache : QueryPerformanceSource.QueryStore;
-                QueryPerformanceObservation observation = new(request.TargetId, request.TargetRevision, identity, plan, source, state, source == QueryPerformanceSource.QueryStore ? QueryMetricSemantics.QueryStoreInterval : QueryMetricSemantics.PlanCacheCumulative, metrics, start, end, observed, QueryCoverage.Complete, !reader.IsDBNull(14) && reader.GetBoolean(14), !reader.IsDBNull(15) && reader.GetBoolean(15));
+                long? textId = source == QueryPerformanceSource.QueryStore && reader.FieldCount > 16 && !reader.IsDBNull(16) ? reader.GetInt64(16) : null;
+                QueryPerformanceObservation observation = new(request.TargetId, request.TargetRevision, identity, plan, source, state, source == QueryPerformanceSource.QueryStore ? QueryMetricSemantics.QueryStoreInterval : QueryMetricSemantics.PlanCacheCumulative, metrics, start, end, observed, QueryCoverage.Complete, !reader.IsDBNull(14) && reader.GetBoolean(14), !reader.IsDBNull(15) && reader.GetBoolean(15), queryTextSourceId: textId);
                 if (!AcceptBytes(QueryPerformanceObservation.FixedEstimatedBytes)) break;
                 items.Add(observation); if (accounting is not null) accounting.EmittedRows++;
             }
@@ -658,6 +781,16 @@ internal sealed class SharedResponseBudget
         {
             if (byteLimitReached || responseBytes > maximumBytes - bytes) { byteLimitReached = true; rejectedResponseBytes = SaturatingAdd(rejectedResponseBytes, bytes); return false; }
             responseBytes += bytes; return true;
+        }
+    }
+    public bool TryAcceptOptional(int bytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bytes);
+        lock (gate)
+        {
+            if (byteLimitReached || responseBytes > maximumBytes - bytes) return false;
+            responseBytes += bytes;
+            return true;
         }
     }
     private static int SaturatingAdd(int left, int right) => left > int.MaxValue - right ? int.MaxValue : left + right;

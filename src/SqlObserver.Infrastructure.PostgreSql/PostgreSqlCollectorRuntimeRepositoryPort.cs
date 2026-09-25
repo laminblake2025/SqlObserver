@@ -338,7 +338,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "aeae9d3d2a2f373b9b66b0e68a0c2d51dcc548dad3fc175a118ba3a5cd007da9",
         "2470cbe3d16e3825a8c30ed0fde6d84e0eced0124f93ef8ff268f93b4523c59b",
         "59cfabc2a63efa7236e61170f6ad1e3afee79e5dd79e4367ed90e49fb18214b8",
-        "d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69",
+        "308bf667ca3148b96d164b4f3d0ab89ad1c99826495428b1a8589cdbf366aedb",
         "7b33dfe41e9e5dbdd8dec1afe5504e34add138f56181f039d838b3e0f854e6e9",
         "3803245b86c5f6b8a52fe13751717a670f2dbf96779596ba40bcaa75dbe248ee",
         "e71c0bf83c1285c3b63467448bd36c26bba8373c2a5a8ffb8785dbd764eecf57",
@@ -357,7 +357,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
         "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
         "57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de",
-        "ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f",
+        "1f1afa0fe152ff21f01782192bfbab5585da4e408cb2122df9975feb30bdec11",
         "5ab54f5ac93eb67a2626d0c005fc15cda9289d7fc0e3b083c52e7fc58a1a0987",
         "5ab54f5ac93eb67a2626d0c005fc15cda9289d7fc0e3b083c52e7fc58a1a0987",
         "5ab54f5ac93eb67a2626d0c005fc15cda9289d7fc0e3b083c52e7fc58a1a0987",
@@ -1168,6 +1168,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         var byQuery = new Dictionary<(int DatabaseId, string QueryFingerprint), QueryTextLink>();
         foreach (QueryPerformanceObservation observation in observations)
         {
+            if (observation.ProtectedContent is not null)
+                throw new InvalidDataException("Protected query text must be written under the lease before the M7 run commit.");
             SensitivePayloadReference? reference = observation.ContentReference;
             if (reference is null) continue;
             if (reference.Kind != SensitivePayloadKind.QueryText)

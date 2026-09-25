@@ -129,6 +129,10 @@ public sealed class CollectorPayload
         BlockingEdges = blockingEdges ?? new BlockingEdgeObservationBatch([]);
         Deadlocks = deadlocks ?? new DeadlockObservationBatch([]);
         QueryPerformance = queryPerformance ?? new QueryPerformanceObservationBatch([]);
+        int protectedCount = QueryPerformance.Items.Count(static item => item.ProtectedContent is not null);
+        int protectedBytes = QueryPerformance.Items.Sum(static item => item.ProtectedContent?.ProtectedSizeBytes ?? 0);
+        if (protectedCount > 64 || protectedBytes > 64 * (16 * 1024 + 48))
+            throw new ArgumentException("Protected query text sidecars exceed the bounded collector envelope.", nameof(queryPerformance));
         QueryPerformanceStatuses = new ReadOnlyCollection<QueryPerformanceDatabaseStatus>((queryPerformanceStatuses ?? Array.Empty<QueryPerformanceDatabaseStatus>()).ToArray());
         if (QueryPerformanceStatuses.Count > 256 || QueryPerformanceStatuses.Select(static x => x.DatabaseId).Distinct().Count() != QueryPerformanceStatuses.Count) throw new ArgumentException("Query performance database statuses must be bounded and unique.", nameof(queryPerformanceStatuses));
         QueryPerformanceTargetStatus = queryPerformanceTargetStatus;

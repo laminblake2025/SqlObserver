@@ -8,6 +8,7 @@ using SqlObserver.Domain.Repository;
 using SqlObserver.Domain.SensitiveData;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Collectors;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
@@ -105,22 +106,29 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
             new SensitivePayloadFingerprint(fingerprint), "AES-256-GCM", "m7-content-test",
             RandomNumberGenerator.GetBytes(12), RandomNumberGenerator.GetBytes(16),
             RandomNumberGenerator.GetBytes(64));
-        SensitivePayloadReference reference = payloadExists
-            ? await new PostgreSqlSensitivePayloadPort(collector).GetOrAddAsync(
-                new SensitivePayloadGetOrAddRequest(target, protectedPayload, lease, Timeout), CancellationToken.None)
-            : new SensitivePayloadReference(new SensitivePayloadId(Guid.NewGuid()),
-                SensitivePayloadKind.QueryText, protectedPayload.Fingerprint);
+        SensitivePayloadReference missingReference = new(new SensitivePayloadId(Guid.NewGuid()),
+            SensitivePayloadKind.QueryText, protectedPayload.Fingerprint);
         DateTimeOffset end = work.RepositoryTimeUtc.AddSeconds(-1);
         QueryOpaqueIdentity query = new(5, new string('a', 64));
         QueryPerformanceObservation observation = new(target, work.TargetRevision, query, null,
             QueryPerformanceSource.QueryStore, QueryStoreState.ReadWrite,
             QueryMetricSemantics.QueryStoreInterval, new QueryPerformanceMetricSet(1, 2, 1, 3, 0, 1),
             end.AddMinutes(-1), end, end, QueryCoverage.Complete, true, false,
-            attachReference ? reference : null);
+            attachReference && !payloadExists ? missingReference : null,
+            protectedContent: attachReference && payloadExists ? protectedPayload : null);
         CollectorPayload payload = new(queryPerformance: new QueryPerformanceObservationBatch([observation]),
             queryPerformanceStatuses: [new QueryPerformanceDatabaseStatus(5,
                 QueryPerformanceReadStatus.QueryStoreRows, "query_store_read", false, false,
                 1, 256, QueryStoreState.ReadWrite)]);
+        CollectorPayload unlinkedPayload = payload;
+        if (payloadExists && attachReference)
+        {
+            payload = await new QueryPerformanceProtectedContentCommitter(
+                new PostgreSqlSensitivePayloadPort(collector)).WriteAsync(
+                    payload, target, lease, Timeout, CancellationToken.None);
+            Assert.NotNull(Assert.Single(payload.QueryPerformance.Items).ContentReference);
+            Assert.Null(Assert.Single(payload.QueryPerformance.Items).ProtectedContent);
+        }
         var accounting = new CollectorRunAccounting(payload.ItemCount, payload.ItemCount,
             payload.EstimatedSizeBytes, payload.EstimatedSizeBytes);
         var summary = new CollectorRunSummary(run, target, work.TargetRevision, work.CollectorId,
@@ -128,6 +136,12 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
             CollectorRunReason.Completed, TimeSpan.FromMilliseconds(1), 1, accounting, CollectorLossEvidence.None);
         var commit = new CommitCollectorRunRequest(work, summary, payload,
             CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout);
+
+        if (payloadExists && attachReference)
+            await Assert.ThrowsAsync<InvalidDataException>(() => runtime.CommitRunAsync(
+                new CommitCollectorRunRequest(work, summary, unlinkedPayload,
+                    CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout),
+                CancellationToken.None).AsTask());
 
         if (payloadExists || !attachReference)
         {

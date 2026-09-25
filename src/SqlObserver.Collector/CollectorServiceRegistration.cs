@@ -131,7 +131,8 @@ public static class CollectorServiceRegistration
         services.AddSingleton(static provider => new SqlServerDeadlockCollector(
             provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerQueryPerformanceCollector(
-            provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>()));
+            provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>(),
+            provider.GetRequiredService<IQuerySensitiveContentProtector>()));
         services.AddSingleton(static _ => SqlServerReplicationAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerReplicationCollector(
             provider.GetRequiredService<SqlServerReplicationAssetCatalog>(),
@@ -168,6 +169,9 @@ public static class CollectorServiceRegistration
         services.AddSingleton<HostMetricsCollectorAdapter>();
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
+        services.AddSingleton<ISensitivePayloadPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().SensitivePayloads);
+        services.AddSingleton<QueryPerformanceProtectedContentCommitter>();
         services.AddSingleton<IDeadlockActivitySnapshotTrigger, DeadlockActivitySnapshotTrigger>();
         services.AddSingleton(provider => new CollectorScheduler(
             provider.GetRequiredService<CollectorRegistry>(),
@@ -180,7 +184,8 @@ public static class CollectorServiceRegistration
                 maxConcurrency: ReadMaxConcurrency(configuration),
                 new WorkerLeaseDuration(TimeSpan.FromSeconds(30)),
                 new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),
-            provider.GetRequiredService<IDeadlockActivitySnapshotTrigger>()));
+            provider.GetRequiredService<IDeadlockActivitySnapshotTrigger>(),
+            provider.GetRequiredService<QueryPerformanceProtectedContentCommitter>()));
         services.AddHostedService<CapabilityDiscoveryWorker>();
         services.AddSingleton<ILiveActivityRepository>(s => s.GetRequiredService<PostgreSqlCollectorDataPlane>().LiveActivity);
         services.AddSingleton<ILiveActivityProtector>(_ => new LiveActivityProtector(configuration["SqlObserver:LiveActivity:ProtectedKeyPath"]));

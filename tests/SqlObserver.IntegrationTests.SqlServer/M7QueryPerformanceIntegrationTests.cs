@@ -13,6 +13,47 @@ namespace SqlObserver.IntegrationTests.SqlServer;
 public sealed class M7QueryPerformanceIntegrationTests
 {
     [Fact]
+    public void PinnedQueryStoreTextAssetsSelectOnlyBoundedEligibleContent()
+    {
+        SqlServerQueryPerformanceCollectorAssetCatalog catalog =
+            SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded();
+        foreach (int major in new[] { 15, 16, 17 })
+        {
+            string metadata = catalog.Asset.GetQuery(major);
+            string text = catalog.TextQueriesByMajor[major];
+            Assert.Contains("MIN(q.query_text_id)=MAX(q.query_text_id)", metadata, StringComparison.Ordinal);
+            Assert.DoesNotContain("query_sql_text", metadata, StringComparison.Ordinal);
+            Assert.Contains("TOP (32)", text, StringComparison.Ordinal);
+            Assert.Contains("has_restricted_text = 0", text, StringComparison.Ordinal);
+            Assert.Contains("is_part_of_encrypted_module = 0", text, StringComparison.Ordinal);
+            Assert.Contains("DATALENGTH(query_sql_text) BETWEEN 2 AND 8192", text, StringComparison.Ordinal);
+            for (int index = 0; index < 32; index++)
+                Assert.Contains($"@text_id_{index}", text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task QueryStoreParserKeepsSourceTextIdOutOfPersistenceJson()
+    {
+        var collector = new SqlServerQueryPerformanceCollector(
+            SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded());
+        using DataTable table = CreatePlanCacheRows(1);
+        table.Columns.Add("query_text_id", typeof(long));
+        table.Rows[0]["source"] = "query_store";
+        table.Rows[0]["source_state"] = "read_write";
+        table.Rows[0]["query_text_id"] = 42L;
+        IReadOnlyList<QueryPerformanceObservation> observations = await collector.ReadQueryStorePayloadForTestsAsync(
+            Request(), table.CreateDataReader(), CancellationToken.None);
+        QueryPerformanceObservation observation = Assert.Single(observations);
+        Assert.Equal(42L, observation.QueryTextSourceId);
+        Assert.Null(observation.ProtectedContent);
+        string json = System.Text.Encoding.UTF8.GetString(QueryPerformancePersistencePayload.Serialize(
+            observations, [], null));
+        Assert.DoesNotContain("query_text_id", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("42", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     [Trait("Category", "RequiresSqlServer")]
     public async Task PlanCacheSourceIncludesOnlyInventoriedDatabasesBeforeApplyingItsRowBound()
     {

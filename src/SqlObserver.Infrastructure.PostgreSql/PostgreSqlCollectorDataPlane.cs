@@ -22,6 +22,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
         _fingerprintKey = fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey));
         Runtime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
+        SensitivePayloads = new PostgreSqlSensitivePayloadPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
@@ -38,6 +39,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     }
 
     public ICollectorRuntimeRepositoryPort Runtime { get; }
+    public ISensitivePayloadPort SensitivePayloads { get; }
     public ILiveActivityRepository LiveActivity { get; }
     public IWorkerLeasePort WorkerLeases { get; }
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }

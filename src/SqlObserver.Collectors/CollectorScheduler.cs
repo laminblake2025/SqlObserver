@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using SqlObserver.Application.Ports;
+using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
 
@@ -98,6 +99,7 @@ public sealed class CollectorScheduler
     private readonly WorkerExecutionId _workerExecutionId;
     private readonly CollectorSchedulerOptions _options;
     private readonly IDeadlockActivitySnapshotTrigger? _deadlockActivitySnapshotTrigger;
+    private readonly QueryPerformanceProtectedContentCommitter? _queryContentCommitter;
     private readonly ConcurrentDictionary<string, byte> _inFlight = new(StringComparer.Ordinal);
     private readonly object _dispatchGate = new();
     private readonly HashSet<Task<CollectorWorkDisposition>> _activeDispatches = [];
@@ -114,7 +116,8 @@ public sealed class CollectorScheduler
         CollectorExecutionEngine engine,
         WorkerExecutionId workerExecutionId,
         CollectorSchedulerOptions options,
-        IDeadlockActivitySnapshotTrigger? deadlockActivitySnapshotTrigger = null)
+        IDeadlockActivitySnapshotTrigger? deadlockActivitySnapshotTrigger = null,
+        QueryPerformanceProtectedContentCommitter? queryContentCommitter = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
@@ -123,6 +126,7 @@ public sealed class CollectorScheduler
         _workerExecutionId = workerExecutionId ?? throw new ArgumentNullException(nameof(workerExecutionId));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _deadlockActivitySnapshotTrigger = deadlockActivitySnapshotTrigger;
+        _queryContentCommitter = queryContentCommitter;
     }
 
     public ValueTask<CollectorCatalogReconcileResult> ReconcileCatalogAsync(
@@ -297,6 +301,16 @@ public sealed class CollectorScheduler
                             ownershipCancellation.Token)
                         .ConfigureAwait(false)
                     : CollectorExecutionEngine.CreateIneligibleResult(registration, work, runId, eligibility);
+
+                if (engineResult.Payload.QueryPerformance.Items.Any(static item => item.ProtectedContent is not null))
+                {
+                    if (_queryContentCommitter is null)
+                        throw new InvalidOperationException("Protected query text requires the fenced payload writer.");
+                    CollectorPayload linkedPayload = await _queryContentCommitter.WriteAsync(
+                        engineResult.Payload, work.TargetId, leaseIdentity, _options.RepositoryTimeout,
+                        ownershipCancellation.Token).ConfigureAwait(false);
+                    engineResult = new CollectorEngineResult(engineResult.Summary, linkedPayload, engineResult.NextCircuit);
+                }
 
                 if (renewalState.OwnershipLost)
                 {

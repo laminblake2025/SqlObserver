@@ -221,7 +221,7 @@ public sealed class M12SqlServerPassiveCertificationTests
         Assert.Equal("10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17", SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8", SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de", SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f", SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("1f1afa0fe152ff21f01782192bfbab5585da4e408cb2122df9975feb30bdec11", SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("5ab54f5ac93eb67a2626d0c005fc15cda9289d7fc0e3b083c52e7fc58a1a0987", SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.Equal("e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36", SqlServerReplicationAssetCatalog.LoadEmbedded().BundleChecksum);
     }
