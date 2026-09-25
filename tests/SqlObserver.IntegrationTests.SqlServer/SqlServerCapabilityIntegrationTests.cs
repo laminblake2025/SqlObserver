@@ -4,7 +4,9 @@ using System.Reflection;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
+using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Capabilities;
+using SqlObserver.Domain.Security;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.SqlServer;
@@ -318,6 +320,46 @@ public sealed class SqlServerCapabilityIntegrationTests
         bool nativeGrant = Assert.IsType<bool>(await probe.ExecuteScalarAsync(CancellationToken.None));
         Assert.Equal(nativeGrant ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied,
             metadata.Outcome);
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalSqlVolumeCollectorReadsBoundedPathFreeCapacity()
+    {
+        var connectionFactory = new LabSqlServerConnectionFactory();
+        var discovery = new SqlServerCapabilityDiscoveryPort(
+            connectionFactory,
+            SqlServerCapabilityAssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV2AssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV3AssetCatalog.LoadEmbedded(),
+            assetsV4: SqlServerCapabilityV4AssetCatalog.LoadEmbedded());
+        CapabilityDiscoveryRequest discoveryRequest = CreateLabRequest(TimeSpan.FromSeconds(10));
+        CapabilityProfile profile = await discovery.DiscoverAsync(discoveryRequest, CancellationToken.None);
+        Assert.Equal(16, profile.ServerIdentity?.Version.Major);
+
+        var collector = new SqlServerVolumeCapacityCollector(
+            new IdentityFingerprintKey(new byte[32]), connectionFactory);
+        var request = new CollectorExecutionRequest(
+            new CollectorRunId(Guid.NewGuid()),
+            discoveryRequest.TargetId,
+            discoveryRequest.TargetRevision,
+            discoveryRequest.ConnectionPolicy,
+            profile,
+            new CollectorAttemptNumber(1),
+            new CollectorExecutionTimeout(TimeSpan.FromSeconds(10)));
+        CollectorExecutionResult result = await collector.CollectAsync(request, CancellationToken.None);
+
+        Assert.Equal(CollectorRunOutcome.Succeeded, result.Outcome);
+        Assert.InRange(result.Accounting.SourceRowsRead, 1, collector.Manifest.Limits.MaxRows);
+        Assert.NotEmpty(result.Payload.SqlVolumes.Items);
+        Assert.All(result.Payload.SqlVolumes.Items, volume =>
+        {
+            Assert.Equal(request.TargetId, volume.TargetId);
+            Assert.Equal(request.TargetRevision, volume.TargetRevision);
+            Assert.Equal(64, volume.VolumeKey.Length);
+        });
+        Assert.Contains(result.Payload.SqlVolumes.Items, volume =>
+            volume.TotalBytes.HasValue && volume.AvailableBytes.HasValue);
     }
 
     [Fact]
