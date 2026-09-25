@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { getDatabaseFileHealth } from "../health/healthApi";
@@ -28,13 +28,19 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   const [files, setFiles] = useState<DatabaseFileHealthPage>();
   const [fileError, setFileError] = useState<string>();
   const [filesLoading, setFilesLoading] = useState(false);
+  const [filePageIndex, setFilePageIndex] = useState(0);
+  const [fileCursors, setFileCursors] = useState<readonly (string | undefined)[]>([undefined]);
+  const fileRequest = useRef<AbortController | undefined>(undefined);
   const isRewind = scope.range === "custom";
 
   useEffect(() => {
     const controller = new AbortController();
+    fileRequest.current = controller;
     setFiles(undefined);
     setFileError(undefined);
-    if (isRewind) { setFilesLoading(false); return () => controller.abort(); }
+    setFilePageIndex(0);
+    setFileCursors([undefined]);
+    if (isRewind) { fileRequest.current = undefined; setFilesLoading(false); return () => controller.abort(); }
     setFilesLoading(true);
     void getDatabaseFileHealth(instanceId, controller.signal)
       .then(page => {
@@ -47,9 +53,30 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setFileError(error instanceof Error ? error.message : "File evidence is unavailable.");
       })
-      .finally(() => { if (!controller.signal.aborted) setFilesLoading(false); });
+      .finally(() => { if (!controller.signal.aborted) { fileRequest.current = undefined; setFilesLoading(false); } });
     return () => controller.abort();
   }, [instanceId, refresh, isRewind]);
+
+  async function navigateFilePage(index: number, cursor?: string) {
+    if (fileRequest.current || !files || isRewind) return;
+    const controller = new AbortController();
+    fileRequest.current = controller;
+    setFilesLoading(true);
+    setFileError(undefined);
+    try {
+      const page = await getDatabaseFileHealth(instanceId, controller.signal, cursor);
+      if (controller.signal.aborted) return;
+      if (page.instanceId.toLowerCase() !== instanceId.toLowerCase())
+        throw new Error("File evidence did not match the selected server.");
+      setFiles(page);
+      setFilePageIndex(index);
+      setFileCursors(previous => [...previous.slice(0, index), cursor]);
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) setFileError(error instanceof Error ? error.message : "File evidence is unavailable.");
+    } finally {
+      if (!controller.signal.aborted) { fileRequest.current = undefined; setFilesLoading(false); }
+    }
+  }
 
   const chart = (title: string, metric: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h3>{title}</h3>
@@ -93,15 +120,15 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         <ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
-    <section className="panel" aria-label="Database file I/O">
+    <section className="panel" aria-label="Database file I/O" aria-busy={filesLoading}>
       <h3>Database file I/O</h3>
       {isRewind ? <p>Historical per-file counters are not available in Rewind. Choose a live range to see the latest snapshot.</p> : <>
         <p>Read and write stalls are kept separate. Average stall per operation uses cumulative counters since their source reset, not the selected time window. This is not free disk space.</p>
         {filesLoading && <p role="status">Loading file snapshot…</p>}
-        {fileError && <p role="alert">{fileError} Refresh to retry.</p>}
+        {fileError && <p role="alert">{fileError} Refresh or retry page navigation.</p>}
         {files && <><p className="activity-evidence">Collector: {files.collector.state.replaceAll("_", " ")} ·
-          Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)} · First {files.items.length} files
-          {files.nextCursor ? " · Additional files available outside this page" : " · End of file page"}.</p>
+          Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)} · Page {filePageIndex + 1} · {files.items.length} files
+          {files.nextCursor ? " · More files available" : " · End of file snapshot"}.</p>
           {files.items.length ? <div className="table-scroll"><table><caption>Latest SQL Server file counters</caption>
             <thead><tr><th scope="col">Database / file</th><th scope="col">Size</th>
               <th scope="col">Reads</th><th scope="col">Avg read stall (ms)</th>
@@ -113,6 +140,11 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
                 <td>{file.writeCount}</td><td>{lifetimeAverageStallMilliseconds(file.writeStallMilliseconds, file.writeCount) ?? "—"}</td>
                 <td>{formatDisplayTime(file.observedAtUtc, mode)}</td></tr>)}
             </tbody></table></div> : <p>No file rows were returned for this snapshot.</p>}
+          <nav aria-label="Database file pages" className="pager">
+            <button type="button" disabled={filesLoading || filePageIndex === 0} onClick={() => void navigateFilePage(0)}>First file page</button>{" "}
+            <button type="button" disabled={filesLoading || filePageIndex === 0} onClick={() => void navigateFilePage(filePageIndex - 1, fileCursors[filePageIndex - 1])}>Previous file page</button>{" "}
+            <button type="button" disabled={filesLoading || !files.nextCursor} onClick={() => void navigateFilePage(filePageIndex + 1, files.nextCursor ?? undefined)}>Next file page</button>
+          </nav>
         </>}
       </>}
     </section>

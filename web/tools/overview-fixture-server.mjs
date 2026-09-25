@@ -12,9 +12,13 @@ createServer(async(req,res)=>{try{
  if(/^\/api\/v1\/observation-targets\/[^/]+\/health\/files$/.test(url.pathname)){
   const instanceId=url.pathname.split('/')[4];
   if(!targets.some(t=>t.instanceId===instanceId))return send(res,{},404);
-  return send(res,{instanceId,repositoryTimeUtc:new Date().toISOString(),collector:{state:'current'},nextCursor:null,items:[
+  const cursor=url.searchParams.get('cursor');
+  if(cursor!==null&&cursor!=='synthetic-file-page-2')return send(res,{},400);
+  return send(res,{instanceId,repositoryTimeUtc:new Date().toISOString(),collector:{state:'current'},nextCursor:cursor===null?'synthetic-file-page-2':null,items:cursor===null?[
    {databaseId:5,fileId:1,logicalName:'Orders_data',sizeBytes:'8589934592',readCount:'120000',writeCount:'80000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:new Date().toISOString()},
    {databaseId:5,fileId:2,logicalName:'Orders_log',sizeBytes:'2147483648',readCount:'4000',writeCount:'35000',readStallMilliseconds:'8000',writeStallMilliseconds:'175000',observedAtUtc:new Date().toISOString()},
+  ]:[
+   {databaseId:7,fileId:1,logicalName:'Warehouse_data',sizeBytes:'17179869184',readCount:'90000',writeCount:'24000',readStallMilliseconds:'450000',writeStallMilliseconds:'96000',observedAtUtc:new Date().toISOString()},
   ]});
  }
  if(url.pathname==='/api/v1/overview'){

@@ -69,7 +69,7 @@ test("health fetch uses a target-scoped route and never reflects provider errors
     /\/api\/v1\/observation-targets\/\$\{encodeURIComponent\(instanceId\)\}\/health/,
   );
   assert.match(api, /\/health\/databases\?limit=\$\{String\(firstPageLimit\)\}/);
-  assert.match(api, /\/health\/files\?limit=\$\{String\(firstPageLimit\)\}/);
+  assert.match(api, /\/health\/files\?\$\{parameters\}/);
   assert.match(api, /Promise\.allSettled\(\[/);
   assert.match(api, /credentials: "same-origin"/);
   assert.match(api, /signal,/);
