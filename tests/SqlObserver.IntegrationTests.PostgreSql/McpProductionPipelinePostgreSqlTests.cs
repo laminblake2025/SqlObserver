@@ -61,10 +61,11 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                     (forecast_id, instance_id, target_revision, metric_key, horizon_start, horizon_end,
                      model, predicted_value, lower_bound, upper_bound, confidence, residual,
                      slope_per_day, source_generation, visibility_state, dimensions, dimension_hash, computed_at)
-                VALUES (gen_random_uuid(), @target, 1, 'host.cpu.percent',
-                        statement_timestamp() - interval '1 minute', statement_timestamp() + interval '1 hour',
-                        'mcp-pipeline', 42, 41, 43, 1, 0, 0, 1, 'complete', '{}'::jsonb,
-                        sha256(convert_to('{}', 'UTF8')), statement_timestamp() - interval '1 minute');
+                SELECT gen_random_uuid(), @target, 1, 'host.cpu.percent',
+                       statement_timestamp() - interval '1 minute', statement_timestamp() + interval '1 hour',
+                       'mcp-pipeline', 42 + g, 41 + g, 43 + g, 1, 0, 0, 1, 'complete', '{}'::jsonb,
+                       sha256(convert_to('{}', 'UTF8')), statement_timestamp() - interval '1 minute'
+                FROM generate_series(1, 3) AS values(g);
                 """, admin);
             forecast.Parameters.AddWithValue("target", targetIds[0]);
             await forecast.ExecuteNonQueryAsync();
@@ -121,28 +122,52 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
         if (withCursorSigner) Assert.Equal(targetIds.Order(), seen.Order());
         else Assert.Single(seen);
 
+        int totalCalls = pageCount;
         foreach (McpClientTool other in tools.Where(tool => tool.Name != "list_instances"))
         {
-            CallToolResult result = await client.CallToolAsync(new CallToolRequestParams
+            bool forecast = other.Name == "get_storage_forecast";
+            int expectedPages = forecast && withCursorSigner ? 3 : 1;
+            var forecastIds = new HashSet<Guid>();
+            string? forecastCursor = null;
+            for (int itemPage = 0; itemPage < expectedPages; itemPage++)
             {
-                Name = other.Name,
-                Arguments = ArgumentsFor(other.Name, targetIds[0]),
-            });
-            Assert.False(result.IsError, $"{other.Name}: {string.Join(" ", result.Content.OfType<TextContentBlock>().Select(x => x.Text))}");
-            JsonElement structured = Assert.IsType<JsonElement>(result.StructuredContent);
-            JsonElement schema = Assert.IsType<JsonElement>(other.ProtocolTool.OutputSchema);
-            EvaluationResults validation = JsonSchema.Build(schema).Evaluate(structured,
-                new EvaluationOptions { OutputFormat = OutputFormat.List });
-            Assert.True(validation.IsValid, $"{other.Name}: {JsonSerializer.Serialize(validation)}");
-            if (other.Name == "get_storage_forecast")
-                Assert.Equal("mcp-pipeline", Assert.Single(structured.GetProperty("data").GetProperty("items").EnumerateArray())
-                    .GetProperty("model").GetString());
-            Assert.Equal(1, await AuditCountAsync(auditConnection, other.Name));
+                Dictionary<string, JsonElement> arguments = ArgumentsFor(other.Name, targetIds[0]);
+                if (forecast)
+                {
+                    arguments["limit"] = JsonSerializer.SerializeToElement(1);
+                    if (forecastCursor is not null)
+                        arguments["cursor"] = JsonSerializer.SerializeToElement(forecastCursor);
+                }
+                CallToolResult result = await client.CallToolAsync(new CallToolRequestParams
+                {
+                    Name = other.Name, Arguments = arguments,
+                });
+                Assert.False(result.IsError, $"{other.Name}: {string.Join(" ", result.Content.OfType<TextContentBlock>().Select(x => x.Text))}");
+                JsonElement structured = Assert.IsType<JsonElement>(result.StructuredContent);
+                JsonElement schema = Assert.IsType<JsonElement>(other.ProtocolTool.OutputSchema);
+                EvaluationResults validation = JsonSchema.Build(schema).Evaluate(structured,
+                    new EvaluationOptions { OutputFormat = OutputFormat.List });
+                Assert.True(validation.IsValid, $"{other.Name}: {JsonSerializer.Serialize(validation)}");
+                if (forecast)
+                {
+                    JsonElement data = structured.GetProperty("data");
+                    JsonElement item = Assert.Single(data.GetProperty("items").EnumerateArray());
+                    Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
+                    Assert.True(forecastIds.Add(item.GetProperty("forecastId").GetGuid()));
+                    Assert.Equal(itemPage < 2, data.GetProperty("hasMore").GetBoolean());
+                    forecastCursor = data.TryGetProperty("nextCursor", out JsonElement next) && next.ValueKind == JsonValueKind.String
+                        ? next.GetString() : null;
+                    Assert.Equal(withCursorSigner && itemPage < 2, forecastCursor is not null);
+                }
+                Assert.Equal(itemPage + 1, await AuditCountAsync(auditConnection, other.Name));
+                totalCalls++;
+            }
+            if (forecast) Assert.Equal(expectedPages, forecastIds.Count);
         }
 
         await using NpgsqlCommand count = database.DataSource.CreateCommand(
             "SELECT count(*) FROM audit.mcp_invocation;");
-        Assert.Equal((long)(pageCount + tools.Count - 1), (long)(await count.ExecuteScalarAsync())!);
+        Assert.Equal((long)totalCalls, (long)(await count.ExecuteScalarAsync())!);
     }
 
     private static async Task<long> AuditCountAsync(NpgsqlConnection connection, string tool)
