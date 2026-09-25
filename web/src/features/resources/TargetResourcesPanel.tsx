@@ -7,6 +7,7 @@ import { OverviewChart } from "../overview/OverviewChart";
 import type { OverviewScope, OverviewSeries } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { fileSizeGib, lifetimeAverageStallMilliseconds } from "./resourceFileModel";
+import { SqlVolumePanel } from "./SqlVolumePanel";
 
 const memoryMetrics = new Set([
   "engine.process_physical_memory_bytes", "engine.os_available_memory_bytes",
@@ -120,6 +121,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         <ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
+    <SqlVolumePanel instanceId={instanceId} refresh={refresh} isRewind={isRewind} />
     <section className="panel" aria-label="Database file I/O" aria-busy={filesLoading}>
       <h3>Database file I/O</h3>
       {isRewind ? <p>Historical per-file counters are not available in Rewind. Choose a live range to see the latest snapshot.</p> : <>

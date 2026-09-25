@@ -14,8 +14,9 @@ table has forced target RLS, a 30-day retention policy, and daily partition
 upkeep under the existing lease.
 A focused PostgreSQL and HTTP test exercises exact 64-bit bytes, same/different
 digest replay, rollback after lease loss, target-scoped pagination, and protected
-cursors. The collector is not yet registered or scheduled because the Live UI
-cutover and remaining source-permission proofs have not landed.
+cursors. The Resources page now labels SQL-reported target-host capacity and
+shows it only in Live. The collector is not yet registered or scheduled pending
+the remaining source-permission proofs.
 
 ## Source evidence and scope
 
