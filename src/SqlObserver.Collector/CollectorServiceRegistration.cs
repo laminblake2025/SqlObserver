@@ -102,7 +102,8 @@ public static class CollectorServiceRegistration
             new SqlServerCapabilityDiscoveryPort(provider.GetRequiredService<IReplicationDistributionBindingResolver>()));
         services.AddSingleton<ICapabilityDiscoveryService, CapabilityDiscoveryService>();
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IQuerySensitiveContentProtector, UnavailableQuerySensitiveContentProtector>();
+        services.AddSingleton<IQuerySensitiveContentProtector>(_ =>
+            new QuerySensitiveContentProtector(configuration["SqlObserver:QueryContent:ProtectedKeyPath"]));
         services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
         services.AddSingleton(static _ => SqlServerCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerCoreEngineCollector(
