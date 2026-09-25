@@ -69,6 +69,15 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 """, admin);
             forecast.Parameters.AddWithValue("target", targetIds[0]);
             await forecast.ExecuteNonQueryAsync();
+            await using var diagnosticEvents = new NpgsqlCommand("""
+                INSERT INTO events.diagnostic_event
+                    (occurred_at, event_id, instance_id, event_kind, severity, safe_metadata, collected_at)
+                SELECT statement_timestamp() - interval '2 minutes', gen_random_uuid(), @target,
+                       'mcp.pipeline', g, '{}'::jsonb, statement_timestamp() - interval '2 minutes'
+                FROM generate_series(1, 3) AS values(g);
+                """, admin);
+            diagnosticEvents.Parameters.AddWithValue("target", targetIds[0]);
+            await diagnosticEvents.ExecuteNonQueryAsync();
         }
 
         await using var factory = new McpProductionPipelineFactory(database.ConnectionString, withCursorSigner);
@@ -126,17 +135,18 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
         foreach (McpClientTool other in tools.Where(tool => tool.Name != "list_instances"))
         {
             bool forecast = other.Name == "get_storage_forecast";
-            int expectedPages = forecast && withCursorSigner ? 3 : 1;
-            var forecastIds = new HashSet<Guid>();
-            string? forecastCursor = null;
+            bool paged = forecast || other.Name == "search_diagnostic_events";
+            int expectedPages = paged && withCursorSigner ? 3 : 1;
+            var seenIds = new HashSet<Guid>();
+            string? itemCursor = null;
             for (int itemPage = 0; itemPage < expectedPages; itemPage++)
             {
                 Dictionary<string, JsonElement> arguments = ArgumentsFor(other.Name, targetIds[0]);
-                if (forecast)
+                if (paged)
                 {
                     arguments["limit"] = JsonSerializer.SerializeToElement(1);
-                    if (forecastCursor is not null)
-                        arguments["cursor"] = JsonSerializer.SerializeToElement(forecastCursor);
+                    if (itemCursor is not null)
+                        arguments["cursor"] = JsonSerializer.SerializeToElement(itemCursor);
                 }
                 CallToolResult result = await client.CallToolAsync(new CallToolRequestParams
                 {
@@ -148,21 +158,21 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 EvaluationResults validation = JsonSchema.Build(schema).Evaluate(structured,
                     new EvaluationOptions { OutputFormat = OutputFormat.List });
                 Assert.True(validation.IsValid, $"{other.Name}: {JsonSerializer.Serialize(validation)}");
-                if (forecast)
+                if (paged)
                 {
                     JsonElement data = structured.GetProperty("data");
                     JsonElement item = Assert.Single(data.GetProperty("items").EnumerateArray());
-                    Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
-                    Assert.True(forecastIds.Add(item.GetProperty("forecastId").GetGuid()));
+                    if (forecast) Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
+                    Assert.True(seenIds.Add(item.GetProperty(forecast ? "forecastId" : "eventId").GetGuid()));
                     Assert.Equal(itemPage < 2, data.GetProperty("hasMore").GetBoolean());
-                    forecastCursor = data.TryGetProperty("nextCursor", out JsonElement next) && next.ValueKind == JsonValueKind.String
+                    itemCursor = data.TryGetProperty("nextCursor", out JsonElement next) && next.ValueKind == JsonValueKind.String
                         ? next.GetString() : null;
-                    Assert.Equal(withCursorSigner && itemPage < 2, forecastCursor is not null);
+                    Assert.Equal(withCursorSigner && itemPage < 2, itemCursor is not null);
                 }
                 Assert.Equal(itemPage + 1, await AuditCountAsync(auditConnection, other.Name));
                 totalCalls++;
             }
-            if (forecast) Assert.Equal(expectedPages, forecastIds.Count);
+            if (paged) Assert.Equal(expectedPages, seenIds.Count);
         }
 
         await using NpgsqlCommand count = database.DataSource.CreateCommand(
