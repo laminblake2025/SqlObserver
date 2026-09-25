@@ -3,10 +3,10 @@ import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { LiveSessionsPanel } from "./LiveSessionsPanel";
 
-import { getActivitySnapshot, getBlockingHistoryPage } from "./activityApi";
+import { getActivitySnapshot, getBlockingHistoryPage, getServerWaitHistoryPage } from "./activityApi";
 import { resolveActivityWindow } from "./activityWindowModel";
 import { groupWaitDeltas } from "./waitCategoryModel";
-import type { ActivityPage, ActivityWait, BlockingHistoryItem } from "./activityTypes";
+import type { ActivityPage, ActivityWait, BlockingHistoryItem, ServerWaitHistoryItem } from "./activityTypes";
 import type { OverviewScope } from "../overview/overviewTypes";
 
 export interface TargetActivityPanelProps {
@@ -28,7 +28,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
   const [message, setMessage] = useState<string>();
   const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to, refresh]);
   const window = selected.state === "available" ? selected.window : undefined;
-  const historyUnavailableReason = selected.state === "unavailable" ? selected.message : selected.liveSnapshotsAvailable ? undefined : "Session snapshots are retained for 24 hours; this selected window is older. Blocking history may still be available below.";
+  const historyUnavailableReason = selected.state === "unavailable" ? selected.message : selected.liveSnapshotsAvailable ? undefined : "Session snapshots are retained for 24 hours; this selected window is older. Wait and blocking history may still be available below.";
   const historySelection = window ?? null;
   useEffect(() => {
     const controller = new AbortController();
@@ -43,9 +43,9 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
   return (
     <section className="activity-screen" aria-labelledby="activity-heading">
       <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} />
-      <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Blocking history follows the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+      <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Wait and blocking history follow the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
-      <p className="activity-evidence">{window ? `Selected blocking-history window: ${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}.` : selected.state === "unavailable" ? selected.message : null}</p>
+      <p className="activity-evidence">{window ? `Selected activity-history window: ${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}.` : selected.state === "unavailable" ? selected.message : null}</p>
       {message === undefined ? null : <p className="status-message">{message}</p>}
       {snapshot === undefined && message === undefined ? <p>Loading bounded activity evidence…</p> : null}
       {snapshot === undefined ? null : <>
@@ -60,6 +60,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
         {snapshot.blocking && <Evidence page={snapshot.blocking} />}
         {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "Root resolution"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
         {snapshot.history && <BlockingHistory key={`${instanceId}/${window?.fromUtc}/${window?.toUtc}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
+        {snapshot.waitHistory && <WaitHistory key={`${instanceId}/${window?.fromUtc}/${window?.toUtc}/${snapshot.waitHistory.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.waitHistory} />}
       </>}
       </div></details>
     </section>
@@ -113,6 +114,45 @@ function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: str
       <button type="button" disabled={loading || pageIndex === 0 || !window} onClick={() => void navigate(0)}>First history page</button>{" "}
       <button type="button" disabled={loading || pageIndex === 0 || !window} onClick={() => void navigate(pageIndex - 1, cursors[pageIndex - 1])}>Newer history</button>{" "}
       <button type="button" disabled={loading || page.nextCursor === undefined || !window} onClick={() => void navigate(pageIndex + 1, page.nextCursor)}>Older history</button>
+    </nav>
+  </section>;
+}
+
+function WaitHistory({ instanceId, initialPage }: { readonly instanceId: string; readonly initialPage: ActivityPage<ServerWaitHistoryItem> }) {
+  const { mode } = useTimeDisplay();
+  const [page, setPage] = useState(initialPage);
+  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+  const request = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => request.current?.abort(), []);
+  const window = initialPage.fromUtc && initialPage.toUtc ? { fromUtc: initialPage.fromUtc, toUtc: initialPage.toUtc } : undefined;
+  async function navigate(index: number, cursor?: string) {
+    if (!window || request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true); setError(undefined);
+    try {
+      const next = await getServerWaitHistoryPage(instanceId, window, controller.signal, cursor);
+      if (controller.signal.aborted) return;
+      setPage(next); setPageIndex(index);
+      setCursors(previous => [...previous.slice(0, index), cursor]);
+    } catch (failure: unknown) {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Wait history could not be loaded. Try again.");
+    } finally {
+      if (!controller.signal.aborted) { request.current = undefined; setLoading(false); }
+    }
+  }
+  return <section aria-label="Server wait history" aria-busy={loading}>
+    <p className="activity-evidence">Wait history window: {window ? `${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}` : "bounded window unavailable"}. Rows use the preceding comparable collector run as a baseline; totals remain available when a baseline is missing or resets. {page.nextCursor ? "More bounded history is available." : ""}</p>
+    <ActivityTable title="Server wait history" columns={[mode === "local" ? "Observed local" : "Observed UTC", "Wait type", "Tasks", "Total wait ms", "Wait delta ms", "Signal delta ms", "Baseline/evidence"]} rows={page.items.map(item => [formatDisplayTime(item.wait.observedAtUtc, mode), item.wait.waitType, item.wait.waitingTasksCount, item.wait.waitTimeMilliseconds, item.wait.waitTimeMillisecondsDelta ?? "—", item.wait.signalWaitTimeMillisecondsDelta ?? "—", `${item.wait.resetDetected ? "reset" : item.wait.baselineAvailable ? "comparable" : "no baseline"} · ${item.evidence.freshness}/${item.evidence.outcome}${item.evidence.isPartial ? " · partial" : ""}`])} />
+    <p role="status">Page {pageIndex + 1} · {page.items.length} observations{loading ? " · Loading wait history…" : page.nextCursor === undefined ? " · End of this window" : ""}</p>
+    {error && <p role="alert">{error} The displayed page is unchanged. Retry using the navigation buttons.</p>}
+    <nav aria-label="Server wait history pages">
+      <button type="button" disabled={loading || pageIndex === 0 || !window} onClick={() => void navigate(0)}>First wait history page</button>{" "}
+      <button type="button" disabled={loading || pageIndex === 0 || !window} onClick={() => void navigate(pageIndex - 1, cursors[pageIndex - 1])}>Newer waits</button>{" "}
+      <button type="button" disabled={loading || page.nextCursor === undefined || !window} onClick={() => void navigate(pageIndex + 1, page.nextCursor)}>Older waits</button>
     </nav>
   </section>;
 }

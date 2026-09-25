@@ -1,5 +1,5 @@
-import type { ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem } from "./activityTypes";
-import { getPage, parseEdge, parseHistory, parseRequest, parseSession, parseWait } from "./activityParser.mjs";
+import type { ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem, ServerWaitHistoryItem } from "./activityTypes";
+import { getPage, parseEdge, parseHistory, parseRequest, parseSession, parseWait, parseWaitHistory } from "./activityParser.mjs";
 export { ActivityRequestError, safeStatusMessage } from "./activityParser.mjs";
 
 const pageLimit = 25;
@@ -12,6 +12,14 @@ export async function getBlockingHistoryPage(instanceId: string, window: { reado
   return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/history?${parameters}`, parseHistory, instanceId, signal);
 }
 
+export async function getServerWaitHistoryPage(instanceId: string, window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal, cursor?: string): Promise<ActivityPage<ServerWaitHistoryItem>> {
+  const from = Date.parse(window.fromUtc), to = Date.parse(window.toUtc);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 24 * 3_600_000) throw new Error("Invalid wait history window.");
+  const parameters = new URLSearchParams({ limit: String(pageLimit), fromUtc: window.fromUtc, toUtc: window.toUtc });
+  if (cursor !== undefined) parameters.set("cursor", cursor);
+  return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/waits/history?${parameters}`, parseWaitHistory, instanceId, signal);
+}
+
 export async function getCurrentBlockingPage(instanceId: string, signal: AbortSignal): Promise<ActivityPage<BlockingEdge>> {
   return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal);
 }
@@ -19,7 +27,7 @@ export async function getCurrentBlockingPage(instanceId: string, signal: AbortSi
 export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historySelection: 1 | 6 | 24 | { readonly fromUtc: string; readonly toUtc: string } | null = 1): Promise<{
   readonly sessions?: ActivityPage<ActivitySession>; readonly requests?: ActivityPage<ActivityRequest>;
   readonly waits?: ActivityPage<ActivityWait>; readonly blocking?: ActivityPage<BlockingEdge>;
-  readonly history?: ActivityPage<BlockingHistoryItem>; readonly errors: readonly string[];
+  readonly history?: ActivityPage<BlockingHistoryItem>; readonly waitHistory?: ActivityPage<ServerWaitHistoryItem>; readonly errors: readonly string[];
 }> {
   if (typeof historySelection === "number" && ![1, 6, 24].includes(historySelection)) throw new Error("Invalid blocking history window.");
   const base = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity`;
@@ -29,12 +37,13 @@ export async function getActivitySnapshot(instanceId: string, signal: AbortSigna
   const historyWindow = typeof historySelection === "number"
     ? { fromUtc: new Date(now - historySelection * 3_600_000).toISOString(), toUtc: new Date(now).toISOString() }
     : historySelection;
-  const [sessions, requests, waits, blocking, history] = await Promise.all([
+  const [sessions, requests, waits, blocking, history, waitHistory] = await Promise.all([
     read("Sessions", getPage(`${base}/sessions?limit=${String(pageLimit)}`, parseSession, instanceId, signal)),
     read("Requests", getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal)),
     read("Waits", getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal)),
     read("Current blocking", getPage(`${base}/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal)),
     historyWindow === null ? Promise.resolve(undefined) : read("Blocking history", getBlockingHistoryPage(instanceId, historyWindow, signal)),
+    historyWindow === null ? Promise.resolve(undefined) : read("Wait history", getServerWaitHistoryPage(instanceId, historyWindow, signal)),
   ]);
-  return { sessions, requests, waits, blocking, history, errors };
+  return { sessions, requests, waits, blocking, history, waitHistory, errors };
 }

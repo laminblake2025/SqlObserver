@@ -137,6 +137,32 @@ public sealed class ListBlockingHistoryQuery
     public RepositoryCallTimeout Timeout { get; }
 }
 
+public sealed class ListServerWaitHistoryQuery
+{
+    public ListServerWaitHistoryQuery(AuthorizationContext authorization,
+        MonitoredInstanceId targetId, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        int maxResults, ServerWaitHistoryCursor? cursor, RepositoryCallTimeout timeout)
+    {
+        Authorization = authorization ?? throw new ArgumentNullException(nameof(authorization));
+        _ = new ListServerWaitHistoryRepositoryRequest(targetId, fromUtc, toUtc,
+            maxResults, cursor, timeout);
+        TargetId = targetId;
+        FromUtc = fromUtc;
+        ToUtc = toUtc;
+        MaxResults = maxResults;
+        Cursor = cursor;
+        Timeout = timeout;
+    }
+
+    public AuthorizationContext Authorization { get; }
+    public MonitoredInstanceId TargetId { get; }
+    public DateTimeOffset FromUtc { get; }
+    public DateTimeOffset ToUtc { get; }
+    public int MaxResults { get; }
+    public ServerWaitHistoryCursor? Cursor { get; }
+    public RepositoryCallTimeout Timeout { get; }
+}
+
 public interface IActivityProjectionQueryService
 {
     ValueTask<ActivitySessionPage?> ListSessionsAsync(
@@ -157,6 +183,10 @@ public interface IActivityProjectionQueryService
 
     ValueTask<BlockingHistoryPage?> ListBlockingHistoryAsync(
         ListBlockingHistoryQuery query,
+        CancellationToken cancellationToken);
+
+    ValueTask<ServerWaitHistoryPage?> ListServerWaitHistoryAsync(
+        ListServerWaitHistoryQuery query,
         CancellationToken cancellationToken);
 }
 
@@ -259,6 +289,22 @@ public sealed class ActivityProjectionQueryService : IActivityProjectionQuerySer
             throw new InvalidDataException("The activity repository returned history outside the requested target.");
         }
 
+        return result;
+    }
+
+    public async ValueTask<ServerWaitHistoryPage?> ListServerWaitHistoryAsync(
+        ListServerWaitHistoryQuery query, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        Authorize(query.Authorization, query.TargetId);
+        ServerWaitHistoryPage? result = await _repository.ListServerWaitHistoryAsync(
+            new ListServerWaitHistoryRepositoryRequest(query.TargetId, query.FromUtc,
+                query.ToUtc, query.MaxResults, query.Cursor, query.Timeout),
+            cancellationToken).ConfigureAwait(false);
+        if (result is not null &&
+            (result.TargetId != query.TargetId || result.FromUtc != query.FromUtc ||
+             result.ToUtc != query.ToUtc))
+            throw new InvalidDataException("The activity repository returned wait history outside the requested scope.");
         return result;
     }
 

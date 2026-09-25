@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Auditing;
@@ -27,6 +28,7 @@ public sealed class M5ActivityHttpContractTests : IClassFixture<M5ActivityApiFac
     [InlineData("sessions")]
     [InlineData("requests")]
     [InlineData("waits")]
+    [InlineData("waits/history?fromUtc=2026-08-23T17:00:00Z&toUtc=2026-08-23T18:00:00Z")]
     [InlineData("blocking/current")]
     [InlineData("blocking/history?fromUtc=2026-08-23T17:00:00Z&toUtc=2026-08-23T18:00:00Z")]
     public async Task AuthorizedActivityRoutesRemainTargetScopedAndBounded(string route)
@@ -47,7 +49,7 @@ public sealed class M5ActivityHttpContractTests : IClassFixture<M5ActivityApiFac
         try
         {
             using HttpClient client = CreateClient("viewer");
-            foreach (string route in new[] { "sessions", "requests", "waits", "blocking/current", "blocking/history?fromUtc=2026-08-23T17:00:00Z&toUtc=2026-08-23T18:00:00Z" })
+            foreach (string route in new[] { "sessions", "requests", "waits", "waits/history?fromUtc=2026-08-23T17:00:00Z&toUtc=2026-08-23T18:00:00Z", "blocking/current", "blocking/history?fromUtc=2026-08-23T17:00:00Z&toUtc=2026-08-23T18:00:00Z" })
             {
                 HttpResponseMessage response = await client.GetAsync($"/api/v1/observation-targets/{M5ActivityApiFactory.TargetId:D}/activity/{route}");
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -92,6 +94,25 @@ public sealed class M5ActivityHttpContractTests : IClassFixture<M5ActivityApiFac
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task WaitHistoryCursorCannotChangeTargetOrWindow()
+    {
+        using HttpClient client = CreateClient("viewer");
+        string from = "2026-08-23T17:00:00Z", to = "2026-08-23T18:00:00Z";
+        string payload = string.Join('\n', "vh", M5ActivityApiFactory.TargetId.ToString("N"),
+            "2026-08-23T17:00:00.0000000+00:00", "2026-08-23T18:00:00.0000000+00:00",
+            "2026-08-23T17:59:00.0000000+00:00",
+            "cccccccccccc4ccc8ccccccccccccccc", "LCK_M_S");
+        string cursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payload))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        HttpResponseMessage changedWindow = await client.GetAsync(
+            $"/api/v1/observation-targets/{M5ActivityApiFactory.TargetId:D}/activity/waits/history?fromUtc=2026-08-23T16:00:00Z&toUtc={to}&cursor={cursor}");
+        Assert.Equal(HttpStatusCode.BadRequest, changedWindow.StatusCode);
+        HttpResponseMessage changedTarget = await client.GetAsync(
+            $"/api/v1/observation-targets/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/activity/waits/history?fromUtc={from}&toUtc={to}&cursor={cursor}");
+        Assert.Equal(HttpStatusCode.BadRequest, changedTarget.StatusCode);
+    }
+
     private HttpClient CreateClient(string? identity = null)
     {
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -108,6 +129,7 @@ public sealed class M5ActivityApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("ContractTesting");
+        builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IActivityProjectionQueryService>();
@@ -146,6 +168,7 @@ internal sealed class FakeActivityQueryService : IActivityProjectionQueryService
     public ValueTask<ActivitySessionPage?> ListSessionsAsync(ListActivitySessionsQuery query, CancellationToken cancellationToken) => ReturnPages || ReturnInvalidPage ? ValueTask.FromResult<ActivitySessionPage?>(SessionPage(query)) : Missing<ActivitySessionPage>(query.Authorization, query.TargetId, query.MaxResults);
     public ValueTask<ActivityRequestPage?> ListRequestsAsync(ListActivityRequestsQuery query, CancellationToken cancellationToken) => ReturnPages ? ValueTask.FromResult<ActivityRequestPage?>(RequestPage(query)) : Missing<ActivityRequestPage>(query.Authorization, query.TargetId, query.MaxResults);
     public ValueTask<ServerWaitSummaryPage?> ListWaitSummaryAsync(ListServerWaitSummaryQuery query, CancellationToken cancellationToken) => ReturnPages ? ValueTask.FromResult<ServerWaitSummaryPage?>(WaitPage(query)) : Missing<ServerWaitSummaryPage>(query.Authorization, query.TargetId, query.MaxResults);
+    public ValueTask<ServerWaitHistoryPage?> ListServerWaitHistoryAsync(ListServerWaitHistoryQuery query, CancellationToken cancellationToken) => ReturnPages ? ValueTask.FromResult<ServerWaitHistoryPage?>(WaitHistoryPage(query)) : Missing<ServerWaitHistoryPage>(query.Authorization, query.TargetId, query.MaxResults);
     public ValueTask<CurrentBlockingPage?> ListCurrentBlockingAsync(ListCurrentBlockingQuery query, CancellationToken cancellationToken) => ReturnPages ? ValueTask.FromResult<CurrentBlockingPage?>(BlockingPage(query)) : Missing<CurrentBlockingPage>(query.Authorization, query.TargetId, query.MaxResults);
     public ValueTask<BlockingHistoryPage?> ListBlockingHistoryAsync(ListBlockingHistoryQuery query, CancellationToken cancellationToken) => ReturnPages ? ValueTask.FromResult<BlockingHistoryPage?>(HistoryPage(query)) : Missing<BlockingHistoryPage>(query.Authorization, query.TargetId, query.MaxResults);
 
@@ -153,6 +176,7 @@ internal sealed class FakeActivityQueryService : IActivityProjectionQueryService
     private ActivitySessionPage SessionPage(ListActivitySessionsQuery query) => new(query.TargetId, Evidence(ReturnInvalidPage ? "activity.requests" : "activity.sessions"), [new ActivitySessionSnapshotItem(1, ActivitySessionStatus.Running, true, 5, 0, 1, 2, 3, 4, 5, 6, ObservedAt)], null, RepositoryAt);
     private static ActivityRequestPage RequestPage(ListActivityRequestsQuery query) => new(query.TargetId, Evidence("activity.requests"), [new ActivityRequestSnapshotItem(1, 1, ActivityRequestStatus.Running, ActivityRequestCommand.Select, 5, 1, 2, 3, 4, 5, 6, 25, ObservedAt)], null, RepositoryAt);
     private static ServerWaitSummaryPage WaitPage(ListServerWaitSummaryQuery query) => new(query.TargetId, Evidence("waits.server"), null, [new ServerWaitSummaryItem(new SqlServerWaitType("LCK_M_S"), 1, 2, 3, 1, false, false, null, null, null, ObservedAt)], null, RepositoryAt);
+    private static ServerWaitHistoryPage WaitHistoryPage(ListServerWaitHistoryQuery query) => new(query.TargetId, query.FromUtc, query.ToUtc, [new ServerWaitHistoryItem(Evidence("waits.server"), null, new ServerWaitSummaryItem(new SqlServerWaitType("LCK_M_S"), 1, 2, 3, 1, false, false, null, null, null, ObservedAt))], null, RepositoryAt);
     private static CurrentBlockingPage BlockingPage(ListCurrentBlockingQuery query) => new(query.TargetId, Evidence("blocking.current"), [new BlockingEdgeSnapshotItem(1, BlockingBlockerKind.Session, 2, new SqlServerWaitType("LCK_M_S"), 1, 2, 2, 1, BlockingChainState.Resolved, ObservedAt)], null, RepositoryAt);
     private static BlockingHistoryPage HistoryPage(ListBlockingHistoryQuery query) => new(query.TargetId, query.FromUtc, query.ToUtc, [new BlockingHistoryItem(Evidence("blocking.current"), new BlockingEdgeSnapshotItem(1, BlockingBlockerKind.Session, 2, new SqlServerWaitType("LCK_M_S"), 1, 2, 2, 1, BlockingChainState.Resolved, ObservedAt))], null, RepositoryAt);
 

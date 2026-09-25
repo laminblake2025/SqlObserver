@@ -1,5 +1,5 @@
 declare module "*.mjs" {
-  import type { ActivityEvidence, ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem } from "./features/activity/activityTypes";
+  import type { ActivityEvidence, ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem, ServerWaitHistoryItem } from "./features/activity/activityTypes";
   export const pageLimit: number;
   export const maximumResponseBytes: number;
   export class ActivityRequestError extends Error {}
@@ -11,6 +11,7 @@ declare module "*.mjs" {
   export function parseWait(value: unknown): ActivityWait;
   export function parseEdge(value: unknown): BlockingEdge;
   export function parseHistory(value: unknown): BlockingHistoryItem;
+  export function parseWaitHistory(value: unknown): ServerWaitHistoryItem;
   export function readBoundedBody(response: Response, signal: AbortSignal, maximumBytes?: number): Promise<string>;
   export function safeCursor(value: unknown): string;
   export function safeStatusMessage(status: number): string;

@@ -25,6 +25,7 @@ public static class TargetActivityEndpoints
         group.MapGet("/sessions", ListSessionsAsync);
         group.MapGet("/requests", ListRequestsAsync);
         group.MapGet("/waits", ListWaitsAsync);
+        group.MapGet("/waits/history", ListWaitHistoryAsync);
         group.MapGet("/blocking/current", ListCurrentBlockingAsync);
         group.MapGet("/blocking/history", ListBlockingHistoryAsync);
         return endpoints;
@@ -227,6 +228,42 @@ public static class TargetActivityEndpoints
         {
             return InvalidRequest(correlationId);
         }
+    }
+
+    private static async Task<IResult> ListWaitHistoryAsync(
+        HttpContext httpContext,
+        Guid instanceId,
+        IActivityProjectionQueryService activity,
+        WindowsGroupRoleResolver authorizationResolver,
+        DateTimeOffset? fromUtc = null,
+        DateTimeOffset? toUtc = null,
+        int limit = DefaultPageSize,
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        AuditCorrelationId correlationId = ApiCorrelation.Begin(httpContext);
+        try
+        {
+            if (fromUtc is null || toUtc is null) return InvalidRequest(correlationId);
+            AuthorizationContext authorization = authorizationResolver.Resolve(httpContext.User);
+            var targetId = new MonitoredInstanceId(instanceId);
+            ServerWaitHistoryCursor? decodedCursor = cursor is null
+                ? null : ActivityCursorCodec.DecodeWaitHistory(cursor);
+            ServerWaitHistoryPage? page = await activity.ListServerWaitHistoryAsync(
+                new ListServerWaitHistoryQuery(authorization, targetId, fromUtc.Value,
+                    toUtc.Value, limit, decodedCursor, RepositoryTimeout), cancellationToken)
+                .ConfigureAwait(false);
+            if (page is null) return NotFound(correlationId);
+            Validate(page, limit, decodedCursor, fromUtc.Value, toUtc.Value);
+            return Results.Ok(new ServerWaitHistoryPageResponse(page.TargetId.Value,
+                page.FromUtc, page.ToUtc, page.RepositoryTimeUtc,
+                page.Items.Select(item => new ServerWaitHistoryResponse(
+                    Map(item.Evidence, page.RepositoryTimeUtc, historical: true)!,
+                    item.BaselineRunId?.Value, Map(item.Wait))).ToArray(),
+                page.NextCursor is null ? null : ActivityCursorCodec.Encode(page.NextCursor)));
+        }
+        catch (UnauthorizedAccessException) { return Forbidden(correlationId); }
+        catch (ArgumentException) { return InvalidRequest(correlationId); }
     }
 
     private static async Task<IResult> ListBlockingHistoryAsync(
@@ -563,6 +600,30 @@ public static class TargetActivityEndpoints
         }
     }
 
+    private static void Validate(ServerWaitHistoryPage page, int requestedLimit,
+        ServerWaitHistoryCursor? requestedCursor, DateTimeOffset requestedFromUtc,
+        DateTimeOffset requestedToUtc)
+    {
+        if (page.Items.Count > requestedLimit || page.FromUtc != requestedFromUtc ||
+            page.ToUtc != requestedToUtc) throw InvalidPage();
+        WaitHistoryKey? previous = requestedCursor is null
+            ? null : WaitHistoryKey.From(requestedCursor);
+        foreach (ServerWaitHistoryItem item in page.Items)
+        {
+            if (item.Evidence.CollectorId.Value != "waits.server" ||
+                item.Wait.ObservedAtUtc < page.FromUtc ||
+                item.Wait.ObservedAtUtc >= page.ToUtc) throw InvalidPage();
+            WaitHistoryKey current = WaitHistoryKey.From(item);
+            if (previous is not null && current.CompareTo(previous.Value) >= 0)
+                throw InvalidPage();
+            previous = current;
+        }
+        if (page.NextCursor is not null &&
+            (previous is null ||
+             WaitHistoryKey.From(page.NextCursor).CompareTo(previous.Value) != 0))
+            throw InvalidPage();
+    }
+
     private static TimeSpan FreshnessWindow(string collectorId) => collectorId switch
     {
         "activity.sessions" => TimeSpan.FromSeconds(30),
@@ -735,6 +796,23 @@ public static class TargetActivityEndpoints
             return comparison != 0 ? comparison : Edge.CompareTo(other.Edge);
         }
     }
+
+    private readonly record struct WaitHistoryKey(DateTimeOffset ObservedAtUtc,
+        string RunId, string WaitType) : IComparable<WaitHistoryKey>
+    {
+        public static WaitHistoryKey From(ServerWaitHistoryCursor value) => new(
+            value.ObservedAtUtc, value.RunId.Value.ToString("N"), value.WaitType.Value);
+        public static WaitHistoryKey From(ServerWaitHistoryItem value) => new(
+            value.Wait.ObservedAtUtc, value.Evidence.RunId.Value.ToString("N"),
+            value.Wait.WaitType.Value);
+        public int CompareTo(WaitHistoryKey other)
+        {
+            int comparison = ObservedAtUtc.CompareTo(other.ObservedAtUtc);
+            if (comparison != 0) return comparison;
+            comparison = StringComparer.Ordinal.Compare(RunId, other.RunId);
+            return comparison != 0 ? comparison : StringComparer.Ordinal.Compare(WaitType, other.WaitType);
+        }
+    }
 }
 
 internal static class ActivityCursorCodec
@@ -788,6 +866,16 @@ internal static class ActivityCursorCodec
         cursor.BlockedSessionId.ToString(CultureInfo.InvariantCulture),
         ((int)cursor.BlockerKind).ToString(CultureInfo.InvariantCulture),
         cursor.BlockerSessionId?.ToString(CultureInfo.InvariantCulture) ?? "-",
+        cursor.WaitType.Value));
+
+    internal static string Encode(ServerWaitHistoryCursor cursor) => Encode(string.Join(
+        '\n',
+        "vh",
+        cursor.TargetId.Value.ToString("N"),
+        cursor.FromUtc.ToString("O", CultureInfo.InvariantCulture),
+        cursor.ToUtc.ToString("O", CultureInfo.InvariantCulture),
+        cursor.ObservedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+        cursor.RunId.Value.ToString("N"),
         cursor.WaitType.Value));
 
     internal static ActivitySessionCursor DecodeSession(string encoded)
@@ -852,6 +940,18 @@ internal static class ActivityCursorCodec
             kind,
             blockerSessionId,
             new SqlServerWaitType(parts[9]));
+    }
+
+    internal static ServerWaitHistoryCursor DecodeWaitHistory(string encoded)
+    {
+        string[] parts = DecodeParts(encoded, "vh", 7);
+        return new ServerWaitHistoryCursor(
+            ParseTarget(parts[1]),
+            ParseTimestamp(parts[2]),
+            ParseTimestamp(parts[3]),
+            ParseTimestamp(parts[4]),
+            ParseRun(parts[5]),
+            new SqlServerWaitType(parts[6]));
     }
 
     internal static MonitoredInstanceId Target<TCursor>(TCursor cursor) => cursor switch

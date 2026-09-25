@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getPage, maximumResponseBytes, parseEdge, parseHistory, parsePage, parseRequest, parseSession, parseWait, safeCursor, safeStatusMessage } from "../src/features/activity/activityParser.mjs";
+import { getPage, maximumResponseBytes, parseEdge, parseHistory, parsePage, parseRequest, parseSession, parseWait, parseWaitHistory, safeCursor, safeStatusMessage } from "../src/features/activity/activityParser.mjs";
 
 const target = "11111111-1111-4111-8111-111111111111";
 const at = "2026-08-23T18:00:00Z";
@@ -20,12 +20,16 @@ test("production parser accepts null evidence and preserves every DTO shape", ()
   const history = parsePage({ ...envelope([{ evidence, edge }], { fromUtc: at, toUtc: "2026-08-23T19:00:00Z", nextCursor: "x" }), evidence }, parseHistory, target);
   assert.equal(history.items[0].edge.blockedSessionId, 1);
   assert.equal(history.items[0].evidence.collectorId, "blocking.current");
+  const waitHistory = parsePage(envelope([{ evidence: { ...evidence, collectorId: "waits.server" }, baselineRunId: null, wait }], { fromUtc: at, toUtc: "2026-08-23T19:00:00Z", nextCursor: "next" }), parseWaitHistory, target);
+  assert.equal(waitHistory.items[0].wait.waitTimeMillisecondsDelta, "2");
+  assert.equal(waitHistory.items[0].baselineRunId, undefined);
 });
 
 test("production parser rejects malformed fields, oversized pages, and cross-target pages", () => {
   assert.throws(() => parsePage(envelope(Array.from({ length: 26 }, () => session)), parseSession, target));
   assert.throws(() => parsePage(envelope([{ ...session, reads: "bad" }]), parseSession, target));
   assert.throws(() => parsePage({ ...envelope([]), instanceId: "22222222-2222-4222-8222-222222222222" }, parseSession, target));
+  assert.throws(() => parsePage(envelope([{ evidence, baselineRunId: "bad", wait }]), parseWaitHistory, target));
   assert.equal(safeCursor("x".repeat(512)).length, 512);
   assert.throws(() => safeCursor("x".repeat(513)));
 });

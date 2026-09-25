@@ -1,4 +1,4 @@
-import type { ActivityEvidence, ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem } from "./activityTypes";
+import type { ActivityEvidence, ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem, ServerWaitHistoryItem } from "./activityTypes";
 export const pageLimit: number;
 export const maximumResponseBytes: number;
 export class ActivityRequestError extends Error {}
@@ -10,6 +10,7 @@ export function parseRequest(value: unknown): ActivityRequest;
 export function parseWait(value: unknown): ActivityWait;
 export function parseEdge(value: unknown): BlockingEdge;
 export function parseHistory(value: unknown): BlockingHistoryItem;
+export function parseWaitHistory(value: unknown): ServerWaitHistoryItem;
 export function readBoundedBody(response: Response, signal: AbortSignal, maximumBytes?: number): Promise<string>;
 export function safeCursor(value: unknown): string;
 export function safeStatusMessage(status: number): string;

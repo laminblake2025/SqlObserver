@@ -85,6 +85,12 @@ export interface BlockingHistoryItem {
   readonly edge: BlockingEdge;
 }
 
+export interface ServerWaitHistoryItem {
+  readonly evidence: ActivityEvidence;
+  readonly baselineRunId?: string;
+  readonly wait: ActivityWait;
+}
+
 export interface ActivitySnapshot {
   readonly sessions: ActivityPage<ActivitySession>;
   readonly requests: ActivityPage<ActivityRequest>;

@@ -423,6 +423,21 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         Assert.Equal(baseline, second[1].Run);
         Assert.Null(second[1].BaselineRun);
         Assert.Equal(4, first.Concat(second).Select(row => (row.At, row.Run, row.Type)).Distinct().Count());
+        var projection = new PostgreSqlActivityProjectionPort(server);
+        MonitoredInstanceId targetId = target;
+        DateTimeOffset from = at.AddMinutes(-1), to = at.AddMinutes(3);
+        ServerWaitHistoryPage projectedFirst = Assert.IsType<ServerWaitHistoryPage>(await projection.ListServerWaitHistoryAsync(
+            new ListServerWaitHistoryRepositoryRequest(targetId, from, to, 2, null, Timeout), CancellationToken.None));
+        Assert.Equal(2, projectedFirst.Items.Count);
+        Assert.True(projectedFirst.Items[0].Wait.ResetDetected);
+        Assert.Equal(normal, projectedFirst.Items[0].BaselineRunId?.Value);
+        Assert.Equal("60", projectedFirst.Items[1].Wait.WaitTimeMillisecondsDelta);
+        Assert.NotNull(projectedFirst.NextCursor);
+        ServerWaitHistoryPage projectedSecond = Assert.IsType<ServerWaitHistoryPage>(await projection.ListServerWaitHistoryAsync(
+            new ListServerWaitHistoryRepositoryRequest(targetId, from, to, 2, projectedFirst.NextCursor, Timeout), CancellationToken.None));
+        Assert.Equal(2, projectedSecond.Items.Count);
+        Assert.False(projectedSecond.Items[0].Wait.BaselineAvailable);
+        Assert.Null(projectedSecond.NextCursor);
         await using NpgsqlConnection grants = await database.DataSource.OpenConnectionAsync();
         await using var privilege = new NpgsqlCommand("""
             SELECT has_function_privilege('sqlobserver_server',
