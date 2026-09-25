@@ -16,6 +16,7 @@ import { OverviewPage } from "./features/overview/OverviewPage";
 import { overviewHref, readOverviewScope } from "./features/overview/overviewModel";
 import { OperationsPanel } from "./features/operations/OperationsPanel";
 import { TargetQueryPerformancePanel } from "./features/queries/TargetQueryPerformancePanel";
+import { TargetResourcesPanel } from "./features/resources/TargetResourcesPanel";
 import { queryPerformanceDefaultHref, resolveQueryWindow, type QueryWindowResult } from "./features/queries/queryWindowModel";
 import { ReportsPanel } from "./features/reports/ReportsPanel";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
@@ -32,6 +33,7 @@ const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], 
   servers: "▦",
   activity: "⌁",
   waits: "◷",
+  resources: "◫",
   queries: "▥",
   deadlocks: "↔",
   alerts: "♢",
@@ -62,7 +64,7 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
-  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "queries" || route.page === "deadlocks" ||
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
@@ -301,6 +303,8 @@ export function App() {
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh}
+                onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
+              {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}

@@ -9,6 +9,14 @@ createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
  if(url.pathname==='/__fixture') {const mode=url.searchParams.get('mode');if(!['empty','partial','error','loading','ready'].includes(mode))return send(res,{},400);res.writeHead(302,{'set-cookie':`overviewMode=${mode}; SameSite=Strict; Path=/`,location:'/'});res.end();return;}
  if(url.pathname==='/api/v1/observation-targets')return send(res,{items:targets,nextCursor:null});
+ if(/^\/api\/v1\/observation-targets\/[^/]+\/health\/files$/.test(url.pathname)){
+  const instanceId=url.pathname.split('/')[4];
+  if(!targets.some(t=>t.instanceId===instanceId))return send(res,{},404);
+  return send(res,{instanceId,repositoryTimeUtc:new Date().toISOString(),collector:{state:'current'},nextCursor:null,items:[
+   {databaseId:5,fileId:1,logicalName:'Orders_data',sizeBytes:'8589934592',readCount:'120000',writeCount:'80000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:new Date().toISOString()},
+   {databaseId:5,fileId:2,logicalName:'Orders_log',sizeBytes:'2147483648',readCount:'4000',writeCount:'35000',readStallMilliseconds:'8000',writeStallMilliseconds:'175000',observedAtUtc:new Date().toISOString()},
+  ]});
+ }
  if(url.pathname==='/api/v1/overview'){
   const mode=req.headers.cookie?.match(/overviewMode=(\w+)/)?.[1];
   if(mode==='error')return send(res,{},503);
@@ -23,7 +31,7 @@ createServer(async(req,res)=>{try{
    const metric=(key,unit,base,dimension=null)=>({targetId:t.instanceId,label:t.displayName,metric:key,unit,state:gap?'partial':'observed',dimension,points:gap?[]:Array.from({length:48},(_,j)=>({timeUtc:new Date(from+(to-from)*j/48).toISOString(),value:Math.max(0,base*(1+.25*Math.sin(j/5+i))+(i===1&&j>27&&j<34?base*.7:0)),samples:10}))});
    const resource=(label,n,unit)=>({targetId:t.instanceId,server:t.displayName,label,value:gap?null:n,unit,state:gap?'unavailable':'observed',observedAtUtc:gap?null:at});
    const databaseSeries=targetId?[metric('activity.user_sessions','sessions',14+i*4,'Orders'),metric('activity.user_sessions','sessions',8+i*3,'Reporting')]:[];
-   return {targetId:t.instanceId,displayName:t.displayName,collectionState:gap?'stale':'current',lastObservedUtc:at,activeAlerts:value(i===1?9:i===4?2:0),blockedSessions:value(i===1?12:0),deadlocks:{...value(i===1?3:0),state:gap?'unavailable':'observed'},issues,resources:[resource('Wait · LCK_M_X',i===1?18:2,'seconds since prior sample'),resource('host.cpu.percent',i===1?89:15+i*5,'%'),resource('SQL physical memory',8+i*2,'GiB'),resource('TempDB used',13+i*4,'%'),resource('Backup evidence',8,'records'),resource('SQL Agent failures',i===4?2:0,'observed events')],series:[metric('engine.batch_requests_per_second','batches/sec',100+i*60),metric('engine.user_connections','connections',30+i*12),...databaseSeries,metric('host.cpu.percent','%',10+i*5),metric('host.memory.available_bytes','GiB',12+i),metric('blocking.sessions','blocked sessions',i===1?7:1),metric('deadlocks','events',i===1?2:0)],gaps:gap?['Synthetic collection timeout']:[]};
+   return {targetId:t.instanceId,displayName:t.displayName,collectionState:gap?'stale':'current',lastObservedUtc:at,activeAlerts:value(i===1?9:i===4?2:0),blockedSessions:value(i===1?12:0),deadlocks:{...value(i===1?3:0),state:gap?'unavailable':'observed'},issues,resources:[resource('Wait · LCK_M_X',i===1?18:2,'seconds since prior sample'),resource('host.cpu.percent',i===1?89:15+i*5,'%'),resource('SQL physical memory',8+i*2,'GiB'),resource('TempDB used',13+i*4,'%'),resource('Backup evidence',8,'records'),resource('SQL Agent failures',i===4?2:0,'observed events')],series:[metric('engine.batch_requests_per_second','batches/sec',100+i*60),metric('engine.user_connections','connections',30+i*12),...databaseSeries,metric('engine.sql_scheduler_cpu_percent','%',25+i*4),metric('engine.scheduler_runnable_tasks','tasks',2+i),metric('engine.memory_grants_pending','grants',1+i),metric('engine.process_physical_memory_bytes','GiB',8+i*2),metric('engine.os_available_memory_bytes','GiB',12+i),metric('host.cpu.percent','%',10+i*5),metric('host.memory.available_bytes','GiB',12+i),metric('blocking.sessions','blocked sessions',i===1?7:1),metric('deadlocks','events',i===1?2:0)],gaps:gap?['Synthetic collection timeout']:[]};
   });
   return send(res,{refreshedAtUtc:new Date().toISOString(),fromUtc,toUtc,targetId,targets:(mode==='empty'?[]:targets).map(t=>({targetId:t.instanceId,displayName:t.displayName,lifecycle:t.lifecycle})),excludedTargets:0,evidence});
  }
