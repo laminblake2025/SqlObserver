@@ -23,7 +23,7 @@ try {
     }
     Invoke-ProbeSql 'master' "CREATE DATABASE [$database]" | Out-Null
     $created = $true
-    Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET QUERY_STORE = ON; ALTER DATABASE [$database] SET QUERY_STORE (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = ALL, INTERVAL_LENGTH_MINUTES = 1, WAIT_STATS_CAPTURE_MODE = ON)" | Out-Null
+    Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET QUERY_STORE = ON; ALTER DATABASE [$database] SET QUERY_STORE (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = ALL, INTERVAL_LENGTH_MINUTES = 1440, WAIT_STATS_CAPTURE_MODE = ON)" | Out-Null
     Invoke-ProbeSql $database 'CREATE TABLE dbo.capture_probe ([value] int NOT NULL); INSERT INTO dbo.capture_probe VALUES (1),(2),(3)' | Out-Null
     Start-Sleep -Seconds 2
     for ($index = 0; $index -lt 3; $index++) {
@@ -68,6 +68,40 @@ try {
     $planLookup = Invoke-ProbeSql $database "${planParameters} $planSql" -Wide
     if (-not ($planLookup | Where-Object { $_ -match "^\s*$planId\|.*<ShowPlanXML" })) {
         throw "Pinned Query Store plan lookup did not return Showplan XML for plan ID $planId."
+    }
+    # A reset can refill beyond the previous count before the next collector read.
+    # Test whether the first execution time distinguishes that new counter epoch.
+    $runtimeSql = "SELECT rs.runtime_stats_interval_id, CONVERT(varchar(33),MIN(rs.first_execution_time),126), CONVERT(varchar(33),MAX(rs.last_execution_time),126), SUM(CONVERT(bigint,rs.count_executions)) FROM sys.query_store_runtime_stats AS rs WHERE rs.plan_id=$planId AND rs.execution_type=0 GROUP BY rs.runtime_stats_interval_id ORDER BY rs.runtime_stats_interval_id DESC"
+    $beforeRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
+    if ($beforeRuntimeRow.Count -ne 1) { throw "Query Store has no runtime row for workload plan $planId before reset." }
+    $beforeRuntime = $beforeRuntimeRow[0].Split('|')
+    if ($beforeRuntime.Count -ne 4) { throw 'Query Store runtime row changed its probe shape.' }
+    $beforeCount = [long]::Parse($beforeRuntime[3].Trim(), [Globalization.CultureInfo]::InvariantCulture)
+    if ($beforeCount -lt 1 -or $beforeCount -gt 20) { throw "Workload plan had an unexpected pre-reset count: $beforeCount" }
+    Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
+    $flushedRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
+    if ($flushedRuntimeRow.Count -ne 1) { throw "Query Store lost workload plan $planId after a quiet flush." }
+    $flushedRuntime = $flushedRuntimeRow[0].Split('|')
+    if ($flushedRuntime[0].Trim() -ne $beforeRuntime[0].Trim() -or
+        $flushedRuntime[1].Trim() -ne $beforeRuntime[1].Trim() -or
+        $flushedRuntime[3].Trim() -ne $beforeRuntime[3].Trim()) {
+        throw "A quiet Query Store flush changed the candidate epoch or counter: before $($beforeRuntime -join '|'); after $($flushedRuntime -join '|')"
+    }
+    Invoke-ProbeSql $database "EXEC sys.sp_query_store_reset_exec_stats @plan_id=$planId" | Out-Null
+    Start-Sleep -Seconds 1
+    for ($index = 0; $index -lt ([Math]::Max($beforeCount + 8, 12)); $index++) {
+        Invoke-ProbeSql $database 'SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
+    }
+    Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
+    $afterRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
+    if ($afterRuntimeRow.Count -ne 1) { throw "Query Store has no runtime row for workload plan $planId after reset." }
+    $afterRuntime = $afterRuntimeRow[0].Split('|')
+    $afterCount = [long]::Parse($afterRuntime[3].Trim(), [Globalization.CultureInfo]::InvariantCulture)
+    $beforeLast = [datetimeoffset]::Parse($beforeRuntime[2].Trim(), [Globalization.CultureInfo]::InvariantCulture)
+    $afterFirst = [datetimeoffset]::Parse($afterRuntime[1].Trim(), [Globalization.CultureInfo]::InvariantCulture)
+    if ($afterRuntime[0].Trim() -ne $beforeRuntime[0].Trim() -or
+        $afterCount -le $beforeCount -or $afterFirst -le $beforeLast) {
+        throw "Query Store reset did not expose a new epoch after count refill: before $($beforeRuntime -join '|'); after $($afterRuntime -join '|')"
     }
     $lockJob = Start-ThreadJob -ArgumentList $SqlInstance,$database -ScriptBlock {
         param($instance,$db)
@@ -114,7 +148,7 @@ try {
     if ($intervalGroups.Count -lt 1 -or $intervalTotal -ne [long]$reportedLockTotal) {
         throw "Query Store interval groups did not reconcile with the pinned lock total: $($intervalGroups -join '; ') / $reportedLockTotal"
     }
-    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; blocked plan wait rows: $($blockingCategoryRows -join '; '); interval groups: $($intervalGroups -join '; '); quiet repeat unchanged."
+    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; same-interval runtime reset grew from $beforeCount to $afterCount with a later first-execution time; blocked plan wait rows: $($blockingCategoryRows -join '; '); interval groups: $($intervalGroups -join '; '); quiet repeat unchanged."
 }
 finally {
     if ($created) {

@@ -23,6 +23,17 @@ can have separate flushed and in-memory rows; the source query must aggregate
 these by `(plan_id, runtime_stats_interval_id, execution_type)` for runtime
 stats and additionally `wait_category` for waits.
 
+A second disposable SQL Server 2022 run called
+`sp_query_store_reset_exec_stats` for one workload plan, then executed that
+same plan until its count exceeded the pre-reset count. In the same interval
+ID, the count grew from 2 to 6, while the earliest `first_execution_time`
+after reset was later than the previous `last_execution_time`. A counter-only
+comparison would invent a positive delta for this reset. The earliest
+execution time is a candidate reset epoch: a quiet flush left that time and
+the count unchanged. The probe uses a 1440-minute
+interval to keep both reads in the same source group and removes its database
+even on assertion failure.
+
 - [Query Store runtime stats](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-query-store-runtime-stats-transact-sql)
 - [Query Store wait stats](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-query-store-wait-stats-transact-sql)
 
@@ -32,7 +43,9 @@ The next versioned SQL assets should emit bounded, complete groups rather than
 one rolling-window sum per plan. Each runtime group needs database identity,
 query and plan identities, `plan_id`, interval ID and UTC start/end, execution
 type, execution count, and the bounded weighted CPU/duration/read/write/row
-totals. Each wait group adds category and wait milliseconds. Aggregate source
+totals. It must also emit the group's earliest `first_execution_time` and latest
+`last_execution_time`; the earliest value is a candidate counter epoch. Each
+wait group adds category and wait milliseconds. Aggregate source
 rows for the active interval before applying row limits. A plan's group must not
 be partially returned: if the source cap is reached, mark the collection
 truncated and leave omitted groups' watermarks unchanged. Query Store may reuse
@@ -64,15 +77,18 @@ explicit reset evidence; never clamp a negative difference to zero. If a wait
 category was absent in a **complete** previous group, its previous value is
 known zero; absence in a truncated or failed read is unknown.
 
-There is one unresolved source boundary: SQL Server can reset execution stats
-for an existing plan between polls. A decrease is detectable, but a reset whose
-new count grows beyond the prior count before the next poll is not detectable
-from two cumulative values alone. Active-interval deltas must not be marketed
-as exact until a source epoch or equivalent proof addresses that case. The
-first production increment can instead publish each closed Query Store
-interval once, retaining active-interval totals as explicitly nonadditive live
-evidence. It must define a close/flush grace and how late changes are corrected
-before that path is called exact.
+SQL Server can reset execution stats for an existing plan between polls. A
+decrease is detectable, but a reset whose new count grows beyond the prior
+count is not detectable from two cumulative values alone. The local reset
+probe showed `first_execution_time` advancing even when the count refilled
+above its old value. A source-group comparison should therefore start a new
+baseline if the earliest execution time advances past the prior group's
+latest execution time, even when every counter is nondecreasing. The same
+reset experiment and grouping must still be validated on SQL Server 2019 and
+2025, and the behavior of flushes and other reset paths needs proof before
+active-interval deltas are marketed as exact. Closed-interval publication is
+an alternative, but it needs a flush/late-correction policy before it can be
+called exact.
 
 Use one fixed source cutoff for the runtime and wait reads and record their
 individual coverage. They are separate SQL statements and cannot be assumed to
