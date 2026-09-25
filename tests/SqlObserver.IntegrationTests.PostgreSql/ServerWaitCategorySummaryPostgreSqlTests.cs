@@ -153,6 +153,92 @@ public sealed class ServerWaitCategorySummaryPostgreSqlTests(PostgreSql18Fixture
         Assert.Equal(["I/O", "CPU/signal", "Memory", "Parallelism", "Log", "Lock"], labels);
     }
 
+    [Fact]
+    public async Task TrendPlanStartsFromRequestedTargetInMixedFleet()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult applied = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(137, Timeout), CancellationToken.None);
+        Assert.False(applied.HasFailures);
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        DateTimeOffset from = DateTimeOffset.UtcNow.AddHours(-1);
+        await using (var seed = new NpgsqlCommand("""
+            CREATE TEMP TABLE fleet_targets AS
+            SELECT gen_random_uuid() AS target_id, n
+            FROM generate_series(1, 20) AS n;
+            INSERT INTO control.observation_target
+                (instance_id, instance_key, display_name, host_name, tcp_port, connect_timeout,
+                 authentication_mode, transport_security_mode, lifecycle_state, revision,
+                 created_at, updated_at, discovery_requested_at)
+            SELECT target_id, 'trend.plan.' || n, 'Trend plan target', 'sql01', 1433,
+                   interval '5 seconds', 'windows_integrated_service_identity',
+                   'mandatory_validated', 'active', 1, @from, @from, @from
+            FROM fleet_targets;
+            CREATE TEMP TABLE fleet_runs AS
+            SELECT gen_random_uuid() AS run_id, target_id, n, sample,
+                   CASE WHEN n = 1 AND sample > 20 THEN 'engine.core'
+                        ELSE 'waits.server' END AS collector_id,
+                   @from::timestamptz + sample * interval '3 seconds' AS started_at
+            FROM fleet_targets CROSS JOIN generate_series(1, 1000) AS sample;
+            INSERT INTO telemetry.collection_run
+                (run_id, instance_id, collector_id, collector_version, output_schema_version,
+                 target_revision, schedule_revision, work_key, owner_execution_id, fencing_token,
+                 request_digest, scheduled_for, started_at)
+            SELECT run_id, target_id, collector_id, 1, 1, 1, 1,
+                   'trend.plan.' || n || '.' || sample, gen_random_uuid(), 1,
+                   decode(repeat('aa',32),'hex'), started_at, started_at
+            FROM fleet_runs;
+            INSERT INTO telemetry.collection_run_outcome
+                (run_id, outcome, reason_code, attempt_count, retry_count, duration_ms,
+                 source_row_count, output_item_count, inserted_item_count, duplicate_item_count,
+                 rejected_item_count, response_bytes, output_bytes, persisted_bytes, truncated,
+                 loss_detected, loss_kind, loss_count_exact, lost_row_count, lost_byte_count,
+                 completion_digest, completed_at)
+            SELECT run_id,
+                   CASE WHEN n > 1 THEN 'timed_out' ELSE 'succeeded' END,
+                   CASE WHEN n > 1 THEN 'deadline_exceeded' ELSE 'completed' END,
+                   1, 0, 10, 0, 0, 0, 0,
+                   0, 0, 0, 0, false, false, 'none', true, 0, 0,
+                   decode(repeat('bb',32),'hex'), started_at + interval '1 second'
+            FROM fleet_runs;
+            ANALYZE telemetry.collection_run;
+            ANALYZE telemetry.collection_run_outcome;
+            """, connection))
+        {
+            seed.Parameters.AddWithValue("from", from);
+            await seed.ExecuteNonQueryAsync();
+        }
+        Guid target = Assert.IsType<Guid>(await new NpgsqlCommand(
+            "SELECT target_id FROM fleet_targets WHERE n=1;", connection).ExecuteScalarAsync());
+        await using var plan = new NpgsqlCommand("""
+            EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+            WITH target_state AS MATERIALIZED (
+                SELECT instance_id FROM control.observation_target WHERE instance_id=@target
+            ), runs AS MATERIALIZED (
+                SELECT result.run_id
+                FROM telemetry.collection_run_outcome AS result
+                JOIN telemetry.collection_run AS run ON run.run_id=result.run_id
+                JOIN target_state AS target ON target.instance_id=run.instance_id
+                WHERE run.collector_id='waits.server'
+                  AND result.completed_at>=@from AND result.completed_at<@to
+            ) SELECT count(*) FROM runs;
+            """, connection);
+        plan.Parameters.AddWithValue("target", target);
+        plan.Parameters.AddWithValue("from", from);
+        plan.Parameters.AddWithValue("to", from.AddHours(1));
+        var lines = new List<string>();
+        await using NpgsqlDataReader reader = await plan.ExecuteReaderAsync();
+        while (await reader.ReadAsync()) lines.Add(reader.GetString(0));
+        string explanation = string.Join('\n', lines);
+        int targetPosition = explanation.IndexOf("CTE Scan on target_state target", StringComparison.Ordinal);
+        int runPosition = explanation.IndexOf("on collection_run run", StringComparison.Ordinal);
+        int outcomePosition = explanation.IndexOf("collection_run_outcome_pkey", StringComparison.Ordinal);
+        Assert.True(targetPosition >= 0 && targetPosition < runPosition &&
+            runPosition < outcomePosition, explanation);
+        Assert.DoesNotContain("Seq Scan on collection_run_outcome", explanation, StringComparison.Ordinal);
+        Assert.Contains("rows=20.00 loops=1", explanation, StringComparison.Ordinal);
+    }
+
     private static async Task InsertTargetAsync(NpgsqlConnection connection, Guid target, DateTimeOffset start)
     {
         await using var targetCommand = new NpgsqlCommand("""
