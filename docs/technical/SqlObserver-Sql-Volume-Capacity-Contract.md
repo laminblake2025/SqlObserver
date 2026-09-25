@@ -5,12 +5,14 @@ shows SQL database-file sizes and cumulative file I/O, but it cannot report
 free space on the SQL Server host. The `host.volume.*` metrics describe the
 collector host and must not be relabelled as target capacity.
 
-Implementation checkpoint: a bounded observation envelope and checksum-pinned
-SQL Server source parser exist. The query and its one-row look-ahead were
-executed on local SQL Server 2022; the parser deduplicates shared volumes with
-a keyed fingerprint and withholds incomplete reads. It is not yet registered
-as a scheduled collector because the fenced repository write and read contracts
-have not landed.
+Implementation checkpoint: a bounded observation envelope, checksum-pinned
+SQL Server source parser, and partitioned PostgreSQL evidence table exist. The
+query and its one-row look-ahead were executed on local SQL Server 2022; the
+parser deduplicates shared volumes with a keyed fingerprint and withholds
+incomplete reads. The table has forced target RLS, a 30-day retention policy,
+and daily partition upkeep under the existing lease. The collector is not yet
+registered because the fenced repository write and read contracts have not
+landed.
 
 ## Source evidence and scope
 

@@ -25,7 +25,8 @@ public static class AnalyticsEndpoints
     private static readonly HashSet<string> RetentionDataClasses = new(StringComparer.Ordinal)
     {
         "m5_activity", "m5_requests", "m5_waits", "m5_blocking",
-        "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence"
+        "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
+        "sql_volume_capacity"
     };
     private static readonly HashSet<string> MutationReceiptStates = new(StringComparer.Ordinal)
     {
