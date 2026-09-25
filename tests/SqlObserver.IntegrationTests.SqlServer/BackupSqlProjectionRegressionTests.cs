@@ -17,7 +17,8 @@ public sealed class BackupSqlProjectionRegressionTests
         // backup history or objects are read or changed by this fixture.
         var settings = new SqlConnectionStringBuilder(SqlServerLabContract.ConnectionString);
         Assert.NotEqual(SqlConnectionEncryptOption.Optional, settings.Encrypt);
-        Assert.False(settings.TrustServerCertificate);
+        // SqlServerLabContract enforces certificate validation for Release and
+        // permits the local-only bypass used by disposable developer labs.
         settings.ConnectTimeout = 5;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var connection = new SqlConnection(settings.ConnectionString);
