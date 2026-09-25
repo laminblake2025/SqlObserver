@@ -21,7 +21,8 @@ public sealed class MigrationPreambleTests
         foreach (string name in names)
         {
             string[] lines = File.ReadAllLines(Path.Combine(migrations, name));
-            if (lines[0].StartsWith("-- sqlobserver:nontransactional-index=", StringComparison.Ordinal))
+            if (lines[0].StartsWith("-- sqlobserver:nontransactional-index=", StringComparison.Ordinal) ||
+                lines[0].StartsWith("-- sqlobserver:partitioned-concurrent-index=", StringComparison.Ordinal))
                 continue; // The concurrent-index runner forbids transaction-local settings.
 
             string[] preamble = lines

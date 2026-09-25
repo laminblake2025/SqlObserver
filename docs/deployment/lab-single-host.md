@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0109`
+The migration catalog contains the exact, contiguous `0001` through `0136`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -195,6 +195,15 @@ reader lease, analytics dependency, and recovery-attestation gates still apply.
 Policies remain disabled until a SecurityAdministrator explicitly enables and
 configures each data class; enabling a policy now starts scheduled removal of
 eligible partitions after its configured retention window.
+
+Migration `0135` adds target-scoped, bounded server-wait history. Migration
+`0136` creates its target/time ordering index across the written daily wait
+partitions. The runner creates a metadata-only parent index, builds each child
+index concurrently, then attaches it. An interrupted upgrade retains completed
+child builds and resumes missing ones on the next migration attempt. The ledger
+advances only after the parent index is valid. Budget enough migration time for
+the number and size of retained wait partitions; each build uses the runner's
+five-second lock and five-minute statement limits and can be retried safely.
 
 After upgrading, a migration administrator can backfill the fleet in bounded
 transactions. Repeat this transaction until `complete` is `true`:

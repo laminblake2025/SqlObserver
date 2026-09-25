@@ -7,7 +7,8 @@ using SqlObserver.Domain.Repository;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
-internal readonly record struct ConcurrentIndexSpec(string IndexName, string TableName, string Columns);
+internal readonly record struct ConcurrentIndexSpec(string IndexName, string TableName,
+    string Columns, bool Partitioned = false);
 
 /// <summary>An immutable migration and its verified embedded SQL.</summary>
 public sealed class PostgreSqlMigrationResource
@@ -135,10 +136,23 @@ public sealed partial class PostgreSqlMigrationCatalog
     private static ConcurrentIndexSpec? ParseConcurrentIndexSpec(string sql, string fileName)
     {
         const string marker = "-- sqlobserver:nontransactional-index=";
+        const string partitionedMarker = "-- sqlobserver:partitioned-concurrent-index=";
+        if (sql.StartsWith(partitionedMarker, StringComparison.Ordinal))
+        {
+            Match partitioned = PartitionedConcurrentIndexMigrationPattern().Match(sql);
+            if (!partitioned.Success)
+                throw new InvalidDataException($"Migration {fileName} must contain one supported partitioned-index declaration.");
+            string partitionedSchema = partitioned.Groups["schema"].Value;
+            return new ConcurrentIndexSpec(
+                $"{partitionedSchema}.{partitioned.Groups["index"].Value}",
+                $"{partitionedSchema}.{partitioned.Groups["table"].Value}",
+                partitioned.Groups["columns"].Value, Partitioned: true);
+        }
         if (!sql.StartsWith(marker, StringComparison.Ordinal))
         {
             if (sql.Contains("CREATE INDEX CONCURRENTLY", StringComparison.OrdinalIgnoreCase) ||
-                sql.Contains("sqlobserver:nontransactional-index", StringComparison.Ordinal))
+                sql.Contains("sqlobserver:nontransactional-index", StringComparison.Ordinal) ||
+                sql.Contains("sqlobserver:partitioned-concurrent-index", StringComparison.Ordinal))
             {
                 throw new InvalidDataException($"Migration {fileName} has an invalid concurrent-index declaration.");
             }
@@ -161,6 +175,9 @@ public sealed partial class PostgreSqlMigrationCatalog
 
     [GeneratedRegex(@"\A-- sqlobserver:nontransactional-index=(?<schema>[a-z][a-z0-9_]*)\.(?<index>[a-z][a-z0-9_]*)\nCREATE INDEX CONCURRENTLY \k<index>\n    ON \k<schema>\.(?<table>[a-z][a-z0-9_]*) \((?<columns>[a-z][a-z0-9_, ]*)\);\n\z", RegexOptions.CultureInvariant)]
     private static partial Regex ConcurrentIndexMigrationPattern();
+
+    [GeneratedRegex(@"\A-- sqlobserver:partitioned-concurrent-index=(?<schema>[a-z][a-z0-9_]*)\.(?<index>[a-z][a-z0-9_]*)\nCREATE INDEX \k<index>\n    ON ONLY \k<schema>\.(?<table>[a-z][a-z0-9_]*) \((?<columns>[a-z][a-z0-9_, ]*)\);\n\z", RegexOptions.CultureInvariant)]
+    private static partial Regex PartitionedConcurrentIndexMigrationPattern();
 
     private static List<MigrationManifestEntry> ParseManifest(string manifest)
     {

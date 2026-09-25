@@ -7,7 +7,8 @@ namespace SqlObserver.Infrastructure.PostgreSql;
 /// <summary>
 /// Applies the verified embedded migration prefix under one bounded session advisory lock.
 /// Transactional migrations commit with their ledger entry. Concurrent-index migrations
-/// run outside a transaction and rebuild safely if a prior attempt missed the ledger insert.
+/// run outside a transaction. Partitioned indexes retain completed child builds across
+/// retries and receive a ledger entry only after every child is attached.
 /// </summary>
 public sealed class PostgreSqlMigrationPort : IMigrationPort
 {
@@ -32,6 +33,8 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         FROM pg_catalog.pg_index AS i
         WHERE i.indexrelid = pg_catalog.to_regclass(@index_name);
         """;
+    private const string IndexExistsSql =
+        "SELECT pg_catalog.to_regclass(@index_name) IS NOT NULL;";
     private const string ExistingIndexSql = """
         SELECT pg_catalog.pg_get_indexdef(i.indexrelid),
                i.indrelid = pg_catalog.to_regclass(@table_name),
@@ -40,6 +43,21 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         FROM pg_catalog.pg_index AS i
         JOIN pg_catalog.pg_class AS c ON c.oid = i.indexrelid
         WHERE i.indexrelid = pg_catalog.to_regclass(@index_name);
+        """;
+    private const string UnindexedPartitionsSql = """
+        SELECT child_ns.nspname, child.relname
+        FROM pg_catalog.pg_inherits AS table_link
+        JOIN pg_catalog.pg_class AS child ON child.oid = table_link.inhrelid
+        JOIN pg_catalog.pg_namespace AS child_ns ON child_ns.oid = child.relnamespace
+        WHERE table_link.inhparent = pg_catalog.to_regclass(@table_name)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM pg_catalog.pg_inherits AS index_link
+              JOIN pg_catalog.pg_index AS child_index
+                ON child_index.indexrelid = index_link.inhrelid
+              WHERE index_link.inhparent = pg_catalog.to_regclass(@index_name)
+                AND child_index.indrelid = child.oid)
+        ORDER BY child.relname;
         """;
 
     private static readonly TimeSpan LockRetryInterval = TimeSpan.FromMilliseconds(50);
@@ -103,8 +121,12 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
                     {
                         try
                         {
-                            await ApplyConcurrentIndexAsync(connection, migration, request.Timeout, timeout.Token)
-                                .ConfigureAwait(false);
+                            if (migration.ConcurrentIndex?.Partitioned == true)
+                                await ApplyPartitionedConcurrentIndexAsync(connection, migration,
+                                    request.Timeout, timeout.Token).ConfigureAwait(false);
+                            else
+                                await ApplyConcurrentIndexAsync(connection, migration,
+                                    request.Timeout, timeout.Token).ConfigureAwait(false);
                             DateTimeOffset completedAt = await ReadRepositoryClockAsync(
                                 connection, request.Timeout, timeout.Token).ConfigureAwait(false);
                             results.Add(new MigrationExecutionResult(
@@ -281,6 +303,148 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
             throw new InvalidOperationException("Migration session state could not be reset.", resetFailure);
         }
 
+        await RecordNontransactionalMigrationAsync(connection, migration, timeout, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task ApplyPartitionedConcurrentIndexAsync(
+        NpgsqlConnection connection, PostgreSqlMigrationResource migration,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ConcurrentIndexSpec index = migration.ConcurrentIndex is { Partitioned: true } value
+            ? value : throw new InvalidOperationException("A partitioned-index migration requires a partitioned index declaration.");
+        bool roleSet = false;
+        Exception? resetFailure = null;
+        try
+        {
+            await ExecuteMigrationCommandAsync(connection, "SET ROLE sqlobserver_migrator;",
+                timeout, cancellationToken).ConfigureAwait(false);
+            roleSet = true;
+            await ExecuteMigrationCommandAsync(connection, "SET lock_timeout = '5s';",
+                timeout, cancellationToken).ConfigureAwait(false);
+            await ExecuteMigrationCommandAsync(connection, "SET statement_timeout = '5min';",
+                timeout, cancellationToken).ConfigureAwait(false);
+            await EnsureExistingIndexMatchesAsync(connection, index, timeout, cancellationToken)
+                .ConfigureAwait(false);
+            if (!await IndexExistsAsync(connection, index.IndexName, timeout, cancellationToken)
+                    .ConfigureAwait(false))
+                await ExecuteMigrationCommandAsync(connection, migration.Sql, timeout, cancellationToken)
+                    .ConfigureAwait(false);
+
+            // The parent is metadata-only and invalid until every child is attached.
+            // Retain valid child builds across retries; only failed builds are replaced.
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                IReadOnlyList<(string Schema, string Name)> pending =
+                    await ReadUnindexedPartitionsAsync(connection, index, timeout, cancellationToken)
+                        .ConfigureAwait(false);
+                if (pending.Count == 0) break;
+                foreach ((string schema, string child) in pending)
+                {
+                    string childIndexName = ChildIndexName(index, schema, child);
+                    var childSpec = new ConcurrentIndexSpec(childIndexName,
+                        $"{schema}.{child}", index.Columns);
+                    await EnsureExistingIndexMatchesAsync(connection, childSpec,
+                        timeout, cancellationToken).ConfigureAwait(false);
+                    if (!await ValidIndexAsync(connection, childIndexName, timeout,
+                            cancellationToken).ConfigureAwait(false))
+                    {
+                        await ExecuteMigrationCommandAsync(connection,
+                            $"DROP INDEX CONCURRENTLY IF EXISTS {childIndexName};",
+                            timeout, cancellationToken).ConfigureAwait(false);
+                        await ExecuteMigrationCommandAsync(connection,
+                            $"CREATE INDEX CONCURRENTLY {childIndexName.Split('.')[1]} " +
+                            $"ON {schema}.{child} ({index.Columns});",
+                            timeout, cancellationToken).ConfigureAwait(false);
+                        if (!await ValidIndexAsync(connection, childIndexName,
+                                timeout, cancellationToken).ConfigureAwait(false))
+                            throw new InvalidOperationException("Concurrent child index is not valid and ready.");
+                    }
+                    await ExecuteMigrationCommandAsync(connection,
+                        $"ALTER INDEX {index.IndexName} ATTACH PARTITION {childIndexName};",
+                        timeout, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            if (!await ValidIndexAsync(connection, index.IndexName, timeout,
+                    cancellationToken).ConfigureAwait(false))
+                throw new InvalidOperationException("Partitioned index is not valid after child attachment.");
+        }
+        finally
+        {
+            if (roleSet)
+            {
+                try
+                {
+                    await ExecuteMigrationCommandAsync(connection,
+                        "RESET ROLE; RESET lock_timeout; RESET statement_timeout;",
+                        timeout, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
+                {
+                    NpgsqlConnection.ClearPool(connection);
+                    resetFailure = exception;
+                }
+            }
+        }
+        if (resetFailure is not null)
+            throw new InvalidOperationException("Migration session state could not be reset.", resetFailure);
+        await RecordNontransactionalMigrationAsync(connection, migration, timeout, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<bool> IndexExistsAsync(NpgsqlConnection connection,
+        string indexName, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(IndexExistsSql, connection)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        command.Parameters.AddWithValue("index_name", indexName);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true;
+    }
+
+    private static async Task<bool> ValidIndexAsync(NpgsqlConnection connection,
+        string indexName, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(ValidIndexSql, connection)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        command.Parameters.AddWithValue("index_name", indexName);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true;
+    }
+
+    private static async Task<IReadOnlyList<(string Schema, string Name)>> ReadUnindexedPartitionsAsync(
+        NpgsqlConnection connection, ConcurrentIndexSpec index,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(UnindexedPartitionsSql, connection)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        command.Parameters.AddWithValue("table_name", index.TableName);
+        command.Parameters.AddWithValue("index_name", index.IndexName);
+        var result = new List<(string Schema, string Name)>();
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            result.Add((reader.GetString(0), reader.GetString(1)));
+        return result;
+    }
+
+    private static string ChildIndexName(ConcurrentIndexSpec index, string schema,
+        string child)
+    {
+        string[] table = index.TableName.Split('.');
+        string[] parentIndex = index.IndexName.Split('.');
+        string prefix = table[1] + "_";
+        if (schema != table[0] || !child.StartsWith(prefix, StringComparison.Ordinal) ||
+            child.Length != prefix.Length + 8 ||
+            !child.AsSpan(prefix.Length).ToString().All(char.IsAsciiDigit))
+            throw new InvalidOperationException("A partitioned-index child has an unexpected name or schema.");
+        string name = parentIndex[1] + "_" + child[prefix.Length..];
+        if (name.Length > 63) throw new InvalidOperationException("A partitioned child index name is too long.");
+        return $"{schema}.{name}";
+    }
+
+    private static async Task RecordNontransactionalMigrationAsync(
+        NpgsqlConnection connection, PostgreSqlMigrationResource migration,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken)
             .ConfigureAwait(false);
         try
