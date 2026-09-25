@@ -71,6 +71,46 @@ public sealed class CapabilityDiscoveryServiceValidationTests
     }
 
     [Theory]
+    [InlineData(PermissionEvidenceOutcome.Granted)]
+    [InlineData(PermissionEvidenceOutcome.Denied)]
+    public async Task V4RecordsMetadataPermissionWithoutChangingOverallSupport(PermissionEvidenceOutcome metadataOutcome)
+    {
+        PermissionEvidence[] permissions =
+        [
+            new(new SqlServerPermissionId("server.view-performance-state"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            new(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            new(new SqlServerPermissionId("server.view-any-definition"), PermissionEvidenceScope.Server, metadataOutcome),
+            new(new SqlServerPermissionId("replication.replmonitor"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.NotApplicable),
+        ];
+        CapabilityEvidence[] capabilities = [.. CreateCapabilities(),
+            new(new CapabilityId("feature.replication"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled),
+            new(new CapabilityId("feature.host-binding"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled)];
+        TestHarness harness = CreateHarness(request => CreateConnectedProfile(request,
+            manifestVersion: 4, outputSchemaVersion: 4, capabilities: capabilities, permissions: permissions));
+
+        Assert.Equal(1, (await harness.RunAsync()).RecordedCount);
+        Assert.Equal(1, harness.Repository.RecordCalls);
+    }
+
+    [Fact]
+    public async Task V4WithoutMetadataPermissionEvidenceIsRejected()
+    {
+        PermissionEvidence[] permissions =
+        [
+            new(new SqlServerPermissionId("server.view-performance-state"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            new(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            new(new SqlServerPermissionId("replication.replmonitor"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.NotApplicable),
+        ];
+        CapabilityEvidence[] capabilities = [.. CreateCapabilities(),
+            new(new CapabilityId("feature.replication"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled),
+            new(new CapabilityId("feature.host-binding"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled)];
+        TestHarness harness = CreateHarness(request => CreateConnectedProfile(request,
+            manifestVersion: 4, outputSchemaVersion: 4, capabilities: capabilities, permissions: permissions));
+
+        await AssertInvalidBeforePersistenceAsync(harness);
+    }
+
+    [Theory]
     [InlineData(2, 1)]
     [InlineData(1, 2)]
     public async Task ContractVersionDriftIsRejectedBeforePersistence(

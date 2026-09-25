@@ -18,8 +18,9 @@ digest replay, rollback after lease loss, target-scoped pagination, and protecte
 cursors. The Resources page now labels SQL-reported target-host capacity and
 shows it only in Live. The adapter declares a five-minute cadence and both
 metadata and version-specific DMV permissions, but is not yet registered or
-scheduled. Capability discovery must publish the metadata grant and catalog
-reconciliation must be versioned for a sixteenth collector before enablement;
+scheduled. Capability discovery v4 now reports the `VIEW ANY DEFINITION` grant
+as separate server permission evidence without degrading unrelated collectors.
+Catalog reconciliation must be versioned for a sixteenth collector before enablement;
 SQL Server 2019/2025 and failover source proofs remain.
 
 ## Source evidence and scope

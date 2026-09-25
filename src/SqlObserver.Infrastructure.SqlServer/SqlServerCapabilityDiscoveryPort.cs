@@ -32,12 +32,14 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         new("server.performance-reader-role-membership");
     private static readonly SqlServerPermissionId BackupsetSelectPermissionId = new("msdb.backupset.select");
     private static readonly SqlServerPermissionId ViewAnyDatabasePermissionId = new("server.view-any-database");
+    private static readonly SqlServerPermissionId ViewAnyDefinitionPermissionId = new("server.view-any-definition");
     private static readonly SqlServerPermissionId SysjobhistorySelectPermissionId = new("msdb.sysjobhistory.select");
 
     private readonly ISqlServerConnectionFactory _connectionFactory;
     private readonly SqlServerCapabilityAssetCatalog _assets;
     private readonly SqlServerCapabilityV2AssetCatalog? _assetsV2;
     private readonly SqlServerCapabilityV3AssetCatalog? _assetsV3;
+    private readonly SqlServerCapabilityV4AssetCatalog? _assetsV4;
     private readonly string? _distributionDatabase;
     private readonly IReplicationDistributionBindingResolver? _distributionBindingResolver;
     private static readonly SqlServerPermissionId ReplicationMonitorPermissionId =
@@ -50,7 +52,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             SqlServerCapabilityV2AssetCatalog.LoadEmbedded(),
             SqlServerCapabilityV3AssetCatalog.LoadEmbedded(),
             distributionDatabase,
-            null)
+            null,
+            SqlServerCapabilityV4AssetCatalog.LoadEmbedded())
     {
     }
 
@@ -60,19 +63,21 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         SqlServerCapabilityV2AssetCatalog? assetsV2 = null,
         SqlServerCapabilityV3AssetCatalog? assetsV3 = null,
         string? distributionDatabase = null,
-        IReplicationDistributionBindingResolver? distributionBindingResolver = null)
+        IReplicationDistributionBindingResolver? distributionBindingResolver = null,
+        SqlServerCapabilityV4AssetCatalog? assetsV4 = null)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _assets = assets ?? throw new ArgumentNullException(nameof(assets));
         _assetsV2 = assetsV2;
         _assetsV3 = assetsV3;
+        _assetsV4 = assetsV4;
         _distributionDatabase = ValidateDistributionDatabase(distributionDatabase);
         _distributionBindingResolver = distributionBindingResolver;
     }
 
     /// <summary>Creates discovery using the persisted target/revision binding resolver.</summary>
     public SqlServerCapabilityDiscoveryPort(IReplicationDistributionBindingResolver distributionBindingResolver)
-        : this(new SqlServerIntegratedConnectionFactory(), SqlServerCapabilityAssetCatalog.LoadEmbedded(), SqlServerCapabilityV2AssetCatalog.LoadEmbedded(), SqlServerCapabilityV3AssetCatalog.LoadEmbedded(), null, distributionBindingResolver)
+        : this(new SqlServerIntegratedConnectionFactory(), SqlServerCapabilityAssetCatalog.LoadEmbedded(), SqlServerCapabilityV2AssetCatalog.LoadEmbedded(), SqlServerCapabilityV3AssetCatalog.LoadEmbedded(), null, distributionBindingResolver, SqlServerCapabilityV4AssetCatalog.LoadEmbedded())
     {
     }
 
@@ -121,7 +126,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                     hasRequiredPermission: false,
                     isPerformanceReaderMember: false,
                     transportEncrypted: bootstrap.TransportEncryptedByPolicy,
-                    usedPermissionFallback: true);
+                    usedPermissionFallback: true) with { ContractVersion = _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1 };
                 (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) unsupportedDisposition =
                     GetBootstrapDisposition(
                         unsupportedVersion,
@@ -142,7 +147,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                     hasRequiredPermission: false,
                     isPerformanceReaderMember: bootstrap.IsPerformanceReaderMember,
                     transportEncrypted: bootstrap.TransportEncryptedByPolicy,
-                    usedPermissionFallback: true);
+                    usedPermissionFallback: true) with { ContractVersion = _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1 };
                 (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) editionDisposition =
                     GetBootstrapDisposition(
                         unsupportedEdition,
@@ -161,23 +166,24 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             {
                 detail = await ExecuteDetailAsync(
                         connection,
-                        _assetsV3?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
+                        _assetsV4?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
+                            _assetsV3?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
                             _assetsV2?.Get($"capability.connection.sqlserver{bootstrap.ProductMajorVersion}-windows.v2.sql") ??
                             _assets.GetSupportedQuery(bootstrap.ProductMajorVersion),
                         commandTimeout,
                         budget,
                         usedPermissionFallback: false,
-                        contractVersion: _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1,
+                        contractVersion: _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1,
                         timeout.Token)
                     .ConfigureAwait(false);
             }
             catch (SqlException exception) when (IsPermissionDenied(exception))
             {
-                if (_assetsV3 is not null || _assetsV2 is not null)
+                if (_assetsV4 is not null || _assetsV3 is not null || _assetsV2 is not null)
                 {
-                    // A v2 contract must never silently downgrade to the
-                    // historical v1 fallback while still labeling its profile v2.
-                    throw new InvalidDataException("Capability v2 detail evidence was denied; v1 fallback is forbidden.", exception);
+                    // Versioned contracts must not silently downgrade to the
+                    // historical v1 fallback while retaining a newer profile version.
+                    throw new InvalidDataException("Versioned capability detail evidence was denied; v1 fallback is forbidden.", exception);
                 }
                 detail = await ExecuteDetailAsync(
                         connection,
@@ -195,7 +201,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 throw new InvalidDataException("SQL Server version evidence changed during capability discovery.");
             }
 
-            if (_assetsV3 is not null)
+            if (_assetsV4 is not null || _assetsV3 is not null)
             {
                 await using (var visibilityProbe = new SqlCommand(
                     "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,N'VIEW ANY DATABASE'),0));",
@@ -222,7 +228,17 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 finally { connection.ChangeDatabase(originalDatabase); }
             }
 
-            if (_assetsV3 is not null && distributionDatabase is not null)
+            if (_assetsV4 is not null)
+            {
+                await using var metadataProbe = new SqlCommand(
+                    "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,N'VIEW ANY DEFINITION'),0));",
+                    connection) { CommandTimeout = commandTimeout };
+                object? metadataVisibility = await metadataProbe.ExecuteScalarAsync(timeout.Token).ConfigureAwait(false);
+                detail = detail with { HasViewAnyDefinition = metadataVisibility is true };
+                budget.AddFixedBytes(1);
+            }
+
+            if ((_assetsV4 is not null || _assetsV3 is not null) && distributionDatabase is not null)
             {
                 bool roleGranted = await ProbeReplicationMonitorRoleAsync(
                         connection,
@@ -236,7 +252,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
 
             (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) disposition =
                 GetConnectedDisposition(detail);
-            if (_assetsV3 is null && disposition.Outcome == CapabilityDiscoveryOutcome.Supported &&
+            if (_assetsV4 is null && _assetsV3 is null && disposition.Outcome == CapabilityDiscoveryOutcome.Supported &&
                 (!detail.HasBackupsetSelect || !detail.HasSysjobhistorySelect))
             {
                 disposition = (CapabilityDiscoveryOutcome.Degraded, CapabilityDiscoveryReason.RequiredPermissionMissing);
@@ -356,11 +372,11 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             throw new InvalidDataException("SQL Server detail discovery returned no evidence.");
         }
 
-        if (contractVersion == 3)
+        if (contractVersion is 3 or 4)
         {
             if (reader.FieldCount != 11)
             {
-                throw new InvalidDataException("SQL Server capability v3 result contract requires exactly 11 columns.");
+                throw new InvalidDataException("SQL Server capability v3/v4 result contract requires exactly 11 columns.");
             }
 
             int v3ProductMajorVersion = reader.GetInt32(0);
@@ -394,7 +410,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 NetTransport: "TCP",
                 TransportEncrypted: string.Equals(v3EncryptOption, "TRUE", StringComparison.OrdinalIgnoreCase),
                 UsedPermissionFallback: usedPermissionFallback,
-                ContractVersion: 3,
+                ContractVersion: contractVersion,
                 HasReplicationFeature: v3HasReplicationFeature,
                 HasHostBindingFeature: v3HasHostBindingFeature);
         }
@@ -640,8 +656,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             request.TargetId,
             request.TargetRevision,
             _assets.Manifest.Id,
-            _assetsV3 is not null ? _assetsV3.ManifestVersion : _assetsV2?.ManifestVersion ?? _assets.Manifest.ManifestVersion.Value,
-            _assetsV3 is not null ? 3 : _assetsV2 is null ? _assets.Manifest.OutputSchemaVersion.Value : 2,
+            _assetsV4 is not null ? _assetsV4.ManifestVersion : _assetsV3 is not null ? _assetsV3.ManifestVersion : _assetsV2?.ManifestVersion ?? _assets.Manifest.ManifestVersion.Value,
+            _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is null ? _assets.Manifest.OutputSchemaVersion.Value : 2,
             identity,
             outcome,
             reason,
@@ -667,8 +683,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             request.TargetId,
             request.TargetRevision,
             _assets.Manifest.Id,
-            _assetsV3 is not null ? _assetsV3.ManifestVersion : _assetsV2?.ManifestVersion ?? _assets.Manifest.ManifestVersion.Value,
-            _assetsV3 is not null ? 3 : _assetsV2 is null ? _assets.Manifest.OutputSchemaVersion.Value : 2,
+            _assetsV4 is not null ? _assetsV4.ManifestVersion : _assetsV3 is not null ? _assetsV3.ManifestVersion : _assetsV2?.ManifestVersion ?? _assets.Manifest.ManifestVersion.Value,
+            _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is null ? _assets.Manifest.OutputSchemaVersion.Value : 2,
             serverIdentity: null,
             outcome,
             reason,
@@ -767,6 +783,12 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                     ViewAnyDatabasePermissionId,
                     PermissionEvidenceScope.Server,
                     detail.HasViewAnyDatabase ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied),
+                ..(detail.ContractVersion >= 4
+                    ? (IEnumerable<PermissionEvidence>)[new PermissionEvidence(
+                        ViewAnyDefinitionPermissionId,
+                        PermissionEvidenceScope.Server,
+                        detail.HasViewAnyDefinition ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied)]
+                    : Array.Empty<PermissionEvidence>()),
                 new PermissionEvidence(
                     BackupsetSelectPermissionId,
                     PermissionEvidenceScope.Database,
@@ -1129,5 +1151,6 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         bool HasReplicationFeature = false,
         bool HasHostBindingFeature = false,
         bool? HasReplicationMonitorPermission = null,
-        bool HasViewAnyDatabase = false);
+        bool HasViewAnyDatabase = false,
+        bool HasViewAnyDefinition = false);
 }

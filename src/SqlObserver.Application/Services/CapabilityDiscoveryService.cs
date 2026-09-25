@@ -122,6 +122,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
     private const string HostBindingCapabilityId = "feature.host-binding";
     private const string BackupsetSelectPermissionId = "msdb.backupset.select";
     private const string ViewAnyDatabasePermissionId = "server.view-any-database";
+    private const string ViewAnyDefinitionPermissionId = "server.view-any-definition";
     private const string SysjobhistorySelectPermissionId = "msdb.sysjobhistory.select";
     private const string ViewServerStatePermissionId = "server.view-state";
     private const string ViewServerPerformanceStatePermissionId = "server.view-performance-state";
@@ -241,7 +242,8 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
 
         if (!((profile.CollectorManifestVersion == CapabilityConnectionManifestVersion && profile.OutputSchemaVersion == CapabilityConnectionOutputSchemaVersion) ||
               (profile.CollectorManifestVersion == 2 && profile.OutputSchemaVersion == 2) ||
-              (profile.CollectorManifestVersion == 3 && profile.OutputSchemaVersion == 3)))
+              (profile.CollectorManifestVersion == 3 && profile.OutputSchemaVersion == 3) ||
+              (profile.CollectorManifestVersion == 4 && profile.OutputSchemaVersion == 4)))
         {
             throw new InvalidDataException("Capability discovery returned an unsupported contract version.");
         }
@@ -394,7 +396,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
             }
         }
 
-        if (profile.OutputSchemaVersion == 3)
+        if (profile.OutputSchemaVersion >= 3)
         {
             foreach (string featureId in new[] { ReplicationCapabilityId, HostBindingCapabilityId })
             {
@@ -445,13 +447,18 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
             }
         }
 
-        if (profile.OutputSchemaVersion == 3)
+        if (profile.OutputSchemaVersion >= 3)
         {
             bool hasHistoryEvidence = permissions.ContainsKey(BackupsetSelectPermissionId) &&
                 permissions.ContainsKey(SysjobhistorySelectPermissionId);
-            if (permissions.Count != (hasHistoryEvidence ? 5 : 3) ||
+            int expectedCount = (hasHistoryEvidence ? 5 : 3) +
+                (profile.OutputSchemaVersion == 4 ? 1 : 0);
+            if (permissions.Count != expectedCount ||
                 !permissions.TryGetValue(ViewAnyDatabasePermissionId, out PermissionEvidence? databaseVisibility) ||
                 databaseVisibility.Outcome is not (PermissionEvidenceOutcome.Granted or PermissionEvidenceOutcome.Denied) ||
+                (profile.OutputSchemaVersion == 4 &&
+                 (!permissions.TryGetValue(ViewAnyDefinitionPermissionId, out PermissionEvidence? definitionVisibility) ||
+                  definitionVisibility.Outcome is not (PermissionEvidenceOutcome.Granted or PermissionEvidenceOutcome.Denied))) ||
                 !permissions.TryGetValue(ReplicationMonitorPermissionId, out PermissionEvidence? replication) ||
                 replication.Outcome is not (PermissionEvidenceOutcome.Granted or PermissionEvidenceOutcome.NotApplicable))
             {
@@ -570,6 +577,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         ViewServerPerformanceStatePermissionId or
         PerformanceReaderMembershipPermissionId or
         ViewAnyDatabasePermissionId or
+        ViewAnyDefinitionPermissionId or
         BackupsetSelectPermissionId or
         SysjobhistorySelectPermissionId or
         ReplicationMonitorPermissionId;
