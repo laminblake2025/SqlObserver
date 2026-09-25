@@ -35,5 +35,6 @@ owned by another target, or by a historical row without a target, is rejected.
 Historical rows remain intact for migration and retention; they cannot become
 new query-content references. Migration 0120 enforces the same target match on
 new query-performance content links, while preserving historical links for
-reconciliation. A leased atomic link commit, query identity binding, and
+reconciliation. Migration 0121 also requires new links to identify a query
+row from the same collection run and target. A leased atomic link commit and
 authorized reader are still needed before collection can be enabled.

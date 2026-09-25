@@ -334,7 +334,7 @@ public sealed class RepositoryReplaySafetyIntegrationTests
     }
 
     [Fact]
-    public async Task QueryContentLinkRejectsPayloadOwnedByAnotherTarget()
+    public async Task QueryContentLinkRequiresMatchingPayloadAndQueryTarget()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         Guid ownerId = Guid.NewGuid(), otherId = Guid.NewGuid();
@@ -350,24 +350,61 @@ public sealed class RepositoryReplaySafetyIntegrationTests
                 lease.Identity, DefaultTimeout), CancellationToken.None);
 
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        Guid ownerRun = Guid.NewGuid(), otherRun = Guid.NewGuid();
+        byte[] query = RandomNumberGenerator.GetBytes(32);
+        await using (var seed = new NpgsqlCommand(
+            """
+            INSERT INTO telemetry.collection_run
+                (run_id,instance_id,collector_id,collector_version,output_schema_version,target_revision,
+                 schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+            SELECT id,target,'queries.performance',1,1,1,1,'test/query-content',gen_random_uuid(),1,
+                   decode(repeat('00',32),'hex'),now(),now()
+            FROM (VALUES (@owner_run,@owner),(@other_run,@other)) runs(id,target);
+            INSERT INTO events.query_performance_run
+                (collection_run_id,instance_id,target_revision,window_start,window_end,source,
+                 source_state,coverage,freshness,truncated,completion_digest)
+            SELECT id,target,1,now()-interval '5 minutes',now(),'query_store','read_write',
+                   'complete',true,false,decode(repeat('00',32),'hex')
+            FROM (VALUES (@owner_run,@owner),(@other_run,@other)) runs(id,target);
+            INSERT INTO events.query_performance_query
+                (collection_run_id,instance_id,database_id,query_fingerprint)
+            SELECT id,target,1,@query
+            FROM (VALUES (@owner_run,@owner),(@other_run,@other)) runs(id,target);
+            """, connection))
+        {
+            seed.Parameters.AddWithValue("owner_run", ownerRun);
+            seed.Parameters.AddWithValue("other_run", otherRun);
+            seed.Parameters.AddWithValue("owner", ownerId);
+            seed.Parameters.AddWithValue("other", otherId);
+            seed.Parameters.AddWithValue("query", query);
+            await seed.ExecuteNonQueryAsync();
+        }
         await using var link = new NpgsqlCommand(
             """
             INSERT INTO events.query_performance_content_link
                 (collection_run_id,instance_id,database_id,query_fingerprint,content_reference,content_available)
             VALUES (@run,@target,1,@query,@payload,true);
             """, connection);
-        link.Parameters.AddWithValue("run", Guid.NewGuid());
+        link.Parameters.AddWithValue("run", ownerRun);
         link.Parameters.AddWithValue("target", ownerId);
-        link.Parameters.AddWithValue("query", RandomNumberGenerator.GetBytes(32));
+        link.Parameters.AddWithValue("query", query);
         link.Parameters.AddWithValue("payload", reference.PayloadId.Value);
         Assert.Equal(1, await link.ExecuteNonQueryAsync());
 
-        link.Parameters["run"].Value = Guid.NewGuid();
+        link.Parameters["run"].Value = otherRun;
         link.Parameters["target"].Value = otherId;
         PostgresException failure = await Assert.ThrowsAsync<PostgresException>(async () =>
             await link.ExecuteNonQueryAsync());
         Assert.Equal("23503", failure.SqlState);
         Assert.Equal("fk_query_content_link_payload_target", failure.ConstraintName);
+
+        link.Parameters["run"].Value = ownerRun;
+        link.Parameters["target"].Value = ownerId;
+        link.Parameters["query"].Value = RandomNumberGenerator.GetBytes(32);
+        PostgresException wrongQuery = await Assert.ThrowsAsync<PostgresException>(async () =>
+            await link.ExecuteNonQueryAsync());
+        Assert.Equal("23503", wrongQuery.SqlState);
+        Assert.Equal("fk_query_content_link_query_target", wrongQuery.ConstraintName);
     }
 
     [Fact]
@@ -407,6 +444,13 @@ public sealed class RepositoryReplaySafetyIntegrationTests
             await link.ExecuteNonQueryAsync());
         Assert.Equal("23503", failure.SqlState);
         Assert.Equal("fk_query_content_link_payload_target", failure.ConstraintName);
+
+        MigrationBatchResult queryBound = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
+        Assert.False(queryBound.HasFailures);
+        Assert.Single(queryBound.Results);
+        Assert.Equal(1, await ExecuteScalarInt64Async(database,
+            "SELECT count(*) FROM events.query_performance_content_link;"));
     }
 
     [Fact]
