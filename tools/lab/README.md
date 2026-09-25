@@ -10,6 +10,17 @@ summed. For example:
 pwsh ./tools/lab/verify-sql-volume-capacity-local.ps1 -SqlInstance '.\SQLEXPRESS'
 ```
 
+`verify-sql-volume-least-privilege-local.ps1` creates a disposable non-sysadmin
+login, grants the version-specific volume DMV permission, measures how many
+`sys.master_files` rows that alone exposes, then adds `VIEW ANY DEFINITION` and
+checks complete file coverage and known capacity. It prints only aggregate
+counts and removes the login in `finally`. Run it on a disposable instance as
+a sysadmin; it changes no database data:
+
+```powershell
+pwsh ./tools/lab/verify-sql-volume-least-privilege-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
 The [volume-capacity contract](../../docs/technical/SqlObserver-Sql-Volume-Capacity-Contract.md)
 defines the separate collector, identity and repository cutover needed before
 these values can appear in Resources.

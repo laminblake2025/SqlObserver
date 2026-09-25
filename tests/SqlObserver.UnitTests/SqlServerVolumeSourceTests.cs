@@ -117,6 +117,15 @@ public sealed class SqlServerVolumeSourceTests
     }
 
     [Fact]
+    public async Task EmptyMetadataViewCannotMasqueradeAsCompleteCapacityEvidence()
+    {
+        using DataTable table = Rows();
+        using DataTableReader reader = table.CreateDataReader();
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await Read(reader));
+    }
+
+    [Fact]
     public void PinnedQueryHasBoundedOrderedLookaheadAndNoPhysicalFilePath()
     {
         string query = SqlServerVolumeCapacitySource.LoadPinnedQuery();

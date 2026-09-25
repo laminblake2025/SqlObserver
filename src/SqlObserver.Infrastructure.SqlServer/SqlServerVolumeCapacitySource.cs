@@ -121,6 +121,9 @@ internal static class SqlServerVolumeCapacitySource
             }
         }
 
+        if (rowsRead == 0)
+            throw new InvalidDataException("SQL volume source returned no visible database files.");
+
         return new SqlVolumeSourceRead(
             new SqlVolumeObservationBatch(byKey.Values.OrderBy(static item => item.VolumeKey, StringComparer.Ordinal).ToArray()),
             rowsRead, responseBytes, false, false);

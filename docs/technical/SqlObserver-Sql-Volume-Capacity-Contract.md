@@ -36,7 +36,22 @@ or production cost. Multiple files on one volume repeated the same capacity;
 **never sum per-file `available_bytes`**. This source covers volumes that hold
 visible SQL database files, not every volume on the host.
 
+The disposable non-sysadmin probe in
+`tools/lab/verify-sql-volume-least-privilege-local.ps1` exposed a separate
+metadata gate on local SQL Server 2022: `VIEW SERVER PERFORMANCE STATE` alone
+returned **0 of 10** `sys.master_files` rows. Adding `VIEW ANY DEFINITION`
+returned all **10**, each with known capacity and transient volume identity,
+without sysadmin. The existing
+`tools/generate-permissions.ps1 -LogicalFiles` option grants that metadata
+permission; the default script does not. Require that option in the volume
+deployment instructions and explicitly document the grant in the eventual
+`storage.volume` manifest; otherwise an apparently successful empty source
+read could conceal every volume. The source parser now rejects zero visible
+files as invalid evidence. The temporary login was removed after the probe.
+SQL Server 2019/2025 and failover still need the same proof.
+
 - [Microsoft `sys.dm_os_volume_stats` reference](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-os-volume-stats-transact-sql)
+- [Microsoft `sys.master_files` permissions](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-master-files-transact-sql)
 - [Microsoft DMV permission matrix](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-objects/system-dynamic-management-objects?view=sql-server-ver17)
 
 ## Collection and identity
