@@ -33,5 +33,7 @@ The repository write request now requires that target, and deduplication only
 returns a ciphertext row owned by the same target. An existing fingerprint
 owned by another target, or by a historical row without a target, is rejected.
 Historical rows remain intact for migration and retention; they cannot become
-new query-content references. The query-performance content-link table and
-reader still need an enforced target match before collection can be enabled.
+new query-content references. Migration 0120 enforces the same target match on
+new query-performance content links, while preserving historical links for
+reconciliation. A leased atomic link commit, query identity binding, and
+authorized reader are still needed before collection can be enabled.

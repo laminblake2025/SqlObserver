@@ -334,6 +334,82 @@ public sealed class RepositoryReplaySafetyIntegrationTests
     }
 
     [Fact]
+    public async Task QueryContentLinkRejectsPayloadOwnedByAnotherTarget()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid ownerId = Guid.NewGuid(), otherId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, ownerId);
+        await InsertObservationTargetAsync(database, otherId);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        WorkerLease lease = await AcquireLeaseAsync(collector, "query-content-link-target");
+        var port = new PostgreSqlSensitivePayloadPort(collector);
+        ProtectedSensitivePayload payload = CreateProtectedPayload(
+            RandomNumberGenerator.GetBytes(SensitivePayloadFingerprint.RequiredLength), material: 57);
+        SensitivePayloadReference reference = await port.GetOrAddAsync(
+            new SensitivePayloadGetOrAddRequest(new MonitoredInstanceId(ownerId), payload,
+                lease.Identity, DefaultTimeout), CancellationToken.None);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var link = new NpgsqlCommand(
+            """
+            INSERT INTO events.query_performance_content_link
+                (collection_run_id,instance_id,database_id,query_fingerprint,content_reference,content_available)
+            VALUES (@run,@target,1,@query,@payload,true);
+            """, connection);
+        link.Parameters.AddWithValue("run", Guid.NewGuid());
+        link.Parameters.AddWithValue("target", ownerId);
+        link.Parameters.AddWithValue("query", RandomNumberGenerator.GetBytes(32));
+        link.Parameters.AddWithValue("payload", reference.PayloadId.Value);
+        Assert.Equal(1, await link.ExecuteNonQueryAsync());
+
+        link.Parameters["run"].Value = Guid.NewGuid();
+        link.Parameters["target"].Value = otherId;
+        PostgresException failure = await Assert.ThrowsAsync<PostgresException>(async () =>
+            await link.ExecuteNonQueryAsync());
+        Assert.Equal("23503", failure.SqlState);
+        Assert.Equal("fk_query_content_link_payload_target", failure.ConstraintName);
+    }
+
+    [Fact]
+    public async Task ContentLinkUpgradePreservesLegacyLinkAndRejectsNewOrphan()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult prior = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(119, DefaultTimeout), CancellationToken.None);
+        Assert.False(prior.HasFailures);
+        Assert.Equal(119, prior.Results.Count);
+
+        Guid targetId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, targetId);
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var link = new NpgsqlCommand(
+            """
+            INSERT INTO events.query_performance_content_link
+                (collection_run_id,instance_id,database_id,query_fingerprint,content_reference)
+            VALUES (@run,@target,1,@query,@payload);
+            """, connection);
+        link.Parameters.AddWithValue("run", Guid.NewGuid());
+        link.Parameters.AddWithValue("target", targetId);
+        link.Parameters.AddWithValue("query", RandomNumberGenerator.GetBytes(32));
+        link.Parameters.AddWithValue("payload", Guid.NewGuid());
+        Assert.Equal(1, await link.ExecuteNonQueryAsync());
+
+        MigrationBatchResult upgraded = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
+        Assert.False(upgraded.HasFailures);
+        Assert.Single(upgraded.Results);
+        Assert.Equal(1, await ExecuteScalarInt64Async(database,
+            "SELECT count(*) FROM events.query_performance_content_link;"));
+
+        link.Parameters["run"].Value = Guid.NewGuid();
+        PostgresException failure = await Assert.ThrowsAsync<PostgresException>(async () =>
+            await link.ExecuteNonQueryAsync());
+        Assert.Equal("23503", failure.SqlState);
+        Assert.Equal("fk_query_content_link_payload_target", failure.ConstraintName);
+    }
+
+    [Fact]
     public async Task TargetBindingUpgradePreservesLegacyPayloadButDoesNotReuseIt()
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
