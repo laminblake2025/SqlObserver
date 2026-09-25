@@ -69,6 +69,19 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 """, admin);
             forecast.Parameters.AddWithValue("target", targetIds[0]);
             await forecast.ExecuteNonQueryAsync();
+            await using var otherForecast = new NpgsqlCommand("""
+                INSERT INTO analytics.metric_forecast
+                    (forecast_id, instance_id, target_revision, metric_key, horizon_start, horizon_end,
+                     model, predicted_value, lower_bound, upper_bound, confidence, residual,
+                     slope_per_day, source_generation, visibility_state, dimensions, dimension_hash, computed_at)
+                SELECT gen_random_uuid(), @target, 1, 'host.cpu.percent',
+                       statement_timestamp() - interval '1 minute', statement_timestamp() + interval '1 hour',
+                       'other-target', 99, 98, 100, 1, 0, 0, 1, 'complete', '{}'::jsonb,
+                       sha256(convert_to('{}', 'UTF8')), statement_timestamp() - interval '1 minute'
+                FROM generate_series(1, 3);
+                """, admin);
+            otherForecast.Parameters.AddWithValue("target", targetIds[1]);
+            await otherForecast.ExecuteNonQueryAsync();
             await using var diagnosticEvents = new NpgsqlCommand("""
                 INSERT INTO events.diagnostic_event
                     (occurred_at, event_id, instance_id, event_kind, severity, safe_metadata, collected_at)
@@ -78,6 +91,15 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 """, admin);
             diagnosticEvents.Parameters.AddWithValue("target", targetIds[0]);
             await diagnosticEvents.ExecuteNonQueryAsync();
+            await using var otherDiagnosticEvents = new NpgsqlCommand("""
+                INSERT INTO events.diagnostic_event
+                    (occurred_at, event_id, instance_id, event_kind, severity, safe_metadata, collected_at)
+                SELECT statement_timestamp() - interval '2 minutes', gen_random_uuid(), @target,
+                       'mcp.other_target', g, '{}'::jsonb, statement_timestamp() - interval '2 minutes'
+                FROM generate_series(1, 3) AS values(g);
+                """, admin);
+            otherDiagnosticEvents.Parameters.AddWithValue("target", targetIds[1]);
+            await otherDiagnosticEvents.ExecuteNonQueryAsync();
         }
 
         string serverConnectionString = new NpgsqlConnectionStringBuilder(database.ConnectionString)
@@ -176,6 +198,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                     JsonElement data = structured.GetProperty("data");
                     JsonElement item = Assert.Single(data.GetProperty("items").EnumerateArray());
                     if (forecast) Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
+                    else Assert.Equal("mcp.pipeline", item.GetProperty("eventKind").GetString());
                     Assert.True(seenIds.Add(item.GetProperty(forecast ? "forecastId" : "eventId").GetGuid()));
                     Assert.Equal(itemPage < 2, data.GetProperty("hasMore").GetBoolean());
                     itemCursor = data.TryGetProperty("nextCursor", out JsonElement next) && next.ValueKind == JsonValueKind.String
