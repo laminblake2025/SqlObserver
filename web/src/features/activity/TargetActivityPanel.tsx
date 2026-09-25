@@ -5,7 +5,8 @@ import { LiveSessionsPanel } from "./LiveSessionsPanel";
 
 import { getActivitySnapshot, getBlockingHistoryPage } from "./activityApi";
 import { resolveActivityWindow } from "./activityWindowModel";
-import type { ActivityPage, BlockingHistoryItem } from "./activityTypes";
+import { groupWaitDeltas } from "./waitCategoryModel";
+import type { ActivityPage, ActivityWait, BlockingHistoryItem } from "./activityTypes";
 import type { OverviewScope } from "../overview/overviewTypes";
 
 export interface TargetActivityPanelProps {
@@ -54,7 +55,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
         {snapshot.sessions && <ActivityTable title="Sessions" columns={["Session", "Status", "Database", "CPU ms", "Memory pages", "Reads/writes", "Elapsed ms"]} rows={snapshot.sessions.items.map((item) => [String(item.sessionId), item.status, String(item.databaseId ?? "—"), item.cpuMilliseconds, item.memoryUsagePages, `${item.reads}/${item.writes}`, item.totalElapsedMilliseconds])} />}
         {snapshot.requests && <ActivityTable title="Active requests" columns={["Session/request", "Status", "Command", "CPU ms", "Reads/writes", "Rows", "% complete"]} rows={snapshot.requests.items.map((item) => [`${String(item.sessionId)}/${String(item.requestId)}`, item.status, item.command, item.cpuMilliseconds, `${item.reads}/${item.writes}`, item.rowCount, String(item.percentComplete)])} />}
         {snapshot.waits && <Evidence page={snapshot.waits} />}
-        {snapshot.waits && <section className="panel wait-chart"><h4>Wait deltas · loaded page</h4><p>Up to 10 largest wait-time deltas in this page, in milliseconds. Missing baselines and resets are excluded.</p>{snapshot.waits!.items.filter(item => item.baselineAvailable && !item.resetDetected && item.waitTimeMillisecondsDelta != null).sort((a,b) => Number(b.waitTimeMillisecondsDelta)-Number(a.waitTimeMillisecondsDelta)).slice(0,10).map(item => <label key={item.waitType}>{item.waitType}<meter min={0} max={Math.max(1,...snapshot.waits!.items.filter(x => x.baselineAvailable && !x.resetDetected).map(x => Number(x.waitTimeMillisecondsDelta ?? 0)))} value={Number(item.waitTimeMillisecondsDelta)} />{item.waitTimeMillisecondsDelta} ms</label>)}{!snapshot.waits!.items.some(item => item.baselineAvailable && !item.resetDetected && item.waitTimeMillisecondsDelta != null) && <p>No comparable wait deltas are available.</p>}</section>}
+        {snapshot.waits && <WaitCategoryChart page={snapshot.waits} />}
         {snapshot.waits && <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />}
         {snapshot.blocking && <Evidence page={snapshot.blocking} />}
         {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "Root resolution"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
@@ -63,6 +64,18 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
       </div></details>
     </section>
   );
+}
+
+function WaitCategoryChart({ page }: { readonly page: ActivityPage<ActivityWait> }) {
+  const summary = useMemo(() => groupWaitDeltas(page.items), [page.items]);
+  const max = Math.max(1, ...summary.categories.map(item => Number(item.waitMilliseconds)));
+  return <section className="panel wait-chart" aria-label="Wait categories">
+    <h4>Wait categories · loaded page</h4>
+    <p>Comparable positive wait-time deltas, grouped by likely cause. Idle waits are omitted here; the raw wait table below retains every loaded type.{page.nextCursor ? " More wait rows are available." : ""}</p>
+    {summary.categories.map(item => <label key={item.category}><span>{item.category} · {item.waitTypes} type{item.waitTypes === 1 ? "" : "s"}</span><meter min={0} max={max} value={Number(item.waitMilliseconds)} /><span>{item.waitMilliseconds} ms</span></label>)}
+    {summary.categories.length === 0 && <p>No comparable positive wait deltas are available on this page.</p>}
+    {(summary.idleTypesOmitted > 0 || summary.incomparableTypes > 0) && <p>{summary.idleTypesOmitted} idle type{summary.idleTypesOmitted === 1 ? "" : "s"} omitted; {summary.incomparableTypes} type{summary.incomparableTypes === 1 ? "" : "s"} without a comparable baseline or after a reset.</p>}
+  </section>;
 }
 
 function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: string; readonly initialPage: ActivityPage<BlockingHistoryItem> }) {
