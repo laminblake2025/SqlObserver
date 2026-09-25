@@ -33,20 +33,6 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
             string.Join(", ", migrated.Results.Where(static result => result.Outcome == MigrationOutcome.Failed)
                 .Select(static result => $"{result.Migration.Number.Value}:{result.FailureCode}")));
 
-        // The production manifest is intentionally not registered yet. A
-        // test-only immutable contract exercises the writer without enabling
-        // a collector on an installed repository.
-        await ExecuteAsync(database, """
-            INSERT INTO control.collector_contract
-             (collector_id,collector_version,execution_order,manifest_schema_version,
-              output_schema_version,manifest_sha256,asset_bundle_sha256,default_interval,
-              minimum_interval,execution_timeout,maximum_rows,maximum_response_bytes,
-              estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval)
-            VALUES ('storage.volume',1,999,3,1,decode(repeat('a',64),'hex'),
-                    decode(repeat('b',64),'hex'),interval '2 minutes',interval '1 minute',
-                    interval '5 seconds',1000,4194304,'moderate',2,3,interval '5 minutes');
-            """);
-
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
         var leases = new PostgreSqlWorkerLeasePort(collector);
@@ -269,8 +255,11 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
             VALUES (@target,@key,'Volume commit target','sql01',1433,interval '5 seconds',
               'windows_integrated_service_identity','mandatory_validated','active',1,
               statement_timestamp(),statement_timestamp(),statement_timestamp());
-            UPDATE control.collector_schedule SET enabled=false
-            WHERE instance_id=@target AND collector_id<>'storage.volume';
+            UPDATE control.collector_schedule
+            SET enabled=(collector_id IN ('storage.volume','engine.core','database.files')),
+                last_outcome=CASE WHEN collector_id IN ('engine.core','database.files')
+                                  THEN 'succeeded' ELSE last_outcome END
+            WHERE instance_id=@target;
             """);
         seed.Parameters.AddWithValue("target", target);
         seed.Parameters.AddWithValue("key", $"volume.commit.{target:N}");

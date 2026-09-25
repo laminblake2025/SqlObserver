@@ -30,8 +30,12 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         await AssertAppendOnlyTriggerAsync(database);
 
+        MigrationBatchResult remaining = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(remaining.HasFailures);
+
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
+        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray();
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);

@@ -1,0 +1,17 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://sqlobserver.local/storage.volume.v1.schema.json",
+  "title":"SqlObserver passive SQL volume collector manifest v1","type":"object","additionalProperties":false,
+  "required":["$schema","schemaVersion","collectorId","collectorVersion","displayName","operationalMode","dependsOn","supportedTargets","requiredCapabilities","requiredPermissionsByMajor","cadence","executionBounds","estimatedCostClass","queryResource","fallback","outputSchemaVersion","outputKind","defaultEnabled"],
+  "properties":{
+    "$schema":{"const":"storage.volume.v1.schema.json"},"schemaVersion":{"const":6},"collectorId":{"const":"storage.volume"},"collectorVersion":{"const":1},
+    "displayName":{"const":"SQL Server target-host volume capacity"},"operationalMode":{"const":"passive"},
+    "dependsOn":{"const":["capability.connection","engine.core","database.files"]},
+    "supportedTargets":{"const":{"product":"Microsoft SQL Server","minimumMajorVersion":15,"maximumMajorVersion":17,"platforms":["Windows"],"engineEditions":[2,3,4]}},
+    "requiredCapabilities":{"const":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"]},
+    "requiredPermissionsByMajor":{"const":{"15":["server.view-state","server.view-any-definition"],"16":["server.view-performance-state","server.view-any-definition"],"17":["server.view-performance-state","server.view-any-definition"]}},
+    "cadence":{"const":{"defaultIntervalSeconds":300,"minimumIntervalSeconds":60,"nonOverlappingPerTarget":true}},
+    "executionBounds":{"const":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":5,"maximumRows":1000,"maximumResponseBytes":4194304}},
+    "estimatedCostClass":{"const":"moderate"},"queryResource":{"const":"storage.volume.sqlserver15-17-windows.v1.sql"},
+    "fallback":{"const":{"mode":"unsupported"}},"outputSchemaVersion":{"const":1},"outputKind":{"const":"sql_volumes"},"defaultEnabled":{"const":false}
+  }
+}

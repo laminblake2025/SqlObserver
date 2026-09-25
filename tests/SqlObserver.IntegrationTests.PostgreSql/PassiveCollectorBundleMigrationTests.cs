@@ -28,6 +28,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     [InlineData(9)]
     [InlineData(13)]
     [InlineData(15)]
+    [InlineData(16)]
     public async Task FreshRepositoryAcceptsTheActualUpdatedApplicationCatalog(int count)
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(MigrationBatchResult.MaximumResults);
@@ -53,6 +54,58 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     }
 
     [Fact]
+    public async Task VolumeSchedulesStayOptInAcrossReconciliationAndTargetChanges()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(MigrationBatchResult.MaximumResults);
+        Guid target = Guid.NewGuid();
+        await using (var seed = database.DataSource.CreateCommand("""
+            INSERT INTO control.observation_target
+             (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+              authentication_mode,transport_security_mode,lifecycle_state,revision,
+              created_at,updated_at,discovery_requested_at)
+            VALUES (@target,@key,'Volume opt-in','sql01',1433,interval '5 seconds',
+              'windows_integrated_service_identity','mandatory_validated','active',1,
+              statement_timestamp(),statement_timestamp(),statement_timestamp());
+            """))
+        {
+            seed.Parameters.AddWithValue("target", target);
+            seed.Parameters.AddWithValue("key", $"volume.optin.{target:N}");
+            await seed.ExecuteNonQueryAsync();
+        }
+        async Task<bool> EnabledAsync()
+        {
+            await using var read = database.DataSource.CreateCommand(
+                "SELECT enabled FROM control.collector_schedule WHERE instance_id=@target AND collector_id='storage.volume';");
+            read.Parameters.AddWithValue("target", target);
+            return Assert.IsType<bool>(await read.ExecuteScalarAsync());
+        }
+        Assert.False(await EnabledAsync());
+
+        await using ServiceProvider application = CreateApplication();
+        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        WorkerLeaseIdentity lease = await AcquireCatalogLeaseAsync(collector);
+        Assert.Equal(16, (await new PostgreSqlCollectorRuntimeRepositoryPort(collector)
+            .ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
+        Assert.False(await EnabledAsync());
+
+        await using (var enable = database.DataSource.CreateCommand(
+            "UPDATE control.collector_schedule SET enabled=true WHERE instance_id=@target AND collector_id='storage.volume';"))
+        {
+            enable.Parameters.AddWithValue("target", target);
+            Assert.Equal(1, await enable.ExecuteNonQueryAsync());
+        }
+        Assert.True(await EnabledAsync());
+        await using (var change = database.DataSource.CreateCommand(
+            "UPDATE control.observation_target SET revision=revision+1,host_name='sql02',updated_at=statement_timestamp() WHERE instance_id=@target;"))
+        {
+            change.Parameters.AddWithValue("target", target);
+            Assert.Equal(1, await change.ExecuteNonQueryAsync());
+        }
+        Assert.False(await EnabledAsync());
+    }
+
+    [Fact]
     public async Task UpgradeFrom79ChangesOnlyFiveBundlePinsAndRejectsThePriorBundles()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(79);
@@ -61,8 +114,12 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         string historyBefore = await ReadHistoryAndSchedulesAsync(database);
         Assert.Equal(Enumerable.Repeat(PriorBundle, 4).Append(PriorReplicationBundle), await ReadRepairedBundlesAsync(database));
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
-        CollectorCatalogEntry[] frozenM9Entries = WithActivityBundle(WithBackupBundle(entries, PriorBackupBundle), M80Bundle);
+        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray();
+        CollectorCatalogEntry[] frozenM9Entries = WithHistoricalQueryBundle(
+            WithActivityBundle(WithBackupBundle(WithBackupManifest(
+                WithCoreBundle(entries, "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c"),
+                "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff"),
+                PriorBackupBundle), M80Bundle));
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         WorkerLeaseIdentity lease = await AcquireCatalogLeaseAsync(collector);
         PostgresException before = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, frozenM9Entries, lease));
@@ -86,7 +143,6 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         // Later forward migrations may now exist after this bounded 79->80
         // upgrade. Apply them once without reapplying the bundle repair, then
         // verify that a fully migrated repository has no pending work.
-        string registryBeforeRemaining = await ReadPreservedRegistryAsync(database, omitBackupBundle: true);
         Assert.Equal(Enumerable.Repeat(PriorBackupBundle, 4), await ReadBackupBundlesAsync(database));
         MigrationBatchResult remaining = await new PostgreSqlMigrationPort(database.DataSource)
             .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
@@ -97,8 +153,6 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
             remaining.Results.Select(result => result.Migration.Number.Value));
         Assert.Equal(Enumerable.Repeat(UpdatedBundle, 4).Append(UpdatedReplicationBundle), await ReadRepairedBundlesAsync(database));
         Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
-        Assert.Equal(registryBeforeRemaining, await ReadPreservedRegistryAsync(database, omitBackupBundle: true));
-        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
         Assert.Equal(15, (await runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
         foreach (int staleOrder in new[] { 4, 15 })
@@ -211,6 +265,13 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     private static CollectorCatalogEntry[] WithActivityBundle(CollectorCatalogEntry[] entries, string bundle) =>
         entries.Select(entry => entry.ExecutionOrder is >= 4 and <= 7
             ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
+            : entry).ToArray();
+
+    private static CollectorCatalogEntry[] WithHistoricalQueryBundle(CollectorCatalogEntry[] entries) =>
+        entries.Select(entry => entry.ExecutionOrder == 9
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest,
+                new CollectorSha256Digest("d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69"),
+                new CollectorSha256Digest("ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f"))
             : entry).ToArray();
 
     private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync(int maximum)
