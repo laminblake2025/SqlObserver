@@ -1,5 +1,19 @@
 # Disposable SQL Server workload
 
+`verify-sql-volume-capacity-local.ps1` performs a bounded, read-only probe of
+`sys.dm_os_volume_stats` for files visible on a SQL Server 2019/2022/2025
+instance. It prints aggregate coverage and the minimum free capacity across
+files, without paths or volume IDs. Repeated files on one volume are not
+summed. For example:
+
+```powershell
+pwsh ./tools/lab/verify-sql-volume-capacity-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
+The [volume-capacity contract](../../docs/technical/SqlObserver-Sql-Volume-Capacity-Contract.md)
+defines the separate collector, identity and repository cutover needed before
+these values can appear in Resources.
+
 For a local SQL Server 2022 instance, `verify-query-store-text-local.ps1`
 creates a uniquely named database, runs a small Query Store workload through
 the pinned SQL Server 16 metadata, text, and plan assets, checks that the workload
