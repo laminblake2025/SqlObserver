@@ -16,6 +16,7 @@ public sealed class PostgreSqlSensitivePayloadPort : ISensitivePayloadPort
         INSERT INTO security.protected_diagnostic_payload
         (
             payload_id,
+            instance_id,
             payload_kind,
             fingerprint,
             protection_algorithm,
@@ -27,6 +28,7 @@ public sealed class PostgreSqlSensitivePayloadPort : ISensitivePayloadPort
         VALUES
         (
             @payload_id,
+            @instance_id,
             @payload_kind,
             @fingerprint,
             @protection_algorithm,
@@ -42,7 +44,8 @@ public sealed class PostgreSqlSensitivePayloadPort : ISensitivePayloadPort
         SELECT payload_id
         FROM security.protected_diagnostic_payload
         WHERE payload_kind = @payload_kind
-          AND fingerprint = @fingerprint;
+          AND fingerprint = @fingerprint
+          AND instance_id = @instance_id;
         """;
 
     private readonly NpgsqlDataSource _dataSource;
@@ -96,6 +99,7 @@ public sealed class PostgreSqlSensitivePayloadPort : ISensitivePayloadPort
                 })
                 {
                     insert.Parameters.AddWithValue("payload_id", proposedId);
+                    insert.Parameters.AddWithValue("instance_id", request.TargetId.Value);
                     insert.Parameters.AddWithValue("payload_kind", payloadKind);
                     insert.Parameters.AddWithValue("fingerprint", fingerprint);
                     insert.Parameters.AddWithValue("protection_algorithm", request.Payload.ProtectionAlgorithm);
@@ -115,9 +119,10 @@ public sealed class PostgreSqlSensitivePayloadPort : ISensitivePayloadPort
                     };
                     select.Parameters.AddWithValue("payload_kind", payloadKind);
                     select.Parameters.AddWithValue("fingerprint", fingerprint);
+                    select.Parameters.AddWithValue("instance_id", request.TargetId.Value);
                     object? existing = await select.ExecuteScalarAsync(timeout.Token).ConfigureAwait(false);
                     persistedId = existing as Guid? ?? throw new InvalidOperationException(
-                        "Protected-payload deduplication found neither an inserted nor an existing row.");
+                        "Protected-payload fingerprint is already owned by another or legacy target.");
                 }
 
                 await PostgreSqlPartitionMaintenancePort.AssertLeaseAsync(

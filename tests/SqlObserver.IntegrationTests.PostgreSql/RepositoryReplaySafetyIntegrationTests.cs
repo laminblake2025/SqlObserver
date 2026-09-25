@@ -239,6 +239,9 @@ public sealed class RepositoryReplaySafetyIntegrationTests
     public async Task SensitiveFingerprintRetryIsImmutableFirstWriteWins()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid targetId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, targetId);
+        var target = new MonitoredInstanceId(targetId);
         await using NpgsqlDataSource collectorDataSource = database.CreateCollectorDataSource();
         WorkerLease lease = await AcquireLeaseAsync(collectorDataSource, "payload-retry");
         var port = new PostgreSqlSensitivePayloadPort(collectorDataSource);
@@ -247,13 +250,13 @@ public sealed class RepositoryReplaySafetyIntegrationTests
         ProtectedSensitivePayload randomizedRetry = CreateProtectedPayload(fingerprint, material: 22);
 
         SensitivePayloadReference inserted = await port.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(first, lease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(target, first, lease.Identity, DefaultTimeout),
             CancellationToken.None);
         SensitivePayloadReference exactReplay = await port.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(first, lease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(target, first, lease.Identity, DefaultTimeout),
             CancellationToken.None);
         SensitivePayloadReference randomized = await port.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(randomizedRetry, lease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(target, randomizedRetry, lease.Identity, DefaultTimeout),
             CancellationToken.None);
 
         Assert.Equal(inserted.PayloadId, exactReplay.PayloadId);
@@ -271,6 +274,9 @@ public sealed class RepositoryReplaySafetyIntegrationTests
     public async Task ConcurrentSensitiveFingerprintCollisionCommitsOneCompleteRepresentation()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid targetId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, targetId);
+        var target = new MonitoredInstanceId(targetId);
         await using NpgsqlDataSource collectorDataSource = database.CreateCollectorDataSource();
         WorkerLease firstLease = await AcquireLeaseAsync(collectorDataSource, "payload-concurrency-a");
         WorkerLease secondLease = await AcquireLeaseAsync(collectorDataSource, "payload-concurrency-b");
@@ -280,10 +286,10 @@ public sealed class RepositoryReplaySafetyIntegrationTests
         ProtectedSensitivePayload second = CreateProtectedPayload(fingerprint, material: 47);
 
         Task<SensitivePayloadReference> firstWrite = port.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(first, firstLease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(target, first, firstLease.Identity, DefaultTimeout),
             CancellationToken.None).AsTask();
         Task<SensitivePayloadReference> secondWrite = port.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(second, secondLease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(target, second, secondLease.Identity, DefaultTimeout),
             CancellationToken.None).AsTask();
         SensitivePayloadReference[] references = await Task.WhenAll(firstWrite, secondWrite);
 
@@ -294,6 +300,92 @@ public sealed class RepositoryReplaySafetyIntegrationTests
 
         Assert.Equal(1L, persisted.Count);
         Assert.True(matchesFirst ^ matchesSecond);
+    }
+
+    [Fact]
+    public async Task SensitiveFingerprintCannotBeReusedForAnotherTarget()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid firstId = Guid.NewGuid(), secondId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, firstId);
+        await InsertObservationTargetAsync(database, secondId);
+        await using NpgsqlDataSource collectorDataSource = database.CreateCollectorDataSource();
+        WorkerLease lease = await AcquireLeaseAsync(collectorDataSource, "payload-target-boundary");
+        var port = new PostgreSqlSensitivePayloadPort(collectorDataSource);
+        byte[] fingerprint = RandomNumberGenerator.GetBytes(SensitivePayloadFingerprint.RequiredLength);
+        ProtectedSensitivePayload payload = CreateProtectedPayload(fingerprint, material: 51);
+        SensitivePayloadReference original = await port.GetOrAddAsync(
+            new SensitivePayloadGetOrAddRequest(new MonitoredInstanceId(firstId), payload,
+                lease.Identity, DefaultTimeout), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await port.GetOrAddAsync(
+            new SensitivePayloadGetOrAddRequest(new MonitoredInstanceId(secondId), payload,
+                lease.Identity, DefaultTimeout), CancellationToken.None));
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var verify = new NpgsqlCommand(
+            "SELECT instance_id FROM security.protected_diagnostic_payload WHERE fingerprint=@fingerprint;",
+            connection);
+        verify.Parameters.AddWithValue("fingerprint", fingerprint);
+        await using NpgsqlDataReader reader = await verify.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(firstId, reader.GetGuid(0));
+        Assert.False(await reader.ReadAsync());
+        Assert.NotEqual(Guid.Empty, original.PayloadId.Value);
+    }
+
+    [Fact]
+    public async Task TargetBindingUpgradePreservesLegacyPayloadButDoesNotReuseIt()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult prior = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(118, DefaultTimeout), CancellationToken.None);
+        Assert.False(prior.HasFailures);
+        Assert.Equal(118, prior.Results.Count);
+
+        Guid targetId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, targetId);
+        byte[] fingerprint = RandomNumberGenerator.GetBytes(SensitivePayloadFingerprint.RequiredLength);
+        ProtectedSensitivePayload legacy = CreateProtectedPayload(fingerprint, material: 61);
+        Guid legacyId = Guid.NewGuid();
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var insert = new NpgsqlCommand(
+            """
+            INSERT INTO security.protected_diagnostic_payload
+                (payload_id,payload_kind,fingerprint,protection_algorithm,key_identifier,nonce,authentication_tag,ciphertext)
+            VALUES (@id,'query_text',@fingerprint,@algorithm,@key,@nonce,@tag,@ciphertext);
+            """, connection))
+        {
+            insert.Parameters.AddWithValue("id", legacyId);
+            insert.Parameters.AddWithValue("fingerprint", fingerprint);
+            insert.Parameters.AddWithValue("algorithm", legacy.ProtectionAlgorithm);
+            insert.Parameters.AddWithValue("key", legacy.KeyIdentifier);
+            insert.Parameters.AddWithValue("nonce", legacy.GetNonce());
+            insert.Parameters.AddWithValue("tag", legacy.GetAuthenticationTag());
+            insert.Parameters.AddWithValue("ciphertext", legacy.GetCiphertext());
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        MigrationBatchResult upgraded = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
+        Assert.False(upgraded.HasFailures);
+        Assert.Single(upgraded.Results);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        WorkerLease lease = await AcquireLeaseAsync(collector, "legacy-payload-target");
+        var port = new PostgreSqlSensitivePayloadPort(collector);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await port.GetOrAddAsync(
+            new SensitivePayloadGetOrAddRequest(new MonitoredInstanceId(targetId), legacy,
+                lease.Identity, DefaultTimeout), CancellationToken.None));
+        await using NpgsqlConnection verifyConnection = await database.DataSource.OpenConnectionAsync();
+        await using var verify = new NpgsqlCommand(
+            "SELECT payload_id, instance_id IS NULL FROM security.protected_diagnostic_payload WHERE fingerprint=@fingerprint;",
+            verifyConnection);
+        verify.Parameters.AddWithValue("fingerprint", fingerprint);
+        await using NpgsqlDataReader reader = await verify.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(legacyId, reader.GetGuid(0));
+        Assert.True(reader.GetBoolean(1));
+        Assert.False(await reader.ReadAsync());
     }
 
     [Fact]
@@ -485,22 +577,25 @@ public sealed class RepositoryReplaySafetyIntegrationTests
         byte[] authenticationTag,
         byte[] ciphertext)
     {
+        Guid targetId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, targetId);
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
             """
             INSERT INTO security.protected_diagnostic_payload
             (
-                payload_id, payload_kind, fingerprint, protection_algorithm,
+                payload_id, instance_id, payload_kind, fingerprint, protection_algorithm,
                 key_identifier, nonce, authentication_tag, ciphertext
             )
             VALUES
             (
-                @payload_id, 'query_text', @fingerprint, 'AES-256-GCM',
+                @payload_id, @instance_id, 'query_text', @fingerprint, 'AES-256-GCM',
                 'integration-key', @nonce, @authentication_tag, @ciphertext
             );
             """,
             connection);
         command.Parameters.AddWithValue("payload_id", Guid.NewGuid());
+        command.Parameters.AddWithValue("instance_id", targetId);
         command.Parameters.AddWithValue("fingerprint", RandomNumberGenerator.GetBytes(32));
         command.Parameters.AddWithValue("nonce", nonce);
         command.Parameters.AddWithValue("authentication_tag", authenticationTag);

@@ -247,10 +247,10 @@ public sealed class RepositoryRuntimeIntegrationTests
             RandomNumberGenerator.GetBytes(64));
         var sensitivePayloads = new PostgreSqlSensitivePayloadPort(collectorDataSource);
         SensitivePayloadReference firstReference = await sensitivePayloads.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(protectedPayload, lease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(monitoredInstance, protectedPayload, lease.Identity, DefaultTimeout),
             CancellationToken.None);
         SensitivePayloadReference secondReference = await sensitivePayloads.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(protectedPayload, lease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(monitoredInstance, protectedPayload, lease.Identity, DefaultTimeout),
             CancellationToken.None);
         Assert.Equal(firstReference.PayloadId, secondReference.PayloadId);
 
