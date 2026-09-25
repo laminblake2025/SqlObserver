@@ -23,7 +23,7 @@ try {
     }
     Invoke-ProbeSql 'master' "CREATE DATABASE [$database]" | Out-Null
     $created = $true
-    Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET QUERY_STORE = ON; ALTER DATABASE [$database] SET QUERY_STORE (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = ALL, INTERVAL_LENGTH_MINUTES = 1)" | Out-Null
+    Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET QUERY_STORE = ON; ALTER DATABASE [$database] SET QUERY_STORE (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = ALL, INTERVAL_LENGTH_MINUTES = 1, WAIT_STATS_CAPTURE_MODE = ON)" | Out-Null
     Invoke-ProbeSql $database 'CREATE TABLE dbo.capture_probe ([value] int NOT NULL); INSERT INTO dbo.capture_probe VALUES (1),(2),(3)' | Out-Null
     Start-Sleep -Seconds 2
     for ($index = 0; $index -lt 3; $index++) {
@@ -69,7 +69,32 @@ try {
     if (-not ($planLookup | Where-Object { $_ -match "^\s*$planId\|.*<ShowPlanXML" })) {
         throw "Pinned Query Store plan lookup did not return Showplan XML for plan ID $planId."
     }
-    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId."
+    $lockJob = Start-ThreadJob -ArgumentList $SqlInstance,$database -ScriptBlock {
+        param($instance,$db)
+        & sqlcmd -S $instance -d $db -E -b -l 5 -t 20 -Q "BEGIN TRAN; SELECT COUNT(*) FROM dbo.capture_probe WITH (TABLOCKX); WAITFOR DELAY '00:00:05'; COMMIT TRAN" 2>&1
+        if ($LASTEXITCODE -ne 0) { throw 'The disposable lock holder failed.' }
+    }
+    try {
+        Start-Sleep -Seconds 2
+        $blockedElapsed = [Diagnostics.Stopwatch]::StartNew()
+        Invoke-ProbeSql $database 'SELECT SUM([value]) AS blocked_probe_sum FROM dbo.capture_probe WITH (READCOMMITTEDLOCK) WHERE [value] > 0' | Out-Null
+        $blockedElapsed.Stop()
+        $null = Wait-Job $lockJob -Timeout 20
+        if ($lockJob.State -ne 'Completed') { throw "Disposable lock holder did not complete: $($lockJob.State)" }
+        Receive-Job $lockJob | Out-Null
+    }
+    finally { Remove-Job $lockJob -Force -ErrorAction SilentlyContinue }
+    Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
+    $blockedPlan = Invoke-ProbeSql $database "SELECT TOP (1) p.plan_id FROM sys.query_store_query_text AS qt JOIN sys.query_store_query AS q ON q.query_text_id=qt.query_text_id JOIN sys.query_store_plan AS p ON p.query_id=q.query_id WHERE CHARINDEX(N'blocked_probe_sum',qt.query_sql_text)>0 AND CHARINDEX(N'FROM sys.query_store_query_text',qt.query_sql_text)=0 ORDER BY p.plan_id"
+    $blockedPlanId = [long]::Parse(($blockedPlan | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1).Trim())
+    $blockedWaits = Invoke-ProbeSql $database "SELECT TOP (32) ws.plan_id,ws.wait_category,SUM(CONVERT(decimal(38,0),ws.total_query_wait_time_ms)) FROM sys.query_store_wait_stats AS ws JOIN sys.query_store_runtime_stats_interval AS rsi ON rsi.runtime_stats_interval_id=ws.runtime_stats_interval_id WHERE ws.plan_id=$blockedPlanId AND ws.wait_category BETWEEN 0 AND 31 AND rsi.start_time<SYSUTCDATETIME() AND rsi.end_time>DATEADD(minute,-5,SYSUTCDATETIME()) GROUP BY ws.plan_id,ws.wait_category ORDER BY ws.plan_id,ws.wait_category"
+    $blockingCategoryRows = @($blockedWaits | Where-Object { $_ -match "^\s*$blockedPlanId\|\d+\|[1-9]\d*\s*$" })
+    if (-not ($blockingCategoryRows | Where-Object { $_ -match "^\s*$blockedPlanId\|3\|[1-9]\d*\s*$" })) {
+        $options = Invoke-ProbeSql $database 'SELECT actual_state_desc,wait_stats_capture_mode_desc FROM sys.database_query_store_options'
+        $allWaits = Invoke-ProbeSql $database 'SELECT COUNT(*) FROM sys.query_store_wait_stats'
+        throw "Query Store did not record a positive wait category for blocked plan $blockedPlanId. Elapsed: $($blockedElapsed.Elapsed.TotalSeconds)s; wait rows: $($blockedWaits -join '; '); all waits: $($allWaits -join '; '); options: $($options -join '; ')"
+    }
+    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; blocked plan wait rows: $($blockingCategoryRows -join '; ')."
 }
 finally {
     if ($created) {
