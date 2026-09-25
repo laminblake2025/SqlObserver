@@ -8,10 +8,11 @@ import { acknowledgeAlert, getFleetActiveAlerts } from "./alertApi";
 import { AcknowledgementAttempts } from "./acknowledgementAttempts";
 import { alertMatchesFilter, type AlertFilter } from "./alertFilter";
 import type { FleetAlert } from "./alertTypes";
+import { fleetAlertKey, loadFleetAlertJump } from "./fleetAlertJump";
+import type { AlertSelection } from "../../components/commandPaletteModel";
 
 const acknowledgementAttempts = new AcknowledgementAttempts();
-
-export function FleetAlertsPage({ refresh }: { readonly refresh: number }) {
+export function FleetAlertsPage({ refresh, selection }: { readonly refresh: number; readonly selection?: AlertSelection }) {
   const { mode } = useTimeDisplay();
   const formatTime = (value?: string) => value ? formatDisplayTime(value, mode) : "Not returned";
   const [items, setItems] = useState<readonly FleetAlert[]>([]);
@@ -27,6 +28,12 @@ export function FleetAlertsPage({ refresh }: { readonly refresh: number }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const moreRequest = useRef<AbortController | null>(null);
+  const requestedKey = selection && `${selection.targetId}:${selection.alertId}`;
+
+  useEffect(() => {
+    setSelectedKey(requestedKey);
+    if (requestedKey) { setFilter("active"); setSearch(""); }
+  }, [requestedKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -38,18 +45,27 @@ export function FleetAlertsPage({ refresh }: { readonly refresh: number }) {
     setNextCursor(undefined);
     setError(undefined);
     setMessage(undefined);
-    void getFleetActiveAlerts(controller.signal)
-      .then(page => { if (!controller.signal.aborted) { setItems(page.items); setNextCursor(page.nextCursor); } })
+    void (async () => {
+      const page = await loadFleetAlertJump(
+        cursor => getFleetActiveAlerts(controller.signal, 100, cursor), requestedKey);
+      if (!controller.signal.aborted) {
+        setItems(page.items);
+        setNextCursor(page.nextCursor);
+        if (requestedKey && !page.found)
+          setMessage("That alert is no longer in the loaded current inbox. Browse further or refresh its server alerts.");
+      }
+    })()
       .catch((failure: unknown) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Fleet alerts are unavailable."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); moreRequest.current?.abort(); };
-  }, [refresh, reload]);
+  }, [refresh, reload, selection?.targetId, selection?.alertId]);
 
   const visible = useMemo(() => items.filter(item =>
     alertMatchesFilter(filter, item.state) &&
     (search === "" || `${item.targetName} ${item.ruleName} ${item.targetId}`.toLowerCase().includes(search.toLowerCase()))
   ), [filter, items, search]);
-  const selected = visible.find(item => key(item) === selectedKey) ?? visible[0];
+  const selected = visible.find(item => key(item) === selectedKey) ??
+    (requestedKey && selectedKey === requestedKey ? undefined : visible[0]);
 
   useEffect(() => {
     if (selected && key(selected) !== selectedKey) setSelectedKey(key(selected));
@@ -114,4 +130,4 @@ export function FleetAlertsPage({ refresh }: { readonly refresh: number }) {
   </section>;
 }
 
-function key(item: FleetAlert | undefined): string | undefined { return item && `${item.targetId}:${item.alertId}`; }
+function key(item: FleetAlert | undefined): string | undefined { return item && fleetAlertKey(item); }

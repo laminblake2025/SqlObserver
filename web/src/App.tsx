@@ -3,6 +3,7 @@ import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
 import { CommandPalette } from "./components/CommandPalette";
+import { alertSelectionFromHash } from "./components/commandPaletteModel";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { useTimeDisplay } from "./TimeDisplayContext";
@@ -51,6 +52,7 @@ export function App() {
   const { mode: timeDisplayMode, setMode: setTimeDisplayMode } = useTimeDisplay();
   const [route, setRoute] = useState(() => readRoute(location.hash));
   const scope = readOverviewScope(location.hash);
+  const alertSelection = alertSelectionFromHash(location.hash);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string>();
@@ -246,7 +248,7 @@ export function App() {
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">{timeDisplayMode === "local" ? "Local time" : "UTC"} <span className="topbar-separator">·</span> Read-only evidence</span></div>
-          <button className="secondary-button topbar-search" type="button" onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search servers <kbd>Ctrl+K</kbd></button>
+          <button className="secondary-button topbar-search" type="button" onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search <kbd>Ctrl+K</kbd></button>
           <button className="secondary-button" type="button" aria-label={timeDisplayMode === "local" ? "Show UTC time" : "Show local time"}
             onClick={() => setTimeDisplayMode(timeDisplayMode === "local" ? "utc" : "local")}>
             {timeDisplayMode === "local" ? "Local time" : "UTC"}
@@ -294,7 +296,7 @@ export function App() {
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
 
           {route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
-          {fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} /> : null}
+          {fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} selection={alertSelection} /> : null}
           {route.page === "servers" && requestedCursor.current === cursor && !message && (!loading || targets.length > 0) ? <><ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} />{loading ? <p role="status">Refreshing server list…</p> : null}</> : null}
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 

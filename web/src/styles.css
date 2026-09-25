@@ -118,6 +118,8 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .command-palette-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .command-palette-header h2 { margin-bottom: 4px; }
 .command-palette-header p { margin-bottom: 16px; color: var(--muted); font-size: 13px; }
+.command-palette-modes { display: flex; gap: 6px; margin-bottom: 12px; }
+.command-palette-modes button[aria-pressed="true"] { border-color: var(--border-teal); background: var(--surface-hover); }
 .command-palette input[type="search"] { width: 100%; }
 .command-palette-status { margin: 12px 0 8px; color: var(--muted-deep); font-size: 12px; }
 .command-palette-results { display: grid; gap: 4px; max-height: 430px; overflow: auto; }
