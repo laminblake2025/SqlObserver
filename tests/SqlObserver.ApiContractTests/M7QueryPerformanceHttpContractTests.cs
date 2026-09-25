@@ -88,6 +88,22 @@ public sealed class M7QueryPerformanceHttpContractTests : IClassFixture<M7QueryP
         Assert.Contains("SqlObserverLabPublisher", body, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task QueryTextRouteUsesExactRunIdentityAndReturnsBoundedShape()
+    {
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        Guid run = Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+        string query = new('a', 64);
+        HttpResponseMessage response = await client.GetAsync(
+            $"/api/v1/observation-targets/{M7QueryPerformanceApiFactory.TargetId:D}/query-performance/databases/5/history/{query}/runs/{run:D}/text");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.Equal("unavailable", document.RootElement.GetProperty("status").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, document.RootElement.GetProperty("text").ValueKind);
+        Assert.Equal(run, factory.TextService.LastRequest?.CollectionRunId);
+    }
+
     [Theory]
     [InlineData("limit=0")]
     [InlineData("limit=201")]
@@ -103,14 +119,28 @@ public sealed class M7QueryPerformanceApiFactory : WebApplicationFactory<Program
 {
     internal static readonly Guid TargetId = Guid.Parse("abababab-abab-4aba-8aba-abababababab");
     internal FakeM7QueryPerformanceService Service { get; } = new();
+    internal FakeQueryTextReadService TextService { get; } = new();
     protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseEnvironment("ContractTesting").ConfigureTestServices(services =>
     {
         services.RemoveAll<IQueryPerformanceApiQueryService>();
+        services.RemoveAll<IQueryTextReadService>();
         services.RemoveAll<WindowsGroupRoleResolver>();
         services.AddSingleton<IQueryPerformanceApiQueryService>(Service);
+        services.AddSingleton<IQueryTextReadService>(TextService);
         services.AddSingleton(new WindowsGroupRoleResolver([new WindowsGroupRoleBinding(new ActorSecurityIdentifier(TestAuthenticationHandler.ViewerGroupSid), [ApplicationRole.Viewer], true)]));
         services.AddAuthentication(options => { options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName; options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName; }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, static _ => { });
     });
+}
+
+internal sealed class FakeQueryTextReadService : IQueryTextReadService
+{
+    internal QueryTextReadRequest? LastRequest { get; private set; }
+    public ValueTask<QueryTextReadResult> ReadAsync(AuthorizationContext authorization,
+        QueryTextReadRequest request, CancellationToken cancellationToken)
+    {
+        LastRequest = request;
+        return ValueTask.FromResult(new QueryTextReadResult("unavailable", null));
+    }
 }
 
 internal sealed class FakeM7QueryPerformanceService : IQueryPerformanceApiQueryService

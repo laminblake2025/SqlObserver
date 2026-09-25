@@ -137,6 +137,30 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
                 (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
             if (attachReference)
             {
+                await using NpgsqlDataSource server = database.CreateServerDataSource();
+                var queryText = new PostgreSqlQueryTextReadRepositoryPort(server);
+                var readRequest = new QueryTextReadRequest(target, run.Value, query, Timeout);
+                ProtectedSensitivePayload? read = await queryText.ReadAsync(readRequest, CancellationToken.None);
+                Assert.NotNull(read);
+                Assert.Equal(protectedPayload.Fingerprint.ToArray(), read.Fingerprint.ToArray());
+                Assert.Equal(protectedPayload.GetCiphertext(), read.GetCiphertext());
+                Assert.Null(await queryText.ReadAsync(readRequest with { CollectionRunId = Guid.NewGuid() }, CancellationToken.None));
+                Assert.Null(await queryText.ReadAsync(readRequest with { TargetId = new MonitoredInstanceId(Guid.NewGuid()) }, CancellationToken.None));
+                Assert.Null(await queryText.ReadAsync(readRequest with { Query = new QueryOpaqueIdentity(5, new string('b', 64)) }, CancellationToken.None));
+                await queryText.AuditAsync(readRequest, "S-1-5-21-100", "opened", CancellationToken.None);
+                await using NpgsqlConnection auditConnection = await database.DataSource.OpenConnectionAsync();
+                await using var audit = new NpgsqlCommand("SELECT count(*) FROM events.query_text_access_audit WHERE instance_id=@target AND collection_run_id=@run AND outcome='opened';", auditConnection);
+                audit.Parameters.AddWithValue("target", target.Value);
+                audit.Parameters.AddWithValue("run", run.Value);
+                Assert.Equal(1L, (long)(await audit.ExecuteScalarAsync())!);
+                await using var privileges = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_server','control.get_query_text_payload(uuid,uuid,integer,bytea)','EXECUTE'), has_function_privilege('sqlobserver_collector','control.get_query_text_payload(uuid,uuid,integer,bytea)','EXECUTE'), has_table_privilege('sqlobserver_server','events.query_text_access_audit','SELECT');", auditConnection);
+                await using NpgsqlDataReader privilegeRows = await privileges.ExecuteReaderAsync();
+                Assert.True(await privilegeRows.ReadAsync());
+                Assert.True(privilegeRows.GetBoolean(0));
+                Assert.False(privilegeRows.GetBoolean(1));
+                Assert.False(privilegeRows.GetBoolean(2));
+                await privilegeRows.DisposeAsync();
+
                 var divergentReference = new SensitivePayloadReference(
                     new SensitivePayloadId(Guid.NewGuid()), SensitivePayloadKind.QueryText,
                     protectedPayload.Fingerprint);

@@ -44,7 +44,7 @@
     "database/migrations/0023_report_expiry_lock_privilege.sql": "1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0",
     "database/migrations/0024_report_materialization_column_binding.sql": "8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6",
     "database/migrations/0025_report_run_scoped_read.sql": "dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6",
-    "database/migrations/checksums.sha256": "8a62f836a9e5f48256d0f15eaa55968e0501b336524e26453de85d9c47965de2",
+    "database/migrations/checksums.sha256": "1f697d4db24ce14241707b2dfac54f5e35f2ca9fbc6daf857e22d21430af021e",
     "src/SqlObserver.Reporting/ReportContracts.cs": "95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8",
     "src/SqlObserver.Reporting/ReportRendering.cs": "6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61",
     "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs": "6dce0d1b5dc6bbd930367059153872e5df3eaa38aeeb31650b0fdb1afd73b8ee",

@@ -12,7 +12,14 @@ public static class TargetQueryPerformanceApiEndpoints
 {
     public static IEndpointRouteBuilder MapTargetQueryPerformanceApiEndpoints(this IEndpointRouteBuilder e)
     {
-        var g=e.MapGroup("/api/v1/observation-targets/{instanceId:guid}/query-performance").RequireAuthorization(); g.MapGet("/status", StatusAsync); g.MapGet("/top", TopAsync); g.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync); g.MapGet("/databases/{databaseId:int}/plans/{planFingerprint}", PlanAsync); return e;
+        var group = e.MapGroup("/api/v1/observation-targets/{instanceId:guid}/query-performance")
+            .RequireAuthorization();
+        group.MapGet("/status", StatusAsync);
+        group.MapGet("/top", TopAsync);
+        group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync);
+        group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/text", TextAsync);
+        group.MapGet("/databases/{databaseId:int}/plans/{planFingerprint}", PlanAsync);
+        return e;
     }
     private static async Task<IResult> StatusAsync(HttpContext h, Guid instanceId, IQueryPerformanceApiQueryService s, WindowsGroupRoleResolver r, string? fromUtc=null, string? toUtc=null, CancellationToken c=default)
     { try { DateTimeOffset to=Parse(toUtc)??DateTimeOffset.UtcNow, from=Parse(fromUtc)??to.AddHours(-24); var row=await s.GetStatusAsync(r.Resolve(h.User),new QueryPerformanceStatusRequest(new MonitoredInstanceId(instanceId),from,to,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); return row is null?Results.NotFound():Results.Ok(new { targetId=instanceId,snapshotUtc=row.SnapshotUtc,source=row.Source is null?null:SourceName(row.Source.Value),sourceState=row.SourceState,coverage=CoverageName(row.Coverage),fresh=row.Fresh,truncated=row.Truncated,contentAvailable=false,reason=row.Reason,targetStatus=row.TargetStatus,targetReason=row.TargetReason,databaseStatuses=row.DatabaseStatuses,databaseCatalog=row.DatabaseCatalog }); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
@@ -22,6 +29,19 @@ public static class TargetQueryPerformanceApiEndpoints
     { try { if (limit is <= 0 or > 200 || databaseId is <= 0 or > 32767) throw new ArgumentException("Page limit or database is outside its bounds."); RequireExplicitCursorWindow(cursor,fromUtc,toUtc); DateTimeOffset to=Parse(toUtc)??DateTimeOffset.UtcNow, from=Parse(fromUtc)??to.AddHours(-24); var q=new QueryOpaqueIdentity(databaseId,queryFingerprint); var decoded=DecodeCursor(cursor,instanceId,QueryPerformanceMetric.CpuMilliseconds,from,to); if(decoded is not null&&(decoded.DatabaseId!=databaseId||decoded.QueryFingerprint!=q.QueryFingerprint))throw new ArgumentException("Cursor query binding mismatch."); var page=await s.GetHistoryAsync(r.Resolve(h.User),new QueryHistoryRequest(new MonitoredInstanceId(instanceId),q,from,to,limit,decoded,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); string? next=page.HasMore&&page.Items.Count>0?EncodeCursor(new QueryPerformanceCursorEnvelope(new MonitoredInstanceId(instanceId),databaseId,from,to,QueryPerformanceMetric.CpuMilliseconds,page.SnapshotUtc,page.Items[^1].IntervalEndUtc,q.QueryFingerprint,page.Items[^1].Metrics.CpuMilliseconds,page.Items[^1].CollectionRunId,page.Items[^1].PlanFingerprint,page.Items[^1].ObservationKey), requireMetricValue:false):null; return Results.Ok(new {targetId=instanceId,databaseId,queryFingerprint=q.QueryFingerprint,items=page.Items.Select(MapHistoryItem),nextCursor=next,snapshotUtc=page.SnapshotUtc,fromUtc=from,toUtc=to}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
     private static async Task<IResult> PlanAsync(HttpContext h, Guid instanceId, int databaseId, string planFingerprint, IQueryPerformanceApiQueryService s, WindowsGroupRoleResolver r, string? queryFingerprint=null, CancellationToken c=default)
     { try { if(queryFingerprint is null || databaseId is <= 0 or > 32767) throw new ArgumentException("Query fingerprint or database is invalid."); var q=new QueryOpaqueIdentity(databaseId,queryFingerprint); var p=new PlanOpaqueIdentity(q,planFingerprint); var row=await s.GetPlanAsync(r.Resolve(h.User),new QueryPlanMetadataRequest(new MonitoredInstanceId(instanceId),p,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); return row is null?Results.NotFound():Results.Ok(new {targetId=instanceId,databaseId,queryFingerprint=q.QueryFingerprint,planFingerprint=p.PlanFingerprint,source=SourceName(row.Source),observedAtUtc=row.ObservedAtUtc,coverage=CoverageName(row.Coverage),contentAvailable=false}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
+    private static async Task<IResult> TextAsync(HttpContext h, Guid instanceId, int databaseId, string queryFingerprint, Guid collectionRunId, IQueryTextReadService service, WindowsGroupRoleResolver roles, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new QueryTextReadRequest(new MonitoredInstanceId(instanceId), collectionRunId,
+                new QueryOpaqueIdentity(databaseId, queryFingerprint), new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            QueryTextReadResult result = await service.ReadAsync(roles.Resolve(h.User), request, cancellationToken);
+            return Results.Ok(new { targetId = instanceId, databaseId, queryFingerprint = request.Query.QueryFingerprint,
+                collectionRunId, status = result.Status, text = result.Text });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
     private static DateTimeOffset? Parse(string? x)=>x is null?null:DateTimeOffset.TryParse(x,CultureInfo.InvariantCulture,DateTimeStyles.RoundtripKind,out var d)&&d.Offset==TimeSpan.Zero?d:throw new ArgumentException("UTC timestamp required.");
     private static void RequireExplicitCursorWindow(string? cursor,string? fromUtc,string? toUtc){if(cursor is not null&&(fromUtc is null||toUtc is null))throw new ArgumentException("fromUtc and toUtc are required when cursor is supplied.");}
     private static QueryPerformanceMetric ParseMetric(string? x)=>x?.ToLowerInvariant() switch { "cpu" or "cpumilliseconds"=>QueryPerformanceMetric.CpuMilliseconds,"duration" or "durationmilliseconds"=>QueryPerformanceMetric.DurationMilliseconds,"executions"=>QueryPerformanceMetric.Executions,"logicalreads" or "logical_reads"=>QueryPerformanceMetric.LogicalReads,"writes"=>QueryPerformanceMetric.Writes,"rows"=>QueryPerformanceMetric.Rows,_=>throw new ArgumentException("Metric is not allowlisted.") };

@@ -109,6 +109,10 @@ builder.Services.AddSingleton<IDeadlockProjectionRepositoryPort>(static services
 builder.Services.AddSingleton<IDeadlockProjectionQueryService, DeadlockProjectionQueryService>();
 builder.Services.AddSingleton<IQueryPerformanceApiRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryPerformanceApiProjections);
 builder.Services.AddSingleton<IQueryPerformanceApiQueryService, QueryPerformanceApiQueryService>();
+builder.Services.AddSingleton<IQueryTextReadRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryTextReads);
+builder.Services.AddSingleton<SqlObserver.Domain.SensitiveData.IQuerySensitiveContentProtector>(_ =>
+    new SqlObserver.Infrastructure.Windows.QuerySensitiveContentProtector(builder.Configuration["SqlObserver:QueryContent:ProtectedKeyPath"]));
+builder.Services.AddSingleton<IQueryTextReadService, QueryTextReadService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OperationalHealth);
 // The Server retains read/query and administrative analytics ports for its
