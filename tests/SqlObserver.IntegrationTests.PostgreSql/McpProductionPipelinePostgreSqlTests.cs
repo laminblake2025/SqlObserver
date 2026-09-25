@@ -39,6 +39,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             migrations.Results.Count);
 
         Guid[] targetIds = [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()];
+        Guid incidentEvidenceThreadId = Guid.NewGuid();
         await using (NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync())
         {
             foreach (Guid targetId in targetIds)
@@ -104,11 +105,13 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             await using var incidents = new NpgsqlCommand("""
                 INSERT INTO analytics.incident_thread
                     (thread_id, instance_id, target_revision, opened_at, state, current_generation, summary)
-                SELECT gen_random_uuid(), @target, 1, statement_timestamp() - interval '2 minutes',
+                SELECT CASE WHEN g = 1 THEN @thread ELSE gen_random_uuid() END,
+                       @target, 1, statement_timestamp() - interval '2 minutes',
                        'open', 1, '{}'::jsonb
-                FROM generate_series(1, 3);
+                FROM generate_series(1, 3) AS values(g);
                 """, admin);
             incidents.Parameters.AddWithValue("target", targetIds[0]);
+            incidents.Parameters.AddWithValue("thread", incidentEvidenceThreadId);
             await incidents.ExecuteNonQueryAsync();
             await using var otherIncidents = new NpgsqlCommand("""
                 INSERT INTO analytics.incident_thread
@@ -119,6 +122,34 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 """, admin);
             otherIncidents.Parameters.AddWithValue("target", targetIds[1]);
             await otherIncidents.ExecuteNonQueryAsync();
+            await using var incidentEvidence = new NpgsqlCommand("""
+                WITH packets AS (
+                    INSERT INTO analytics.evidence_packet_v2
+                        (occurred_at, packet_id, instance_id, target_revision, evidence_kind,
+                         source_digest, identity_digest, source_cutoff_digest, evidence,
+                         confidence, visibility_state)
+                    SELECT statement_timestamp() - make_interval(mins => 1 + g), gen_random_uuid(),
+                           @target, 1, 'metric',
+                           sha256(convert_to(format('source-%s', g), 'UTF8')),
+                           sha256(convert_to(format('identity-%s', g), 'UTF8')),
+                           sha256(convert_to(format('cutoff-%s', g), 'UTF8')),
+                           '{}'::jsonb, .9, 'complete'
+                    FROM generate_series(1, 3) AS values(g)
+                    RETURNING packet_id, occurred_at
+                )
+                INSERT INTO analytics.incident_generation
+                    (instance_id, target_revision, thread_id, generation, observed_at, state,
+                     evidence_packet_id, correlation_digest, supersedes_previous, details)
+                SELECT @target, 1, @thread, row_number() OVER (ORDER BY occurred_at),
+                       statement_timestamp() - interval '1 minute', 'open', packet_id,
+                       sha256(convert_to(packet_id::text, 'UTF8')), false, '{}'::jsonb
+                FROM packets;
+                UPDATE analytics.incident_thread SET current_generation = 3
+                WHERE thread_id = @thread;
+                """, admin);
+            incidentEvidence.Parameters.AddWithValue("target", targetIds[0]);
+            incidentEvidence.Parameters.AddWithValue("thread", incidentEvidenceThreadId);
+            await incidentEvidence.ExecuteNonQueryAsync();
             foreach (Guid targetId in targetIds[..2])
             {
                 await using var alerts = new NpgsqlCommand("""
@@ -304,13 +335,15 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             bool query = other.Name == "get_top_queries";
             bool queryHistory = other.Name == "get_query_history";
             bool metric = other.Name == "get_metric_series";
-            bool paged = forecast || diagnostic || incident || alert || query || queryHistory || metric;
+            bool incidentEvidence = other.Name == "get_incident_evidence";
+            bool paged = forecast || diagnostic || incident || alert || query || queryHistory || metric || incidentEvidence;
             int expectedPages = paged && withCursorSigner ? 3 : 1;
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            var seenGenerations = new HashSet<long>();
             string? itemCursor = null;
             for (int itemPage = 0; itemPage < expectedPages; itemPage++)
             {
-                Dictionary<string, JsonElement> arguments = ArgumentsFor(other.Name, targetIds[0]);
+                Dictionary<string, JsonElement> arguments = ArgumentsFor(other.Name, targetIds[0], incidentEvidenceThreadId);
                 if (paged)
                 {
                     arguments["limit"] = JsonSerializer.SerializeToElement(1);
@@ -331,12 +364,18 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 {
                     JsonElement data = structured.GetProperty("data");
                     JsonElement item = Assert.Single(data.GetProperty("items").EnumerateArray());
+                    if (incidentEvidence)
+                    {
+                        JsonElement generation = Assert.Single(data.GetProperty("generations").EnumerateArray());
+                        Assert.True(seenGenerations.Add(generation.GetProperty("generation").GetInt64()));
+                    }
                     if (forecast) Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
                     if (diagnostic) Assert.Equal("mcp.pipeline", item.GetProperty("eventKind").GetString());
                     if (alert) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
                     if (query || queryHistory) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
                     if (metric) Assert.InRange(item.GetProperty("value").GetDouble(), 1, 3);
-                    string key = metric ? item.GetProperty("observedAtUtc").GetString()!
+                    string key = incidentEvidence ? item.GetProperty("packetId").GetString()!
+                        : metric ? item.GetProperty("observedAtUtc").GetString()!
                         : queryHistory ? item.GetProperty("observationKey").GetString()!
                         : query
                         ? item.GetProperty("query").GetProperty("queryFingerprint").GetString()!
@@ -351,6 +390,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 totalCalls++;
             }
             if (paged) Assert.Equal(expectedPages, seenIds.Count);
+            if (incidentEvidence) Assert.Equal(expectedPages, seenGenerations.Count);
         }
 
         await using NpgsqlCommand count = database.DataSource.CreateCommand(
@@ -366,7 +406,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
         return (long)(await count.ExecuteScalarAsync())!;
     }
 
-    private static Dictionary<string, JsonElement> ArgumentsFor(string tool, Guid targetId)
+    private static Dictionary<string, JsonElement> ArgumentsFor(string tool, Guid targetId, Guid incidentEvidenceThreadId)
     {
         var arguments = new Dictionary<string, JsonElement>();
         void Put<T>(string name, T value) => arguments[name] = JsonSerializer.SerializeToElement(value);
@@ -394,7 +434,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             Window("right", to.AddHours(-1), to);
         }
         if (tool == "get_deadlock") Put("eventId", Guid.NewGuid().ToString("D"));
-        if (tool == "get_incident_evidence") Put("threadId", Guid.NewGuid().ToString("D"));
+        if (tool == "get_incident_evidence") Put("threadId", incidentEvidenceThreadId.ToString("D"));
         if (tool == "get_top_queries") Put("metric", "cpuMilliseconds");
         if (tool is "get_query_history" or "get_query_plan_metadata")
         {
