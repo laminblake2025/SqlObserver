@@ -356,6 +356,89 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     }
 
     [Fact]
+    public async Task HistoricalWaitRowsPageWithAdjacentBaselinesAndExplicitResets()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset at = (await ReadRepositoryClockAsync(database)).AddMinutes(-4);
+        MonitoredInstanceId target = new(Guid.NewGuid()), other = new(Guid.NewGuid());
+        Guid baseline = Guid.NewGuid(), normal = Guid.NewGuid(), reset = Guid.NewGuid(), otherRun = Guid.NewGuid();
+        await EnsurePartitionsAsync(database, at, at.AddMinutes(2));
+        await SeedTargetAndRunAsync(database, target, baseline, "waits.server", at);
+        await SeedTargetAndRunAsync(database, target, normal, "waits.server", at.AddMinutes(1));
+        await SeedTargetAndRunAsync(database, target, reset, "waits.server", at.AddMinutes(2));
+        await SeedTargetAndRunAsync(database, other, otherRun, "waits.server", at.AddMinutes(1));
+        await InsertWaitAsync(database, target, baseline, at, "LCK_M_X", 10, 100, 30, 20);
+        await InsertWaitAsync(database, target, normal, at.AddMinutes(1), "LCK_M_X", 14, 160, 40, 25);
+        await InsertWaitAsync(database, target, normal, at.AddMinutes(1), "IO_COMPLETION", 1, 20, 20, 0);
+        await InsertWaitAsync(database, target, reset, at.AddMinutes(2), "LCK_M_X", 2, 15, 10, 3);
+        await InsertWaitAsync(database, other, otherRun, at.AddMinutes(1), "OTHER_WAIT", 99, 999, 100, 20);
+
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        async Task<List<(DateTimeOffset At, Guid Run, Guid? BaselineRun, string Type, bool Baseline, bool Reset,
+            long? Delta, bool HasMore)>> Read(DateTimeOffset? afterAt = null,
+            Guid? afterRun = null, string? afterType = null)
+        {
+            await using NpgsqlConnection connection = await server.OpenConnectionAsync();
+            await using var command = new NpgsqlCommand("""
+                SELECT * FROM reporting.list_server_wait_history(
+                    @target,@from,@to,@after_at,@after_run,@after_type,2);
+                """, connection);
+            command.Parameters.AddWithValue("target", target.Value);
+            command.Parameters.AddWithValue("from", at.AddMinutes(-1));
+            command.Parameters.AddWithValue("to", at.AddMinutes(3));
+            command.Parameters.AddWithValue("after_at", (object?)afterAt ?? DBNull.Value);
+            command.Parameters.AddWithValue("after_run", (object?)afterRun ?? DBNull.Value);
+            command.Parameters.AddWithValue("after_type", (object?)afterType ?? DBNull.Value);
+            var rows = new List<(DateTimeOffset, Guid, Guid?, string, bool, bool, long?, bool)>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                Assert.Equal(target.Value, reader.GetGuid(0));
+                rows.Add((reader.GetFieldValue<DateTimeOffset>(1), reader.GetGuid(2),
+                    reader.IsDBNull(3) ? null : reader.GetGuid(3),
+                    reader.GetString(12), reader.GetBoolean(17), reader.GetBoolean(18),
+                    reader.IsDBNull(20) ? null : reader.GetInt64(20), reader.GetBoolean(22)));
+            }
+            return rows;
+        }
+
+        var first = await Read();
+        Assert.Equal(2, first.Count);
+        Assert.All(first, row => Assert.True(row.HasMore));
+        Assert.Equal(reset, first[0].Run);
+        Assert.Equal(normal, first[0].BaselineRun);
+        Assert.True(first[0].Baseline);
+        Assert.True(first[0].Reset);
+        Assert.Null(first[0].Delta);
+        Assert.Equal(normal, first[1].Run);
+        Assert.Equal(baseline, first[1].BaselineRun);
+        Assert.Equal("LCK_M_X", first[1].Type);
+        Assert.Equal(60, first[1].Delta);
+        var second = await Read(first[^1].At, first[^1].Run, first[^1].Type);
+        Assert.Equal(2, second.Count);
+        Assert.All(second, row => Assert.False(row.HasMore));
+        Assert.Equal("IO_COMPLETION", second[0].Type);
+        Assert.False(second[0].Baseline);
+        Assert.Null(second[0].Delta);
+        Assert.Equal(baseline, second[1].Run);
+        Assert.Null(second[1].BaselineRun);
+        Assert.Equal(4, first.Concat(second).Select(row => (row.At, row.Run, row.Type)).Distinct().Count());
+        await using NpgsqlConnection grants = await database.DataSource.OpenConnectionAsync();
+        await using var privilege = new NpgsqlCommand("""
+            SELECT has_function_privilege('sqlobserver_server',
+                'reporting.list_server_wait_history(uuid,timestamptz,timestamptz,timestamptz,uuid,text,integer)',
+                'EXECUTE'),
+                   has_function_privilege('sqlobserver_collector',
+                'reporting.list_server_wait_history(uuid,timestamptz,timestamptz,timestamptz,uuid,text,integer)',
+                'EXECUTE');
+            """, grants);
+        await using NpgsqlDataReader privileges = await privilege.ExecuteReaderAsync();
+        Assert.True(await privileges.ReadAsync());
+        Assert.True(privileges.GetBoolean(0));
+        Assert.False(privileges.GetBoolean(1));
+    }
+
+    [Fact]
     public async Task InstanceHealthPreparedReadsKeepTheLatestTargetEvidence()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
