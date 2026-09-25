@@ -1,8 +1,8 @@
 # SQL-reported volume capacity contract
 
-Status: implementation design, 2026-09-25. The Resources screen currently
-shows SQL database-file sizes and cumulative file I/O, but it cannot report
-free space on the SQL Server host. The `host.volume.*` metrics describe the
+Status: implemented but disabled by default, 2026-09-25. The Resources screen
+shows SQL-reported free capacity when `storage.volume` is explicitly enabled
+and has produced a complete snapshot. The `host.volume.*` metrics describe the
 collector host and must not be relabelled as target capacity.
 
 Implementation checkpoint: a bounded observation envelope, checksum-pinned
@@ -19,9 +19,16 @@ cursors. The Resources page now labels SQL-reported target-host capacity and
 shows it only in Live. The adapter declares a five-minute cadence and both
 metadata and version-specific DMV permissions. Its checksum-pinned v1 manifest
 is now registered as the sixteenth collector, with a forward migration that
-creates schedules disabled by default. Capability discovery v4 reports the `VIEW ANY DEFINITION` grant
-as separate server permission evidence without degrading unrelated collectors.
-SQL Server 2019/2025 and failover source proofs remain before opt-in enablement.
+creates schedules disabled by default. Capability discovery v4 reports the
+`VIEW ANY DEFINITION` grant as separate server permission evidence without
+degrading unrelated collectors. Focused local SQL Server 2022 tests now run
+that discovery and the pinned collector under a disposable non-sysadmin login.
+With only the version-specific DMV grant, discovery reports denied metadata
+visibility and the collector returns `PermissionDenied` with no volume rows.
+Adding `VIEW ANY DEFINITION` makes discovery report granted and lets the same
+collector return bounded capacity rows. The test removes its login; a post-run
+catalog check found no remaining probe principals. SQL Server 2019/2025 and
+failover source proofs remain before default enablement.
 
 ## Source evidence and scope
 
@@ -49,9 +56,9 @@ returned all **10**, each with known capacity and transient volume identity,
 without sysadmin. The existing
 `tools/generate-permissions.ps1 -LogicalFiles` option grants that metadata
 permission; the default script does not. Require that option in the volume
-deployment instructions and explicitly document the grant in the eventual
-`storage.volume` manifest; otherwise an apparently successful empty source
-read could conceal every volume. The pinned source now checks the grant before
+deployment instructions; the registered `storage.volume` manifest declares
+the grant. Otherwise an apparently successful empty source read could conceal
+every volume. The pinned source now checks the grant before
 reading and raises the collector's permission-denied error when it is absent;
 the parser also rejects zero visible files as invalid evidence. The temporary
 login was removed after the probe.

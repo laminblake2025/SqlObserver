@@ -363,6 +363,80 @@ public sealed class SqlServerCapabilityIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalSqlVolumeCollectorHonorsNonSysadminMetadataGrant()
+    {
+        Assert.NotEqual("Release", Environment.GetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE"));
+        var labFactory = new LabSqlServerConnectionFactory();
+        CapabilityDiscoveryRequest discoveryRequest = CreateLabRequest(TimeSpan.FromSeconds(10));
+        await using SqlConnection administrator = await labFactory.OpenConnectionAsync(
+            discoveryRequest.ConnectionPolicy, CancellationToken.None);
+        await using (var identity = new SqlCommand(
+            "SELECT CONVERT(int,SERVERPROPERTY('ProductMajorVersion')),IS_SRVROLEMEMBER(N'sysadmin');",
+            administrator) { CommandTimeout = 5 })
+        await using (SqlDataReader reader = await identity.ExecuteReaderAsync(CancellationToken.None))
+        {
+            Assert.True(await reader.ReadAsync(CancellationToken.None));
+            Assert.Equal(16, reader.GetInt32(0));
+            Assert.Equal(1, reader.GetInt32(1));
+        }
+
+        string login = "sqlobserver_volume_probe_" + Guid.NewGuid().ToString("N");
+        string password = "Aa9!" + Guid.NewGuid().ToString("N");
+        async Task ExecuteAdminAsync(string sql)
+        {
+            await using var command = new SqlCommand(sql, administrator) { CommandTimeout = 5 };
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        try
+        {
+            await ExecuteAdminAsync($"CREATE LOGIN [{login}] WITH PASSWORD = '{password}', CHECK_POLICY = ON;");
+            await ExecuteAdminAsync($"GRANT VIEW SERVER PERFORMANCE STATE TO [{login}];");
+            var impersonatedFactory = new ImpersonatingLabConnectionFactory(login);
+            var discovery = new SqlServerCapabilityDiscoveryPort(
+                impersonatedFactory,
+                SqlServerCapabilityAssetCatalog.LoadEmbedded(),
+                SqlServerCapabilityV2AssetCatalog.LoadEmbedded(),
+                SqlServerCapabilityV3AssetCatalog.LoadEmbedded(),
+                assetsV4: SqlServerCapabilityV4AssetCatalog.LoadEmbedded());
+            CapabilityProfile withoutMetadata = await discovery.DiscoverAsync(
+                discoveryRequest, CancellationToken.None);
+            Assert.False(withoutMetadata.IsSysAdmin);
+            Assert.Equal(PermissionEvidenceOutcome.Denied, Assert.Single(withoutMetadata.Permissions,
+                static permission => permission.PermissionId.Value == "server.view-any-definition").Outcome);
+
+            var collector = new SqlServerVolumeCapacityCollector(
+                new IdentityFingerprintKey(new byte[32]), impersonatedFactory);
+            CollectorExecutionRequest Request(CapabilityProfile profile) => new(
+                new CollectorRunId(Guid.NewGuid()), discoveryRequest.TargetId,
+                discoveryRequest.TargetRevision, discoveryRequest.ConnectionPolicy, profile,
+                new CollectorAttemptNumber(1), new CollectorExecutionTimeout(TimeSpan.FromSeconds(10)));
+            CollectorExecutionResult denied = await collector.CollectAsync(
+                Request(withoutMetadata), CancellationToken.None);
+            Assert.Equal(CollectorRunOutcome.PermissionDenied, denied.Outcome);
+            Assert.Empty(denied.Payload.SqlVolumes.Items);
+
+            await ExecuteAdminAsync($"GRANT VIEW ANY DEFINITION TO [{login}];");
+            CapabilityProfile withMetadata = await discovery.DiscoverAsync(
+                discoveryRequest, CancellationToken.None);
+            Assert.False(withMetadata.IsSysAdmin);
+            Assert.Equal(PermissionEvidenceOutcome.Granted, Assert.Single(withMetadata.Permissions,
+                static permission => permission.PermissionId.Value == "server.view-any-definition").Outcome);
+            CollectorExecutionResult allowed = await collector.CollectAsync(
+                Request(withMetadata), CancellationToken.None);
+            Assert.Equal(CollectorRunOutcome.Succeeded, allowed.Outcome);
+            Assert.NotEmpty(allowed.Payload.SqlVolumes.Items);
+            Assert.Contains(allowed.Payload.SqlVolumes.Items, volume =>
+                volume.TotalBytes.HasValue && volume.AvailableBytes.HasValue);
+        }
+        finally
+        {
+            await ExecuteAdminAsync($"IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{login}') DROP LOGIN [{login}];");
+        }
+    }
+
+    [Fact]
     public async Task DiscoveryTimeoutCancelsAnActuallyBlockedAdapterOperation()
     {
         var adapter = new SqlServerCapabilityDiscoveryPort(
@@ -526,6 +600,33 @@ public sealed class SqlServerCapabilityIntegrationTests
             try
             {
                 await connection.OpenAsync(cancellationToken);
+                return connection;
+            }
+            catch
+            {
+                await connection.DisposeAsync();
+                throw;
+            }
+        }
+    }
+
+    private sealed class ImpersonatingLabConnectionFactory(string login) : ISqlServerConnectionFactory
+    {
+        public async ValueTask<SqlConnection> OpenConnectionAsync(
+            SqlServerConnectionPolicy policy, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(policy);
+            var connectionString = new SqlConnectionStringBuilder(SqlServerLabContract.ConnectionString)
+            {
+                Pooling = false,
+            };
+            var connection = new SqlConnection(connectionString.ConnectionString);
+            try
+            {
+                await connection.OpenAsync(cancellationToken);
+                await using var impersonate = new SqlCommand(
+                    $"EXECUTE AS LOGIN = N'{login}';", connection) { CommandTimeout = 5 };
+                await impersonate.ExecuteNonQueryAsync(cancellationToken);
                 return connection;
             }
             catch
