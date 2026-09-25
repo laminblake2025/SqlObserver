@@ -250,6 +250,14 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .overview-servers { padding-bottom: 0; }
 .overview-servers .table-scroll { margin: 0 -21px; }
 .overview-servers .table-note { margin-bottom: 14px; }
+.overview-servers .table-scroll table { min-width: 1180px; }
+.overview-servers .table-scroll td:first-child { min-width: 170px; }
+.overview-servers .table-scroll td small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.fleet-signal { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
+.fleet-signal-dot { flex: 0 0 8px; height: 8px; border-radius: 50%; background: var(--slate); }
+.fleet-signal-observed .fleet-signal-dot { background: var(--teal); }
+.fleet-signal-partial .fleet-signal-dot { background: var(--amber-border); }
+.fleet-signal-attention .fleet-signal-dot { background: var(--red); }
 
 .overview-chart { min-height: 180px; }
 .chart-interactive { cursor: crosshair; touch-action: none; }
