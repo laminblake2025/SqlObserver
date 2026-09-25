@@ -7,3 +7,4 @@ export type QueryPerformancePage = { readonly repositoryTimeUtc: string; readonl
 export type QueryPerformanceHistoryItem = QueryPerformanceItem;
 export type QueryPerformanceHistoryPage = { readonly repositoryTimeUtc: string; readonly items: readonly QueryPerformanceHistoryItem[]; readonly nextCursor?: string };
 export type QueryPerformancePlan = { readonly targetId: string; readonly databaseId: number; readonly queryFingerprint: string; readonly planFingerprint: string; readonly source: "query_store" | "plan_cache" | "mixed"; readonly observedAtUtc: string; readonly coverage: string; readonly contentAvailable: false };
+export type QueryPerformanceText = { readonly collectionRunId: string; readonly status: "available" | "unavailable"; readonly text: string | null };

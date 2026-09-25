@@ -1,5 +1,5 @@
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryPerformanceText } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -19,16 +19,31 @@ const timestamp = (value: unknown): value is string => typeof value === "string"
 const canonicalInstant = (value: string): string => value.replace(/(?:\.(\d{1,7}))?Z$/u, (_match, fraction: string | undefined) => `.${(fraction ?? "").padEnd(7, "0")}Z`);
 const metric = (value: unknown): value is number | null | undefined => value === undefined || value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
-async function readJson(url: string, expectedTargetId: string, signal?: AbortSignal): Promise<unknown> {
-  const response = await fetch(url, { signal, headers: { Accept: "application/json" } });
+async function readJson(url: string, expectedTargetId: string, signal?: AbortSignal, maxBytes = maximumResponseBytes, sensitive = false): Promise<unknown> {
+  const response = await fetch(url, { signal, cache: sensitive ? "no-store" : "default", headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(response.status === 404 ? "Query performance evidence is unavailable." : "Query performance request failed.");
   if (!/^application\/json(?:;|$)/iu.test(response.headers.get("content-type") ?? "")) throw new Error("Query performance response content type was invalid.");
   const length = Number(response.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(length) || length > maximumResponseBytes) throw new Error("Query performance response exceeded its bound.");
-  let body: string; try { body = await readBoundedBody(response, signal ?? new AbortController().signal, maximumResponseBytes); } catch { throw new Error("Query performance response exceeded its bound."); }
+  if (!Number.isFinite(length) || length > maxBytes) throw new Error("Query performance response exceeded its bound.");
+  let body: string; try { body = await readBoundedBody(response, signal ?? new AbortController().signal, maxBytes); } catch { throw new Error("Query performance response exceeded its bound."); }
   let value: unknown; try { value = JSON.parse(body); } catch { throw new Error("Query performance response was invalid."); }
   if (typeof value !== "object" || value === null || (value as { targetId?: unknown }).targetId !== expectedTargetId) throw new Error("Query performance response was outside its target contract.");
   return value;
+}
+
+export async function getQueryPerformanceText(instanceId: string, databaseId: number, queryFingerprint: string, collectionRunId: string, signal: AbortSignal): Promise<QueryPerformanceText> {
+  if (!Number.isInteger(databaseId) || databaseId <= 0 || databaseId > 32767 || !digest(queryFingerprint)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(collectionRunId))
+    throw new Error("Query text identity was invalid.");
+  const url = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/databases/${databaseId}/history/${queryFingerprint}/runs/${collectionRunId}/text`;
+  const value = await readJson(url, instanceId, signal, 128 * 1024, true) as Record<string, unknown>;
+  if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint
+      || typeof value.collectionRunId !== "string" || value.collectionRunId.toLowerCase() !== collectionRunId.toLowerCase()
+      || value.status !== "available" && value.status !== "unavailable"
+      || value.status === "available" && (typeof value.text !== "string" || value.text.length === 0 || new TextEncoder().encode(value.text).length > 16 * 1024)
+      || value.status === "unavailable" && value.text !== null)
+    throw new Error("Query text response was outside its bounds.");
+  return { collectionRunId, status: value.status, text: value.text as string | null };
 }
 function item(value: unknown, metric: QueryPerformanceMetric = "cpu"): QueryPerformanceItem {
   if (typeof value !== "object" || value === null) throw new Error("Query performance item was invalid."); const i = value as Record<string, unknown>; const v = i.value;

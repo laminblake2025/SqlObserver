@@ -31,6 +31,7 @@ public static class TargetQueryPerformanceApiEndpoints
     { try { if(queryFingerprint is null || databaseId is <= 0 or > 32767) throw new ArgumentException("Query fingerprint or database is invalid."); var q=new QueryOpaqueIdentity(databaseId,queryFingerprint); var p=new PlanOpaqueIdentity(q,planFingerprint); var row=await s.GetPlanAsync(r.Resolve(h.User),new QueryPlanMetadataRequest(new MonitoredInstanceId(instanceId),p,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); return row is null?Results.NotFound():Results.Ok(new {targetId=instanceId,databaseId,queryFingerprint=q.QueryFingerprint,planFingerprint=p.PlanFingerprint,source=SourceName(row.Source),observedAtUtc=row.ObservedAtUtc,coverage=CoverageName(row.Coverage),contentAvailable=false}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
     private static async Task<IResult> TextAsync(HttpContext h, Guid instanceId, int databaseId, string queryFingerprint, Guid collectionRunId, IQueryTextReadService service, WindowsGroupRoleResolver roles, CancellationToken cancellationToken)
     {
+        h.Response.Headers.CacheControl = "no-store";
         try
         {
             var request = new QueryTextReadRequest(new MonitoredInstanceId(instanceId), collectionRunId,

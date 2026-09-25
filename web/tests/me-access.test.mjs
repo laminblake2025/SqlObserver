@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAcknowledgeAlert, canRegisterTarget, getMyAccess, parseMyAccess } from "../src/features/targets/meApi.ts";
+import { canAcknowledgeAlert, canReadQueryText, canRegisterTarget, getMyAccess, parseMyAccess } from "../src/features/targets/meApi.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
 const other = "22222222-2222-4222-8222-222222222222";
@@ -26,6 +26,17 @@ test("alert acknowledgement uses the exact target role, not a grant on another s
   const administrator = parseMyAccess({ ...scoped, targetRoles: ["TargetAdministrator"] }, target);
   assert.equal(canAcknowledgeAlert(administrator, target), true);
   assert.equal(canAcknowledgeAlert(undefined, target), false);
+});
+
+test("query text action requires both read and QueryTextReader on the exact target", () => {
+  const mixed = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "QueryTextReader"], targetRoles: ["Viewer"] }, target);
+  assert.equal(canReadQueryText(mixed, target), false);
+  const queryOnly = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "QueryTextReader"], targetRoles: ["QueryTextReader"] }, target);
+  assert.equal(canReadQueryText(queryOnly, target), false);
+  const allowed = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "QueryTextReader"], targetRoles: ["Viewer", "QueryTextReader"] }, target);
+  assert.equal(canReadQueryText(allowed, target), true);
+  assert.equal(canReadQueryText(allowed, other), false);
+  assert.equal(canReadQueryText(undefined, target), false);
 });
 
 test("access lookup sends the selected target and refuses an unrelated response", async () => {

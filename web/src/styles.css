@@ -413,6 +413,7 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .query-performance-screen > .table-scroll { overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 figure { margin: 0; }
 .query-investigation h2 { font-size: 17px; }
+.query-text-result pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .chart { width: 100%; height: 240px; }
 .chart text { fill: var(--muted); font-size: 12px; }
 .chart-gridline { stroke: var(--gridline); stroke-width: 1; }

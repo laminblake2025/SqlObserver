@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformanceStatus, getQueryPerformanceTop } from "../src/features/queries/queryPerformanceApi.ts";
+import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop } from "../src/features/queries/queryPerformanceApi.ts";
 
 test("query performance panel shows all source evidence by default", async () => {
   const panel = await readFile(new URL("../src/features/queries/TargetQueryPerformancePanel.tsx", import.meta.url), "utf8");
@@ -9,6 +9,30 @@ test("query performance panel shows all source evidence by default", async () =>
   assert.match(panel, /<option value="mixed">All sources · evidence<\/option>/);
   assert.match(panel, /queryPerformanceDatabaseOptions/);
   assert.match(panel, /databaseName/);
+});
+
+test("query text read binds the exact run, bypasses browser cache, and rejects invalid content", async () => {
+  const originalFetch = globalThis.fetch;
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const runId = "22222222-2222-4222-8222-222222222222";
+  const fingerprint = "a".repeat(64);
+  const response = { targetId, databaseId: 5, queryFingerprint: fingerprint, collectionRunId: runId, status: "available", text: "SELECT 1" };
+  let request;
+  try {
+    globalThis.fetch = async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } });
+    };
+    const controller = new AbortController();
+    assert.deepEqual(await getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), { collectionRunId: runId, status: "available", text: "SELECT 1" });
+    assert.match(request.url, new RegExp(`/databases/5/history/${fingerprint}/runs/${runId}/text$`));
+    assert.equal(request.options.cache, "no-store");
+    assert.equal(request.options.signal, controller.signal);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, collectionRunId: "33333333-3333-4333-8333-333333333333" }), { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), /outside its bounds/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, status: "unavailable", text: "SELECT 1" }), { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), /outside its bounds/);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("production endpoint response shape is flat, bounded, and content-unavailable", () => {
