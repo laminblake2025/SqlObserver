@@ -291,6 +291,36 @@ public sealed class SqlServerCapabilityIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalV4MetadataPermissionEvidenceAgreesWithNativeServerProbe()
+    {
+        var connectionFactory = new LabSqlServerConnectionFactory();
+        var discovery = new SqlServerCapabilityDiscoveryPort(
+            connectionFactory,
+            SqlServerCapabilityAssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV2AssetCatalog.LoadEmbedded(),
+            SqlServerCapabilityV3AssetCatalog.LoadEmbedded(),
+            assetsV4: SqlServerCapabilityV4AssetCatalog.LoadEmbedded());
+        CapabilityDiscoveryRequest request = CreateLabRequest(TimeSpan.FromSeconds(10));
+        CapabilityProfile profile = await discovery.DiscoverAsync(request, CancellationToken.None);
+
+        Assert.Equal(4, profile.CollectorManifestVersion);
+        Assert.Equal(4, profile.OutputSchemaVersion);
+        Assert.NotNull(profile.ServerIdentity);
+        PermissionEvidence metadata = Assert.Single(profile.Permissions,
+            static permission => permission.PermissionId.Value == "server.view-any-definition");
+        Assert.Equal(PermissionEvidenceScope.Server, metadata.Scope);
+        await using SqlConnection connection = await connectionFactory.OpenConnectionAsync(
+            request.ConnectionPolicy, CancellationToken.None);
+        await using var probe = new SqlCommand(
+            "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,N'VIEW ANY DEFINITION'),0));",
+            connection) { CommandTimeout = 5 };
+        bool nativeGrant = Assert.IsType<bool>(await probe.ExecuteScalarAsync(CancellationToken.None));
+        Assert.Equal(nativeGrant ? PermissionEvidenceOutcome.Granted : PermissionEvidenceOutcome.Denied,
+            metadata.Outcome);
+    }
+
+    [Fact]
     public async Task DiscoveryTimeoutCancelsAnActuallyBlockedAdapterOperation()
     {
         var adapter = new SqlServerCapabilityDiscoveryPort(
