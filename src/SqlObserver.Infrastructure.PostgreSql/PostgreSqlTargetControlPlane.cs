@@ -1,6 +1,7 @@
 using Npgsql;
 using SqlObserver.Analytics;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
 using SqlObserver.Domain.Security;
 using SqlObserver.Reporting;
 
@@ -23,6 +24,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         McpInvocationAudit = new PostgreSqlMcpInvocationAuditPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         HealthProjections = new PostgreSqlHealthProjectionPort(dataSource);
+        SqlVolumeReads = new PostgreSqlSqlVolumeReadPort(dataSource);
         OverviewHistory = new PostgreSqlOverviewHistoryPort(dataSource);
         ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
         DeadlockProjections = new PostgreSqlDeadlockProjectionPort(dataSource);
@@ -57,6 +59,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IWorkerLeasePort WorkerLeases { get; }
 
     public IHealthProjectionRepositoryPort HealthProjections { get; }
+    public ISqlVolumeReadRepositoryPort SqlVolumeReads { get; }
     public IOverviewHistoryRepositoryPort OverviewHistory { get; }
 
     public IActivityProjectionRepositoryPort ActivityProjections { get; }

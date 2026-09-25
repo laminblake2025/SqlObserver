@@ -6,14 +6,16 @@ free space on the SQL Server host. The `host.volume.*` metrics describe the
 collector host and must not be relabelled as target capacity.
 
 Implementation checkpoint: a bounded observation envelope, checksum-pinned
-SQL Server source parser, partitioned PostgreSQL evidence table, and fenced
-repository writer exist. The query and its one-row look-ahead were executed on
-local SQL Server 2022; the parser deduplicates shared volumes with a keyed
-fingerprint and withholds incomplete reads. The table has forced target RLS, a
-30-day retention policy, and daily partition upkeep under the existing lease.
-A focused PostgreSQL test exercises exact 64-bit bytes, same/different digest
-replay, and rollback after lease loss. The collector is not yet registered or
-scheduled because the bounded read contract and Live UI cutover have not landed.
+SQL Server source parser, partitioned PostgreSQL evidence table, fenced
+repository writer, and bounded Live read API exist. The query and its one-row
+look-ahead were executed on local SQL Server 2022; the parser deduplicates
+shared volumes with a keyed fingerprint and withholds incomplete reads. The
+table has forced target RLS, a 30-day retention policy, and daily partition
+upkeep under the existing lease.
+A focused PostgreSQL and HTTP test exercises exact 64-bit bytes, same/different
+digest replay, rollback after lease loss, target-scoped pagination, and protected
+cursors. The collector is not yet registered or scheduled because the Live UI
+cutover and remaining source-permission proofs have not landed.
 
 ## Source evidence and scope
 

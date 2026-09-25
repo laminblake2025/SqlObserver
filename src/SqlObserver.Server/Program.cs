@@ -92,6 +92,10 @@ builder.Services.AddSingleton<IWorkerLeasePort>(static services =>
 builder.Services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
 builder.Services.AddSingleton<IHealthProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().HealthProjections);
+builder.Services.AddSingleton<ISqlVolumeReadRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlVolumeReads);
+builder.Services.AddSingleton<ISqlVolumeReadService, SqlVolumeReadService>();
+builder.Services.AddSingleton<SqlVolumeCursorProtector>();
 builder.Services.AddSingleton<IObservationTargetOnboardingService, ObservationTargetOnboardingService>();
 builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTargetManagementService>();
 builder.Services.AddSingleton<IObservationTargetQueryService, ObservationTargetQueryService>();
@@ -168,6 +172,7 @@ app.UseMiddleware<RequestBodyLimitMiddleware>();
 app.MapSqlObserverServiceStatusEndpoints(includeRootDescriptor: webInterface is null);
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
+app.MapSqlVolumeEndpoints();
 app.MapOverviewEndpoints();
 app.MapTargetActivityEndpoints();
 app.MapLiveActivityEndpoints();
