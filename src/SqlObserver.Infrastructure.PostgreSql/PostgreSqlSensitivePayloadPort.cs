@@ -37,7 +37,11 @@ public sealed class PostgreSqlSensitivePayloadPort : ISensitivePayloadPort
             @authentication_tag,
             @ciphertext
         )
-        ON CONFLICT (payload_kind, fingerprint) DO NOTHING
+        ON CONFLICT (payload_kind, fingerprint) DO UPDATE
+        SET last_seen_at = clock_timestamp()
+        WHERE security.protected_diagnostic_payload.instance_id = EXCLUDED.instance_id
+          AND (security.protected_diagnostic_payload.last_seen_at IS NULL
+               OR security.protected_diagnostic_payload.last_seen_at < clock_timestamp() - interval '1 day')
         RETURNING payload_id;
         """;
     private const string SelectExistingSql = """

@@ -11,6 +11,7 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
     private static readonly WorkerLeaseDuration LeaseDuration = new(TimeSpan.FromSeconds(30));
     private static readonly RepositoryCallTimeout LeaseTimeout = new(TimeSpan.FromSeconds(5));
     private static readonly RepositoryCallTimeout StepTimeout = new(TimeSpan.FromSeconds(15));
+    private static readonly RepositoryCallTimeout OrphanTimeout = new(TimeSpan.FromSeconds(5));
     private static readonly TimeSpan BusyDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan IdleDelay = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan FailureDelay = TimeSpan.FromMinutes(1);
@@ -62,6 +63,16 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
                         LogActionFailed(_logger, outcome);
                         delay = FailureDelay;
                     }
+                    else
+                    {
+                        int pruned = await _partitions.PruneOrphanQueryTextPayloadsAsync(
+                            identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
+                        if (pruned > 0)
+                        {
+                            LogOrphansPruned(_logger, pruned);
+                            delay = BusyDelay;
+                        }
+                    }
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -109,4 +120,8 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
     [LoggerMessage(EventId = 3152, Level = LogLevel.Warning,
         Message = "Retention lease release failed safely. FailureType={FailureType}")]
     private static partial void LogLeaseReleaseFailed(ILogger logger, string failureType);
+
+    [LoggerMessage(EventId = 3154, Level = LogLevel.Information,
+        Message = "Fenced retention removed old unlinked query-text payloads. Count={Count}")]
+    private static partial void LogOrphansPruned(ILogger logger, int count);
 }

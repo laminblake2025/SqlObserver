@@ -90,6 +90,7 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
         """;
     private const string RepositoryClockSql = "SELECT clock_timestamp();";
     private const string RunSystemRetentionStepSql = "SELECT system.run_m10_retention_step(@owner_execution_id,@fencing_token);";
+    private const string PruneOrphanQueryTextSql = "SELECT system.prune_orphan_query_text_payloads(@owner_execution_id,@fencing_token,32);";
 
     private readonly NpgsqlDataSource _dataSource;
 
@@ -134,6 +135,43 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
             await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
             await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
             return outcome;
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Removes at most 32 old unreferenced query-text ciphertexts under the retention lease.</summary>
+    public async ValueTask<int> PruneOrphanQueryTextPayloadsAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (lease.Key.Value != "retention/maintenance")
+            throw new ArgumentException("The dedicated retention lease is required.", nameof(lease));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        try
+        {
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand(PruneOrphanQueryTextSql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
+            object? result = await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false);
+            if (result is not int deleted || deleted is < 0 or > 32)
+                throw new InvalidDataException("Orphan payload cleanup returned an invalid count.");
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return deleted;
         }
         catch
         {

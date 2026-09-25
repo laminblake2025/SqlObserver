@@ -268,6 +268,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Bootstrap role creation failed.' }
   --command 'CREATE ROLE sqlobserver_report_expirer WITH NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS;'
 if ($LASTEXITCODE -ne 0) { throw 'Report expiry role creation failed.' }
 
+# The protected-payload cleanup function needs a separate owner to inspect
+# references across forced target RLS without giving the collector table access.
+& "$pgBin\psql.exe" `
+  --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+  --no-psqlrc --set ON_ERROR_STOP=1 `
+  --command 'CREATE ROLE sqlobserver_payload_expirer WITH NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS;'
+if ($LASTEXITCODE -ne 0) { throw 'Payload expiry role creation failed.' }
+
 & "$pgBin\createdb.exe" `
   --host 127.0.0.1 --port 5432 --username sqlobserver_bootstrap `
   --owner sqlobserver_bootstrap sqlobserver
@@ -284,15 +292,20 @@ dotnet publish .\src\SqlObserver.Cli\SqlObserver.Cli.csproj `
 if ($LASTEXITCODE -ne 0) { throw 'Migration-host publish failed.' }
 
 # PostgreSQL requires temporary ADMIN OPTION membership to transfer the
-# forced-RLS function to its fixed NOLOGIN owner. The migration revokes it on
-# success; this finally block also revokes it after any failed attempt.
-& "$pgBin\psql.exe" `
-  --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
-  --no-psqlrc --set ON_ERROR_STOP=1 `
-  --command 'GRANT sqlobserver_report_expirer TO sqlobserver_bootstrap WITH ADMIN OPTION;'
-if ($LASTEXITCODE -ne 0) { throw 'Temporary report expiry membership grant failed.' }
-
+# forced-RLS functions to their fixed NOLOGIN owners. The migrations revoke
+# these grants on success; this finally block also revokes them after failure.
 try {
+  & "$pgBin\psql.exe" `
+    --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+    --no-psqlrc --set ON_ERROR_STOP=1 `
+    --command 'GRANT sqlobserver_report_expirer TO sqlobserver_bootstrap WITH ADMIN OPTION;'
+  if ($LASTEXITCODE -ne 0) { throw 'Temporary report expiry membership grant failed.' }
+  & "$pgBin\psql.exe" `
+    --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+    --no-psqlrc --set ON_ERROR_STOP=1 `
+    --command 'GRANT sqlobserver_payload_expirer TO sqlobserver_bootstrap WITH ADMIN OPTION;'
+  if ($LASTEXITCODE -ne 0) { throw 'Temporary payload expiry membership grant failed.' }
+
   & "$migrationHost\SqlObserver.Cli.exe" postgres migrate `
     --lab-loopback --allow-loopback-cleartext `
     --database sqlobserver --username sqlobserver_bootstrap
@@ -302,8 +315,8 @@ finally {
   & "$pgBin\psql.exe" `
     --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
     --no-psqlrc --set ON_ERROR_STOP=1 `
-    --command 'REVOKE sqlobserver_report_expirer FROM sqlobserver_bootstrap; DO $verify$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid JOIN pg_catalog.pg_roles member ON member.oid=m.member WHERE granted.rolname=''sqlobserver_report_expirer'' OR member.rolname=''sqlobserver_report_expirer'') THEN RAISE EXCEPTION ''sqlobserver_report_expirer membership cleanup failed''; END IF; END $verify$;'
-  if ($LASTEXITCODE -ne 0) { throw 'Report expiry membership cleanup failed.' }
+    --command 'REVOKE sqlobserver_report_expirer FROM sqlobserver_bootstrap; REVOKE sqlobserver_payload_expirer FROM sqlobserver_bootstrap; DO $verify$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid JOIN pg_catalog.pg_roles member ON member.oid=m.member WHERE granted.rolname IN (''sqlobserver_report_expirer'',''sqlobserver_payload_expirer'') OR member.rolname IN (''sqlobserver_report_expirer'',''sqlobserver_payload_expirer'')) THEN RAISE EXCEPTION ''Expiry-role membership cleanup failed''; END IF; END $verify$;'
+  if ($LASTEXITCODE -ne 0) { throw 'Expiry-role membership cleanup failed.' }
 }
 ```
 

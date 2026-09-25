@@ -334,6 +334,208 @@ public sealed class RepositoryReplaySafetyIntegrationTests
     }
 
     [Fact]
+    public async Task FencedOrphanCleanupPreservesReusedAndReferencedCiphertext()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid targetId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, targetId);
+        var target = new MonitoredInstanceId(targetId);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        WorkerLease writeLease = await AcquireLeaseAsync(collector, "payload-cleanup-fixture");
+        LeaseAcquisitionResult acquiredRetention = await new PostgreSqlWorkerLeasePort(collector).AcquireAsync(
+            new AcquireWorkerLeaseRequest(new WorkerLeaseKey("retention/maintenance"),
+                new WorkerExecutionId(Guid.NewGuid()), DefaultLeaseDuration, DefaultTimeout),
+            CancellationToken.None);
+        WorkerLease retentionLease = Assert.IsType<WorkerLease>(acquiredRetention.Lease);
+        var payloads = new PostgreSqlSensitivePayloadPort(collector);
+        var protectedRows = Enumerable.Range(0, 4).Select(index => CreateProtectedPayload(
+            RandomNumberGenerator.GetBytes(SensitivePayloadFingerprint.RequiredLength),
+            material: (byte)(71 + index))).ToArray();
+        SensitivePayloadReference[] references = new SensitivePayloadReference[4];
+        for (int index = 0; index < references.Length; index++)
+            references[index] = await payloads.GetOrAddAsync(new SensitivePayloadGetOrAddRequest(
+                target, protectedRows[index], writeLease.Identity, DefaultTimeout), CancellationToken.None);
+
+        Guid runId = Guid.NewGuid();
+        byte[] query = RandomNumberGenerator.GetBytes(32);
+        await using (NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync())
+        await using (var seed = new NpgsqlCommand("""
+            UPDATE security.protected_diagnostic_payload
+            SET created_at=clock_timestamp()-interval '9 days',
+                last_seen_at=clock_timestamp()-interval '9 days'
+            WHERE payload_id = ANY(@payload_ids);
+            INSERT INTO telemetry.collection_run
+                (run_id,instance_id,collector_id,collector_version,output_schema_version,target_revision,
+                 schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'queries.performance',1,1,1,1,'test/payload-cleanup',
+                    gen_random_uuid(),1,decode(repeat('00',32),'hex'),now(),now());
+            INSERT INTO events.query_performance_run
+                (collection_run_id,instance_id,target_revision,window_start,window_end,source,
+                 source_state,coverage,freshness,truncated,completion_digest)
+            VALUES (@run,@target,1,now()-interval '5 minutes',now(),'query_store','read_write',
+                    'complete',true,false,decode(repeat('00',32),'hex'));
+            INSERT INTO events.query_performance_query
+                (collection_run_id,instance_id,database_id,query_fingerprint)
+            VALUES (@run,@target,1,@query);
+            INSERT INTO events.query_performance_content_link
+                (collection_run_id,instance_id,database_id,query_fingerprint,content_reference,content_available)
+            VALUES (@run,@target,1,@query,@linked,true);
+            INSERT INTO events.diagnostic_event
+                (occurred_at,event_id,instance_id,event_kind,protected_payload_id,collected_at)
+            VALUES (now(),gen_random_uuid(),@target,'test.payload',@diagnostic,now());
+            """, admin))
+        {
+            seed.Parameters.AddWithValue("payload_ids", references.Select(reference => reference.PayloadId.Value).ToArray());
+            seed.Parameters.AddWithValue("run", runId);
+            seed.Parameters.AddWithValue("target", targetId);
+            seed.Parameters.AddWithValue("query", query);
+            seed.Parameters.AddWithValue("linked", references[2].PayloadId.Value);
+            seed.Parameters.AddWithValue("diagnostic", references[3].PayloadId.Value);
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        SensitivePayloadReference reused = await payloads.GetOrAddAsync(new SensitivePayloadGetOrAddRequest(
+            target, protectedRows[1], writeLease.Identity, DefaultTimeout), CancellationToken.None);
+        Assert.Equal(references[1].PayloadId, reused.PayloadId);
+        var retention = new PostgreSqlPartitionMaintenancePort(collector);
+        await using (NpgsqlConnection limits = await collector.OpenConnectionAsync())
+        await using (var invalid = new NpgsqlCommand("""
+            SELECT system.prune_orphan_query_text_payloads(@owner,@fence,@limit);
+            """, limits))
+        {
+            invalid.Parameters.AddWithValue("owner", retentionLease.Identity.Owner.Value);
+            invalid.Parameters.AddWithValue("fence", retentionLease.Identity.FencingToken.Value);
+            var limit = invalid.Parameters.Add("limit", NpgsqlTypes.NpgsqlDbType.Integer);
+            limit.Value = DBNull.Value;
+            Assert.Equal("22023", (await Assert.ThrowsAsync<PostgresException>(async () =>
+                await invalid.ExecuteScalarAsync())).SqlState);
+            limit.Value = 101;
+            Assert.Equal("22023", (await Assert.ThrowsAsync<PostgresException>(async () =>
+                await invalid.ExecuteScalarAsync())).SqlState);
+        }
+        await using (NpgsqlConnection held = await database.DataSource.OpenConnectionAsync())
+        await using (NpgsqlTransaction transaction = await held.BeginTransactionAsync())
+        {
+            await using var lockRow = new NpgsqlCommand("""
+                SELECT payload_id FROM security.protected_diagnostic_payload
+                WHERE payload_id=@id FOR UPDATE;
+                """, held, transaction);
+            lockRow.Parameters.AddWithValue("id", references[0].PayloadId.Value);
+            Assert.Equal(references[0].PayloadId.Value, await lockRow.ExecuteScalarAsync());
+            Assert.Equal(0, await retention.PruneOrphanQueryTextPayloadsAsync(
+                retentionLease.Identity, DefaultTimeout, CancellationToken.None));
+            await transaction.CommitAsync();
+        }
+        int deleted = await retention.PruneOrphanQueryTextPayloadsAsync(
+            retentionLease.Identity, DefaultTimeout, CancellationToken.None);
+        Assert.Equal(1, deleted);
+        Assert.Equal(0, await retention.PruneOrphanQueryTextPayloadsAsync(
+            retentionLease.Identity, DefaultTimeout, CancellationToken.None));
+        await using NpgsqlConnection verify = await database.DataSource.OpenConnectionAsync();
+        await using var inspect = new NpgsqlCommand("""
+            SELECT payload_id FROM security.protected_diagnostic_payload WHERE payload_id = ANY(@payload_ids)
+            ORDER BY payload_id;
+            """, verify);
+        inspect.Parameters.AddWithValue("payload_ids", references.Select(reference => reference.PayloadId.Value).ToArray());
+        var remaining = new HashSet<Guid>();
+        await using (NpgsqlDataReader reader = await inspect.ExecuteReaderAsync())
+            while (await reader.ReadAsync()) remaining.Add(reader.GetGuid(0));
+        Assert.DoesNotContain(references[0].PayloadId.Value, remaining);
+        Assert.Contains(references[1].PayloadId.Value, remaining);
+        Assert.Contains(references[2].PayloadId.Value, remaining);
+        Assert.Contains(references[3].PayloadId.Value, remaining);
+        await using var audit = new NpgsqlCommand("""
+            SELECT safe_details->>'deletedCount' FROM audit.activity
+            WHERE action_name='retention.query_text_orphans.prune' AND actor_kind='system';
+            """, verify);
+        Assert.Equal("1", await audit.ExecuteScalarAsync());
+
+        var stale = new WorkerLeaseIdentity(retentionLease.Identity.Key,
+            retentionLease.Identity.Owner, new FencingToken(retentionLease.Identity.FencingToken.Value + 1));
+        PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(async () =>
+            await retention.PruneOrphanQueryTextPayloadsAsync(stale, DefaultTimeout, CancellationToken.None));
+        Assert.Equal("55000", rejected.SqlState);
+        await using var grants = new NpgsqlCommand("""
+            SELECT has_function_privilege('sqlobserver_collector',
+                       'system.prune_orphan_query_text_payloads(uuid,bigint,integer)','EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                       'system.prune_orphan_query_text_payloads(uuid,bigint,integer)','EXECUTE');
+            """, verify);
+        await using NpgsqlDataReader privileges = await grants.ExecuteReaderAsync();
+        Assert.True(await privileges.ReadAsync());
+        Assert.True(privileges.GetBoolean(0));
+        Assert.False(privileges.GetBoolean(1));
+        await privileges.CloseAsync();
+        await using var owner = new NpgsqlCommand("""
+            SELECT pg_get_userbyid(p.proowner), r.rolcanlogin, r.rolbypassrls,
+                   (SELECT count(*) FROM pg_auth_members m
+                    WHERE m.roleid=r.oid OR m.member=r.oid)
+            FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner
+            WHERE p.oid='system.prune_orphan_query_text_payloads(uuid,bigint,integer)'::regprocedure;
+            """, verify);
+        await using NpgsqlDataReader ownerReader = await owner.ExecuteReaderAsync();
+        Assert.True(await ownerReader.ReadAsync());
+        Assert.Equal("sqlobserver_payload_expirer", ownerReader.GetString(0));
+        Assert.False(ownerReader.GetBoolean(1));
+        Assert.True(ownerReader.GetBoolean(2));
+        Assert.Equal(0L, ownerReader.GetInt64(3));
+    }
+
+    [Fact]
+    public async Task OrphanCleanupUpgradePreservesAndRefreshesPreexistingPayload()
+    {
+        await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult prior = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(124, DefaultTimeout), CancellationToken.None);
+        Assert.False(prior.HasFailures);
+        Guid targetId = Guid.NewGuid(), payloadId = Guid.NewGuid();
+        await InsertObservationTargetAsync(database, targetId);
+        ProtectedSensitivePayload original = CreateProtectedPayload(
+            RandomNumberGenerator.GetBytes(SensitivePayloadFingerprint.RequiredLength), material: 83);
+        await using (NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync())
+        await using (var seed = new NpgsqlCommand("""
+            INSERT INTO security.protected_diagnostic_payload
+                (payload_id,instance_id,payload_kind,fingerprint,protection_algorithm,
+                 key_identifier,nonce,authentication_tag,ciphertext,created_at)
+            VALUES (@id,@target,'query_text',@fingerprint,@algorithm,@key,
+                    @nonce,@tag,@ciphertext,clock_timestamp()-interval '9 days');
+            """, admin))
+        {
+            seed.Parameters.AddWithValue("id", payloadId);
+            seed.Parameters.AddWithValue("target", targetId);
+            seed.Parameters.AddWithValue("fingerprint", original.Fingerprint.ToArray());
+            seed.Parameters.AddWithValue("algorithm", original.ProtectionAlgorithm);
+            seed.Parameters.AddWithValue("key", original.KeyIdentifier);
+            seed.Parameters.AddWithValue("nonce", original.GetNonce());
+            seed.Parameters.AddWithValue("tag", original.GetAuthenticationTag());
+            seed.Parameters.AddWithValue("ciphertext", original.GetCiphertext());
+            await seed.ExecuteNonQueryAsync();
+        }
+        MigrationBatchResult upgraded = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(2, DefaultTimeout), CancellationToken.None);
+        Assert.False(upgraded.HasFailures);
+        Assert.Equal(2, upgraded.Results.Count);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        WorkerLease lease = await AcquireLeaseAsync(collector, "payload-upgrade-reuse");
+        SensitivePayloadReference reused = await new PostgreSqlSensitivePayloadPort(collector)
+            .GetOrAddAsync(new SensitivePayloadGetOrAddRequest(
+                new MonitoredInstanceId(targetId), original, lease.Identity, DefaultTimeout),
+                CancellationToken.None);
+        Assert.Equal(payloadId, reused.PayloadId.Value);
+        await using NpgsqlConnection verify = await database.DataSource.OpenConnectionAsync();
+        await using var inspect = new NpgsqlCommand("""
+            SELECT last_seen_at > clock_timestamp()-interval '1 hour', ciphertext
+            FROM security.protected_diagnostic_payload WHERE payload_id=@id;
+            """, verify);
+        inspect.Parameters.AddWithValue("id", payloadId);
+        await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.True(reader.GetBoolean(0));
+        Assert.Equal(original.GetCiphertext(), (byte[])reader.GetValue(1));
+    }
+
+    [Fact]
     public async Task QueryContentLinkRequiresMatchingPayloadAndQueryTarget()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
