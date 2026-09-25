@@ -17,6 +17,11 @@ public static class QueryPerformancePersistencePayload
     {
         ArgumentNullException.ThrowIfNull(observations);
         ArgumentNullException.ThrowIfNull(statuses);
+        // The current M7 commit contract persists metadata only. Silently
+        // omitting a protected reference would make a successful run claim
+        // content that cannot be retrieved or retained with the observation.
+        if (observations.Any(static item => item.ContentReference is not null))
+            throw new InvalidDataException("Query content references require a protected-content commit contract.");
         var observationJson = observations.Select(static x => new
         {
             databaseId = x.Query.DatabaseId,

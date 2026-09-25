@@ -1347,9 +1347,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
                 item.Source == QueryPerformanceSource.Mixed ||
                 item.Query.DatabaseId <= 0 ||
                 item.IntervalEndUtc <= item.IntervalStartUtc ||
-                item.IntervalEndUtc - item.IntervalStartUtc > QueryPerformanceBounds.MaximumWindow))
+                item.IntervalEndUtc - item.IntervalStartUtc > QueryPerformanceBounds.MaximumWindow ||
+                item.ContentReference is not null))
         {
-            throw new InvalidDataException("Query performance observations must carry a concrete source and bounded interval.");
+            throw new InvalidDataException("Query performance observations must carry a concrete source and bounded interval without uncommitted content references.");
         }
         if (request.Payload.QueryPerformanceStatuses.Any(status => status.DatabaseId <= 0 || status.DatabaseId > 32767))
         {

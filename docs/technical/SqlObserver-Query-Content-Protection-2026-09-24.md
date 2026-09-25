@@ -22,3 +22,8 @@ plans. Before enabling collection, add bounded source reads, references from
 query observations to protected payloads, target-scoped retention, explicit
 `QueryTextReader` retrieval with safe audit metadata, and inert rendering. Keep
 content out of summaries, logs, URLs, exports, and MCP catalog responses.
+
+The current M7 commit contract is metadata-only. It now rejects an observation
+with a `ContentReference` before writing a run, instead of silently discarding
+that reference. Enabling content requires a leased, atomic link commit and
+retrieval path; changing the collector output alone is insufficient.

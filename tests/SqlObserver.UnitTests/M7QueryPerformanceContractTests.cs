@@ -5,6 +5,7 @@ using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.SensitiveData;
 using SqlObserver.Collector.Abstractions;
 
 namespace SqlObserver.UnitTests;
@@ -128,6 +129,24 @@ public sealed class M7QueryPerformanceContractTests
         Assert.Equal(System.Text.Json.JsonValueKind.Array, document.RootElement.GetProperty("databaseStatuses").ValueKind);
         Assert.False(document.RootElement.TryGetProperty("targetStatus", out _));
         Assert.InRange(bytes.Length, 1, QueryPerformancePersistencePayload.MaximumSerializedBytes);
+    }
+    [Fact]
+    public void PersistenceRejectsProtectedReferenceUntilLinkCommitExists()
+    {
+        var target = new MonitoredInstanceId(Guid.NewGuid());
+        var query = new QueryOpaqueIdentity(5, new string('a', 64));
+        var reference = new SensitivePayloadReference(new SensitivePayloadId(Guid.NewGuid()),
+            SensitivePayloadKind.QueryText, new SensitivePayloadFingerprint(new byte[32]));
+        var observation = new QueryPerformanceObservation(target, new ObservationTargetRevision(1),
+            query, null, QueryPerformanceSource.QueryStore, QueryStoreState.ReadWrite,
+            QueryMetricSemantics.QueryStoreInterval, new QueryPerformanceMetricSet(1, 1, 1, 1, 1, 1),
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(1),
+            DateTimeOffset.UnixEpoch.AddMinutes(1), QueryCoverage.Complete, true, false, reference);
+        var status = new QueryPerformanceDatabaseStatus(5, QueryPerformanceReadStatus.QueryStoreRows,
+            "query_store_read", false, false, 1, 256, QueryStoreState.ReadWrite);
+
+        Assert.Throws<InvalidDataException>(() =>
+            QueryPerformancePersistencePayload.Serialize([observation], [status], null));
     }
     [Fact]
     public void PersistenceSerializerUsesCanonicalJsonbTextShape()
