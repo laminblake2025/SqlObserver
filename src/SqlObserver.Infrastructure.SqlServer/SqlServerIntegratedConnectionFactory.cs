@@ -73,6 +73,8 @@ internal sealed class SqlServerIntegratedConnectionFactory : ISqlServerConnectio
         {
             DataSource = dataSource,
             InitialCatalog = "master",
+            MultiSubnetFailover = endpoint.TcpPort is not null,
+            ApplicationIntent = ApplicationIntent.ReadWrite,
             IntegratedSecurity = true,
             Encrypt = SqlConnectionEncryptOption.Mandatory,
             TrustServerCertificate = false,

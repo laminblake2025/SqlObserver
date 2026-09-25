@@ -93,6 +93,8 @@ public sealed class SqlServerCapabilityIntegrationTests
         Assert.Equal("sql01.contoso.example", builder.HostNameInCertificate);
         Assert.Equal(SqlServerIntegratedConnectionFactory.ApplicationName, builder.ApplicationName);
         Assert.Equal(5, builder.ConnectTimeout);
+        Assert.False(builder.MultiSubnetFailover);
+        Assert.Equal(ApplicationIntent.ReadWrite, builder.ApplicationIntent);
         Assert.False(builder.PersistSecurityInfo);
         Assert.False(builder.MultipleActiveResultSets);
         Assert.False(builder.Enlist);
@@ -106,6 +108,8 @@ public sealed class SqlServerCapabilityIntegrationTests
         using SqlConnection portConnection = SqlServerIntegratedConnectionFactory.CreateConnection(portPolicy);
         var portBuilder = new SqlConnectionStringBuilder(portConnection.ConnectionString);
         Assert.Equal("tcp:10.10.20.30,1433", portBuilder.DataSource);
+        Assert.True(portBuilder.MultiSubnetFailover);
+        Assert.Equal(ApplicationIntent.ReadWrite, portBuilder.ApplicationIntent);
 
         Type[] publicTypes = typeof(SqlObserver.Infrastructure.SqlServer.AssemblyMarker)
             .Assembly
