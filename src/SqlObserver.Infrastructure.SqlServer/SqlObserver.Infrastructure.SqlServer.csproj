@@ -166,6 +166,9 @@
     <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.sqlserver17-windows.v1.sql</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/storage.volume.sqlserver15-17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.sqlserver15-17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v3.schema.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.collector-manifest.v3.schema.json</LogicalName>
     </EmbeddedResource>

@@ -5,6 +5,13 @@ shows SQL database-file sizes and cumulative file I/O, but it cannot report
 free space on the SQL Server host. The `host.volume.*` metrics describe the
 collector host and must not be relabelled as target capacity.
 
+Implementation checkpoint: a bounded observation envelope and checksum-pinned
+SQL Server source parser exist. The query and its one-row look-ahead were
+executed on local SQL Server 2022; the parser deduplicates shared volumes with
+a keyed fingerprint and withholds incomplete reads. It is not yet registered
+as a scheduled collector because the fenced repository write and read contracts
+have not landed.
+
 ## Source evidence and scope
 
 Microsoft documents `sys.dm_os_volume_stats(database_id, file_id)` as returning
@@ -44,11 +51,15 @@ SQL host change behind an AG listener must start a new identity epoch, so the
 fingerprint input needs a keyed physical-node component. Validate this across
 failover before enabling days-until-full forecasts.
 
-Do not store the same capacity once for every database file. Persist one
+Do not store the same capacity once for every database file. A volume's free
+bytes can move during the scan: retain the minimum observed value for repeated
+files as a conservative current reading. Conflicting total bytes or a mix of
+known and unknown capacity for the same identity is inconsistent source
+evidence and must not produce a complete snapshot. Persist one
 deduplicated volume row per fenced run, with total/free bytes, number of mapped
 files, observed time, target revision, run ID and identity quality. All byte
 values are nonnegative 64-bit integers; `free <= total`, and unknowns remain
-nullable. A source cap, permission failure or inconsistent duplicate values
+nullable. A source cap, permission failure or conflicting duplicate identity
 must publish a visibility gap rather than an apparently complete snapshot.
 
 ## Repository and read cutover
