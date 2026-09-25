@@ -65,6 +65,7 @@ public sealed class CollectorRegistration
             (output.MaxMetricSamples > 0 ? 1 : 0) +
             (output.MaxDatabaseObservations > 0 ? 1 : 0) +
             (output.MaxDatabaseFileObservations > 0 ? 1 : 0) +
+            (output.MaxSqlVolumeObservations > 0 ? 1 : 0) +
             (output.MaxActivitySessionObservations > 0 ? 1 : 0) +
             (output.MaxActivityRequestObservations > 0 ? 1 : 0) +
             (output.MaxServerWaitObservations > 0 ? 1 : 0) +
@@ -77,6 +78,7 @@ public sealed class CollectorRegistration
             CollectorOutputKind.Metrics => output.MaxMetricSamples > 0,
             CollectorOutputKind.DatabaseInventory => output.MaxDatabaseObservations > 0,
             CollectorOutputKind.DatabaseFiles => output.MaxDatabaseFileObservations > 0,
+            CollectorOutputKind.SqlVolumes => output.MaxSqlVolumeObservations > 0,
             CollectorOutputKind.ActivitySessions => output.MaxActivitySessionObservations > 0,
             CollectorOutputKind.ActivityRequests => output.MaxActivityRequestObservations > 0,
             CollectorOutputKind.ServerWaits => output.MaxServerWaitObservations > 0,

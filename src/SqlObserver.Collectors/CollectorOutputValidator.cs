@@ -42,6 +42,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             ? OperationalHealthBounds.AvailabilityMaximumRows + 1
             : manifest.Id.Value == "replication.health"
                 ? ReplicationBounds.MaximumRows + 1
+                : manifest.Id.Value == "storage.volume"
+                    ? manifest.Limits.MaxRows + 1
                 : manifest.Id.Value == "queries.performance"
             ? QueryPerformanceBounds.MaximumDatabases * QueryPerformanceBounds.ProbeRows
             : manifest.Limits.MaxRows;

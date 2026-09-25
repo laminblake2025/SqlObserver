@@ -16,7 +16,7 @@ namespace SqlObserver.Infrastructure.SqlServer;
 public abstract class SqlServerHealthCollector : ISqlServerCollector
 {
     private readonly ISqlServerConnectionFactory _connectionFactory;
-    private readonly SqlServerCollectorAsset _asset;
+    private readonly Func<int, string> _queryForMajor;
 
     private protected SqlServerHealthCollector(
         string collectorId,
@@ -25,10 +25,20 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
     {
         ArgumentNullException.ThrowIfNull(catalog);
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-        _asset = catalog.Get(new Domain.Capabilities.CollectorId(collectorId));
+        SqlServerCollectorAsset asset = catalog.Get(new Domain.Capabilities.CollectorId(collectorId));
+        Manifest = asset.Manifest;
+        _queryForMajor = asset.GetQuery;
     }
 
-    public CollectorManifest Manifest => _asset.Manifest;
+    private protected SqlServerHealthCollector(CollectorManifest manifest,
+        Func<int, string> queryForMajor, ISqlServerConnectionFactory connectionFactory)
+    {
+        Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
+        _queryForMajor = queryForMajor ?? throw new ArgumentNullException(nameof(queryForMajor));
+        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    }
+
+    public CollectorManifest Manifest { get; }
 
     public async ValueTask<CollectorExecutionResult> CollectAsync(
         CollectorExecutionRequest request,
@@ -67,7 +77,7 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
             await using SqlConnection connection = await _connectionFactory
                 .OpenConnectionAsync(request.ConnectionPolicy, deadline.Token)
                 .ConfigureAwait(false);
-            await using var command = new SqlCommand(_asset.GetQuery(majorVersion), connection)
+            await using var command = new SqlCommand(_queryForMajor(majorVersion), connection)
             {
                 CommandTimeout = Math.Max(1, checked((int)Math.Ceiling(operationBudget.TotalSeconds))),
             };
