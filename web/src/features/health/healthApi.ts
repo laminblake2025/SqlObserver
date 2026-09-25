@@ -27,9 +27,12 @@ export async function getTargetHealth(
 export async function getDatabaseHealth(
   instanceId: string,
   signal: AbortSignal,
+  cursor?: string,
 ): Promise<DatabaseHealthPage> {
+  const parameters = new URLSearchParams({ limit: String(firstPageLimit) });
+  if (cursor !== undefined) parameters.set("cursor", cursor);
   return getJson(
-    `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/databases?limit=${String(firstPageLimit)}`,
+    `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/databases?${parameters}`,
     signal,
   );
 }

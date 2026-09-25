@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { Tabs } from "../../components/DiagnosticUi";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { ServerDashboard } from "./ServerDashboard";
 
-import { getTargetHealthEvidence, HealthRequestError } from "./healthApi";
+import { getDatabaseHealth, getTargetHealthEvidence, HealthRequestError } from "./healthApi";
 import {
   coreMetricDefinition,
   formatCoreMetricValue,
@@ -143,7 +143,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             <CoreMetrics metrics={evidence.target.coreMetrics} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseHealth page={evidence.databases} /><DatabaseFileHealth page={evidence.files} /></> : null}
+          {tab === "databases" ? <><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} /><DatabaseFileHealth page={evidence.files} /></> : null}
           {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
         </>
       )}
@@ -165,15 +165,65 @@ function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricS
   })}</div>;
 }
 
-function DatabaseHealth({ page }: { readonly page: DatabaseHealthPage }) {
+function DatabaseHealth({ instanceId, firstPage }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage }) {
   const formatTimestamp = useTimeFormatter();
+  const [page, setPage] = useState(firstPage);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const request = useRef<AbortController | undefined>(undefined);
+
+  useEffect(() => {
+    request.current?.abort();
+    request.current = undefined;
+    setPage(firstPage);
+    setPageIndex(0);
+    setCursors([undefined]);
+    setLoading(false);
+    setError(false);
+    return () => request.current?.abort();
+  }, [instanceId, firstPage]);
+
+  async function navigate(index: number, cursor?: string) {
+    if (request.current) return;
+    if (index === 0) {
+      setPage(firstPage);
+      setPageIndex(0);
+      setError(false);
+      return;
+    }
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true);
+    setError(false);
+    try {
+      const next = await getDatabaseHealth(instanceId, controller.signal, cursor);
+      if (controller.signal.aborted) return;
+      if (next.instanceId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Database page target mismatch.");
+      setPage(next);
+      setPageIndex(index);
+      setCursors(previous => [...previous.slice(0, index), cursor]);
+    } catch {
+      if (!controller.signal.aborted) setError(true);
+    } finally {
+      if (!controller.signal.aborted) {
+        request.current = undefined;
+        setLoading(false);
+      }
+    }
+  }
+
   return (
-    <section className="bounded-health-section" aria-labelledby="database-health-heading">
+    <section className="bounded-health-section" aria-labelledby="database-health-heading" aria-busy={loading}>
       <div className="bounded-health-heading">
         <h4 id="database-health-heading">Database health</h4>
         <span>Repository time: {formatTimestamp(page.repositoryTimeUtc)}</span>
       </div>
       <PageCollectorHealth collector={page.collector} />
+      <p className="page-boundary">Page {pageIndex + 1} · {page.items.length} databases{page.nextCursor ? " · More available" : " · End of snapshot"}</p>
+      {loading ? <p role="status">Loading database page…</p> : null}
+      {error ? <p role="alert">Database page is unavailable. Try again.</p> : null}
       {page.items.length === 0 ? (
         <p className="empty-state">
           {isCurrentLossFree(page.collector)
@@ -187,9 +237,11 @@ function DatabaseHealth({ page }: { readonly page: DatabaseHealthPage }) {
           ))}
         </div>
       )}
-      {page.nextCursor === null ? null : (
-        <p className="page-boundary">Additional databases exist; this view shows the bounded first page.</p>
-      )}
+      <nav aria-label="Database health pages" className="pager">
+        <button type="button" disabled={loading || pageIndex === 0} onClick={() => void navigate(0)}>First database page</button>{" "}
+        <button type="button" disabled={loading || pageIndex === 0} onClick={() => void navigate(pageIndex - 1, cursors[pageIndex - 1])}>Previous database page</button>{" "}
+        <button type="button" disabled={loading || !page.nextCursor} onClick={() => void navigate(pageIndex + 1, page.nextCursor ?? undefined)}>Next database page</button>
+      </nav>
     </section>
   );
 }

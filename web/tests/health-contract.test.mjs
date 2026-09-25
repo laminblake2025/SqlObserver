@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { getDatabaseHealth } from "../src/features/health/healthApi.ts";
 
 const panelUrl = new URL(
   "../src/features/health/TargetHealthPanel.tsx",
@@ -51,7 +52,8 @@ test("target detail exposes bounded repository health evidence", async () => {
   assert.match(panel, /Database rows cannot be treated as complete for this snapshot\./);
   assert.match(panel, /No logical-file rows were reported by a current, loss-free collection\./);
   assert.match(panel, /Logical-file rows cannot be treated as complete for this snapshot\./);
-  assert.match(panel, /Additional databases exist; this view shows the bounded first page\./);
+  assert.match(panel, /Next database page/);
+  assert.match(panel, /Previous database page/);
   assert.match(panel, /Additional logical files exist; this view shows the bounded first page\./);
   assert.match(panel, /BigInt\(value\)\.toLocaleString\(\)/);
   assert.match(types, /readonly sizeBytes: string/);
@@ -68,7 +70,7 @@ test("health fetch uses a target-scoped route and never reflects provider errors
     api,
     /\/api\/v1\/observation-targets\/\$\{encodeURIComponent\(instanceId\)\}\/health/,
   );
-  assert.match(api, /\/health\/databases\?limit=\$\{String\(firstPageLimit\)\}/);
+  assert.match(api, /\/health\/databases\?\$\{parameters\}/);
   assert.match(api, /\/health\/files\?\$\{parameters\}/);
   assert.match(api, /Promise\.allSettled\(\[/);
   assert.match(api, /credentials: "same-origin"/);
@@ -80,4 +82,23 @@ test("health fetch uses a target-scoped route and never reflects provider errors
   assert.doesNotMatch(api, /response\.(?:text|body)/);
   assert.doesNotMatch(api, /status \$\{status\}/);
   assert.doesNotMatch(api, /(?:password|connectionString|trustServerCertificate)\s*[?:]/i);
+});
+
+test("database health paging encodes the target and continuation cursor", async () => {
+  const originalFetch = globalThis.fetch;
+  const paths = [];
+  globalThis.fetch = async (path) => {
+    paths.push(String(path));
+    return new Response(JSON.stringify({ instanceId: "target", items: [], nextCursor: null }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    await getDatabaseHealth("server / one", new AbortController().signal);
+    await getDatabaseHealth("server / one", new AbortController().signal, "page+/=two");
+    assert.equal(paths[0], "/api/v1/observation-targets/server%20%2F%20one/health/databases?limit=25");
+    assert.equal(paths[1], "/api/v1/observation-targets/server%20%2F%20one/health/databases?limit=25&cursor=page%2B%2F%3Dtwo");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
