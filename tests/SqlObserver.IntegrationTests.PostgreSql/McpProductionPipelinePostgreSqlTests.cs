@@ -201,6 +201,32 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 history.Parameters.AddWithValue("run", queryRunId);
                 history.Parameters.AddWithValue("target", targetId);
                 await history.ExecuteNonQueryAsync();
+                await using var metricSeries = new NpgsqlCommand("""
+                    INSERT INTO control.host_binding
+                        (instance_id, target_revision, host_id, binding_revision, host_name,
+                         identity_fingerprint, binding_state)
+                    VALUES (@target, 1, @host, 1, 'mcp-test.invalid',
+                            decode(repeat('a', 64), 'hex'), 'active');
+                    INSERT INTO control.host_profile
+                        (instance_id, target_revision, host_id, binding_revision, profile_revision,
+                         os_family, os_version, cpu_count, memory_bytes, capability_state, profile)
+                    VALUES (@target, 1, @host, 1, 1, 'Windows', '2026', 4, 4294967296,
+                            'available',
+                            '{"osFamily":"Windows","osVersion":"2026","cpuCount":4,"memoryBytes":4294967296,"capabilityState":"available"}'::jsonb);
+                    INSERT INTO telemetry.host_metric_snapshot_v2
+                        (observed_at, run_id, instance_id, target_revision, host_id,
+                         binding_revision, profile_revision, metric_key, metric_value,
+                         dimensions, collected_at)
+                    SELECT statement_timestamp() - make_interval(mins => 1 + g), gen_random_uuid(),
+                           @target, 1, @host, 1, 1, 'host.cpu.percent',
+                           CASE WHEN @other_target THEN 99 ELSE g END,
+                           '{}'::jsonb, statement_timestamp() - make_interval(mins => 1 + g)
+                    FROM generate_series(1, 3) AS values(g);
+                    """, admin);
+                metricSeries.Parameters.AddWithValue("target", targetId);
+                metricSeries.Parameters.AddWithValue("host", Guid.NewGuid());
+                metricSeries.Parameters.AddWithValue("other_target", targetId != targetIds[0]);
+                await metricSeries.ExecuteNonQueryAsync();
             }
         }
 
@@ -277,7 +303,8 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             bool alert = other.Name == "get_active_alerts";
             bool query = other.Name == "get_top_queries";
             bool queryHistory = other.Name == "get_query_history";
-            bool paged = forecast || diagnostic || incident || alert || query || queryHistory;
+            bool metric = other.Name == "get_metric_series";
+            bool paged = forecast || diagnostic || incident || alert || query || queryHistory || metric;
             int expectedPages = paged && withCursorSigner ? 3 : 1;
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             string? itemCursor = null;
@@ -308,7 +335,9 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                     if (diagnostic) Assert.Equal("mcp.pipeline", item.GetProperty("eventKind").GetString());
                     if (alert) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
                     if (query || queryHistory) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
-                    string key = queryHistory ? item.GetProperty("observationKey").GetString()!
+                    if (metric) Assert.InRange(item.GetProperty("value").GetDouble(), 1, 3);
+                    string key = metric ? item.GetProperty("observedAtUtc").GetString()!
+                        : queryHistory ? item.GetProperty("observationKey").GetString()!
                         : query
                         ? item.GetProperty("query").GetProperty("queryFingerprint").GetString()!
                         : item.GetProperty(forecast ? "forecastId" : incident ? "threadId" : alert ? "alertId" : "eventId").GetString()!;
