@@ -7,6 +7,7 @@ import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { useTimeDisplay } from "./TimeDisplayContext";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
+import { TargetWaitsPanel } from "./features/activity/TargetWaitsPanel";
 import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
 import { FleetAlertsPage } from "./features/alerts/FleetAlertsPage";
 import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
@@ -30,6 +31,7 @@ const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], 
   overview: "⌂",
   servers: "▦",
   activity: "⌁",
+  waits: "◷",
   queries: "▥",
   deadlocks: "↔",
   alerts: "♢",
@@ -60,7 +62,7 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
-  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "queries" || route.page === "deadlocks" ||
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "queries" || route.page === "deadlocks" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
@@ -298,6 +300,7 @@ export function App() {
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} />}
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}

@@ -67,7 +67,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
   );
 }
 
-function WaitCategoryChart({ page }: { readonly page: ActivityPage<ActivityWait> }) {
+export function WaitCategoryChart({ page }: { readonly page: ActivityPage<ActivityWait> }) {
   const summary = useMemo(() => groupWaitDeltas(page.items), [page.items]);
   const max = Math.max(1, ...summary.categories.map(item => Number(item.waitMilliseconds)));
   return <section className="panel wait-chart" aria-label="Wait categories">
@@ -118,7 +118,7 @@ function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: str
   </section>;
 }
 
-function WaitHistory({ instanceId, initialPage }: { readonly instanceId: string; readonly initialPage: ActivityPage<ServerWaitHistoryItem> }) {
+export function WaitHistory({ instanceId, initialPage }: { readonly instanceId: string; readonly initialPage: ActivityPage<ServerWaitHistoryItem> }) {
   const { mode } = useTimeDisplay();
   const [page, setPage] = useState(initialPage);
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
@@ -157,7 +157,7 @@ function WaitHistory({ instanceId, initialPage }: { readonly instanceId: string;
   </section>;
 }
 
-function Evidence<T>({ page }: { readonly page: ActivityPage<T> }) {
+export function Evidence<T>({ page }: { readonly page: ActivityPage<T> }) {
   const { mode } = useTimeDisplay();
   const evidence = page.evidence;
   if (evidence === undefined) return <p className="activity-evidence">No current evidence. Repository time: {formatDisplayTime(page.repositoryTimeUtc, mode)}</p>;
@@ -175,6 +175,6 @@ function HistoryEvidence({ page }: { readonly page: ActivityPage<BlockingHistory
   return <p className="activity-evidence">Blocking history window: {range}. {evidence === undefined ? "No historical evidence." : `${evidence.collectorId}: ${evidence.freshness}; ${evidence.outcome}${evidence.isPartial ? " — partial/loss evidence" : ""}.`}{page.nextCursor === undefined ? "" : " More bounded history is available."}</p>;
 }
 
-function ActivityTable({ title, columns, rows }: { readonly title: string; readonly columns: readonly string[]; readonly rows: readonly (readonly string[])[] }) {
+export function ActivityTable({ title, columns, rows }: { readonly title: string; readonly columns: readonly string[]; readonly rows: readonly (readonly string[])[] }) {
   return <section className="activity-section"><h4>{title}</h4>{rows.length === 0 ? <p className="empty-state">No bounded rows reported.</p> : <table><thead><tr>{columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table>}</section>;
 }

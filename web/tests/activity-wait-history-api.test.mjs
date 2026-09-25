@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getServerWaitHistoryPage } from "../src/features/activity/activityApi.ts";
+import { getCurrentServerWaitPage, getServerWaitHistoryPage } from "../src/features/activity/activityApi.ts";
 
 const instanceId = "11111111-1111-4111-8111-111111111111";
 const fromUtc = "2026-08-23T17:00:00Z";
@@ -29,5 +29,25 @@ test("wait history uses the selected UTC window and forwards the page cursor", a
     await assert.rejects(() => getServerWaitHistoryPage(instanceId,
       { fromUtc, toUtc: "2026-08-25T18:00:00Z" }, new AbortController().signal));
     assert.equal(requested.length, 2);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("current wait pages remain target scoped and pass the cursor through", async () => {
+  const originalFetch = globalThis.fetch;
+  const requested = [];
+  try {
+    globalThis.fetch = async url => {
+      requested.push(String(url));
+      return new Response(JSON.stringify({ instanceId, repositoryTimeUtc: toUtc,
+        items: [], nextCursor: null }), { headers: { "content-type": "application/json" } });
+    };
+    await getCurrentServerWaitPage(instanceId, new AbortController().signal);
+    await getCurrentServerWaitPage(instanceId, new AbortController().signal, "next-page");
+    assert.equal(requested.length, 2);
+    const first = new URL(requested[0], "https://local.invalid");
+    assert.equal(first.pathname, `/api/v1/observation-targets/${instanceId}/activity/waits`);
+    assert.equal(first.searchParams.get("limit"), "25");
+    assert.equal(first.searchParams.has("cursor"), false);
+    assert.equal(new URL(requested[1], "https://local.invalid").searchParams.get("cursor"), "next-page");
   } finally { globalThis.fetch = originalFetch; }
 });

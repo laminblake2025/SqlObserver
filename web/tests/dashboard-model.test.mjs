@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { activityHistoryHref, readRoute, routeHref, formatAddress } from '../src/dashboardModel.ts';
 test('hash routes preserve target identity and reject unknown destinations', () => {
   assert.deepEqual(readRoute(routeHref('queries', 'a b')), {page:'queries', target:'a b'});
+  assert.deepEqual(readRoute(routeHref('waits', 'a b')), {page:'waits', target:'a b'});
   assert.deepEqual(readRoute('#/not-a-page'), {page:'overview',target:''});
   assert.deepEqual(readRoute('#/alerts?target=target-2'), {page:'alerts',target:'target-2'});
   assert.deepEqual(readRoute('#/constructor'), {page:'overview',target:''});

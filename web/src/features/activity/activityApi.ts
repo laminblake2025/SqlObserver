@@ -4,6 +4,12 @@ export { ActivityRequestError, safeStatusMessage } from "./activityParser.mjs";
 
 const pageLimit = 25;
 
+export async function getCurrentServerWaitPage(instanceId: string, signal: AbortSignal, cursor?: string): Promise<ActivityPage<ActivityWait>> {
+  const parameters = new URLSearchParams({ limit: String(pageLimit) });
+  if (cursor !== undefined) parameters.set("cursor", cursor);
+  return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/waits?${parameters}`, parseWait, instanceId, signal);
+}
+
 export async function getBlockingHistoryPage(instanceId: string, window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal, cursor?: string): Promise<ActivityPage<BlockingHistoryItem>> {
   const from = Date.parse(window.fromUtc), to = Date.parse(window.toUtc);
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 24 * 3_600_000) throw new Error("Invalid blocking history window.");
