@@ -201,6 +201,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string CommitTempDbM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_tempdb_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitAgM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitM10Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_m10_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
+    private static readonly string CommitSqlVolumeSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_volume_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
 
     private const string CommitActivitySql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
@@ -694,8 +695,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             bool m9Collector = request.Work.CollectorId.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health";
             bool m10HostCollector = request.Work.CollectorId.Value == "host.metrics";
             bool m10ReplicationCollector = request.Work.CollectorId.Value == "replication.health";
-            if (m10HostCollector || m10ReplicationCollector)
-                return await CommitM10WithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, timeout.Token).ConfigureAwait(false);
+            bool sqlVolumeCollector = request.Work.CollectorId.Value == "storage.volume";
+            if (m10HostCollector || m10ReplicationCollector || sqlVolumeCollector)
+                return await CommitTypedWithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, sqlVolumeCollector, timeout.Token).ConfigureAwait(false);
             if (queryPerformanceCollector)
             {
                 return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
@@ -754,8 +756,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         }
     }
 
-    private async ValueTask<CollectorRunCommitResult> CommitM10WithCanonicalLifecycleAsync(
-        NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest, bool hostCollector, CancellationToken cancellationToken)
+    private async ValueTask<CollectorRunCommitResult> CommitTypedWithCanonicalLifecycleAsync(
+        NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest,
+        bool hostCollector, bool sqlVolumeCollector, CancellationToken cancellationToken)
     {
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await using (var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection, transaction))
@@ -763,9 +766,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             scope.Parameters.AddWithValue("scope", request.Work.TargetId.Value.ToString());
             await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
-        byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildM10Payload(request, hostCollector), M9JsonOptions);
-        if (json.Length > 1_048_576) throw new InvalidDataException("M10 persistence payload exceeds the accepted response bound.");
-        await using var command = new NpgsqlCommand(CommitM10Sql, connection, transaction)
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildTypedPayload(request, hostCollector, sqlVolumeCollector), M9JsonOptions);
+        if (json.Length > 1_048_576) throw new InvalidDataException("Typed persistence payload exceeds the accepted response bound.");
+        await using var command = new NpgsqlCommand(sqlVolumeCollector ? CommitSqlVolumeSql : CommitM10Sql, connection, transaction)
         { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
         AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
         AddSummaryCommitParameters(command, request);
@@ -788,10 +791,32 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         return result;
     }
 
-    private object BuildM10Payload(CommitCollectorRunRequest request, bool hostCollector)
+    private object BuildTypedPayload(CommitCollectorRunRequest request, bool hostCollector, bool sqlVolumeCollector)
     {
         if (request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
             return new { schemaVersion = 1, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), items = Array.Empty<object>() };
+        if (sqlVolumeCollector)
+            return new
+            {
+                schemaVersion = 1,
+                targetId = request.Work.TargetId.Value,
+                targetRevision = request.Work.TargetRevision.Value,
+                items = request.Payload.SqlVolumes.Items.Select(static item => new
+                {
+                    volumeKey = item.VolumeKey,
+                    identityKind = item.IdentityKind switch
+                    {
+                        SqlVolumeIdentityKind.VolumeId => "volume_id",
+                        SqlVolumeIdentityKind.MountPoint => "mount_point",
+                        SqlVolumeIdentityKind.FileScopedUnknown => "file_scoped_unknown",
+                        _ => throw new InvalidDataException("Unknown SQL volume identity kind."),
+                    },
+                    mappedFileCount = item.MappedFileCount,
+                    totalBytes = item.TotalBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    availableBytes = item.AvailableBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    observedAtUtc = item.ObservedAtUtc,
+                }).ToArray(),
+            };
         if (hostCollector)
         {
             HostMetricsPayloadContext? hostMetrics = request.Payload.HostMetricsContext;
@@ -1450,10 +1475,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
-        // The volume envelope is defined, but has no fenced persistence function
-        // until its forward migration lands. Reject it instead of silently losing rows.
-        if (request.Payload.SqlVolumes.Items.Count != 0)
-            throw new InvalidDataException("SQL volume observations require the versioned fenced repository commit.");
+        if (request.Payload.SqlVolumes.Items.Count != 0 && request.Work.CollectorId.Value != "storage.volume")
+            throw new InvalidDataException("SQL volume observations require the exact storage.volume collector.");
         ValidateLeaseKey(request.Work, request.Lease);
         if (request.NextCircuit.RepositoryTimeUtc != request.Work.RepositoryTimeUtc)
         {
@@ -1485,6 +1508,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             request.Payload.Deadlocks.Items.Any(item =>
                 item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
             request.Payload.QueryPerformance.Items.Any(item =>
+                item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
+            request.Payload.SqlVolumes.Items.Any(item =>
                 item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision))
         {
             throw new InvalidDataException("Collector snapshot payload identities do not match the exact due-work target revision.");
@@ -1500,6 +1525,12 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         int deadlockCount = request.Payload.Deadlocks.Items.Count;
         int queryPerformanceCount = request.Payload.QueryPerformance.Items.Count;
         int queryPerformanceStatusCount = request.Payload.QueryPerformanceStatuses.Count;
+        int sqlVolumeCount = request.Payload.SqlVolumes.Items.Count;
+        if (request.Work.CollectorId.Value == "storage.volume" &&
+            (request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial
+                ? request.Summary.Accounting.OutputItemsProduced != sqlVolumeCount || request.Summary.Accounting.SourceRowsRead > 1_000
+                : sqlVolumeCount != 0))
+            throw new InvalidDataException("SQL volume run accounting must match its bounded evidence payload.");
         if (request.Payload.QueryPerformance.Items.Any(item =>
                 item.Source == QueryPerformanceSource.Mixed ||
                 item.Query.DatabaseId <= 0 ||
@@ -1536,6 +1567,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         {
             "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,
             "replication.health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,
+            "storage.volume" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
             "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,

@@ -84,6 +84,15 @@ public sealed class RepositoryPrivilegePostgreSqlIntegrationTests
                     Assert.False(reader.GetBoolean(5));
                     Assert.False(reader.GetBoolean(6));
                 }
+                else if (signature is "system.prune_orphan_query_text_payloads(uuid,bigint,integer)"
+                    or "system.prune_orphan_query_plan_payloads(uuid,bigint,integer)")
+                {
+                    Assert.Equal("sqlobserver_payload_expirer", reader.GetString(1));
+                    Assert.True(reader.GetBoolean(2));
+                    Assert.True(reader.GetBoolean(4));
+                    Assert.False(reader.GetBoolean(5));
+                    Assert.False(reader.GetBoolean(6));
+                }
                 else Assert.Equal("sqlobserver_migrator", reader.GetString(1));
             }
             Assert.True(count > 0);
