@@ -1,6 +1,6 @@
 # Query Store interval watermark contract
 
-Status: implementation design, 2026-09-25. The existing M7 collector still
+Status: staged implementation design, 2026-09-25. The existing M7 collector still
 persists cumulative `query_store_interval` observations and per-plan wait totals.
 This document defines the cutover needed before either is treated as an additive
 time series or used for plan-regression detection.
@@ -12,6 +12,15 @@ Within an active Query Store interval, the same plan's execution and wait totals
 are cumulative. Consecutive collection runs therefore can contain the same work.
 The Queries UI currently labels wait values as interval totals and warns that
 snapshots overlap; summing those rows would be wrong.
+
+`QueryStoreRuntimeWatermarkCalculator` now defines the pure transition for a
+complete runtime source group. Its key includes target revision, database
+incarnation, opaque query and plan identities, plan compile time, interval
+identity and execution type. It returns a null delta for a first baseline,
+counter drop, candidate reset, incomplete read or stale observation; a quiet
+comparable read returns six known zeroes. This contract is not yet connected to
+the collector or repository. It cannot make the existing cumulative rows
+additive, and it does not replace the required SQL Server version proofs.
 
 The disposable SQL Server 2022 probe in
 `tools/lab/verify-query-store-text-local.ps1` held a table lock, recorded a
