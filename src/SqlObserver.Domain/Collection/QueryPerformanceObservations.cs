@@ -46,10 +46,38 @@ public sealed record QueryPerformanceMetricSet
     private static long? NonNegative(long? value, string name) => value is null or >= 0 ? value : throw new ArgumentOutOfRangeException(name);
 }
 
+/// <summary>Query Store wait-category totals for one sampled plan and run; these are not deltas.</summary>
+public sealed record QueryWaitCategory
+{
+    public QueryWaitCategory(int category, long waitMilliseconds)
+    {
+        if (category is < 0 or > 31 || waitMilliseconds <= 0)
+            throw new ArgumentOutOfRangeException(nameof(category));
+        Category = category;
+        WaitMilliseconds = waitMilliseconds;
+    }
+    public int Category { get; }
+    public long WaitMilliseconds { get; }
+}
+
+public sealed class QueryStoreWaitSnapshot
+{
+    public const int MaximumCategories = 32;
+    public QueryStoreWaitSnapshot(IReadOnlyList<QueryWaitCategory> categories)
+    {
+        ArgumentNullException.ThrowIfNull(categories);
+        if (categories.Count > MaximumCategories || categories.Any(static item => item is null) ||
+            categories.Select(static item => item.Category).Distinct().Count() != categories.Count)
+            throw new ArgumentException("Query Store wait categories must be bounded and unique.", nameof(categories));
+        Categories = Array.AsReadOnly(categories.OrderBy(static item => item.Category).ToArray());
+    }
+    public IReadOnlyList<QueryWaitCategory> Categories { get; }
+}
+
 public sealed class QueryPerformanceObservation : IIngestionRecord
 {
     public const int FixedEstimatedBytes = 256;
-    public QueryPerformanceObservation(MonitoredInstanceId targetId, ObservationTargetRevision revision, QueryOpaqueIdentity query, PlanOpaqueIdentity? plan, QueryPerformanceSource source, QueryStoreState sourceState, QueryMetricSemantics semantics, QueryPerformanceMetricSet metrics, DateTimeOffset intervalStartUtc, DateTimeOffset intervalEndUtc, DateTimeOffset observedAtUtc, QueryCoverage coverage, bool fresh, bool truncated, SensitivePayloadReference? contentReference = null, long? queryTextSourceId = null, ProtectedSensitivePayload? protectedContent = null, SensitivePayloadReference? planContentReference = null, ProtectedSensitivePayload? protectedPlanContent = null, long? planSourceId = null)
+    public QueryPerformanceObservation(MonitoredInstanceId targetId, ObservationTargetRevision revision, QueryOpaqueIdentity query, PlanOpaqueIdentity? plan, QueryPerformanceSource source, QueryStoreState sourceState, QueryMetricSemantics semantics, QueryPerformanceMetricSet metrics, DateTimeOffset intervalStartUtc, DateTimeOffset intervalEndUtc, DateTimeOffset observedAtUtc, QueryCoverage coverage, bool fresh, bool truncated, SensitivePayloadReference? contentReference = null, long? queryTextSourceId = null, ProtectedSensitivePayload? protectedContent = null, SensitivePayloadReference? planContentReference = null, ProtectedSensitivePayload? protectedPlanContent = null, long? planSourceId = null, QueryStoreWaitSnapshot? waitSnapshot = null)
     {
         TargetId = targetId ?? throw new ArgumentNullException(nameof(targetId)); TargetRevision = revision ?? throw new ArgumentNullException(nameof(revision)); Query = query ?? throw new ArgumentNullException(nameof(query)); if (plan is not null && (plan.Query.DatabaseId != query.DatabaseId || !string.Equals(plan.Query.QueryFingerprint, query.QueryFingerprint, StringComparison.Ordinal))) throw new ArgumentException("Plan identity must belong to the observation query.", nameof(plan)); Plan = plan; Metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         if (!Enum.IsDefined(source) || !Enum.IsDefined(sourceState) || !Enum.IsDefined(semantics) || !Enum.IsDefined(coverage)) throw new ArgumentOutOfRangeException(nameof(source));
@@ -61,7 +89,9 @@ public sealed class QueryPerformanceObservation : IIngestionRecord
         if (protectedContent is not null && (protectedContent.Kind != SensitivePayloadKind.QueryText || protectedContent.CiphertextLengthBytes > 16 * 1024 || contentReference is not null)) throw new ArgumentException("Protected query text cannot coexist with a stored reference or exceed its bound.", nameof(protectedContent));
         if (planContentReference is not null && (plan is null || planContentReference.Kind != SensitivePayloadKind.ExecutionPlan)) throw new ArgumentException("Plan reference must belong to a plan and have the execution-plan kind.", nameof(planContentReference));
         if (protectedPlanContent is not null && (plan is null || source != QueryPerformanceSource.QueryStore || protectedPlanContent.Kind != SensitivePayloadKind.ExecutionPlan || protectedPlanContent.CiphertextLengthBytes > ProtectedSensitivePayload.MaximumCiphertextBytes || planContentReference is not null)) throw new ArgumentException("Protected plan content must belong to a Query Store plan and cannot coexist with its stored reference.", nameof(protectedPlanContent));
-        Source = source; SourceState = sourceState; Semantics = semantics; IntervalStartUtc = intervalStartUtc; IntervalEndUtc = intervalEndUtc; ObservedAtUtc = observedAtUtc; Coverage = coverage; Fresh = fresh; Truncated = truncated; ContentReference = contentReference; QueryTextSourceId = queryTextSourceId; ProtectedContent = protectedContent; PlanContentReference = planContentReference; ProtectedPlanContent = protectedPlanContent; PlanSourceId = planSourceId; EstimatedSizeBytes = FixedEstimatedBytes;
+        if (waitSnapshot is not null && (source != QueryPerformanceSource.QueryStore || plan is null))
+            throw new ArgumentException("Query Store waits require a plan identity.", nameof(waitSnapshot));
+        Source = source; SourceState = sourceState; Semantics = semantics; IntervalStartUtc = intervalStartUtc; IntervalEndUtc = intervalEndUtc; ObservedAtUtc = observedAtUtc; Coverage = coverage; Fresh = fresh; Truncated = truncated; ContentReference = contentReference; QueryTextSourceId = queryTextSourceId; ProtectedContent = protectedContent; PlanContentReference = planContentReference; ProtectedPlanContent = protectedPlanContent; PlanSourceId = planSourceId; WaitSnapshot = waitSnapshot; EstimatedSizeBytes = checked(FixedEstimatedBytes + (waitSnapshot?.Categories.Count ?? 0) * 24);
     }
     public MonitoredInstanceId TargetId { get; }
     public ObservationTargetRevision TargetRevision { get; }
@@ -87,6 +117,8 @@ public sealed class QueryPerformanceObservation : IIngestionRecord
     public SensitivePayloadReference? PlanContentReference { get; }
     /// <summary>Ephemeral encrypted plan XML handed to the fenced scheduler writer.</summary>
     public ProtectedSensitivePayload? ProtectedPlanContent { get; }
+    /// <summary>Captured Query Store wait totals for this plan; null means not captured.</summary>
+    public QueryStoreWaitSnapshot? WaitSnapshot { get; }
     public int EstimatedSizeBytes { get; }
 
     public QueryPerformanceObservation WithProtectedContent(ProtectedSensitivePayload? content) =>
@@ -94,25 +126,36 @@ public sealed class QueryPerformanceObservation : IIngestionRecord
             IntervalStartUtc, IntervalEndUtc, ObservedAtUtc, Coverage, Fresh, Truncated,
             contentReference: null, queryTextSourceId: null, protectedContent: content,
             planContentReference: PlanContentReference, protectedPlanContent: ProtectedPlanContent,
-            planSourceId: PlanSourceId);
+            planSourceId: PlanSourceId, waitSnapshot: WaitSnapshot);
 
     public QueryPerformanceObservation WithContentReference(SensitivePayloadReference reference) =>
         new(TargetId, TargetRevision, Query, Plan, Source, SourceState, Semantics, Metrics,
             IntervalStartUtc, IntervalEndUtc, ObservedAtUtc, Coverage, Fresh, Truncated,
             contentReference: reference, planContentReference: PlanContentReference,
-            protectedPlanContent: ProtectedPlanContent, planSourceId: PlanSourceId);
+            protectedPlanContent: ProtectedPlanContent, planSourceId: PlanSourceId,
+            waitSnapshot: WaitSnapshot);
 
     public QueryPerformanceObservation WithProtectedPlanContent(ProtectedSensitivePayload? content) =>
         new(TargetId, TargetRevision, Query, Plan, Source, SourceState, Semantics, Metrics,
             IntervalStartUtc, IntervalEndUtc, ObservedAtUtc, Coverage, Fresh, Truncated,
             contentReference: ContentReference, queryTextSourceId: QueryTextSourceId,
-            protectedContent: ProtectedContent, protectedPlanContent: content);
+            protectedContent: ProtectedContent, protectedPlanContent: content,
+            waitSnapshot: WaitSnapshot);
 
     public QueryPerformanceObservation WithPlanContentReference(SensitivePayloadReference reference) =>
         new(TargetId, TargetRevision, Query, Plan, Source, SourceState, Semantics, Metrics,
             IntervalStartUtc, IntervalEndUtc, ObservedAtUtc, Coverage, Fresh, Truncated,
             contentReference: ContentReference, queryTextSourceId: QueryTextSourceId,
-            protectedContent: ProtectedContent, planContentReference: reference);
+            protectedContent: ProtectedContent, planContentReference: reference,
+            waitSnapshot: WaitSnapshot);
+
+    public QueryPerformanceObservation WithWaitSnapshot(QueryStoreWaitSnapshot snapshot) =>
+        new(TargetId, TargetRevision, Query, Plan, Source, SourceState, Semantics, Metrics,
+            IntervalStartUtc, IntervalEndUtc, ObservedAtUtc, Coverage, Fresh, Truncated,
+            contentReference: ContentReference, queryTextSourceId: QueryTextSourceId,
+            protectedContent: ProtectedContent, planContentReference: PlanContentReference,
+            protectedPlanContent: ProtectedPlanContent, planSourceId: PlanSourceId,
+            waitSnapshot: snapshot);
 }
 
 public sealed class QueryPerformanceObservationBatch : ObservationBatch<QueryPerformanceObservation>

@@ -990,6 +990,11 @@ function Assert-RepositoryShape {
         'queries.performance.plan.sqlserver16-windows.v1.sql',
         'queries.performance.plan.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $waitM7CollectorSqlNames = @(
+        'queries.performance.waits.sqlserver15-windows.v1.sql',
+        'queries.performance.waits.sqlserver16-windows.v1.sql',
+        'queries.performance.waits.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
     $expectedM9CollectorSqlNames = @(
         'capability.connection.sqlserver15-windows.v2.sql',
         'capability.connection.sqlserver16-windows.v2.sql',
@@ -1021,7 +1026,7 @@ function Assert-RepositoryShape {
         'replication.health.sqlserver17-windows.v1.sql'
     ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $contentM7CollectorSqlNames + $expectedM9CollectorSqlNames + $expectedM10CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $contentM7CollectorSqlNames + $waitM7CollectorSqlNames + $expectedM9CollectorSqlNames + $expectedM10CollectorSqlNames
         'activity.live.v1.sql'
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
@@ -1098,6 +1103,15 @@ function Assert-RepositoryShape {
              $collectorSql -notmatch '(?i)DATALENGTH\s*\(' -or
              $collectorSql -match '(?i)\b(EXEC(?:UTE)?|ALTER|UPDATE|DELETE|INSERT|DROP)\b')) {
             throw "M7 protected-content SQL must be bounded, filtered, and passive: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -in $waitM7CollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*256\s*\)' -or
+             $collectorSql -notmatch '(?i)sys\.query_store_wait_stats' -or
+             $collectorSql -notmatch '(?i)wait_stats_capture_mode_desc' -or
+             $collectorSql -notmatch '(?i)\bGROUP\s+BY\s+ws\.plan_id\s*,\s*ws\.wait_category' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\s+ws\.plan_id' -or
+             $collectorSql -match '(?i)\b(EXEC(?:UTE)?|ALTER|UPDATE|DELETE|INSERT|DROP)\b')) {
+            throw "M7 query-wait SQL must be bounded, grouped, and passive: $($collectorSqlFile.Name)"
         }
         if ($collectorSqlFile.Name -in $expectedM9CollectorSqlNames -and
             $collectorSqlFile.Name -notlike 'capability.connection.*.v2.sql' -and
@@ -1263,7 +1277,7 @@ function Assert-RepositoryShape {
         'collector-manifest.v4.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v4.schema.json'
         'queries.performance.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/queries.performance.v1.json'
     }
-    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in ($activeM7CollectorSqlNames + $contentM7CollectorSqlNames) }) { $m7CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName }
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in ($activeM7CollectorSqlNames + $contentM7CollectorSqlNames + $waitM7CollectorSqlNames) }) { $m7CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName }
     $m7CollectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/m7-query-performance.assets.sha256'; $m7CollectorChecksums = @{}
     foreach ($line in Get-Content -LiteralPath $m7CollectorChecksumPath) {
         if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) { continue }

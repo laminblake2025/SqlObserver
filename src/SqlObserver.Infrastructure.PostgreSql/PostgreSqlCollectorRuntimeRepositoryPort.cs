@@ -309,6 +309,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
           @query_source_state,@query_coverage,@query_freshness,@query_truncated,
           @query_payload,@links,@plan_links);
         """;
+    private const string CommitQueryWaitSnapshotsSql = """
+        SELECT control.commit_query_plan_wait_snapshots(
+            @run_id,@instance_id,@fencing_token,@snapshots);
+        """;
 
     private static readonly string[] RequiredCollectorIds =
     [
@@ -881,6 +885,35 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             return commit;
         }
+        if (commit.Status == CollectorRunCommitStatus.Committed)
+        {
+            QueryWaitSnapshotLink[] snapshots = BuildQueryWaitSnapshots(request.Payload.QueryPerformance.Items);
+            if (snapshots.Length > 0)
+            {
+                await using var waits = new NpgsqlCommand(CommitQueryWaitSnapshotsSql, connection, transaction)
+                {
+                    CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
+                };
+                waits.Parameters.AddWithValue("run_id", request.Summary.RunId.Value);
+                waits.Parameters.AddWithValue("instance_id", request.Work.TargetId.Value);
+                waits.Parameters.AddWithValue("fencing_token", request.Lease.FencingToken.Value);
+                waits.Parameters.AddWithValue("snapshots", NpgsqlDbType.Jsonb,
+                    JsonSerializer.Serialize(snapshots.Select(static snapshot => new
+                    {
+                        database_id = snapshot.DatabaseId,
+                        query_fingerprint = snapshot.QueryFingerprint,
+                        plan_fingerprint = snapshot.PlanFingerprint,
+                        categories = snapshot.Categories.Select(static category => new
+                        {
+                            category = category.Category,
+                            waitMilliseconds = category.WaitMilliseconds,
+                        }),
+                    })));
+                object? written = await waits.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                if (written is not int count || count != snapshots.Length)
+                    throw new InvalidDataException("Query wait snapshot commit did not persist every plan.");
+            }
+        }
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return commit;
     }
@@ -1133,13 +1166,16 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         var targetStatusJson = targetStatus is null ? null : new { status = targetStatus.Status, reason = targetStatus.Reason };
         QueryTextLink[] queryTextLinks = BuildQueryTextLinks(payload.QueryPerformance.Items);
         QueryPlanLink[] queryPlanLinks = BuildQueryPlanLinks(payload.QueryPerformance.Items);
+        QueryWaitSnapshotLink[] waitSnapshots = BuildQueryWaitSnapshots(payload.QueryPerformance.Items);
         byte[] persistenceJson = QueryPerformancePersistencePayload.Serialize(
             payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, targetStatus,
             contentLinksCommittedWithRun: true);
         if (persistenceJson.Length > QueryPerformancePersistencePayload.MaximumSerializedBytes) throw new InvalidDataException("Query performance persistence payload exceeds the accepted response bound.");
         var json = new { observations, databaseStatuses = statuses, targetStatus = targetStatusJson };
         var digestEnvelope = new { runId = request.Summary.RunId.Value, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, windowStartUtc = windowStart, windowEndUtc = windowEnd, source, sourceState, coverage, fresh, truncated, targetStatus = targetStatusJson, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), durationMs = request.Summary.Duration.TotalMilliseconds, attemptCount = request.Summary.AttemptCount, sourceRows = request.Summary.Accounting.SourceRowsRead, outputItems = request.Summary.Accounting.OutputItemsProduced, responseBytes = request.Summary.Accounting.ResponseBytes, outputBytes = request.Summary.Accounting.OutputBytes, lossKind = MapLoss(request.Summary.Loss.Kind), minimumLostItems = request.Summary.Loss.MinimumLostItems, lossCountIsExact = request.Summary.Loss.CountIsExact, minimumLostBytes = request.Summary.Loss.MinimumLostBytes, nextCircuitState = MapCircuit(request.NextCircuit.State), nextConsecutiveFailures = request.NextCircuit.ConsecutiveFailures, observations, databaseStatuses = statuses };
-        byte[] completionDigest = queryPlanLinks.Length > 0
+        byte[] completionDigest = waitSnapshots.Length > 0
+            ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks, queryPlanLinks, waitSnapshots }))
+            : queryPlanLinks.Length > 0
             ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks, queryPlanLinks }))
             : queryTextLinks.Length == 0
                 ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(digestEnvelope))
@@ -1201,6 +1237,37 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private sealed record QueryPlanLink(int DatabaseId, string QueryFingerprint,
         string PlanFingerprint, Guid PayloadId, string PayloadFingerprint);
+
+    private sealed record QueryWaitSnapshotLink(int DatabaseId, string QueryFingerprint,
+        string PlanFingerprint, IReadOnlyList<QueryWaitCategory> Categories);
+
+    private static QueryWaitSnapshotLink[] BuildQueryWaitSnapshots(
+        IReadOnlyList<QueryPerformanceObservation> observations)
+    {
+        var byPlan = new Dictionary<(int DatabaseId, string QueryFingerprint,
+            string PlanFingerprint), QueryWaitSnapshotLink>();
+        foreach (QueryPerformanceObservation observation in observations)
+        {
+            QueryStoreWaitSnapshot? snapshot = observation.WaitSnapshot;
+            if (snapshot is null) continue;
+            if (observation.Source != QueryPerformanceSource.QueryStore ||
+                observation.Plan is not { } plan)
+                throw new InvalidDataException("Query Store wait totals require a plan identity.");
+            var link = new QueryWaitSnapshotLink(observation.Query.DatabaseId,
+                observation.Query.QueryFingerprint, plan.PlanFingerprint,
+                snapshot.Categories);
+            var key = (link.DatabaseId, link.QueryFingerprint, link.PlanFingerprint);
+            if (byPlan.TryGetValue(key, out QueryWaitSnapshotLink? existing) &&
+                !existing.Categories.SequenceEqual(link.Categories))
+                throw new InvalidDataException("One plan identity cannot carry conflicting wait totals.");
+            byPlan[key] = link;
+        }
+        if (byPlan.Count > 8)
+            throw new InvalidDataException("Query Store wait snapshots exceed the per-run bound.");
+        return byPlan.Values.OrderBy(static link => link.DatabaseId)
+            .ThenBy(static link => link.QueryFingerprint, StringComparer.Ordinal)
+            .ThenBy(static link => link.PlanFingerprint, StringComparer.Ordinal).ToArray();
+    }
 
     private static QueryPlanLink[] BuildQueryPlanLinks(
         IReadOnlyList<QueryPerformanceObservation> observations)

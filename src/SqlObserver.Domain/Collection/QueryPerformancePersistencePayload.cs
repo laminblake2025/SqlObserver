@@ -18,11 +18,12 @@ public static class QueryPerformancePersistencePayload
     {
         ArgumentNullException.ThrowIfNull(observations);
         ArgumentNullException.ThrowIfNull(statuses);
-        // The JSON payload is metadata-only. The repository may opt in only
-        // when it commits the protected-content links in the same transaction.
+        // The JSON payload is metadata-only. Sidecar links and wait snapshots
+        // require the repository to commit them in the same transaction.
         if (!contentLinksCommittedWithRun && observations.Any(static item =>
-                item.ContentReference is not null || item.PlanContentReference is not null))
-            throw new InvalidDataException("Query content references require a protected-content commit contract.");
+                item.ContentReference is not null || item.PlanContentReference is not null ||
+                item.WaitSnapshot is not null))
+            throw new InvalidDataException("Query sidecar evidence requires an atomic commit contract.");
         var observationJson = observations.Select(static x => new
         {
             databaseId = x.Query.DatabaseId,

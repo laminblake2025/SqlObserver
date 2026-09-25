@@ -289,7 +289,9 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
                 new QueryPerformanceMetricSet(1, 2, 1, 3, 0, 1),
                 end.AddMinutes(-1), end, end, QueryCoverage.Complete, true, false,
                 planContentReference: payloadExists ? null : missing,
-                protectedPlanContent: payloadExists ? protectedPlan : null)).ToArray();
+                protectedPlanContent: payloadExists ? protectedPlan : null,
+                waitSnapshot: new QueryStoreWaitSnapshot(
+                    [new QueryWaitCategory(3, 1200 + index)]))).ToArray();
         CollectorPayload payload = new(
             queryPerformance: new QueryPerformanceObservationBatch(observations),
             queryPerformanceStatuses: [new QueryPerformanceDatabaseStatus(5,
@@ -341,6 +343,15 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
             Assert.Null(await planReader.ReadAsync(planRequest with
                 { Plan = new PlanOpaqueIdentity(query, new string('d', 64)) }, CancellationToken.None));
             await planReader.AuditAsync(planRequest, "S-1-5-21-100", "opened", CancellationToken.None);
+            var waitReader = new PostgreSqlQueryPlanWaitReadRepositoryPort(server);
+            QueryPlanWaitSnapshot? waitSnapshot = await waitReader.ReadAsync(
+                planRequest, CancellationToken.None);
+            Assert.NotNull(waitSnapshot);
+            Assert.Equal(1200L, Assert.Single(waitSnapshot.Categories).WaitMilliseconds);
+            Assert.Null(await waitReader.ReadAsync(planRequest with
+                { CollectionRunId = Guid.NewGuid() }, CancellationToken.None));
+            Assert.Null(await waitReader.ReadAsync(planRequest with
+                { TargetId = new MonitoredInstanceId(Guid.NewGuid()) }, CancellationToken.None));
 
             var orphanPlan = new ProtectedSensitivePayload(SensitivePayloadKind.ExecutionPlan,
                 new SensitivePayloadFingerprint(RandomNumberGenerator.GetBytes(32)),
@@ -391,7 +402,10 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
                    (SELECT count(*) FROM events.query_performance_plan_content_link WHERE collection_run_id=@run),
                    (SELECT count(DISTINCT content_reference) FROM events.query_performance_plan_content_link WHERE collection_run_id=@run),
                    (SELECT count(*) FROM telemetry.collection_run_outcome WHERE run_id=@run),
-                   (SELECT count(*) FROM events.query_plan_access_audit WHERE collection_run_id=@run AND outcome='opened');
+                   (SELECT count(*) FROM events.query_plan_access_audit WHERE collection_run_id=@run AND outcome='opened'),
+                   (SELECT count(*) FROM events.query_performance_wait_snapshot WHERE collection_run_id=@run),
+                   (SELECT count(*) FROM events.query_performance_wait_snapshot
+                    WHERE collection_run_id=@run AND categories @> '[{"category": 3}]'::jsonb);
             """, verifyConnection);
         verify.Parameters.AddWithValue("run", run.Value);
         await using NpgsqlDataReader rows = await verify.ExecuteReaderAsync();
@@ -401,6 +415,8 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         Assert.Equal(payloadExists ? 1L : 0L, rows.GetInt64(2));
         Assert.Equal(payloadExists ? 1L : 0L, rows.GetInt64(3));
         Assert.Equal(payloadExists ? 1L : 0L, rows.GetInt64(4));
+        Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(5));
+        Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(6));
     }
 
 }

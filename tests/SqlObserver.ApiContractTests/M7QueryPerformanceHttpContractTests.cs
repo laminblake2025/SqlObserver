@@ -123,6 +123,26 @@ public sealed class M7QueryPerformanceHttpContractTests : IClassFixture<M7QueryP
         Assert.Equal(plan, factory.PlanService.LastRequest?.Plan.PlanFingerprint);
     }
 
+    [Fact]
+    public async Task QueryPlanWaitRouteUsesExactPlanAndRunIdentityWithNoStore()
+    {
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        Guid run = Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+        string query = new('a', 64), plan = new('b', 64);
+        HttpResponseMessage response = await client.GetAsync(
+            $"/api/v1/observation-targets/{M7QueryPerformanceApiFactory.TargetId:D}/query-performance/databases/5/history/{query}/runs/{run:D}/plans/{plan}/waits");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        using var document = await System.Text.Json.JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync());
+        Assert.Equal("unavailable", document.RootElement.GetProperty("status").GetString());
+        Assert.Equal("query_store_interval_total", document.RootElement.GetProperty("semantics").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, document.RootElement.GetProperty("categories").ValueKind);
+        Assert.Equal(run, factory.PlanWaitService.LastRequest?.CollectionRunId);
+        Assert.Equal(plan, factory.PlanWaitService.LastRequest?.Plan.PlanFingerprint);
+    }
+
     [Theory]
     [InlineData("limit=0")]
     [InlineData("limit=201")]
@@ -140,15 +160,18 @@ public sealed class M7QueryPerformanceApiFactory : WebApplicationFactory<Program
     internal FakeM7QueryPerformanceService Service { get; } = new();
     internal FakeQueryTextReadService TextService { get; } = new();
     internal FakeQueryPlanReadService PlanService { get; } = new();
+    internal FakeQueryPlanWaitReadService PlanWaitService { get; } = new();
     protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseEnvironment("ContractTesting").ConfigureTestServices(services =>
     {
         services.RemoveAll<IQueryPerformanceApiQueryService>();
         services.RemoveAll<IQueryTextReadService>();
         services.RemoveAll<IQueryPlanReadService>();
+        services.RemoveAll<IQueryPlanWaitReadService>();
         services.RemoveAll<WindowsGroupRoleResolver>();
         services.AddSingleton<IQueryPerformanceApiQueryService>(Service);
         services.AddSingleton<IQueryTextReadService>(TextService);
         services.AddSingleton<IQueryPlanReadService>(PlanService);
+        services.AddSingleton<IQueryPlanWaitReadService>(PlanWaitService);
         services.AddSingleton(new WindowsGroupRoleResolver([new WindowsGroupRoleBinding(new ActorSecurityIdentifier(TestAuthenticationHandler.ViewerGroupSid), [ApplicationRole.Viewer], true)]));
         services.AddAuthentication(options => { options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName; options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName; }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, static _ => { });
     });
@@ -173,6 +196,17 @@ internal sealed class FakeQueryPlanReadService : IQueryPlanReadService
     {
         LastRequest = request;
         return ValueTask.FromResult(new QueryPlanReadResult("unavailable", null));
+    }
+}
+
+internal sealed class FakeQueryPlanWaitReadService : IQueryPlanWaitReadService
+{
+    internal QueryPlanReadRequest? LastRequest { get; private set; }
+    public ValueTask<QueryPlanWaitReadResult> ReadAsync(AuthorizationContext authorization,
+        QueryPlanReadRequest request, CancellationToken cancellationToken)
+    {
+        LastRequest = request;
+        return ValueTask.FromResult(new QueryPlanWaitReadResult("unavailable", null, null));
     }
 }
 

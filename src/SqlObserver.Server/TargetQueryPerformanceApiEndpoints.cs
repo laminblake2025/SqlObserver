@@ -19,6 +19,7 @@ public static class TargetQueryPerformanceApiEndpoints
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/text", TextAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/plans/{planFingerprint}/content", PlanContentAsync);
+        group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/plans/{planFingerprint}/waits", PlanWaitsAsync);
         group.MapGet("/databases/{databaseId:int}/plans/{planFingerprint}", PlanAsync);
         return e;
     }
@@ -62,6 +63,35 @@ public static class TargetQueryPerformanceApiEndpoints
                 queryFingerprint = query.QueryFingerprint,
                 planFingerprint = request.Plan.PlanFingerprint,
                 collectionRunId, status = result.Status, xml = result.Xml });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+    private static async Task<IResult> PlanWaitsAsync(HttpContext h, Guid instanceId,
+        int databaseId, string queryFingerprint, Guid collectionRunId,
+        string planFingerprint, IQueryPlanWaitReadService service,
+        WindowsGroupRoleResolver roles, CancellationToken cancellationToken)
+    {
+        h.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var query = new QueryOpaqueIdentity(databaseId, queryFingerprint);
+            var request = new QueryPlanReadRequest(new MonitoredInstanceId(instanceId),
+                collectionRunId, new PlanOpaqueIdentity(query, planFingerprint),
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            QueryPlanWaitReadResult result = await service.ReadAsync(
+                roles.Resolve(h.User), request, cancellationToken);
+            return Results.Ok(new { targetId = instanceId, databaseId,
+                queryFingerprint = query.QueryFingerprint,
+                planFingerprint = request.Plan.PlanFingerprint,
+                collectionRunId, status = result.Status,
+                capturedAtUtc = result.CapturedAtUtc,
+                categories = result.Categories?.Select(static category => new
+                {
+                    category = category.Category,
+                    waitMilliseconds = category.WaitMilliseconds,
+                }),
+                semantics = "query_store_interval_total" });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }

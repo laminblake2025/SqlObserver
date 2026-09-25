@@ -87,7 +87,12 @@ try {
     Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
     $blockedPlan = Invoke-ProbeSql $database "SELECT TOP (1) p.plan_id FROM sys.query_store_query_text AS qt JOIN sys.query_store_query AS q ON q.query_text_id=qt.query_text_id JOIN sys.query_store_plan AS p ON p.query_id=q.query_id WHERE CHARINDEX(N'blocked_probe_sum',qt.query_sql_text)>0 AND CHARINDEX(N'FROM sys.query_store_query_text',qt.query_sql_text)=0 ORDER BY p.plan_id"
     $blockedPlanId = [long]::Parse(($blockedPlan | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1).Trim())
-    $blockedWaits = Invoke-ProbeSql $database "SELECT TOP (32) ws.plan_id,ws.wait_category,SUM(CONVERT(decimal(38,0),ws.total_query_wait_time_ms)) FROM sys.query_store_wait_stats AS ws JOIN sys.query_store_runtime_stats_interval AS rsi ON rsi.runtime_stats_interval_id=ws.runtime_stats_interval_id WHERE ws.plan_id=$blockedPlanId AND ws.wait_category BETWEEN 0 AND 31 AND rsi.start_time<SYSUTCDATETIME() AND rsi.end_time>DATEADD(minute,-5,SYSUTCDATETIME()) GROUP BY ws.plan_id,ws.wait_category ORDER BY ws.plan_id,ws.wait_category"
+    $waitParameters = for ($index = 0; $index -lt 8; $index++) {
+        $value = if ($index -eq 0) { $blockedPlanId } else { 0 }
+        "DECLARE @plan_id_$index bigint = $value;"
+    }
+    $waitSql = Get-Content (Join-Path $PSScriptRoot '../../collectors/sql/queries.performance.waits.sqlserver16-windows.v1.sql') -Raw
+    $blockedWaits = Invoke-ProbeSql $database "${waitParameters} DECLARE @window_start datetime2(7)=DATEADD(minute,-5,SYSUTCDATETIME()), @window_end datetime2(7)=SYSUTCDATETIME(); $waitSql"
     $blockingCategoryRows = @($blockedWaits | Where-Object { $_ -match "^\s*$blockedPlanId\|\d+\|[1-9]\d*\s*$" })
     if (-not ($blockingCategoryRows | Where-Object { $_ -match "^\s*$blockedPlanId\|3\|[1-9]\d*\s*$" })) {
         $options = Invoke-ProbeSql $database 'SELECT actual_state_desc,wait_stats_capture_mode_desc FROM sys.database_query_store_options'

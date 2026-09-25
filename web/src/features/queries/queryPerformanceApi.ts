@@ -1,5 +1,5 @@
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformanceStatus, QueryPerformanceText } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -63,6 +63,41 @@ export async function getQueryPerformancePlanContent(instanceId: string, databas
       || value.status === "unavailable" && value.xml !== null)
     throw new Error("Query plan response was outside its bounds.");
   return { collectionRunId, planFingerprint, status: value.status, xml: value.xml as string | null };
+}
+export async function getQueryPerformancePlanWaits(instanceId: string, databaseId: number,
+    queryFingerprint: string, planFingerprint: string, collectionRunId: string,
+    signal: AbortSignal): Promise<QueryPerformancePlanWaits> {
+  if (!Number.isInteger(databaseId) || databaseId <= 0 || databaseId > 32767
+      || !digest(queryFingerprint) || !digest(planFingerprint)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(collectionRunId))
+    throw new Error("Query wait identity was invalid.");
+  const url = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/databases/${databaseId}/history/${queryFingerprint}/runs/${collectionRunId}/plans/${planFingerprint}/waits`;
+  const value = await readJson(url, instanceId, signal, 16 * 1024, true) as Record<string, unknown>;
+  const categories = value.categories;
+  if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint
+      || value.planFingerprint !== planFingerprint
+      || typeof value.collectionRunId !== "string"
+      || value.collectionRunId.toLowerCase() !== collectionRunId.toLowerCase()
+      || value.semantics !== "query_store_interval_total"
+      || value.status !== "available" && value.status !== "unavailable"
+      || value.status === "available" && (!timestamp(value.capturedAtUtc)
+        || !Array.isArray(categories) || categories.length > 32)
+      || value.status === "unavailable" && (categories !== null || value.capturedAtUtc !== null))
+    throw new Error("Query wait response was outside its bounds.");
+  const rows = categories as unknown[] | null;
+  const seen = new Set<number>();
+  if (rows?.some(row => {
+    if (typeof row !== "object" || row === null) return true;
+    const item = row as Record<string, unknown>;
+    if (!Number.isInteger(item.category) || (item.category as number) < 0 || (item.category as number) > 31
+        || !Number.isSafeInteger(item.waitMilliseconds) || (item.waitMilliseconds as number) <= 0
+        || seen.has(item.category as number)) return true;
+    seen.add(item.category as number);
+    return false;
+  })) throw new Error("Query wait categories were invalid.");
+  return { collectionRunId, planFingerprint, status: value.status,
+    capturedAtUtc: value.capturedAtUtc as string | null,
+    categories: rows as QueryPerformancePlanWaits["categories"] };
 }
 function item(value: unknown, metric: QueryPerformanceMetric = "cpu"): QueryPerformanceItem {
   if (typeof value !== "object" || value === null) throw new Error("Query performance item was invalid."); const i = value as Record<string, unknown>; const v = i.value;

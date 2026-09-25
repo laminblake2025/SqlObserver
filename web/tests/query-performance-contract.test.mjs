@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformancePlanContent, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop } from "../src/features/queries/queryPerformanceApi.ts";
+import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop } from "../src/features/queries/queryPerformanceApi.ts";
 
 test("query performance panel shows all source evidence by default", async () => {
   const panel = await readFile(new URL("../src/features/queries/TargetQueryPerformancePanel.tsx", import.meta.url), "utf8");
@@ -60,6 +60,40 @@ test("plan XML read binds target, query, plan and run without caching", async ()
     globalThis.fetch = async () => new Response(JSON.stringify({ ...response, status: "unavailable", xml: "<ShowPlanXML />" }),
       { headers: { "content-type": "application/json" } });
     await assert.rejects(() => getQueryPerformancePlanContent(targetId, 5, query, plan, runId, controller.signal), /outside its bounds/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("plan wait read binds the exact history row and rejects conflicting categories", async () => {
+  const originalFetch = globalThis.fetch;
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const runId = "22222222-2222-4222-8222-222222222222";
+  const query = "a".repeat(64), plan = "b".repeat(64);
+  const response = { targetId, databaseId: 5, queryFingerprint: query, planFingerprint: plan,
+    collectionRunId: runId, status: "available", semantics: "query_store_interval_total",
+    capturedAtUtc: "2026-09-25T12:00:00Z", categories: [{ category: 3, waitMilliseconds: 3049 }] };
+  let request;
+  try {
+    globalThis.fetch = async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } });
+    };
+    const controller = new AbortController();
+    assert.deepEqual(await getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal),
+      { collectionRunId: runId, planFingerprint: plan, status: "available",
+        capturedAtUtc: response.capturedAtUtc, categories: response.categories });
+    assert.match(request.url, new RegExp(`/history/${query}/runs/${runId}/plans/${plan}/waits$`));
+    assert.equal(request.options.cache, "no-store");
+    assert.equal(request.options.signal, controller.signal);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, planFingerprint: "c".repeat(64) }),
+      { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal), /outside its bounds/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, categories: [...response.categories, response.categories[0]] }),
+      { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal), /categories were invalid/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, status: "unavailable", capturedAtUtc: null, categories: null }),
+      { headers: { "content-type": "application/json" } });
+    assert.deepEqual(await getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal),
+      { collectionRunId: runId, planFingerprint: plan, status: "unavailable", capturedAtUtc: null, categories: null });
   } finally { globalThis.fetch = originalFetch; }
 });
 

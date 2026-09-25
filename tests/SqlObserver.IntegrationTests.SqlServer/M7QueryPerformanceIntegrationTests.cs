@@ -22,6 +22,7 @@ public sealed class M7QueryPerformanceIntegrationTests
             string metadata = catalog.Asset.GetQuery(major);
             string text = catalog.TextQueriesByMajor[major];
             string plan = catalog.PlanQueriesByMajor[major];
+            string waits = catalog.WaitQueriesByMajor[major];
             Assert.Contains("MIN(q.query_text_id)=MAX(q.query_text_id)", metadata, StringComparison.Ordinal);
             Assert.DoesNotContain("query_sql_text", metadata, StringComparison.Ordinal);
             Assert.Contains("rsi.start_time < @window_end AND rsi.end_time > DATEADD(minute,-5,@window_start)", metadata, StringComparison.Ordinal);
@@ -39,6 +40,13 @@ public sealed class M7QueryPerformanceIntegrationTests
             Assert.Contains("DATALENGTH(p.query_plan) BETWEEN 2 AND 524288", plan, StringComparison.Ordinal);
             for (int index = 0; index < 4; index++)
                 Assert.Contains($"@plan_id_{index}", plan, StringComparison.Ordinal);
+            Assert.Contains("TOP (256)", waits, StringComparison.Ordinal);
+            Assert.Contains("wait_stats_capture_mode_desc", waits, StringComparison.Ordinal);
+            Assert.Contains("sys.query_store_wait_stats", waits, StringComparison.Ordinal);
+            Assert.Contains("GROUP BY ws.plan_id,ws.wait_category", waits, StringComparison.Ordinal);
+            Assert.Contains("ws.wait_category BETWEEN 0 AND 31", waits, StringComparison.Ordinal);
+            for (int index = 0; index < 8; index++)
+                Assert.Contains($"@plan_id_{index}", waits, StringComparison.Ordinal);
         }
     }
 
