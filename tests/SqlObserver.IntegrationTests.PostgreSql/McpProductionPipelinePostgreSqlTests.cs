@@ -118,6 +118,32 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 """, admin);
             otherIncidents.Parameters.AddWithValue("target", targetIds[1]);
             await otherIncidents.ExecuteNonQueryAsync();
+            foreach (Guid targetId in targetIds[..2])
+            {
+                await using var alerts = new NpgsqlCommand("""
+                    WITH rules AS (
+                        INSERT INTO alerting.rule
+                            (rule_id, instance_id, name, kind, metric_id, comparison, threshold,
+                             hysteresis, confirmation_count, confirmation_window, evaluation_interval)
+                        SELECT gen_random_uuid(), @target, format('CPU high %s', g), 1, 'cpu.percent',
+                               1, 80, 5, 1, interval '0 seconds', interval '15 seconds'
+                        FROM generate_series(1, 3) AS values(g)
+                        RETURNING rule_id
+                    )
+                    INSERT INTO alerting.rule_state
+                        (instance_id, rule_id, alert_id, state, consecutive_matches,
+                         first_match_at, last_observed_at, fired_at, episode_started_at,
+                         last_value, reason, revision)
+                    SELECT @target, rule_id, gen_random_uuid(), 3, 1,
+                           statement_timestamp() - interval '2 minutes',
+                           statement_timestamp() - interval '2 minutes',
+                           statement_timestamp() - interval '2 minutes',
+                           statement_timestamp() - interval '2 minutes', 95, 'threshold', 1
+                    FROM rules;
+                    """, admin);
+                alerts.Parameters.AddWithValue("target", targetId);
+                await alerts.ExecuteNonQueryAsync();
+            }
         }
 
         string serverConnectionString = new NpgsqlConnectionStringBuilder(database.ConnectionString)
@@ -190,7 +216,8 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             bool forecast = other.Name == "get_storage_forecast";
             bool diagnostic = other.Name == "search_diagnostic_events";
             bool incident = other.Name == "list_incidents";
-            bool paged = forecast || diagnostic || incident;
+            bool alert = other.Name == "get_active_alerts";
+            bool paged = forecast || diagnostic || incident || alert;
             int expectedPages = paged && withCursorSigner ? 3 : 1;
             var seenIds = new HashSet<Guid>();
             string? itemCursor = null;
@@ -219,7 +246,8 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                     JsonElement item = Assert.Single(data.GetProperty("items").EnumerateArray());
                     if (forecast) Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
                     if (diagnostic) Assert.Equal("mcp.pipeline", item.GetProperty("eventKind").GetString());
-                    Assert.True(seenIds.Add(item.GetProperty(forecast ? "forecastId" : incident ? "threadId" : "eventId").GetGuid()));
+                    if (alert) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
+                    Assert.True(seenIds.Add(item.GetProperty(forecast ? "forecastId" : incident ? "threadId" : alert ? "alertId" : "eventId").GetGuid()));
                     Assert.Equal(itemPage < 2, data.GetProperty("hasMore").GetBoolean());
                     itemCursor = data.TryGetProperty("nextCursor", out JsonElement next) && next.ValueKind == JsonValueKind.String
                         ? next.GetString() : null;
