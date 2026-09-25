@@ -23,10 +23,16 @@ query observations to protected payloads, target-scoped retention, explicit
 `QueryTextReader` retrieval with safe audit metadata, and inert rendering. Keep
 content out of summaries, logs, URLs, exports, and MCP catalog responses.
 
-The current M7 commit contract is metadata-only. It now rejects an observation
-with a `ContentReference` before writing a run, instead of silently discarding
-that reference. Enabling content requires a leased, atomic link commit and
-retrieval path; changing the collector output alone is insufficient.
+The M7 SQL Server collector still emits metadata only. Its repository commit
+now accepts a pre-protected `QueryText` reference and writes the content link
+inside the canonical run transaction. The combined database operation checks
+the lease, target, query row, payload kind, and keyed fingerprint. The link
+writer is private to that operation, so it cannot append evidence after a run
+commits. A failed link rolls back the run outcome and metadata evidence.
+References participate in the replay digest;
+a changed reference cannot be replayed as the original run. The metadata JSON
+never contains the payload ID or ciphertext. Execution-plan references remain
+rejected until links can identify their exact plan.
 
 Migration 0119 adds an exact monitored target to new protected payload rows.
 The repository write request now requires that target, and deduplication only
@@ -36,5 +42,10 @@ Historical rows remain intact for migration and retention; they cannot become
 new query-content references. Migration 0120 enforces the same target match on
 new query-performance content links, while preserving historical links for
 reconciliation. Migration 0121 also requires new links to identify a query
-row from the same collection run and target. A leased atomic link commit and
-authorized reader are still needed before collection can be enabled.
+row from the same collection run and target. Migration 0122 supplies the
+combined canonical commit and leased link writer. Protected payloads are
+written before the run transaction, so a failed run can leave an unreferenced
+ciphertext row; retention must
+reclaim it. Bounded SQL Server source reads, an authorized and audited reader,
+plan identity, and retention are still needed before content collection can
+be enabled.

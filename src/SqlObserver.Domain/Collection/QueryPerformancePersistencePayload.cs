@@ -13,14 +13,14 @@ public static class QueryPerformancePersistencePayload
     public static byte[] Serialize(
         IReadOnlyList<QueryPerformanceObservation> observations,
         IReadOnlyList<QueryPerformanceDatabaseStatus> statuses,
-        QueryPerformanceTargetStatus? targetStatus)
+        QueryPerformanceTargetStatus? targetStatus,
+        bool contentLinksCommittedWithRun = false)
     {
         ArgumentNullException.ThrowIfNull(observations);
         ArgumentNullException.ThrowIfNull(statuses);
-        // The current M7 commit contract persists metadata only. Silently
-        // omitting a protected reference would make a successful run claim
-        // content that cannot be retrieved or retained with the observation.
-        if (observations.Any(static item => item.ContentReference is not null))
+        // The JSON payload is metadata-only. The repository may opt in only
+        // when it commits the protected-content links in the same transaction.
+        if (!contentLinksCommittedWithRun && observations.Any(static item => item.ContentReference is not null))
             throw new InvalidDataException("Query content references require a protected-content commit contract.");
         var observationJson = observations.Select(static x => new
         {

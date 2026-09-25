@@ -147,6 +147,10 @@ public sealed class M7QueryPerformanceContractTests
 
         Assert.Throws<InvalidDataException>(() =>
             QueryPerformancePersistencePayload.Serialize([observation], [status], null));
+        byte[] metadata = QueryPerformancePersistencePayload.Serialize(
+            [observation], [status], null, contentLinksCommittedWithRun: true);
+        Assert.DoesNotContain(reference.PayloadId.Value.ToString("D"),
+            System.Text.Encoding.UTF8.GetString(metadata), StringComparison.OrdinalIgnoreCase);
     }
     [Fact]
     public void PersistenceSerializerUsesCanonicalJsonbTextShape()
