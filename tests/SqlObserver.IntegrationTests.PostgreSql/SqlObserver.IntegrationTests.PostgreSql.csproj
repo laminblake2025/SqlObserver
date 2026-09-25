@@ -7,12 +7,15 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="JsonSchema.Net" />
     <ProjectReference Include="../../src/SqlObserver.Collector/SqlObserver.Collector.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Reporting/SqlObserver.Reporting.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Observability/SqlObserver.Observability.csproj" />
-    <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" />
+    <ProjectReference Include="../../src/SqlObserver.Server/SqlObserver.Server.csproj" Aliases="global,ServerAssembly" />
   </ItemGroup>
 </Project>

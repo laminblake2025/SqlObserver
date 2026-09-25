@@ -126,6 +126,8 @@ public sealed class RepositoryTestDatabase : IAsyncDisposable
 
     public string DatabaseName { get; }
 
+    public string ConnectionString => _adminConnectionString;
+
     public NpgsqlDataSource DataSource { get; }
 
     public NpgsqlDataSource CreateCollectorDataSource(bool initializeEmptyTargetScope = false) =>

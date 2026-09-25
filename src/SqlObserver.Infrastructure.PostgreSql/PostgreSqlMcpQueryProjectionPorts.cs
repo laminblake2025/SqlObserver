@@ -74,10 +74,11 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort
         {
             byte[] hash = reader.GetFieldValue<byte[]>(2);
             if (hash.Length != 32) throw new InvalidDataException("Forecast dimension digest is invalid.");
-            items.Add(new StorageForecastItem(reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.GetString(1), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? null : reader.GetDouble(6), reader.IsDBNull(7) ? null : reader.GetDouble(7), reader.IsDBNull(8) ? null : reader.GetDouble(8), reader.IsDBNull(12) ? null : reader.GetDouble(12), reader.IsDBNull(9) ? 0 : Convert.ToDouble(reader.GetValue(9), CultureInfo.InvariantCulture), reader.IsDBNull(11) ? 0 : reader.GetDouble(11), reader.GetString(15), reader.GetInt64(10), reader.GetString(13), ParseMcpDimensions(reader.GetString(3)), Convert.ToHexString(hash).ToLowerInvariant()));
+            items.Add(new StorageForecastItem(reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.GetString(1), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? null : reader.GetDouble(6), reader.IsDBNull(7) ? null : reader.GetDouble(7), reader.IsDBNull(8) ? null : reader.GetDouble(8), reader.IsDBNull(12) ? null : reader.GetDouble(12), reader.IsDBNull(9) ? 0 : Convert.ToDouble(reader.GetValue(9), CultureInfo.InvariantCulture), reader.IsDBNull(11) ? 0 : reader.GetDouble(11), reader.GetString(14), reader.GetInt64(10), reader.GetString(13), ParseMcpDimensions(reader.GetString(3)), Convert.ToHexString(hash).ToLowerInvariant()));
         }
         bool hasMore = items.Count > query.Limit;
         if (hasMore) items.RemoveRange(query.Limit, items.Count - query.Limit);
+        await reader.DisposeAsync().ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         StorageForecastCursor? next = hasMore && items.Count > 0 && items[^1].ForecastId is { } forecastId
             ? new StorageForecastCursor(query.TargetId, new ObservationTargetRevision(revision), query.MetricKey, CanonicalDimensions.Sha256(query.Dimensions), query.Horizon, snapshot, items[^1].HorizonStartUtc, forecastId)
@@ -108,6 +109,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort
         bool more = items.Count > query.Limit;
         if (more) items.RemoveRange(query.Limit, items.Count - query.Limit);
         DiagnosticEventCursor? next = more && items.Count > 0 ? new DiagnosticEventCursor(query.TargetId, query.FromUtc, query.ToUtc, items[^1].OccurredAtUtc, items[^1].EventId, snapshot, new ObservationTargetRevision(revision)) : null;
+        await reader.DisposeAsync().ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new DiagnosticEventSearchPage(query.TargetId, query.FromUtc, query.ToUtc, items, more, next, new ObservationTargetRevision(revision), snapshot);
     }
