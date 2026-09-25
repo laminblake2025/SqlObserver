@@ -21,6 +21,7 @@ public sealed class M7QueryPerformanceIntegrationTests
         {
             string metadata = catalog.Asset.GetQuery(major);
             string text = catalog.TextQueriesByMajor[major];
+            string plan = catalog.PlanQueriesByMajor[major];
             Assert.Contains("MIN(q.query_text_id)=MAX(q.query_text_id)", metadata, StringComparison.Ordinal);
             Assert.DoesNotContain("query_sql_text", metadata, StringComparison.Ordinal);
             Assert.Contains("rsi.start_time < @window_end AND rsi.end_time > DATEADD(minute,-5,@window_start)", metadata, StringComparison.Ordinal);
@@ -32,28 +33,39 @@ public sealed class M7QueryPerformanceIntegrationTests
             Assert.Contains("DATALENGTH(query_sql_text) BETWEEN 2 AND 8192", text, StringComparison.Ordinal);
             for (int index = 0; index < 32; index++)
                 Assert.Contains($"@text_id_{index}", text, StringComparison.Ordinal);
+            Assert.Contains("TOP (4)", plan, StringComparison.Ordinal);
+            Assert.Contains("has_restricted_text = 0", plan, StringComparison.Ordinal);
+            Assert.Contains("is_part_of_encrypted_module = 0", plan, StringComparison.Ordinal);
+            Assert.Contains("DATALENGTH(p.query_plan) BETWEEN 2 AND 524288", plan, StringComparison.Ordinal);
+            for (int index = 0; index < 4; index++)
+                Assert.Contains($"@plan_id_{index}", plan, StringComparison.Ordinal);
         }
     }
 
     [Fact]
-    public async Task QueryStoreParserKeepsSourceTextIdOutOfPersistenceJson()
+    public async Task QueryStoreParserKeepsSourceContentIdsOutOfPersistenceJson()
     {
         var collector = new SqlServerQueryPerformanceCollector(
             SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded());
         using DataTable table = CreatePlanCacheRows(1);
         table.Columns.Add("query_text_id", typeof(long));
+        table.Columns.Add("plan_id", typeof(long));
         table.Rows[0]["source"] = "query_store";
         table.Rows[0]["source_state"] = "read_write";
         table.Rows[0]["query_text_id"] = 42L;
+        table.Rows[0]["plan_id"] = 314159L;
         IReadOnlyList<QueryPerformanceObservation> observations = await collector.ReadQueryStorePayloadForTestsAsync(
             Request(), table.CreateDataReader(), CancellationToken.None);
         QueryPerformanceObservation observation = Assert.Single(observations);
         Assert.Equal(42L, observation.QueryTextSourceId);
+        Assert.Equal(314159L, observation.PlanSourceId);
         Assert.Null(observation.ProtectedContent);
         string json = System.Text.Encoding.UTF8.GetString(QueryPerformancePersistencePayload.Serialize(
             observations, [], null));
         Assert.DoesNotContain("query_text_id", json, StringComparison.Ordinal);
         Assert.DoesNotContain("42", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("plan_id", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("314159", json, StringComparison.Ordinal);
     }
 
     [Fact]

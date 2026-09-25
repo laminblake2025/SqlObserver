@@ -6,5 +6,6 @@ export type QueryPerformanceItem = { readonly query: { readonly databaseId: numb
 export type QueryPerformancePage = { readonly repositoryTimeUtc: string; readonly items: readonly QueryPerformanceItem[]; readonly nextCursor?: string; readonly cursorsByMetric?: Partial<Record<QueryPerformanceMetric, string>>; readonly fromUtc?: string; readonly toUtc?: string };
 export type QueryPerformanceHistoryItem = QueryPerformanceItem;
 export type QueryPerformanceHistoryPage = { readonly repositoryTimeUtc: string; readonly items: readonly QueryPerformanceHistoryItem[]; readonly nextCursor?: string };
-export type QueryPerformancePlan = { readonly targetId: string; readonly databaseId: number; readonly queryFingerprint: string; readonly planFingerprint: string; readonly source: "query_store" | "plan_cache" | "mixed"; readonly observedAtUtc: string; readonly coverage: string; readonly contentAvailable: false };
+export type QueryPerformancePlan = { readonly targetId: string; readonly databaseId: number; readonly queryFingerprint: string; readonly planFingerprint: string; readonly source: "query_store" | "plan_cache" | "mixed"; readonly observedAtUtc: string; readonly coverage: string; readonly contentAvailable: boolean };
 export type QueryPerformanceText = { readonly collectionRunId: string; readonly status: "available" | "unavailable"; readonly text: string | null };
+export type QueryPerformancePlanContent = { readonly collectionRunId: string; readonly planFingerprint: string; readonly status: "available" | "unavailable"; readonly xml: string | null };

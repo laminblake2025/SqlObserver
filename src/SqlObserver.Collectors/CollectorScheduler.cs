@@ -302,10 +302,11 @@ public sealed class CollectorScheduler
                         .ConfigureAwait(false)
                     : CollectorExecutionEngine.CreateIneligibleResult(registration, work, runId, eligibility);
 
-                if (engineResult.Payload.QueryPerformance.Items.Any(static item => item.ProtectedContent is not null))
+                if (engineResult.Payload.QueryPerformance.Items.Any(static item =>
+                        item.ProtectedContent is not null || item.ProtectedPlanContent is not null))
                 {
                     if (_queryContentCommitter is null)
-                        throw new InvalidOperationException("Protected query text requires the fenced payload writer.");
+                        throw new InvalidOperationException("Protected query content requires the fenced payload writer.");
                     CollectorPayload linkedPayload = await _queryContentCommitter.WriteAsync(
                         engineResult.Payload, work.TargetId, leaseIdentity, _options.RepositoryTimeout,
                         ownershipCancellation.Token).ConfigureAwait(false);

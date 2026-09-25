@@ -65,11 +65,13 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
                     }
                     else
                     {
-                        int pruned = await _partitions.PruneOrphanQueryTextPayloadsAsync(
+                        int textPruned = await _partitions.PruneOrphanQueryTextPayloadsAsync(
                             identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
-                        if (pruned > 0)
+                        int planPruned = await _partitions.PruneOrphanQueryPlanPayloadsAsync(
+                            identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
+                        if (textPruned + planPruned > 0)
                         {
-                            LogOrphansPruned(_logger, pruned);
+                            LogOrphansPruned(_logger, textPruned + planPruned);
                             delay = BusyDelay;
                         }
                     }

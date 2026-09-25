@@ -1,5 +1,5 @@
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryPerformanceText } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformanceStatus, QueryPerformanceText } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -44,6 +44,25 @@ export async function getQueryPerformanceText(instanceId: string, databaseId: nu
       || value.status === "unavailable" && value.text !== null)
     throw new Error("Query text response was outside its bounds.");
   return { collectionRunId, status: value.status, text: value.text as string | null };
+}
+export async function getQueryPerformancePlanContent(instanceId: string, databaseId: number,
+    queryFingerprint: string, planFingerprint: string, collectionRunId: string,
+    signal: AbortSignal): Promise<QueryPerformancePlanContent> {
+  if (!Number.isInteger(databaseId) || databaseId <= 0 || databaseId > 32767
+      || !digest(queryFingerprint) || !digest(planFingerprint)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(collectionRunId))
+    throw new Error("Query plan identity was invalid.");
+  const url = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/databases/${databaseId}/history/${queryFingerprint}/runs/${collectionRunId}/plans/${planFingerprint}/content`;
+  const value = await readJson(url, instanceId, signal, 2 * 1024 * 1024, true) as Record<string, unknown>;
+  if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint
+      || value.planFingerprint !== planFingerprint
+      || typeof value.collectionRunId !== "string"
+      || value.collectionRunId.toLowerCase() !== collectionRunId.toLowerCase()
+      || value.status !== "available" && value.status !== "unavailable"
+      || value.status === "available" && (typeof value.xml !== "string" || value.xml.length === 0 || new TextEncoder().encode(value.xml).length > 1024 * 1024)
+      || value.status === "unavailable" && value.xml !== null)
+    throw new Error("Query plan response was outside its bounds.");
+  return { collectionRunId, planFingerprint, status: value.status, xml: value.xml as string | null };
 }
 function item(value: unknown, metric: QueryPerformanceMetric = "cpu"): QueryPerformanceItem {
   if (typeof value !== "object" || value === null) throw new Error("Query performance item was invalid."); const i = value as Record<string, unknown>; const v = i.value;
@@ -105,6 +124,6 @@ export async function getQueryPerformanceHistory(instanceId: string, databaseId:
 export async function getQueryPerformancePlan(instanceId: string, databaseId: number, queryFingerprint: string, planFingerprint: string, signal?: AbortSignal): Promise<QueryPerformancePlan> {
   if (!Number.isInteger(databaseId) || databaseId <= 0 || databaseId > 32767 || !digest(queryFingerprint) || !digest(planFingerprint)) throw new Error("Plan identity was invalid.");
   const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/databases/${databaseId}/plans/${planFingerprint}?queryFingerprint=${queryFingerprint}`, instanceId, signal) as Record<string, unknown>;
-  if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint || value.planFingerprint !== planFingerprint || !sources.has(String(value.source)) || value.source === "mixed" || value.source === "unavailable" || !timestamp(value.observedAtUtc) || !coverage.has(String(value.coverage)) || value.contentAvailable !== false) throw new Error("Query performance plan response was outside its bounds.");
-  return { targetId: instanceId, databaseId, queryFingerprint, planFingerprint, source: value.source as QueryPerformancePlan["source"], observedAtUtc: value.observedAtUtc, coverage: String(value.coverage), contentAvailable: false };
+  if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint || value.planFingerprint !== planFingerprint || !sources.has(String(value.source)) || value.source === "mixed" || value.source === "unavailable" || !timestamp(value.observedAtUtc) || !coverage.has(String(value.coverage)) || typeof value.contentAvailable !== "boolean") throw new Error("Query performance plan response was outside its bounds.");
+  return { targetId: instanceId, databaseId, queryFingerprint, planFingerprint, source: value.source as QueryPerformancePlan["source"], observedAtUtc: value.observedAtUtc, coverage: String(value.coverage), contentAvailable: value.contentAvailable };
 }

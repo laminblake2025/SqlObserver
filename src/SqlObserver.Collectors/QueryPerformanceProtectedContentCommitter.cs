@@ -2,6 +2,7 @@ using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Domain.SensitiveData;
 using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Collectors;
@@ -15,30 +16,36 @@ public sealed class QueryPerformanceProtectedContentCommitter(ISensitivePayloadP
     {
         ArgumentNullException.ThrowIfNull(payload);
         var observations = payload.QueryPerformance.Items;
-        if (!observations.Any(static item => item.ProtectedContent is not null)) return payload;
+        if (!observations.Any(static item => item.ProtectedContent is not null ||
+                                         item.ProtectedPlanContent is not null)) return payload;
 
-        var references = new Dictionary<string, SqlObserver.Domain.SensitiveData.SensitivePayloadReference>(StringComparer.Ordinal);
+        var references = new Dictionary<(SensitivePayloadKind Kind, string Fingerprint), SensitivePayloadReference>();
         var linked = new QueryPerformanceObservation[observations.Count];
         for (int index = 0; index < observations.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             QueryPerformanceObservation item = observations[index];
             if (item.TargetId != targetId)
-                throw new InvalidDataException("Protected query text target differs from its scheduled run.");
-            if (item.ProtectedContent is not { } content)
+                throw new InvalidDataException("Protected query content target differs from its scheduled run.");
+            QueryPerformanceObservation current = item;
+            foreach (ProtectedSensitivePayload content in new[] { item.ProtectedContent, item.ProtectedPlanContent }.OfType<ProtectedSensitivePayload>())
             {
-                linked[index] = item;
-                continue;
+                var key = (content.Kind, content.Fingerprint.ToHexString());
+                if (!references.TryGetValue(key, out SensitivePayloadReference? reference))
+                {
+                    reference = await port.GetOrAddAsync(
+                        new SensitivePayloadGetOrAddRequest(targetId, content, lease, timeout),
+                        cancellationToken).ConfigureAwait(false);
+                    references.Add(key, reference);
+                }
+                current = content.Kind switch
+                {
+                    SensitivePayloadKind.QueryText => current.WithContentReference(reference),
+                    SensitivePayloadKind.ExecutionPlan => current.WithPlanContentReference(reference),
+                    _ => throw new InvalidDataException("Unsupported protected query content kind."),
+                };
             }
-            string fingerprint = Convert.ToHexString(content.Fingerprint.ToArray());
-            if (!references.TryGetValue(fingerprint, out var reference))
-            {
-                reference = await port.GetOrAddAsync(
-                    new SensitivePayloadGetOrAddRequest(targetId, content, lease, timeout),
-                    cancellationToken).ConfigureAwait(false);
-                references.Add(fingerprint, reference);
-            }
-            linked[index] = item.WithContentReference(reference);
+            linked[index] = current;
         }
         return new CollectorPayload(payload.Metrics, payload.Databases, payload.DatabaseFiles,
             payload.ActivitySessions, payload.ActivityRequests, payload.ServerWaits,

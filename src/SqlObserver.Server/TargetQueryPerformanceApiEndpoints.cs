@@ -18,6 +18,7 @@ public static class TargetQueryPerformanceApiEndpoints
         group.MapGet("/top", TopAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/text", TextAsync);
+        group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/plans/{planFingerprint}/content", PlanContentAsync);
         group.MapGet("/databases/{databaseId:int}/plans/{planFingerprint}", PlanAsync);
         return e;
     }
@@ -28,7 +29,7 @@ public static class TargetQueryPerformanceApiEndpoints
     private static async Task<IResult> HistoryAsync(HttpContext h, Guid instanceId, int databaseId, string queryFingerprint, IQueryPerformanceApiQueryService s, WindowsGroupRoleResolver r, int limit=25, string? fromUtc=null, string? toUtc=null, string? cursor=null, CancellationToken c=default)
     { try { if (limit is <= 0 or > 200 || databaseId is <= 0 or > 32767) throw new ArgumentException("Page limit or database is outside its bounds."); RequireExplicitCursorWindow(cursor,fromUtc,toUtc); DateTimeOffset to=Parse(toUtc)??DateTimeOffset.UtcNow, from=Parse(fromUtc)??to.AddHours(-24); var q=new QueryOpaqueIdentity(databaseId,queryFingerprint); var decoded=DecodeCursor(cursor,instanceId,QueryPerformanceMetric.CpuMilliseconds,from,to); if(decoded is not null&&(decoded.DatabaseId!=databaseId||decoded.QueryFingerprint!=q.QueryFingerprint))throw new ArgumentException("Cursor query binding mismatch."); var page=await s.GetHistoryAsync(r.Resolve(h.User),new QueryHistoryRequest(new MonitoredInstanceId(instanceId),q,from,to,limit,decoded,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); string? next=page.HasMore&&page.Items.Count>0?EncodeCursor(new QueryPerformanceCursorEnvelope(new MonitoredInstanceId(instanceId),databaseId,from,to,QueryPerformanceMetric.CpuMilliseconds,page.SnapshotUtc,page.Items[^1].IntervalEndUtc,q.QueryFingerprint,page.Items[^1].Metrics.CpuMilliseconds,page.Items[^1].CollectionRunId,page.Items[^1].PlanFingerprint,page.Items[^1].ObservationKey), requireMetricValue:false):null; return Results.Ok(new {targetId=instanceId,databaseId,queryFingerprint=q.QueryFingerprint,items=page.Items.Select(MapHistoryItem),nextCursor=next,snapshotUtc=page.SnapshotUtc,fromUtc=from,toUtc=to}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
     private static async Task<IResult> PlanAsync(HttpContext h, Guid instanceId, int databaseId, string planFingerprint, IQueryPerformanceApiQueryService s, WindowsGroupRoleResolver r, string? queryFingerprint=null, CancellationToken c=default)
-    { try { if(queryFingerprint is null || databaseId is <= 0 or > 32767) throw new ArgumentException("Query fingerprint or database is invalid."); var q=new QueryOpaqueIdentity(databaseId,queryFingerprint); var p=new PlanOpaqueIdentity(q,planFingerprint); var row=await s.GetPlanAsync(r.Resolve(h.User),new QueryPlanMetadataRequest(new MonitoredInstanceId(instanceId),p,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); return row is null?Results.NotFound():Results.Ok(new {targetId=instanceId,databaseId,queryFingerprint=q.QueryFingerprint,planFingerprint=p.PlanFingerprint,source=SourceName(row.Source),observedAtUtc=row.ObservedAtUtc,coverage=CoverageName(row.Coverage),contentAvailable=false}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
+    { try { if(queryFingerprint is null || databaseId is <= 0 or > 32767) throw new ArgumentException("Query fingerprint or database is invalid."); var q=new QueryOpaqueIdentity(databaseId,queryFingerprint); var p=new PlanOpaqueIdentity(q,planFingerprint); var row=await s.GetPlanAsync(r.Resolve(h.User),new QueryPlanMetadataRequest(new MonitoredInstanceId(instanceId),p,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); return row is null?Results.NotFound():Results.Ok(new {targetId=instanceId,databaseId,queryFingerprint=q.QueryFingerprint,planFingerprint=p.PlanFingerprint,source=SourceName(row.Source),observedAtUtc=row.ObservedAtUtc,coverage=CoverageName(row.Coverage),contentAvailable=row.ContentAvailable}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
     private static async Task<IResult> TextAsync(HttpContext h, Guid instanceId, int databaseId, string queryFingerprint, Guid collectionRunId, IQueryTextReadService service, WindowsGroupRoleResolver roles, CancellationToken cancellationToken)
     {
         h.Response.Headers.CacheControl = "no-store";
@@ -39,6 +40,28 @@ public static class TargetQueryPerformanceApiEndpoints
             QueryTextReadResult result = await service.ReadAsync(roles.Resolve(h.User), request, cancellationToken);
             return Results.Ok(new { targetId = instanceId, databaseId, queryFingerprint = request.Query.QueryFingerprint,
                 collectionRunId, status = result.Status, text = result.Text });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+    private static async Task<IResult> PlanContentAsync(HttpContext h, Guid instanceId,
+        int databaseId, string queryFingerprint, Guid collectionRunId,
+        string planFingerprint, IQueryPlanReadService service,
+        WindowsGroupRoleResolver roles, CancellationToken cancellationToken)
+    {
+        h.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var query = new QueryOpaqueIdentity(databaseId, queryFingerprint);
+            var request = new QueryPlanReadRequest(new MonitoredInstanceId(instanceId),
+                collectionRunId, new PlanOpaqueIdentity(query, planFingerprint),
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            QueryPlanReadResult result = await service.ReadAsync(
+                roles.Resolve(h.User), request, cancellationToken);
+            return Results.Ok(new { targetId = instanceId, databaseId,
+                queryFingerprint = query.QueryFingerprint,
+                planFingerprint = request.Plan.PlanFingerprint,
+                collectionRunId, status = result.Status, xml = result.Xml });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }

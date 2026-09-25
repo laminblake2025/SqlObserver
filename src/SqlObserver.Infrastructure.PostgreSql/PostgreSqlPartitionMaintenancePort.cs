@@ -91,6 +91,7 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
     private const string RepositoryClockSql = "SELECT clock_timestamp();";
     private const string RunSystemRetentionStepSql = "SELECT system.run_m10_retention_step(@owner_execution_id,@fencing_token);";
     private const string PruneOrphanQueryTextSql = "SELECT system.prune_orphan_query_text_payloads(@owner_execution_id,@fencing_token,32);";
+    private const string PruneOrphanQueryPlanSql = "SELECT system.prune_orphan_query_plan_payloads(@owner_execution_id,@fencing_token,32);";
 
     private readonly NpgsqlDataSource _dataSource;
 
@@ -144,10 +145,22 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
     }
 
     /// <summary>Removes at most 32 old unreferenced query-text ciphertexts under the retention lease.</summary>
-    public async ValueTask<int> PruneOrphanQueryTextPayloadsAsync(
+    public ValueTask<int> PruneOrphanQueryTextPayloadsAsync(
         WorkerLeaseIdentity lease,
         RepositoryCallTimeout timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        PruneOrphanPayloadsAsync(PruneOrphanQueryTextSql, lease, timeout, cancellationToken);
+
+    /// <summary>Removes at most 32 old unreferenced plan ciphertexts under the retention lease.</summary>
+    public ValueTask<int> PruneOrphanQueryPlanPayloadsAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken) =>
+        PruneOrphanPayloadsAsync(PruneOrphanQueryPlanSql, lease, timeout, cancellationToken);
+
+    private async ValueTask<int> PruneOrphanPayloadsAsync(
+        string sql, WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(lease);
         ArgumentNullException.ThrowIfNull(timeout);
@@ -160,7 +173,7 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
         {
             await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
             await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
-            await using var command = new NpgsqlCommand(PruneOrphanQueryTextSql, connection, transaction)
+            await using var command = new NpgsqlCommand(sql, connection, transaction)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
             };

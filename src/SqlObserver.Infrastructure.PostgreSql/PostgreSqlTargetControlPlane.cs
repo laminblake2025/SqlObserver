@@ -28,6 +28,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         DeadlockProjections = new PostgreSqlDeadlockProjectionPort(dataSource);
         QueryPerformanceApiProjections = new PostgreSqlQueryPerformanceApiProjectionPort(dataSource);
         QueryTextReads = new PostgreSqlQueryTextReadRepositoryPort(dataSource);
+        QueryPlanReads = new PostgreSqlQueryPlanReadRepositoryPort(dataSource);
         CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
         OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
@@ -62,6 +63,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IDeadlockProjectionRepositoryPort DeadlockProjections { get; }
     public IQueryPerformanceApiRepositoryPort QueryPerformanceApiProjections { get; }
     public IQueryTextReadRepositoryPort QueryTextReads { get; }
+    public IQueryPlanReadRepositoryPort QueryPlanReads { get; }
 
     public ICollectorRuntimeRepositoryPort CollectorRuntime { get; }
     public IAlertRepositoryPort Alerts { get; }

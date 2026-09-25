@@ -299,14 +299,15 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private const string CommitQueryPerformanceCanonicalSql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count, persisted_bytes, committed_at
-        FROM control.commit_query_performance_with_text(
+        FROM control.commit_query_performance_with_content(
           @run_id,@instance_id,@target_revision,@collector_version,@output_schema_version,
           @schedule_revision,@scheduled_at,@work_key,@owner_execution_id,@fencing_token,
           @request_digest,@outcome,@reason_code,@duration_ms,@attempt_count,@source_row_count,
           @output_item_count,@response_bytes,@output_bytes,@loss_kind,@minimum_lost_items,
           @loss_count_is_exact,@minimum_lost_bytes,@next_circuit_state,@next_consecutive_failures,
           @completion_digest,@window_start,@window_end,@query_source::events.query_performance_source,
-          @query_source_state,@query_coverage,@query_freshness,@query_truncated,@query_payload,@links);
+          @query_source_state,@query_coverage,@query_freshness,@query_truncated,
+          @query_payload,@links,@plan_links);
         """;
 
     private static readonly string[] RequiredCollectorIds =
@@ -1131,15 +1132,18 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         var statuses = payload.QueryPerformanceStatuses.Select(x => new { databaseId = x.DatabaseId, status = MapQueryReadStatus(x.Status), sourceState = MapQueryStoreState(x.SourceState ?? StatusSourceState(x.Status)), reason = x.Reason, fallbackAttempted = x.FallbackAttempted, truncated = x.Truncated, lossKind = MapLoss(x.LossKind), sourceRowsRead = x.SourceRowsRead, responseBytes = x.ResponseBytes, minimumLostItems = x.MinimumLostItems, lossCountIsExact = x.LossCountIsExact, minimumLostBytes = x.MinimumLostBytes }).ToArray();
         var targetStatusJson = targetStatus is null ? null : new { status = targetStatus.Status, reason = targetStatus.Reason };
         QueryTextLink[] queryTextLinks = BuildQueryTextLinks(payload.QueryPerformance.Items);
+        QueryPlanLink[] queryPlanLinks = BuildQueryPlanLinks(payload.QueryPerformance.Items);
         byte[] persistenceJson = QueryPerformancePersistencePayload.Serialize(
             payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, targetStatus,
             contentLinksCommittedWithRun: true);
         if (persistenceJson.Length > QueryPerformancePersistencePayload.MaximumSerializedBytes) throw new InvalidDataException("Query performance persistence payload exceeds the accepted response bound.");
         var json = new { observations, databaseStatuses = statuses, targetStatus = targetStatusJson };
         var digestEnvelope = new { runId = request.Summary.RunId.Value, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, windowStartUtc = windowStart, windowEndUtc = windowEnd, source, sourceState, coverage, fresh, truncated, targetStatus = targetStatusJson, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), durationMs = request.Summary.Duration.TotalMilliseconds, attemptCount = request.Summary.AttemptCount, sourceRows = request.Summary.Accounting.SourceRowsRead, outputItems = request.Summary.Accounting.OutputItemsProduced, responseBytes = request.Summary.Accounting.ResponseBytes, outputBytes = request.Summary.Accounting.OutputBytes, lossKind = MapLoss(request.Summary.Loss.Kind), minimumLostItems = request.Summary.Loss.MinimumLostItems, lossCountIsExact = request.Summary.Loss.CountIsExact, minimumLostBytes = request.Summary.Loss.MinimumLostBytes, nextCircuitState = MapCircuit(request.NextCircuit.State), nextConsecutiveFailures = request.NextCircuit.ConsecutiveFailures, observations, databaseStatuses = statuses };
-        byte[] completionDigest = queryTextLinks.Length == 0
-            ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(digestEnvelope))
-            : SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks }));
+        byte[] completionDigest = queryPlanLinks.Length > 0
+            ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks, queryPlanLinks }))
+            : queryTextLinks.Length == 0
+                ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(digestEnvelope))
+                : SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks }));
         command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, completionDigest);
         command.Parameters.AddWithValue("window_start", windowStart);
         command.Parameters.AddWithValue("window_end", windowEnd);
@@ -1155,6 +1159,15 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             {
                 database_id = link.DatabaseId,
                 query_fingerprint = link.QueryFingerprint,
+                payload_id = link.PayloadId,
+                fingerprint = link.PayloadFingerprint,
+            })));
+        command.Parameters.AddWithValue("plan_links", NpgsqlDbType.Jsonb,
+            JsonSerializer.Serialize(queryPlanLinks.Select(static link => new
+            {
+                database_id = link.DatabaseId,
+                query_fingerprint = link.QueryFingerprint,
+                plan_fingerprint = link.PlanFingerprint,
                 payload_id = link.PayloadId,
                 fingerprint = link.PayloadFingerprint,
             })));
@@ -1184,6 +1197,38 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         }
         return byQuery.Values.OrderBy(static link => link.DatabaseId)
             .ThenBy(static link => link.QueryFingerprint, StringComparer.Ordinal).ToArray();
+    }
+
+    private sealed record QueryPlanLink(int DatabaseId, string QueryFingerprint,
+        string PlanFingerprint, Guid PayloadId, string PayloadFingerprint);
+
+    private static QueryPlanLink[] BuildQueryPlanLinks(
+        IReadOnlyList<QueryPerformanceObservation> observations)
+    {
+        var byPlan = new Dictionary<(int DatabaseId, string QueryFingerprint,
+            string PlanFingerprint), QueryPlanLink>();
+        foreach (QueryPerformanceObservation observation in observations)
+        {
+            if (observation.ProtectedPlanContent is not null)
+                throw new InvalidDataException("Protected plan XML must be written under the lease before the M7 run commit.");
+            SensitivePayloadReference? reference = observation.PlanContentReference;
+            if (reference is null) continue;
+            if (observation.Source != QueryPerformanceSource.QueryStore ||
+                observation.Plan is not { } plan ||
+                reference.Kind != SensitivePayloadKind.ExecutionPlan)
+                throw new InvalidDataException("Execution-plan content requires a Query Store plan-bound link.");
+            var link = new QueryPlanLink(observation.Query.DatabaseId,
+                observation.Query.QueryFingerprint, plan.PlanFingerprint,
+                reference.PayloadId.Value,
+                reference.Fingerprint.ToHexString().ToLowerInvariant());
+            var key = (link.DatabaseId, link.QueryFingerprint, link.PlanFingerprint);
+            if (byPlan.TryGetValue(key, out QueryPlanLink? existing) && existing != link)
+                throw new InvalidDataException("One plan identity cannot carry conflicting protected plan references.");
+            byPlan[key] = link;
+        }
+        return byPlan.Values.OrderBy(static link => link.DatabaseId)
+            .ThenBy(static link => link.QueryFingerprint, StringComparer.Ordinal)
+            .ThenBy(static link => link.PlanFingerprint, StringComparer.Ordinal).ToArray();
     }
 
     private static string MapQuerySource(QueryPerformanceSource value) => value switch { QueryPerformanceSource.QueryStore => "query_store", QueryPerformanceSource.PlanCache => "plan_cache", _ => throw new InvalidDataException("Mixed is a run summary only.") };
