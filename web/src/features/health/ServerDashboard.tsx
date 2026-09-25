@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTimeDisplay } from "../../TimeDisplayContext";
+import { formatDisplayTime } from "../../timeDisplay";
 import { OverviewChart } from "../overview/OverviewChart";
 import { issueHref, overviewEvidenceFooter, overviewHref, rankedIssues } from "../overview/overviewModel";
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
@@ -12,6 +14,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   readonly refresh: number;
   readonly blockingRefresh: number;
 }) {
+  const { mode } = useTimeDisplay();
+  const timeLabel = (value: string) => formatDisplayTime(value, mode);
   const [crosshairUtc, setCrosshairUtc] = useState<string | null>(null);
   const selectedScope = { ...scope, target: instanceId };
   const result = useOverviewAnalytics(selectedScope, refresh);
@@ -44,13 +48,13 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     <div className="section-heading"><div><p className="eyebrow">Server dashboard</p><h3 id="server-dashboard-heading">Investigate {displayName}</h3></div></div>
     <div className="overview-controls server-dashboard-controls">
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
-      <span className="server-dashboard-mode">Drag a chart to select a shared UTC window. Live ranges refresh every 60 seconds.</span>
+      <span className="server-dashboard-mode">Drag a chart to select a shared time window. Live ranges refresh every 60 seconds.</span>
     </div>
     {result.loading && <p role="status">Loading server timeline…</p>}
     {result.error && <p role="alert" className="status-message">{result.error}</p>}
     {data && !evidence && <p className="empty-state">No authorized dashboard evidence was returned for this server.</p>}
     {data && evidence && <>
-      <p className="server-dashboard-window">Selected window: {data.fromUtc} to {data.toUtc}. SQL core status: {evidence.collectionState.replaceAll("_", " ")}.</p>
+      <p className="server-dashboard-window">Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. SQL core status: {evidence.collectionState.replaceAll("_", " ")}.</p>
       <div className="kpi-grid server-dashboard-kpis">
         <DashboardCount label="Active alerts now" value={evidence.activeAlerts} />
         <DashboardCount label="Blocked sessions now" value={evidence.blockedSessions} />
@@ -59,7 +63,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <section className="panel server-dashboard-investigate" aria-labelledby="server-investigate-heading">
         <p className="eyebrow">Investigate first</p><h4 id="server-investigate-heading">What needs attention</h4>
         {issues.length ? <ol>{issues.map((issue, index) => <li key={`${issue.destination}:${issue.observedAtUtc ?? "current"}:${index}`}>
-          <a href={issueHref(selectedScope, instanceId, issue.destination, issue.observedAtUtc)}><strong>{issue.title}</strong><span>{issue.detail}</span><small>{issue.observedAtUtc ?? "Observation time unavailable"} · Open evidence →</small></a>
+          <a href={issueHref(selectedScope, instanceId, issue.destination, issue.observedAtUtc)}><strong>{issue.title}</strong><span>{issue.detail}</span><small>{issue.observedAtUtc ? timeLabel(issue.observedAtUtc) : "Observation time unavailable"} · Open evidence →</small></a>
         </li>)}</ol> : <p className="empty-state">No ranked exceptions in the available evidence. Check collection gaps before treating this as all clear.</p>}
       </section>
       <div className="server-dashboard-charts">
@@ -84,13 +88,14 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       </div>
       <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={blockingRefresh} />
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
-      <p className="activity-evidence">{overviewEvidenceFooter(data)}</p>
+      <p className="activity-evidence">{overviewEvidenceFooter(data, timeLabel)}</p>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
   </section>;
 }
 
 function DashboardCount({ label, value }: { readonly label: string; readonly value: OverviewValue }) {
+  const { mode } = useTimeDisplay();
   const known = value.value !== null && !["stale", "unavailable", "unsupported", "disabled"].includes(value.state);
-  return <section className="kpi"><p>{label}</p><strong>{known ? `${value.value!.toLocaleString()}${value.state === "partial" ? "+" : ""}` : "—"}</strong><small>{value.state.replaceAll("_", " ")}{value.observedAtUtc ? ` · ${value.observedAtUtc}` : ""}</small></section>;
+  return <section className="kpi"><p>{label}</p><strong>{known ? `${value.value!.toLocaleString()}${value.state === "partial" ? "+" : ""}` : "—"}</strong><small>{value.state.replaceAll("_", " ")}{value.observedAtUtc ? ` · ${formatDisplayTime(value.observedAtUtc, mode)}` : ""}</small></section>;
 }

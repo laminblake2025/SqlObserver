@@ -34,6 +34,7 @@ export function TimeRangeControls({scope,onChange,maximumDays=31}: {
       }}>
         <label>From (UTC)<input name="from" required type="datetime-local" step="1" defaultValue={scope.from?.slice(0,19)??''}/></label>
         <label>To (UTC)<input name="to" required type="datetime-local" step="1" defaultValue={scope.to?.slice(0,19)??''}/></label>
+        <small>Enter custom bounds in UTC. The display toggle changes timestamps without changing the selected instants.</small>
         <button type="submit">Apply range</button>
         {error&&<p role="alert">{error}</p>}
       </form>}

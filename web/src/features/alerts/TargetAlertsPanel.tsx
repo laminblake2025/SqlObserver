@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTimeFormatter } from "../../TimeDisplayContext";
 import { DetailPane, EvidenceStatus } from "../../components/DiagnosticUi";
 import { overviewHref, readOverviewScope } from "../overview/overviewModel";
 import { acknowledgeAlert, getActiveAlerts } from "./alertApi";
@@ -11,6 +12,7 @@ import type { AlertFilter } from "./alertFilter";
 const acknowledgementAttempts = new AcknowledgementAttempts();
 
 export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowledge, refresh }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly canAcknowledge: boolean; readonly refresh: number }) {
+  const formatTime = useTimeFormatter();
   const [items, setItems] = useState<readonly ActiveAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -87,26 +89,22 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowl
     {error ? <div role="alert" className="status-message">{error} <button className="secondary-button" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></div> : null}
     {message ? <p role="status" className="status-message">{message}</p> : null}
     <div className="alerts-layout">
-      <section className="alert-list panel" aria-label="Target alerts"><div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3><p>Alert severity is unavailable in this projection. Rule names are shown as configured.</p></div></div><div className="table-scroll"><table><caption>Target-scoped alert observations for {displayName}</caption><thead><tr><th scope="col">State</th><th scope="col">Alert / rule</th><th scope="col">Observed value</th><th scope="col">First observed</th><th scope="col">State timestamps</th></tr></thead><tbody>{visible.map((item) => <tr className={item.alertId === selected?.alertId ? "selected-row" : ""} key={item.alertId} onClick={() => setSelectedId(item.alertId)}><td><span className={`state-pill state-${item.state}`}>{item.state}</span></td><td><button className="table-link" type="button" onClick={() => setSelectedId(item.alertId)}>{item.ruleName}</button><small>Alert {item.alertId.slice(0, 12)}…</small></td><td>{formatObservedValue(item.value)}</td><td>{formatUtc(item.firstObservedUtc)}</td><td>{formatAvailableTimestamps(item)}</td></tr>)}</tbody></table></div>{!loading && !error && visible.length === 0 ? <p className="empty-state">No alert rows match the loaded target-scoped evidence.</p> : null}<div className="pager"><span>{nextCursor ? "More bounded alerts are available." : "End of loaded alert page."}</span><button className="secondary-button" type="button" disabled={!nextCursor || loadingMore} onClick={() => void nextPage()}>{loadingMore ? "Loading…" : "Load more"}</button></div></section>
+      <section className="alert-list panel" aria-label="Target alerts"><div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3><p>Alert severity is unavailable in this projection. Rule names are shown as configured.</p></div></div><div className="table-scroll"><table><caption>Target-scoped alert observations for {displayName}</caption><thead><tr><th scope="col">State</th><th scope="col">Alert / rule</th><th scope="col">Observed value</th><th scope="col">First observed</th><th scope="col">State timestamps</th></tr></thead><tbody>{visible.map((item) => <tr className={item.alertId === selected?.alertId ? "selected-row" : ""} key={item.alertId} onClick={() => setSelectedId(item.alertId)}><td><span className={`state-pill state-${item.state}`}>{item.state}</span></td><td><button className="table-link" type="button" onClick={() => setSelectedId(item.alertId)}>{item.ruleName}</button><small>Alert {item.alertId.slice(0, 12)}…</small></td><td>{formatObservedValue(item.value)}</td><td>{formatTime(item.firstObservedUtc)}</td><td>{formatAvailableTimestamps(item, formatTime)}</td></tr>)}</tbody></table></div>{!loading && !error && visible.length === 0 ? <p className="empty-state">No alert rows match the loaded target-scoped evidence.</p> : null}<div className="pager"><span>{nextCursor ? "More bounded alerts are available." : "End of loaded alert page."}</span><button className="secondary-button" type="button" disabled={!nextCursor || loadingMore} onClick={() => void nextPage()}>{loadingMore ? "Loading…" : "Load more"}</button></div></section>
       {loading ? <div className="detail-pane status-message">Loading alert evidence…</div> : selected ? <DetailPane title={selected.ruleName} subtitle={`Alert ${selected.alertId} · ${displayName}`} actions={selected.state === "firing" && canAcknowledge ? <button className="primary" type="button" disabled={busy === selected.alertId} onClick={() => void acknowledge(selected)}>{busy === selected.alertId ? "Acknowledging…" : "Acknowledge"}</button> : undefined}><EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"} tone={selected.state === "firing" ? "critical" : selected.state === "acknowledged" ? "warning" : "neutral"} /><p className="detail-note">Acknowledgement records review. Monitoring continues and state changes remain server-owned.</p>{selected.state === "firing" && !canAcknowledge ? <p className="detail-note">An Operator or Target Administrator role on this server is required to acknowledge this alert.</p> : null}<section className="alert-observed"><h3>Observed value</h3><strong>{formatObservedValue(selected.value)}</strong></section><section className="alert-chronology"><h3>Available state timestamps</h3><TimelineItem label="First observed" value={selected.firstObservedUtc} /><TimelineItem label="Fired" value={selected.firedUtc} /><TimelineItem label="Acknowledged" value={selected.acknowledgedUtc} /></section><section className="related-evidence"><h3>Related evidence</h3><a href={overviewHref(scope, "activity", instanceId)}>Open activity <span aria-hidden="true">→</span></a><a href={overviewHref(scope, "deadlocks", instanceId)}>Open deadlocks <span aria-hidden="true">→</span></a><p>Related observations may share a time window without sharing a cause.</p></section><p className="table-note">Rule identifier: {selected.ruleId} · Observed alert state is not a severity classification.</p></DetailPane> : <div className="detail-pane empty-state">Select an alert to inspect its available evidence.</div>}
     </div>
   </section>;
 }
 
 function TimelineItem({ label, value }: { readonly label: string; readonly value?: string }) {
-  return <div className={value ? "timeline-item" : "timeline-item is-unavailable"}><span className="timeline-dot" aria-hidden="true" /><div><strong>{label}</strong><span>{value ? formatUtc(value) : "Not returned by this alert state"}</span></div></div>;
+  const formatTime = useTimeFormatter();
+  return <div className={value ? "timeline-item" : "timeline-item is-unavailable"}><span className="timeline-dot" aria-hidden="true" /><div><strong>{label}</strong><span>{value ? formatTime(value) : "Not returned by this alert state"}</span></div></div>;
 }
 
 function formatObservedValue(value: number | null | undefined): string {
   return value === undefined || value === null ? "Collector health value unavailable" : value.toLocaleString();
 }
 
-function formatAvailableTimestamps(item: ActiveAlert): string {
-  const values = [item.firedUtc ? `fired ${formatUtc(item.firedUtc)}` : undefined, item.acknowledgedUtc ? `acknowledged ${formatUtc(item.acknowledgedUtc)}` : undefined].filter((value): value is string => value !== undefined);
+function formatAvailableTimestamps(item: ActiveAlert, formatTime: (value: string) => string): string {
+  const values = [item.firedUtc ? `fired ${formatTime(item.firedUtc)}` : undefined, item.acknowledgedUtc ? `acknowledged ${formatTime(item.acknowledgedUtc)}` : undefined].filter((value): value is string => value !== undefined);
   return values.length ? values.join(" · ") : "No later state timestamp";
-}
-
-function formatUtc(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? "Invalid timestamp" : parsed.toISOString().replace("T", " ").replace(".000Z", " UTC");
 }

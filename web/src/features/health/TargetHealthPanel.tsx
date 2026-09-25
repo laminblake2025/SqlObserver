@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTimeFormatter } from "../../TimeDisplayContext";
 import { Tabs } from "../../components/DiagnosticUi";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { ServerDashboard } from "./ServerDashboard";
@@ -68,6 +69,7 @@ export interface TargetHealthPanelProps {
 }
 
 export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh }: TargetHealthPanelProps) {
+  const formatTimestamp = useTimeFormatter();
   const [evidence, setEvidence] = useState<TargetHealthEvidence>();
   const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -150,6 +152,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
 }
 
 function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricSummary[] }) {
+  const formatTimestamp = useTimeFormatter();
   return <div className="health-metric-strip">{healthSummaryMetricDefinitions.map((definition) => {
     const metric = latestDimensionlessMetric(metrics, definition.metricId);
     return <section className="health-metric" key={definition.metricId}>
@@ -163,6 +166,7 @@ function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricS
 }
 
 function DatabaseHealth({ page }: { readonly page: DatabaseHealthPage }) {
+  const formatTimestamp = useTimeFormatter();
   return (
     <section className="bounded-health-section" aria-labelledby="database-health-heading">
       <div className="bounded-health-heading">
@@ -191,6 +195,7 @@ function DatabaseHealth({ page }: { readonly page: DatabaseHealthPage }) {
 }
 
 function DatabaseHealthCard({ database }: { readonly database: DatabaseHealthSummary }) {
+  const formatTimestamp = useTimeFormatter();
   return (
     <article className="bounded-health-card">
       <div className="collector-title-row">
@@ -214,6 +219,7 @@ function DatabaseHealthCard({ database }: { readonly database: DatabaseHealthSum
 }
 
 function DatabaseFileHealth({ page }: { readonly page: DatabaseFileHealthPage }) {
+  const formatTimestamp = useTimeFormatter();
   return (
     <section className="bounded-health-section" aria-labelledby="file-health-heading">
       <div className="bounded-health-heading">
@@ -245,6 +251,7 @@ function DatabaseFileHealth({ page }: { readonly page: DatabaseFileHealthPage })
 }
 
 function DatabaseFileHealthCard({ file }: { readonly file: DatabaseFileHealthSummary }) {
+  const formatTimestamp = useTimeFormatter();
   return (
     <article className="bounded-health-card">
       <div className="collector-title-row">
@@ -306,6 +313,7 @@ function PageCollectorHealth({ collector }: { readonly collector: CollectorHealt
 }
 
 function CoreMetrics({ metrics }: { readonly metrics: readonly CoreMetricSummary[] }) {
+  const formatTimestamp = useTimeFormatter();
   return (
     <section className="core-metrics" aria-labelledby="core-metrics-heading">
       <h4 id="core-metrics-heading">Latest core metrics</h4>
@@ -336,6 +344,8 @@ function CoreMetrics({ metrics }: { readonly metrics: readonly CoreMetricSummary
 }
 
 function CollectorHealthCard({ collector }: { readonly collector: CollectorHealthSummary }) {
+  const formatTimestamp = useTimeFormatter();
+  const formatOptionalTimestamp = (value: string | null) => formatTimestamp(value);
   return (
     <article className="collector-health-card">
       <div className="collector-title-row">
@@ -381,15 +391,6 @@ function HealthFact({ label, value }: { readonly label: string; readonly value: 
       <dd>{value}</dd>
     </div>
   );
-}
-
-function formatOptionalTimestamp(value: string | null): string {
-  return value === null ? "Not observed" : formatTimestamp(value);
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? "Invalid timestamp" : date.toISOString();
 }
 
 function formatToken(value: string): string {

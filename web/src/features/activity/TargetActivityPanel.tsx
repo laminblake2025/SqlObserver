@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTimeDisplay } from "../../TimeDisplayContext";
+import { formatDisplayTime } from "../../timeDisplay";
 import { LiveSessionsPanel } from "./LiveSessionsPanel";
 
 import { getActivitySnapshot, getBlockingHistoryPage } from "./activityApi";
@@ -20,6 +22,7 @@ export interface TargetActivityPanelProps {
 }
 
 export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused }: TargetActivityPanelProps) {
+  const { mode } = useTimeDisplay();
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
   const [message, setMessage] = useState<string>();
   const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to, refresh]);
@@ -41,7 +44,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
       <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} />
       <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Blocking history follows the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
-      <p className="activity-evidence">{window ? `Selected blocking-history window: ${window.fromUtc} to ${window.toUtc}.` : selected.state === "unavailable" ? selected.message : null}</p>
+      <p className="activity-evidence">{window ? `Selected blocking-history window: ${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}.` : selected.state === "unavailable" ? selected.message : null}</p>
       {message === undefined ? null : <p className="status-message">{message}</p>}
       {snapshot === undefined && message === undefined ? <p>Loading bounded activity evidence…</p> : null}
       {snapshot === undefined ? null : <>
@@ -63,6 +66,7 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
 }
 
 function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: string; readonly initialPage: ActivityPage<BlockingHistoryItem> }) {
+  const { mode } = useTimeDisplay();
   const [page, setPage] = useState(initialPage);
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
   const [pageIndex, setPageIndex] = useState(0);
@@ -89,7 +93,7 @@ function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: str
   }
   return <section aria-label="Blocking history" aria-busy={loading}>
     <HistoryEvidence page={page} />
-    <ActivityTable title="Blocking history" columns={["Observed UTC", "Blocked", "Blocker", "Wait type", "Tasks/duration", "Depth", "Root resolution/evidence"]} rows={page.items.map(item => [item.edge.observedAtUtc, String(item.edge.blockedSessionId), item.edge.blockerSessionId === undefined ? item.edge.blockerKind : String(item.edge.blockerSessionId), item.edge.waitType, `${item.edge.waitingTaskCount}/${item.edge.waitDurationMilliseconds}`, String(item.edge.chainDepth), `${item.edge.chainState} (${item.evidence.freshness}/${item.evidence.outcome})`])} />
+    <ActivityTable title="Blocking history" columns={[mode === "local" ? "Observed local" : "Observed UTC", "Blocked", "Blocker", "Wait type", "Tasks/duration", "Depth", "Root resolution/evidence"]} rows={page.items.map(item => [formatDisplayTime(item.edge.observedAtUtc, mode), String(item.edge.blockedSessionId), item.edge.blockerSessionId === undefined ? item.edge.blockerKind : String(item.edge.blockerSessionId), item.edge.waitType, `${item.edge.waitingTaskCount}/${item.edge.waitDurationMilliseconds}`, String(item.edge.chainDepth), `${item.edge.chainState} (${item.evidence.freshness}/${item.evidence.outcome})`])} />
     <p role="status">Page {pageIndex + 1} · {page.items.length} observations{loading ? " · Loading history…" : page.nextCursor === undefined ? " · End of this window" : ""}</p>
     {error && <p role="alert">{error} The displayed page is unchanged. Retry using the navigation buttons.</p>}
     <nav aria-label="Blocking history pages">
@@ -101,17 +105,19 @@ function BlockingHistory({ instanceId, initialPage }: { readonly instanceId: str
 }
 
 function Evidence<T>({ page }: { readonly page: ActivityPage<T> }) {
+  const { mode } = useTimeDisplay();
   const evidence = page.evidence;
-  if (evidence === undefined) return <p className="activity-evidence">No current evidence. Repository time: {page.repositoryTimeUtc}</p>;
+  if (evidence === undefined) return <p className="activity-evidence">No current evidence. Repository time: {formatDisplayTime(page.repositoryTimeUtc, mode)}</p>;
   const loss = evidence.loss;
   const lossText = loss === undefined ? "" : ` — ${loss.kind}: at least ${String(loss.minimumLostItems)} item(s), ${String(loss.minimumLostBytes)} byte(s)${loss.countIsExact ? " (exact count)" : " (minimum)"}`;
   const graphLimit = page.maximumChainDepth === undefined ? "" : ` Graph bounds: depth ${String(page.maximumChainDepth)}, nodes ${String(page.maximumGraphNodes ?? "—")}.`;
   const baseline = page.baselineRunId === undefined ? "" : ` Baseline run: ${page.baselineRunId}.`;
-  return <p className="activity-evidence">{evidence.collectorId}: {evidence.freshness}; {evidence.outcome} ({evidence.reason}), completed {evidence.completedAtUtc}{evidence.isPartial || loss !== undefined ? lossText : ""}. Repository time: {page.repositoryTimeUtc}{baseline}{graphLimit}{page.nextCursor === undefined ? "" : " More bounded rows available."}</p>;
+  return <p className="activity-evidence">{evidence.collectorId}: {evidence.freshness}; {evidence.outcome} ({evidence.reason}), completed {formatDisplayTime(evidence.completedAtUtc, mode)}{evidence.isPartial || loss !== undefined ? lossText : ""}. Repository time: {formatDisplayTime(page.repositoryTimeUtc, mode)}{baseline}{graphLimit}{page.nextCursor === undefined ? "" : " More bounded rows available."}</p>;
 }
 
 function HistoryEvidence({ page }: { readonly page: ActivityPage<BlockingHistoryItem> }) {
-  const range = page.fromUtc === undefined || page.toUtc === undefined ? "bounded window unavailable" : `${page.fromUtc} to ${page.toUtc}`;
+  const { mode } = useTimeDisplay();
+  const range = page.fromUtc === undefined || page.toUtc === undefined ? "bounded window unavailable" : `${formatDisplayTime(page.fromUtc, mode)} to ${formatDisplayTime(page.toUtc, mode)}`;
   const evidence = page.evidence ?? page.items[0]?.evidence;
   return <p className="activity-evidence">Blocking history window: {range}. {evidence === undefined ? "No historical evidence." : `${evidence.collectorId}: ${evidence.freshness}; ${evidence.outcome}${evidence.isPartial ? " — partial/loss evidence" : ""}.`}{page.nextCursor === undefined ? "" : " More bounded history is available."}</p>;
 }

@@ -61,10 +61,10 @@ function observationAge(observedAtUtc: string, refreshedAtUtc: string): string {
   return `${days}d ${hours % 24}h`;
 }
 
-export function overviewResourceObservationText(resource: OverviewResource, refreshedAtUtc: string): string {
+export function overviewResourceObservationText(resource: OverviewResource, refreshedAtUtc: string, formatTime: (value: string) => string = value => new Date(value).toISOString().replace('T', ' ')): string {
   const windowed = isWindowedResource(resource);
   const timestamp = resource.observedAtUtc && Number.isFinite(Date.parse(resource.observedAtUtc))
-    ? new Date(resource.observedAtUtc).toISOString().replace('T', ' ')
+    ? formatTime(resource.observedAtUtc)
     : 'No observation';
   const age = windowed && resource.observedAtUtc
     ? ` · Observation age: ${observationAge(resource.observedAtUtc, refreshedAtUtc)}`
@@ -72,6 +72,6 @@ export function overviewResourceObservationText(resource: OverviewResource, refr
   return `${windowed ? 'Latest in selected window' : 'Latest source snapshot'} · ${resource.state}${age} · ${timestamp}`;
 }
 
-export function overviewEvidenceFooter(snapshot: Pick<OverviewSnapshot, 'fromUtc' | 'toUtc' | 'refreshedAtUtc'>): string {
-  return `Current cards, waits, and operations use latest source snapshots. Host, storage, and replication metric rows show the latest observation inside the selected window (${snapshot.fromUtc} to ${snapshot.toUtc}); observation age is measured against refresh time ${snapshot.refreshedAtUtc}. Historical charts use ${snapshot.fromUtc} to ${snapshot.toUtc}. Independent collectors can have different coverage.`;
+export function overviewEvidenceFooter(snapshot: Pick<OverviewSnapshot, 'fromUtc' | 'toUtc' | 'refreshedAtUtc'>, formatTime: (value: string) => string = value => value): string {
+  return `Current cards, waits, and operations use latest source snapshots. Host, storage, and replication metric rows show the latest observation inside the selected window (${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}); observation age is measured against refresh time ${formatTime(snapshot.refreshedAtUtc)}. Historical charts use ${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}. Independent collectors can have different coverage.`;
 }

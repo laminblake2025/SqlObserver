@@ -1,4 +1,5 @@
 import { EvidenceTable } from "../../components/EvidenceTable";
+import { useTimeDisplay, useTimeFormatter } from "../../TimeDisplayContext";
 import { useEffect, useRef, useState } from "react";
 import { AnalyticsRequestError, getAnalyticsSurface } from "./analyticsApi";
 import { analyticsEmptyStateText, analyticsScopeText, analyticsStatusText } from "./analyticsScope";
@@ -28,6 +29,8 @@ function canRetry(state: AnalyticsPanelState): boolean {
 }
 
 export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, refresh = 0 }: { targetId: string; surface: AnalyticsSurface; timeWindow?: {fromUtc:string;toUtc:string}; refresh?: number }) {
+  const { mode } = useTimeDisplay();
+  const formatTime = useTimeFormatter();
   const [state, setState] = useState<AnalyticsPanelState>("loading");
   const [page, setPage] = useState<AnalyticsSurfacePage | null>(null);
   const [paging, setPaging] = useState<Paging>({});
@@ -73,13 +76,15 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, refresh =
   if (!page) return <section className="panel analytics-surface"><p role={error ? "alert" : "status"} className="status-message">{statusText}</p>{actions}</section>;
   if (page.items.length === 0) return <section className="panel analytics-surface"><p className="empty-state">{surface === "jobs" || surface === "backfill" ? analyticsEmptyStateText(surface) : `${messages[state]} ${analyticsEmptyStateText(surface)}`}</p></section>;
   const rows = surface.startsWith("replication/") ? page.items.map(item => ({
-    "Observed (UTC)": new Date(String(item.observedAtUtc)).toISOString(),
+    "Observed": formatTime(String(item.observedAtUtc)),
     "Agent state": item.synchronizationState === "disabled" ? "Stopped" : item.synchronizationState,
     "Pending commands": item.pendingCommands,
     "Latency (seconds)": item.latencySeconds,
     "Coverage": item.coverage,
     "Evidence": { runId: item.runId, role: item.role, targetRevision: item.targetRevision, visibilityGap: item.visibilityGap }
-  })) : page.items;
+  })) : page.items.map(item => Object.fromEntries(Object.entries(item).map(([key, value]) =>
+    [key.endsWith("Utc") && typeof value === "string" ? `${key.slice(0, -3)} (${mode === "local" ? "local" : "UTC"})` : key,
+      key.endsWith("Utc") && typeof value === "string" ? formatTime(value) : value])));
   const surfaceLabel = analyticsSurfaceLabel(surface);
-  return <section className="panel analytics-surface"><h2>{surfaceLabel}</h2><p>{page.state === "visibility_gap" ? "This history includes observations collected without a distribution database binding. Health and queue values are unavailable for those rows." : messages[state]}</p><EvidenceTable label={surfaceLabel} rows={rows}/><p>{analyticsScopeText(surface, page)}</p><div className="toolbar"><button type="button" disabled={!paging.cursor} onClick={restartPaging}>First page</button><button type="button" disabled={!page.nextCursor} onClick={() => setPaging({ cursor: page.nextCursor ?? undefined, fromUtc: page.fromUtc, toUtc: page.toUtc })}>Next evidence page</button></div></section>;
+  return <section className="panel analytics-surface"><h2>{surfaceLabel}</h2><p>{page.state === "visibility_gap" ? "This history includes observations collected without a distribution database binding. Health and queue values are unavailable for those rows." : messages[state]}</p><EvidenceTable label={surfaceLabel} rows={rows}/><p>{analyticsScopeText(surface, page, formatTime)}</p><div className="toolbar"><button type="button" disabled={!paging.cursor} onClick={restartPaging}>First page</button><button type="button" disabled={!page.nextCursor} onClick={() => setPaging({ cursor: page.nextCursor ?? undefined, fromUtc: page.fromUtc, toUtc: page.toUtc })}>Next evidence page</button></div></section>;
 }

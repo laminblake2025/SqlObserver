@@ -1,5 +1,7 @@
 import type { AnalyticsPanelState, AnalyticsSurface } from "./analyticsTypes";
 
+const identityTime = (value: string) => value;
+
 type AnalyticsScopePage = {
   readonly fromUtc: string;
   readonly toUtc: string;
@@ -7,13 +9,14 @@ type AnalyticsScopePage = {
   readonly cutoffUtc?: string;
 };
 
-export function analyticsScopeText(surface: AnalyticsSurface, page: AnalyticsScopePage): string {
-  const snapshot = page.snapshotUtc ?? "Unavailable";
-  const cutoff = page.cutoffUtc ?? "Unavailable";
+export function analyticsScopeText(surface: AnalyticsSurface, page: AnalyticsScopePage, formatTime?: (value: string) => string): string {
+  const display = formatTime ?? identityTime;
+  const snapshot = page.snapshotUtc ? display(page.snapshotUtc) : "Unavailable";
+  const cutoff = page.cutoffUtc ? display(page.cutoffUtc) : "Unavailable";
   if (surface === "jobs" || surface === "backfill") {
     return `${surface === "backfill" ? "Backfill job inventory" : "Job inventory"}. Records are not filtered by time. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
   }
-  return `UTC window: ${page.fromUtc} to ${page.toUtc}. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
+  return `${formatTime ? "Selected window" : "UTC window"}: ${display(page.fromUtc)} to ${display(page.toUtc)}. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
 }
 
 export function analyticsEmptyStateText(surface: AnalyticsSurface): string {

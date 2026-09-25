@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTimeFormatter } from "../../TimeDisplayContext";
 import { getCurrentBlockingPage } from "../activity/activityApi";
 import { blockingPageIsComplete, groupBlockingEdges } from "../activity/blockingProjectionModel";
 import type { ActivityPage, BlockingEdge } from "../activity/activityTypes";
@@ -10,6 +11,7 @@ export function CurrentBlockingPanel({ instanceId, scope, refresh }: {
   readonly scope: OverviewScope;
   readonly refresh: number;
 }) {
+  const formatTime = useTimeFormatter();
   const [page, setPage] = useState<ActivityPage<BlockingEdge>>();
   const [error, setError] = useState<string>();
 
@@ -38,7 +40,7 @@ export function CurrentBlockingPanel({ instanceId, scope, refresh }: {
     {page === undefined && error === undefined && <p role="status">Loading current blocking…</p>}
     {error && <p role="status">{error} {page ? "Showing the previous snapshot." : ""}</p>}
     {page && <>
-      <p className="server-dashboard-blocking-meta">Observed {page.evidence?.completedAtUtc ?? "time unavailable"}. {error ? "Previous current snapshot" : "Current snapshot"}, independent of the selected timeline window.</p>
+      <p className="server-dashboard-blocking-meta">Observed {formatTime(page.evidence?.completedAtUtc)}. {error ? "Previous current snapshot" : "Current snapshot"}, independent of the selected timeline window.</p>
       {groups.length === 0 && <p className="empty-state">{complete && !error ? "No blocked sessions in the current collection." : "No blocking rows on this page; collection is incomplete or unavailable."}</p>}
       {groups.length > 0 && <div className="server-dashboard-blocking-groups">{groups.map(group => <div className="server-dashboard-blocking-group" key={group.key}>
         <h5>{group.label} · {group.edges.length} {group.edges.length === 1 ? "edge" : "edges"} on this page</h5>

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useTimeDisplay } from "../../TimeDisplayContext";
+import { formatDisplayTime } from "../../timeDisplay";
 import { readLive, type LivePage, type LiveRow, type LiveSnapshot, type QueryDetail } from "./liveActivityApi";
 import { liveRequestKey, valueForLiveRequest } from "./liveEvidenceScope";
 import { buildBlockingTree, formatBlockingTarget, type BlockingTreeNode } from "./blockingModel";
@@ -9,6 +11,8 @@ import { buildBlockingTree, formatBlockingTarget, type BlockingTreeNode } from "
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
 export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, historyUnavailableReason, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; historyUnavailableReason?: string; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean }) {
+  const { mode: timeMode } = useTimeDisplay();
+  const timeLabel = (value: string | number) => formatDisplayTime(value, timeMode);
   const [page, setPage] = useState<LivePage>();
   const [database, setDatabase] = useState("");
   const [login, setLogin] = useState(""); const [application, setApplication] = useState(""); const [status, setStatus] = useState("");
@@ -149,14 +153,14 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <label>Sort <select value={sort} onChange={event => setSort(event.target.value)}>{[["cpu", "CPU time"], ["memory", "Memory"], ["reads", "Reads"], ["writes", "Writes"], ["logicalReads", "Logical reads"], ["elapsed", "Elapsed time"], ["session", "Session ID"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label><input type="checkbox" checked={descending} onChange={event => setDescending(event.target.checked)} /> Descending</label>
     </div>
-    {mode === "history" && initialHistoryAtUtc && <p className="evidence-callout">Opened for the deadlock event at {formatUtc(initialHistoryAtUtc)}. Historical snapshots are minute-granular for cadence evidence; a deadlock-triggered capture is selected automatically when available.</p>}
+    {mode === "history" && initialHistoryAtUtc && <p className="evidence-callout">Opened for the deadlock event at {timeLabel(initialHistoryAtUtc)}. Historical snapshots are minute-granular for cadence evidence; a deadlock-triggered capture is selected automatically when available.</p>}
     {sessionHistoryReason && mode === "live" && <p className="evidence-callout">{sessionHistoryReason} Showing current sessions.</p>}
-    {mode === "history" && selectedHistoryWindow && <p className="evidence-callout">Session snapshots in the selected UTC window: {selectedHistoryWindow.fromUtc} to {selectedHistoryWindow.toUtc}. Snapshots older than 24 hours are outside retention.</p>}
+    {mode === "history" && selectedHistoryWindow && <p className="evidence-callout">Session snapshots in the selected window: {timeLabel(selectedHistoryWindow.fromUtc)} to {timeLabel(selectedHistoryWindow.toUtc)}. Snapshots older than 24 hours are outside retention.</p>}
     {mode === "history" && <div className="toolbar">{!selectedHistoryWindow && <label>History window <select value={hours} onChange={event => setHours(Number(event.target.value))}><option value={0.25}>15 minutes</option><option value={1}>1 hour</option><option value={6}>6 hours</option><option value={24}>24 hours</option></select></label>}
       <button disabled={minute === undefined || minute <= earliestMinute} onClick={() => { setPreferredSnapshotId(null); setMinute(value => value === undefined ? value : value - 1); }}>Previous minute</button>
-      <label>Exact snapshot (UTC) <select value={minute ?? ""} onChange={event => { setPreferredSnapshotId(null); setMinute(Number(event.target.value)); }}><option value="" disabled>Select minute</option>{minuteOptions.map(value => <option key={value} value={value}>{snapshots.get(value)?.observedUtc ?? `${new Date(value * 60000).toISOString()} · gap`}{snapshots.get(value)?.deadlockEventId ? " · deadlock-triggered" : ""}</option>)}</select></label>
+      <label>Exact snapshot ({timeMode === "local" ? "local" : "UTC"}) <select value={minute ?? ""} onChange={event => { setPreferredSnapshotId(null); setMinute(Number(event.target.value)); }}><option value="" disabled>Select minute</option>{minuteOptions.map(value => <option key={value} value={value}>{timeLabel(snapshots.get(value)?.observedUtc ?? value * 60000)}{snapshots.has(value) ? "" : " · gap"}{snapshots.get(value)?.deadlockEventId ? " · deadlock-triggered" : ""}</option>)}</select></label>
       <button disabled={minute === undefined || minute >= latestMinute} onClick={() => { setPreferredSnapshotId(null); setMinute(value => value === undefined ? value : value + 1); }}>Next minute</button></div>}
-    <p role="status">{mode === "history" ? "Historical evidence · automatic refresh paused" : paused ? "Paused" : workspacePaused ? "Workspace live updates paused" : !visible ? "Hidden · refresh paused" : cursor ? "Browsing snapshot pages · refresh paused" : "Refresh every 10 seconds"}{loading ? " · Refreshing…" : ""}. Observed: {gap ? "No snapshot in this minute" : displayPage?.observedUtc ?? "Unavailable"}. Snapshot: {displayPage?.snapshotId ?? "Unavailable"}. {selectedSnapshot?.deadlockEventId ? "Deadlock-triggered snapshot." : ""} {displayPage?.state === "stale" || (displayPage !== undefined && displayError) ? "Stale evidence." : ""}</p>
+    <p role="status">{mode === "history" ? "Historical evidence · automatic refresh paused" : paused ? "Paused" : workspacePaused ? "Workspace live updates paused" : !visible ? "Hidden · refresh paused" : cursor ? "Browsing snapshot pages · refresh paused" : "Refresh every 10 seconds"}{loading ? " · Refreshing…" : ""}. Observed: {gap ? "No snapshot in this minute" : displayPage?.observedUtc ? timeLabel(displayPage.observedUtc) : "Unavailable"}. Snapshot: {displayPage?.snapshotId ?? "Unavailable"}. {selectedSnapshot?.deadlockEventId ? "Deadlock-triggered snapshot." : ""} {displayPage?.state === "stale" || (displayPage !== undefined && displayError) ? "Stale evidence." : ""}</p>
     {displayError && <p role="alert">{displayError}</p>}{displayPage?.truncated && <p role="status">Collection was truncated at 512 rows. Missing sessions may exist.</p>}
     <p>Cumulative CPU is milliseconds, not CPU percentage. Reads, writes and logical reads are cumulative counts. Memory is session memory for idle sessions and granted request memory for active requests. Short requests between samples may not appear.</p>
     {displayPage && <BlockingSnapshot page={displayPage} />}
@@ -165,7 +169,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     </tr>)}</tbody></table>{displayPage?.rows.length === 0 && <p className="empty-state">{displayPage.state === "unavailable" ? "Collection evidence is unavailable for this observation." : "No sessions match these filters."}</p>}</div>}
     <nav aria-label="Live session pages"><button disabled={loading || cursorTrail.length === 0} onClick={() => { setCursor(cursorTrail.at(-1)); setCursorTrail(values => values.slice(0, -1)); }}>Previous page</button><button disabled={loading || gap || !displayPage?.nextCursor} onClick={() => { setCursorTrail(values => [...values, cursor]); setCursor(displayPage?.nextCursor ?? undefined); }}>Next page</button></nav>
     {selection && <aside className="live-details" aria-label="Session details"><div className="health-heading-row"><h4>Session {selection.row.sessionId} / {selection.row.requestId ?? "idle"}</h4><button onClick={() => { queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); }}>Close details</button></div>
-      <p>Observed {selection.observed} on {displayName}. This observation is preserved when the request disappears.</p>
+      <p>Observed {timeLabel(selection.observed)} on {displayName}. This observation is preserved when the request disappears.</p>
       <p>Database: {selection.row.databaseName ?? selection.row.databaseId ?? "unknown"}; login: {selection.row.login ?? "unknown"}; client: {selection.row.clientHost ?? "unknown"} / {selection.row.application ?? "unknown"}.</p>
       <p>Engine startup: {selection.row.engineStartup}; session login: {selection.row.sessionLogin}; request start: {selection.row.requestStart ?? "idle"} (SQL Server local timestamps).</p>
       <p>Cumulative CPU {selection.row.cpuMs} ms · memory {selection.row.memoryBytes} bytes · logical reads {selection.row.logicalReads} · reads {selection.row.reads} · writes {selection.row.writes} · elapsed {selection.row.elapsedMs} ms.</p>
@@ -204,9 +208,4 @@ function parseHistoryAtUtc(value?: string): number | undefined {
   if (value === undefined || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/.test(value)) return undefined;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function formatUtc(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? value : parsed.toISOString().replace("T", " ").replace(".000Z", " UTC");
 }

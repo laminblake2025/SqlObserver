@@ -5,6 +5,7 @@ import { Drawer } from "./components/Drawer";
 import { CommandPalette } from "./components/CommandPalette";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
+import { useTimeDisplay } from "./TimeDisplayContext";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
 import { FleetAlertsPage } from "./features/alerts/FleetAlertsPage";
@@ -43,6 +44,7 @@ type DirectTargetLookup =
   | { readonly targetId: string; readonly refresh: number; readonly state: "error"; readonly message: string };
 
 export function App() {
+  const { mode: timeDisplayMode, setMode: setTimeDisplayMode } = useTimeDisplay();
   const [route, setRoute] = useState(() => readRoute(location.hash));
   const scope = readOverviewScope(location.hash);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
@@ -239,11 +241,15 @@ export function App() {
 
       <div className="workspace">
         <header className="topbar">
-          <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">UTC <span className="topbar-separator">·</span> Read-only evidence</span></div>
+          <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">{timeDisplayMode === "local" ? "Local time" : "UTC"} <span className="topbar-separator">·</span> Read-only evidence</span></div>
           <button className="secondary-button topbar-search" type="button" onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search servers <kbd>Ctrl+K</kbd></button>
+          <button className="secondary-button" type="button" aria-label={timeDisplayMode === "local" ? "Show UTC time" : "Show local time"}
+            onClick={() => setTimeDisplayMode(timeDisplayMode === "local" ? "utc" : "local")}>
+            {timeDisplayMode === "local" ? "Local time" : "UTC"}
+          </button>
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
             <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={route.page === "analytics" ? 7 : 31} />
-            <span className="topbar-time-mode">{isRewind ? "Rewind · fixed UTC" : livePaused ? "Live · paused" : "Live · moving UTC"}</span>
+            <span className="topbar-time-mode">{isRewind ? "Rewind · fixed" : livePaused ? "Live · paused" : "Live · moving"}</span>
           </div>}
           {!isRewind && <button className="secondary-button" type="button" aria-pressed={livePaused} onClick={() => {
             if (livePaused) setLiveTick(wakeLiveTick);
@@ -303,7 +309,7 @@ export function App() {
             </div>
           ) : null}
         </main>
-        <footer className="app-footer">SQL Observer <span>·</span> Bounded evidence <span>·</span> UTC timestamps <span>·</span> Pre-release validation</footer>
+        <footer className="app-footer">SQL Observer <span>·</span> Bounded evidence <span>·</span> Stored in UTC <span>·</span> Pre-release validation</footer>
       </div>
 
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} scope={scope} />

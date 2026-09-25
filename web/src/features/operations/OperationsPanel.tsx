@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
+import { useTimeFormatter } from "../../TimeDisplayContext";
 import { AnalyticsSurfacePanel } from "../analytics/AnalyticsSurfacePanel";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
 import { EvidenceTable } from "../../components/EvidenceTable";
@@ -95,10 +96,11 @@ export function OperationsPanel({ instanceId, refresh }: { readonly instanceId: 
 }
 
 function OperationCard({ card, onRetry, onLoadMore, onCancel }: { readonly card: OperationsRenderCard; readonly onRetry: (kind: OperationalKind) => void; readonly onLoadMore: (kind: OperationalKind, cursor: string) => void; readonly onCancel: (kind: OperationalKind) => void }) {
+  const formatTime = useTimeFormatter();
   const page = card.page;
   const tone = card.status === "Complete" ? "current" : card.status === "Error" || card.status === "PermissionDenied" ? "critical" : card.status === "Partial" || card.status === "Degraded" ? "warning" : "unavailable";
   return <article className="operation-card panel" aria-label={card.label}>
-    <div className="operation-card-heading"><div><p className="eyebrow">{card.kind === "agent" ? "SQL AGENT" : card.kind.toUpperCase()}</p><h3>{card.label}</h3></div><EvidenceStatus label={card.loading ? "Loading" : page?.state ?? card.status} detail={page ? `Observed ${formatUtc(page.observedAtUtc)}` : undefined} tone={tone} /></div>
+    <div className="operation-card-heading"><div><p className="eyebrow">{card.kind === "agent" ? "SQL AGENT" : card.kind.toUpperCase()}</p><h3>{card.label}</h3></div><EvidenceStatus label={card.loading ? "Loading" : page?.state ?? card.status} detail={page ? `Observed ${formatTime(page.observedAtUtc)}` : undefined} tone={tone} /></div>
     {card.status === "Loading" ? <div className="operation-state"><p>Loading bounded evidence…</p><button type="button" onClick={() => onCancel(card.kind)}>Cancel</button></div> : null}
     {card.status === "Error" && page === undefined ? <div className="operation-state"><p role="alert">{card.error ?? "Operational health is temporarily unavailable."}</p>{card.canRetry ? <button type="button" onClick={() => onRetry(card.kind)}>Retry</button> : null}</div> : null}
     {page ? <>
@@ -116,7 +118,8 @@ function OperationCard({ card, onRetry, onLoadMore, onCancel }: { readonly card:
 }
 
 function OperationCoverage({ page, kind }: { readonly page: OperationalPage; readonly kind: OperationalKind }) {
-  return <div className="operation-coverage"><span>Snapshot observed {formatUtc(page.observedAtUtc)}</span>{page.truncated ? <strong>Partial capture · additional rows may be missing</strong> : null}{page.visibilityScope ? <span>Visibility: {page.visibilityScope}</span> : null}{page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatUtc(page.coverageFromUtc ?? "")} to {formatUtc(page.coverageToUtc ?? "")}</span> : null}{kind === "agent" ? <small>Execution start uses the SQL Server local clock without a time-zone offset. Job names and messages are unavailable.</small> : null}</div>;
+  const formatTime = useTimeFormatter();
+  return <div className="operation-coverage"><span>Snapshot observed {formatTime(page.observedAtUtc)}</span>{page.truncated ? <strong>Partial capture · additional rows may be missing</strong> : null}{page.visibilityScope ? <span>Visibility: {page.visibilityScope}</span> : null}{page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatTime(page.coverageFromUtc)} to {formatTime(page.coverageToUtc)}</span> : null}{kind === "agent" ? <small>Execution start uses the SQL Server local clock without a time-zone offset. Job names and messages are unavailable.</small> : null}</div>;
 }
 
 function TempDbSummary({ page }: { readonly page: OperationalPage }) {
@@ -125,16 +128,17 @@ function TempDbSummary({ page }: { readonly page: OperationalPage }) {
 }
 
 function NamedOperationEvidence({ kind, page }: { readonly kind: OperationalKind; readonly page: OperationalPage }) {
-  const rows = namedRows(kind, page.items);
+  const formatTime = useTimeFormatter();
+  const rows = namedRows(kind, page.items, formatTime);
   return <div className="named-evidence"><h4>Available fields</h4><EvidenceTable label={`${kind} named evidence`} rows={rows} /></div>;
 }
 
-function namedRows(kind: OperationalKind, items: readonly Record<string, unknown>[]): readonly Record<string, unknown>[] {
+function namedRows(kind: OperationalKind, items: readonly Record<string, unknown>[], formatTime: (value: string | null | undefined) => string): readonly Record<string, unknown>[] {
   return items.map((item) => {
     if (kind === "backups") return {
       "Database fingerprint": item.databaseFingerprint,
       "Backup kind": item.kind,
-      "Last finish (UTC)": formatUtcValue(item.lastFinishUtc),
+      "Last finish": typeof item.lastFinishUtc === "string" ? formatTime(item.lastFinishUtc) : "Unavailable",
       "Size bytes": item.sizeBytes,
       "Copy only": item.copyOnly,
       "Checksum": item.hasChecksum,
@@ -153,7 +157,7 @@ function namedRows(kind: OperationalKind, items: readonly Record<string, unknown
       "Retry attempt": item.retryAttempt,
       "Duration seconds": item.durationSeconds,
       "Execution started (server local)": item.sourceLocalStart ?? item.SourceLocalStart ?? "Not reported",
-      "First observed (UTC)": formatUtcValue(item.firstObservedAtUtc),
+      "First observed": typeof item.firstObservedAtUtc === "string" ? formatTime(item.firstObservedAtUtc) : "Unavailable",
       "Failure fingerprint": item.failureFingerprint,
     };
     if (kind === "tempdb-files") return { "File identifier": item.fileId, "Size bytes": item.sizeBytes, "Used bytes": item.usedBytes, "Free bytes": item.freeBytes, State: item.state };
@@ -164,15 +168,6 @@ function namedRows(kind: OperationalKind, items: readonly Record<string, unknown
 
 function ReplicationTab({ instanceId, refresh }: { readonly instanceId: string; readonly refresh: number }) {
   return <div className="replication-tab"><div className="evidence-callout">Replication retains the existing analytics client and rendering behavior. Status and historical evidence have independent snapshot and visibility states.</div><div className="replication-grid"><AnalyticsSurfacePanel targetId={instanceId} surface="replication/status" refresh={refresh} /><AnalyticsSurfacePanel targetId={instanceId} surface="replication/evidence" refresh={refresh} /></div></div>;
-}
-
-function formatUtcValue(value: unknown): string {
-  return typeof value === "string" ? formatUtc(value) : formatValue(value);
-}
-
-function formatUtc(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? "Unavailable" : parsed.toISOString().replace("T", " ").replace(".000Z", " UTC");
 }
 
 function formatValue(value: unknown): string {

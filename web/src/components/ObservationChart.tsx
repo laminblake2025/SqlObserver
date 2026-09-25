@@ -1,4 +1,6 @@
 import { useState, type PointerEvent } from "react";
+import { useTimeDisplay } from "../TimeDisplayContext";
+import { formatDisplayTime } from "../timeDisplay";
 import { chartSelection, chartUtcAtX, chartX } from "../features/overview/chartTimeModel";
 import {
   nearestObservation, observationSegments, prepareObservationChart,
@@ -23,6 +25,8 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
   readonly onCrosshairChange?: (utc: string | null) => void;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }) {
+  const { mode } = useTimeDisplay();
+  const timeLabel = (value: string | number, compact = false) => formatDisplayTime(value, mode, compact);
   const [hoverUtc, setHoverUtc] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [dragEnd, setDragEnd] = useState<number | null>(null);
@@ -45,9 +49,9 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
   const announceCrosshair = (utc: string | null) => { setHoverUtc(utc); onCrosshairChange?.(utc); };
 
   return <figure className="observation-figure">
-    <figcaption>{label} · {chart.pointCount} plotted values from loaded evidence · UTC</figcaption>
+    <figcaption>{label} · {chart.pointCount} plotted values from loaded evidence · {mode === "local" ? "local time" : "UTC"}</figcaption>
     <svg className={`chart observation-chart${onSelectWindow ? " chart-interactive" : ""}`} viewBox="0 0 650 225"
-      role="img" aria-label={`${label}. ${chart.series.length} series in the selected UTC window. Missing samples remain gaps.${onSelectWindow ? " Drag to select a shared time window." : ""}`}
+      role="img" aria-label={`${label}. ${chart.series.length} series in the selected ${mode === "local" ? "local-time display" : "UTC"} window. Missing samples remain gaps.${onSelectWindow ? " Drag to select a shared time window." : ""}`}
       onPointerMove={event => {
         const position = pointerX(event);
         if (position === null) return;
@@ -95,7 +99,7 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
               stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />)}
           {entry.items.filter((item): item is PlottedObservation => item !== null).map((point, pointIndex) =>
             <circle className="chart-marker" key={`${point.time}:${pointIndex}`} cx={x(point.timestamp)} cy={y(point.value)}
-              r="2" fill={color} stroke={color}><title>{entry.label} · {point.time} · {number.format(point.value)}</title></circle>)}
+              r="2" fill={color} stroke={color}><title>{entry.label} · {timeLabel(point.timestamp)} · {number.format(point.value)}</title></circle>)}
         </g>;
       })}
       {dragStart !== null && dragEnd !== null && <rect className="chart-selection" x={Math.min(dragStart, dragEnd)}
@@ -103,25 +107,25 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
       {crosshairX !== null && <g className="chart-crosshair" pointerEvents="none">
         <line x1={crosshairX} x2={crosshairX} y1={top} y2={bottom} />
         <text x={crosshairX > 500 ? crosshairX - 5 : crosshairX + 5} y="20"
-          textAnchor={crosshairX > 500 ? "end" : "start"}>{utcLabel(crosshairTime)}</text>
+          textAnchor={crosshairX > 500 ? "end" : "start"}>{timeLabel(crosshairTime, true)}</text>
       </g>}
-      <text x={left} y="215">{utcLabel(chart.from)}</text>
-      <text x={right} y="215" textAnchor="end">{utcLabel(chart.to)}</text>
+      <text x={left} y="215">{timeLabel(chart.from, true)}</text>
+      <text x={right} y="215" textAnchor="end">{timeLabel(chart.to, true)}</text>
     </svg>
     <div className="observation-legend">
       {chart.series.map((entry, index) => <span key={entry.id}><i style={{ background: colors[index % colors.length] }} />{entry.label}</span>)}
       {referenceBand && <span><i className="baseline-swatch" />{referenceBand.label}</span>}
       {referenceThreshold && <span><i className="threshold-swatch" />{referenceThreshold.label}</span>}
     </div>
-    {crosshairX !== null && <p className="chart-nearest">Nearest observations at {utcLabel(crosshairTime)}: {chart.series.map((entry) => {
+    {crosshairX !== null && <p className="chart-nearest">Nearest observations at {timeLabel(crosshairTime)}: {chart.series.map((entry) => {
       const nearest = nearestObservation(entry.items, crosshairTime);
-      return `${entry.label} ${nearest ? `${number.format(nearest.value)} at ${utcLabel(nearest.timestamp)}` : "unavailable"}`;
+      return `${entry.label} ${nearest ? `${number.format(nearest.value)} at ${timeLabel(nearest.timestamp)}` : "unavailable"}`;
     }).join(" · ")}</p>}
     <small>Observed values only; lines do not imply samples between points.{onSelectWindow ? " Drag to narrow the workspace time range." : ""}</small>
     <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table>
-      <thead><tr><th>Series</th><th>UTC</th><th>Value</th></tr></thead><tbody>
+      <thead><tr><th>Series</th><th>{mode === "local" ? "Local time" : "UTC"}</th><th>Value</th></tr></thead><tbody>
         {chart.series.flatMap((entry) => entry.items.filter((item): item is PlottedObservation => item !== null)
-          .map((point, index) => <tr key={`${entry.id}:${point.time}:${index}`}><td>{entry.label}</td><td>{point.time}</td><td>{number.format(point.value)}</td></tr>))}
+          .map((point, index) => <tr key={`${entry.id}:${point.time}:${index}`}><td>{entry.label}</td><td title={point.time}>{timeLabel(point.timestamp)}</td><td>{number.format(point.value)}</td></tr>))}
       </tbody></table></div></details>
   </figure>;
 }
@@ -129,8 +133,4 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
 function segmentPath(segment: readonly PlottedObservation[], x: (timestamp: number) => number,
   y: (value: number) => number): string {
   return segment.map((point, index) => `${index === 0 ? "M" : "L"}${x(point.timestamp).toFixed(2)} ${y(point.value).toFixed(2)}`).join(" ");
-}
-
-function utcLabel(timestamp: number): string {
-  return `${new Date(timestamp).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }

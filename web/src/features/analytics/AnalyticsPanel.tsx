@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useTimeFormatter } from "../../TimeDisplayContext";
 import { ObservationChart } from "../../components/ObservationChart";
 import { getMetricSeries } from "./analyticsApi";
 import { panelStateForSurface } from "./analyticsState";
 import type { AnalyticsPanelState, MetricSeries } from "./analyticsTypes";
 
 export function AnalyticsPanel({ targetId, metricKey }: { targetId: string; metricKey: string }) {
+  const formatTime = useTimeFormatter();
   const [state, setState] = useState<AnalyticsPanelState>("loading");
   const [data, setData] = useState<MetricSeries | null>(null);
 
@@ -44,6 +46,6 @@ export function AnalyticsPanel({ targetId, metricKey }: { targetId: string; metr
     <ObservationChart label={data.metricKey} fromUtc={data.fromUtc} toUtc={data.toUtc}
       series={[{ id: data.metricKey, label: data.metricKey,
         items: data.items.map(item => ({ time: item.observedAtUtc, value: item.value })) }]} />
-    <p>{data.fromUtc} to {data.toUtc} · UTC</p>
+    <p>{formatTime(data.fromUtc)} to {formatTime(data.toUtc)}</p>
   </section>;
 }
