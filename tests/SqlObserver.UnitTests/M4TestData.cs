@@ -88,6 +88,13 @@ internal static class M4TestData
                 maxMetricSamples: 0,
                 maxDatabaseObservations: 0,
                 maxDatabaseFileObservations: 1_000),
+            CollectorOutputKind.SqlVolumes => new CollectorOutputContract(
+                new CollectorOutputSchemaVersion(1),
+                metrics: [],
+                maxMetricSamples: 0,
+                maxDatabaseObservations: 0,
+                maxDatabaseFileObservations: 0,
+                maxSqlVolumeObservations: 1_000),
             _ => throw new ArgumentOutOfRangeException(nameof(outputKind)),
         };
     }

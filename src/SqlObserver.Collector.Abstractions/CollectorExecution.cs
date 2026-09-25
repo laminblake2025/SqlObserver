@@ -102,7 +102,8 @@ public sealed class CollectorPayload
         IReadOnlyList<QueryPerformanceDatabaseStatus>? queryPerformanceStatuses = null,
         QueryPerformanceTargetStatus? queryPerformanceTargetStatus = null,
         OperationalHealthPayload? operationalHealth = null,
-        HostMetricsPayloadContext? hostMetricsContext = null)
+        HostMetricsPayloadContext? hostMetricsContext = null,
+        SqlVolumeObservationBatch? sqlVolumes = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -123,6 +124,7 @@ public sealed class CollectorPayload
         _metrics = Array.AsReadOnly(metricCopy);
         Databases = databases ?? new DatabaseObservationBatch([]);
         DatabaseFiles = databaseFiles ?? new DatabaseFileObservationBatch([]);
+        SqlVolumes = sqlVolumes ?? new SqlVolumeObservationBatch([]);
         ActivitySessions = activitySessions ?? new ActivitySessionObservationBatch([]);
         ActivityRequests = activityRequests ?? new ActivityRequestObservationBatch([]);
         ServerWaits = serverWaits ?? new ServerWaitObservationBatch([]);
@@ -143,6 +145,7 @@ public sealed class CollectorPayload
     public IReadOnlyList<MetricSample> Metrics => _metrics;
     public DatabaseObservationBatch Databases { get; }
     public DatabaseFileObservationBatch DatabaseFiles { get; }
+    public SqlVolumeObservationBatch SqlVolumes { get; }
     public ActivitySessionObservationBatch ActivitySessions { get; }
     public ActivityRequestObservationBatch ActivityRequests { get; }
     public ServerWaitObservationBatch ServerWaits { get; }
@@ -157,6 +160,7 @@ public sealed class CollectorPayload
         Metrics.Count +
         Databases.Items.Count +
         DatabaseFiles.Items.Count +
+        SqlVolumes.Items.Count +
         ActivitySessions.Items.Count +
         ActivityRequests.Items.Count +
         ServerWaits.Items.Count +
@@ -168,6 +172,7 @@ public sealed class CollectorPayload
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
         Databases.Items.Sum(static item => item.EstimatedSizeBytes) +
         DatabaseFiles.Items.Sum(static item => item.EstimatedSizeBytes) +
+        SqlVolumes.Items.Sum(static item => item.EstimatedSizeBytes) +
         ActivitySessions.Items.Sum(static item => item.EstimatedSizeBytes) +
         ActivityRequests.Items.Sum(static item => item.EstimatedSizeBytes) +
         ServerWaits.Items.Sum(static item => item.EstimatedSizeBytes) +
@@ -323,7 +328,8 @@ public sealed class CollectorOutputContract
         int maxBlockingEdgeObservations = 0,
         int maxDeadlockObservations = 0,
         int maxQueryPerformanceObservations = 0,
-        int maxOperationalHealthObservations = 0)
+        int maxOperationalHealthObservations = 0,
+        int maxSqlVolumeObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -340,6 +346,11 @@ public sealed class CollectorOutputContract
         if (maxDatabaseFileObservations is < 0 or > DatabaseFileObservationBatch.MaximumItems)
         {
             throw new ArgumentOutOfRangeException(nameof(maxDatabaseFileObservations));
+        }
+
+        if (maxSqlVolumeObservations is < 0 or > SqlVolumeObservationBatch.MaximumItems)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxSqlVolumeObservations));
         }
 
         if (maxActivitySessionObservations is < 0 or > ActivitySessionObservationBatch.MaximumItems)
@@ -399,6 +410,7 @@ public sealed class CollectorOutputContract
         MaxMetricSamples = maxMetricSamples;
         MaxDatabaseObservations = maxDatabaseObservations;
         MaxDatabaseFileObservations = maxDatabaseFileObservations;
+        MaxSqlVolumeObservations = maxSqlVolumeObservations;
         MaxActivitySessionObservations = maxActivitySessionObservations;
         MaxActivityRequestObservations = maxActivityRequestObservations;
         MaxServerWaitObservations = maxServerWaitObservations;
@@ -413,6 +425,7 @@ public sealed class CollectorOutputContract
     public int MaxMetricSamples { get; }
     public int MaxDatabaseObservations { get; }
     public int MaxDatabaseFileObservations { get; }
+    public int MaxSqlVolumeObservations { get; }
     public int MaxActivitySessionObservations { get; }
     public int MaxActivityRequestObservations { get; }
     public int MaxServerWaitObservations { get; }

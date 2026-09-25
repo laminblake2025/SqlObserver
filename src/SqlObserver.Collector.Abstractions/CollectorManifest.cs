@@ -261,6 +261,7 @@ public enum CollectorOutputKind
     TempDbHealth = 13,
     AvailabilityGroupsHealth = 14,
     ReplicationHealth = 15,
+    SqlVolumes = 16,
 }
 
 public sealed class CollectorResiliencePolicy

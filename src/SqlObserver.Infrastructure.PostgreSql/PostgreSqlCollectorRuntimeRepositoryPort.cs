@@ -1450,6 +1450,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
+        // The volume envelope is defined, but has no fenced persistence function
+        // until its forward migration lands. Reject it instead of silently losing rows.
+        if (request.Payload.SqlVolumes.Items.Count != 0)
+            throw new InvalidDataException("SQL volume observations require the versioned fenced repository commit.");
         ValidateLeaseKey(request.Work, request.Lease);
         if (request.NextCircuit.RepositoryTimeUtc != request.Work.RepositoryTimeUtc)
         {

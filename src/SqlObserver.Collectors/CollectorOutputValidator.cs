@@ -59,6 +59,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         if (payload.Metrics.Count > Contract.MaxMetricSamples ||
             payload.Databases.Items.Count > Contract.MaxDatabaseObservations ||
             payload.DatabaseFiles.Items.Count > Contract.MaxDatabaseFileObservations ||
+            payload.SqlVolumes.Items.Count > Contract.MaxSqlVolumeObservations ||
             payload.ActivitySessions.Items.Count > Contract.MaxActivitySessionObservations ||
             payload.ActivityRequests.Items.Count > Contract.MaxActivityRequestObservations ||
             payload.ServerWaits.Items.Count > Contract.MaxServerWaitObservations ||
@@ -95,6 +96,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         if (payload.Databases.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
             payload.DatabaseFiles.Items.Any(item =>
+                item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
+            payload.SqlVolumes.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
             payload.ActivitySessions.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
