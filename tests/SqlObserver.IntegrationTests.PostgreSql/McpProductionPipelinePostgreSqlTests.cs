@@ -100,6 +100,24 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 """, admin);
             otherDiagnosticEvents.Parameters.AddWithValue("target", targetIds[1]);
             await otherDiagnosticEvents.ExecuteNonQueryAsync();
+            await using var incidents = new NpgsqlCommand("""
+                INSERT INTO analytics.incident_thread
+                    (thread_id, instance_id, target_revision, opened_at, state, current_generation, summary)
+                SELECT gen_random_uuid(), @target, 1, statement_timestamp() - interval '2 minutes',
+                       'open', 1, '{}'::jsonb
+                FROM generate_series(1, 3);
+                """, admin);
+            incidents.Parameters.AddWithValue("target", targetIds[0]);
+            await incidents.ExecuteNonQueryAsync();
+            await using var otherIncidents = new NpgsqlCommand("""
+                INSERT INTO analytics.incident_thread
+                    (thread_id, instance_id, target_revision, opened_at, state, current_generation, summary)
+                SELECT gen_random_uuid(), @target, 1, statement_timestamp() - interval '2 minutes',
+                       'open', 1, '{}'::jsonb
+                FROM generate_series(1, 3);
+                """, admin);
+            otherIncidents.Parameters.AddWithValue("target", targetIds[1]);
+            await otherIncidents.ExecuteNonQueryAsync();
         }
 
         string serverConnectionString = new NpgsqlConnectionStringBuilder(database.ConnectionString)
@@ -170,7 +188,9 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
         foreach (McpClientTool other in tools.Where(tool => tool.Name != "list_instances"))
         {
             bool forecast = other.Name == "get_storage_forecast";
-            bool paged = forecast || other.Name == "search_diagnostic_events";
+            bool diagnostic = other.Name == "search_diagnostic_events";
+            bool incident = other.Name == "list_incidents";
+            bool paged = forecast || diagnostic || incident;
             int expectedPages = paged && withCursorSigner ? 3 : 1;
             var seenIds = new HashSet<Guid>();
             string? itemCursor = null;
@@ -198,8 +218,8 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                     JsonElement data = structured.GetProperty("data");
                     JsonElement item = Assert.Single(data.GetProperty("items").EnumerateArray());
                     if (forecast) Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
-                    else Assert.Equal("mcp.pipeline", item.GetProperty("eventKind").GetString());
-                    Assert.True(seenIds.Add(item.GetProperty(forecast ? "forecastId" : "eventId").GetGuid()));
+                    if (diagnostic) Assert.Equal("mcp.pipeline", item.GetProperty("eventKind").GetString());
+                    Assert.True(seenIds.Add(item.GetProperty(forecast ? "forecastId" : incident ? "threadId" : "eventId").GetGuid()));
                     Assert.Equal(itemPage < 2, data.GetProperty("hasMore").GetBoolean());
                     itemCursor = data.TryGetProperty("nextCursor", out JsonElement next) && next.ValueKind == JsonValueKind.String
                         ? next.GetString() : null;
