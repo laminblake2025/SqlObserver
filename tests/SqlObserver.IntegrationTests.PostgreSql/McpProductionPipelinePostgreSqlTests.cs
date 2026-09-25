@@ -80,7 +80,20 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             await diagnosticEvents.ExecuteNonQueryAsync();
         }
 
-        await using var factory = new McpProductionPipelineFactory(database.ConnectionString, withCursorSigner);
+        string serverConnectionString = new NpgsqlConnectionStringBuilder(database.ConnectionString)
+        {
+            Options = "-c role=sqlobserver_server",
+        }.ConnectionString;
+        await using (var serverConnection = new NpgsqlConnection(serverConnectionString))
+        {
+            await serverConnection.OpenAsync();
+            await using var role = new NpgsqlCommand("SELECT current_user, current_setting('is_superuser');", serverConnection);
+            await using NpgsqlDataReader roleReader = await role.ExecuteReaderAsync();
+            Assert.True(await roleReader.ReadAsync());
+            Assert.Equal("sqlobserver_server", roleReader.GetString(0));
+            Assert.Equal("off", roleReader.GetString(1));
+        }
+        await using var factory = new McpProductionPipelineFactory(serverConnectionString, withCursorSigner);
         using HttpClient http = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("http://localhost"), AllowAutoRedirect = false,
