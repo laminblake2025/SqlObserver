@@ -23,6 +23,9 @@ public sealed class M7QueryPerformanceIntegrationTests
             string text = catalog.TextQueriesByMajor[major];
             Assert.Contains("MIN(q.query_text_id)=MAX(q.query_text_id)", metadata, StringComparison.Ordinal);
             Assert.DoesNotContain("query_sql_text", metadata, StringComparison.Ordinal);
+            Assert.Contains("rsi.start_time < @window_end AND rsi.end_time > DATEADD(minute,-5,@window_start)", metadata, StringComparison.Ordinal);
+            Assert.Contains("CASE WHEN MAX(rsi.end_time)>TODATETIMEOFFSET(@now,'+00:00') THEN TODATETIMEOFFSET(@now,'+00:00') ELSE MAX(rsi.end_time) END", metadata, StringComparison.Ordinal);
+            Assert.Contains("CONVERT(varchar(64),HASHBYTES('SHA2_256',CONVERT(varbinary(8),p.plan_id)),2)", metadata, StringComparison.Ordinal);
             Assert.Contains("TOP (32)", text, StringComparison.Ordinal);
             Assert.Contains("has_restricted_text = 0", text, StringComparison.Ordinal);
             Assert.Contains("is_part_of_encrypted_module = 0", text, StringComparison.Ordinal);

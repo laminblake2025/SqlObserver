@@ -1,5 +1,16 @@
 # Disposable SQL Server workload
 
+For a local SQL Server 2022 instance, `verify-query-store-text-local.ps1`
+creates a uniquely named database, runs a small Query Store workload through
+the pinned SQL Server 16 metadata and text assets, checks that the workload row
+and bounded text are returned with an interval ending no later than collection,
+and drops the database in `finally`. Run it only with an instance where the
+current Windows login can create databases:
+
+```powershell
+pwsh ./tools/lab/verify-query-store-text-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
 ## Controlled stress and Observer validation
 
 `run-stress-test.ps1` is the bounded, operator-run stress harness. It adds staged
