@@ -5,7 +5,9 @@ creates a uniquely named database, runs a small Query Store workload through
 the pinned SQL Server 16 metadata, text, and plan assets, checks that the workload
 row and bounded content are returned with an interval ending no later than collection,
 then holds a five-second lock on its own table to confirm Query Store attributes a
-positive lock-wait category to the blocked plan. It drops the database in `finally`.
+positive lock-wait category to the blocked plan. It verifies the same quiet-plan
+total is returned on a second read and reconciles that total to Query Store's
+interval/execution-type groups. It drops the database in `finally`.
 Run it only with an instance where the
 current Windows login can create databases:
 

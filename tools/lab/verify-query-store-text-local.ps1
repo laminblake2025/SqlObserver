@@ -99,7 +99,22 @@ try {
         $allWaits = Invoke-ProbeSql $database 'SELECT COUNT(*) FROM sys.query_store_wait_stats'
         throw "Query Store did not record a positive wait category for blocked plan $blockedPlanId. Elapsed: $($blockedElapsed.Elapsed.TotalSeconds)s; wait rows: $($blockedWaits -join '; '); all waits: $($allWaits -join '; '); options: $($options -join '; ')"
     }
-    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; blocked plan wait rows: $($blockingCategoryRows -join '; ')."
+    # The current asset is a cumulative interval snapshot. Re-reading a quiet
+    # plan must not be counted as another interval's worth of waits.
+    Start-Sleep -Seconds 1
+    $repeatWaits = Invoke-ProbeSql $database "${waitParameters} DECLARE @window_start datetime2(7)=DATEADD(minute,-5,SYSUTCDATETIME()), @window_end datetime2(7)=SYSUTCDATETIME(); $waitSql"
+    $repeatCategoryRows = @($repeatWaits | Where-Object { $_ -match "^\s*$blockedPlanId\|\d+\|[1-9]\d*\s*$" })
+    if (($blockingCategoryRows -join ';') -ne ($repeatCategoryRows -join ';')) {
+        throw "Query Store quiet-plan wait totals changed between adjacent reads: $($blockingCategoryRows -join '; ') / $($repeatCategoryRows -join '; ')"
+    }
+    $intervalRows = Invoke-ProbeSql $database "SELECT ws.runtime_stats_interval_id, ws.execution_type, CONVERT(int,ws.wait_category), CONVERT(bigint,SUM(CONVERT(decimal(38,0),ws.total_query_wait_time_ms))) FROM sys.query_store_wait_stats AS ws WHERE ws.plan_id=$blockedPlanId AND ws.wait_category=3 GROUP BY ws.runtime_stats_interval_id,ws.execution_type,ws.wait_category ORDER BY ws.runtime_stats_interval_id,ws.execution_type"
+    $intervalGroups = @($intervalRows | Where-Object { $_ -match '^\s*\d+\|[034]\|3\|[1-9]\d*\s*$' })
+    $intervalTotal = ($intervalGroups | ForEach-Object { [long]($_.Split('|')[3].Trim()) } | Measure-Object -Sum).Sum
+    $reportedLockTotal = ($blockingCategoryRows | Where-Object { $_ -match "^\s*$blockedPlanId\|3\|[1-9]\d*\s*$" } | Select-Object -First 1).Split('|')[2].Trim()
+    if ($intervalGroups.Count -lt 1 -or $intervalTotal -ne [long]$reportedLockTotal) {
+        throw "Query Store interval groups did not reconcile with the pinned lock total: $($intervalGroups -join '; ') / $reportedLockTotal"
+    }
+    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; blocked plan wait rows: $($blockingCategoryRows -join '; '); interval groups: $($intervalGroups -join '; '); quiet repeat unchanged."
 }
 finally {
     if ($created) {
