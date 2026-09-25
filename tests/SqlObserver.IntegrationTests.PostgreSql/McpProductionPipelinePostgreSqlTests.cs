@@ -1,6 +1,7 @@
 extern alias ServerAssembly;
 
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Json.Schema;
@@ -143,6 +144,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                     """, admin);
                 alerts.Parameters.AddWithValue("target", targetId);
                 await alerts.ExecuteNonQueryAsync();
+                Guid queryRunId = Guid.NewGuid();
                 await using var queries = new NpgsqlCommand("""
                     INSERT INTO telemetry.collection_run
                         (run_id, instance_id, collector_id, collector_version, output_schema_version,
@@ -176,11 +178,29 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                            1, 1, 1, 0, 1
                     FROM events.query_performance_query q WHERE q.collection_run_id = @run;
                     """, admin);
-                queries.Parameters.AddWithValue("run", Guid.NewGuid());
+                queries.Parameters.AddWithValue("run", queryRunId);
                 queries.Parameters.AddWithValue("target", targetId);
                 queries.Parameters.AddWithValue("work_key", $"mcp-query-{targetId:N}");
                 queries.Parameters.AddWithValue("other_target", targetId != targetIds[0]);
                 await queries.ExecuteNonQueryAsync();
+                await using var history = new NpgsqlCommand("""
+                    INSERT INTO events.query_performance_observation
+                        (collection_run_id, instance_id, database_id, query_fingerprint,
+                         observation_key, source, source_state, interval_start, interval_end,
+                         observed_at, semantics, cpu_ms, duration_ms, execution_count,
+                         logical_reads, writes, rows_processed)
+                    SELECT @run, @target, 5, sha256(convert_to('1', 'UTF8')),
+                           decode(repeat(CASE g WHEN 1 THEN 'ab' ELSE 'cd' END, 16), 'hex'),
+                           'query_store', 'read_write',
+                           statement_timestamp() - make_interval(mins => 4 + g),
+                           statement_timestamp() - make_interval(mins => 3 + g),
+                           statement_timestamp() - interval '2 minutes', 'query_store_interval',
+                           10 + g, 1, 1, 1, 0, 1
+                    FROM generate_series(1, 2) AS values(g);
+                    """, admin);
+                history.Parameters.AddWithValue("run", queryRunId);
+                history.Parameters.AddWithValue("target", targetId);
+                await history.ExecuteNonQueryAsync();
             }
         }
 
@@ -256,7 +276,8 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             bool incident = other.Name == "list_incidents";
             bool alert = other.Name == "get_active_alerts";
             bool query = other.Name == "get_top_queries";
-            bool paged = forecast || diagnostic || incident || alert || query;
+            bool queryHistory = other.Name == "get_query_history";
+            bool paged = forecast || diagnostic || incident || alert || query || queryHistory;
             int expectedPages = paged && withCursorSigner ? 3 : 1;
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             string? itemCursor = null;
@@ -286,8 +307,9 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                     if (forecast) Assert.Equal("mcp-pipeline", item.GetProperty("model").GetString());
                     if (diagnostic) Assert.Equal("mcp.pipeline", item.GetProperty("eventKind").GetString());
                     if (alert) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
-                    if (query) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
-                    string key = query
+                    if (query || queryHistory) Assert.Equal(targetIds[0], item.GetProperty("targetId").GetGuid());
+                    string key = queryHistory ? item.GetProperty("observationKey").GetString()!
+                        : query
                         ? item.GetProperty("query").GetProperty("queryFingerprint").GetString()!
                         : item.GetProperty(forecast ? "forecastId" : incident ? "threadId" : alert ? "alertId" : "eventId").GetString()!;
                     Assert.True(seenIds.Add(key));
@@ -347,8 +369,10 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
         if (tool == "get_top_queries") Put("metric", "cpuMilliseconds");
         if (tool is "get_query_history" or "get_query_plan_metadata")
         {
-            Put("databaseId", 1);
-            Put("queryFingerprint", new string('a', 64));
+            Put("databaseId", tool == "get_query_history" ? 5 : 1);
+            Put("queryFingerprint", tool == "get_query_history"
+                ? Convert.ToHexString(SHA256.HashData("1"u8)).ToLowerInvariant()
+                : new string('a', 64));
         }
         if (tool == "get_query_plan_metadata") Put("planFingerprint", new string('b', 64));
         return arguments;
