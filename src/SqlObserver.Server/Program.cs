@@ -102,6 +102,9 @@ builder.Services.AddSingleton<IOverviewQueryService, OverviewQueryService>();
 builder.Services.AddSingleton<IActivityProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);
 builder.Services.AddSingleton<IActivityProjectionQueryService, ActivityProjectionQueryService>();
+builder.Services.AddSingleton<IServerWaitTrendRepositoryPort>(static services =>
+    (PostgreSqlActivityProjectionPort)services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);
+builder.Services.AddSingleton<IServerWaitTrendQueryService, ServerWaitTrendQueryService>();
 builder.Services.AddSingleton<ILiveActivityRepository>(s => s.GetRequiredService<PostgreSqlTargetControlPlane>().LiveActivity);
 builder.Services.AddSingleton<ILiveActivityProtector>(_ => new LiveActivityProtector(builder.Configuration["SqlObserver:LiveActivity:ProtectedKeyPath"]));
 builder.Services.AddSingleton<ILiveActivityQueryService>(s => new LiveActivityQueryService(s.GetRequiredService<ILiveActivityRepository>(), s.GetRequiredService<ILiveActivityProtector>(), TimeProvider.System));

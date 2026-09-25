@@ -300,7 +300,8 @@ export function App() {
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
-              {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} />}
+              {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh}
+                onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}

@@ -10,7 +10,7 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>Target-scoped, bounded PostgreSQL read adapter for M5 activity evidence.</summary>
-public sealed class PostgreSqlActivityProjectionPort : IActivityProjectionRepositoryPort
+public sealed class PostgreSqlActivityProjectionPort : IActivityProjectionRepositoryPort, IServerWaitTrendRepositoryPort
 {
     private const string SessionsSql = """
         SELECT * FROM reporting.list_activity_sessions(
@@ -43,6 +43,10 @@ public sealed class PostgreSqlActivityProjectionPort : IActivityProjectionReposi
         SELECT * FROM reporting.list_server_wait_history(
             @instance_id, @from_utc, @to_utc, @after_observed_at,
             @after_run_id, @after_wait_type, @max_results);
+        """;
+    private const string WaitTrendSql = """
+        SELECT * FROM reporting.list_server_wait_category_trend(
+            @instance_id, @from_utc, @to_utc);
         """;
 
     private readonly NpgsqlDataSource _dataSource;
@@ -496,6 +500,44 @@ public sealed class PostgreSqlActivityProjectionPort : IActivityProjectionReposi
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
             throw PostgreSqlRuntimeSupport.CreateTimeoutException("wait-history projection", exception);
+        }
+    }
+
+    public async ValueTask<ServerWaitTrendPage?> ReadAsync(
+        ServerWaitTrendRepositoryRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using CancellationTokenSource timeout = PostgreSqlRuntimeSupport.CreateTimeoutScope(
+            request.Timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(timeout.Token)
+                .ConfigureAwait(false);
+            await using var command = CreateCommand(connection, WaitTrendSql, request.Timeout);
+            AddTarget(command, request.TargetId);
+            command.Parameters.AddWithValue("from_utc", request.FromUtc);
+            command.Parameters.AddWithValue("to_utc", request.ToUtc);
+            var points = new List<ServerWaitTrendPoint>();
+            DateTimeOffset? repositoryTime = null;
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(timeout.Token)
+                .ConfigureAwait(false);
+            while (await reader.ReadAsync(timeout.Token).ConfigureAwait(false))
+            {
+                if (points.Count >= 7 * 289)
+                    throw new InvalidDataException("The server-wait trend exceeded its bounded row contract.");
+                points.Add(new ServerWaitTrendPoint(
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 0), reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetDecimal(2),
+                    reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5),
+                    reader.GetInt64(6), reader.GetInt64(7)));
+                repositoryTime ??= PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 8);
+            }
+            return repositoryTime is null ? null : new ServerWaitTrendPage(request.TargetId,
+                request.FromUtc, request.ToUtc, repositoryTime.Value, points);
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw PostgreSqlRuntimeSupport.CreateTimeoutException("server-wait trend", exception);
         }
     }
 

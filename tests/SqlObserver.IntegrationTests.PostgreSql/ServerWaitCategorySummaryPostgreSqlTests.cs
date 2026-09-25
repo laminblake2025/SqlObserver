@@ -3,6 +3,7 @@ using Npgsql;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
@@ -133,6 +134,13 @@ public sealed class ServerWaitCategorySummaryPostgreSqlTests(PostgreSql18Fixture
         }
         await using (var resetRole = new NpgsqlCommand("RESET ROLE;", connection))
             await resetRole.ExecuteNonQueryAsync();
+        ServerWaitTrendPage? projection = await new PostgreSqlActivityProjectionPort(database.DataSource)
+            .ReadAsync(new ServerWaitTrendRepositoryRequest(new MonitoredInstanceId(target),
+                start.AddMinutes(-5), start.AddMinutes(10), Timeout), CancellationToken.None);
+        Assert.NotNull(projection);
+        Assert.Equal(21, projection.Points.Count);
+        Assert.Equal("10", Assert.Single(projection.Points, point =>
+            point.Category == "Lock" && point.BucketStartUtc == start.AddMinutes(5)).WaitMilliseconds);
 
         await using var classes = new NpgsqlCommand("""
             SELECT telemetry.server_wait_category_v1(wait_type)

@@ -15,6 +15,10 @@ declare module "*.mjs" {
   export function readBoundedBody(response: Response, signal: AbortSignal, maximumBytes?: number): Promise<string>;
   export function safeCursor(value: unknown): string;
   export function safeStatusMessage(status: number): string;
+  export function parseWaitTrend(value: unknown, expectedInstanceId: string,
+    window: { readonly fromUtc: string; readonly toUtc: string }): import("./features/activity/waitTrendApi").WaitTrendResponse;
+  export function getServerWaitTrend(instanceId: string,
+    window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal): Promise<import("./features/activity/waitTrendApi").WaitTrendResponse>;
   export function parseDeadlockPage(value: unknown, expectedTargetId?: string): import("./features/deadlocks/deadlockTypes").DeadlockPage;
   export function parseDeadlockDetail(value: unknown, expectedTargetId: string, expectedEventId: string): import("./features/deadlocks/deadlockTypes").DeadlockDetail;
 }

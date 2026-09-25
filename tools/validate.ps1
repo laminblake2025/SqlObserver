@@ -1889,7 +1889,7 @@ function Assert-RepositoryShape {
     $m12ObservabilityTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ObservabilityCertificationTests.cs'
     foreach ($m12ObservabilityPath in @($m12ObservabilityContractPath, $m12ObservabilitySchemaPath, $m12ObservabilityPinPath, $m12ObservabilityProducerPath, $m12ObservabilityTestPath)) { if (-not (Test-Path -LiteralPath $m12ObservabilityPath -PathType Leaf)) { throw 'M12 observability certification asset is missing.' } }
     $m12ObservabilityContractHash = (Get-FileHash -LiteralPath $m12ObservabilityContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ObservabilitySchemaHash = (Get-FileHash -LiteralPath $m12ObservabilitySchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12ObservabilityContractHash -cne '196b292fe05d13f041d295a975bd0876e45c26276e2deb053c002d333849dbc2' -or $m12ObservabilitySchemaHash -cne '67bb52221c61df57b463842623f9ccd9f9770d8d7bde78017adc3067ce1b9a58') { throw 'M12 observability contract/schema checksum does not match the approved pin.' }
+    if ($m12ObservabilityContractHash -cne 'b924e74c579a3f00e012c7a99a49bc11c3943cbd07c9ad6c8b50d64bb0c4860a' -or $m12ObservabilitySchemaHash -cne '67bb52221c61df57b463842623f9ccd9f9770d8d7bde78017adc3067ce1b9a58') { throw 'M12 observability contract/schema checksum does not match the approved pin.' }
     if ([IO.File]::ReadAllText($m12ObservabilityPinPath) -cne "$m12ObservabilityContractHash  m12-observability-contract.v1.json`n$m12ObservabilitySchemaHash  m12-observability-contract.v1.schema.json`n") { throw 'M12 observability contract pin is not exact LF-closed.' }
     $m12ObservabilityContract = Get-Content -LiteralPath $m12ObservabilityContractPath -Raw | ConvertFrom-Json; $m12ObservabilitySchema = Get-Content -LiteralPath $m12ObservabilitySchemaPath -Raw | ConvertFrom-Json
     if ($m12ObservabilitySchema.additionalProperties -ne $false -or $m12ObservabilityContract.'$schema' -cne 'm12-observability-contract.v1.schema.json' -or $m12ObservabilityContract.producerId -cne 'm12-observability-harness' -or $m12ObservabilityContract.artifactKind -cne 'observability-evidence') { throw 'M12 observability contract/schema must be closed and self-identifying.' }
@@ -1898,18 +1898,18 @@ function Assert-RepositoryShape {
         'src/SqlObserver.Observability/SqlObserver.Observability.csproj' = '60576c36aab91800264f4e35c58943fded212a53c029a90171a87e897f0828c5'
         'src/SqlObserver.Observability/ObservabilityContracts.cs' = '7113bcc81e331cf73417d4538ac713e03b2cee8e23d2294edf123e945f544a21'
         'src/SqlObserver.Observability/packages.lock.json' = '9921a06f61fbd419a030273ecc8a58e96cffaf02bcf95e1c07088e62098b2468'
-        'src/SqlObserver.Server/Program.cs' = '36bc4c6a1301160e42de90bbf328e9fa9747eb42c20abaacbc67043c011190ab'
+        'src/SqlObserver.Server/Program.cs' = 'a7913037016b63ddc4145210df8c373c79157e2dab20093f2b15af40d313b5d9'
         'src/SqlObserver.Server/ServerServiceRegistration.cs' = '6486f74a42216f3e8686019afe3a74f3cf991a8af8be9c125c955590560e1939'
         'src/SqlObserver.Server/SqlObserver.Server.csproj' = '168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93'
         'src/SqlObserver.Server/packages.lock.json' = 'f398f1863d3a8164d26059be0b6e82b3c48ebe6f856d675d6d20034452e512fd'
         'src/SqlObserver.Collector/Program.cs' = 'a267f4428236dc0755ce31dac75576175c0190fe685865fd2cbe468726a76090'
-        'src/SqlObserver.Collector/CollectorServiceRegistration.cs' = '34008eb721e8c3c39157b1e5aafde1f64ec7bdd6dcdd93671e156980db8d5841'
+        'src/SqlObserver.Collector/CollectorServiceRegistration.cs' = '0e0ac7d370869bc10e65b4ae481ee940fb542a2ad45173d50e2b1fa45b64c52b'
         'src/SqlObserver.Collector/SqlObserver.Collector.csproj' = '87c4794857248be281692e58b75a402e7b342e341812c2f1d28a0e02f11d1f6b'
         'src/SqlObserver.Collector/packages.lock.json' = 'be84e9538e32ca205ecb96713a33d1fccbe8fbab5c47f514e33c847c4e1f22bf'
         'src/SqlObserver.Collectors/CollectorExecutionEngine.cs' = '838789741108903bc74742aa8fa423bc34304d0de3b17949c8e6447d479e9883'
-        'src/SqlObserver.Collectors/CollectorScheduler.cs' = '2a9e3969bfc75b1c224d270be9d99033b8abd283c9d7324318e843fe94793e35'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorDataPlane.cs' = 'adf452e64a8156e003334cbea0e54864196497230bb9be8466a38432dcc89608'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlTargetControlPlane.cs' = '74e51113a857f91ac41acbec88c4eb30c28599bffa5de801c94f48c172e35f73'
+        'src/SqlObserver.Collectors/CollectorScheduler.cs' = '0892fb072a7cdd85f38f2724795890547bcbaa72ea385dd220f87cb16eba1fce'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorDataPlane.cs' = '25267fa2f7af16b8ce2a1a5bae13f9219b5c9ea902fecd5e25267135d262c0b3'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlTargetControlPlane.cs' = '7f388003d1b4da6ba69f7db7de727cc9f162c3b56a9d2febb9f1e0ba71273df3'
         'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCompatibilityPort.cs' = '41ef7ad9222fc32fde5a637fe356e5f17961766762f1fd7bcfdec9e12a0e98be'
         'src/SqlObserver.Infrastructure.PostgreSql/packages.lock.json' = '8e59cdd654f5c8f859219cb3c27a94915981e6dec3dec2f6048af724e22de3ec'
         'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e'

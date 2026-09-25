@@ -26,6 +26,7 @@ public static class TargetActivityEndpoints
         group.MapGet("/requests", ListRequestsAsync);
         group.MapGet("/waits", ListWaitsAsync);
         group.MapGet("/waits/history", ListWaitHistoryAsync);
+        group.MapGet("/waits/trend", ListWaitTrendAsync);
         group.MapGet("/blocking/current", ListCurrentBlockingAsync);
         group.MapGet("/blocking/history", ListBlockingHistoryAsync);
         return endpoints;
@@ -261,6 +262,39 @@ public static class TargetActivityEndpoints
                     Map(item.Evidence, page.RepositoryTimeUtc, historical: true)!,
                     item.BaselineRunId?.Value, Map(item.Wait))).ToArray(),
                 page.NextCursor is null ? null : ActivityCursorCodec.Encode(page.NextCursor)));
+        }
+        catch (UnauthorizedAccessException) { return Forbidden(correlationId); }
+        catch (ArgumentException) { return InvalidRequest(correlationId); }
+    }
+
+    private static async Task<IResult> ListWaitTrendAsync(
+        HttpContext httpContext,
+        Guid instanceId,
+        IServerWaitTrendQueryService trends,
+        WindowsGroupRoleResolver authorizationResolver,
+        DateTimeOffset? fromUtc = null,
+        DateTimeOffset? toUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        AuditCorrelationId correlationId = ApiCorrelation.Begin(httpContext);
+        try
+        {
+            if (fromUtc is null || toUtc is null) return InvalidRequest(correlationId);
+            AuthorizationContext authorization = authorizationResolver.Resolve(httpContext.User);
+            var targetId = new MonitoredInstanceId(instanceId);
+            ServerWaitTrendPage? page = await trends.ReadAsync(
+                new ServerWaitTrendQuery(authorization, targetId, fromUtc.Value,
+                    toUtc.Value, RepositoryTimeout), cancellationToken).ConfigureAwait(false);
+            if (page is null) return NotFound(correlationId);
+            httpContext.Response.Headers.CacheControl = "private, no-store";
+            return Results.Ok(new
+            {
+                instanceId = page.TargetId.Value,
+                fromUtc = page.FromUtc,
+                toUtc = page.ToUtc,
+                repositoryTimeUtc = page.RepositoryTimeUtc,
+                points = page.Points,
+            });
         }
         catch (UnauthorizedAccessException) { return Forbidden(correlationId); }
         catch (ArgumentException) { return InvalidRequest(correlationId); }

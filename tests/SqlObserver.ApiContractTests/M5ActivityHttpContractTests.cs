@@ -113,6 +113,29 @@ public sealed class M5ActivityHttpContractTests : IClassFixture<M5ActivityApiFac
         Assert.Equal(HttpStatusCode.BadRequest, changedTarget.StatusCode);
     }
 
+    [Fact]
+    public async Task WaitTrendRequiresTheExactTargetRoleAndPreservesGaps()
+    {
+        using HttpClient viewer = CreateClient("viewer");
+        const string window = "?fromUtc=2026-08-23T17:00:00Z&toUtc=2026-08-23T18:00:00Z";
+        string path = $"/api/v1/observation-targets/{M5ActivityApiFactory.TargetId:D}/activity/waits/trend{window}";
+        int before = _factory.Trends.Calls;
+        HttpResponseMessage allowed = await viewer.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        Assert.Contains("no-store", allowed.Headers.CacheControl?.ToString(), StringComparison.Ordinal);
+        string body = await allowed.Content.ReadAsStringAsync();
+        Assert.Contains("\"waitMilliseconds\":\"25\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"waitMilliseconds\":null", body, StringComparison.Ordinal);
+        Assert.Equal(before + 1, _factory.Trends.Calls);
+
+        using HttpClient scoped = CreateClient("scoped");
+        Assert.Equal(HttpStatusCode.Forbidden, (await scoped.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await CreateClient().GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await viewer.GetAsync(
+            $"/api/v1/observation-targets/{M5ActivityApiFactory.TargetId:D}/activity/waits/trend?fromUtc=2026-08-23T17:00:00Z&toUtc=2026-08-25T18:00:00Z")).StatusCode);
+        Assert.Equal(before + 1, _factory.Trends.Calls);
+    }
+
     private HttpClient CreateClient(string? identity = null)
     {
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -125,6 +148,7 @@ public sealed class M5ActivityApiFactory : WebApplicationFactory<Program>
 {
     internal static readonly Guid TargetId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     internal FakeActivityQueryService Service { get; } = new();
+    internal WaitTrendRepositoryProbe Trends { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -133,8 +157,12 @@ public sealed class M5ActivityApiFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IActivityProjectionQueryService>();
+            services.RemoveAll<IServerWaitTrendRepositoryPort>();
+            services.RemoveAll<IServerWaitTrendQueryService>();
             services.RemoveAll<WindowsGroupRoleResolver>();
             services.AddSingleton<IActivityProjectionQueryService>(Service);
+            services.AddSingleton<IServerWaitTrendRepositoryPort>(Trends);
+            services.AddSingleton<IServerWaitTrendQueryService, ServerWaitTrendQueryService>();
             services.AddSingleton(new WindowsGroupRoleResolver([
                 new WindowsGroupRoleBinding(
                     new ActorSecurityIdentifier(TestAuthenticationHandler.ViewerGroupSid),
@@ -152,6 +180,24 @@ public sealed class M5ActivityApiFactory : WebApplicationFactory<Program>
                 .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
                     TestAuthenticationHandler.SchemeName, static _ => { });
         });
+    }
+}
+
+internal sealed class WaitTrendRepositoryProbe : IServerWaitTrendRepositoryPort
+{
+    public int Calls { get; private set; }
+
+    public ValueTask<ServerWaitTrendPage?> ReadAsync(ServerWaitTrendRepositoryRequest request,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        string[] categories = ["Lock", "I/O", "CPU/signal", "Memory", "Parallelism", "Log", "Other"];
+        ServerWaitTrendPoint[] points = categories.Select(category => new ServerWaitTrendPoint(
+            request.ToUtc.AddMinutes(-10), category, category == "Lock" ? 25m : 0m,
+            1, 0, 0, 0, 1)).Concat(categories.Select(category => new ServerWaitTrendPoint(
+            request.ToUtc.AddMinutes(-5), category, null, 1, 1, 0, 0, 0))).ToArray();
+        return ValueTask.FromResult<ServerWaitTrendPage?>(new ServerWaitTrendPage(request.TargetId,
+            request.FromUtc, request.ToUtc, request.ToUtc, points));
     }
 }
 

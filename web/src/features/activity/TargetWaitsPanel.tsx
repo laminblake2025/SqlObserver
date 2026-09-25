@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
+import { ObservationChart } from "../../components/ObservationChart";
+import type { ObservationSeries } from "../../components/observationChartModel";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { getCurrentServerWaitPage, getServerWaitHistoryPage } from "./activityApi";
 import type { ActivityPage, ActivityWait, ServerWaitHistoryItem } from "./activityTypes";
 import { resolveActivityWindow } from "./activityWindowModel";
 import { ActivityTable, Evidence, WaitCategoryChart, WaitHistory } from "./TargetActivityPanel";
+import { getServerWaitTrend, type WaitTrendResponse } from "./waitTrendApi";
+
+const trendCategories = ["Lock", "I/O", "CPU/signal", "Memory", "Parallelism", "Log", "Other"] as const;
 
 export interface TargetWaitsPanelProps {
   readonly instanceId: string;
@@ -13,9 +18,10 @@ export interface TargetWaitsPanelProps {
   readonly onClose: () => void;
   readonly scope: OverviewScope;
   readonly refresh: number;
+  readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }
 
-export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refresh }: TargetWaitsPanelProps) {
+export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refresh, onSelectWindow }: TargetWaitsPanelProps) {
   const { mode } = useTimeDisplay();
   const selection = useMemo(() => resolveActivityWindow(scope, Date.now()),
     [scope.range, scope.from, scope.to, refresh]);
@@ -23,6 +29,9 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
   const [history, setHistory] = useState<ActivityPage<ServerWaitHistoryItem>>();
   const [historyError, setHistoryError] = useState<string>();
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [trend, setTrend] = useState<WaitTrendResponse>();
+  const [trendError, setTrendError] = useState<string>();
+  const [trendLoading, setTrendLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -39,10 +48,31 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
     return () => controller.abort();
   }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    setTrend(undefined); setTrendError(undefined);
+    if (!window) { setTrendLoading(false); return () => controller.abort(); }
+    setTrendLoading(true);
+    void getServerWaitTrend(instanceId, window, controller.signal)
+      .then(value => { if (!controller.signal.aborted) setTrend(value); })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setTrendError(error instanceof Error ? error.message : "Wait trend is unavailable.");
+      })
+      .finally(() => { if (!controller.signal.aborted) setTrendLoading(false); });
+    return () => controller.abort();
+  }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
+
   return <section className="activity-screen" aria-labelledby="waits-heading">
     <div className="screen-intro"><div><p className="eyebrow">Server · waits</p><h2 id="waits-heading">Waits for {displayName}</h2>
       <p>Wait totals are cumulative SQL Server counters. Historical rows show a delta only when the preceding collector run is comparable; a reset or missing baseline remains unknown.</p>
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+    {window && <section className="panel" aria-label="Wait categories over time">
+      <h3>Wait categories over time</h3>
+      <p>Five-minute deltas across the selected window. Empty, partial, legacy, and incomparable buckets remain gaps. Older history may need new collector runs before summaries become available.</p>
+      {trendLoading && <p role="status">Loading wait trend…</p>}
+      {trendError && <p role="alert">{trendError} Refresh to retry.</p>}
+      {trend && <WaitTrendChart trend={trend} onSelectWindow={onSelectWindow} />}
+    </section>}
     {scope.range !== "custom" && <CurrentWaits key={`${instanceId}:${refresh}`} instanceId={instanceId} refresh={refresh} />}
     <section className="panel" aria-label="Selected wait history">
       <h3>Selected-window history</h3>
@@ -53,6 +83,32 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       {history && <WaitHistory key={`${instanceId}:${history.fromUtc}:${history.toUtc}:${history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={history} />}
     </section>
   </section>;
+}
+
+function WaitTrendChart({ trend, onSelectWindow }: {
+  readonly trend: WaitTrendResponse;
+  readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
+}) {
+  const safeMaximum = BigInt(Number.MAX_SAFE_INTEGER);
+  const series: ObservationSeries[] = trendCategories.map(category => ({
+    id: category, label: category,
+    items: trend.points.filter(point => point.category === category).map(point => ({
+      time: point.bucketStartUtc,
+      value: point.waitMilliseconds === null || BigInt(point.waitMilliseconds) > safeMaximum
+        ? null : Number(point.waitMilliseconds),
+    })),
+  }));
+  const buckets = new Set(trend.points.map(point => point.bucketStartUtc)).size;
+  const incomplete = new Set(trend.points.filter(point => point.waitMilliseconds === null ||
+    BigInt(point.waitMilliseconds) > safeMaximum)
+    .map(point => point.bucketStartUtc)).size;
+  const oversized = trend.points.filter(point => point.waitMilliseconds !== null &&
+    BigInt(point.waitMilliseconds) > safeMaximum).length;
+  return <>
+    <ObservationChart label="Server wait time by category (ms per five minutes)" series={series}
+      fromUtc={trend.fromUtc} toUtc={trend.toUtc} onSelectWindow={onSelectWindow} />
+    <p className="activity-evidence">{buckets - incomplete} of {buckets} buckets are comparable across all categories among committed runs; {incomplete} remain gaps.{oversized ? ` ${oversized} values exceed chart precision and are shown as gaps.` : ""} Repository time: {trend.repositoryTimeUtc}.</p>
+  </>;
 }
 
 function CurrentWaits({ instanceId, refresh }: { readonly instanceId: string; readonly refresh: number }) {
