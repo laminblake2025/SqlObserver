@@ -1,9 +1,13 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Targets;
+using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
@@ -15,6 +19,30 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
     private readonly PostgreSql18Fixture fixture;
 
     public QueryStoreGroupTransitionPostgreSqlTests(PostgreSql18Fixture fixture) => this.fixture = fixture;
+
+    [Fact]
+    public void TypedPayloadIsCanonicalAndFailureEnvelopeContainsNoGroups()
+    {
+        Guid target = Guid.NewGuid();
+        Guid incarnation = Guid.NewGuid();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        QueryStoreGroupObservation first = TypedGroup(target, incarnation, now, 1);
+        QueryStoreGroupObservation second = TypedGroup(target, incarnation, now, 2);
+        var targetId = new MonitoredInstanceId(target);
+        var revision = new ObservationTargetRevision(1);
+        QueryStoreGroupOutputBatch Batch(params QueryStoreGroupObservation[] items) => new(
+            targetId, revision, now.AddMinutes(-5), now, true,
+            QueryStoreGroupWaitCoverage.Complete, items);
+
+        Assert.Equal(QueryStoreGroupCommitPayload.Serialize(Batch(first, second)),
+            QueryStoreGroupCommitPayload.Serialize(Batch(second, first)));
+        using JsonDocument failure = JsonDocument.Parse(
+            QueryStoreGroupCommitPayload.SerializeFailure(targetId, revision,
+                "permission_denied", "required_permission_missing"));
+        Assert.Empty(failure.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal("permission_denied", failure.RootElement.GetProperty("outcome").GetString());
+        Assert.False(failure.RootElement.TryGetProperty("windowStartUtc", out _));
+    }
 
     [Fact]
     public async Task PrivateBatchWriterPublishesOnlyComparableDeltasAndRollsBackInvalidBatches()
@@ -40,8 +68,7 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
         }
 
         Assert.Equal(1, await ApplyAsync(connection, transaction, target,
-            Payload(target, incarnation, now, now.AddMinutes(-4), 100,
-                new Dictionary<string, long> { ["3"] = 100 })));
+            TypedPayload(target, incarnation, now)));
         Assert.Equal(1, await ApplyAsync(connection, transaction, target,
             Payload(target, incarnation, now, now.AddMinutes(-3), 110,
                 new Dictionary<string, long> { ["3"] = 150, ["4"] = 7 })));
@@ -215,5 +242,33 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
             waitCoverage = coverage,
             items = duplicate ? new[] { item, item } : new[] { item },
         });
+    }
+
+    private static string TypedPayload(Guid target, Guid incarnation, DateTimeOffset now)
+    {
+        QueryStoreGroupObservation group = TypedGroup(target, incarnation, now, 1);
+        QueryStoreRuntimeWatermarkKey key = group.Runtime.Key;
+        var batch = new QueryStoreGroupOutputBatch(key.TargetId, key.TargetRevision,
+            now.AddMinutes(-5), now, true, QueryStoreGroupWaitCoverage.Complete, [group]);
+        string json = Encoding.UTF8.GetString(QueryStoreGroupCommitPayload.Serialize(batch));
+        Assert.DoesNotContain("queryText", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("planXml", json, StringComparison.OrdinalIgnoreCase);
+        return json;
+    }
+
+    private static QueryStoreGroupObservation TypedGroup(Guid target, Guid incarnation,
+        DateTimeOffset now, long sourceIntervalId)
+    {
+        var query = new QueryOpaqueIdentity(6, new string('a', 64));
+        var plan = new PlanOpaqueIdentity(query, new string('b', 64));
+        var key = new QueryStoreRuntimeWatermarkKey(new MonitoredInstanceId(target),
+            new ObservationTargetRevision(1), incarnation, query, plan,
+            now.AddHours(-2), sourceIntervalId, now.AddHours(-1), now.AddHours(1), 0);
+        var runtime = new QueryStoreRuntimeWatermark(key,
+            new QueryStoreRuntimeCounters(100, 200, 100, 100, 100, 100),
+            now.AddMinutes(-10), now.AddMinutes(-4), now.AddMinutes(-4));
+        var waits = new QueryStoreWaitWatermark(key,
+            new Dictionary<int, long> { [3] = 100 }, now.AddMinutes(-4));
+        return new QueryStoreGroupObservation(runtime, waits);
     }
 }
