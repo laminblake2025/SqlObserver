@@ -32,7 +32,11 @@ row and bounded content are returned with an interval ending no later than colle
 then holds a five-second lock on its own table to confirm Query Store attributes a
 positive lock-wait category to the blocked plan. It verifies the same quiet-plan
 total is returned on a second read and reconciles that total to Query Store's
-interval/execution-type groups. It drops the database in `finally`.
+interval/execution-type groups. It also exercises the candidate
+`query-store-runtime-groups.sql` source against a same-interval increment and
+reset, recording whether an ordinary post-flush execution changes the earliest
+execution time. That source is not registered in the production collector. The
+probe drops its database in `finally`.
 Run it only with an instance where the
 current Windows login can create databases:
 

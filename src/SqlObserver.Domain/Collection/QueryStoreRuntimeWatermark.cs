@@ -100,7 +100,7 @@ public sealed record QueryStoreRuntimeWatermark
     public DateTimeOffset ObservedAtUtc { get; }
 }
 
-public enum QueryStoreRuntimeTransitionKind { Incomplete = 1, BaselineUnavailable = 2, Comparable = 3, Reset = 4, Stale = 5 }
+public enum QueryStoreRuntimeTransitionKind { Incomplete = 1, BaselineUnavailable = 2, Comparable = 3, Reset = 4, Stale = 5, EpochAmbiguous = 6 }
 
 public sealed record QueryStoreRuntimeTransition(QueryStoreRuntimeTransitionKind Kind,
     QueryStoreRuntimeCounters? Delta, QueryStoreRuntimeWatermark? NextWatermark);
@@ -120,8 +120,13 @@ public static class QueryStoreRuntimeWatermarkCalculator
             return new(QueryStoreRuntimeTransitionKind.BaselineUnavailable, null, current);
         if (current.ObservedAtUtc <= previous.ObservedAtUtc)
             return new(QueryStoreRuntimeTransitionKind.Stale, null, null);
-        if (current.Counters.IsBelow(previous.Counters) || current.FirstExecutionUtc > previous.LastExecutionUtc)
+        if (current.Counters.IsBelow(previous.Counters))
             return new(QueryStoreRuntimeTransitionKind.Reset, null, current);
+        // Query Store does not expose a reset generation in this source group.
+        // An advanced first-execution time is therefore ambiguous: do not
+        // claim a reset or publish a potentially invented increment.
+        if (current.FirstExecutionUtc > previous.LastExecutionUtc)
+            return new(QueryStoreRuntimeTransitionKind.EpochAmbiguous, null, current);
         return new(QueryStoreRuntimeTransitionKind.Comparable, current.Counters.Subtract(previous.Counters), current);
     }
 }

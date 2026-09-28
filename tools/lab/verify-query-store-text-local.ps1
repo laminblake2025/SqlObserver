@@ -16,6 +16,30 @@ function Invoke-ProbeSql([string] $databaseName, [string] $statement, [switch] $
     return @($output)
 }
 
+function Read-WorkloadRuntimeGroup([string] $databaseName, [string] $statement,
+    [long] $workloadPlanId, [long] $workloadTextId) {
+    $rows = Invoke-ProbeSql $databaseName $statement
+    $matched = @($rows | Where-Object {
+        $columns = $_.Split('|')
+        $columns.Count -eq 20 -and $columns[4].Trim() -eq [string]$workloadPlanId -and
+            $columns[9].Trim() -eq '0' -and $columns[19].Trim() -eq [string]$workloadTextId
+    })
+    if ($matched.Count -ne 1) {
+        throw "Candidate Query Store runtime source did not return exactly one workload group: $($rows -join '; ')"
+    }
+    $fields = $matched[0].Split('|')
+    if ([guid]::Parse($fields[1].Trim()) -eq [guid]::Empty -or
+        [long]::Parse($fields[6].Trim()) -le 0 -or
+        [datetimeoffset]::Parse($fields[5].Trim()).Offset -ne [timespan]::Zero -or
+        [datetimeoffset]::Parse($fields[7].Trim()).Offset -ne [timespan]::Zero -or
+        [datetimeoffset]::Parse($fields[8].Trim()).Offset -ne [timespan]::Zero -or
+        [datetimeoffset]::Parse($fields[16].Trim()).Offset -ne [timespan]::Zero -or
+        [datetimeoffset]::Parse($fields[17].Trim()).Offset -ne [timespan]::Zero) {
+        throw 'Candidate Query Store runtime source returned an invalid incarnation or UTC identity.'
+    }
+    return $fields
+}
+
 try {
     $major = Invoke-ProbeSql 'master' "SELECT CONVERT(int,SERVERPROPERTY('ProductMajorVersion'))"
     if (@($major | Where-Object { $_ -match '^\s*16\s*$' }).Count -ne 1) {
@@ -78,6 +102,34 @@ try {
     if ($beforeRuntime.Count -ne 4) { throw 'Query Store runtime row changed its probe shape.' }
     $beforeCount = [long]::Parse($beforeRuntime[3].Trim(), [Globalization.CultureInfo]::InvariantCulture)
     if ($beforeCount -lt 1 -or $beforeCount -gt 20) { throw "Workload plan had an unexpected pre-reset count: $beforeCount" }
+    $runtimeGroupSql = Get-Content (Join-Path $PSScriptRoot 'query-store-runtime-groups.sql') -Raw
+    $sourceStatement = "DECLARE @probe_rows int=2001, @window_start datetimeoffset(7)=DATEADD(minute,-5,SYSUTCDATETIME()), @window_end datetimeoffset(7)=TODATETIMEOFFSET(SYSUTCDATETIME(),'+00:00'); $runtimeGroupSql"
+    $beforeGroup = @(Read-WorkloadRuntimeGroup $database $sourceStatement $planId $textId)
+    if ($beforeGroup[6].Trim() -ne $beforeRuntime[0].Trim() -or
+        [long]::Parse($beforeGroup[12].Trim()) -ne $beforeCount -or
+        [datetimeoffset]::Parse($beforeGroup[16].Trim()) -ne [datetimeoffset]::Parse($beforeRuntime[1].Trim()) -or
+        [datetimeoffset]::Parse($beforeGroup[17].Trim()) -ne [datetimeoffset]::Parse($beforeRuntime[2].Trim())) {
+        throw "Candidate Query Store runtime group did not reconcile with the direct source counter: direct $($beforeRuntime -join '|'); candidate $($beforeGroup -join '|')"
+    }
+    Invoke-ProbeSql $database 'SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
+    $mixedRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
+    if ($mixedRuntimeRow.Count -ne 1) { throw 'Query Store lost the workload plan after its unflushed execution.' }
+    $mixedRuntime = $mixedRuntimeRow[0].Split('|')
+    $sourceRowCount = Invoke-ProbeSql $database "SELECT COUNT(*) FROM sys.query_store_runtime_stats WHERE plan_id=$planId AND runtime_stats_interval_id=$($beforeRuntime[0].Trim()) AND execution_type=0"
+    $rawRows = [long]::Parse(($sourceRowCount | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1).Trim())
+    $mixedGroup = @(Read-WorkloadRuntimeGroup $database $sourceStatement $planId $textId)
+    if ($rawRows -lt 1 -or $mixedRuntime[0].Trim() -ne $beforeRuntime[0].Trim() -or
+        [long]::Parse($mixedRuntime[3].Trim()) -ne $beforeCount + 1 -or
+        [long]::Parse($mixedGroup[12].Trim()) -ne [long]::Parse($mixedRuntime[3].Trim())) {
+        throw "An unflushed Query Store increment did not reconcile: raw rows $rawRows; previous $($beforeRuntime -join '|'); previous candidate $($beforeGroup -join '|'); direct $($mixedRuntime -join '|'); candidate $($mixedGroup -join '|')"
+    }
+    $ordinaryFirstAdvanced = [datetimeoffset]::Parse($mixedGroup[16].Trim()) -gt
+        [datetimeoffset]::Parse($beforeRuntime[2].Trim())
+    $ordinaryFirstChanged = [datetimeoffset]::Parse($mixedGroup[16].Trim()) -ne
+        [datetimeoffset]::Parse($beforeGroup[16].Trim())
+    $beforeRuntime = $mixedRuntime
+    $beforeCount = [long]::Parse($mixedRuntime[3].Trim())
+    $beforeGroup = $mixedGroup
     Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
     $flushedRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
     if ($flushedRuntimeRow.Count -ne 1) { throw "Query Store lost workload plan $planId after a quiet flush." }
@@ -89,19 +141,30 @@ try {
     }
     Invoke-ProbeSql $database "EXEC sys.sp_query_store_reset_exec_stats @plan_id=$planId" | Out-Null
     Start-Sleep -Seconds 1
-    for ($index = 0; $index -lt ([Math]::Max($beforeCount + 8, 12)); $index++) {
-        Invoke-ProbeSql $database 'SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
+    $afterRuntime = $null
+    $afterCount = 0L
+    for ($batch = 0; $batch -lt 3 -and $afterCount -le $beforeCount; $batch++) {
+        for ($index = 0; $index -lt ([Math]::Max($beforeCount + 8, 12)); $index++) {
+            Invoke-ProbeSql $database 'SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
+        }
+        Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
+        $afterRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
+        if ($afterRuntimeRow.Count -ne 1) { throw "Query Store has no runtime row for workload plan $planId after reset." }
+        $afterRuntime = $afterRuntimeRow[0].Split('|')
+        $afterCount = [long]::Parse($afterRuntime[3].Trim(), [Globalization.CultureInfo]::InvariantCulture)
     }
-    Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
-    $afterRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
-    if ($afterRuntimeRow.Count -ne 1) { throw "Query Store has no runtime row for workload plan $planId after reset." }
-    $afterRuntime = $afterRuntimeRow[0].Split('|')
-    $afterCount = [long]::Parse($afterRuntime[3].Trim(), [Globalization.CultureInfo]::InvariantCulture)
     $beforeLast = [datetimeoffset]::Parse($beforeRuntime[2].Trim(), [Globalization.CultureInfo]::InvariantCulture)
     $afterFirst = [datetimeoffset]::Parse($afterRuntime[1].Trim(), [Globalization.CultureInfo]::InvariantCulture)
     if ($afterRuntime[0].Trim() -ne $beforeRuntime[0].Trim() -or
         $afterCount -le $beforeCount -or $afterFirst -le $beforeLast) {
         throw "Query Store reset did not expose a new epoch after count refill: before $($beforeRuntime -join '|'); after $($afterRuntime -join '|')"
+    }
+    $afterGroup = @(Read-WorkloadRuntimeGroup $database $sourceStatement $planId $textId)
+    if ($afterGroup[1].Trim() -ne $beforeGroup[1].Trim() -or
+        $afterGroup[6].Trim() -ne $beforeGroup[6].Trim() -or
+        [long]::Parse($afterGroup[12].Trim()) -ne $afterCount -or
+        [datetimeoffset]::Parse($afterGroup[16].Trim()) -le $beforeLast) {
+        throw 'Candidate Query Store runtime group did not preserve identity and expose the reset epoch.'
     }
     $lockJob = Start-ThreadJob -ArgumentList $SqlInstance,$database -ScriptBlock {
         param($instance,$db)
@@ -148,7 +211,7 @@ try {
     if ($intervalGroups.Count -lt 1 -or $intervalTotal -ne [long]$reportedLockTotal) {
         throw "Query Store interval groups did not reconcile with the pinned lock total: $($intervalGroups -join '; ') / $reportedLockTotal"
     }
-    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; same-interval runtime reset grew from $beforeCount to $afterCount with a later first-execution time; blocked plan wait rows: $($blockingCategoryRows -join '; '); interval groups: $($intervalGroups -join '; '); quiet repeat unchanged."
+    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; candidate runtime source reconciled database incarnation/interval/execution type, an unflushed increment (raw source rows $rawRows, first-execution changed: $ordinaryFirstChanged, advanced past prior last: $ordinaryFirstAdvanced), and same-interval reset $beforeCount to $afterCount; blocked plan wait rows: $($blockingCategoryRows -join '; '); interval groups: $($intervalGroups -join '; '); quiet repeat unchanged."
 }
 finally {
     if ($created) {

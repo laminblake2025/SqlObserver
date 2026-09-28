@@ -1,13 +1,13 @@
 # Query Store interval watermark contract
 
-Status: staged implementation design, 2026-09-25. The existing M7 collector still
+Status: staged implementation design, updated 2026-09-28. The existing M7 collector still
 persists cumulative `query_store_interval` observations and per-plan wait totals.
 This document defines the cutover needed before either is treated as an additive
 time series or used for plan-regression detection.
 
 ## Observed problem
 
-The collector reads Query Store every 30 seconds over an overlapping window.
+The collector reads Query Store on a recurring schedule over an overlapping window.
 Within an active Query Store interval, the same plan's execution and wait totals
 are cumulative. Consecutive collection runs therefore can contain the same work.
 The Queries UI currently labels wait values as interval totals and warns that
@@ -17,10 +17,19 @@ snapshots overlap; summing those rows would be wrong.
 complete runtime source group. Its key includes target revision, database
 incarnation, opaque query and plan identities, plan compile time, interval
 identity and execution type. It returns a null delta for a first baseline,
-counter drop, candidate reset, incomplete read or stale observation; a quiet
+counter drop, ambiguous execution epoch, incomplete read or stale observation; a quiet
 comparable read returns six known zeroes. This contract is not yet connected to
 the collector or repository. It cannot make the existing cumulative rows
 additive, and it does not replace the required SQL Server version proofs.
+
+`tools/lab/query-store-runtime-groups.sql` is a candidate source query, not a
+collector asset. The disposable SQL Server 2022 probe reconciles its target
+database GUID, plan, interval, execution type, cumulative count and execution
+times with direct Query Store reads before and after work and a same-interval
+reset. Runs have shown one or two visible raw runtime rows after an unflushed
+execution. The two-row case reconciled, but this local probe is not yet a
+repeatable proof of every flushed/in-memory grouping path or other SQL Server
+versions. The source query and calculator are not wired into ingestion.
 
 The disposable SQL Server 2022 probe in
 `tools/lab/verify-query-store-text-local.ps1` held a table lock, recorded a
@@ -38,8 +47,11 @@ same plan until its count exceeded the pre-reset count. In the same interval
 ID, the count grew from 2 to 6, while the earliest `first_execution_time`
 after reset was later than the previous `last_execution_time`. A counter-only
 comparison would invent a positive delta for this reset. The earliest
-execution time is a candidate reset epoch: a quiet flush left that time and
-the count unchanged. The probe uses a 1440-minute
+execution time is only a diagnostic hint: a quiet flush left that time and
+the count unchanged, but ordinary post-flush work can expose one or two raw
+source rows and does not guarantee a stable earliest time. An advanced time
+without a decreasing counter is classified as ambiguous, not as a proven reset.
+The probe uses a 1440-minute
 interval to keep both reads in the same source group and removes its database
 even on assertion failure.
 
@@ -53,7 +65,7 @@ one rolling-window sum per plan. Each runtime group needs database identity,
 query and plan identities, `plan_id`, interval ID and UTC start/end, execution
 type, execution count, and the bounded weighted CPU/duration/read/write/row
 totals. It must also emit the group's earliest `first_execution_time` and latest
-`last_execution_time`; the earliest value is a candidate counter epoch. Each
+`last_execution_time`; neither timestamp alone proves a counter reset. Each
 wait group adds category and wait milliseconds. Aggregate source
 rows for the active interval before applying row limits. A plan's group must not
 be partially returned: if the source cap is reached, mark the collection
@@ -77,12 +89,13 @@ transaction that commits the run and any derived delta rows. Replaying the same
 run and digest must leave both watermarks and published deltas unchanged. A
 failed or partially validated source read must advance neither.
 
-For a matching group with nondecreasing counters, publish the component-wise
-difference. Preserve a known zero as zero. When no prior complete snapshot is
+For a matching group with nondecreasing counters and no ambiguous epoch,
+publish the component-wise difference. Preserve a known zero as zero. When no prior complete snapshot is
 available, publish `baseline_unavailable`, with a null delta, while recording
-the first cumulative values. A decrease, Query Store reset, changed database
-incarnation, or incompatible target revision starts a new baseline and emits
-explicit reset evidence; never clamp a negative difference to zero. If a wait
+the first cumulative values. A decrease proves a counter reset. A changed database
+incarnation or incompatible target revision starts a new baseline. An advanced
+earliest execution time without a decrease starts an ambiguous new baseline,
+not a confirmed reset; never clamp a negative difference to zero. If a wait
 category was absent in a **complete** previous group, its previous value is
 known zero; absence in a truncated or failed read is unknown.
 
@@ -90,13 +103,14 @@ SQL Server can reset execution stats for an existing plan between polls. A
 decrease is detectable, but a reset whose new count grows beyond the prior
 count is not detectable from two cumulative values alone. The local reset
 probe showed `first_execution_time` advancing even when the count refilled
-above its old value. A source-group comparison should therefore start a new
-baseline if the earliest execution time advances past the prior group's
-latest execution time, even when every counter is nondecreasing. The same
-reset experiment and grouping must still be validated on SQL Server 2019 and
-2025, and the behavior of flushes and other reset paths needs proof before
-active-interval deltas are marketed as exact. Closed-interval publication is
-an alternative, but it needs a flush/late-correction policy before it can be
+above its old value. A source-group comparison must withhold a delta and
+record `epoch_ambiguous` if the earliest execution time advances past the
+prior group's latest execution time while counters remain nondecreasing. It
+cannot assert that a reset occurred. The same reset experiment and grouping
+must still be validated on SQL Server 2019 and 2025. Active-interval deltas
+cannot be marketed as exact until ordinary flush/work transitions and all
+relevant reset paths can be distinguished. Closed-interval publication is an
+alternative, but it needs a flush/late-correction policy before it can be
 called exact.
 
 Use one fixed source cutoff for the runtime and wait reads and record their

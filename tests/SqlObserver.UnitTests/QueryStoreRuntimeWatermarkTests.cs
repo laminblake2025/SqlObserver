@@ -35,14 +35,25 @@ public sealed class QueryStoreRuntimeWatermarkTests
     }
 
     [Fact]
-    public void RefilledResetDoesNotInventAnIncrement()
+    public void RefilledResetHasAmbiguousEpochAndDoesNotInventAnIncrement()
     {
         QueryStoreRuntimeWatermark first = Sample(2, 100, Start.AddMinutes(1), Start.AddMinutes(2));
         QueryStoreRuntimeWatermark refilled = Sample(6, 150, Start.AddMinutes(4), Start.AddMinutes(5), first.Key);
         QueryStoreRuntimeTransition result = QueryStoreRuntimeWatermarkCalculator.Compare(first, refilled, true);
-        Assert.Equal(QueryStoreRuntimeTransitionKind.Reset, result.Kind);
+        Assert.Equal(QueryStoreRuntimeTransitionKind.EpochAmbiguous, result.Kind);
         Assert.Null(result.Delta);
         Assert.Same(refilled, result.NextWatermark);
+    }
+
+    [Fact]
+    public void NormalPostFlushWorkWithAdvancedFirstExecutionIsAlsoAmbiguous()
+    {
+        QueryStoreRuntimeWatermark first = Sample(2, 100, Start.AddMinutes(1), Start.AddMinutes(2));
+        QueryStoreRuntimeWatermark continued = Sample(3, 120, Start.AddMinutes(4), Start.AddMinutes(5), first.Key);
+        QueryStoreRuntimeTransition result = QueryStoreRuntimeWatermarkCalculator.Compare(first, continued, true);
+        Assert.Equal(QueryStoreRuntimeTransitionKind.EpochAmbiguous, result.Kind);
+        Assert.Null(result.Delta);
+        Assert.Same(continued, result.NextWatermark);
     }
 
     [Fact]
