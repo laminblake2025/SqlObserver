@@ -203,6 +203,10 @@ adjust or disable these defaults. The worker still requires a valid recovery
 attestation and honors partition minimums, reader leases, analytics
 dependencies, and the 24-hour detach grace before a drop. Review the defaults
 and attest recovery before allowing old partitions to be removed.
+Migration `0157` applies the same guarded default policy to the original
+partitioned evidence streams: 30 days for raw metric samples and 90 days for
+diagnostic events. Previously configured policies are preserved, and a
+SecurityAdministrator can change either policy through the retention API.
 
 Migration `0135` adds target-scoped, bounded server-wait history. Migration
 `0136` creates its target/time ordering index across the written daily wait

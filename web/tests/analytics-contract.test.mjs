@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseMetricSeries, parseRetentionPolicy, parseRetentionPreview, parseRollupPage } from "../src/features/analytics/analyticsParser.ts";
+import { updateRetentionPolicy } from "../src/features/analytics/analyticsApi.ts";
 
 test("analytics parser preserves bounded series and rejects oversized pages", () => {
   const value = parseMetricSeries({ targetId: "target", metricKey: "host.cpu.percent", state: "partial", items: [{ observedAtUtc: "2026-08-25T12:00:00Z", value: 42, dimensions: { scope: "aggregate" } }] });
@@ -31,6 +32,40 @@ test("retention policy enforces bounded server TimeSpan and floor/revision", () 
   assert.throws(() => parseRetentionPolicy({ ...base, policy: { ...base.policy, enabled: true, retainFor: "00:00:00" } }));
   assert.throws(() => parseRetentionPolicy({ ...base, revision: 0 }));
   assert.throws(() => parseRetentionPolicy({ ...base, policy: { ...base.policy, minimumPartitionsToKeep: 0 } }));
+});
+
+test("core evidence policies can be updated through the bounded client", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (path, options) => {
+    calls.push({ path, options });
+    const request = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      policy: { dataClass: request.dataClass, enabled: true,
+        retainFor: request.retainFor, minimumPartitionsToKeep: 2 },
+      revision: 3, readAtUtc: "2026-09-28T01:00:00Z",
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    for (const dataClass of ["raw_metric_samples", "diagnostic_events"]) {
+      const result = await updateRetentionPolicy(dataClass, {
+        dataClass, enabled: true, retainFor: "30.00:00:00",
+        minimumPartitionsToKeep: 2, expectedRevision: 2,
+        changeReason: "Capacity policy review",
+      }, new AbortController().signal);
+      assert.equal(result.policy.dataClass, dataClass);
+    }
+    assert.deepEqual(calls.map(call => call.path), [
+      "/api/v1/retention/policies/raw_metric_samples",
+      "/api/v1/retention/policies/diagnostic_events",
+    ]);
+    assert.ok(calls.every(call => call.options.method === "PUT"
+      && call.options.credentials === "same-origin"));
+    await assert.rejects(updateRetentionPolicy("unknown", {}, new AbortController().signal));
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("retention parser accepts canonical M5 policies and preview rows", () => {
