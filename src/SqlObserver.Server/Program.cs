@@ -98,6 +98,9 @@ builder.Services.AddSingleton<ISqlVolumeReadService, SqlVolumeReadService>();
 builder.Services.AddSingleton<IDatabaseFileIoTrendRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().DatabaseFileIoTrends);
 builder.Services.AddSingleton<IDatabaseFileIoTrendQueryService, DatabaseFileIoTrendQueryService>();
+builder.Services.AddSingleton<IBufferNodePleWindowRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().BufferNodePleWindows);
+builder.Services.AddSingleton<IBufferNodePleWindowQueryService, BufferNodePleWindowQueryService>();
 builder.Services.AddSingleton<SqlVolumeCursorProtector>();
 builder.Services.AddSingleton<IObservationTargetOnboardingService, ObservationTargetOnboardingService>();
 builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTargetManagementService>();
@@ -180,6 +183,7 @@ app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
 app.MapSqlVolumeEndpoints();
 app.MapDatabaseFileIoTrendEndpoints();
+app.MapBufferNodePleWindowEndpoints();
 app.MapOverviewEndpoints();
 app.MapTargetActivityEndpoints();
 app.MapLiveActivityEndpoints();

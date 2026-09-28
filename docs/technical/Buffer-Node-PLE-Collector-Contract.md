@@ -12,9 +12,9 @@ accepts ordered, distinct nodes 0–1023, nonnegative seconds, one UTC capture
 time, at most 128 nodes, and at most 64 KiB of response evidence. A 129th row
 or byte cap withholds the entire set so a partial node inventory cannot be
 presented as complete. Source code and a focused native SQL Server 2022 test
-validate this foundation; it is not scheduled or persisted yet.
+validate this foundation; collection remains disabled by default.
 
-The unscheduled `engine.buffer-nodes` adapter emits one dimensioned metric
+The `engine.buffer-nodes` adapter emits one dimensioned metric
 sample per node, with a run- and node-stable sample ID. Its output contract
 allows up to 128 `node_id` dimensions and preserves partial-coverage loss.
 Forward migration 0153 and a dedicated repository adapter commit the nodes to
@@ -23,12 +23,12 @@ Forward migration 0153 and a dedicated repository adapter commit the nodes to
 schedules are disabled by default and reset to disabled on a target revision change.
 
 The fenced commit path rejects duplicate nodes and divergent replay, retains
-visibility gaps on truncated reads, and grants no direct table write. Publication
-still needs a
-target-scoped read projection should return per-node series in the shared
-Resources time window, with the Buffer Manager aggregate labelled separately.
-Qualify the pinned source and least-privilege permission on SQL Server 2019
-and 2025 before enabling schedules by default.
+visibility gaps on truncated reads, and grants no direct table write. Migration
+0155 serves current-revision per-node hourly minimum, average and maximum PLE
+in the shared Resources window, with a separate Buffer Manager aggregate. Its
+API and Resources panel require a target-scoped read role. Qualify the pinned
+source and least-privilege permission on SQL Server 2019 and 2025 before
+enabling schedules by default.
 
 Source semantics: [Microsoft's Buffer Node counters](https://learn.microsoft.com/en-us/sql/relational-databases/performance-monitor/sql-server-buffer-node?view=sql-server-ver17)
 describe one instance per NUMA node and PLE in seconds. [Microsoft's memory

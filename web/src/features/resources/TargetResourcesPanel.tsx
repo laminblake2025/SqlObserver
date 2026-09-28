@@ -8,6 +8,7 @@ import type { OverviewScope, OverviewSeries } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { fileSizeGib, lifetimeAverageStallMilliseconds } from "./resourceFileModel";
 import { DatabaseFileIoTrendPanel, type SelectedDatabaseFile } from "./DatabaseFileIoTrendPanel";
+import { BufferNodePlePanel } from "./BufferNodePlePanel";
 import { SqlVolumePanel } from "./SqlVolumePanel";
 
 const memoryMetrics = new Set([
@@ -99,7 +100,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   return <section className="activity-screen" aria-labelledby="resources-heading">
     <div className="screen-intro"><div><p className="eyebrow">Server · resources</p>
       <h2 id="resources-heading">Resources for {displayName}</h2>
-      <p>SQL Server CPU, memory, and selected-file latency follow the shared time window. The file table shows the latest cumulative counters.</p>
+      <p>SQL Server CPU, memory, per-NUMA page life expectancy, and selected-file latency follow the shared time window. The file table shows the latest cumulative counters.</p>
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {result.loading && <p role="status">Loading resource history…</p>}
     {result.error && <p role="alert">{result.error}</p>}
@@ -124,6 +125,8 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         <ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
+    <BufferNodePlePanel instanceId={instanceId} scope={scope} refresh={refresh}
+      onSelectWindow={onSelectWindow} />
     <SqlVolumePanel instanceId={instanceId} refresh={refresh} isRewind={isRewind} />
     <section className="panel" aria-label="Database file I/O" aria-busy={filesLoading}>
       <h3>Database file I/O</h3>
