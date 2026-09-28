@@ -207,6 +207,10 @@ Migration `0157` applies the same guarded default policy to the original
 partitioned evidence streams: 30 days for raw metric samples and 90 days for
 diagnostic events. Previously configured policies are preserved, and a
 SecurityAdministrator can change either policy through the retention API.
+Migration `0158` enables defaults on the four M10 v2 streams that receive
+writes: 30 days for host metrics and replication snapshots, and 180 days for
+rollups and evidence packets. Operator-revised policies are preserved. The
+other unused v2 parents remain disabled pending an explicit cutover or cleanup.
 
 Migration `0135` adds target-scoped, bounded server-wait history. Migration
 `0136` creates its target/time ordering index across the written daily wait

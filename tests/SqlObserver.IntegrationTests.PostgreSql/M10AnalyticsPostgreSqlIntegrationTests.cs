@@ -346,11 +346,19 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         var adapter = new PostgreSqlAnalyticsRepositoryPort(server, new IdentityFingerprintKey(new byte[32]));
-        foreach (string dataClass in new[] { "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence" })
+        var expectedDurations = new Dictionary<string, TimeSpan>(StringComparer.Ordinal)
+        {
+            ["m10_host_metrics"] = TimeSpan.FromDays(30),
+            ["m10_replication"] = TimeSpan.FromDays(30),
+            ["m10_rollups"] = TimeSpan.FromDays(180),
+            ["m10_evidence"] = TimeSpan.FromDays(180),
+        };
+        foreach ((string dataClass, TimeSpan duration) in expectedDurations)
         {
             RetentionPolicyReadResult result = await adapter.GetPolicyAsync(dataClass, CancellationToken.None);
             Assert.Equal(dataClass, result.Policy.DataClass);
-            Assert.False(result.Policy.Enabled);
+            Assert.True(result.Policy.Enabled);
+            Assert.Equal(duration, result.Policy.RetainFor);
         }
         await using var direct = server.CreateCommand("SELECT count(*) FROM system.retention_policy");
         PostgresException denied = await Assert.ThrowsAsync<PostgresException>(() => direct.ExecuteScalarAsync());
