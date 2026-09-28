@@ -142,6 +142,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<IdentityFingerprintKey>()));
         services.AddSingleton(static _ => SqlServerVolumeCapacityAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerVolumeCapacityCollector>();
+        services.AddSingleton(static _ => SqlServerQueryStoreGroupAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerQueryStoreGroupCollector>();
         services.AddSingleton(static _ => HostMetricsAssetCatalog.LoadEmbedded());
         // Identity HMAC material is supplied by the secret-backed collector
         // configuration. There is deliberately no process-local fallback:
@@ -244,6 +246,8 @@ public static class CollectorServiceRegistration
         var replicationBundle = new CollectorSha256Digest(replicationCatalog.BundleChecksum);
         SqlServerVolumeCapacityAssetCatalog volumeCatalog = provider.GetRequiredService<SqlServerVolumeCapacityAssetCatalog>();
         var volumeBundle = new CollectorSha256Digest(volumeCatalog.BundleChecksum);
+        SqlServerQueryStoreGroupAssetCatalog groupCatalog =
+            provider.GetRequiredService<SqlServerQueryStoreGroupAssetCatalog>();
         HostMetricsAssetCatalog hostCatalog = provider.GetRequiredService<HostMetricsAssetCatalog>();
         var hostBundle = new CollectorSha256Digest(hostCatalog.BundleChecksum);
         static CollectorSha256Digest Digest(string json) => new(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant());
@@ -310,6 +314,10 @@ public static class CollectorServiceRegistration
             new CollectorRegistration(14, provider.GetRequiredService<HostMetricsCollectorAdapter>(), new CollectorOutputValidator(HostMetricsCollectorAdapter.OutputContract), Digest(hostCatalog.Get("host.metrics.v1.json")), hostBundle),
             new CollectorRegistration(15, provider.GetRequiredService<SqlServerReplicationCollector>(), new CollectorOutputValidator(SqlServerReplicationCollector.OutputContract), Digest(replicationCatalog.Get("replication.health.v1.json")), replicationBundle),
             new CollectorRegistration(16, provider.GetRequiredService<SqlServerVolumeCapacityCollector>(), new CollectorOutputValidator(SqlServerVolumeCapacityCollector.OutputContract), Digest(volumeCatalog.ManifestJson), volumeBundle),
+            new CollectorRegistration(17, provider.GetRequiredService<SqlServerQueryStoreGroupCollector>(),
+                new CollectorOutputValidator(SqlServerQueryStoreGroupCollector.OutputContract),
+                new CollectorSha256Digest(groupCatalog.ManifestChecksum),
+                new CollectorSha256Digest(SqlServerQueryStoreGroupAssetCatalog.ExpectedBundleChecksum)),
         ]);
     }
 }

@@ -29,6 +29,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     [InlineData(13)]
     [InlineData(15)]
     [InlineData(16)]
+    [InlineData(17)]
     public async Task FreshRepositoryAcceptsTheActualUpdatedApplicationCatalog(int count)
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(MigrationBatchResult.MaximumResults);
@@ -80,22 +81,32 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
             return Assert.IsType<bool>(await read.ExecuteScalarAsync());
         }
         Assert.False(await EnabledAsync());
+        async Task<bool> GroupEnabledAsync()
+        {
+            await using var read = database.DataSource.CreateCommand(
+                "SELECT enabled FROM control.collector_schedule WHERE instance_id=@target AND collector_id='queries.performance-groups';");
+            read.Parameters.AddWithValue("target", target);
+            return Assert.IsType<bool>(await read.ExecuteScalarAsync());
+        }
+        Assert.False(await GroupEnabledAsync());
 
         await using ServiceProvider application = CreateApplication();
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         WorkerLeaseIdentity lease = await AcquireCatalogLeaseAsync(collector);
-        Assert.Equal(16, (await new PostgreSqlCollectorRuntimeRepositoryPort(collector)
+        Assert.Equal(17, (await new PostgreSqlCollectorRuntimeRepositoryPort(collector)
             .ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
         Assert.False(await EnabledAsync());
+        Assert.False(await GroupEnabledAsync());
 
         await using (var enable = database.DataSource.CreateCommand(
-            "UPDATE control.collector_schedule SET enabled=true WHERE instance_id=@target AND collector_id='storage.volume';"))
+            "UPDATE control.collector_schedule SET enabled=true WHERE instance_id=@target AND collector_id IN ('storage.volume','queries.performance-groups');"))
         {
             enable.Parameters.AddWithValue("target", target);
-            Assert.Equal(1, await enable.ExecuteNonQueryAsync());
+            Assert.Equal(2, await enable.ExecuteNonQueryAsync());
         }
         Assert.True(await EnabledAsync());
+        Assert.True(await GroupEnabledAsync());
         await using (var change = database.DataSource.CreateCommand(
             "UPDATE control.observation_target SET revision=revision+1,host_name='sql02',updated_at=statement_timestamp() WHERE instance_id=@target;"))
         {
@@ -103,6 +114,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
             Assert.Equal(1, await change.ExecuteNonQueryAsync());
         }
         Assert.False(await EnabledAsync());
+        Assert.False(await GroupEnabledAsync());
     }
 
     [Fact]

@@ -30,15 +30,6 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
         Guid target = Guid.NewGuid();
         Guid incarnation = Guid.NewGuid();
         await using (var seed = database.DataSource.CreateCommand("""
-            INSERT INTO control.collector_contract
-             (collector_id,collector_version,execution_order,manifest_schema_version,
-              output_schema_version,manifest_sha256,asset_bundle_sha256,default_interval,
-              minimum_interval,execution_timeout,maximum_rows,maximum_response_bytes,
-              estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval)
-            VALUES ('queries.performance-groups',1,17,6,1,
-              decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),
-              interval '5 minutes',interval '1 minute',interval '5 seconds',2000,8388608,
-              'moderate',2,3,interval '5 minutes');
             INSERT INTO control.observation_target
              (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
               authentication_mode,transport_security_mode,lifecycle_state,revision,
@@ -47,7 +38,9 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
               'windows_integrated_service_identity','mandatory_validated','active',1,
               statement_timestamp(),statement_timestamp(),statement_timestamp());
             UPDATE control.collector_schedule
-            SET enabled=(collector_id='queries.performance-groups')
+            SET enabled=(collector_id IN ('queries.performance-groups','engine.core','database.inventory')),
+                last_outcome=CASE WHEN collector_id IN ('engine.core','database.inventory')
+                                  THEN 'succeeded' ELSE last_outcome END
             WHERE instance_id=@target;
             """))
         {

@@ -10,11 +10,13 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Infrastructure.SqlServer;
 
 /// <summary>
-/// Checksum-pinned SQL Server 2022 group reads. Publication remains gated on a
-/// fenced repository writer so these cumulative values cannot be mistaken for deltas.
+/// Checksum-pinned SQL Server 2022 group reads. Publication uses the fenced
+/// repository writer so cumulative source values cannot be mistaken for deltas.
 /// </summary>
 internal sealed class QueryStoreGroupedSourceBundle
 {
+    internal const string ExpectedBundleChecksum =
+        "dd90330a342fd560535ea7ab74cc93928756018acd1ed0648c472d13ad825f04";
     private const string ResourcePrefix = "SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.";
     private const string RuntimeName = "runtime.sqlserver16-windows.v1.sql";
     private const string WaitName = "waits.sqlserver16-windows.v1.sql";
@@ -31,7 +33,11 @@ internal sealed class QueryStoreGroupedSourceBundle
     internal static QueryStoreGroupedSourceBundle LoadEmbedded(Assembly? assembly = null)
     {
         assembly ??= typeof(QueryStoreGroupedSourceBundle).Assembly;
-        string[] lines = Encoding.UTF8.GetString(Read(assembly, "assets.sha256"))
+        byte[] checksumBytes = Read(assembly, "assets.sha256");
+        if (!Convert.ToHexString(SHA256.HashData(checksumBytes)).Equals(
+                ExpectedBundleChecksum, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Query Store group source bundle digest is not approved.");
+        string[] lines = Encoding.UTF8.GetString(checksumBytes)
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);
         if (lines.Length != 2)

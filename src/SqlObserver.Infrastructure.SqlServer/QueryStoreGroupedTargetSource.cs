@@ -6,11 +6,15 @@ using SqlObserver.Domain.Collection;
 namespace SqlObserver.Infrastructure.SqlServer;
 
 /// <summary>
-/// Bounded SQL Server 2022 source sweep. This source is deliberately separate
-/// from the production collector registry until a durable target window policy
-/// and collector catalog contract are installed.
+/// Bounded SQL Server 2022 source sweep for the opt-in group collector.
 /// </summary>
-internal sealed class QueryStoreGroupedTargetSource
+internal interface IQueryStoreGroupedTargetSource
+{
+    Task<QueryStoreGroupedTargetRead> ReadAsync(CollectorExecutionRequest request,
+        QueryStoreGroupSourceWindow window, CancellationToken cancellationToken);
+}
+
+internal sealed class QueryStoreGroupedTargetSource : IQueryStoreGroupedTargetSource
 {
     private const string InventorySql =
         "SELECT TOP (257) database_id,name FROM sys.databases " +
@@ -33,7 +37,7 @@ internal sealed class QueryStoreGroupedTargetSource
         this.bundle = bundle ?? throw new ArgumentNullException(nameof(bundle));
     }
 
-    internal Task<QueryStoreGroupedTargetRead> ReadAsync(
+    public Task<QueryStoreGroupedTargetRead> ReadAsync(
         CollectorExecutionRequest request, QueryStoreGroupSourceWindow window,
         CancellationToken cancellationToken)
     {

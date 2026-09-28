@@ -124,6 +124,7 @@ public sealed class CollectorRegistry
                 [CollectorCatalogIds.AvailabilityGroupsHealth.Value] = (13, CollectorOutputKind.AvailabilityGroupsHealth),
                 [CollectorCatalogIds.HostMetrics.Value] = (14, CollectorOutputKind.Metrics),
                 [CollectorCatalogIds.ReplicationHealth.Value] = (15, CollectorOutputKind.ReplicationHealth),
+                [CollectorCatalogIds.QueryStoreGroups.Value] = (17, CollectorOutputKind.QueryStoreGroups),
             });
 
     private readonly ReadOnlyCollection<CollectorRegistration> _registrations;

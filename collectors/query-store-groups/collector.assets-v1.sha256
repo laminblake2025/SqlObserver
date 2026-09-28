@@ -1,0 +1,4 @@
+7de7bfd3b9b71f4d533701cf02167961882d7cf5f224d2ebe404ef760f1a14d1  queries.performance-groups.v1.schema.json
+2a026abedbde62a7c8ad101ef1716c15a31f82b576c2610ef03e60552803e7f9  queries.performance-groups.v1.json
+44b880129bdbba6e7a25b324e9dc1869c0be4d0f4387918486861eed5ae59568  runtime.sqlserver16-windows.v1.sql
+5699933c4c876d2474418dcbe7f2ecb8bb7e225842bbdd203be14ec3df0982af  waits.sqlserver16-windows.v1.sql
