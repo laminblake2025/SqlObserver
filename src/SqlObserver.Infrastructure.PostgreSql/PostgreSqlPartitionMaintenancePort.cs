@@ -36,7 +36,8 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
         """;
     private const string EnsureM10PartitionSetSql = """
         SELECT control.ensure_m10_partition_set(CURRENT_DATE)
-             + control.ensure_sql_volume_partitions(CURRENT_DATE);
+             + control.ensure_sql_volume_partitions(CURRENT_DATE)
+             + control.ensure_query_store_group_partitions(CURRENT_DATE);
         """;
     private const string PreviewM9DailySql = """
         SELECT

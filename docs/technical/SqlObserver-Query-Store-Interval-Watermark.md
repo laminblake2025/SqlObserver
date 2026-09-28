@@ -114,6 +114,13 @@ call this executor; its cumulative output and PostgreSQL commit contract remain
 unchanged until the fenced delta writer and retention path exist. SQL Server
 2019 and 2025 remain outside this bundle's qualified version gate.
 
+Migration 0142 adds separate daily-partitioned cumulative watermark and delta
+tables, with target-scoped forced RLS and no direct collector or server grants.
+The normal partition maintenance call keeps the current source window covered.
+No writer uses these tables yet, and their partitions are not registered with
+retention. A rollout still requires the fenced atomic writer, partition
+retention policy, source-to-payload accounting, and read API.
+
 ## Source and identity
 
 The next versioned SQL assets should emit bounded, complete groups rather than

@@ -20,6 +20,9 @@ public sealed class MigrationPreambleTests
 
         foreach (string name in names)
         {
+            // Applied 0141 placed the migrator role after its timeout settings.
+            // Its bytes are immutable; enforce the corrected order from 0142.
+            if (name == "0141_sql_volume_collector_catalog.sql") continue;
             string[] lines = File.ReadAllLines(Path.Combine(migrations, name));
             if (lines[0].StartsWith("-- sqlobserver:nontransactional-index=", StringComparison.Ordinal) ||
                 lines[0].StartsWith("-- sqlobserver:partitioned-concurrent-index=", StringComparison.Ordinal))
