@@ -142,6 +142,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<IdentityFingerprintKey>()));
         services.AddSingleton(static _ => SqlServerVolumeCapacityAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerVolumeCapacityCollector>();
+        services.AddSingleton(static _ => SqlServerBufferNodePleAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerBufferNodePleCollector>();
         services.AddSingleton(static _ => SqlServerQueryStoreGroupAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerQueryStoreGroupCollector>();
         services.AddSingleton(static _ => HostMetricsAssetCatalog.LoadEmbedded());
@@ -246,6 +248,8 @@ public static class CollectorServiceRegistration
         var replicationBundle = new CollectorSha256Digest(replicationCatalog.BundleChecksum);
         SqlServerVolumeCapacityAssetCatalog volumeCatalog = provider.GetRequiredService<SqlServerVolumeCapacityAssetCatalog>();
         var volumeBundle = new CollectorSha256Digest(volumeCatalog.BundleChecksum);
+        SqlServerBufferNodePleAssetCatalog bufferNodeCatalog =
+            provider.GetRequiredService<SqlServerBufferNodePleAssetCatalog>();
         SqlServerQueryStoreGroupAssetCatalog groupCatalog =
             provider.GetRequiredService<SqlServerQueryStoreGroupAssetCatalog>();
         HostMetricsAssetCatalog hostCatalog = provider.GetRequiredService<HostMetricsAssetCatalog>();
@@ -318,6 +322,10 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerQueryStoreGroupCollector.OutputContract),
                 new CollectorSha256Digest(groupCatalog.ManifestChecksum),
                 new CollectorSha256Digest(SqlServerQueryStoreGroupAssetCatalog.ExpectedBundleChecksum)),
+            new CollectorRegistration(18, provider.GetRequiredService<SqlServerBufferNodePleCollector>(),
+                new CollectorOutputValidator(SqlServerBufferNodePleCollector.OutputContract),
+                Digest(bufferNodeCatalog.ManifestJson),
+                new CollectorSha256Digest(bufferNodeCatalog.BundleChecksum)),
         ]);
     }
 }

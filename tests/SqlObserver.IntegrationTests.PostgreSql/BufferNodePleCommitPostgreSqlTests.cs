@@ -138,16 +138,6 @@ public sealed class BufferNodePleCommitPostgreSqlTests(PostgreSql18Fixture fixtu
     {
         Guid target = Guid.NewGuid();
         await using var seed = database.DataSource.CreateCommand("""
-            INSERT INTO control.collector_contract
-             (collector_id,collector_version,execution_order,manifest_schema_version,
-              output_schema_version,manifest_sha256,asset_bundle_sha256,default_interval,
-              minimum_interval,execution_timeout,maximum_rows,maximum_response_bytes,
-              estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval)
-            VALUES ('engine.buffer-nodes',1,18,6,1,
-              decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),
-              interval '1 minute',interval '30 seconds',interval '5 seconds',129,65536,
-              'low',2,3,interval '5 minutes')
-            ON CONFLICT (collector_id,collector_version) DO NOTHING;
             INSERT INTO control.observation_target
              (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
               authentication_mode,transport_security_mode,lifecycle_state,revision,
@@ -155,7 +145,11 @@ public sealed class BufferNodePleCommitPostgreSqlTests(PostgreSql18Fixture fixtu
             VALUES (@target,@key,'Buffer Node commit target','sql01',1433,interval '5 seconds',
               'windows_integrated_service_identity','mandatory_validated','active',1,
               statement_timestamp(),statement_timestamp(),statement_timestamp());
-            UPDATE control.collector_schedule SET enabled=false WHERE instance_id=@target;
+            UPDATE control.collector_schedule
+            SET enabled=(collector_id IN ('engine.core','engine.buffer-nodes')),
+                last_outcome=CASE WHEN collector_id='engine.core' THEN 'succeeded'
+                                  ELSE last_outcome END
+            WHERE instance_id=@target;
             UPDATE control.collector_schedule
             SET enabled=true,next_due_at=statement_timestamp(),updated_at=statement_timestamp()
             WHERE instance_id=@target AND collector_id='engine.buffer-nodes';

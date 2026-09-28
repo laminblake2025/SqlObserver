@@ -17,13 +17,14 @@ validate this foundation; it is not scheduled or persisted yet.
 The unscheduled `engine.buffer-nodes` adapter emits one dimensioned metric
 sample per node, with a run- and node-stable sample ID. Its output contract
 allows up to 128 `node_id` dimensions and preserves partial-coverage loss.
-Forward migration 0153 and a dedicated repository adapter can now commit the
-nodes to `telemetry.raw_metric_sample` under the run, lease and schedule fence.
-The collector is not registered in the production catalog or scheduled yet.
+Forward migration 0153 and a dedicated repository adapter commit the nodes to
+`telemetry.raw_metric_sample` under the run, lease and schedule fence. Migration
+0154 registers the checksum-pinned collector at execution order 18. Its per-target
+schedules are disabled by default and reset to disabled on a target revision change.
 
 The fenced commit path rejects duplicate nodes and divergent replay, retains
 visibility gaps on truncated reads, and grants no direct table write. Publication
-still needs a versioned catalog entry and a
+still needs a
 target-scoped read projection should return per-node series in the shared
 Resources time window, with the Buffer Manager aggregate labelled separately.
 Qualify the pinned source and least-privilege permission on SQL Server 2019

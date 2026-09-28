@@ -1,0 +1,28 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://sqlobserver.local/engine.buffer-nodes.v1.schema.json",
+  "title":"SqlObserver passive Buffer Node PLE collector manifest v1",
+  "type":"object","additionalProperties":false,
+  "required":["$schema","schemaVersion","collectorId","collectorVersion","displayName","operationalMode","dependsOn","supportedTargets","requiredCapabilities","requiredPermissionsByMajor","cadence","executionBounds","resilience","estimatedCostClass","fallback","queryResource","outputSchemaVersion","outputKind","defaultEnabled"],
+  "properties":{
+    "$schema":{"const":"engine.buffer-nodes.v1.schema.json"},
+    "schemaVersion":{"const":6},
+    "collectorId":{"const":"engine.buffer-nodes"},
+    "collectorVersion":{"const":1},
+    "displayName":{"const":"SQL Server Buffer Node page life expectancy"},
+    "operationalMode":{"const":"passive"},
+    "dependsOn":{"const":["capability.connection","engine.core"]},
+    "supportedTargets":{"const":{"product":"Microsoft SQL Server","minimumMajorVersion":15,"maximumMajorVersion":17,"platforms":["Windows"],"engineEditions":[2,3,4]}},
+    "requiredCapabilities":{"const":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"]},
+    "requiredPermissionsByMajor":{"const":{"15":["server.view-state"],"16":["server.view-performance-state"],"17":["server.view-performance-state"]}},
+    "cadence":{"const":{"defaultIntervalSeconds":60,"minimumIntervalSeconds":30,"nonOverlappingPerTarget":true}},
+    "executionBounds":{"const":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":5,"maximumRows":129,"maximumResponseBytes":65536}},
+    "resilience":{"const":{"maximumAttempts":2,"transientRetryDelayMilliseconds":100,"circuitFailureThreshold":3,"circuitOpenSeconds":300}},
+    "estimatedCostClass":{"const":"low"},
+    "fallback":{"const":{"mode":"unsupported"}},
+    "queryResource":{"const":"engine.buffer-node-ple.sqlserver15-17-windows.v1.sql"},
+    "outputSchemaVersion":{"const":1},
+    "outputKind":{"const":"metrics"},
+    "defaultEnabled":{"const":false}
+  }
+}
