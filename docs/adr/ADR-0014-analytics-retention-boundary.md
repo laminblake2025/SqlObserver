@@ -19,6 +19,11 @@ Retention is disabled and duration-less by default. A global
 `SecurityAdministrator` must use optimistic revision updates and a recovery
 attestation before preview-gated detach/grace/drop operations can proceed.
 
+The default-policy statement describes the original M10 rollout. Migrations
+0156-0158 subsequently enabled bounded defaults for written evidence classes;
+the canonical-table and dependency decisions are in
+[ADR-0021](ADR-0021-canonical-retention-graph.md).
+
 ## Consequences
 
 The repository can enforce RLS, byte/row/time bounds, append-only evidence, and

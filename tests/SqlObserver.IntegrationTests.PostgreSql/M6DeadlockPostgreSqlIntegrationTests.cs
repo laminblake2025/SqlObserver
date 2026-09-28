@@ -469,6 +469,27 @@ public sealed class M6DeadlockPostgreSqlIntegrationTests
         await prepared.Leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(prepared.Lease, Timeout), CancellationToken.None); await prepared.Collector.DisposeAsync();
     }
 
+    [Fact]
+    public async Task DiagnosticEventPartitionWithDeadlockCannotDetachWithoutDependentRetention()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var prepared = await PrepareCommitAsync(database);
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await prepared.Runtime.CommitRunAsync(prepared.Commit, CancellationToken.None)).Status);
+        DateTimeOffset occurred = prepared.Commit.Payload.Deadlocks.Items[0].OccurredAtUtc;
+        string partition = $"diagnostic_event_p{occurred:yyyyMM}";
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using var detach = new NpgsqlCommand(
+            $"BEGIN; SET LOCAL ROLE sqlobserver_migrator; ALTER TABLE events.diagnostic_event DETACH PARTITION events.{partition};",
+            admin);
+        PostgresException blocked = await Assert.ThrowsAsync<PostgresException>(
+            () => detach.ExecuteNonQueryAsync());
+        Assert.Equal("23503", blocked.SqlState);
+        Assert.Equal(1L, await CountSummaryAsync(database, prepared.Target.Value));
+        await prepared.Leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(prepared.Lease, Timeout), CancellationToken.None);
+        await prepared.Collector.DisposeAsync();
+    }
+
     private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync()
     {
         RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
