@@ -1,5 +1,5 @@
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -99,6 +99,71 @@ export async function getQueryPerformancePlanWaits(instanceId: string, databaseI
     capturedAtUtc: value.capturedAtUtc as string | null,
     categories: rows as QueryPerformancePlanWaits["categories"] };
 }
+export async function getQueryStoreGroupPlanTrend(instanceId: string, databaseId: number,
+    queryFingerprint: string, planFingerprint: string, fromUtc: string, toUtc: string,
+    signal: AbortSignal): Promise<QueryStoreGroupTrend> {
+  if (!Number.isInteger(databaseId) || databaseId <= 0 || databaseId > 32767
+      || !digest(queryFingerprint) || !digest(planFingerprint)
+      || !timestamp(fromUtc) || !timestamp(toUtc)
+      || Date.parse(toUtc) <= Date.parse(fromUtc)
+      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 24 * 60 * 60 * 1000)
+    throw new Error("Query Store group trend request was invalid.");
+  const url = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance`
+    + `/databases/${databaseId}/history/${queryFingerprint}/plans/${planFingerprint}/trend`
+    + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}`;
+  const value = await readJson(url, instanceId, signal, 512 * 1024, true) as Record<string, unknown>;
+  if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint
+      || value.planFingerprint !== planFingerprint
+      || value.semantics !== "query_store_group_delta"
+      || value.revisionScope !== "current" || value.coverage !== "observed_groups_only"
+      || value.bucketSeconds !== 3600 || !timestamp(value.fromUtc) || !timestamp(value.toUtc)
+      || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc)
+      || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)
+      || !Array.isArray(value.points) || value.points.length > 169)
+    throw new Error("Query Store group trend response was outside its bounds.");
+  let previousBucket = -Infinity;
+  const points = value.points.map(raw => {
+    if (typeof raw !== "object" || raw === null)
+      throw new Error("Query Store group trend point was invalid.");
+    const point = raw as Record<string, unknown>;
+    if (!timestamp(point.bucketStartUtc))
+      throw new Error("Query Store group trend bucket was invalid.");
+    const bucket = Date.parse(point.bucketStartUtc);
+    if (bucket % 3_600_000 !== 0 || bucket <= previousBucket
+        || bucket < Math.floor(Date.parse(fromUtc) / 3_600_000) * 3_600_000
+        || bucket >= Date.parse(toUtc))
+      throw new Error("Query Store group trend bucket was outside its window.");
+    previousBucket = bucket;
+    const counts = [point.sourceRows, point.runtimeComparableRows,
+      point.runtimeBaselineRows, point.runtimeResetRows, point.runtimeAmbiguousRows,
+      point.waitComparableRows, point.waitBaselineRows, point.waitResetRows,
+      point.waitUnavailableRows, point.waitStaleRows];
+    if (counts.some(count => !Number.isSafeInteger(count) || (count as number) < 0)
+        || (point.sourceRows as number) === 0
+        || (point.runtimeComparableRows as number) + (point.runtimeBaselineRows as number)
+          + (point.runtimeResetRows as number) + (point.runtimeAmbiguousRows as number) !== point.sourceRows
+        || (point.waitComparableRows as number) + (point.waitBaselineRows as number)
+          + (point.waitResetRows as number) + (point.waitUnavailableRows as number)
+          + (point.waitStaleRows as number) !== point.sourceRows)
+      throw new Error("Query Store group trend coverage was inconsistent.");
+    const metricKeys = ["cpuMilliseconds", "durationMilliseconds", "executions",
+      "logicalReads", "writes", "rows"] as const;
+    if (metricKeys.some(key => (point.runtimeComparableRows as number) === 0
+      ? point[key] !== null : !wholeCount(point[key])))
+      throw new Error("Query Store group trend metrics were inconsistent.");
+    const categories = point.waitCategories;
+    if (typeof categories !== "object" || categories === null || Array.isArray(categories)
+        || Object.keys(categories).length > 32
+        || (point.waitComparableRows as number) === 0 && Object.keys(categories).length !== 0
+        || Object.entries(categories).some(([key, count]) =>
+          !/^(?:0|[1-9]|[12][0-9]|3[01])$/u.test(key) || !wholeCount(count)))
+      throw new Error("Query Store group trend waits were invalid.");
+    return point as QueryStoreGroupTrendPoint;
+  });
+  return { fromUtc, toUtc, points };
+}
+const wholeCount = (value: unknown): value is string =>
+  typeof value === "string" && /^(?:0|[1-9][0-9]{0,28})$/u.test(value);
 function item(value: unknown, metric: QueryPerformanceMetric = "cpu"): QueryPerformanceItem {
   if (typeof value !== "object" || value === null) throw new Error("Query performance item was invalid."); const i = value as Record<string, unknown>; const v = i.value;
   const source = String(i.source); const sourceState = String(i.sourceState); const semantic = String(i.semantics); const sourceMatrix = source === "query_store" && semantic === "query_store_interval" && (sourceState === "read_write" || sourceState === "read_only") || source === "plan_cache" && semantic !== "query_store_interval" && (sourceState === "disabled" || sourceState === "read_failure" || sourceState === "permission_denied" || sourceState === "timed_out" || sourceState === "unsupported");

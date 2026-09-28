@@ -1,10 +1,11 @@
 import { metricsForObservation, queryPerformanceDatabaseOptions } from "./querySelection";
 import { EvidenceStatus } from "../../components/DiagnosticUi";
 import { ObservationChart } from "../../components/ObservationChart";
+import { QueryStoreGroupTrendPanel, type GroupTrendState } from "./QueryStoreGroupTrendPanel";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { useEffect, useRef, useState } from "react";
-import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop } from "./queryPerformanceApi";
+import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend } from "./queryPerformanceApi";
 import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus } from "./queryPerformanceTypes";
 
@@ -32,6 +33,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const textRequest = useRef<AbortController | null>(null);
   const planContentRequest = useRef<AbortController | null>(null);
   const waitRequest = useRef<AbortController | null>(null);
+  const trendRequest = useRef<AbortController | null>(null);
   const activeQuery = useRef<{ readonly instanceId: string; readonly ranking: QueryPerformanceMetric; readonly fromUtc: string; readonly toUtc: string; readonly refresh: number } | undefined>(undefined);
   const [ranking, setRanking] = useState<QueryPerformanceMetric>("cpu");
   const [paging, setPaging] = useState(false);
@@ -41,11 +43,12 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   // default so an environment with that fallback does not look like it has no
   // data; users can still narrow the view with the source filter below.
   const [source, setSource] = useState("mixed");
-  useEffect(() => () => { selectionRequest.current?.abort(); historyRequest.current?.abort(); pagingRequest.current?.abort(); textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc]);
+  useEffect(() => () => { selectionRequest.current?.abort(); historyRequest.current?.abort(); pagingRequest.current?.abort(); textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); trendRequest.current?.abort(); }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc]);
   const [page, setPage] = useState<QueryPerformancePage>();
   const [status, setStatus] = useState<QueryPerformanceStatus>();
   const [history, setHistory] = useState<QueryPerformanceHistoryPage>();
-  const [historySelection, setHistorySelection] = useState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string }>();
+  const [historySelection, setHistorySelection] = useState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string; planFingerprint?: string }>();
+  const [groupTrend, setGroupTrend] = useState<GroupTrendState>();
   const [plan, setPlan] = useState<QueryPerformancePlan>();
   const [message, setMessage] = useState<string>();
   const [textResult, setTextResult] = useState<{ runId: string; state: "loading" | "available" | "unavailable" | "error"; text?: string; message?: string }>();
@@ -91,6 +94,20 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   };
   const metrics: QueryPerformanceMetric[] = ["cpu", "duration", "executions", "logical_reads", "writes", "rows"];
   useEffect(() => {
+    trendRequest.current?.abort();
+    const selection = historySelection;
+    if (!selection?.planFingerprint) { setGroupTrend(undefined); return; }
+    const controller = new AbortController(); trendRequest.current = controller;
+    setGroupTrend({ status: "loading" });
+    void getQueryStoreGroupPlanTrend(instanceId, selection.databaseId,
+      selection.queryFingerprint, selection.planFingerprint,
+      selection.fromUtc, selection.toUtc, controller.signal)
+      .then(trend => { if (!controller.signal.aborted) setGroupTrend({ status: "ready", trend }); })
+      .catch((error: unknown) => { if (!controller.signal.aborted) setGroupTrend({ status: "error",
+        message: error instanceof Error ? error.message : "Plan delta trend could not be loaded." }); });
+    return () => controller.abort();
+  }, [instanceId, historySelection, refresh]);
+  useEffect(() => {
     const previous = activeQuery.current;
     const queryChanged = previous === undefined || previous.instanceId !== instanceId || previous.ranking !== ranking ||
       (previous.refresh === refresh && (previous.fromUtc !== timeWindow.fromUtc || previous.toUtc !== timeWindow.toUtc));
@@ -112,8 +129,9 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     const c = new AbortController(); historyRequest.current = c;
     void getQueryPerformanceHistory(instanceId, selection.databaseId, selection.queryFingerprint, selection.fromUtc, selection.toUtc, c.signal, cursor).then(value => { if (!c.signal.aborted) setHistory(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query history is unavailable."); });
   };
-  const select = (databaseId: number, queryFingerprint: string, from: string, to: string, planFingerprint: string | undefined) => {
-    const selection = { databaseId, queryFingerprint, fromUtc: page?.fromUtc ?? from, toUtc: page?.toUtc ?? to };
+  const select = (databaseId: number, queryFingerprint: string, from: string, to: string, planFingerprint: string | undefined, sourceKind: string) => {
+    const selection = { databaseId, queryFingerprint, fromUtc: page?.fromUtc ?? from,
+      toUtc: page?.toUtc ?? to, planFingerprint: sourceKind === "query_store" ? planFingerprint : undefined };
     const c = new AbortController();
     selectionRequest.current?.abort(); selectionRequest.current = c;
     clearContent(); setPlan(undefined); setMessage(undefined); setHistorySelection(selection); setHistory(undefined);
@@ -130,7 +148,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       clearContent(); setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); setPage(next);
     }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance page is unavailable."); }).finally(() => { if (!c.signal.aborted) setPaging(false); });
   };
-  const selectedItem = page?.items.find(item => item.query.databaseId === historySelection?.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint && (source === "mixed" || item.source === source));
+  const selectedItem = page?.items.find(item => item.query.databaseId === historySelection?.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint && (historySelection.planFingerprint === undefined || item.plan?.planFingerprint === historySelection.planFingerprint) && (source === "mixed" || item.source === source));
   const selectedMetrics = metricsForObservation(selectedItem, history);
   const databaseOptions = queryPerformanceDatabaseOptions(page, status);
   const databaseNames = new Map(databaseOptions.map(option => [option.databaseId, option.databaseName]));
@@ -167,8 +185,10 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
         {selectedItem?.source === "query_store" && selectedItem.plan ? <button className="secondary-button" type="button" onClick={() => openWaits(selectedItem)}>Show plan waits for selected observation</button> : null}
         {waitResult ? <div role="status" className="activity-evidence"><p>{waitResult.state === "loading" ? "Loading plan waits…" : waitResult.state === "unavailable" ? "Query Store wait capture was unavailable for this plan and run." : waitResult.state === "error" ? waitResult.message : `Query Store wait totals captured ${timeLabel(waitResult.capturedAtUtc)} for run ${waitResult.runId}. Repeated interval snapshots can overlap.`}</p>{waitResult.state === "available" && (waitResult.categories?.length ? <ul>{waitResult.categories.map(row => <li key={row.category}>{waitCategoryNames[row.category] ?? `Category ${row.category}`}: {row.waitMilliseconds} ms</li>)}</ul> : <p>No nonzero wait categories were captured for this plan and run.</p>)}</div> : null}
       </section></div>
+      {groupTrend && historySelection?.planFingerprint && <QueryStoreGroupTrendPanel state={groupTrend}
+        onSelectWindow={onSelectWindow} timeLabel={timeLabel} waitCategoryNames={waitCategoryNames} />}
       <div className="table-scroll"><table><caption>Bounded ranked observations · CPU and duration in milliseconds · unavailable values are not zero</caption><thead><tr>{["Database / query", "Source", "Semantics", "CPU ms", "Duration ms", "Executions", "Reads / writes / rows", "Coverage"].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
-        {rows.map(x => <tr key={`${x.collectionRunId}-${x.observationKey}`} className={historySelection?.queryFingerprint === x.query.queryFingerprint && historySelection.databaseId === x.query.databaseId ? "selected-row" : ""}><td><button className="fingerprint" type="button" onClick={() => select(x.query.databaseId, x.query.queryFingerprint, x.intervalStartUtc, x.intervalEndUtc, x.plan?.planFingerprint)}>{displayDatabase(x.query.databaseId)} / {x.query.queryFingerprint.slice(0, 12)}…</button></td><td>{x.source} · {x.sourceState}</td><td>{x.semantics}</td><td>{x.metrics.cpuMilliseconds ?? "—"}</td><td>{x.metrics.durationMilliseconds ?? "—"}</td><td>{x.metrics.executions ?? "—"}</td><td>{x.metrics.logicalReads ?? "—"} / {x.metrics.writes ?? "—"} / {x.metrics.rows ?? "—"}</td><td>{x.coverage} · {x.fresh ? "fresh at snapshot" : "stale"}{x.truncated ? " · truncated" : ""}</td></tr>)}
+        {rows.map(x => <tr key={`${x.collectionRunId}-${x.observationKey}`} className={historySelection?.queryFingerprint === x.query.queryFingerprint && historySelection.databaseId === x.query.databaseId ? "selected-row" : ""}><td><button className="fingerprint" type="button" onClick={() => select(x.query.databaseId, x.query.queryFingerprint, x.intervalStartUtc, x.intervalEndUtc, x.plan?.planFingerprint, x.source)}>{displayDatabase(x.query.databaseId)} / {x.query.queryFingerprint.slice(0, 12)}…</button></td><td>{x.source} · {x.sourceState}</td><td>{x.semantics}</td><td>{x.metrics.cpuMilliseconds ?? "—"}</td><td>{x.metrics.durationMilliseconds ?? "—"}</td><td>{x.metrics.executions ?? "—"}</td><td>{x.metrics.logicalReads ?? "—"} / {x.metrics.writes ?? "—"} / {x.metrics.rows ?? "—"}</td><td>{x.coverage} · {x.fresh ? "fresh at snapshot" : "stale"}{x.truncated ? " · truncated" : ""}</td></tr>)}
       </tbody></table>{rows.length === 0 && <p className="empty-state">No {source.replaceAll("_", " ")} observations in this bounded page.</p>}</div>
 
       {history === undefined ? null : <div className="activity-evidence"><details><summary>Bounded history observations</summary>{history.items.length === 0 ? <p>No activity in the selected interval.</p> : history.items.map(x => <p key={`${x.collectionRunId}-${x.observationKey}`}>{timeLabel(x.intervalEndUtc)}: CPU {String(x.metrics.cpuMilliseconds ?? "—")} · duration {String(x.metrics.durationMilliseconds ?? "—")} · executions {String(x.metrics.executions ?? "—")} · reads {String(x.metrics.logicalReads ?? "—")} · writes {String(x.metrics.writes ?? "—")} · rows {String(x.metrics.rows ?? "—")} · {x.source} · {x.semantics} {canReadText && x.source === "query_store" ? <button className="secondary-button" type="button" onClick={() => openText(x)}>Open text for this run</button> : null} {canReadText && x.source === "query_store" && x.plan ? <button className="secondary-button" type="button" onClick={() => openPlan(x)}>Open plan XML for this run</button> : null} {x.source === "query_store" && x.plan ? <button className="secondary-button" type="button" onClick={() => openWaits(x)}>Show waits for this run</button> : null}</p>)}{history.nextCursor === undefined || historySelection === undefined ? null : <button className="secondary-button" type="button" onClick={() => loadHistory(historySelection, history.nextCursor)}>Next history page</button>}</details></div>}

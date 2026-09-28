@@ -10,3 +10,18 @@ export type QueryPerformancePlan = { readonly targetId: string; readonly databas
 export type QueryPerformanceText = { readonly collectionRunId: string; readonly status: "available" | "unavailable"; readonly text: string | null };
 export type QueryPerformancePlanContent = { readonly collectionRunId: string; readonly planFingerprint: string; readonly status: "available" | "unavailable"; readonly xml: string | null };
 export type QueryPerformancePlanWaits = { readonly collectionRunId: string; readonly planFingerprint: string; readonly status: "available" | "unavailable"; readonly capturedAtUtc: string | null; readonly categories: readonly { readonly category: number; readonly waitMilliseconds: number }[] | null };
+export type QueryStoreGroupTrendPoint = {
+  readonly bucketStartUtc: string; readonly sourceRows: number;
+  readonly runtimeComparableRows: number; readonly runtimeBaselineRows: number;
+  readonly runtimeResetRows: number; readonly runtimeAmbiguousRows: number;
+  readonly cpuMilliseconds: string | null; readonly durationMilliseconds: string | null;
+  readonly executions: string | null; readonly logicalReads: string | null;
+  readonly writes: string | null; readonly rows: string | null;
+  readonly waitComparableRows: number; readonly waitBaselineRows: number;
+  readonly waitResetRows: number; readonly waitUnavailableRows: number;
+  readonly waitStaleRows: number; readonly waitCategories: Readonly<Record<string, string>>;
+};
+export type QueryStoreGroupTrend = {
+  readonly fromUtc: string; readonly toUtc: string;
+  readonly points: readonly QueryStoreGroupTrendPoint[];
+};

@@ -1,7 +1,60 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop } from "../src/features/queries/queryPerformanceApi.ts";
+import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend } from "../src/features/queries/queryPerformanceApi.ts";
+
+test("Query Store group trend binds plan and window and preserves coverage gaps", async () => {
+  const originalFetch = globalThis.fetch;
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const query = "a".repeat(64), plan = "b".repeat(64);
+  const from = "2026-09-25T11:30:00Z", to = "2026-09-25T14:00:00Z";
+  const baseline = {
+    bucketStartUtc: "2026-09-25T11:00:00Z", sourceRows: 1,
+    runtimeComparableRows: 0, runtimeBaselineRows: 1, runtimeResetRows: 0,
+    runtimeAmbiguousRows: 0, cpuMilliseconds: null, durationMilliseconds: null,
+    executions: null, logicalReads: null, writes: null, rows: null,
+    waitComparableRows: 0, waitBaselineRows: 1, waitResetRows: 0,
+    waitUnavailableRows: 0, waitStaleRows: 0, waitCategories: {},
+  };
+  const comparable = {
+    ...baseline, bucketStartUtc: "2026-09-25T13:00:00Z",
+    runtimeComparableRows: 1, runtimeBaselineRows: 0,
+    cpuMilliseconds: "200", durationMilliseconds: "300", executions: "2",
+    logicalReads: "12", writes: "1", rows: "4",
+    waitComparableRows: 1, waitBaselineRows: 0, waitCategories: { "3": "9007199254740993" },
+  };
+  const response = { targetId, databaseId: 5, queryFingerprint: query,
+    planFingerprint: plan, fromUtc: from, toUtc: to,
+    semantics: "query_store_group_delta", revisionScope: "current",
+    coverage: "observed_groups_only", bucketSeconds: 3600,
+    points: [baseline, comparable] };
+  const controller = new AbortController();
+  let request;
+  const reply = value => new Response(JSON.stringify(value), {
+    headers: { "content-type": "application/json" },
+  });
+  try {
+    globalThis.fetch = async (url, options) => { request = { url, options }; return reply(response); };
+    const trend = await getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal);
+    assert.equal(trend.points.length, 2);
+    assert.deepEqual(trend.points[0], baseline);
+    assert.equal(trend.points[1].waitCategories[3], "9007199254740993");
+    assert.match(request.url, new RegExp(`/history/${query}/plans/${plan}/trend\\?`));
+    assert.equal(request.options.cache, "no-store");
+    assert.equal(request.options.signal, controller.signal);
+    globalThis.fetch = async () => reply({ ...response, targetId: "other-target" });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /target contract/);
+    globalThis.fetch = async () => reply({ ...response, planFingerprint: "c".repeat(64) });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /outside its bounds/);
+    globalThis.fetch = async () => reply({ ...response, points: [{ ...baseline, runtimeBaselineRows: 0 }] });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /coverage was inconsistent/);
+    globalThis.fetch = async () => reply({ ...response, points: [comparable, baseline] });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /bucket was outside its window/);
+    globalThis.fetch = async () => reply({ ...response, points: [{ ...baseline,
+      bucketStartUtc: "2026-09-25T10:00:00Z" }] });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /bucket was outside its window/);
+  } finally { globalThis.fetch = originalFetch; }
+});
 
 test("query performance panel shows all source evidence by default", async () => {
   const panel = await readFile(new URL("../src/features/queries/TargetQueryPerformancePanel.tsx", import.meta.url), "utf8");
