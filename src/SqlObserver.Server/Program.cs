@@ -95,6 +95,9 @@ builder.Services.AddSingleton<IHealthProjectionRepositoryPort>(static services =
 builder.Services.AddSingleton<ISqlVolumeReadRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlVolumeReads);
 builder.Services.AddSingleton<ISqlVolumeReadService, SqlVolumeReadService>();
+builder.Services.AddSingleton<IDatabaseFileIoTrendRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().DatabaseFileIoTrends);
+builder.Services.AddSingleton<IDatabaseFileIoTrendQueryService, DatabaseFileIoTrendQueryService>();
 builder.Services.AddSingleton<SqlVolumeCursorProtector>();
 builder.Services.AddSingleton<IObservationTargetOnboardingService, ObservationTargetOnboardingService>();
 builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTargetManagementService>();
@@ -176,6 +179,7 @@ app.MapSqlObserverServiceStatusEndpoints(includeRootDescriptor: webInterface is 
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
 app.MapSqlVolumeEndpoints();
+app.MapDatabaseFileIoTrendEndpoints();
 app.MapOverviewEndpoints();
 app.MapTargetActivityEndpoints();
 app.MapLiveActivityEndpoints();
