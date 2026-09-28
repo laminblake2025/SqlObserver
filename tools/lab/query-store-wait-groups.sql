@@ -2,10 +2,15 @@ SET NOCOUNT ON;
 /* Candidate Query Store wait source for interval watermarks; not a production collector asset. */
 /* Caller supplies @probe_rows (1..2001), @window_start and @window_end in UTC. */
 IF @probe_rows < 1 OR @probe_rows > 2001 THROW 50000, 'Invalid Query Store wait source row cap.', 1;
+IF NOT EXISTS (
+    SELECT 1 FROM sys.database_recovery_status
+    WHERE database_id = DB_ID() AND database_guid IS NOT NULL
+) THROW 50001, 'Query Store database identity is unavailable.', 1;
 DECLARE @observed_at datetimeoffset(7) = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
 DECLARE @wait_capture_mode varchar(32) =
     (SELECT TOP (1) wait_stats_capture_mode_desc FROM sys.database_query_store_options);
-SELECT COALESCE(@wait_capture_mode, 'UNAVAILABLE') AS wait_capture_mode;
+SELECT COALESCE(@wait_capture_mode, 'UNAVAILABLE') AS wait_capture_mode,
+       @observed_at AS observed_at;
 IF @wait_capture_mode = 'ON'
 BEGIN
     WITH database_identity AS (

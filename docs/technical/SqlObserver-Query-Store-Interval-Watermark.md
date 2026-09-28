@@ -48,7 +48,8 @@ sessions intermittently did not advance the visible runtime count, so that
 fixture was unsuitable as a reliable cutover gate.
 
 `tools/lab/query-store-wait-groups.sql` is the matching candidate wait source.
-It reports the capture mode separately, groups the active interval's flushed
+It reports the capture mode and UTC read time separately, including when no
+category rows exist, groups the active interval's flushed
 and in-memory rows by plan, interval, execution type and wait category before
 applying its row cap, and emits the same database/query/plan/interval identity
 as the runtime source. A dedicated disposable SQL Server 2022 probe held a table
@@ -58,6 +59,8 @@ non-sysadmin login with the generated Query Store grants. The probe removed
 its login and database; turning wait capture off yielded an explicit `OFF`
 status with no group rows. This does not yet prove absent-category zeroes,
 reset/refill behavior for wait counters, or SQL Server 2019/2025 behavior.
+Both candidate sources now fail when the database GUID cannot be read, instead
+of letting the cross join silently present the database as empty.
 
 The disposable SQL Server 2022 probe in
 `tools/lab/verify-query-store-text-local.ps1` held a table lock, recorded a

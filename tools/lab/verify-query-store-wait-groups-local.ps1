@@ -19,6 +19,19 @@ function Invoke-ProbeSql([string] $databaseName, [string] $statement) {
     return @($output)
 }
 
+function Read-CaptureModeAt([string[]] $output, [string] $expectedMode) {
+    if ($output.Count -lt 1) { throw 'Candidate wait source returned no capture status.' }
+    $status = $output[0].Split('|')
+    if ($status.Count -ne 2 -or $status[0].Trim() -ne $expectedMode) {
+        throw "Candidate wait source returned an unexpected capture status: $($output -join '; ')"
+    }
+    $observed = [datetimeoffset]::Parse($status[1].Trim())
+    if ($observed.Offset -ne [timespan]::Zero) {
+        throw 'Candidate wait source capture status was not observed in UTC.'
+    }
+    return $observed
+}
+
 try {
     $major = Invoke-ProbeSql 'master' "SET NOCOUNT ON; SELECT CONVERT(int, SERVERPROPERTY('ProductMajorVersion'))"
     if (@($major | Where-Object { $_ -match '^\s*16\s*$' }).Count -ne 1) {
@@ -69,8 +82,8 @@ try {
     })
     if ($runtimeRows.Count -ne 1) { throw 'Candidate runtime source did not return the blocked fixture plan.' }
     $runtimeFields = $runtimeRows[0].Split('|')
-    $waitOutput = Invoke-ProbeSql $database "$sourceParameters $waitSql"
-    if ($waitOutput[0].Trim() -ne 'ON') { throw 'Candidate wait source did not report enabled capture.' }
+    $waitOutput = @(Invoke-ProbeSql $database "$sourceParameters $waitSql")
+    $waitObservedAt = Read-CaptureModeAt $waitOutput 'ON'
     $waitRows = @($waitOutput | Where-Object {
         $columns = $_.Split('|')
         $columns.Count -eq 14 -and $columns[4].Trim() -eq [string]$planId -and
@@ -91,7 +104,7 @@ try {
     }
     if ($waitFields[13].Trim() -ne $runtimeFields[19].Trim() -or
         [guid]::Parse($waitFields[1].Trim()) -eq [guid]::Empty -or
-        [datetimeoffset]::Parse($waitFields[12].Trim()).Offset -ne [timespan]::Zero) {
+        [datetimeoffset]::Parse($waitFields[12].Trim()) -ne $waitObservedAt) {
         throw 'Candidate wait group has invalid query text, database or UTC observation identity.'
     }
 
@@ -104,13 +117,14 @@ try {
     if (-not ($permissionState | Where-Object { $_ -match '^\s*0\|1\s*$' })) {
         throw 'Disposable Query Store login did not have the expected non-sysadmin read permission.'
     }
-    $leastPrivilegeOutput = Invoke-ProbeSql $database "EXECUTE AS LOGIN = N'$probeLogin'; $sourceParameters $waitSql REVERT"
+    $leastPrivilegeOutput = @(Invoke-ProbeSql $database "EXECUTE AS LOGIN = N'$probeLogin'; $sourceParameters $waitSql REVERT")
+    $null = Read-CaptureModeAt $leastPrivilegeOutput 'ON'
     $leastPrivilegeRows = @($leastPrivilegeOutput | Where-Object {
         $columns = $_.Split('|')
         $columns.Count -eq 14 -and $columns[4].Trim() -eq [string]$planId -and
             $columns[10].Trim() -eq '3' -and $columns[9].Trim() -eq '0'
     })
-    if ($leastPrivilegeOutput[0].Trim() -ne 'ON' -or $leastPrivilegeRows.Count -ne 1) {
+    if ($leastPrivilegeRows.Count -ne 1) {
         throw 'Least-privilege login could not read the candidate wait group.'
     }
     $leastPrivilegeFields = $leastPrivilegeRows[0].Split('|')
@@ -121,8 +135,8 @@ try {
     }
     Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET QUERY_STORE (WAIT_STATS_CAPTURE_MODE = OFF)" | Out-Null
     $disabledOutput = @(Invoke-ProbeSql $database "$sourceParameters $waitSql")
-    if ($disabledOutput[0].Trim() -ne 'OFF' -or
-        @($disabledOutput | Where-Object { $_.Split('|').Count -eq 14 }).Count -ne 0) {
+    $null = Read-CaptureModeAt $disabledOutput 'OFF'
+    if (@($disabledOutput | Where-Object { $_.Split('|').Count -eq 14 }).Count -ne 0) {
         throw 'Candidate wait source did not distinguish disabled capture from an empty enabled interval.'
     }
     Write-Output "SQL Server 2022 Query Store wait group matched runtime identity and direct lock wait $($waitFields[11].Trim()) ms for plan $planId; the non-sysadmin login returned the same group, and disabled capture was reported explicitly."

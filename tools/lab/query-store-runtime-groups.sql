@@ -3,6 +3,10 @@ SET NOCOUNT ON;
 /* Caller supplies @probe_rows (1..2001), @window_start and @window_end in UTC. */
 DECLARE @observed_at datetimeoffset(7) = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
 IF @probe_rows < 1 OR @probe_rows > 2001 THROW 50000, 'Invalid Query Store source row cap.', 1;
+IF NOT EXISTS (
+    SELECT 1 FROM sys.database_recovery_status
+    WHERE database_id = DB_ID() AND database_guid IS NOT NULL
+) THROW 50001, 'Query Store database identity is unavailable.', 1;
 
 WITH database_identity AS (
     SELECT database_guid
