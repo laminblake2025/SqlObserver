@@ -11,6 +11,8 @@ public enum SystemRetentionStepOutcome
     Detached,
     Dropped,
     Reattached,
+    GraceStarted,
+    Cancelled,
     Retry,
     Failed,
 }
@@ -133,6 +135,8 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
                 "detached" => SystemRetentionStepOutcome.Detached,
                 "dropped" => SystemRetentionStepOutcome.Dropped,
                 "reattached" => SystemRetentionStepOutcome.Reattached,
+                "grace_started" => SystemRetentionStepOutcome.GraceStarted,
+                "cancelled" => SystemRetentionStepOutcome.Cancelled,
                 "retry" => SystemRetentionStepOutcome.Retry,
                 "failed" => SystemRetentionStepOutcome.Failed,
                 _ => throw new InvalidDataException("System retention returned an invalid outcome."),

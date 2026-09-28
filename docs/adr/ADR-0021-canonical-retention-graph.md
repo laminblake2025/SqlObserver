@@ -20,7 +20,8 @@ reference the summary. A PostgreSQL 18 integration test confirms that
 detaching the monthly event partition while a deadlock summary exists fails
 with SQLSTATE `23503`. The partition remains attached and the evidence stays
 visible. Thus the 90-day diagnostic-event policy introduced in migration 0157
-cannot expire a month that contains deadlocks under the current step function.
+could not expire a month that contained deadlocks before migration 0160 added
+an attached-grace step.
 
 The old M5/M9 and other unused `_v2` parents are not a substitute for written
 tables. Registering empty scaffolds or deleting them does not bound active
@@ -74,10 +75,11 @@ and recovery prerequisite for each batch.
 
 ## Implementation gates
 
-1. Add the attached-grace lifecycle and exact-month deadlock dependency check
-   to the fenced retention worker. Exercise a populated deadlock month through
-   selection, 24-hour grace, policy change, blocked reader, failed transaction,
-   and successful retirement. Keep the existing detach/drop path green.
+1. Migration 0160 adds an attached-grace lifecycle for diagnostic-event months
+   to the fenced retention worker. Its PostgreSQL test covers selection,
+   policy change, blocked reader, failed transaction, and successful
+   retirement; the existing detach/drop path remains separate. Fleet-scale
+   sizing of the 10,000-deadlock atomic limit remains an operational gate.
 2. Publish the M7 partitioned successor with a forward migration. Verify
    duplicate/replay identity, cross-target forced RLS, UTC boundaries,
    backfill counts and digests, and old/new read parity before cutover.

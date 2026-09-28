@@ -490,6 +490,152 @@ public sealed class M6DeadlockPostgreSqlIntegrationTests
         await prepared.Collector.DisposeAsync();
     }
 
+    [Fact]
+    public async Task AttachedGraceRetiresDeadlockMonthAtomicallyAfterReaderAndFailureClear()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset now = await ReadClockAsync(database);
+        DateTimeOffset oldMonth = new(new DateTime(now.Year, now.Month, 1).AddDays(-1).AddHours(23), TimeSpan.Zero);
+        var prepared = await PrepareCommitAsync(database, occurrence: oldMonth);
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await prepared.Runtime.CommitRunAsync(prepared.Commit, CancellationToken.None)).Status);
+        await ExecuteAsync(database, "SELECT control.ensure_m10_partition_set(current_date);");
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='diagnostic_events';");
+
+        Guid owner = Guid.NewGuid();
+        await using NpgsqlConnection worker = await prepared.Collector.OpenConnectionAsync();
+        await using var acquire = new NpgsqlCommand("SELECT fencing_token FROM control.acquire_worker_lease('retention/maintenance',@owner,interval '5 minutes');", worker);
+        acquire.Parameters.AddWithValue("owner", owner);
+        long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        var identity = new WorkerLeaseIdentity(new WorkerLeaseKey("retention/maintenance"),
+            new WorkerExecutionId(owner), new FencingToken(fence));
+        var retention = new PostgreSqlPartitionMaintenancePort(prepared.Collector);
+        async Task<SystemRetentionStepOutcome> StepAsync() =>
+            await retention.RunSystemRetentionStepAsync(identity, Timeout, CancellationToken.None);
+
+        Assert.Equal(SystemRetentionStepOutcome.Idle, await StepAsync());
+        await ExecuteAsync(database, """
+            INSERT INTO system.recovery_attestation
+              (attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest)
+            VALUES(@id,clock_timestamp(),'test','restore-tested',
+              clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));
+            """, ("id", Guid.NewGuid()));
+        Assert.Equal(SystemRetentionStepOutcome.GraceStarted, await StepAsync());
+        Assert.Equal(SystemRetentionStepOutcome.Idle, await StepAsync());
+        string partition = $"diagnostic_event_p{oldMonth:yyyyMM}";
+        Assert.Equal(1L, await CountSummaryAsync(database, prepared.Target.Value));
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var inspect = new NpgsqlCommand("SELECT state,detached_at IS NULL FROM system.retention_execution WHERE partition_name=@partition;", admin))
+        {
+            inspect.Parameters.AddWithValue("partition", partition);
+            await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("attached_grace", reader.GetString(0));
+            Assert.True(reader.GetBoolean(1));
+        }
+
+        await ExecuteAsync(database, "UPDATE system.retention_execution SET drop_after=clock_timestamp()-interval '1 minute' WHERE partition_name=@partition AND state='attached_grace';", ("partition", partition));
+        Guid readerLease = Guid.NewGuid();
+        await ExecuteAsync(database, """
+            INSERT INTO system.partition_reader_lease
+              (lease_id,parent_schema,parent_table,partition_name,owner_execution_id,expires_at)
+            VALUES(@lease,'events','diagnostic_event',@partition,@owner,
+              clock_timestamp()+interval '1 hour');
+            """, ("lease", readerLease), ("partition", partition), ("owner", Guid.NewGuid()));
+        Assert.Equal(SystemRetentionStepOutcome.Idle, await StepAsync());
+        Assert.Equal(1L, await CountSummaryAsync(database, prepared.Target.Value));
+        await ExecuteAsync(database, "UPDATE system.partition_reader_lease SET released_at=clock_timestamp() WHERE lease_id=@lease;", ("lease", readerLease));
+
+        await ExecuteAsync(database, $"CREATE VIEW events.retention_deadlock_dependency AS SELECT count(*) FROM events.\"{partition}\";");
+        Assert.Equal(SystemRetentionStepOutcome.Retry, await StepAsync());
+        Assert.Equal(1L, await CountSummaryAsync(database, prepared.Target.Value));
+        await ExecuteAsync(database, "DROP VIEW events.retention_deadlock_dependency;");
+        await ExecuteAsync(database, """
+            INSERT INTO system.retention_drop_retry
+              (execution_id,error_code,error_detail,next_attempt_at)
+            SELECT execution_id,'TEST','elapsed backoff',clock_timestamp()-interval '1 minute'
+            FROM system.retention_execution
+            WHERE partition_name=@partition AND state='attached_grace';
+            """, ("partition", partition));
+        Assert.Equal(SystemRetentionStepOutcome.Dropped, await StepAsync());
+        Assert.Equal(0L, await CountSummaryAsync(database, prepared.Target.Value));
+        await using var verify = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM system.partition_registry
+                     WHERE partition_name=@partition AND lifecycle_state='dropped'),
+                   (SELECT count(*) FROM system.retention_execution
+                     WHERE partition_name=@partition AND state='dropped'),
+                   (SELECT count(*) FROM audit.activity
+                     WHERE subject_identifier=@partition AND action_name='retention.partition.drop'
+                       AND outcome='succeeded'),
+                   (SELECT count(*) FROM events.diagnostic_event WHERE event_id=@event),
+                   (SELECT count(*) FROM events.deadlock_participant WHERE event_id=@event),
+                   (SELECT count(*) FROM events.deadlock_relation WHERE event_id=@event),
+                   has_table_privilege('sqlobserver_collector','events.deadlock_summary','DELETE'),
+                   has_function_privilege('sqlobserver_collector',
+                     'system.run_attached_event_retention_step(uuid,bigint)','EXECUTE');
+            """, admin);
+        verify.Parameters.AddWithValue("partition", partition);
+        verify.Parameters.AddWithValue("event", prepared.Commit.Payload.Deadlocks.Items[0].EventId);
+        await using NpgsqlDataReader verified = await verify.ExecuteReaderAsync();
+        Assert.True(await verified.ReadAsync());
+        for (int column = 0; column < 3; column++)
+            Assert.Equal(1L, verified.GetInt64(column));
+        for (int column = 3; column < 6; column++)
+            Assert.Equal(0L, verified.GetInt64(column));
+        Assert.False(verified.GetBoolean(6));
+        Assert.False(verified.GetBoolean(7));
+        await prepared.Leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(prepared.Lease, Timeout), CancellationToken.None);
+        await prepared.Collector.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task AttachedGraceCancelsWhenPolicyRevisionChanges()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset now = await ReadClockAsync(database);
+        DateTimeOffset oldMonth = new(new DateTime(now.Year, now.Month, 1).AddDays(-1).AddHours(23), TimeSpan.Zero);
+        var prepared = await PrepareCommitAsync(database, occurrence: oldMonth);
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await prepared.Runtime.CommitRunAsync(prepared.Commit, CancellationToken.None)).Status);
+        await ExecuteAsync(database, "SELECT control.ensure_m10_partition_set(current_date);");
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='diagnostic_events';");
+        await ExecuteAsync(database, """
+            INSERT INTO system.recovery_attestation
+              (attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest)
+            VALUES(@id,clock_timestamp(),'test','restore-tested',
+              clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));
+            """, ("id", Guid.NewGuid()));
+        Guid owner = Guid.NewGuid();
+        await using NpgsqlConnection worker = await prepared.Collector.OpenConnectionAsync();
+        await using var acquire = new NpgsqlCommand("SELECT fencing_token FROM control.acquire_worker_lease('retention/maintenance',@owner,interval '5 minutes');", worker);
+        acquire.Parameters.AddWithValue("owner", owner);
+        long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        var identity = new WorkerLeaseIdentity(new WorkerLeaseKey("retention/maintenance"),
+            new WorkerExecutionId(owner), new FencingToken(fence));
+        var retention = new PostgreSqlPartitionMaintenancePort(prepared.Collector);
+        Assert.Equal(SystemRetentionStepOutcome.GraceStarted,
+            await retention.RunSystemRetentionStepAsync(identity, Timeout, CancellationToken.None));
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=false,retain_for=NULL,policy_revision=policy_revision+1 WHERE data_class='diagnostic_events';");
+        Assert.Equal(SystemRetentionStepOutcome.Cancelled,
+            await retention.RunSystemRetentionStepAsync(identity, Timeout, CancellationToken.None));
+        Assert.Equal(1L, await CountSummaryAsync(database, prepared.Target.Value));
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using var inspect = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM system.retention_execution
+                     WHERE parent_table='diagnostic_event' AND state='cancelled'),
+                   (SELECT count(*) FROM system.partition_registry
+                     WHERE parent_table='diagnostic_event' AND range_start=@start
+                       AND lifecycle_state='attached' AND detached_at IS NULL);
+            """, admin);
+        inspect.Parameters.AddWithValue("start", new DateTimeOffset(oldMonth.Year, oldMonth.Month, 1, 0, 0, 0, TimeSpan.Zero));
+        await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(1L, reader.GetInt64(0));
+        Assert.Equal(1L, reader.GetInt64(1));
+        await prepared.Leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(prepared.Lease, Timeout), CancellationToken.None);
+        await prepared.Collector.DisposeAsync();
+    }
+
     private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync()
     {
         RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();

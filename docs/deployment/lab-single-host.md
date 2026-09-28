@@ -207,13 +207,17 @@ Migration `0157` applies the same guarded default policy to the original
 partitioned evidence streams: 30 days for raw metric samples and 90 days for
 diagnostic events. Previously configured policies are preserved, and a
 SecurityAdministrator can change either policy through the retention API.
-The diagnostic-event month cannot currently detach if it contains a deadlock:
-the typed deadlock summary has a foreign key to the event envelope. PostgreSQL
-rejects that detach with `23503`; the data stays attached and visible, but the
-90-day policy does not reclaim that month. See
-[ADR-0021](../adr/ADR-0021-canonical-retention-graph.md) for the planned
-attached-grace retirement path. Do not manually remove the dependent evidence
-to make a retention run succeed.
+The typed deadlock summary has a foreign key to its diagnostic-event envelope;
+PostgreSQL rejects a detach-first attempt for a populated month with `23503`.
+Migration `0160` instead keeps diagnostic-event months attached and readable
+during a 24-hour grace period. After the grace, the fenced worker rechecks the
+policy revision, reader leases, analytics dependencies, minimum partition
+count, and recovery attestation. It removes at most 10,000 typed deadlock rows,
+then detaches and drops that exact event month in one transaction. A failed
+step rolls back the row removal and leaves the month readable; after 20 failed
+attempts the execution needs operator review. Policy changes cancel attached
+grace without hiding data. See
+[ADR-0021](../adr/ADR-0021-canonical-retention-graph.md).
 Migration `0158` enables defaults on the four M10 v2 streams that receive
 writes: 30 days for host metrics and replication snapshots, and 180 days for
 rollups and evidence packets. Operator-revised policies are preserved. The
