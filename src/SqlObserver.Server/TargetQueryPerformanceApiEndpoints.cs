@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Security;
@@ -20,6 +21,7 @@ public static class TargetQueryPerformanceApiEndpoints
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/text", TextAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/plans/{planFingerprint}/content", PlanContentAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/plans/{planFingerprint}/waits", PlanWaitsAsync);
+        group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/plans/{planFingerprint}/trend", PlanTrendAsync);
         group.MapGet("/databases/{databaseId:int}/plans/{planFingerprint}", PlanAsync);
         return e;
     }
@@ -92,6 +94,42 @@ public static class TargetQueryPerformanceApiEndpoints
                     waitMilliseconds = category.WaitMilliseconds,
                 }),
                 semantics = "query_store_interval_total" });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+    private static async Task<IResult> PlanTrendAsync(HttpContext h, Guid instanceId,
+        int databaseId, string queryFingerprint, string planFingerprint,
+        IQueryStoreGroupPlanTrendQueryService service, WindowsGroupRoleResolver roles,
+        string? fromUtc = null, string? toUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        h.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            DateTimeOffset to = Parse(toUtc) ?? DateTimeOffset.UtcNow;
+            DateTimeOffset from = Parse(fromUtc) ?? to.AddHours(-24);
+            var plan = new PlanOpaqueIdentity(
+                new QueryOpaqueIdentity(databaseId, queryFingerprint), planFingerprint);
+            var request = new QueryStoreGroupPlanTrendRequest(
+                new MonitoredInstanceId(instanceId), plan, from, to,
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            QueryStoreGroupPlanTrendResult result = await service.ReadAsync(
+                roles.Resolve(h.User), request, cancellationToken);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                databaseId,
+                queryFingerprint = plan.Query.QueryFingerprint,
+                planFingerprint = plan.PlanFingerprint,
+                fromUtc = from,
+                toUtc = to,
+                semantics = "query_store_group_delta",
+                revisionScope = "current",
+                coverage = "observed_groups_only",
+                bucketSeconds = 3600,
+                points = result.Points,
+            });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }

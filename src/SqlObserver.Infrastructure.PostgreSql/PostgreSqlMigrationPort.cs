@@ -432,11 +432,13 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         string[] table = index.TableName.Split('.');
         string[] parentIndex = index.IndexName.Split('.');
         string prefix = table[1] + "_";
+        string suffix = child.StartsWith(prefix, StringComparison.Ordinal)
+            ? child[prefix.Length..] : string.Empty;
+        if (suffix.Length == 9 && suffix[0] == 'p') suffix = suffix[1..];
         if (schema != table[0] || !child.StartsWith(prefix, StringComparison.Ordinal) ||
-            child.Length != prefix.Length + 8 ||
-            !child.AsSpan(prefix.Length).ToString().All(char.IsAsciiDigit))
+            suffix.Length != 8 || !suffix.All(char.IsAsciiDigit))
             throw new InvalidOperationException("A partitioned-index child has an unexpected name or schema.");
-        string name = parentIndex[1] + "_" + child[prefix.Length..];
+        string name = parentIndex[1] + "_" + suffix;
         if (name.Length > 63) throw new InvalidOperationException("A partitioned child index name is too long.");
         return $"{schema}.{name}";
     }

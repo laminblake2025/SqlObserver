@@ -7,6 +7,7 @@ using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Auditing;
 using SqlObserver.Domain.Collection;
@@ -143,6 +144,35 @@ public sealed class M7QueryPerformanceHttpContractTests : IClassFixture<M7QueryP
         Assert.Equal(plan, factory.PlanWaitService.LastRequest?.Plan.PlanFingerprint);
     }
 
+    [Fact]
+    public async Task GroupTrendRouteBindsOpaquePlanAndUtcWindow()
+    {
+        using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        string query = new('a', 64), plan = new('b', 64);
+        const string from = "2026-09-28T11:00:00Z", to = "2026-09-28T12:00:00Z";
+        string route = $"/api/v1/observation-targets/{M7QueryPerformanceApiFactory.TargetId:D}/query-performance/databases/5/history/{query}/plans/{plan}/trend";
+        HttpResponseMessage response = await client.GetAsync(
+            $"{route}?fromUtc={from}&toUtc={to}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        using var document = await System.Text.Json.JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync());
+        Assert.Equal("query_store_group_delta",
+            document.RootElement.GetProperty("semantics").GetString());
+        Assert.Equal("observed_groups_only",
+            document.RootElement.GetProperty("coverage").GetString());
+        Assert.Equal(3600, document.RootElement.GetProperty("bucketSeconds").GetInt32());
+        Assert.Equal(plan, factory.GroupTrendService.LastRequest?.Plan.PlanFingerprint);
+        Assert.Equal(DateTimeOffset.Parse(from, CultureInfo.InvariantCulture),
+            factory.GroupTrendService.LastRequest?.FromUtc);
+        Assert.Equal(DateTimeOffset.Parse(to, CultureInfo.InvariantCulture),
+            factory.GroupTrendService.LastRequest?.ToUtc);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync($"{route}?fromUtc=2026-09-20T11:00:00Z&toUtc={to}"))
+                .StatusCode);
+    }
+
     [Theory]
     [InlineData("limit=0")]
     [InlineData("limit=201")]
@@ -161,20 +191,36 @@ public sealed class M7QueryPerformanceApiFactory : WebApplicationFactory<Program
     internal FakeQueryTextReadService TextService { get; } = new();
     internal FakeQueryPlanReadService PlanService { get; } = new();
     internal FakeQueryPlanWaitReadService PlanWaitService { get; } = new();
+    internal FakeQueryStoreGroupPlanTrendService GroupTrendService { get; } = new();
     protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseEnvironment("ContractTesting").ConfigureTestServices(services =>
     {
         services.RemoveAll<IQueryPerformanceApiQueryService>();
         services.RemoveAll<IQueryTextReadService>();
         services.RemoveAll<IQueryPlanReadService>();
         services.RemoveAll<IQueryPlanWaitReadService>();
+        services.RemoveAll<IQueryStoreGroupPlanTrendQueryService>();
         services.RemoveAll<WindowsGroupRoleResolver>();
         services.AddSingleton<IQueryPerformanceApiQueryService>(Service);
         services.AddSingleton<IQueryTextReadService>(TextService);
         services.AddSingleton<IQueryPlanReadService>(PlanService);
         services.AddSingleton<IQueryPlanWaitReadService>(PlanWaitService);
+        services.AddSingleton<IQueryStoreGroupPlanTrendQueryService>(GroupTrendService);
         services.AddSingleton(new WindowsGroupRoleResolver([new WindowsGroupRoleBinding(new ActorSecurityIdentifier(TestAuthenticationHandler.ViewerGroupSid), [ApplicationRole.Viewer], true)]));
         services.AddAuthentication(options => { options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName; options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName; }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, static _ => { });
     });
+}
+
+internal sealed class FakeQueryStoreGroupPlanTrendService : IQueryStoreGroupPlanTrendQueryService
+{
+    internal QueryStoreGroupPlanTrendRequest? LastRequest { get; private set; }
+    public ValueTask<QueryStoreGroupPlanTrendResult> ReadAsync(
+        AuthorizationContext authorization, QueryStoreGroupPlanTrendRequest request,
+        CancellationToken cancellationToken)
+    {
+        LastRequest = request;
+        return ValueTask.FromResult(new QueryStoreGroupPlanTrendResult(request.TargetId,
+            request.Plan, request.FromUtc, request.ToUtc, []));
+    }
 }
 
 internal sealed class FakeQueryTextReadService : IQueryTextReadService

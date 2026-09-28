@@ -32,6 +32,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         QueryTextReads = new PostgreSqlQueryTextReadRepositoryPort(dataSource);
         QueryPlanReads = new PostgreSqlQueryPlanReadRepositoryPort(dataSource);
         QueryPlanWaitReads = new PostgreSqlQueryPlanWaitReadRepositoryPort(dataSource);
+        QueryStoreGroupPlanTrends = new PostgreSqlQueryStoreGroupPlanTrendPort(dataSource);
         CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
         OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
@@ -69,6 +70,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IQueryTextReadRepositoryPort QueryTextReads { get; }
     public IQueryPlanReadRepositoryPort QueryPlanReads { get; }
     public IQueryPlanWaitReadRepositoryPort QueryPlanWaitReads { get; }
+    public IQueryStoreGroupPlanTrendRepositoryPort QueryStoreGroupPlanTrends { get; }
 
     public ICollectorRuntimeRepositoryPort CollectorRuntime { get; }
     public IAlertRepositoryPort Alerts { get; }
