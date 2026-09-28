@@ -192,9 +192,17 @@ Migration `0105` adds a collector-only retention step with a fixed
 drop per transaction, records `system` audit activity, and checks the lease
 again before commit. The existing 24-hour detach grace, policy revision,
 reader lease, analytics dependency, and recovery-attestation gates still apply.
-Policies remain disabled until a SecurityAdministrator explicitly enables and
-configures each data class; enabling a policy now starts scheduled removal of
-eligible partitions after its configured retention window.
+At this migration stage, policies remain disabled until a
+SecurityAdministrator configures each data class.
+
+Migration `0156` enables default retention for the four written M5 parents:
+30 days for session activity, 14 days for requests and server waits, and 90
+days for blocking edges. It changes only untouched disabled policies;
+operator-revised policies keep their settings. A SecurityAdministrator can
+adjust or disable these defaults. The worker still requires a valid recovery
+attestation and honors partition minimums, reader leases, analytics
+dependencies, and the 24-hour detach grace before a drop. Review the defaults
+and attest recovery before allowing old partitions to be removed.
 
 Migration `0135` adds target-scoped, bounded server-wait history. Migration
 `0136` creates its target/time ordering index across the written daily wait

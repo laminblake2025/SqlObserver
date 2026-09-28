@@ -26,7 +26,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
         await using var policies = new NpgsqlCommand("""
             SELECT data_class,parent_schema::text,parent_table::text,partition_granularity,
-                   enabled,retain_for IS NULL,policy_revision,
+                   enabled,retain_for,policy_revision,
                    EXISTS(SELECT 1 FROM system.partition_registry r
                      WHERE r.parent_schema=p.parent_schema AND r.parent_table=p.parent_table
                        AND r.lifecycle_state='attached')
@@ -34,12 +34,13 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             """, admin);
         await using NpgsqlDataReader reader = await policies.ExecuteReaderAsync();
         var parents = new Dictionary<string, string>(StringComparer.Ordinal);
+        var durations = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
         while (await reader.ReadAsync())
         {
             string dataClass = reader.GetString(0);
             parents.Add(dataClass, $"{reader.GetString(1)}.{reader.GetString(2)}:{reader.GetString(3)}");
-            Assert.False(reader.GetBoolean(4));
-            Assert.True(reader.GetBoolean(5));
+            Assert.True(reader.GetBoolean(4));
+            durations.Add(dataClass, reader.GetFieldValue<TimeSpan>(5));
             Assert.True(reader.GetInt64(6) >= 1);
             Assert.True(reader.GetBoolean(7), $"{dataClass} has no attached registered partition.");
         }
@@ -49,6 +50,10 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         Assert.Equal("telemetry.activity_request_snapshot:day", parents["m5_requests"]);
         Assert.Equal("telemetry.server_wait_snapshot:day", parents["m5_waits"]);
         Assert.Equal("events.blocking_edge:month", parents["m5_blocking"]);
+        Assert.Equal(TimeSpan.FromDays(30), durations["m5_activity"]);
+        Assert.Equal(TimeSpan.FromDays(14), durations["m5_requests"]);
+        Assert.Equal(TimeSpan.FromDays(14), durations["m5_waits"]);
+        Assert.Equal(TimeSpan.FromDays(90), durations["m5_blocking"]);
 
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         await using NpgsqlConnection connection = await server.OpenConnectionAsync();
@@ -57,7 +62,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             await using var update = new NpgsqlCommand("""
                 SELECT set_config('sqlobserver.role','SecurityAdministrator',true),
                        set_config('sqlobserver.authorization_scope','global',true);
-                SELECT system.update_m10_retention_policy('m5_waits',true,interval '7 days',3,1,
+                SELECT system.update_m10_retention_policy('m5_waits',true,interval '7 days',3,2,
                     'S-1-5-21-1-2-3-1001','Enable canonical wait retention');
                 """, connection, transaction);
             await update.ExecuteNonQueryAsync();
@@ -68,7 +73,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         Assert.True(await updated.ReadAsync());
         Assert.True(updated.GetBoolean(0));
         Assert.Equal(TimeSpan.FromDays(7), updated.GetFieldValue<TimeSpan>(1));
-        Assert.Equal(2L, updated.GetInt64(2));
+        Assert.Equal(3L, updated.GetInt64(2));
         await updated.CloseAsync();
         await using var wrongParent = new NpgsqlCommand("UPDATE system.retention_policy SET parent_table='server_wait_snapshot_v2' WHERE data_class='m5_waits';", admin);
         PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(() => wrongParent.ExecuteNonQueryAsync());
