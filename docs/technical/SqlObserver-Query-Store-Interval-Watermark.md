@@ -61,6 +61,13 @@ status with no group rows. This does not yet prove absent-category zeroes,
 reset/refill behavior for wait counters, or SQL Server 2019/2025 behavior.
 Both candidate sources now fail when the database GUID cannot be read, instead
 of letting the cross join silently present the database as empty.
+`QueryStoreGroupedSourceReader` in the SQL Server infrastructure project maps
+the fixed runtime and wait row shapes to typed watermark identities, checks
+the selected database ID, rejects duplicate groups and unknown capture modes,
+and marks a one-row lookahead as incomplete. It synthesizes empty wait-category
+snapshots only when both runtime and enabled wait reads are complete. Four
+focused reader tests cover matching, empty/off, cap, and invalid identity
+paths. It is not yet called by the production collector.
 
 The disposable SQL Server 2022 probe in
 `tools/lab/verify-query-store-text-local.ps1` held a table lock, recorded a
