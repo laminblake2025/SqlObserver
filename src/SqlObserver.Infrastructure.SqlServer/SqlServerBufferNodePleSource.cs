@@ -8,7 +8,11 @@ internal sealed record BufferNodePle(int NodeId, long PageLifeExpectancySeconds)
 
 internal sealed record BufferNodePleRead(
     DateTimeOffset ObservedAtUtc, IReadOnlyList<BufferNodePle> Nodes,
-    int SourceRowsRead, int ResponseBytes, bool Incomplete);
+    int SourceRowsRead, int ResponseBytes,
+    bool SourceRowLimitReached, bool ResponseByteLimitReached)
+{
+    internal bool Incomplete => SourceRowLimitReached || ResponseByteLimitReached;
+}
 
 /// <summary>
 /// A bounded, pinned SQL Server source for individual Buffer Node PLE values.
@@ -55,7 +59,8 @@ internal static class SqlServerBufferNodePleSource
         {
             sourceRowsRead++;
             if (sourceRowsRead > maximumNodes)
-                return new BufferNodePleRead(observedAt, [], sourceRowsRead, responseBytes, true);
+                return new BufferNodePleRead(observedAt, [], sourceRowsRead, responseBytes,
+                    SourceRowLimitReached: true, ResponseByteLimitReached: false);
             DateTime value = reader.GetDateTime(0);
             if (value.Kind == DateTimeKind.Local)
                 throw new InvalidDataException("The Buffer Node PLE observation time is not UTC.");
@@ -74,13 +79,14 @@ internal static class SqlServerBufferNodePleSource
             observedAt = rowTime;
             const int rowBytes = 64;
             if (responseBytes + rowBytes > maximumResponseBytes)
-                return new BufferNodePleRead(observedAt, [], sourceRowsRead, responseBytes, true);
+                return new BufferNodePleRead(observedAt, [], sourceRowsRead, responseBytes,
+                    SourceRowLimitReached: false, ResponseByteLimitReached: true);
             responseBytes += rowBytes;
             nodes.Add(new BufferNodePle(nodeId, seconds));
         }
         if (sourceRowsRead == 0)
             throw new InvalidDataException("The Buffer Node PLE source returned no visible nodes.");
         return new BufferNodePleRead(observedAt, nodes.AsReadOnly(), sourceRowsRead,
-            responseBytes, false);
+            responseBytes, false, false);
     }
 }

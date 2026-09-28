@@ -14,14 +14,20 @@ or byte cap withholds the entire set so a partial node inventory cannot be
 presented as complete. Source code and a focused native SQL Server 2022 test
 validate this foundation; it is not scheduled or persisted yet.
 
-Publication needs a separate versioned `engine.buffer-nodes` collector and
-fenced repository commit path. Use a stable `(metric key, node_id dimension)`
-identity, reject duplicate nodes and divergent replay atomically, retain
-visibility gaps on truncated or invalid reads, and grant no direct table
-write. A target-scoped read projection should return per-node series in the
-shared Resources time window, with the Buffer Manager aggregate labelled
-separately. Qualify the pinned source and least-privilege permission on SQL
-Server 2019 and 2025 before enabling schedules by default.
+The unscheduled `engine.buffer-nodes` adapter now emits one dimensioned metric
+sample per node, with a run- and node-stable sample ID. Its output contract
+allows up to 128 `node_id` dimensions and preserves partial-coverage loss.
+The existing M4 commit writer rejects this new collector ID, so no data is
+persisted yet.
+
+Publication needs a separate fenced repository commit path and versioned
+catalog entry. Persist a stable `(metric key, node_id dimension)` identity,
+reject duplicate nodes and divergent replay atomically, retain visibility
+gaps on truncated or invalid reads, and grant no direct table write. A
+target-scoped read projection should return per-node series in the shared
+Resources time window, with the Buffer Manager aggregate labelled separately.
+Qualify the pinned source and least-privilege permission on SQL Server 2019
+and 2025 before enabling schedules by default.
 
 Source semantics: [Microsoft's Buffer Node counters](https://learn.microsoft.com/en-us/sql/relational-databases/performance-monitor/sql-server-buffer-node?view=sql-server-ver17)
 describe one instance per NUMA node and PLE in seconds. [Microsoft's memory

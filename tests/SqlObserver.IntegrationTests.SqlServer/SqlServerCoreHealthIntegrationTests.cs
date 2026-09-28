@@ -2,6 +2,7 @@ using System.Data;
 using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
+using SqlObserver.Collectors;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
@@ -16,6 +17,31 @@ public sealed class SqlServerCoreHealthIntegrationTests
         new(Guid.Parse("91919191-9191-9191-9191-919191919191"));
     private static readonly ObservationTargetRevision TargetRevision = new(7);
     private static readonly int[] SupportedMajorVersions = [15, 16, 17];
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalBufferNodeCollectorProducesDimensionedPleSamples()
+    {
+        var collector = new SqlServerBufferNodePleCollector(new LabSqlServerConnectionFactory());
+        CollectorExecutionRequest request = CreateRequest();
+
+        CollectorExecutionResult result = await collector.CollectAsync(request, CancellationToken.None);
+
+        Assert.Equal(CollectorRunOutcome.Succeeded, result.Outcome);
+        Assert.False(result.Loss.HasLoss);
+        Assert.InRange(result.Payload.Metrics.Count, 1, 128);
+        Assert.Equal(result.Payload.Metrics.Count, result.Accounting.OutputItemsProduced);
+        Assert.Equal(result.Payload.Metrics.Count, result.Payload.Metrics.Select(
+            sample => Assert.Single(sample.Dimensions).Value).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(result.Payload.Metrics, sample =>
+        {
+            Assert.Equal("engine.buffer_node_page_life_expectancy_seconds", sample.MetricId.Value);
+            Assert.Equal("node_id", Assert.Single(sample.Dimensions).Key);
+            Assert.True(sample.Value >= 0);
+        });
+        new CollectorOutputValidator(SqlServerBufferNodePleCollector.OutputContract)
+            .Validate(collector.Manifest, request, result);
+    }
 
     [Fact]
     public void M4AssetsAreChecksumPinnedStrictBoundedPassiveAndOrdered()
