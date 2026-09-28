@@ -203,6 +203,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string CommitAgM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitM10Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_m10_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
     private static readonly string CommitSqlVolumeSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_volume_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
+    private static readonly string CommitQueryStoreGroupSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_query_store_group_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@group_payload", StringComparison.Ordinal);
 
     private const string CommitActivitySql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
@@ -700,6 +701,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             bool m10HostCollector = request.Work.CollectorId.Value == "host.metrics";
             bool m10ReplicationCollector = request.Work.CollectorId.Value == "replication.health";
             bool sqlVolumeCollector = request.Work.CollectorId.Value == "storage.volume";
+            bool queryStoreGroupCollector = request.Work.CollectorId.Value == "queries.performance-groups";
+            if (queryStoreGroupCollector)
+                return await CommitQueryStoreGroupsAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             if (m10HostCollector || m10ReplicationCollector || sqlVolumeCollector)
                 return await CommitTypedWithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, sqlVolumeCollector, timeout.Token).ConfigureAwait(false);
             if (queryPerformanceCollector)
@@ -758,6 +762,51 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         {
             throw PostgreSqlRuntimeSupport.CreateTimeoutException("collection-run commit", exception);
         }
+    }
+
+    private static async ValueTask<CollectorRunCommitResult> CommitQueryStoreGroupsAsync(
+        NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection, transaction))
+        {
+            scope.Parameters.AddWithValue("scope", request.Work.TargetId.Value.ToString());
+            await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        bool success = request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial;
+        byte[] json = success
+            ? QueryStoreGroupCommitPayload.Serialize(request.Payload.QueryStoreGroups!)
+            : QueryStoreGroupCommitPayload.SerializeFailure(request.Work.TargetId,
+                request.Work.TargetRevision, MapOutcome(request.Summary.Outcome), MapReason(request.Summary.Reason));
+        await using var command = new NpgsqlCommand(CommitQueryStoreGroupSql, connection, transaction)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+        AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
+        AddSummaryCommitParameters(command, request);
+        command.Parameters.AddWithValue("group_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(json));
+        command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, SHA256.HashData(json));
+        CollectorRunCommitResult commit;
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidDataException("PostgreSQL Query Store group commit returned no result row.");
+            CollectorRunCommitStatus status = reader.GetString(0) switch
+            {
+                "committed" => CollectorRunCommitStatus.Committed,
+                "replayed" => CollectorRunCommitStatus.Replayed,
+                _ => throw new InvalidDataException("PostgreSQL returned an unknown Query Store group commit status."),
+            };
+            commit = new CollectorRunCommitResult(status, reader.GetInt32(1), reader.GetInt32(2),
+                reader.GetInt32(3), reader.GetInt32(4), reader.IsDBNull(5) ? null :
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 5));
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidDataException("PostgreSQL Query Store group commit returned multiple result rows.");
+        }
+        if (commit.Status is CollectorRunCommitStatus.Committed or CollectorRunCommitStatus.Replayed)
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        else
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+        return commit;
     }
 
     private async ValueTask<CollectorRunCommitResult> CommitTypedWithCanonicalLifecycleAsync(
@@ -1479,9 +1528,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
-        if (request.Payload.QueryStoreGroups is not null ||
-            request.Work.CollectorId.Value == "queries.performance-groups")
-            throw new InvalidDataException("Query Store group output requires the fenced group writer before any run can commit.");
+        if (request.Payload.QueryStoreGroups is not null &&
+            request.Work.CollectorId.Value != "queries.performance-groups")
+            throw new InvalidDataException("Query Store groups require their exact versioned collector.");
         if (request.Payload.SqlVolumes.Items.Count != 0 && request.Work.CollectorId.Value != "storage.volume")
             throw new InvalidDataException("SQL volume observations require the exact storage.volume collector.");
         ValidateLeaseKey(request.Work, request.Lease);
@@ -1533,6 +1582,22 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         int queryPerformanceCount = request.Payload.QueryPerformance.Items.Count;
         int queryPerformanceStatusCount = request.Payload.QueryPerformanceStatuses.Count;
         int sqlVolumeCount = request.Payload.SqlVolumes.Items.Count;
+        int groupCount = request.Payload.QueryStoreGroups?.Items.Count ?? 0;
+        if (request.Work.CollectorId.Value == "queries.performance-groups")
+        {
+            bool success = request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial;
+            QueryStoreGroupOutputBatch? groups = request.Payload.QueryStoreGroups;
+            if (request.Summary.Accounting.SourceRowsRead > 4_259 ||
+                (success && (groups is null || groups.TargetId != request.Work.TargetId ||
+                    groups.TargetRevision != request.Work.TargetRevision ||
+                    request.Summary.Accounting.OutputItemsProduced != groupCount ||
+                    !groups.RuntimeComplete && (groupCount != 0 ||
+                        request.Summary.Outcome != CollectorRunOutcome.Partial) ||
+                    groups.WaitCoverage == QueryStoreGroupWaitCoverage.Truncated &&
+                        request.Summary.Outcome != CollectorRunOutcome.Partial)) ||
+                (!success && groups is not null))
+                throw new InvalidDataException("Query Store group output and source coverage do not match the run.");
+        }
         if (request.Work.CollectorId.Value == "storage.volume" &&
             (request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial
                 ? request.Summary.Accounting.OutputItemsProduced != sqlVolumeCount || request.Summary.Accounting.SourceRowsRead > 1_000
@@ -1575,6 +1640,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,
             "replication.health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,
             "storage.volume" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
+            "queries.performance-groups" => metricCount + databaseCount + fileCount + sqlVolumeCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
             "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
