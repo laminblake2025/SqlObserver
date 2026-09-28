@@ -190,6 +190,9 @@
     <EmbeddedResource Include="../../collectors/sql/storage.volume.sqlserver15-17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.sqlserver15-17-windows.v1.sql</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.buffer-node-ple.sqlserver15-17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.BufferNodeAssets.engine.buffer-node-ple.sqlserver15-17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/storage.volume.assets-v1.sha256">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.assets-v1.sha256</LogicalName>
     </EmbeddedResource>
