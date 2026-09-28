@@ -5,7 +5,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $database = 'SqlObserverQueryStoreProbe_' + [guid]::NewGuid().ToString('N')
+$probeLogin = 'SqlObserverQueryStoreLogin_' + [guid]::NewGuid().ToString('N')
 $created = $false
+$loginCreated = $false
 
 function Invoke-ProbeSql([string] $databaseName, [string] $statement, [switch] $Wide) {
     $sqlcmdArgs = @('-S', $SqlInstance, '-d', $databaseName, '-E', '-b',
@@ -211,11 +213,35 @@ try {
     if ($intervalGroups.Count -lt 1 -or $intervalTotal -ne [long]$reportedLockTotal) {
         throw "Query Store interval groups did not reconcile with the pinned lock total: $($intervalGroups -join '; ') / $reportedLockTotal"
     }
-    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; candidate runtime source reconciled database incarnation/interval/execution type, an unflushed increment (raw source rows $rawRows, first-execution changed: $ordinaryFirstChanged, advanced past prior last: $ordinaryFirstAdvanced), and same-interval reset $beforeCount to $afterCount; blocked plan wait rows: $($blockingCategoryRows -join '; '); interval groups: $($intervalGroups -join '; '); quiet repeat unchanged."
+    $probePassword = [guid]::NewGuid().ToString('N') + 'aA1!'
+    Invoke-ProbeSql 'master' "CREATE LOGIN [$probeLogin] WITH PASSWORD = '$probePassword', CHECK_POLICY = OFF" | Out-Null
+    $loginCreated = $true
+    Invoke-ProbeSql 'master' "GRANT VIEW ANY DATABASE TO [$probeLogin]" | Out-Null
+    Invoke-ProbeSql $database "CREATE USER [$probeLogin] FOR LOGIN [$probeLogin]; GRANT CONNECT TO [$probeLogin]; GRANT VIEW DATABASE PERFORMANCE STATE TO [$probeLogin]" | Out-Null
+    $permissionState = Invoke-ProbeSql $database "EXECUTE AS LOGIN = N'$probeLogin'; SELECT IS_SRVROLEMEMBER(N'sysadmin'), HAS_PERMS_BY_NAME(DB_NAME(), N'DATABASE', N'VIEW DATABASE PERFORMANCE STATE'); REVERT"
+    if (-not ($permissionState | Where-Object { $_ -match '^\s*0\|1\s*$' })) {
+        throw "Disposable Query Store login did not have the expected least-privilege state: $($permissionState -join '; ')"
+    }
+    $privilegedGroup = @(Read-WorkloadRuntimeGroup $database $sourceStatement $planId $textId)
+    $leastPrivilegeGroup = @(Read-WorkloadRuntimeGroup $database "EXECUTE AS LOGIN = N'$probeLogin'; $sourceStatement REVERT" $planId $textId)
+    $sourceColumns = @(0..17) + @(19)
+    if (($sourceColumns | ForEach-Object { $leastPrivilegeGroup[$_] }) -join '|' -ne
+        (($sourceColumns | ForEach-Object { $privilegedGroup[$_] }) -join '|')) {
+        throw "Candidate Query Store runtime source changed under the least-privilege login: privileged $($privilegedGroup -join '|'); login $($leastPrivilegeGroup -join '|')"
+    }
+    Write-Output "Pinned SQL Server 16 metadata, text and plan lookups returned synthetic workload IDs $textId / $planId; candidate runtime source passed the least-privilege login probe and reconciled database incarnation/interval/execution type, an unflushed increment (raw source rows $rawRows, first-execution changed: $ordinaryFirstChanged, advanced past prior last: $ordinaryFirstAdvanced), and same-interval reset $beforeCount to $afterCount; blocked plan wait rows: $($blockingCategoryRows -join '; '); interval groups: $($intervalGroups -join '; '); quiet repeat unchanged."
 }
 finally {
-    if ($created) {
-        Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$database]" | Out-Null
-        Write-Output 'Disposable Query Store probe database removed.'
+    try {
+        if ($created) {
+            Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$database]" | Out-Null
+            Write-Output 'Disposable Query Store probe database removed.'
+        }
+    }
+    finally {
+        if ($loginCreated) {
+            Invoke-ProbeSql 'master' "DROP LOGIN [$probeLogin]" | Out-Null
+            Write-Output 'Disposable Query Store probe login removed.'
+        }
     }
 }

@@ -58,6 +58,14 @@ even on assertion failure.
 - [Query Store runtime stats](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-query-store-runtime-stats-transact-sql)
 - [Query Store wait stats](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-query-store-wait-stats-transact-sql)
 
+The disposable SQL Server 2022 probe also runs the candidate runtime query as
+a temporary login with `VIEW ANY DATABASE` and per-database
+`VIEW DATABASE PERFORMANCE STATE`, `CONNECT`, and no sysadmin role. It compares
+the result with the privileged read, including the database GUID, then removes
+the login and database. This proves the proposed source permissions on that
+local SQL Server 2022 instance only; SQL Server 2019 and 2025 still need their
+own probes.
+
 ## Source and identity
 
 The next versioned SQL assets should emit bounded, complete groups rather than
