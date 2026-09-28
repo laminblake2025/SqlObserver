@@ -45,7 +45,8 @@ public sealed record RetentionPreviewEntry(
     {
         "retention_disabled", "duration_unconfigured", "partition_not_attached", "within_retention_window",
         "minimum_partition_floor", "reader_lease_active", "backfill_incomplete",
-        "dependency_pending", "recovery_attestation_missing", "eligible"
+        "dependency_pending", "recovery_attestation_missing",
+        "grace_in_progress", "retention_failed", "eligible"
     };
 
     public void Validate()

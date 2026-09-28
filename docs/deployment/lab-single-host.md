@@ -218,6 +218,12 @@ step rolls back the row removal and leaves the month readable; after 20 failed
 attempts the execution needs operator review. Policy changes cancel attached
 grace without hiding data. See
 [ADR-0021](../adr/ADR-0021-canonical-retention-graph.md).
+Migration `0161` makes a SecurityAdministrator's `detach` request for a
+diagnostic-event month start that same attached grace. The preview reports
+`grace_in_progress` while it is pending, or `retention_failed` after the
+bounded retry limit. The fenced worker performs the final drop; a manual
+`drop` request for an attached-grace execution returns blocked. Other data
+classes retain their detach-first path.
 Migration `0158` enables defaults on the four M10 v2 streams that receive
 writes: 30 days for host metrics and replication snapshots, and 180 days for
 rollups and evidence packets. Operator-revised policies are preserved. The

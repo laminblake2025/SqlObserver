@@ -33,6 +33,9 @@ public sealed class M10AnalyticsContractTests
         page.Validate();
         Assert.Equal("telemetry", page.Entries[0].ParentSchema);
         Assert.Throws<ArgumentException>(() => new RetentionPreviewEntry("m10_host_metrics", "telemetry", "host_metric_snapshot_v2", "host_metric_snapshot_v2_p20260825", start, start.AddDays(1), true, "retention_disabled").Validate());
+        foreach (string reason in new[] { "grace_in_progress", "retention_failed" })
+            new RetentionPreviewEntry("diagnostic_events", "events", "diagnostic_event",
+                "diagnostic_event_p202608", start, start.AddDays(1), false, reason).Validate();
     }
 
     [Fact]

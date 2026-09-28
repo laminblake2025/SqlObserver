@@ -52,8 +52,10 @@ sets the trusted retention context, removes typed deadlock rows for that exact
 month, then detaches and drops the event partition. If the transaction fails,
 it rolls back all row removal and leaves the event month readable. Bound the
 typed-row work and surface an explicit blocked state when that bound is
-exceeded. The current detach-first path remains for partitions without a
-referencing child. A policy change during the existing detached grace uses
+exceeded. The detach-first path remains for other data classes. A
+SecurityAdministrator's diagnostic-event `detach` action also begins attached
+grace; the fenced worker completes its drop. A policy change during an
+existing detached grace uses
 the reattach path from migration 0159.
 
 For **original M7 observations**, build a partitioned successor keyed by UTC
