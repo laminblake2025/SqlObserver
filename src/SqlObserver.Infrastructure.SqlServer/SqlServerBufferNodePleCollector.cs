@@ -10,8 +10,8 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Infrastructure.SqlServer;
 
 /// <summary>
-/// Produces one dimensioned PLE metric per SQL Server Buffer Node. Registration
-/// awaits a separate fenced writer for duplicate metric keys with node identity.
+/// Produces one dimensioned PLE metric per SQL Server Buffer Node. Production
+/// registration awaits a versioned catalog entry for the dedicated fenced writer.
 /// </summary>
 public sealed class SqlServerBufferNodePleCollector : SqlServerHealthCollector
 {

@@ -204,6 +204,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string CommitAgM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitM10Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_m10_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
     private static readonly string CommitSqlVolumeSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_volume_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
+    private static readonly string CommitBufferNodePleSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_buffer_node_ple_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
     private static readonly string CommitQueryStoreGroupSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_query_store_group_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@group_payload", StringComparison.Ordinal);
 
     private const string CommitActivitySql = """
@@ -705,11 +706,12 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             bool m10HostCollector = request.Work.CollectorId.Value == "host.metrics";
             bool m10ReplicationCollector = request.Work.CollectorId.Value == "replication.health";
             bool sqlVolumeCollector = request.Work.CollectorId.Value == "storage.volume";
+            bool bufferNodePleCollector = request.Work.CollectorId.Value == "engine.buffer-nodes";
             bool queryStoreGroupCollector = request.Work.CollectorId.Value == "queries.performance-groups";
             if (queryStoreGroupCollector)
                 return await CommitQueryStoreGroupsAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
-            if (m10HostCollector || m10ReplicationCollector || sqlVolumeCollector)
-                return await CommitTypedWithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, sqlVolumeCollector, timeout.Token).ConfigureAwait(false);
+            if (m10HostCollector || m10ReplicationCollector || sqlVolumeCollector || bufferNodePleCollector)
+                return await CommitTypedWithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, sqlVolumeCollector, bufferNodePleCollector, timeout.Token).ConfigureAwait(false);
             if (queryPerformanceCollector)
             {
                 return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
@@ -815,7 +817,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private async ValueTask<CollectorRunCommitResult> CommitTypedWithCanonicalLifecycleAsync(
         NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest,
-        bool hostCollector, bool sqlVolumeCollector, CancellationToken cancellationToken)
+        bool hostCollector, bool sqlVolumeCollector, bool bufferNodePleCollector,
+        CancellationToken cancellationToken)
     {
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await using (var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection, transaction))
@@ -823,9 +826,10 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             scope.Parameters.AddWithValue("scope", request.Work.TargetId.Value.ToString());
             await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
-        byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildTypedPayload(request, hostCollector, sqlVolumeCollector), M9JsonOptions);
-        if (json.Length > 1_048_576) throw new InvalidDataException("Typed persistence payload exceeds the accepted response bound.");
-        await using var command = new NpgsqlCommand(sqlVolumeCollector ? CommitSqlVolumeSql : CommitM10Sql, connection, transaction)
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildTypedPayload(request, hostCollector, sqlVolumeCollector, bufferNodePleCollector), M9JsonOptions);
+        if (json.Length > (bufferNodePleCollector ? 65_536 : 1_048_576))
+            throw new InvalidDataException("Typed persistence payload exceeds the accepted response bound.");
+        await using var command = new NpgsqlCommand(bufferNodePleCollector ? CommitBufferNodePleSql : sqlVolumeCollector ? CommitSqlVolumeSql : CommitM10Sql, connection, transaction)
         { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
         AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
         AddSummaryCommitParameters(command, request);
@@ -848,10 +852,25 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         return result;
     }
 
-    private object BuildTypedPayload(CommitCollectorRunRequest request, bool hostCollector, bool sqlVolumeCollector)
+    private object BuildTypedPayload(CommitCollectorRunRequest request, bool hostCollector, bool sqlVolumeCollector,
+        bool bufferNodePleCollector)
     {
         if (request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
             return new { schemaVersion = 1, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), items = Array.Empty<object>() };
+        if (bufferNodePleCollector)
+            return new
+            {
+                schemaVersion = 1,
+                targetId = request.Work.TargetId.Value,
+                targetRevision = request.Work.TargetRevision.Value,
+                items = request.Payload.Metrics.Select(static item => new
+                {
+                    observedAtUtc = item.ObservedAtUtc,
+                    sampleId = item.SampleId.Value,
+                    nodeId = int.Parse(item.Dimensions[0].Value, System.Globalization.CultureInfo.InvariantCulture),
+                    seconds = item.Value,
+                }).ToArray(),
+            };
         if (sqlVolumeCollector)
             return new
             {
@@ -1587,6 +1606,25 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         int queryPerformanceStatusCount = request.Payload.QueryPerformanceStatuses.Count;
         int sqlVolumeCount = request.Payload.SqlVolumes.Items.Count;
         int groupCount = request.Payload.QueryStoreGroups?.Items.Count ?? 0;
+        if (request.Work.CollectorId.Value == "engine.buffer-nodes")
+        {
+            if (metricCount > 128 || request.Summary.Accounting.SourceRowsRead > 129 ||
+                request.Summary.Accounting.ResponseBytes > 65_536 ||
+                request.Summary.Accounting.OutputBytes > 65_536 ||
+                request.Payload.Metrics.Select(static metric => metric.ObservedAtUtc).Distinct().Count() > 1 ||
+                request.Payload.Metrics.Any(static metric =>
+                    metric.MetricId.Value != "engine.buffer_node_page_life_expectancy_seconds" ||
+                    metric.Dimensions.Count != 1 || metric.Dimensions[0].Key != "node_id" ||
+                    !int.TryParse(metric.Dimensions[0].Value,
+                        System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out int nodeId) ||
+                    nodeId is < 0 or > 1023 ||
+                    metric.Dimensions[0].Value != nodeId.ToString(System.Globalization.CultureInfo.InvariantCulture) ||
+                    metric.Value is < 0 or > 9_007_199_254_740_991d || metric.Value != Math.Truncate(metric.Value)) ||
+                request.Payload.Metrics.Select(static metric => metric.Dimensions[0].Value).Distinct(StringComparer.Ordinal).Count() != metricCount ||
+                (request.Summary.Outcome == CollectorRunOutcome.Partial && metricCount != 0))
+                throw new InvalidDataException("Buffer Node PLE output violates its bounded node metric contract.");
+        }
         if (request.Work.CollectorId.Value == "queries.performance-groups")
         {
             bool success = request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial;
@@ -1644,6 +1682,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,
             "replication.health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,
             "storage.volume" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
+            "engine.buffer-nodes" => databaseCount + fileCount + sqlVolumeCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null && groupCount == 0,
             "queries.performance-groups" => metricCount + databaseCount + fileCount + sqlVolumeCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
             "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,

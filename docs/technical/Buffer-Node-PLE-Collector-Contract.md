@@ -14,16 +14,16 @@ or byte cap withholds the entire set so a partial node inventory cannot be
 presented as complete. Source code and a focused native SQL Server 2022 test
 validate this foundation; it is not scheduled or persisted yet.
 
-The unscheduled `engine.buffer-nodes` adapter now emits one dimensioned metric
+The unscheduled `engine.buffer-nodes` adapter emits one dimensioned metric
 sample per node, with a run- and node-stable sample ID. Its output contract
 allows up to 128 `node_id` dimensions and preserves partial-coverage loss.
-The existing M4 commit writer rejects this new collector ID, so no data is
-persisted yet.
+Forward migration 0153 and a dedicated repository adapter can now commit the
+nodes to `telemetry.raw_metric_sample` under the run, lease and schedule fence.
+The collector is not registered in the production catalog or scheduled yet.
 
-Publication needs a separate fenced repository commit path and versioned
-catalog entry. Persist a stable `(metric key, node_id dimension)` identity,
-reject duplicate nodes and divergent replay atomically, retain visibility
-gaps on truncated or invalid reads, and grant no direct table write. A
+The fenced commit path rejects duplicate nodes and divergent replay, retains
+visibility gaps on truncated reads, and grants no direct table write. Publication
+still needs a versioned catalog entry and a
 target-scoped read projection should return per-node series in the shared
 Resources time window, with the Buffer Manager aggregate labelled separately.
 Qualify the pinned source and least-privilege permission on SQL Server 2019
