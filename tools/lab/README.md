@@ -29,6 +29,8 @@ For a local SQL Server 2022 instance, `verify-query-store-text-local.ps1`
 creates a uniquely named database, runs a small Query Store workload through
 the pinned SQL Server 16 metadata, text, and plan assets, checks that the workload
 row and bounded content are returned with an interval ending no later than collection,
+executes the measured statement inside a disposable stored procedure so repeated
+client connections preserve one tracked plan,
 then holds a five-second lock on its own table to confirm Query Store attributes a
 positive lock-wait category to the blocked plan. It verifies the same quiet-plan
 total is returned on a second read and reconciles that total to Query Store's

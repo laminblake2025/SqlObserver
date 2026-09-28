@@ -41,6 +41,11 @@ reset. Runs have shown one or two visible raw runtime rows after an unflushed
 execution. The two-row case reconciled, but this local probe is not yet a
 repeatable proof of every flushed/in-memory grouping path or other SQL Server
 versions. The source query and calculator are not wired into ingestion.
+The local probe now runs its measured statement inside a disposable stored
+procedure; two consecutive SQL Server 2022 runs captured the increment and
+reset/refill under one plan. Earlier ad hoc runs across short-lived `sqlcmd`
+sessions intermittently did not advance the visible runtime count, so that
+fixture was unsuitable as a reliable cutover gate.
 
 `tools/lab/query-store-wait-groups.sql` is the matching candidate wait source.
 It reports the capture mode separately, groups the active interval's flushed

@@ -51,9 +51,10 @@ try {
     $created = $true
     Invoke-ProbeSql 'master' "ALTER DATABASE [$database] SET QUERY_STORE = ON; ALTER DATABASE [$database] SET QUERY_STORE (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = ALL, INTERVAL_LENGTH_MINUTES = 1440, WAIT_STATS_CAPTURE_MODE = ON)" | Out-Null
     Invoke-ProbeSql $database 'CREATE TABLE dbo.capture_probe ([value] int NOT NULL); INSERT INTO dbo.capture_probe VALUES (1),(2),(3)' | Out-Null
+    Invoke-ProbeSql $database 'CREATE PROCEDURE dbo.capture_workload AS SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
     Start-Sleep -Seconds 2
     for ($index = 0; $index -lt 3; $index++) {
-        Invoke-ProbeSql $database 'SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
+        Invoke-ProbeSql $database 'EXEC dbo.capture_workload' | Out-Null
     }
     Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
 
@@ -113,7 +114,7 @@ try {
         [datetimeoffset]::Parse($beforeGroup[17].Trim()) -ne [datetimeoffset]::Parse($beforeRuntime[2].Trim())) {
         throw "Candidate Query Store runtime group did not reconcile with the direct source counter: direct $($beforeRuntime -join '|'); candidate $($beforeGroup -join '|')"
     }
-    Invoke-ProbeSql $database 'SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
+    Invoke-ProbeSql $database 'EXEC dbo.capture_workload' | Out-Null
     $mixedRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
     if ($mixedRuntimeRow.Count -ne 1) { throw 'Query Store lost the workload plan after its unflushed execution.' }
     $mixedRuntime = $mixedRuntimeRow[0].Split('|')
@@ -147,7 +148,7 @@ try {
     $afterCount = 0L
     for ($batch = 0; $batch -lt 3 -and $afterCount -le $beforeCount; $batch++) {
         for ($index = 0; $index -lt ([Math]::Max($beforeCount + 8, 12)); $index++) {
-            Invoke-ProbeSql $database 'SELECT SUM([value]) AS probe_sum FROM [dbo].[capture_probe] WHERE [value] > 0' | Out-Null
+            Invoke-ProbeSql $database 'EXEC dbo.capture_workload' | Out-Null
         }
         Invoke-ProbeSql $database 'EXEC sys.sp_query_store_flush_db' | Out-Null
         $afterRuntimeRow = @(Invoke-ProbeSql $database $runtimeSql | Where-Object { $_ -match '^\s*\d+\|' } | Select-Object -First 1)
