@@ -22,6 +22,17 @@ comparable read returns six known zeroes. This contract is not yet connected to
 the collector or repository. It cannot make the existing cumulative rows
 additive, and it does not replace the required SQL Server version proofs.
 
+`QueryStoreWaitWatermarkCalculator` defines the corresponding complete
+per-runtime-group category transition. An empty enabled-capture group is a
+complete zero-category snapshot. When the matching runtime group is comparable,
+a newly appearing category can be differenced from known zero; a positive
+category that disappears, or any falling wait total, restarts the whole wait
+baseline without publishing a zero. Runtime reset/ambiguous epochs also
+withhold wait deltas. An incomplete wait read or stale runtime read advances
+neither wait state nor deltas. The collector must synthesize empty category
+snapshots for runtime groups with no wait rows only after a complete wait read;
+the pure contract is not yet wired to fenced storage.
+
 `tools/lab/query-store-runtime-groups.sql` is a candidate source query, not a
 collector asset. The disposable SQL Server 2022 probe reconciles its target
 database GUID, plan, interval, execution type, cumulative count and execution
