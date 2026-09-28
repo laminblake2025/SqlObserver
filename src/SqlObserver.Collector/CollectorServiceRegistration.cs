@@ -78,6 +78,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().CapabilityProfiles);
         services.AddSingleton<ICollectorRuntimeRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Runtime);
+        services.AddSingleton<IQueryStoreGroupWindowPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().QueryStoreGroupWindows);
         services.AddSingleton<IAlertRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Alerts);
         services.AddSingleton<IAnalyticsRepositoryPort>(static provider =>

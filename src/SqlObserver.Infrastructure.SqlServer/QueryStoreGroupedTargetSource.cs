@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 
@@ -30,6 +31,19 @@ internal sealed class QueryStoreGroupedTargetSource
     {
         this.connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         this.bundle = bundle ?? throw new ArgumentNullException(nameof(bundle));
+    }
+
+    internal Task<QueryStoreGroupedTargetRead> ReadAsync(
+        CollectorExecutionRequest request, QueryStoreGroupSourceWindow window,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(window);
+        if (window.TargetId != request.TargetId ||
+            window.TargetRevision != request.TargetRevision)
+            throw new ArgumentException("Query Store group source window belongs to another target revision.",
+                nameof(window));
+        return ReadAsync(request, window.FromUtc, window.ToUtc, cancellationToken);
     }
 
     internal async Task<QueryStoreGroupedTargetRead> ReadAsync(

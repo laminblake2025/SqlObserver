@@ -4,6 +4,7 @@ using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
 
@@ -56,6 +57,16 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
         }
 
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        (DateTimeOffset firstStart, DateTimeOffset firstEnd,
+            DateTimeOffset? firstCursor, bool firstGap) = await ReadWindowAsync(collector, target);
+        Assert.Null(firstCursor);
+        Assert.False(firstGap);
+        Assert.Equal(TimeSpan.FromHours(2), firstEnd - firstStart);
+        await using (var privilege = collector.CreateCommand("""
+            SELECT has_table_privilege(current_user,
+              'control.query_store_group_window_cursor'::regclass,'SELECT');
+            """))
+            Assert.False((bool)(await privilege.ExecuteScalarAsync())!);
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
         var leases = new PostgreSqlWorkerLeasePort(collector);
         CollectorDueWorkItem work = Assert.Single((await runtime.ListDueAsync(
@@ -74,6 +85,8 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
         Assert.Equal(1, committed.InsertedCount);
         Assert.Equal(CollectorRunCommitStatus.Replayed,
             (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
+        Assert.Equal(work.RepositoryTimeUtc,
+            (await ReadWindowAsync(collector, target)).CursorEnd);
         await using (var evidence = database.DataSource.CreateCommand("""
             SELECT (SELECT count(*) FROM events.query_store_group_watermark WHERE instance_id=@target),
                    (SELECT count(*) FROM events.query_store_group_delta WHERE run_id=@run),
@@ -113,6 +126,16 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
         Assert.Equal(CollectorRunCommitStatus.Committed, partial.Status);
         Assert.Equal(0, partial.PersistedBytes);
         Assert.Equal(0L, await CountDeltasAsync(database, partialRun));
+        Assert.Equal(partialWork.RepositoryTimeUtc,
+            (await ReadWindowAsync(collector, target)).CursorEnd);
+        await using (var cursor = database.DataSource.CreateCommand("""
+            SELECT last_runtime_complete FROM control.query_store_group_window_cursor
+            WHERE instance_id=@target AND target_revision=1;
+            """))
+        {
+            cursor.Parameters.AddWithValue("target", target);
+            Assert.False((bool)(await cursor.ExecuteScalarAsync())!);
+        }
         await using (var unchanged = database.DataSource.CreateCommand("""
             SELECT count(*),max(cpu_ms) FROM events.query_store_group_watermark
             WHERE instance_id=@target;
@@ -126,6 +149,36 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
         }
 
         await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(partialLease, Timeout), CancellationToken.None);
+        await MarkDueAsync(database, target);
+        CollectorDueWorkItem emptyWork = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, Timeout), CancellationToken.None)).Items,
+            item => item.TargetId.Value == target &&
+                item.CollectorId.Value == "queries.performance-groups");
+        WorkerLeaseIdentity emptyLease = await AcquireAsync(leases, emptyWork);
+        var emptyRun = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(
+                emptyWork, emptyRun, emptyLease, Timeout), CancellationToken.None)).Status);
+        CollectorRunCommitResult empty = await runtime.CommitRunAsync(
+            EmptySuccess(emptyWork, emptyRun, emptyLease), CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, empty.Status);
+        Assert.Equal(0, empty.InsertedCount);
+        Assert.Equal(0L, await CountDeltasAsync(database, emptyRun));
+        Assert.Equal(emptyWork.RepositoryTimeUtc,
+            (await ReadWindowAsync(collector, target)).CursorEnd);
+        await using (var cursor = database.DataSource.CreateCommand("""
+            SELECT last_runtime_complete,last_run_id FROM control.query_store_group_window_cursor
+            WHERE instance_id=@target AND target_revision=1;
+            """))
+        {
+            cursor.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader reader = await cursor.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.True(reader.GetBoolean(0));
+            Assert.Equal(emptyRun.Value, reader.GetGuid(1));
+        }
+
+        await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(emptyLease, Timeout), CancellationToken.None);
         await MarkDueAsync(database, target);
         CollectorDueWorkItem mixedWork = Assert.Single((await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, Timeout), CancellationToken.None)).Items,
@@ -188,6 +241,55 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
         }
 
         await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(truncatedLease, Timeout), CancellationToken.None);
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (NpgsqlTransaction transaction = await connection.BeginTransactionAsync())
+        {
+            await using var expire = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@scope,true);
+                UPDATE control.query_store_group_window_cursor
+                SET last_window_start=@start,last_window_end=@end
+                WHERE instance_id=@target AND target_revision=1;
+                """, connection, transaction);
+            DateTimeOffset expiredEnd = DateTimeOffset.UtcNow.AddDays(-8);
+            expire.Parameters.AddWithValue("scope", target.ToString());
+            expire.Parameters.AddWithValue("target", target);
+            expire.Parameters.AddWithValue("start", expiredEnd.AddMinutes(-5));
+            expire.Parameters.AddWithValue("end", expiredEnd);
+            await expire.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+        }
+        (DateTimeOffset gapStart, _, DateTimeOffset? expiredCursor,
+            bool gapBeforeWindow) = await ReadWindowAsync(collector, target);
+        Assert.True(gapBeforeWindow);
+        Assert.True(gapStart > expiredCursor);
+        await MarkDueAsync(database, target);
+        CollectorDueWorkItem gapWork = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, Timeout), CancellationToken.None)).Items,
+            item => item.TargetId.Value == target &&
+                item.CollectorId.Value == "queries.performance-groups");
+        WorkerLeaseIdentity gapLease = await AcquireAsync(leases, gapWork);
+        var gapRun = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(
+                gapWork, gapRun, gapLease, Timeout), CancellationToken.None)).Status);
+        PostgresException invisibleGap = await Assert.ThrowsAsync<PostgresException>(() =>
+            runtime.CommitRunAsync(Success(gapWork, gapRun, gapLease, incarnation, 120),
+                CancellationToken.None).AsTask());
+        Assert.Equal("22023", invisibleGap.SqlState);
+        Assert.Equal(0L, await CountDeltasAsync(database, gapRun));
+        CollectorRunCommitResult visibleGap = await runtime.CommitRunAsync(
+            PartialIncomplete(gapWork, gapRun, gapLease), CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, visibleGap.Status);
+        Assert.Equal(gapWork.RepositoryTimeUtc,
+            (await ReadWindowAsync(collector, target)).CursorEnd);
+        await using (var gap = database.DataSource.CreateCommand(
+            "SELECT count(*) FROM telemetry.visibility_gap WHERE run_id=@run;"))
+        {
+            gap.Parameters.AddWithValue("run", gapRun.Value);
+            Assert.Equal(1L, await gap.ExecuteScalarAsync());
+        }
+        await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(gapLease, Timeout), CancellationToken.None);
         await MarkDueAsync(database, target);
         CollectorDueWorkItem lostWork = Assert.Single((await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, Timeout), CancellationToken.None)).Items,
@@ -267,6 +369,35 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
             new CollectorLossEvidence(CollectorLossKind.SourceRowLimit, 1, false));
         return new CommitCollectorRunRequest(work, summary, payload,
             CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout);
+    }
+
+    private static CommitCollectorRunRequest EmptySuccess(CollectorDueWorkItem work,
+        CollectorRunId runId, WorkerLeaseIdentity lease)
+    {
+        DateTimeOffset now = work.RepositoryTimeUtc;
+        var groups = new QueryStoreGroupOutputBatch(work.TargetId, work.TargetRevision,
+            now.AddMinutes(-5), now, true, QueryStoreGroupWaitCoverage.Complete, []);
+        var payload = new CollectorPayload(queryStoreGroups: groups);
+        var summary = new CollectorRunSummary(runId, work.TargetId, work.TargetRevision,
+            work.CollectorId, work.CollectorManifestVersion, work.OutputSchemaVersion,
+            CollectorRunOutcome.Succeeded, CollectorRunReason.Completed,
+            TimeSpan.FromMilliseconds(5), 1,
+            new CollectorRunAccounting(0, 0,
+                payload.EstimatedSizeBytes, payload.EstimatedSizeBytes),
+            CollectorLossEvidence.None);
+        return new CommitCollectorRunRequest(work, summary, payload,
+            CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout);
+    }
+
+    private static async Task<(DateTimeOffset WindowStart, DateTimeOffset WindowEnd,
+        DateTimeOffset? CursorEnd, bool GapBeforeWindow)> ReadWindowAsync(
+        NpgsqlDataSource collector, Guid target)
+    {
+        QueryStoreGroupSourceWindow window = await new PostgreSqlQueryStoreGroupWindowPort(
+            collector).ReadNextAsync(new MonitoredInstanceId(target),
+            new ObservationTargetRevision(1), Timeout, CancellationToken.None);
+        return (window.FromUtc, window.ToUtc, window.CursorEndUtc,
+            window.GapBeforeWindow);
     }
 
     private static CommitCollectorRunRequest MixedCoverage(CollectorDueWorkItem work,
