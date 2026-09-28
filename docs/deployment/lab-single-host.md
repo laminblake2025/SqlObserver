@@ -212,6 +212,14 @@ writes: 30 days for host metrics and replication snapshots, and 180 days for
 rollups and evidence packets. Operator-revised policies are preserved. The
 other unused v2 parents remain disabled pending an explicit cutover or cleanup.
 
+Migration `0159` restores a detached partition if its retention policy is
+disabled or its revision changes during the 24-hour grace period. The fenced
+worker reattaches one partition per step and records an audit event. If the
+attach is blocked, it retries hourly; inspect the execution's `last_error`
+and the `retention.partition.reattach` audit event to resolve a missing or
+conflicting partition. The collector can no longer call the old drop entry
+point directly.
+
 Migration `0135` adds target-scoped, bounded server-wait history. Migration
 `0136` creates its target/time ordering index across the written daily wait
 partitions. The runner creates a metadata-only parent index, builds each child

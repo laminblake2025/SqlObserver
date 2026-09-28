@@ -10,6 +10,7 @@ public enum SystemRetentionStepOutcome
     Idle,
     Detached,
     Dropped,
+    Reattached,
     Retry,
     Failed,
 }
@@ -91,7 +92,7 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
         LIMIT @max_entries;
         """;
     private const string RepositoryClockSql = "SELECT clock_timestamp();";
-    private const string RunSystemRetentionStepSql = "SELECT system.run_m10_retention_step(@owner_execution_id,@fencing_token);";
+    private const string RunSystemRetentionStepSql = "SELECT system.run_m10_retention_step_safe(@owner_execution_id,@fencing_token);";
     private const string PruneOrphanQueryTextSql = "SELECT system.prune_orphan_query_text_payloads(@owner_execution_id,@fencing_token,32);";
     private const string PruneOrphanQueryPlanSql = "SELECT system.prune_orphan_query_plan_payloads(@owner_execution_id,@fencing_token,32);";
 
@@ -131,6 +132,7 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
                 "idle" => SystemRetentionStepOutcome.Idle,
                 "detached" => SystemRetentionStepOutcome.Detached,
                 "dropped" => SystemRetentionStepOutcome.Dropped,
+                "reattached" => SystemRetentionStepOutcome.Reattached,
                 "retry" => SystemRetentionStepOutcome.Retry,
                 "failed" => SystemRetentionStepOutcome.Failed,
                 _ => throw new InvalidDataException("System retention returned an invalid outcome."),

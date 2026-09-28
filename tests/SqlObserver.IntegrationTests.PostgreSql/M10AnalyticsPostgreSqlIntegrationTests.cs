@@ -252,7 +252,7 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
             action => Assert.Equal("retention.partition.drop:failed", action),
             action => Assert.Equal("retention.partition.drop:succeeded", action));
         await reader.CloseAsync();
-        await using var grants = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_collector','system.run_m10_retention_step(uuid,bigint)','EXECUTE'),has_function_privilege('sqlobserver_server','system.run_m10_retention_step(uuid,bigint)','EXECUTE');", admin);
+        await using var grants = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_collector','system.run_m10_retention_step_safe(uuid,bigint)','EXECUTE'),has_function_privilege('sqlobserver_collector','system.run_m10_retention_step(uuid,bigint)','EXECUTE');", admin);
         await using NpgsqlDataReader grantReader = await grants.ExecuteReaderAsync();
         Assert.True(await grantReader.ReadAsync());
         Assert.True(grantReader.GetBoolean(0));
@@ -266,6 +266,69 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
                 lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), CancellationToken.None);
             return result.ToString().ToLowerInvariant();
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PolicyChangeDuringGraceReattachesPartitionAndRestoresParentReads(bool remainEnabled)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid();
+        await InsertTargetAsync(database, target, $"reattach-{target:N}", 1);
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SET ROLE sqlobserver_migrator;
+            DO $$ DECLARE d date:=current_date-3; n text:=format('metric_rollup_v2_p%s',to_char(d,'YYYYMMDD')); BEGIN
+              EXECUTE format('CREATE TABLE analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                n,d::timestamptz,(d+1)::timestamptz);
+              INSERT INTO system.partition_registry(parent_schema,parent_table,partition_schema,partition_name,partition_granularity,range_start,range_end)
+              VALUES('analytics','metric_rollup_v2','analytics',n,'day',d::timestamptz,(d+1)::timestamptz);
+            END $$;
+            RESET ROLE;
+            """, admin))
+            await setup.ExecuteNonQueryAsync();
+        await ExecuteAsync(database, "INSERT INTO analytics.metric_rollup_v2(bucket_start,instance_id,target_revision,rollup_interval,metric_key,aggregation,dimension_hash,sample_count) VALUES((current_date-3)::timestamptz,@target,1,'hour','engine.cpu.percent','avg',sha256(convert_to('reattach','UTF8')),1);", ("target", target));
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));", ("id", Guid.NewGuid()));
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlConnection worker = await collector.OpenConnectionAsync();
+        Guid owner = Guid.NewGuid();
+        await using var acquire = new NpgsqlCommand("SELECT fencing_token FROM control.acquire_worker_lease('retention/maintenance',@owner,interval '30 seconds');", worker);
+        acquire.Parameters.AddWithValue("owner", owner);
+        long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        var retention = new PostgreSqlPartitionMaintenancePort(collector);
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("retention/maintenance"),
+            new WorkerExecutionId(owner), new FencingToken(fence));
+        var timeout = new RepositoryCallTimeout(TimeSpan.FromSeconds(5));
+        Assert.Equal(SystemRetentionStepOutcome.Detached,
+            await retention.RunSystemRetentionStepAsync(lease, timeout, CancellationToken.None));
+        await using (var hidden = new NpgsqlCommand("SELECT count(*) FROM analytics.metric_rollup_v2 WHERE instance_id=@target;", admin))
+        {
+            hidden.Parameters.AddWithValue("target", target);
+            Assert.Equal(0L, await hidden.ExecuteScalarAsync());
+        }
+
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=@enabled,retain_for=CASE WHEN @enabled THEN interval '1 day' ELSE NULL END,policy_revision=policy_revision+1 WHERE data_class='m10_rollups';", ("enabled", remainEnabled));
+        Assert.Equal(SystemRetentionStepOutcome.Reattached,
+            await retention.RunSystemRetentionStepAsync(lease, timeout, CancellationToken.None));
+        await using var inspect = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM analytics.metric_rollup_v2 WHERE instance_id=@target),
+                   (SELECT count(*) FROM system.partition_registry WHERE parent_schema='analytics'
+                     AND parent_table='metric_rollup_v2' AND lifecycle_state='attached' AND detached_at IS NULL
+                     AND range_start=(current_date-3)::timestamptz),
+                   (SELECT count(*) FROM system.retention_execution WHERE state='reattached'
+                     AND reattached_at IS NOT NULL AND parent_table='metric_rollup_v2'),
+                   (SELECT count(*) FROM audit.activity WHERE action_name='retention.partition.reattach'
+                     AND outcome='succeeded');
+            """, admin);
+        inspect.Parameters.AddWithValue("target", target);
+        await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        for (int column = 0; column < 4; column++)
+            Assert.Equal(1L, reader.GetInt64(column));
     }
 
     [Fact]

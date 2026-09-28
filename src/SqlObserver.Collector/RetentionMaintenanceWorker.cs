@@ -53,7 +53,7 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
                     SystemRetentionStepOutcome outcome = await _partitions
                         .RunSystemRetentionStepAsync(identity, StepTimeout, stoppingToken)
                         .ConfigureAwait(false);
-                    if (outcome is SystemRetentionStepOutcome.Detached or SystemRetentionStepOutcome.Dropped)
+                    if (outcome is SystemRetentionStepOutcome.Detached or SystemRetentionStepOutcome.Dropped or SystemRetentionStepOutcome.Reattached)
                     {
                         LogCompleted(_logger, outcome);
                         delay = BusyDelay;
