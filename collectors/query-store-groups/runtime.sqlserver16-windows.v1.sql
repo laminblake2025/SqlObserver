@@ -1,5 +1,5 @@
 SET NOCOUNT ON;
-/* Candidate Query Store source for interval watermarks; not a production collector asset. */
+/* Pinned Query Store runtime-group source; publication requires the fenced interval writer. */
 /* Caller supplies @probe_rows (1..2001), @window_start and @window_end in UTC. */
 DECLARE @observed_at datetimeoffset(7) = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
 IF @probe_rows < 1 OR @probe_rows > 2001 THROW 50000, 'Invalid Query Store source row cap.', 1;

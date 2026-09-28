@@ -14,6 +14,16 @@ public sealed class QueryStoreGroupedSourceReaderTests
     private static readonly DateTimeOffset Start = new(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void VersionedGroupSourceLoadsOnlyVerifiedSql()
+    {
+        QueryStoreGroupedSourceBundle source = QueryStoreGroupedSourceBundle.LoadEmbedded();
+        Assert.Contains("sys.query_store_runtime_stats", source.RuntimeSql, StringComparison.Ordinal);
+        Assert.Contains("sys.query_store_wait_stats", source.WaitSql, StringComparison.Ordinal);
+        Assert.Contains("@probe_rows", source.RuntimeSql, StringComparison.Ordinal);
+        Assert.Contains("@probe_rows", source.WaitSql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CompleteRuntimeAndWaitReadsJoinExactGroupAndCategory()
     {
         using var runtimeReader = new DataTableReader(RuntimeTable(RuntimeRow()));

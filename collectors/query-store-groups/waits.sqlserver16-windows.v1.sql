@@ -1,5 +1,5 @@
 SET NOCOUNT ON;
-/* Candidate Query Store wait source for interval watermarks; not a production collector asset. */
+/* Pinned Query Store wait-group source; publication requires the fenced interval writer. */
 /* Caller supplies @probe_rows (1..2001), @window_start and @window_end in UTC. */
 IF @probe_rows < 1 OR @probe_rows > 2001 THROW 50000, 'Invalid Query Store wait source row cap.', 1;
 IF NOT EXISTS (

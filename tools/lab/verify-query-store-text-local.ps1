@@ -105,7 +105,7 @@ try {
     if ($beforeRuntime.Count -ne 4) { throw 'Query Store runtime row changed its probe shape.' }
     $beforeCount = [long]::Parse($beforeRuntime[3].Trim(), [Globalization.CultureInfo]::InvariantCulture)
     if ($beforeCount -lt 1 -or $beforeCount -gt 20) { throw "Workload plan had an unexpected pre-reset count: $beforeCount" }
-    $runtimeGroupSql = Get-Content (Join-Path $PSScriptRoot 'query-store-runtime-groups.sql') -Raw
+    $runtimeGroupSql = Get-Content (Join-Path $PSScriptRoot '../../collectors/query-store-groups/runtime.sqlserver16-windows.v1.sql') -Raw
     $sourceStatement = "DECLARE @probe_rows int=2001, @window_start datetimeoffset(7)=DATEADD(minute,-5,SYSUTCDATETIME()), @window_end datetimeoffset(7)=TODATETIMEOFFSET(SYSUTCDATETIME(),'+00:00'); $runtimeGroupSql"
     $beforeGroup = @(Read-WorkloadRuntimeGroup $database $sourceStatement $planId $textId)
     if ($beforeGroup[6].Trim() -ne $beforeRuntime[0].Trim() -or

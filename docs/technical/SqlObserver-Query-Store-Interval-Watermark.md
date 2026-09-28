@@ -33,8 +33,8 @@ neither wait state nor deltas. The collector must synthesize empty category
 snapshots for runtime groups with no wait rows only after a complete wait read;
 the pure contract is not yet wired to fenced storage.
 
-`tools/lab/query-store-runtime-groups.sql` is a candidate source query, not a
-collector asset. The disposable SQL Server 2022 probe reconciles its target
+`collectors/query-store-groups/runtime.sqlserver16-windows.v1.sql` is a
+checksum-pinned source query, not yet called by a collector. The disposable SQL Server 2022 probe reconciles its target
 database GUID, plan, interval, execution type, cumulative count and execution
 times with direct Query Store reads before and after work and a same-interval
 reset. Runs have shown one or two visible raw runtime rows after an unflushed
@@ -47,7 +47,7 @@ reset/refill under one plan. Earlier ad hoc runs across short-lived `sqlcmd`
 sessions intermittently did not advance the visible runtime count, so that
 fixture was unsuitable as a reliable cutover gate.
 
-`tools/lab/query-store-wait-groups.sql` is the matching candidate wait source.
+`collectors/query-store-groups/waits.sqlserver16-windows.v1.sql` is the matching pinned wait source.
 It reports the capture mode and UTC read time separately, including when no
 category rows exist, groups the active interval's flushed
 and in-memory rows by plan, interval, execution type and wait category before
@@ -59,7 +59,7 @@ non-sysadmin login with the generated Query Store grants. The probe removed
 its login and database; turning wait capture off yielded an explicit `OFF`
 status with no group rows. This does not yet prove absent-category zeroes,
 reset/refill behavior for wait counters, or SQL Server 2019/2025 behavior.
-Both candidate sources now fail when the database GUID cannot be read, instead
+Both pinned sources fail when the database GUID cannot be read, instead
 of letting the cross join silently present the database as empty.
 `QueryStoreGroupedSourceReader` in the SQL Server infrastructure project maps
 the fixed runtime and wait row shapes to typed watermark identities, checks
@@ -103,6 +103,16 @@ the result with the privileged read, including the database GUID, then removes
 the login and database. This proves the proposed source permissions on that
 local SQL Server 2022 instance only; SQL Server 2019 and 2025 still need their
 own probes.
+
+The SQL Server 2022 runtime and wait group queries are now copied into a
+checksum-verified embedded source bundle under `collectors/query-store-groups/`.
+The typed source executor uses one fixed UTC window, one-row lookahead, and the
+same database connection for both reads. It omits the wait read when runtime
+coverage is capped, and returns no complete wait snapshots when wait capture
+is disabled or either source is incomplete. The existing M7 collector does not
+call this executor; its cumulative output and PostgreSQL commit contract remain
+unchanged until the fenced delta writer and retention path exist. SQL Server
+2019 and 2025 remain outside this bundle's qualified version gate.
 
 ## Source and identity
 

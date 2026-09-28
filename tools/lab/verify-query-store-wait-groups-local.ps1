@@ -72,8 +72,8 @@ try {
     }
     $directFields = $directRows[0].Split('|')
 
-    $runtimeSql = Get-Content (Join-Path $PSScriptRoot 'query-store-runtime-groups.sql') -Raw
-    $waitSql = Get-Content (Join-Path $PSScriptRoot 'query-store-wait-groups.sql') -Raw
+    $runtimeSql = Get-Content (Join-Path $PSScriptRoot '../../collectors/query-store-groups/runtime.sqlserver16-windows.v1.sql') -Raw
+    $waitSql = Get-Content (Join-Path $PSScriptRoot '../../collectors/query-store-groups/waits.sqlserver16-windows.v1.sql') -Raw
     $sourceParameters = "DECLARE @probe_rows int=2001, @window_start datetimeoffset(7)=DATEADD(minute,-5,SYSUTCDATETIME()), @window_end datetimeoffset(7)=TODATETIMEOFFSET(SYSUTCDATETIME(),'+00:00');"
     $runtimeRows = @(Invoke-ProbeSql $database "$sourceParameters $runtimeSql" | Where-Object {
         $columns = $_.Split('|')

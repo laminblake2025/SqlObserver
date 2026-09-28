@@ -34,8 +34,8 @@ client connections preserve one tracked plan,
 then holds a five-second lock on its own table to confirm Query Store attributes a
 positive lock-wait category to the blocked plan. It verifies the same quiet-plan
 total is returned on a second read and reconciles that total to Query Store's
-interval/execution-type groups. It also exercises the candidate
-`query-store-runtime-groups.sql` source against a same-interval increment and
+interval/execution-type groups. It also exercises the checksum-pinned
+`collectors/query-store-groups/runtime.sqlserver16-windows.v1.sql` source against a same-interval increment and
 reset, recording whether an ordinary post-flush execution changes the earliest
 execution time. That source is not registered in the production collector. The
 probe drops its database in `finally`.
@@ -46,8 +46,8 @@ current Windows login can create databases:
 pwsh ./tools/lab/verify-query-store-text-local.ps1 -SqlInstance '.\SQLEXPRESS'
 ```
 
-`verify-query-store-wait-groups-local.ps1` independently checks the candidate
-`query-store-wait-groups.sql` source. It creates a fresh Query Store database,
+`verify-query-store-wait-groups-local.ps1` independently checks the checksum-pinned
+`collectors/query-store-groups/waits.sqlserver16-windows.v1.sql` source. It creates a fresh Query Store database,
 records a lock wait, reconciles the grouped wait total and its identity with
 direct wait stats and the candidate runtime group, then reads the wait group
 through a temporary non-sysadmin login with the generated Query Store grants.
