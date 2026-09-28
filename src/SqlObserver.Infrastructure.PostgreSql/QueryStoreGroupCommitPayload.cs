@@ -18,20 +18,23 @@ internal static class QueryStoreGroupCommitPayload
         using (var writer = new Utf8JsonWriter(buffer))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("schemaVersion", 1);
+            writer.WriteNumber("schemaVersion",
+                batch.WaitCoverage == QueryStoreGroupWaitCoverage.Mixed ? 2 : 1);
             writer.WriteString("targetId", batch.TargetId.Value);
             writer.WriteNumber("targetRevision", batch.TargetRevision.Value);
             writer.WriteString("windowStartUtc", batch.WindowStartUtc.UtcDateTime);
             writer.WriteString("windowEndUtc", batch.WindowEndUtc.UtcDateTime);
             writer.WriteBoolean("runtimeComplete", batch.RuntimeComplete);
-            writer.WriteString("waitCoverage", batch.WaitCoverage switch
+            writer.WriteString("waitCoverage", CoverageName(batch.WaitCoverage));
+            if (batch.DatabaseWaitCoverage is { } coverage)
             {
-                QueryStoreGroupWaitCoverage.Complete => "complete",
-                QueryStoreGroupWaitCoverage.CaptureOff => "capture_off",
-                QueryStoreGroupWaitCoverage.Unavailable => "unavailable",
-                QueryStoreGroupWaitCoverage.Truncated => "truncated",
-                _ => throw new InvalidDataException("Query Store wait coverage is not recognized."),
-            });
+                writer.WriteStartObject("databaseWaitCoverage");
+                foreach ((int databaseId, QueryStoreGroupWaitCoverage state) in coverage
+                    .OrderBy(static item => item.Key))
+                    writer.WriteString(databaseId.ToString(CultureInfo.InvariantCulture),
+                        CoverageName(state));
+                writer.WriteEndObject();
+            }
             writer.WriteStartArray("items");
             foreach (QueryStoreGroupObservation group in batch.Items
                 .OrderBy(static item => item.Runtime.Key.Query.DatabaseId)
@@ -107,6 +110,16 @@ internal static class QueryStoreGroupCommitPayload
         }
         writer.WriteEndObject();
     }
+
+    private static string CoverageName(QueryStoreGroupWaitCoverage coverage) => coverage switch
+    {
+        QueryStoreGroupWaitCoverage.Complete => "complete",
+        QueryStoreGroupWaitCoverage.CaptureOff => "capture_off",
+        QueryStoreGroupWaitCoverage.Unavailable => "unavailable",
+        QueryStoreGroupWaitCoverage.Truncated => "truncated",
+        QueryStoreGroupWaitCoverage.Mixed => "mixed",
+        _ => throw new InvalidDataException("Query Store wait coverage is not recognized."),
+    };
 
     private static byte[] Bound(MemoryStream buffer)
     {

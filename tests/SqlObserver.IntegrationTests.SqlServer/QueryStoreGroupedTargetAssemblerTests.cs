@@ -28,16 +28,20 @@ public sealed class QueryStoreGroupedTargetAssemblerTests
     }
 
     [Fact]
-    public void MixedNonemptyWaitModesWithholdAllRuntimeWatermarks()
+    public void MixedNonemptyWaitModesKeepDatabaseScopedWaitCoverage()
     {
         QueryStoreGroupedTargetRead result = Combine([
             Read(6, QueryStoreGroupWaitCoverage.Complete),
             Read(7, QueryStoreGroupWaitCoverage.CaptureOff)], 2, true);
 
-        Assert.False(result.Output.RuntimeComplete);
-        Assert.Empty(result.Output.Items);
-        Assert.Equal(QueryStoreGroupWaitCoverage.Unavailable, result.Output.WaitCoverage);
-        Assert.Equal(CollectorLossKind.OutputValidationFailure, result.Loss.Kind);
+        Assert.True(result.Output.RuntimeComplete);
+        Assert.Equal(2, result.Output.Items.Count);
+        Assert.Equal(QueryStoreGroupWaitCoverage.Mixed, result.Output.WaitCoverage);
+        Assert.Equal(QueryStoreGroupWaitCoverage.Complete, result.Output.DatabaseWaitCoverage![6]);
+        Assert.Equal(QueryStoreGroupWaitCoverage.CaptureOff, result.Output.DatabaseWaitCoverage[7]);
+        Assert.NotNull(result.Output.Items.Single(item => item.Runtime.Key.Query.DatabaseId == 6).Waits);
+        Assert.Null(result.Output.Items.Single(item => item.Runtime.Key.Query.DatabaseId == 7).Waits);
+        Assert.False(result.Loss.HasLoss);
     }
 
     [Fact]

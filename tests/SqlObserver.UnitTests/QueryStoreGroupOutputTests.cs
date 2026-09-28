@@ -44,6 +44,50 @@ public sealed class QueryStoreGroupOutputTests
         Assert.Throws<ArgumentException>(() => Result(manifest, request, payload, 1, payload.EstimatedSizeBytes - 1));
     }
 
+    [Fact]
+    public void MixedCoverageRequiresExactDatabaseStatesAndTruncationIsPartial()
+    {
+        var coverage = new Dictionary<int, QueryStoreGroupWaitCoverage>
+        {
+            [6] = QueryStoreGroupWaitCoverage.Complete,
+            [7] = QueryStoreGroupWaitCoverage.Truncated,
+        };
+        var batch = new QueryStoreGroupOutputBatch(M4TestData.TargetId,
+            M4TestData.TargetRevision, M4TestData.RepositoryTime.AddHours(-1),
+            M4TestData.RepositoryTime, true, QueryStoreGroupWaitCoverage.Mixed,
+            [Group(true), Group(false, 7)], coverage);
+        coverage[7] = QueryStoreGroupWaitCoverage.CaptureOff;
+        Assert.Equal(QueryStoreGroupWaitCoverage.Truncated,
+            batch.DatabaseWaitCoverage![7]);
+        Assert.True(batch.HasTruncatedWaitCoverage);
+        Assert.Throws<ArgumentException>(() => new QueryStoreGroupOutputBatch(
+            batch.TargetId, batch.TargetRevision, batch.WindowStartUtc,
+            batch.WindowEndUtc, true, QueryStoreGroupWaitCoverage.Mixed,
+            batch.Items, new Dictionary<int, QueryStoreGroupWaitCoverage>
+            {
+                [6] = QueryStoreGroupWaitCoverage.Complete,
+                [8] = QueryStoreGroupWaitCoverage.CaptureOff,
+            }));
+
+        CollectorManifest manifest = M4TestData.CreateManifest("queries.performance-groups",
+            outputKind: CollectorOutputKind.QueryStoreGroups, maxRows: 2_000,
+            maxResponseBytes: 8 * 1024 * 1024);
+        CollectorExecutionRequest request = M4TestData.CreateExecutionRequest();
+        var payload = new CollectorPayload(queryStoreGroups: batch);
+        var validator = new CollectorOutputValidator(new CollectorOutputContract(
+            new CollectorOutputSchemaVersion(1), [], 0, 0, 0,
+            maxQueryStoreGroupObservations: QueryStoreGroupOutputBatch.MaximumItems));
+        Assert.Throws<InvalidDataException>(() => validator.Validate(manifest, request,
+            Result(manifest, request, payload, payload.ItemCount, payload.EstimatedSizeBytes)));
+        var partial = new CollectorExecutionResult(request.TargetId, request.TargetRevision,
+            manifest.Id, manifest.ManifestVersion.Value, manifest.OutputSchemaVersion.Value,
+            CollectorRunOutcome.Partial, CollectorRunReason.SourceRowLimit, payload,
+            new CollectorRunAccounting(4, payload.ItemCount,
+                payload.EstimatedSizeBytes, payload.EstimatedSizeBytes),
+            new CollectorLossEvidence(CollectorLossKind.SourceRowLimit, 1, false));
+        validator.Validate(manifest, request, partial);
+    }
+
     private static CollectorExecutionResult Result(CollectorManifest manifest,
         CollectorExecutionRequest request, CollectorPayload payload, int outputItems, int outputBytes) => new(
             request.TargetId, request.TargetRevision, manifest.Id, manifest.ManifestVersion.Value,
@@ -57,9 +101,9 @@ public sealed class QueryStoreGroupOutputTests
             M4TestData.RepositoryTime.AddHours(-1), M4TestData.RepositoryTime,
             runtimeComplete, coverage, groups);
 
-    private static QueryStoreGroupObservation Group(bool withWaits)
+    private static QueryStoreGroupObservation Group(bool withWaits, int databaseId = 6)
     {
-        var query = new QueryOpaqueIdentity(6, new string('a', 64));
+        var query = new QueryOpaqueIdentity(databaseId, new string('a', 64));
         var plan = new PlanOpaqueIdentity(query, new string('b', 64));
         var key = new QueryStoreRuntimeWatermarkKey(M4TestData.TargetId, M4TestData.TargetRevision,
             Guid.Parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), query, plan,

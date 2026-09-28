@@ -16,8 +16,8 @@ internal sealed record QueryStoreGroupedTargetRead(
     CollectorLossEvidence Loss);
 
 /// <summary>
-/// Combines independently bounded database reads without presenting a target-wide
-/// subset or mixed wait-capture states as a complete sample.
+/// Combines independently bounded database reads without presenting a
+/// target-wide subset as complete or losing per-database wait-capture states.
 /// </summary>
 internal static class QueryStoreGroupedTargetAssembler
 {
@@ -44,7 +44,7 @@ internal static class QueryStoreGroupedTargetAssembler
         int waitRows = 0;
         int itemCount = 0;
         var observations = new List<QueryStoreGroupObservation>();
-        var nonemptyCoverage = new HashSet<QueryStoreGroupWaitCoverage>();
+        var coverageByDatabase = new Dictionary<int, QueryStoreGroupWaitCoverage>();
         foreach (QueryStoreGroupedDatabaseRead read in reads)
         {
             if (read.DatabaseId <= 4 || read.Output.TargetId != targetId ||
@@ -60,8 +60,7 @@ internal static class QueryStoreGroupedTargetAssembler
             waitRows = checked(waitRows + (read.Waits?.SourceRowsRead ?? 0));
             itemCount = checked(itemCount + read.Output.Items.Count);
             observations.AddRange(read.Output.Items);
-            if (read.Output.Items.Count > 0)
-                nonemptyCoverage.Add(read.Output.WaitCoverage);
+            coverageByDatabase.Add(read.DatabaseId, read.Output.WaitCoverage);
         }
 
         int sourceRows = checked(inventoryRowsRead + runtimeRows + waitRows);
@@ -75,23 +74,13 @@ internal static class QueryStoreGroupedTargetAssembler
         if (capped)
             return Incomplete(CollectorLossKind.SourceRowLimit);
 
-        // The current output contract has one wait-coverage value. A target
-        // with mixed nonempty database modes cannot represent which group's
-        // wait watermark is known; withhold the whole batch until that schema
-        // can carry per-database coverage.
-        if (nonemptyCoverage.Count > 1)
-            return Incomplete(CollectorLossKind.OutputValidationFailure);
-
-        QueryStoreGroupWaitCoverage coverage = reads.Any(static read =>
-            read.Output.WaitCoverage == QueryStoreGroupWaitCoverage.Truncated)
-            ? QueryStoreGroupWaitCoverage.Truncated
-            : nonemptyCoverage.SingleOrDefault(QueryStoreGroupWaitCoverage.Complete);
-        if (coverage == QueryStoreGroupWaitCoverage.Truncated &&
-            observations.Any(static item => item.Waits is not null))
-            return Incomplete(CollectorLossKind.OutputValidationFailure);
+        QueryStoreGroupWaitCoverage coverage = coverageByDatabase.Values.Distinct().Count() > 1
+            ? QueryStoreGroupWaitCoverage.Mixed
+            : coverageByDatabase.Values.FirstOrDefault(QueryStoreGroupWaitCoverage.Complete);
         var output = new QueryStoreGroupOutputBatch(targetId, targetRevision,
-            fromUtc, toUtc, true, coverage, observations);
-        CollectorLossEvidence loss = coverage == QueryStoreGroupWaitCoverage.Truncated
+            fromUtc, toUtc, true, coverage, observations,
+            coverage == QueryStoreGroupWaitCoverage.Mixed ? coverageByDatabase : null);
+        CollectorLossEvidence loss = output.HasTruncatedWaitCoverage
             ? new CollectorLossEvidence(CollectorLossKind.SourceRowLimit, 1, false)
             : CollectorLossEvidence.None;
         return new QueryStoreGroupedTargetRead(output, sourceRows, loss);

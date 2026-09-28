@@ -127,6 +127,68 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
 
         await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(partialLease, Timeout), CancellationToken.None);
         await MarkDueAsync(database, target);
+        CollectorDueWorkItem mixedWork = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, Timeout), CancellationToken.None)).Items,
+            item => item.TargetId.Value == target &&
+                item.CollectorId.Value == "queries.performance-groups");
+        WorkerLeaseIdentity mixedLease = await AcquireAsync(leases, mixedWork);
+        var mixedRun = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(
+                mixedWork, mixedRun, mixedLease, Timeout), CancellationToken.None)).Status);
+        CommitCollectorRunRequest mixedRequest = MixedCoverage(
+            mixedWork, mixedRun, mixedLease, incarnation);
+        CollectorRunCommitResult mixed = await runtime.CommitRunAsync(mixedRequest, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, mixed.Status);
+        Assert.Equal(2, mixed.InsertedCount);
+        Assert.Equal(CollectorRunCommitStatus.Replayed,
+            (await runtime.CommitRunAsync(mixedRequest, CancellationToken.None)).Status);
+        await using (var coverage = database.DataSource.CreateCommand("""
+            SELECT database_id,wait_transition FROM events.query_store_group_delta
+            WHERE run_id=@run ORDER BY database_id;
+            """))
+        {
+            coverage.Parameters.AddWithValue("run", mixedRun.Value);
+            await using NpgsqlDataReader reader = await coverage.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(6, reader.GetInt32(0));
+            Assert.Equal("baseline_unavailable", reader.GetString(1));
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(7, reader.GetInt32(0));
+            Assert.Equal("unavailable", reader.GetString(1));
+            Assert.False(await reader.ReadAsync());
+        }
+
+        await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(mixedLease, Timeout), CancellationToken.None);
+        await MarkDueAsync(database, target);
+        CollectorDueWorkItem truncatedWork = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, Timeout), CancellationToken.None)).Items,
+            item => item.TargetId.Value == target &&
+                item.CollectorId.Value == "queries.performance-groups");
+        WorkerLeaseIdentity truncatedLease = await AcquireAsync(leases, truncatedWork);
+        var truncatedRun = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(
+                truncatedWork, truncatedRun, truncatedLease, Timeout), CancellationToken.None)).Status);
+        CollectorRunCommitResult truncated = await runtime.CommitRunAsync(
+            MixedCoverage(truncatedWork, truncatedRun, truncatedLease, incarnation,
+                truncatedWaits: true), CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, truncated.Status);
+        await using (var evidence = database.DataSource.CreateCommand("""
+            SELECT (SELECT count(*) FROM telemetry.visibility_gap WHERE run_id=@run),
+                   (SELECT count(*) FROM events.query_store_group_delta WHERE run_id=@run
+                    AND database_id=7 AND wait_transition='unavailable');
+            """))
+        {
+            evidence.Parameters.AddWithValue("run", truncatedRun.Value);
+            await using NpgsqlDataReader reader = await evidence.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(1L, reader.GetInt64(0));
+            Assert.Equal(1L, reader.GetInt64(1));
+        }
+
+        await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(truncatedLease, Timeout), CancellationToken.None);
+        await MarkDueAsync(database, target);
         CollectorDueWorkItem lostWork = Assert.Single((await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, Timeout), CancellationToken.None)).Items,
             item => item.TargetId.Value == target &&
@@ -203,6 +265,45 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
             new CollectorRunAccounting(4_259, 0,
                 payload.EstimatedSizeBytes, payload.EstimatedSizeBytes),
             new CollectorLossEvidence(CollectorLossKind.SourceRowLimit, 1, false));
+        return new CommitCollectorRunRequest(work, summary, payload,
+            CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout);
+    }
+
+    private static CommitCollectorRunRequest MixedCoverage(CollectorDueWorkItem work,
+        CollectorRunId runId, WorkerLeaseIdentity lease, Guid incarnation,
+        bool truncatedWaits = false)
+    {
+        DateTimeOffset now = work.RepositoryTimeUtc;
+        QueryStoreGroupObservation first = Assert.Single(Success(work, runId, lease,
+            incarnation, 110).Payload.QueryStoreGroups!.Items);
+        var query = new QueryOpaqueIdentity(7, new string('c', 64));
+        var plan = new PlanOpaqueIdentity(query, new string('d', 64));
+        var key = new QueryStoreRuntimeWatermarkKey(work.TargetId, work.TargetRevision,
+            incarnation, query, plan, now.AddHours(-2), 1,
+            now.AddHours(-1), now.AddHours(1), 0);
+        var second = new QueryStoreGroupObservation(new QueryStoreRuntimeWatermark(key,
+            new QueryStoreRuntimeCounters(20, 40, 20, 20, 20, 20),
+            now.AddMinutes(-10), now.AddMinutes(-4), now.AddSeconds(-1)), null);
+        var groups = new QueryStoreGroupOutputBatch(work.TargetId, work.TargetRevision,
+            now.AddMinutes(-5), now, true, QueryStoreGroupWaitCoverage.Mixed,
+            [first, second], new Dictionary<int, QueryStoreGroupWaitCoverage>
+            {
+                [6] = QueryStoreGroupWaitCoverage.Complete,
+                [7] = truncatedWaits
+                    ? QueryStoreGroupWaitCoverage.Truncated
+                    : QueryStoreGroupWaitCoverage.CaptureOff,
+            });
+        var payload = new CollectorPayload(queryStoreGroups: groups);
+        var summary = new CollectorRunSummary(runId, work.TargetId, work.TargetRevision,
+            work.CollectorId, work.CollectorManifestVersion, work.OutputSchemaVersion,
+            truncatedWaits ? CollectorRunOutcome.Partial : CollectorRunOutcome.Succeeded,
+            truncatedWaits ? CollectorRunReason.SourceRowLimit : CollectorRunReason.Completed,
+            TimeSpan.FromMilliseconds(5), 1,
+            new CollectorRunAccounting(4, payload.ItemCount,
+                payload.EstimatedSizeBytes, payload.EstimatedSizeBytes),
+            truncatedWaits
+                ? new CollectorLossEvidence(CollectorLossKind.SourceRowLimit, 1, false)
+                : CollectorLossEvidence.None);
         return new CommitCollectorRunRequest(work, summary, payload,
             CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout);
     }

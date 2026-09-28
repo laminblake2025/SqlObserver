@@ -36,6 +36,30 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
 
         Assert.Equal(QueryStoreGroupCommitPayload.Serialize(Batch(first, second)),
             QueryStoreGroupCommitPayload.Serialize(Batch(second, first)));
+        QueryStoreGroupObservation off = new(TypedGroup(target, incarnation,
+            now, 3, 7).Runtime, null);
+        QueryStoreGroupOutputBatch Mixed(QueryStoreGroupObservation[] items,
+            IReadOnlyDictionary<int, QueryStoreGroupWaitCoverage> coverage) => new(
+                targetId, revision, now.AddMinutes(-5), now, true,
+                QueryStoreGroupWaitCoverage.Mixed, items, coverage);
+        byte[] canonicalMixed = QueryStoreGroupCommitPayload.Serialize(Mixed([first, off],
+            new Dictionary<int, QueryStoreGroupWaitCoverage>
+            {
+                [6] = QueryStoreGroupWaitCoverage.Complete,
+                [7] = QueryStoreGroupWaitCoverage.CaptureOff,
+            }));
+        Assert.Equal(canonicalMixed, QueryStoreGroupCommitPayload.Serialize(Mixed([off, first],
+            new Dictionary<int, QueryStoreGroupWaitCoverage>
+            {
+                [7] = QueryStoreGroupWaitCoverage.CaptureOff,
+                [6] = QueryStoreGroupWaitCoverage.Complete,
+            })));
+        using (JsonDocument mixed = JsonDocument.Parse(canonicalMixed))
+        {
+            Assert.Equal(2, mixed.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal("capture_off", mixed.RootElement.GetProperty("databaseWaitCoverage")
+                .GetProperty("7").GetString());
+        }
         using JsonDocument failure = JsonDocument.Parse(
             QueryStoreGroupCommitPayload.SerializeFailure(targetId, revision,
                 "permission_denied", "required_permission_missing"));
@@ -95,9 +119,27 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
             Payload(target, incarnation, now, now.AddSeconds(-15), 900,
                 new Dictionary<string, long> { ["3"] = 900 })));
 
+        Guid mixedIncarnation = Guid.NewGuid();
+        QueryStoreGroupObservation completeGroup = TypedGroup(target, mixedIncarnation,
+            now, 2, observedAt: now.AddSeconds(-1));
+        QueryStoreGroupObservation captureOffGroup = new(
+            TypedGroup(target, mixedIncarnation, now, 2, 7,
+                observedAt: now.AddSeconds(-1)).Runtime, null);
+        var mixedBatch = new QueryStoreGroupOutputBatch(new MonitoredInstanceId(target),
+            new ObservationTargetRevision(1), now.AddMinutes(-5), now, true,
+            QueryStoreGroupWaitCoverage.Mixed, [completeGroup, captureOffGroup],
+            new Dictionary<int, QueryStoreGroupWaitCoverage>
+            {
+                [6] = QueryStoreGroupWaitCoverage.Complete,
+                [7] = QueryStoreGroupWaitCoverage.CaptureOff,
+            });
+        string mixedPayload = Encoding.UTF8.GetString(
+            QueryStoreGroupCommitPayload.Serialize(mixedBatch));
+        Assert.Equal(2, await ApplyV2Async(connection, transaction, target, mixedPayload));
+
         await using (var evidence = new NpgsqlCommand("""
             SELECT runtime_transition,cpu_ms,wait_transition,wait_delta
-            FROM events.query_store_group_delta ORDER BY observed_at;
+            FROM events.query_store_group_delta ORDER BY observed_at,database_id;
             """, connection, transaction))
         await using (NpgsqlDataReader reader = await evidence.ExecuteReaderAsync())
         {
@@ -150,8 +192,35 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
             Assert.Equal("epoch_ambiguous", reader.GetString(0));
             Assert.True(reader.IsDBNull(1));
             Assert.Equal("baseline_unavailable", reader.GetString(2));
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("baseline_unavailable", reader.GetString(0));
+            Assert.Equal("baseline_unavailable", reader.GetString(2));
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("baseline_unavailable", reader.GetString(0));
+            Assert.Equal("unavailable", reader.GetString(2));
             Assert.False(await reader.ReadAsync());
         }
+
+        await using (var save = new NpgsqlCommand("SAVEPOINT invalid_mixed_coverage;", connection, transaction))
+            await save.ExecuteNonQueryAsync();
+        string missingDatabase = mixedPayload.Replace("\"7\":\"capture_off\"",
+            "\"8\":\"capture_off\"", StringComparison.Ordinal);
+        Assert.NotEqual(mixedPayload, missingDatabase);
+        PostgresException coverageError = await Assert.ThrowsAsync<PostgresException>(() =>
+            ApplyV2Async(connection, transaction, target, missingDatabase));
+        Assert.Equal("22023", coverageError.SqlState);
+        await using (var rollback = new NpgsqlCommand("ROLLBACK TO SAVEPOINT invalid_mixed_coverage;", connection, transaction))
+            await rollback.ExecuteNonQueryAsync();
+        await using (var save = new NpgsqlCommand("SAVEPOINT missing_group_database;", connection, transaction))
+            await save.ExecuteNonQueryAsync();
+        string missingId = mixedPayload.Replace("\"databaseId\":6", "\"databaseId\":null",
+            StringComparison.Ordinal);
+        Assert.NotEqual(mixedPayload, missingId);
+        PostgresException missingIdError = await Assert.ThrowsAsync<PostgresException>(() =>
+            ApplyV2Async(connection, transaction, target, missingId));
+        Assert.Equal("22023", missingIdError.SqlState);
+        await using (var rollback = new NpgsqlCommand("ROLLBACK TO SAVEPOINT missing_group_database;", connection, transaction))
+            await rollback.ExecuteNonQueryAsync();
 
         await using (var save = new NpgsqlCommand("SAVEPOINT invalid_group_batch;", connection, transaction))
             await save.ExecuteNonQueryAsync();
@@ -173,7 +242,7 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
             await rollback.ExecuteNonQueryAsync();
         await using (var count = new NpgsqlCommand(
             "SELECT count(*) FROM events.query_store_group_delta;", connection, transaction))
-            Assert.Equal(8L, await count.ExecuteScalarAsync());
+            Assert.Equal(10L, await count.ExecuteScalarAsync());
         await transaction.RollbackAsync();
 
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
@@ -183,6 +252,11 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
               'events.apply_query_store_group_batch(uuid,uuid,bigint,jsonb)'::regprocedure,'EXECUTE');
             """, collectorConnection);
         Assert.False((bool)(await privilege.ExecuteScalarAsync())!);
+        await using var v2Privilege = new NpgsqlCommand("""
+            SELECT has_function_privilege(current_user,
+              'events.apply_query_store_group_batch_v2(uuid,uuid,bigint,jsonb)'::regprocedure,'EXECUTE');
+            """, collectorConnection);
+        Assert.False((bool)(await v2Privilege.ExecuteScalarAsync())!);
     }
 
     private static async Task<int> ApplyAsync(NpgsqlConnection connection,
@@ -190,6 +264,18 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
     {
         await using var command = new NpgsqlCommand(
             "SELECT events.apply_query_store_group_batch(@run,@target,1,@payload);",
+            connection, transaction);
+        command.Parameters.AddWithValue("run", Guid.NewGuid());
+        command.Parameters.AddWithValue("target", target);
+        command.Parameters.AddWithValue("payload", NpgsqlDbType.Jsonb, payload);
+        return (int)(await command.ExecuteScalarAsync())!;
+    }
+
+    private static async Task<int> ApplyV2Async(NpgsqlConnection connection,
+        NpgsqlTransaction transaction, Guid target, string payload)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT events.apply_query_store_group_batch_v2(@run,@target,1,@payload);",
             connection, transaction);
         command.Parameters.AddWithValue("run", Guid.NewGuid());
         command.Parameters.AddWithValue("target", target);
@@ -257,18 +343,20 @@ public sealed class QueryStoreGroupTransitionPostgreSqlTests
     }
 
     private static QueryStoreGroupObservation TypedGroup(Guid target, Guid incarnation,
-        DateTimeOffset now, long sourceIntervalId)
+        DateTimeOffset now, long sourceIntervalId, int databaseId = 6,
+        DateTimeOffset? observedAt = null)
     {
-        var query = new QueryOpaqueIdentity(6, new string('a', 64));
+        DateTimeOffset observed = observedAt ?? now.AddMinutes(-4);
+        var query = new QueryOpaqueIdentity(databaseId, new string('a', 64));
         var plan = new PlanOpaqueIdentity(query, new string('b', 64));
         var key = new QueryStoreRuntimeWatermarkKey(new MonitoredInstanceId(target),
             new ObservationTargetRevision(1), incarnation, query, plan,
             now.AddHours(-2), sourceIntervalId, now.AddHours(-1), now.AddHours(1), 0);
         var runtime = new QueryStoreRuntimeWatermark(key,
             new QueryStoreRuntimeCounters(100, 200, 100, 100, 100, 100),
-            now.AddMinutes(-10), now.AddMinutes(-4), now.AddMinutes(-4));
+            now.AddMinutes(-10), now.AddMinutes(-4), observed);
         var waits = new QueryStoreWaitWatermark(key,
-            new Dictionary<int, long> { [3] = 100 }, now.AddMinutes(-4));
+            new Dictionary<int, long> { [3] = 100 }, observed);
         return new QueryStoreGroupObservation(runtime, waits);
     }
 }

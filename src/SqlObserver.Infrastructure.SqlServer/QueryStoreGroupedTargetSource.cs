@@ -6,8 +6,8 @@ namespace SqlObserver.Infrastructure.SqlServer;
 
 /// <summary>
 /// Bounded SQL Server 2022 source sweep. This source is deliberately separate
-/// from the production collector registry until target window selection and
-/// per-database wait coverage can be represented without ambiguity.
+/// from the production collector registry until a durable target window policy
+/// and collector catalog contract are installed.
 /// </summary>
 internal sealed class QueryStoreGroupedTargetSource
 {

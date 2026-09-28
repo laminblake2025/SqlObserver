@@ -165,7 +165,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
                 if (groups is null || result.Accounting.OutputItemsProduced != groups.Items.Count ||
                     result.Accounting.OutputBytes < groups.EstimatedSizeBytes ||
                     (!groups.RuntimeComplete && result.Outcome != CollectorRunOutcome.Partial) ||
-                    (groups.WaitCoverage == QueryStoreGroupWaitCoverage.Truncated && result.Outcome != CollectorRunOutcome.Partial))
+                    (groups.HasTruncatedWaitCoverage && result.Outcome != CollectorRunOutcome.Partial))
                     throw new InvalidDataException("Query Store group coverage or accounting is incomplete.");
             }
             else if (groups is not null)
