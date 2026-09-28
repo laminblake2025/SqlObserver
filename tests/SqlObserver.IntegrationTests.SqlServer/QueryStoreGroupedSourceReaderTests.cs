@@ -43,6 +43,11 @@ public sealed class QueryStoreGroupedSourceReaderTests
         Assert.Single(joined);
         Assert.Equal(runtime.Rows[0].Watermark.Key, joined[0].Key);
         Assert.Equal(4_030, joined[0].CategoryMilliseconds[3]);
+        QueryStoreGroupOutputBatch output = QueryStoreGroupedSourceBundle.MapOutput(
+            runtime, waits, Target, Revision, Start, Start.AddHours(1));
+        Assert.True(output.RuntimeComplete);
+        Assert.Equal(QueryStoreGroupWaitCoverage.Complete, output.WaitCoverage);
+        Assert.Equal(4_030, Assert.Single(output.Items).Waits!.CategoryMilliseconds[3]);
     }
 
     [Fact]
@@ -60,12 +65,20 @@ public sealed class QueryStoreGroupedSourceReaderTests
         Assert.Single(zero);
         Assert.Empty(zero[0].CategoryMilliseconds);
         Assert.Equal(Start.AddMinutes(4), zero[0].ObservedAtUtc);
+        QueryStoreGroupOutputBatch knownZero = QueryStoreGroupedSourceBundle.MapOutput(
+            runtime, empty, Target, Revision, Start, Start.AddHours(1));
+        Assert.Equal(QueryStoreGroupWaitCoverage.Complete, knownZero.WaitCoverage);
+        Assert.Empty(Assert.Single(knownZero.Items).Waits!.CategoryMilliseconds);
 
         using var offReader = new DataTableReader([StatusTable("OFF")]);
         QueryStoreWaitSourcePage off = await QueryStoreGroupedSourceReader.ReadWaitsAsync(
             offReader, Target, Revision, 6, 2_000, CancellationToken.None);
         Assert.False(off.Complete);
         Assert.Null(QueryStoreGroupedSourceReader.CompleteWaitSnapshots(runtime, off));
+        QueryStoreGroupOutputBatch unavailable = QueryStoreGroupedSourceBundle.MapOutput(
+            runtime, off, Target, Revision, Start, Start.AddHours(1));
+        Assert.Equal(QueryStoreGroupWaitCoverage.CaptureOff, unavailable.WaitCoverage);
+        Assert.Null(Assert.Single(unavailable.Items).Waits);
     }
 
     [Fact]
@@ -82,6 +95,10 @@ public sealed class QueryStoreGroupedSourceReaderTests
         QueryStoreWaitSourcePage waits = await QueryStoreGroupedSourceReader.ReadWaitsAsync(
             waitReader, Target, Revision, 6, 2_000, CancellationToken.None);
         Assert.Null(QueryStoreGroupedSourceReader.CompleteWaitSnapshots(capped, waits));
+        QueryStoreGroupOutputBatch incomplete = QueryStoreGroupedSourceBundle.MapOutput(
+            capped, waits, Target, Revision, Start, Start.AddHours(1));
+        Assert.False(incomplete.RuntimeComplete);
+        Assert.Empty(incomplete.Items);
 
         using var completeReader = new DataTableReader(RuntimeTable(RuntimeRow()));
         QueryStoreRuntimeSourcePage complete = await QueryStoreGroupedSourceReader.ReadRuntimeAsync(
@@ -92,6 +109,8 @@ public sealed class QueryStoreGroupedSourceReaderTests
         QueryStoreWaitSourcePage wrong = await QueryStoreGroupedSourceReader.ReadWaitsAsync(
             unmatchedReader, Target, Revision, 6, 2_000, CancellationToken.None);
         Assert.Throws<InvalidDataException>(() => QueryStoreGroupedSourceReader.CompleteWaitSnapshots(complete, wrong));
+        Assert.Throws<InvalidDataException>(() => QueryStoreGroupedSourceBundle.MapOutput(
+            complete, wrong, Target, Revision, Start, Start.AddHours(1)));
 
         object[] secondWait = WaitRow();
         secondWait[10] = 4;
@@ -101,6 +120,11 @@ public sealed class QueryStoreGroupedSourceReaderTests
         Assert.False(cappedWaits.Complete);
         Assert.Equal(2, cappedWaits.SourceRowsRead);
         Assert.Null(QueryStoreGroupedSourceReader.CompleteWaitSnapshots(complete, cappedWaits));
+        QueryStoreGroupOutputBatch partialWaits = QueryStoreGroupedSourceBundle.MapOutput(
+            complete, cappedWaits, Target, Revision, Start, Start.AddHours(1));
+        Assert.True(partialWaits.RuntimeComplete);
+        Assert.Equal(QueryStoreGroupWaitCoverage.Truncated, partialWaits.WaitCoverage);
+        Assert.Null(Assert.Single(partialWaits.Items).Waits);
     }
 
     [Fact]

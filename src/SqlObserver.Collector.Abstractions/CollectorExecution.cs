@@ -103,7 +103,8 @@ public sealed class CollectorPayload
         QueryPerformanceTargetStatus? queryPerformanceTargetStatus = null,
         OperationalHealthPayload? operationalHealth = null,
         HostMetricsPayloadContext? hostMetricsContext = null,
-        SqlVolumeObservationBatch? sqlVolumes = null)
+        SqlVolumeObservationBatch? sqlVolumes = null,
+        QueryStoreGroupOutputBatch? queryStoreGroups = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -131,6 +132,7 @@ public sealed class CollectorPayload
         BlockingEdges = blockingEdges ?? new BlockingEdgeObservationBatch([]);
         Deadlocks = deadlocks ?? new DeadlockObservationBatch([]);
         QueryPerformance = queryPerformance ?? new QueryPerformanceObservationBatch([]);
+        QueryStoreGroups = queryStoreGroups;
         int protectedCount = QueryPerformance.Items.Count(static item => item.ProtectedContent is not null);
         int protectedBytes = QueryPerformance.Items.Sum(static item => item.ProtectedContent?.ProtectedSizeBytes ?? 0);
         if (protectedCount > 64 || protectedBytes > 64 * (16 * 1024 + 48))
@@ -152,6 +154,7 @@ public sealed class CollectorPayload
     public BlockingEdgeObservationBatch BlockingEdges { get; }
     public DeadlockObservationBatch Deadlocks { get; }
     public QueryPerformanceObservationBatch QueryPerformance { get; }
+    public QueryStoreGroupOutputBatch? QueryStoreGroups { get; }
     public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
     public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
     public OperationalHealthPayload? OperationalHealth { get; }
@@ -167,6 +170,7 @@ public sealed class CollectorPayload
         BlockingEdges.Items.Count +
         Deadlocks.Items.Count +
         QueryPerformance.Items.Count +
+        (QueryStoreGroups?.Items.Count ?? 0) +
         (OperationalHealth?.ItemCount ?? 0));
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
@@ -179,6 +183,7 @@ public sealed class CollectorPayload
         BlockingEdges.Items.Sum(static item => item.EstimatedSizeBytes) +
         Deadlocks.Items.Sum(static item => item.EstimatedSizeBytes) +
         QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes) +
+        (QueryStoreGroups?.EstimatedSizeBytes ?? 0) +
         (OperationalHealth?.EstimatedSizeBytes ?? 0));
 
     public static CollectorPayload Empty { get; } = new();
@@ -329,7 +334,8 @@ public sealed class CollectorOutputContract
         int maxDeadlockObservations = 0,
         int maxQueryPerformanceObservations = 0,
         int maxOperationalHealthObservations = 0,
-        int maxSqlVolumeObservations = 0)
+        int maxSqlVolumeObservations = 0,
+        int maxQueryStoreGroupObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -380,6 +386,10 @@ public sealed class CollectorOutputContract
         {
             throw new ArgumentOutOfRangeException(nameof(maxQueryPerformanceObservations));
         }
+        if (maxQueryStoreGroupObservations is < 0 or > QueryStoreGroupOutputBatch.MaximumItems)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxQueryStoreGroupObservations));
+        }
         if (maxOperationalHealthObservations is < 0 or > IngestionLimits.MaximumItemCount)
         {
             throw new ArgumentOutOfRangeException(nameof(maxOperationalHealthObservations));
@@ -417,6 +427,7 @@ public sealed class CollectorOutputContract
         MaxBlockingEdgeObservations = maxBlockingEdgeObservations;
         MaxDeadlockObservations = maxDeadlockObservations;
         MaxQueryPerformanceObservations = maxQueryPerformanceObservations;
+        MaxQueryStoreGroupObservations = maxQueryStoreGroupObservations;
         MaxOperationalHealthObservations = maxOperationalHealthObservations;
     }
 
@@ -432,6 +443,7 @@ public sealed class CollectorOutputContract
     public int MaxBlockingEdgeObservations { get; }
     public int MaxDeadlockObservations { get; }
     public int MaxQueryPerformanceObservations { get; }
+    public int MaxQueryStoreGroupObservations { get; }
     public int MaxOperationalHealthObservations { get; }
 }
 

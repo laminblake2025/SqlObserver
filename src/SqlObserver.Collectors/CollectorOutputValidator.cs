@@ -42,6 +42,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             ? OperationalHealthBounds.AvailabilityMaximumRows + 1
             : manifest.Id.Value == "replication.health"
                 ? ReplicationBounds.MaximumRows + 1
+                : manifest.Id.Value == "queries.performance-groups"
+                    ? 2 * (manifest.Limits.MaxRows + 1) + QueryPerformanceBounds.MaximumDatabases + 1
                 : manifest.Id.Value == "storage.volume"
                     ? manifest.Limits.MaxRows + 1
                 : manifest.Id.Value == "queries.performance"
@@ -68,6 +70,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.BlockingEdges.Items.Count > Contract.MaxBlockingEdgeObservations ||
             payload.Deadlocks.Items.Count > Contract.MaxDeadlockObservations ||
             payload.QueryPerformance.Items.Count > Contract.MaxQueryPerformanceObservations ||
+            (payload.QueryStoreGroups?.Items.Count ?? 0) > Contract.MaxQueryStoreGroupObservations ||
+            (payload.QueryStoreGroups is not null && Contract.MaxQueryStoreGroupObservations == 0) ||
             (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations)
         {
             throw new InvalidDataException("Collector output exceeded its registered output cardinality.");
@@ -112,7 +116,9 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.Deadlocks.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
             payload.QueryPerformance.Items.Any(item =>
-                item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision))
+                item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
+            payload.QueryStoreGroups is { } groupOutput &&
+                (groupOutput.TargetId != request.TargetId || groupOutput.TargetRevision != request.TargetRevision))
         {
             throw new InvalidDataException("Collector inventory output belongs to a different target revision.");
         }
@@ -147,6 +153,23 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         if (manifest.Id.Value == "queries.performance")
         {
             ValidateQueryPerformanceBoundsAndStatuses(payload, result);
+        }
+        if (manifest.OutputKind == CollectorOutputKind.QueryStoreGroups)
+        {
+            QueryStoreGroupOutputBatch? groups = payload.QueryStoreGroups;
+            if (payload.QueryPerformanceStatuses.Count != 0 || payload.QueryPerformanceTargetStatus is not null ||
+                payload.HostMetricsContext is not null)
+                throw new InvalidDataException("Query Store group output cannot carry another collector's sidecars.");
+            if (result.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial)
+            {
+                if (groups is null || result.Accounting.OutputItemsProduced != groups.Items.Count ||
+                    result.Accounting.OutputBytes < groups.EstimatedSizeBytes ||
+                    (!groups.RuntimeComplete && result.Outcome != CollectorRunOutcome.Partial) ||
+                    (groups.WaitCoverage == QueryStoreGroupWaitCoverage.Truncated && result.Outcome != CollectorRunOutcome.Partial))
+                    throw new InvalidDataException("Query Store group coverage or accounting is incomplete.");
+            }
+            else if (groups is not null)
+                throw new InvalidDataException("A failed Query Store group run cannot carry source output.");
         }
     }
 

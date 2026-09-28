@@ -1479,6 +1479,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
+        if (request.Payload.QueryStoreGroups is not null ||
+            request.Work.CollectorId.Value == "queries.performance-groups")
+            throw new InvalidDataException("Query Store group output requires the fenced group writer before any run can commit.");
         if (request.Payload.SqlVolumes.Items.Count != 0 && request.Work.CollectorId.Value != "storage.volume")
             throw new InvalidDataException("SQL volume observations require the exact storage.volume collector.");
         ValidateLeaseKey(request.Work, request.Lease);

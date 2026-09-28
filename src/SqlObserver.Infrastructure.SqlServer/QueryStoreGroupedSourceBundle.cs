@@ -42,7 +42,7 @@ internal sealed class QueryStoreGroupedSourceBundle
     }
 
     internal async Task<(QueryStoreRuntimeSourcePage Runtime, QueryStoreWaitSourcePage? Waits,
-        IReadOnlyList<QueryStoreWaitWatermark>? CompleteWaitSnapshots)> ReadDatabaseAsync(
+        QueryStoreGroupOutputBatch Output)> ReadDatabaseAsync(
         SqlConnection connection, MonitoredInstanceId targetId,
         ObservationTargetRevision targetRevision, int databaseId,
         DateTimeOffset fromUtc, DateTimeOffset toUtc, int maximumGroups,
@@ -74,14 +74,44 @@ internal sealed class QueryStoreGroupedSourceBundle
         // A capped runtime page cannot support complete wait coverage; do not
         // spend another SQL read or allow a caller to advance any watermark.
         if (!runtime.Complete)
-            return (runtime, null, null);
+            return (runtime, null, MapOutput(runtime, null, targetId, targetRevision, fromUtc, toUtc));
 
         QueryStoreWaitSourcePage waits;
         await using (var command = CreateCommand(connection, WaitSql, fromUtc, toUtc, maximumGroups))
         await using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
             waits = await QueryStoreGroupedSourceReader.ReadWaitsAsync(reader, targetId,
                 targetRevision, databaseId, maximumGroups, cancellationToken).ConfigureAwait(false);
-        return (runtime, waits, QueryStoreGroupedSourceReader.CompleteWaitSnapshots(runtime, waits));
+        return (runtime, waits, MapOutput(runtime, waits, targetId, targetRevision, fromUtc, toUtc));
+    }
+
+    internal static QueryStoreGroupOutputBatch MapOutput(QueryStoreRuntimeSourcePage runtime,
+        QueryStoreWaitSourcePage? waits, MonitoredInstanceId targetId,
+        ObservationTargetRevision targetRevision, DateTimeOffset fromUtc,
+        DateTimeOffset toUtc)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        if (!runtime.Complete)
+            return new QueryStoreGroupOutputBatch(targetId, targetRevision, fromUtc, toUtc,
+                false, QueryStoreGroupWaitCoverage.Unavailable, []);
+        if (waits is null)
+            throw new InvalidDataException("Complete Query Store runtime coverage requires a wait source status.");
+        QueryStoreGroupWaitCoverage coverage = waits.CaptureMode switch
+        {
+            QueryStoreWaitCaptureMode.On when waits.Complete => QueryStoreGroupWaitCoverage.Complete,
+            QueryStoreWaitCaptureMode.On => QueryStoreGroupWaitCoverage.Truncated,
+            QueryStoreWaitCaptureMode.Off => QueryStoreGroupWaitCoverage.CaptureOff,
+            QueryStoreWaitCaptureMode.Unavailable => QueryStoreGroupWaitCoverage.Unavailable,
+            _ => throw new InvalidDataException("Query Store wait source status is unsupported."),
+        };
+        IReadOnlyDictionary<QueryStoreRuntimeWatermarkKey, QueryStoreWaitWatermark> completeWaits =
+            QueryStoreGroupedSourceReader.CompleteWaitSnapshots(runtime, waits)?
+                .ToDictionary(static item => item.Key) ??
+            new Dictionary<QueryStoreRuntimeWatermarkKey, QueryStoreWaitWatermark>();
+        QueryStoreGroupObservation[] observations = runtime.Rows.Select(row =>
+            new QueryStoreGroupObservation(row.Watermark,
+                completeWaits.GetValueOrDefault(row.Watermark.Key))).ToArray();
+        return new QueryStoreGroupOutputBatch(targetId, targetRevision, fromUtc, toUtc,
+            true, coverage, observations);
     }
 
     private static SqlCommand CreateCommand(SqlConnection connection, string sql,
