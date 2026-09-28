@@ -2344,6 +2344,10 @@ foreach ($testProject in $testProjectsToRun) {
         $filter = 'Category!=RequiresSqlServer'
     }
     if ($testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj') {
+        # This test creates and drops its own Query Store databases. It is
+        # selected explicitly for a disposable SQL Server lab, never by the
+        # ordinary Local or Release sweep.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }
         # The M12 release producer is the sole selector for the live passive
         # certification. Ordinary Local and Release sweeps must never invoke
         # it (and must not turn a missing release lab into a skip).

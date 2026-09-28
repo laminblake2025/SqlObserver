@@ -8,8 +8,8 @@ using SqlObserver.Domain.Collection;
 namespace SqlObserver.Infrastructure.SqlServer;
 
 /// <summary>
-/// SQL Server 2022 grouped Query Store collector. The registry keeps this
-/// collector disabled until its manifest and source bundle are reconciled.
+/// SQL Server 2022 grouped Query Store collector. The registry installs
+/// schedules disabled until an administrator opts in for a target.
 /// </summary>
 public sealed class SqlServerQueryStoreGroupCollector : ISqlServerCollector
 {
