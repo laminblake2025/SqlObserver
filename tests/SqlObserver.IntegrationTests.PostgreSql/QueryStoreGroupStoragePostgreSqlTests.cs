@@ -34,7 +34,20 @@ public sealed class QueryStoreGroupStoragePostgreSqlTests
                    has_function_privilege('sqlobserver_collector',
                      'control.ensure_query_store_group_partitions(date)'::regprocedure,'EXECUTE'),
                    NOT has_function_privilege('sqlobserver_server',
-                     'control.ensure_query_store_group_partitions(date)'::regprocedure,'EXECUTE')
+                     'control.ensure_query_store_group_partitions(date)'::regprocedure,'EXECUTE'),
+                   (SELECT count(*) = 32 FROM system.partition_registry AS registry
+                    WHERE registry.parent_schema='events' AND registry.lifecycle_state='attached'
+                      AND registry.parent_table IN
+                        ('query_store_group_watermark','query_store_group_delta')),
+                   (SELECT count(*) = 2 AND bool_and(policy.enabled AND
+                       ((policy.data_class='m7_group_watermarks' AND
+                         policy.parent_table='query_store_group_watermark' AND
+                         policy.retain_for=interval '8 days') OR
+                        (policy.data_class='m7_group_deltas' AND
+                         policy.parent_table='query_store_group_delta' AND
+                         policy.retain_for=interval '30 days')))
+                    FROM system.retention_policy AS policy
+                    WHERE policy.data_class IN ('m7_group_watermarks','m7_group_deltas'))
             FROM pg_class AS c
             WHERE c.oid IN ('events.query_store_group_watermark'::regclass,
                             'events.query_store_group_delta'::regclass);
@@ -42,8 +55,12 @@ public sealed class QueryStoreGroupStoragePostgreSqlTests
         await using (NpgsqlDataReader reader = await catalog.ExecuteReaderAsync())
         {
             Assert.True(await reader.ReadAsync());
-            for (int ordinal = 0; ordinal < 7; ordinal++) Assert.True(reader.GetBoolean(ordinal));
+            for (int ordinal = 0; ordinal < 9; ordinal++) Assert.True(reader.GetBoolean(ordinal));
         }
+
+        await using (var maintain = new NpgsqlCommand(
+            "SELECT control.ensure_query_store_group_partitions(current_date);", connection))
+            Assert.Equal(0, await maintain.ExecuteScalarAsync());
 
         Guid targetA = Guid.NewGuid();
         Guid targetB = Guid.NewGuid();
@@ -127,5 +144,23 @@ public sealed class QueryStoreGroupStoragePostgreSqlTests
             Assert.Equal(0L, reader.GetInt64(1));
         }
         await transaction.RollbackAsync();
+
+        await using NpgsqlTransaction policyTransaction = await connection.BeginTransactionAsync();
+        await using (var role = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_server;
+            SELECT set_config('sqlobserver.role','SecurityAdministrator',true);
+            SELECT set_config('sqlobserver.authorization_scope','global',true);
+            """, connection, policyTransaction))
+            await role.ExecuteNonQueryAsync();
+        foreach (string dataClass in new[] { "m7_group_watermarks", "m7_group_deltas" })
+        {
+            await using var update = new NpgsqlCommand("""
+                SELECT system.update_m10_retention_policy(
+                    @data_class,true,interval '9 days',3,1,'storage-test','policy update');
+                """, connection, policyTransaction);
+            update.Parameters.AddWithValue("data_class", dataClass);
+            Assert.Equal(2L, await update.ExecuteScalarAsync());
+        }
+        await policyTransaction.RollbackAsync();
     }
 }

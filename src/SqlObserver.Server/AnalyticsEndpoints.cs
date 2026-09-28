@@ -26,7 +26,7 @@ public static class AnalyticsEndpoints
     {
         "m5_activity", "m5_requests", "m5_waits", "m5_blocking",
         "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
-        "sql_volume_capacity"
+        "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas"
     };
     private static readonly HashSet<string> MutationReceiptStates = new(StringComparer.Ordinal)
     {

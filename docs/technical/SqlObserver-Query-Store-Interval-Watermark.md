@@ -117,9 +117,11 @@ unchanged until the fenced delta writer and retention path exist. SQL Server
 Migration 0142 adds separate daily-partitioned cumulative watermark and delta
 tables, with target-scoped forced RLS and no direct collector or server grants.
 The normal partition maintenance call keeps the current source window covered.
-No writer uses these tables yet, and their partitions are not registered with
-retention. A rollout still requires the fenced atomic writer, partition
-retention policy, source-to-payload accounting, and read API.
+Migration 0143 registers the partitions with the fenced retention worker and
+enables separate eight-day watermark and 30-day delta policies. A
+SecurityAdministrator can change those policies through the existing API.
+No writer uses these tables yet. A rollout still requires the fenced atomic
+writer, source-to-payload accounting, and read API.
 
 ## Source and identity
 

@@ -39,3 +39,15 @@ test("retention parser accepts canonical M5 policies and preview rows", () => {
   const preview = parseRetentionPreview({ entries: [{ dataClass: "m5_waits", parentSchema: "telemetry", parentTable: "server_wait_snapshot", partitionName: "server_wait_snapshot_20260825", rangeStartUtc: "2026-08-25T00:00:00Z", rangeEndUtc: "2026-08-26T00:00:00Z", eligible: false, reason: "retention_disabled" }], truncated: false, nextCursor: null, evaluatedAtUtc: "2026-08-26T01:00:00Z" });
   assert.equal(preview.entries[0].parentTable, "server_wait_snapshot");
 });
+
+test("retention parser accepts Query Store group policies and registered partitions", () => {
+  for (const [dataClass, parentTable, days] of [
+    ["m7_group_watermarks", "query_store_group_watermark", 8],
+    ["m7_group_deltas", "query_store_group_delta", 30],
+  ]) {
+    const policy = parseRetentionPolicy({ policy: { dataClass, enabled: true, retainFor: `${days}.00:00:00`, minimumPartitionsToKeep: 3 }, revision: 1, readAtUtc: "2026-09-28T01:00:00Z" });
+    assert.equal(policy.policy.dataClass, dataClass);
+    const preview = parseRetentionPreview({ entries: [{ dataClass, parentSchema: "events", parentTable, partitionName: `${parentTable}_p20260927`, rangeStartUtc: "2026-09-27T00:00:00Z", rangeEndUtc: "2026-09-28T00:00:00Z", eligible: false, reason: "within_retention_window" }], truncated: false, nextCursor: null, evaluatedAtUtc: "2026-09-28T01:00:00Z" });
+    assert.equal(preview.entries[0].parentTable, parentTable);
+  }
+});

@@ -74,7 +74,9 @@ public sealed class MigrationIntegrationTests
             new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
             CancellationToken.None);
 
-        Assert.False(first.HasFailures);
+        Assert.False(first.HasFailures, string.Join(", ", first.Results
+            .Where(static result => result.Outcome == MigrationOutcome.Failed)
+            .Select(static result => $"{result.Migration.Number.Value}:{result.FailureCode}")));
         Assert.Equal(catalog.Migrations.Count, first.Results.Count);
         Assert.All(first.Results, static result => Assert.Equal(MigrationOutcome.Applied, result.Outcome));
         Assert.Empty(second.Results);
