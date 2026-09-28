@@ -31,6 +31,18 @@ execution. The two-row case reconciled, but this local probe is not yet a
 repeatable proof of every flushed/in-memory grouping path or other SQL Server
 versions. The source query and calculator are not wired into ingestion.
 
+`tools/lab/query-store-wait-groups.sql` is the matching candidate wait source.
+It reports the capture mode separately, groups the active interval's flushed
+and in-memory rows by plan, interval, execution type and wait category before
+applying its row cap, and emits the same database/query/plan/interval identity
+as the runtime source. A dedicated disposable SQL Server 2022 probe held a table
+lock and reconciled one positive lock-wait group with a direct Query Store sum
+and the matching runtime group. The same group was readable by a temporary
+non-sysadmin login with the generated Query Store grants. The probe removed
+its login and database; turning wait capture off yielded an explicit `OFF`
+status with no group rows. This does not yet prove absent-category zeroes,
+reset/refill behavior for wait counters, or SQL Server 2019/2025 behavior.
+
 The disposable SQL Server 2022 probe in
 `tools/lab/verify-query-store-text-local.ps1` held a table lock, recorded a
 3,042 ms lock wait for one plan, then read the pinned wait asset again without

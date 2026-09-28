@@ -44,6 +44,17 @@ current Windows login can create databases:
 pwsh ./tools/lab/verify-query-store-text-local.ps1 -SqlInstance '.\SQLEXPRESS'
 ```
 
+`verify-query-store-wait-groups-local.ps1` independently checks the candidate
+`query-store-wait-groups.sql` source. It creates a fresh Query Store database,
+records a lock wait, reconciles the grouped wait total and its identity with
+direct wait stats and the candidate runtime group, then reads the wait group
+through a temporary non-sysadmin login with the generated Query Store grants.
+The database and login are removed in `finally`:
+
+```powershell
+pwsh ./tools/lab/verify-query-store-wait-groups-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
 ## Controlled stress and Observer validation
 
 `run-stress-test.ps1` is the bounded, operator-run stress harness. It adds staged
