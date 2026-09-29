@@ -28,6 +28,8 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         DatabaseOptionChanges = new PostgreSqlDatabaseOptionChangePort(dataSource);
         ServerConfigurationChanges = new PostgreSqlServerConfigurationChangePort(dataSource);
         ServerConfigurationSnapshots = new PostgreSqlServerConfigurationSnapshotPort(dataSource);
+        ConfigurationCollectionAdministration =
+            new PostgreSqlConfigurationCollectionAdministrationPort(dataSource);
         SqlVolumeReads = new PostgreSqlSqlVolumeReadPort(dataSource);
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
@@ -77,6 +79,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IDatabaseOptionChangeRepositoryPort DatabaseOptionChanges { get; }
     public IServerConfigurationChangeRepositoryPort ServerConfigurationChanges { get; }
     public IServerConfigurationSnapshotRepositoryPort ServerConfigurationSnapshots { get; }
+    public IConfigurationCollectionAdministrationPort ConfigurationCollectionAdministration { get; }
     public ISqlVolumeReadRepositoryPort SqlVolumeReads { get; }
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }

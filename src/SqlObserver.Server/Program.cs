@@ -139,6 +139,8 @@ builder.Services.AddSingleton<IServerConfigurationChangeRepositoryPort>(static s
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerConfigurationChanges);
 builder.Services.AddSingleton<IServerConfigurationSnapshotRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerConfigurationSnapshots);
+builder.Services.AddSingleton<IConfigurationCollectionAdministrationPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().ConfigurationCollectionAdministration);
 builder.Services.AddSingleton<IQueryStorePlanRegressionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryStorePlanRegressions);
 builder.Services.AddSingleton<SqlObserver.Domain.SensitiveData.IQuerySensitiveContentProtector>(_ =>
@@ -151,6 +153,7 @@ builder.Services.AddSingleton<IQueryStoreWaitRankingQueryService, QueryStoreWait
 builder.Services.AddSingleton<IDatabaseOptionChangeQueryService, DatabaseOptionChangeQueryService>();
 builder.Services.AddSingleton<IServerConfigurationChangeQueryService, ServerConfigurationChangeQueryService>();
 builder.Services.AddSingleton<IServerConfigurationSnapshotQueryService, ServerConfigurationSnapshotQueryService>();
+builder.Services.AddSingleton<IConfigurationCollectionAdministrationService, ConfigurationCollectionAdministrationService>();
 builder.Services.AddSingleton<ApiCursorSigner>(static services =>
 {
     string? encoded = services.GetRequiredService<IConfiguration>()["SqlObserver:Api:CursorSigningKey"];

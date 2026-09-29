@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
-import { getServerConfigurationSnapshot } from "./healthApi";
+import { getServerConfigurationSnapshot, setServerConfigurationCollection } from "./healthApi";
 import type { ServerConfigurationSnapshotResult } from "./healthTypes";
 
-export function ServerConfigurationSnapshot({ instanceId, refresh }: {
+export function ServerConfigurationSnapshot({ instanceId, refresh, canManage }: {
   readonly instanceId: string;
   readonly refresh: number;
+  readonly canManage: boolean;
 }) {
   const formatTime = useTimeFormatter();
   const [retry, setRetry] = useState(0);
@@ -18,6 +19,8 @@ export function ServerConfigurationSnapshot({ instanceId, refresh }: {
   const [page, setPage] = useState<{ key: string; index: number;
     result: ServerConfigurationSnapshotResult }>();
   const [error, setError] = useState<{ key: string; index: number }>();
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string>();
   const result = page?.key === key && page.index === current.index ? page.result : undefined;
   const failed = error?.key === key && error.index === current.index;
 
@@ -35,6 +38,20 @@ export function ServerConfigurationSnapshot({ instanceId, refresh }: {
     return () => controller.abort();
   }, [instanceId, key, current.index, cursor]);
 
+  const toggle = async () => {
+    if (!canManage || !result || updating) return;
+    const controller = new AbortController();
+    setUpdating(true);
+    setUpdateError(undefined);
+    try {
+      await setServerConfigurationCollection(instanceId, result.targetRevision,
+        result.collectorEnabled, !result.collectorEnabled, controller.signal);
+      setRetry(value => value + 1);
+    } catch (failure) {
+      setUpdateError(failure instanceof Error ? failure.message : "Configuration collection could not be updated.");
+    } finally { setUpdating(false); }
+  };
+
   return <section className="bounded-health-section" aria-labelledby="server-configuration-snapshot-heading">
     <div className="bounded-health-heading"><h4 id="server-configuration-snapshot-heading">Current server settings</h4></div>
     <p>Latest complete scan. This view follows the server now, even when the timeline is rewound.</p>
@@ -45,6 +62,10 @@ export function ServerConfigurationSnapshot({ instanceId, refresh }: {
         ? `Observed ${formatTime(result.observedAtUtc)}. ` : "No complete scan yet. "}
         {result.collectorEnabled ? "Collection enabled." : "Collection disabled."}
         {result.lastOutcome ? ` Last outcome: ${result.lastOutcome}.` : ""}</p>
+      {canManage && <p><button type="button" disabled={updating} onClick={() => void toggle()}>
+        {updating ? "Updating…" : result.collectorEnabled ? "Disable configuration collection" : "Enable configuration collection"}
+      </button>{!result.collectorEnabled && <small> Verify SQL Server read permissions before enabling.</small>}</p>}
+      {updateError && <p role="alert">{updateError} <button type="button" onClick={() => setRetry(value => value + 1)}>Reload current state</button></p>}
       {result.items.length > 0 && <><div className="table-scroll"><table><thead><tr>
         <th>Setting</th><th>Configured</th><th>In use</th><th>Type</th>
       </tr></thead><tbody>{result.items.map(item => <tr key={item.configurationId}>

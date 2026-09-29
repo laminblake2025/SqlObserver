@@ -34,6 +34,20 @@ export async function getServerConfigurationSnapshot(instanceId: string,
   return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-snapshot?${parameters}`, signal);
 }
 
+export async function setServerConfigurationCollection(instanceId: string,
+  expectedTargetRevision: number, expectedEnabled: boolean, enabled: boolean,
+  signal: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-collection`, {
+    method: "PUT", credentials: "same-origin",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedTargetRevision, expectedEnabled, enabled }), signal,
+  });
+  if (!response.ok) throw new Error(response.status === 409
+    ? "Collection state changed. Reload before trying again."
+    : response.status === 403 ? "Target administrator access is required."
+      : "Configuration collection could not be updated.");
+}
+
 export class HealthRequestError extends Error {
   public constructor(message: string) {
     super(message);

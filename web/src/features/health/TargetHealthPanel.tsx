@@ -70,9 +70,10 @@ export interface TargetHealthPanelProps {
   readonly healthRefresh: number;
   readonly blockingRefresh: number;
   readonly selectedDatabaseId?: number;
+  readonly canManageConfiguration: boolean;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, canManageConfiguration }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const [evidence, setEvidence] = useState<TargetHealthEvidence>();
   const [message, setMessage] = useState<string>();
@@ -149,7 +150,8 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           {tab === "summary" ? <>
             <HealthMetricStrip metrics={evidence.target.coreMetrics} />
             <CoreMetrics metrics={evidence.target.coreMetrics} />
-            <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh} />
+            <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh}
+              canManage={canManageConfiguration} />
             <ServerConfigurationChanges instanceId={instanceId} scope={scope} refresh={refresh}
               collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>

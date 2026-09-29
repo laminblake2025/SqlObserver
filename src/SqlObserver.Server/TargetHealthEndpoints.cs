@@ -28,7 +28,46 @@ public static class TargetHealthEndpoints
         group.MapGet("/database-option-changes", ListDatabaseOptionChangesAsync);
         group.MapGet("/server-configuration-changes", ListServerConfigurationChangesAsync);
         group.MapGet("/server-configuration-snapshot", ListServerConfigurationSnapshotAsync);
+        group.MapPut("/server-configuration-collection", SetServerConfigurationCollectionAsync)
+            .RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         return endpoints;
+    }
+
+    private static async Task<IResult> SetServerConfigurationCollectionAsync(
+        HttpContext context, Guid instanceId, ConfigurationCollectionBody body,
+        IConfigurationCollectionAdministrationService service,
+        WindowsGroupRoleResolver roles,
+        CancellationToken cancellationToken)
+    {
+        AuditCorrelationId correlationId = ApiCorrelation.Begin(context);
+        try
+        {
+            if (body.ExpectedTargetRevision < 1 || body.ExpectedEnabled is null ||
+                body.Enabled is null)
+                return Results.BadRequest();
+            ConfigurationCollectionMutationResult result = await service.SetAsync(
+                roles.Resolve(context.User), new MonitoredInstanceId(instanceId),
+                body.ExpectedTargetRevision, body.ExpectedEnabled.Value, body.Enabled.Value,
+                correlationId, RepositoryTimeout, cancellationToken).ConfigureAwait(false);
+            return result.Status switch
+            {
+                ConfigurationCollectionMutationStatus.Applied => Results.Ok(new
+                {
+                    targetId = instanceId,
+                    targetRevision = body.ExpectedTargetRevision,
+                    collectorEnabled = result.Enabled,
+                    scheduleRevision = result.ScheduleRevision,
+                }),
+                ConfigurationCollectionMutationStatus.NotFound => Results.NotFound(),
+                ConfigurationCollectionMutationStatus.Inactive or
+                    ConfigurationCollectionMutationStatus.RevisionConflict =>
+                    Results.Conflict(new { code = "configuration_collection_conflict",
+                        message = "Server or collection state changed. Reload before trying again." }),
+                _ => throw new InvalidDataException("Configuration collection returned an unknown status."),
+            };
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
     }
 
     private static async Task<IResult> ListServerConfigurationSnapshotAsync(
@@ -603,6 +642,9 @@ public static class TargetHealthEndpoints
             correlationId.Value.ToString("D", CultureInfo.InvariantCulture)),
         statusCode: StatusCodes.Status404NotFound);
 }
+
+public sealed record ConfigurationCollectionBody(long ExpectedTargetRevision,
+    bool? ExpectedEnabled, bool? Enabled);
 
 internal static class HealthCursorCodec
 {
