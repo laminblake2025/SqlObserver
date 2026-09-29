@@ -5,9 +5,9 @@ import { QueryStoreGroupTrendPanel, type GroupTrendState } from "./QueryStoreGro
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { useEffect, useRef, useState } from "react";
-import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend, getQueryStoreTopWaits } from "./queryPerformanceApi";
+import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend, getQueryStoreTopWaits, getQueryStorePlanRegressions } from "./queryPerformanceApi";
 import type { QueryWindow } from "./queryWindowModel";
-import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking } from "./queryPerformanceTypes";
+import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
 
 const waitCategoryNames: Record<number, string> = {
   0: "Unknown", 1: "CPU", 2: "Worker thread", 3: "Lock", 4: "Latch",
@@ -49,6 +49,8 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const [status, setStatus] = useState<QueryPerformanceStatus>();
   const [waitRanking, setWaitRanking] = useState<QueryStoreWaitRanking>();
   const [waitRankingError, setWaitRankingError] = useState<string>();
+  const [regressions, setRegressions] = useState<QueryStorePlanRegressionList>();
+  const [regressionError, setRegressionError] = useState<string>();
   const [history, setHistory] = useState<QueryPerformanceHistoryPage>();
   const [historySelection, setHistorySelection] = useState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string; planFingerprint?: string }>();
   const [groupTrend, setGroupTrend] = useState<GroupTrendState>();
@@ -109,6 +111,18 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     return () => controller.abort();
   }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
   useEffect(() => {
+    const controller = new AbortController();
+    setRegressions(undefined);
+    setRegressionError(undefined);
+    void getQueryStorePlanRegressions(instanceId, timeWindow.fromUtc, timeWindow.toUtc, controller.signal)
+      .then(value => { if (!controller.signal.aborted) setRegressions(value); })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setRegressionError(error instanceof Error
+          ? error.message : "Plan regression comparison is unavailable.");
+      });
+    return () => controller.abort();
+  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
+  useEffect(() => {
     trendRequest.current?.abort();
     const selection = historySelection;
     if (!selection?.planFingerprint) { setGroupTrend(undefined); return; }
@@ -136,11 +150,12 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   useEffect(() => {
     if (!page || !historySelection || page.items.some(item => item.query.databaseId === historySelection.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint)
       || waitRanking?.items.some(item => item.databaseId === historySelection.databaseId && item.queryFingerprint === historySelection.queryFingerprint)
+      || regressions?.items.some(item => item.databaseId === historySelection.databaseId && item.queryFingerprint === historySelection.queryFingerprint)
       || initialQuerySelection?.databaseId === historySelection.databaseId && initialQuerySelection.queryFingerprint === historySelection.queryFingerprint) return;
     setHistorySelection(undefined);
     setHistory(undefined);
     setPlan(undefined);
-  }, [page, historySelection, waitRanking, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint]);
+  }, [page, historySelection, waitRanking, regressions, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint]);
   useEffect(() => {
     if (!initialQuerySelection) return;
     const controller = new AbortController();
@@ -198,6 +213,30 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     <div className="health-heading-row"><div><p className="eyebrow">Milestone 7 · read-only</p><h3 id="query-performance-heading">Top queries for {displayName}</h3></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {message === undefined ? null : <p className="status-message">{message}</p>}
     {status === undefined ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></div>}
+    <section className="panel" aria-label="Possible plan regressions">
+      <h4>Possible plan regressions</h4>
+      <p>Compare this window with the immediately preceding window of the same length. A lead appears when the dominant Query Store plan changes and comparable duration per execution is at least twice as high and 50 ms slower, with at least two groups and ten executions per plan. This is a correlation, not proof that the plan caused the slowdown.</p>
+      {regressionError ? <p role="alert">{regressionError}</p> : null}
+      {!regressions && !regressionError ? <p role="status">Comparing Query Store plans…</p> : null}
+      {regressions && <p className="activity-evidence">Earlier: {timeLabel(regressions.comparisonFromUtc)} to {timeLabel(regressions.fromUtc)} · Current: {timeLabel(regressions.fromUtc)} to {timeLabel(regressions.toUtc)}. Only observed comparable groups contribute; missing or reset groups can hide changes.</p>}
+      {regressions && regressions.items.length === 0 ? <p>No qualifying plan change was found in the observed groups.</p> : null}
+      {regressions && regressions.items.length > 0 ? <div className="table-scroll"><table>
+        <caption>Possible Query Store plan regressions, ranked by increase in duration per execution</caption>
+        <thead><tr><th scope="col">Database / query</th><th scope="col">Plan change</th>
+          <th scope="col">Average duration / execution</th><th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
+        <tbody>{regressions.items.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}`}>
+          <td><button className="fingerprint" type="button" onClick={() => {
+            setSource("query_store");
+            select(item.databaseId, item.queryFingerprint, timeWindow.fromUtc,
+              timeWindow.toUtc, item.currentPlanFingerprint, "query_store");
+          }}>{displayDatabase(item.databaseId)} / {item.queryFingerprint.slice(0, 12)}…</button></td>
+          <td className="fingerprint">{item.previousPlanFingerprint.slice(0, 12)}… → {item.currentPlanFingerprint.slice(0, 12)}…</td>
+          <td>{item.previousAverageMilliseconds} → {item.currentAverageMilliseconds} ms · {item.slowdownRatio}×</td>
+          <td>{item.previousComparableRows} / {item.previousSourceRows} → {item.currentComparableRows} / {item.currentSourceRows}</td>
+          <td>{timeLabel(item.lastObservedAtUtc)}</td>
+        </tr>)}</tbody>
+      </table></div> : null}
+    </section>
     <section className="panel" aria-label="Top Query Store waits">
       <h4>Top by waits</h4>
       <p>Measured Query Store wait deltas across comparable plan groups in this window. Missing baselines, resets, and unavailable waits are excluded from totals; coverage shows how many observed groups contributed.</p>

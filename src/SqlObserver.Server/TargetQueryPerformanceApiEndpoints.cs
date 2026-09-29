@@ -18,6 +18,7 @@ public static class TargetQueryPerformanceApiEndpoints
         group.MapGet("/status", StatusAsync);
         group.MapGet("/top", TopAsync);
         group.MapGet("/waits/top", TopWaitsAsync);
+        group.MapGet("/regressions", RegressionsAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/text", TextAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/plans/{planFingerprint}/content", PlanContentAsync);
@@ -58,6 +59,49 @@ public static class TargetQueryPerformanceApiEndpoints
                     waitMilliseconds = item.WaitMilliseconds,
                     comparableRows = item.ComparableRows,
                     sourceRows = item.SourceRows,
+                    lastObservedAtUtc = item.LastObservedAtUtc,
+                }),
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+    private static async Task<IResult> RegressionsAsync(HttpContext context, Guid instanceId,
+        IQueryStorePlanRegressionQueryService service, WindowsGroupRoleResolver roles,
+        string? fromUtc = null, string? toUtc = null, int limit = 25,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            DateTimeOffset to = Parse(toUtc) ?? DateTimeOffset.UtcNow;
+            DateTimeOffset from = Parse(fromUtc) ?? to.AddHours(-24);
+            var request = new QueryStorePlanRegressionRequest(new MonitoredInstanceId(instanceId),
+                from, to, limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            QueryStorePlanRegressionResult result = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                fromUtc = from,
+                toUtc = to,
+                comparisonFromUtc = from - (to - from),
+                semantics = "query_store_group_plan_comparison",
+                coverage = result.Items.Count == 0 ? "no_qualifying_changes" : "observed_groups_only",
+                items = result.Items.Select(static item => new
+                {
+                    databaseId = item.Query.DatabaseId,
+                    queryFingerprint = item.Query.QueryFingerprint,
+                    previousPlanFingerprint = item.PreviousPlanFingerprint,
+                    currentPlanFingerprint = item.CurrentPlanFingerprint,
+                    previousAverageMilliseconds = item.PreviousAverageMilliseconds,
+                    currentAverageMilliseconds = item.CurrentAverageMilliseconds,
+                    slowdownRatio = item.SlowdownRatio,
+                    previousExecutions = item.PreviousExecutions,
+                    currentExecutions = item.CurrentExecutions,
+                    previousComparableRows = item.PreviousComparableRows,
+                    previousSourceRows = item.PreviousSourceRows,
+                    currentComparableRows = item.CurrentComparableRows,
+                    currentSourceRows = item.CurrentSourceRows,
                     lastObservedAtUtc = item.LastObservedAtUtc,
                 }),
             });

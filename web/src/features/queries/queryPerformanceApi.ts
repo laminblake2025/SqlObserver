@@ -1,5 +1,5 @@
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -269,4 +269,58 @@ export async function getQueryStoreTopWaits(instanceId: string, fromUtc: string,
     throw new Error("Query wait ranking coverage was invalid.");
   return { fromUtc, toUtc,
     coverage: value.coverage as QueryStoreWaitRanking["coverage"], items };
+}
+
+export async function getQueryStorePlanRegressions(instanceId: string, fromUtc: string,
+    toUtc: string, signal: AbortSignal): Promise<QueryStorePlanRegressionList> {
+  if (!timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc)
+      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000)
+    throw new Error("Plan regression window was invalid.");
+  const path = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/regressions`
+    + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&limit=25`;
+  const value = await readJson(path, instanceId, signal, 64 * 1024) as Record<string, unknown>;
+  if (!timestamp(value.fromUtc) || !timestamp(value.toUtc) || !timestamp(value.comparisonFromUtc)
+      || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc)
+      || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)
+      || Date.parse(value.comparisonFromUtc) !== Date.parse(fromUtc) - (Date.parse(toUtc) - Date.parse(fromUtc))
+      || value.semantics !== "query_store_group_plan_comparison"
+      || value.coverage !== "observed_groups_only" && value.coverage !== "no_qualifying_changes"
+      || !Array.isArray(value.items) || value.items.length > 25)
+    throw new Error("Plan regression response was outside its bounds.");
+  const positiveDecimal = (input: unknown): input is string =>
+    typeof input === "string" && /^(?:0|[1-9]\d{0,38})(?:\.\d{1,26})?$/u.test(input);
+  const seen = new Set<string>();
+  let priorRatio: number | undefined;
+  const items = value.items.map((raw: unknown) => {
+    if (typeof raw !== "object" || raw === null) throw new Error("Plan regression row was invalid.");
+    const row = raw as Record<string, unknown>;
+    const ratio = Number(row.slowdownRatio);
+    if (!Number.isSafeInteger(row.databaseId) || (row.databaseId as number) < 1 ||
+        (row.databaseId as number) > 32767 || !digest(row.queryFingerprint) ||
+        !digest(row.previousPlanFingerprint) || !digest(row.currentPlanFingerprint) ||
+        row.previousPlanFingerprint === row.currentPlanFingerprint ||
+        !positiveDecimal(row.previousAverageMilliseconds) ||
+        !positiveDecimal(row.currentAverageMilliseconds) ||
+        !positiveDecimal(row.slowdownRatio) || !Number.isFinite(ratio) || ratio < 2 ||
+        !positiveDecimal(row.previousExecutions) || !positiveDecimal(row.currentExecutions) ||
+        !Number.isSafeInteger(row.previousComparableRows) || (row.previousComparableRows as number) < 2 ||
+        !Number.isSafeInteger(row.currentComparableRows) || (row.currentComparableRows as number) < 2 ||
+        !Number.isSafeInteger(row.previousSourceRows) ||
+        (row.previousSourceRows as number) < (row.previousComparableRows as number) ||
+        !Number.isSafeInteger(row.currentSourceRows) ||
+        (row.currentSourceRows as number) < (row.currentComparableRows as number) ||
+        !timestamp(row.lastObservedAtUtc) || Date.parse(row.lastObservedAtUtc) < Date.parse(fromUtc) ||
+        Date.parse(row.lastObservedAtUtc) >= Date.parse(toUtc) ||
+        priorRatio !== undefined && ratio > priorRatio)
+      throw new Error("Plan regression row was invalid.");
+    const identity = `${row.databaseId}:${row.queryFingerprint}`;
+    if (seen.has(identity)) throw new Error("Plan regression identity was duplicated.");
+    seen.add(identity);
+    priorRatio = ratio;
+    return row as QueryStorePlanRegressionList["items"][number];
+  });
+  if (value.coverage === "no_qualifying_changes" && items.length > 0)
+    throw new Error("Plan regression coverage was invalid.");
+  return { fromUtc, toUtc, comparisonFromUtc: value.comparisonFromUtc,
+    coverage: value.coverage as QueryStorePlanRegressionList["coverage"], items };
 }

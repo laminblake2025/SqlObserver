@@ -5,6 +5,17 @@ export type QueryStoreWaitRankedPlan = { readonly databaseId: number; readonly q
 export type QueryStoreWaitRanking = { readonly fromUtc: string; readonly toUtc: string;
   readonly coverage: "no_comparable_groups" | "observed_groups_only";
   readonly items: readonly QueryStoreWaitRankedPlan[] };
+export type QueryStorePlanRegression = { readonly databaseId: number; readonly queryFingerprint: string;
+  readonly previousPlanFingerprint: string; readonly currentPlanFingerprint: string;
+  readonly previousAverageMilliseconds: string; readonly currentAverageMilliseconds: string;
+  readonly slowdownRatio: string; readonly previousExecutions: string; readonly currentExecutions: string;
+  readonly previousComparableRows: number; readonly previousSourceRows: number;
+  readonly currentComparableRows: number; readonly currentSourceRows: number;
+  readonly lastObservedAtUtc: string };
+export type QueryStorePlanRegressionList = { readonly fromUtc: string; readonly toUtc: string;
+  readonly comparisonFromUtc: string;
+  readonly coverage: "no_qualifying_changes" | "observed_groups_only";
+  readonly items: readonly QueryStorePlanRegression[] };
 export type QueryPerformanceDatabaseCatalog = { readonly databaseId: number; readonly databaseName: string };
 export type QueryPerformanceDatabaseStatus = { readonly databaseId: number; readonly status: string; readonly sourceState: string; readonly reason: string; readonly fallbackAttempted: boolean; readonly truncated: boolean; readonly lossKind: string; readonly sourceRowsRead: number; readonly responseBytes: number; readonly minimumLostItems: number; readonly lossCountIsExact: boolean; readonly minimumLostBytes: number };
 export type QueryPerformanceStatus = { readonly targetId: string; readonly snapshotUtc: string; readonly source?: "query_store" | "plan_cache" | "mixed" | "unavailable"; readonly sourceState: string; readonly coverage: string; readonly fresh: boolean; readonly truncated: boolean; readonly reason?: string; readonly targetStatus?: string; readonly targetReason?: string; readonly databaseStatuses: readonly QueryPerformanceDatabaseStatus[]; readonly databaseCatalog: readonly QueryPerformanceDatabaseCatalog[] };
