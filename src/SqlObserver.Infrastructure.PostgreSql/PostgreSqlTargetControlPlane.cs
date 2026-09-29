@@ -27,6 +27,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         HealthProjections = new PostgreSqlHealthProjectionPort(dataSource);
         DatabaseOptionChanges = new PostgreSqlDatabaseOptionChangePort(dataSource);
         ServerConfigurationChanges = new PostgreSqlServerConfigurationChangePort(dataSource);
+        ServerConfigurationSnapshots = new PostgreSqlServerConfigurationSnapshotPort(dataSource);
         SqlVolumeReads = new PostgreSqlSqlVolumeReadPort(dataSource);
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
@@ -75,6 +76,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IHealthProjectionRepositoryPort HealthProjections { get; }
     public IDatabaseOptionChangeRepositoryPort DatabaseOptionChanges { get; }
     public IServerConfigurationChangeRepositoryPort ServerConfigurationChanges { get; }
+    public IServerConfigurationSnapshotRepositoryPort ServerConfigurationSnapshots { get; }
     public ISqlVolumeReadRepositoryPort SqlVolumeReads { get; }
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }

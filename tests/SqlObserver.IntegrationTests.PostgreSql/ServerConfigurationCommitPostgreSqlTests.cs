@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Capabilities;
@@ -16,6 +17,176 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class ServerConfigurationCommitPostgreSqlTests(PostgreSql18Fixture fixture)
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
+
+    [Fact]
+    public async Task LatestCompleteSnapshotPagesAndRejectsStaleOrUnscopedReads()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult migrated = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults,
+                Timeout), CancellationToken.None);
+        Assert.False(migrated.HasFailures);
+        Guid target = Guid.NewGuid();
+        await using (var seed = database.DataSource.CreateCommand("""
+            INSERT INTO control.observation_target
+             (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+              authentication_mode,transport_security_mode,lifecycle_state,revision,
+              created_at,updated_at,discovery_requested_at)
+            VALUES (@target,@key,'Configuration latest target','sql01',1433,
+              interval '5 seconds','windows_integrated_service_identity',
+              'mandatory_validated','active',1,statement_timestamp(),
+              statement_timestamp(),statement_timestamp());
+            UPDATE control.collector_schedule
+            SET enabled=(collector_id IN ('engine.core','engine.configurations')),
+                last_outcome=CASE WHEN collector_id='engine.core'
+                    THEN 'succeeded' ELSE last_outcome END
+            WHERE instance_id=@target;
+            """))
+        {
+            seed.Parameters.AddWithValue("target", target);
+            seed.Parameters.AddWithValue("key", $"config.latest.{target:N}");
+            await seed.ExecuteNonQueryAsync();
+        }
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        SnapshotRead empty = await ReadSnapshotAsync(server, target, 1);
+        Assert.Null(empty.RunId);
+        Assert.Empty(empty.ConfigurationIds);
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        CollectorDueWorkItem work = await DueAsync(runtime, target);
+        LeaseAcquisitionResult acquired = await leases.AcquireAsync(
+            new AcquireWorkerLeaseRequest(new WorkerLeaseKey(
+                $"collector/run/engine.configurations/{target:N}"),
+                new WorkerExecutionId(Guid.NewGuid()),
+                new WorkerLeaseDuration(TimeSpan.FromMinutes(1)), Timeout),
+            CancellationToken.None);
+        WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>(acquired.Lease).Identity;
+        CollectorRunId run = await BeginAsync(runtime, work, lease);
+        ServerConfigurationObservation[] observations =
+        [
+            new(work.TargetId, work.TargetRevision, 16, 1544, "max server memory (MB)",
+                "int", "8192", "8192", true, true, work.RepositoryTimeUtc),
+            new(work.TargetId, work.TargetRevision, 16, 1545, "min server memory (MB)",
+                "int", "0", "0", true, true, work.RepositoryTimeUtc),
+        ];
+        var payload = new CollectorPayload(serverConfigurations:
+            new ServerConfigurationObservationBatch(observations));
+        var summary = new CollectorRunSummary(run, work.TargetId,
+            work.TargetRevision, work.CollectorId, work.CollectorManifestVersion,
+            work.OutputSchemaVersion, CollectorRunOutcome.Succeeded,
+            CollectorRunReason.Completed, TimeSpan.FromMilliseconds(5), 1,
+            new CollectorRunAccounting(2, 2, payload.EstimatedSizeBytes,
+                payload.EstimatedSizeBytes), CollectorLossEvidence.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await runtime.CommitRunAsync(new CommitCollectorRunRequest(work,
+                summary, payload, CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc),
+                lease, Timeout), CancellationToken.None)).Status);
+
+        SnapshotRead first = await ReadSnapshotAsync(server, target, 1);
+        Assert.Equal(run.Value, first.RunId);
+        Assert.Equal("succeeded", first.LastOutcome);
+        Assert.True(first.Enabled);
+        Assert.Equal([1544], first.ConfigurationIds);
+        Assert.True(first.HasMore);
+        SnapshotRead second = await ReadSnapshotAsync(server, target, 1,
+            1544, first.TargetRevision, run.Value);
+        Assert.Equal([1545], second.ConfigurationIds);
+        Assert.False(second.HasMore);
+        var port = new PostgreSqlServerConfigurationSnapshotPort(server);
+        var firstRequest = new ServerConfigurationSnapshotRequest(
+            new MonitoredInstanceId(target), 1, Timeout);
+        ServerConfigurationSnapshotPage portFirst = await port.ReadAsync(firstRequest,
+            CancellationToken.None);
+        Assert.Equal(run.Value, portFirst.RunId);
+        Assert.Equal(1544, Assert.Single(portFirst.Items).ConfigurationId);
+        Assert.NotNull(portFirst.NextCursor);
+        ServerConfigurationSnapshotPage portSecond = await port.ReadAsync(
+            new ServerConfigurationSnapshotRequest(firstRequest.TargetId, 1, Timeout,
+                portFirst.NextCursor), CancellationToken.None);
+        Assert.Equal(1545, Assert.Single(portSecond.Items).ConfigurationId);
+        Assert.Null(portSecond.NextCursor);
+
+        CollectorDueWorkItem nextWork = await NextDueAsync(database, runtime, target);
+        CollectorRunId nextRun = await BeginAsync(runtime, nextWork, lease);
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await runtime.CommitRunAsync(Success(nextWork, nextRun, lease,
+                "16384", "8192"), CancellationToken.None)).Status);
+        await using (NpgsqlConnection connection = await server.OpenConnectionAsync())
+        {
+            await using var unscoped = new NpgsqlCommand("""
+                SELECT count(*) FROM reporting.list_server_configuration_snapshot(@target,1);
+                """, connection);
+            unscoped.Parameters.AddWithValue("target", target);
+            Assert.Equal("42501", (await Assert.ThrowsAsync<PostgresException>(
+                async () => await unscoped.ExecuteScalarAsync())).SqlState);
+        }
+        Assert.Equal("40001", (await Assert.ThrowsAsync<PostgresException>(
+            async () => await ReadSnapshotAsync(server, target, 1, 1544,
+                first.TargetRevision, run.Value))).SqlState);
+        await Assert.ThrowsAsync<ServerConfigurationSnapshotCursorStaleException>(
+            async () => await port.ReadAsync(new ServerConfigurationSnapshotRequest(
+                firstRequest.TargetId, 1, Timeout, portFirst.NextCursor),
+                CancellationToken.None));
+        SnapshotRead latest = await ReadSnapshotAsync(server, target, 1);
+        Assert.Equal(nextRun.Value, latest.RunId);
+        Assert.Equal([1544], latest.ConfigurationIds);
+    }
+
+    private sealed record SnapshotRead(long TargetRevision, Guid? RunId,
+        bool Enabled, string? LastOutcome, bool HasMore,
+        IReadOnlyList<int> ConfigurationIds);
+
+    private static async Task<SnapshotRead> ReadSnapshotAsync(NpgsqlDataSource server,
+        Guid target, int limit, int? afterId = null, long? expectedRevision = null,
+        Guid? expectedRun = null)
+    {
+        await using NpgsqlConnection connection = await server.OpenConnectionAsync();
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@scope,true);", connection,
+            transaction))
+        {
+            scope.Parameters.AddWithValue("scope", target.ToString());
+            await scope.ExecuteNonQueryAsync();
+        }
+        await using var command = new NpgsqlCommand("""
+            SELECT target_revision,snapshot_run_id,collector_enabled,last_outcome,
+                   has_more,configuration_id
+            FROM reporting.list_server_configuration_snapshot(
+                @target,@limit,@after,@revision,@run);
+            """, connection, transaction);
+        command.Parameters.AddWithValue("target", target);
+        command.Parameters.AddWithValue("limit", limit);
+        command.Parameters.Add("after", NpgsqlDbType.Integer).Value =
+            (object?)afterId ?? DBNull.Value;
+        command.Parameters.Add("revision", NpgsqlDbType.Bigint).Value =
+            (object?)expectedRevision ?? DBNull.Value;
+        command.Parameters.Add("run", NpgsqlDbType.Uuid).Value =
+            (object?)expectedRun ?? DBNull.Value;
+        long revision = 0;
+        Guid? run = null;
+        bool enabled = false;
+        string? outcome = null;
+        bool hasMore = false;
+        var ids = new List<int>();
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                revision = reader.GetInt64(0);
+                run = reader.IsDBNull(1) ? null : reader.GetGuid(1);
+                enabled = reader.GetBoolean(2);
+                outcome = reader.IsDBNull(3) ? null : reader.GetString(3);
+                hasMore = reader.GetBoolean(4);
+                if (!reader.IsDBNull(5)) ids.Add(reader.GetInt32(5));
+            }
+        }
+        await transaction.CommitAsync();
+        Assert.True(revision > 0);
+        return new SnapshotRead(revision, run, enabled, outcome, hasMore, ids);
+    }
 
     [Fact]
     public async Task CatalogReconciliationKeepsNewTargetScheduleDisabled()

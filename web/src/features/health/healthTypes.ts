@@ -54,6 +54,29 @@ export interface ServerConfigurationChangeResult {
   readonly nextCursor: string | null;
 }
 
+export interface ServerConfigurationSetting {
+  readonly configurationId: number;
+  readonly configurationName: string;
+  readonly sourceType: string;
+  readonly configuredValue: string;
+  readonly inUseValue: string;
+  readonly isDynamic: boolean;
+  readonly isAdvanced: boolean;
+}
+
+export interface ServerConfigurationSnapshotResult {
+  readonly targetId: string;
+  readonly targetRevision: number;
+  readonly runId: string | null;
+  readonly observedAtUtc: string | null;
+  readonly serverMajorVersion: number | null;
+  readonly collectorEnabled: boolean;
+  readonly lastOutcome: string | null;
+  readonly coverage: "never_collected" | "latest_complete_scan";
+  readonly items: readonly ServerConfigurationSetting[];
+  readonly nextCursor: string | null;
+}
+
 export type CollectorHealthReason =
   | "none"
   | "capability_profile_missing"

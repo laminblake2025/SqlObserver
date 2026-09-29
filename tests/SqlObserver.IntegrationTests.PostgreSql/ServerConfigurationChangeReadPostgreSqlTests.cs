@@ -83,6 +83,16 @@ public sealed class ServerConfigurationChangeReadPostgreSqlTests(PostgreSql18Fix
         }
 
         await using NpgsqlDataSource server = database.CreateServerDataSource();
+        await using (NpgsqlConnection fresh = await server.OpenConnectionAsync())
+        {
+            await using var unscoped = new NpgsqlCommand("""
+                SELECT count(*) FROM reporting.list_server_configuration_changes(
+                    @target,@from_utc,@to_utc,2);
+                """, fresh);
+            AddWindow(unscoped, target, now);
+            Assert.Equal("42501", (await Assert.ThrowsAsync<PostgresException>(
+                () => unscoped.ExecuteScalarAsync())).SqlState);
+        }
         var port = new PostgreSqlServerConfigurationChangePort(server);
         ServerConfigurationChangePage emptyPage = await port.ReadAsync(
             new ServerConfigurationChangeRequest(new MonitoredInstanceId(emptyTarget),

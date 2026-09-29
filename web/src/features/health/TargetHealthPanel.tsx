@@ -5,6 +5,7 @@ import type { OverviewScope } from "../overview/overviewTypes";
 import { ServerDashboard } from "./ServerDashboard";
 import { DatabaseOptionChanges } from "./DatabaseOptionChanges";
 import { ServerConfigurationChanges } from "./ServerConfigurationChanges";
+import { ServerConfigurationSnapshot } from "./ServerConfigurationSnapshot";
 
 import { getDatabaseHealth, getTargetHealthEvidence, HealthRequestError } from "./healthApi";
 import {
@@ -148,6 +149,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           {tab === "summary" ? <>
             <HealthMetricStrip metrics={evidence.target.coreMetrics} />
             <CoreMetrics metrics={evidence.target.coreMetrics} />
+            <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh} />
             <ServerConfigurationChanges instanceId={instanceId} scope={scope} refresh={refresh}
               collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>

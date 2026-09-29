@@ -137,6 +137,8 @@ builder.Services.AddSingleton<IDatabaseOptionChangeRepositoryPort>(static servic
     services.GetRequiredService<PostgreSqlTargetControlPlane>().DatabaseOptionChanges);
 builder.Services.AddSingleton<IServerConfigurationChangeRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerConfigurationChanges);
+builder.Services.AddSingleton<IServerConfigurationSnapshotRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerConfigurationSnapshots);
 builder.Services.AddSingleton<IQueryStorePlanRegressionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryStorePlanRegressions);
 builder.Services.AddSingleton<SqlObserver.Domain.SensitiveData.IQuerySensitiveContentProtector>(_ =>
@@ -148,6 +150,7 @@ builder.Services.AddSingleton<IQueryStoreGroupPlanTrendQueryService, QueryStoreG
 builder.Services.AddSingleton<IQueryStoreWaitRankingQueryService, QueryStoreWaitRankingQueryService>();
 builder.Services.AddSingleton<IDatabaseOptionChangeQueryService, DatabaseOptionChangeQueryService>();
 builder.Services.AddSingleton<IServerConfigurationChangeQueryService, ServerConfigurationChangeQueryService>();
+builder.Services.AddSingleton<IServerConfigurationSnapshotQueryService, ServerConfigurationSnapshotQueryService>();
 builder.Services.AddSingleton<ApiCursorSigner>(static services =>
 {
     string? encoded = services.GetRequiredService<IConfiguration>()["SqlObserver:Api:CursorSigningKey"];
@@ -166,6 +169,7 @@ builder.Services.AddSingleton<ApiCursorSigner>(static services =>
     }
 });
 builder.Services.AddSingleton<ServerConfigurationChangeCursorCodec>();
+builder.Services.AddSingleton<ServerConfigurationSnapshotCursorCodec>();
 builder.Services.AddSingleton<IQueryStorePlanRegressionQueryService, QueryStorePlanRegressionQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertRuleReads);

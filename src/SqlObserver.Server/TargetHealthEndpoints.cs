@@ -27,7 +27,49 @@ public static class TargetHealthEndpoints
         group.MapGet("/files", ListDatabaseFilesAsync);
         group.MapGet("/database-option-changes", ListDatabaseOptionChangesAsync);
         group.MapGet("/server-configuration-changes", ListServerConfigurationChangesAsync);
+        group.MapGet("/server-configuration-snapshot", ListServerConfigurationSnapshotAsync);
         return endpoints;
+    }
+
+    private static async Task<IResult> ListServerConfigurationSnapshotAsync(
+        HttpContext context, Guid instanceId,
+        IServerConfigurationSnapshotQueryService service,
+        WindowsGroupRoleResolver roles,
+        ServerConfigurationSnapshotCursorCodec cursorCodec,
+        int limit = 100, string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            ServerConfigurationSnapshotCursor? decoded = cursor is null ? null :
+                cursorCodec.Decode(cursor);
+            var request = new ServerConfigurationSnapshotRequest(
+                new MonitoredInstanceId(instanceId), limit, RepositoryTimeout, decoded);
+            ServerConfigurationSnapshotPage page = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                targetRevision = page.TargetRevision,
+                runId = page.RunId,
+                observedAtUtc = page.ObservedAtUtc,
+                serverMajorVersion = page.ServerMajorVersion,
+                collectorEnabled = page.CollectorEnabled,
+                lastOutcome = page.LastOutcome,
+                coverage = page.RunId is null ? "never_collected" : "latest_complete_scan",
+                items = page.Items,
+                nextCursor = page.NextCursor is null ? null :
+                    cursorCodec.Encode(page.NextCursor),
+            });
+        }
+        catch (ServerConfigurationSnapshotCursorStaleException)
+        {
+            return Results.Conflict(new { code = "cursor_stale",
+                message = "Configuration snapshot changed. Restart from the first page." });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (FormatException) { return Results.BadRequest(); }
     }
 
     private static async Task<IResult> ListServerConfigurationChangesAsync(

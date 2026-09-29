@@ -3,6 +3,7 @@ import type {
   DatabaseHealthPage,
   DatabaseOptionChangeResult,
   ServerConfigurationChangeResult,
+  ServerConfigurationSnapshotResult,
   TargetHealthEvidence,
   TargetHealthSnapshot,
 } from "./healthTypes";
@@ -24,6 +25,13 @@ export async function getServerConfigurationChanges(instanceId: string,
     toUtc: window.toUtc, limit: "100" });
   if (cursor !== undefined) parameters.set("cursor", cursor);
   return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-changes?${parameters}`, signal);
+}
+
+export async function getServerConfigurationSnapshot(instanceId: string,
+  signal: AbortSignal, cursor?: string): Promise<ServerConfigurationSnapshotResult> {
+  const parameters = new URLSearchParams({ limit: "100" });
+  if (cursor !== undefined) parameters.set("cursor", cursor);
+  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-snapshot?${parameters}`, signal);
 }
 
 export class HealthRequestError extends Error {
