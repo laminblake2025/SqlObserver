@@ -346,6 +346,11 @@ Migration 0200 adds private partitioned-run versions of the M5 evidence and
 collector-health views. The health view feeds alerting and other readers, so
 its populated output and privileges are checked before its public definition
 or dependent alerting queries change.
+Migration 0201 keeps the collector-health view's public identity and security
+barrier while routing it through private original and partitioned definitions.
+It defaults to original data. Migrator activation requires the writer-fenced
+fleet parity proof, and the original route remains available for rollback.
+Dependent alerting functions continue to resolve the public view.
 
 ## Implementation gates
 

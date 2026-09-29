@@ -55,6 +55,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         using (JsonDocument row = JsonDocument.Parse(Assert.Single(evidence)))
             Assert.Equal(activity, row.RootElement.GetProperty("run_id").GetGuid());
         List<string> health = await Read("collector_health_projection");
+        Assert.Equal(health, await Read("collector_health_projection_legacy"));
         Assert.Equal(health, await Read("collector_health_projection_v2_shadow"));
         Assert.Contains(health, value =>
         {
@@ -67,14 +68,67 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             JOIN pg_namespace AS n ON n.oid=relation.relnamespace
             WHERE n.nspname='reporting'
               AND relation.relname IN ('activity_snapshot_evidence_v2_shadow',
-                                       'collector_health_projection_v2_shadow')
+                                       'collector_health_projection_v2_shadow',
+                                       'collector_health_projection_legacy')
               AND relation.relkind='v'
               AND has_table_privilege('sqlobserver_migrator',relation.oid,'SELECT')
               AND NOT has_table_privilege('sqlobserver_server',relation.oid,'SELECT')
               AND NOT has_table_privilege('sqlobserver_collector',relation.oid,'SELECT')
               AND NOT has_table_privilege('sqlobserver_auditor',relation.oid,'SELECT');
             """, connection);
-        Assert.Equal(2L, await grants.ExecuteScalarAsync());
+        Assert.Equal(3L, await grants.ExecuteScalarAsync());
+
+        await using (var premature = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_health_read_route(true,10000);", connection))
+        {
+            PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteScalarAsync());
+            Assert.Equal("55000", rejected.SqlState);
+        }
+        await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
+        {
+            foreach (string function in new[]
+                { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+            {
+                await using var copy = new NpgsqlCommand(
+                    $"SELECT complete FROM control.{function}(@target,10);", connection, backfill);
+                copy.Parameters.AddWithValue("target", target.Value);
+                Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            }
+            DateTimeOffset day = new(at.UtcDateTime.Date, TimeSpan.Zero);
+            foreach (string collector in new[] { "engine.core", "activity.sessions" })
+            {
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,@collector,@day,@end,10);
+                    """, connection, backfill);
+                certificate.Parameters.AddWithValue("target", target.Value);
+                certificate.Parameters.AddWithValue("collector", collector);
+                certificate.Parameters.AddWithValue("day", day);
+                certificate.Parameters.AddWithValue("end", day.AddDays(1));
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            }
+            await backfill.CommitAsync();
+        }
+        await using (var activate = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_health_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        Assert.Equal(await Read("collector_health_projection_v2_shadow"),
+            await Read("collector_health_projection"));
+        await using (NpgsqlDataSource server = database.CreateServerDataSource())
+        {
+            var port = new PostgreSqlHealthProjectionPort(server);
+            InstanceHealthProjection projection = Assert.IsType<InstanceHealthProjection>(
+                await port.GetInstanceHealthAsync(
+                    new GetInstanceHealthRepositoryRequest(target, Timeout),
+                    CancellationToken.None));
+            Assert.Equal(core, projection.CoreCollector.LatestRun?.RunId.Value);
+        }
+        await using (var rollback = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_health_read_route(false,10000);", connection))
+            Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        Assert.Equal(await Read("collector_health_projection_legacy"),
+            await Read("collector_health_projection"));
     }
 
     [Fact]

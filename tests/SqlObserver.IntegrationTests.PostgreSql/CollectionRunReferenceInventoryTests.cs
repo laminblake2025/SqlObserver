@@ -96,7 +96,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function system.retire_query_performance_run/5
             function telemetry.capture_server_wait_category_summary_v1/0
             view reporting.activity_snapshot_evidence
-            view reporting.collector_health_projection
+            view reporting.collector_health_projection_legacy
             """;
         Assert.Equal(expected.Split('\n'), names);
     }
