@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0193`
+The migration catalog contains the exact, contiguous `0001` through `0194`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -479,6 +479,14 @@ checks the original FK, then adds an identity-bridge FK as `NOT VALID`.
 New child writes must satisfy both FKs; old FKs remain. Do not drop the old
 constraints before validating every staged FK and repeating the final fleet
 and reference-graph checks.
+Migration `0194` adds
+`control.validate_collection_run_identity_fk(child_regclass)`. Call it once
+per staged child relation during a maintenance window; each call validates
+historical rows and checks partition children. It returns `true` when it
+newly validates the FK and `false` when that FK was already valid. This scan
+does not hold the fleet writer fence, because the staged FK already enforces
+new child writes. Keep every original FK until all 20 identity FKs are valid
+and the final cutover repeats the fleet and graph checks under one fence.
 
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves

@@ -128,6 +128,35 @@ public sealed class CollectionRunIdentityFkStageTests(PostgreSql18Fixture fixtur
             await onlyNewFk.RollbackAsync();
         }
 
+        async Task<bool> ValidateAsync(string child)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using var scope = new NpgsqlCommand("SET LOCAL ROLE sqlobserver_migrator;",
+                admin, transaction);
+            await scope.ExecuteNonQueryAsync();
+            await using var validate = new NpgsqlCommand(
+                "SELECT control.validate_collection_run_identity_fk(@child::regclass);",
+                admin, transaction);
+            validate.Parameters.AddWithValue("child", child);
+            bool changed = (bool)(await validate.ExecuteScalarAsync())!;
+            await transaction.CommitAsync();
+            return changed;
+        }
+        Assert.True(await ValidateAsync("control.collector_schedule"));
+        Assert.True(await ValidateAsync("events.blocking_edge"));
+        Assert.False(await ValidateAsync("control.collector_schedule"));
+        await using (var validated = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_constraint
+            WHERE conrelid IN ('control.collector_schedule'::regclass,
+                               'events.blocking_edge'::regclass)
+              AND conname='fk_collection_run_identity' AND convalidated;
+            """, admin))
+            Assert.Equal(2L, (long)(await validated.ExecuteScalarAsync())!);
+        await using (var targets = new NpgsqlCommand("""
+            SELECT count(*) FROM control.collection_run_identity_fk_targets();
+            """, admin))
+            Assert.Equal(20L, (long)(await targets.ExecuteScalarAsync())!);
+
         await using (NpgsqlTransaction incomplete = await admin.BeginTransactionAsync())
         {
             await using var scope = new NpgsqlCommand("SET LOCAL ROLE sqlobserver_migrator;",
@@ -141,17 +170,38 @@ public sealed class CollectionRunIdentityFkStageTests(PostgreSql18Fixture fixtur
             Assert.Equal("55000", premature.SqlState);
             await incomplete.RollbackAsync();
         }
+        await using (NpgsqlTransaction unstaged = await admin.BeginTransactionAsync())
+        {
+            await using var scope = new NpgsqlCommand("SET LOCAL ROLE sqlobserver_migrator;",
+                admin, unstaged);
+            await scope.ExecuteNonQueryAsync();
+            await using var validate = new NpgsqlCommand(
+                "SELECT control.validate_collection_run_identity_fk('telemetry.collection_run_outcome'::regclass);",
+                admin, unstaged);
+            PostgresException missing = await Assert.ThrowsAsync<PostgresException>(
+                () => validate.ExecuteNonQueryAsync());
+            Assert.Equal("55000", missing.SqlState);
+            await unstaged.RollbackAsync();
+        }
         await using var privilege = new NpgsqlCommand("""
             SELECT has_function_privilege('sqlobserver_server',
                      'control.stage_collection_run_identity_fk(regclass,integer)',
                      'EXECUTE'),
                    has_function_privilege('sqlobserver_collector',
                      'control.stage_collection_run_identity_fk(regclass,integer)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.validate_collection_run_identity_fk(regclass)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_collector',
+                     'control.validate_collection_run_identity_fk(regclass)',
                      'EXECUTE');
             """, admin);
         await using NpgsqlDataReader grants = await privilege.ExecuteReaderAsync();
         Assert.True(await grants.ReadAsync());
         Assert.False(grants.GetBoolean(0));
         Assert.False(grants.GetBoolean(1));
+        Assert.False(grants.GetBoolean(2));
+        Assert.False(grants.GetBoolean(3));
     }
 }

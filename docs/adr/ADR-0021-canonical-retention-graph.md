@@ -305,6 +305,13 @@ child writes while preserving the original FK and avoiding a historical child
 scan in the short staging transaction. Validate the staged constraints over
 existing rows separately, then recheck the full graph under a final fence
 before removing any original FK. Neither stage nor validation retires runs.
+Migration 0194 validates one staged FK per operator call, including its
+partition children, while preserving the original FK. Validation scans
+historical child rows; the staged FK already checks concurrent writes, so the
+function takes the table's validation lock without holding the fleet writer
+fence for the scan. It also exposes the reviewed 20-table inventory to the
+migrator for the final cutover. A validated constraint is still not permission
+to drop the original run table or its references without a fresh fleet proof.
 
 ## Implementation gates
 
