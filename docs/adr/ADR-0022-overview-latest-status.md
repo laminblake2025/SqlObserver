@@ -121,6 +121,10 @@ Migration 0241 adds an exact current AG replica count and up to five known
 disconnected-replica issues. It retains secondary/local visibility and unknown
 replica states as partial or degraded evidence. A complete primary-all-known
 run with zero replicas can report a real zero; missing run coverage cannot.
+Migration 0242 makes alert freshness depend on the oldest evaluated enabled
+rule. A recently evaluated rule can no longer conceal another enabled rule
+whose evaluation is stale; an enabled rule without an evaluation remains
+partial coverage.
 
 An explicitly selected server can trial the merged read with
 `useLatestStatus=true` on `/api/v1/overview`. The default route remains the

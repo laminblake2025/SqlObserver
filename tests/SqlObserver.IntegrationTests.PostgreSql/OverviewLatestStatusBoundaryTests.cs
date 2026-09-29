@@ -12,6 +12,153 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixture)
 {
     [Fact]
+    public async Task OneStaleEnabledRuleMakesLatestAlertEvidenceStale()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult migrations = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(241,
+                new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+        Assert.False(migrations.HasFailures);
+        Guid target = Guid.NewGuid();
+        await using (var seed = database.DataSource.CreateCommand("""
+            INSERT INTO control.observation_target
+                (instance_id, instance_key, display_name, host_name, tcp_port,
+                 connect_timeout, authentication_mode, transport_security_mode,
+                 lifecycle_state, revision, created_at, updated_at, discovery_requested_at)
+            VALUES (@target, @key, 'Alert freshness', 'test.invalid', 1433,
+                    interval '5 seconds', 'windows_integrated_service_identity',
+                    'mandatory_validated', 'active', 1,
+                    statement_timestamp(), statement_timestamp(), statement_timestamp());
+            INSERT INTO alerting.rule
+                (rule_id,instance_id,name,kind,metric_id,comparison,threshold,
+                 confirmation_count,confirmation_window,evaluation_interval)
+            SELECT gen_random_uuid(),@target,'Freshness rule ' || n::text,
+                   1,'engine.user_connections',2,10,1,
+                   interval '0 seconds',interval '15 seconds'
+            FROM generate_series(1,2) AS n;
+            INSERT INTO alerting.rule_state
+                (instance_id,rule_id,alert_id,state,consecutive_matches,
+                 first_match_at,last_observed_at,fired_at,last_value,reason)
+            SELECT @target,r.rule_id,gen_random_uuid(),3,1,
+                   CASE WHEN r.name = 'Freshness rule 1'
+                        THEN statement_timestamp() - interval '3 minutes'
+                        ELSE statement_timestamp() END,
+                   CASE WHEN r.name = 'Freshness rule 1'
+                        THEN statement_timestamp() - interval '3 minutes'
+                        ELSE statement_timestamp() END,
+                   CASE WHEN r.name = 'Freshness rule 1'
+                        THEN statement_timestamp() - interval '3 minutes'
+                        ELSE statement_timestamp() END,
+                   15,'Threshold exceeded'
+            FROM alerting.rule AS r WHERE r.instance_id = @target;
+            """))
+        {
+            seed.Parameters.AddWithValue("target", target);
+            seed.Parameters.AddWithValue("key", $"overview-alert-freshness-{target:N}");
+            await seed.ExecuteNonQueryAsync();
+        }
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        Guid owner = Guid.NewGuid();
+        long token;
+        await using (var lease = collector.CreateCommand("""
+            SELECT acquired,fencing_token FROM control.acquire_worker_lease(
+                'overview/latest-status',@owner,interval '5 minutes');
+            """))
+        {
+            lease.Parameters.AddWithValue("owner", owner);
+            await using NpgsqlDataReader row = await lease.ExecuteReaderAsync();
+            Assert.True(await row.ReadAsync());
+            Assert.True(row.GetBoolean(0));
+            token = row.GetInt64(1);
+        }
+        var identity = new WorkerLeaseIdentity(new WorkerLeaseKey("overview/latest-status"),
+            new WorkerExecutionId(owner), new FencingToken(token));
+        var materializer = new PostgreSqlOverviewLatestMaterializationPort(collector);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var port = new PostgreSqlOverviewLatestStatusPort(server);
+        OverviewLatestStatus beforeUpgrade = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow,
+            CancellationToken.None));
+        Assert.Equal("current", beforeUpgrade.ActiveAlerts.State);
+        await using (var storedBefore = database.DataSource.CreateCommand("""
+            SELECT active_alert_state FROM reporting.overview_latest_status
+            WHERE instance_id = @target;
+            """))
+        {
+            storedBefore.Parameters.AddWithValue("target", target);
+            Assert.Equal("current", await storedBefore.ExecuteScalarAsync());
+        }
+
+        MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1,
+                new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(242, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus status = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+                new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow,
+                CancellationToken.None));
+        Assert.Equal(2, status.ActiveAlerts.Value);
+        Assert.Equal("stale", status.ActiveAlerts.State);
+        Assert.DoesNotContain(status.Issues, issue => issue.Destination == "alerts");
+        await using (var storedAfter = database.DataSource.CreateCommand("""
+            SELECT active_alert_state FROM reporting.overview_latest_status
+            WHERE instance_id = @target;
+            """))
+        {
+            storedAfter.Parameters.AddWithValue("target", target);
+            Assert.Equal("stale", await storedAfter.ExecuteScalarAsync());
+        }
+
+        await using (var catchUp = database.DataSource.CreateCommand("""
+            UPDATE alerting.rule_state AS state
+            SET last_observed_at = statement_timestamp()
+            FROM alerting.rule AS rule
+            WHERE rule.instance_id = @target AND rule.name = 'Freshness rule 1'
+              AND state.instance_id = rule.instance_id
+              AND state.rule_id = rule.rule_id;
+            """))
+        {
+            catchUp.Parameters.AddWithValue("target", target);
+            Assert.Equal(1, await catchUp.ExecuteNonQueryAsync());
+        }
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus current = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow,
+            CancellationToken.None));
+        Assert.Equal("current", current.ActiveAlerts.State);
+        Assert.Equal(2, current.ActiveAlerts.Value);
+
+        await using (var unevaluated = database.DataSource.CreateCommand("""
+            INSERT INTO alerting.rule
+                (rule_id,instance_id,name,kind,metric_id,comparison,threshold,
+                 confirmation_count,confirmation_window,evaluation_interval)
+            VALUES (gen_random_uuid(),@target,'Unevaluated rule',1,
+                    'engine.user_connections',2,10,1,
+                    interval '0 seconds',interval '15 seconds');
+            """))
+        {
+            unevaluated.Parameters.AddWithValue("target", target);
+            await unevaluated.ExecuteNonQueryAsync();
+        }
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus partial = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow,
+            CancellationToken.None));
+        Assert.Equal("partial", partial.ActiveAlerts.State);
+        Assert.Equal(2, partial.ActiveAlerts.Value);
+    }
+
+    [Fact]
     public async Task FailedUnpublishedTargetDoesNotStarveNextDueTarget()
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
