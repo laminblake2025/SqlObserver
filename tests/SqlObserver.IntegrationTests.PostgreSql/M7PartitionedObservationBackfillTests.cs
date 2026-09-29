@@ -209,11 +209,16 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
             INSERT INTO events.query_performance_query
               (collection_run_id,instance_id,database_id,query_fingerprint)
             VALUES(@run,@target,5,decode(repeat('22',32),'hex'));
+            INSERT INTO events.query_performance_plan
+              (collection_run_id,database_id,query_fingerprint,plan_fingerprint)
+            VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('33',32),'hex'));
             INSERT INTO events.query_performance_observation
-              (collection_run_id,database_id,query_fingerprint,observation_key,
+              (collection_run_id,database_id,query_fingerprint,plan_fingerprint,
+               observation_key,
                source,source_state,interval_start,interval_end,observed_at,
                semantics,cpu_ms)
-            VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('55',16),'hex'),
+            VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('33',32),'hex'),
+               decode(repeat('55',16),'hex'),
                'query_store','read_write',now()-interval '6 minutes',
                now()-interval '5 minutes',now(),'query_store_interval',44);
             """, admin))
@@ -282,6 +287,16 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
                        AND observation_key=decode(repeat('11',16),'hex')),
                     @run,NULL::bytea,decode(repeat('11',16),'hex'),
                     now()+interval '1 hour') AS item
+                ), old_plan AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_plan_metadata(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    decode(repeat('33',32),'hex')) AS item
+                ), new_plan AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_plan_metadata_v3(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    decode(repeat('33',32),'hex')) AS item
                 )
                 SELECT (SELECT count(*) FROM (
                   (SELECT payload FROM old_top EXCEPT ALL SELECT payload FROM new_top)
@@ -308,6 +323,15 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
                   'EXECUTE'),
                 has_function_privilege('sqlobserver_server',
                   'control.get_query_history_projection_v3(uuid,integer,bytea,timestamptz,timestamptz,integer,timestamptz,uuid,bytea,bytea,timestamptz)',
+                  'EXECUTE'),
+                (SELECT count(*) FROM (
+                  (SELECT payload FROM old_plan EXCEPT ALL SELECT payload FROM new_plan)
+                  UNION ALL
+                  (SELECT payload FROM new_plan EXCEPT ALL SELECT payload FROM old_plan)
+                ) AS differences),
+                (SELECT count(*) FROM new_plan),
+                has_function_privilege('sqlobserver_server',
+                  'control.get_query_plan_metadata_v3(uuid,integer,bytea,bytea)',
                   'EXECUTE');
                 """, admin, shadow);
             compare.Parameters.AddWithValue("target", target);
@@ -322,6 +346,9 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
             Assert.Equal(2L, comparison.GetInt64(5));
             Assert.False(comparison.GetBoolean(6));
             Assert.False(comparison.GetBoolean(7));
+            Assert.Equal(0L, comparison.GetInt64(8));
+            Assert.Equal(1L, comparison.GetInt64(9));
+            Assert.False(comparison.GetBoolean(10));
             await comparison.DisposeAsync();
             await shadow.CommitAsync();
         }

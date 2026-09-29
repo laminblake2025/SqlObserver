@@ -274,6 +274,9 @@ Migration `0168` adds migrator-only shadow top-query and query-history
 projections for old/new read comparison. The API still calls the original
 functions. These shadow functions are not an operator-facing alternative read
 path until every target and time window has passed parity and replay checks.
+Migration `0169` adds a similarly private plan-metadata shadow reader. It
+preserves the protected-plan-link availability check; the API still calls the
+original plan-metadata function.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced

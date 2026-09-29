@@ -112,6 +112,11 @@ and snapshot rules match the active functions in focused PostgreSQL tests,
 including a legacy null-target row and a live mirrored row. The server role
 cannot call the copies. Other M7 readers and the writer remain on the original
 relation while fleet-wide parity and replay gates are still open.
+Migration 0169 adds the remaining active API projection dependency: a private
+successor-backed plan-metadata reader with the same protected-plan-link
+availability check. The focused test compares its result with the active
+function for a plan-bearing observation and confirms no server grant. The
+production API still uses the original plan-metadata function.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the
