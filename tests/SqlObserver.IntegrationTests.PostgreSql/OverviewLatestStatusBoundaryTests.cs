@@ -403,6 +403,25 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Contains("Damaged backup issue list partial", damagedBackups.Gaps);
         Assert.Contains("Overview issue list partial", damagedBackups.Gaps);
 
+        await using (var ageBackup = database.DataSource.CreateCommand("""
+            UPDATE reporting.overview_latest_status
+            SET source_states = jsonb_set(source_states,
+                '{backups,observedAtUtc}',
+                to_jsonb(clock_timestamp() - interval '3 minutes'))
+            WHERE instance_id = @target;
+            """))
+        {
+            ageBackup.Parameters.AddWithValue("target", target);
+            await ageBackup.ExecuteNonQueryAsync();
+        }
+        OverviewLatestStatus staleBackup = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("stale", staleBackup.Sources["backups"].State);
+        Assert.Equal("stale", Assert.Single(staleBackup.Resources,
+            resource => resource.Label == "Backup evidence").State);
+        Assert.DoesNotContain(staleBackup.Issues,
+            issue => issue.Title == "Damaged backup");
+
         await SeedBackupRunAsync(database.DataSource, target, Guid.NewGuid(),
             DateTimeOffset.UtcNow, 1, false, true);
         Assert.True(await materializer.RefreshCoreAsync(
@@ -445,6 +464,34 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Equal(10, disconnectedAg.Issues.Count);
         Assert.Contains("Disconnected AG issue list partial", disconnectedAg.Gaps);
         Assert.Contains("Overview issue list partial", disconnectedAg.Gaps);
+
+        await using (var ageSources = database.DataSource.CreateCommand("""
+            UPDATE reporting.overview_latest_status
+            SET source_states = (
+                SELECT jsonb_object_agg(key,
+                    CASE WHEN key IN ('waits','tempDb','backups','availabilityGroups')
+                         THEN jsonb_set(value, '{observedAtUtc}',
+                             to_jsonb(clock_timestamp() - interval '3 minutes'))
+                         ELSE value END)
+                FROM jsonb_each(source_states)
+            )
+            WHERE instance_id = @target;
+            """))
+        {
+            ageSources.Parameters.AddWithValue("target", target);
+            await ageSources.ExecuteNonQueryAsync();
+        }
+        OverviewLatestStatus agedSources = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        foreach (string source in new[] { "waits", "tempDb", "backups", "availabilityGroups" })
+            Assert.Equal("stale", agedSources.Sources[source].State);
+        Assert.All(agedSources.Resources.Where(resource =>
+            resource.Label.StartsWith("Wait · ", StringComparison.Ordinal) ||
+            resource.Label is "TempDB used" or "Backup evidence" or "Availability replicas"),
+            resource => Assert.Equal("stale", resource.State));
+        Assert.DoesNotContain(agedSources.Issues,
+            issue => issue.Title == "Availability replica disconnected");
+        Assert.Contains("AG evidence stale", agedSources.Gaps);
 
         await SeedAgRunAsync(database.DataSource, target, Guid.NewGuid(),
             DateTimeOffset.UtcNow, 1, 1, 0, true);

@@ -92,17 +92,20 @@ public sealed class PostgreSqlOverviewLatestStatusPort(NpgsqlDataSource dataSour
     private static OverviewLatestStatus ApplyFreshness(OverviewLatestStatus status, DateTimeOffset cutoffUtc)
     {
         bool publicationExpired = cutoffUtc - status.PublishedAtUtc > MaximumAge;
-        bool alertsExpired = publicationExpired || SourceExpired(status.Sources["alerts"], cutoffUtc);
-        bool blockingExpired = publicationExpired || SourceExpired(status.Sources["blocking"], cutoffUtc);
-        if (!publicationExpired && !alertsExpired && !blockingExpired &&
+        HashSet<string> expiredSources = status.Sources
+            .Where(pair => pair.Key is ("alerts" or "blocking" or "waits" or "tempDb" or
+                "backups" or "availabilityGroups") && SourceExpired(pair.Value, cutoffUtc))
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        bool alertsExpired = publicationExpired || expiredSources.Contains("alerts");
+        bool blockingExpired = publicationExpired || expiredSources.Contains("blocking");
+        if (!publicationExpired && expiredSources.Count == 0 &&
             IsActionable(status.ActiveAlerts.State) && IsActionable(status.BlockedSessions.State))
             return status;
 
         Dictionary<string, OverviewLatestSource> sources = status.Sources.ToDictionary(
             pair => pair.Key,
-            pair => (publicationExpired ||
-                     (pair.Key == "alerts" && alertsExpired) ||
-                     (pair.Key == "blocking" && blockingExpired))
+            pair => (publicationExpired || expiredSources.Contains(pair.Key))
                 ? pair.Value with { State = StaleIfCurrent(pair.Value.State) }
                 : pair.Value,
             StringComparer.Ordinal);
@@ -113,6 +116,10 @@ public sealed class PostgreSqlOverviewLatestStatusPort(NpgsqlDataSource dataSour
             publicationExpired ? ExpiredGap : null,
             alertsExpired || alertState == "stale" ? "Active alert evidence stale" : null,
             blockingExpired || blockingState == "stale" ? "Current blocking evidence stale" : null,
+            expiredSources.Contains("waits") ? "Comparable wait evidence stale" : null,
+            expiredSources.Contains("tempDb") ? "TempDB evidence stale" : null,
+            expiredSources.Contains("backups") ? "Backup evidence stale" : null,
+            expiredSources.Contains("availabilityGroups") ? "AG evidence stale" : null,
         }.OfType<string>();
         string[] gaps = freshnessGaps.Concat(status.Gaps)
             .Distinct(StringComparer.Ordinal).Take(32).ToArray();
@@ -126,17 +133,36 @@ public sealed class PostgreSqlOverviewLatestStatusPort(NpgsqlDataSource dataSour
             Issues = status.Issues.Where(issue =>
                 (issue.Destination != "alerts" || IsActionable(alertState)) &&
                 (issue.Destination != "activity" || IsActionable(blockingState)) &&
+                (issue.Title != "Damaged backup" || SourceActionable(sources, "backups")) &&
+                (issue.Title != "Availability replica disconnected" ||
+                    SourceActionable(sources, "availabilityGroups")) &&
                 !publicationExpired).ToArray(),
-            Resources = publicationExpired
-                ? status.Resources.Select(resource => resource with
-                    { State = StaleIfCurrent(resource.State) }).ToArray()
-                : status.Resources,
+            Resources = status.Resources.Select(resource =>
+            {
+                string? source = ResourceSource(resource.Label);
+                return publicationExpired || source is not null && expiredSources.Contains(source)
+                    ? resource with { State = StaleIfCurrent(resource.State) }
+                    : resource;
+            }).ToArray(),
             Gaps = gaps,
         };
     }
 
+    private static string? ResourceSource(string label) => label switch
+    {
+        "TempDB used" => "tempDb",
+        "Backup evidence" => "backups",
+        "Availability replicas" => "availabilityGroups",
+        _ when label.StartsWith("Wait · ", StringComparison.Ordinal) => "waits",
+        _ => null,
+    };
+
+    private static bool SourceActionable(
+        Dictionary<string, OverviewLatestSource> sources, string key) =>
+        sources.TryGetValue(key, out OverviewLatestSource? source) && IsActionable(source.State);
+
     private static bool SourceExpired(OverviewLatestSource source, DateTimeOffset cutoffUtc) =>
-        source.State is "current" or "partial" &&
+        source.State is ("current" or "partial" or "degraded") &&
         (source.ObservedAtUtc is null || cutoffUtc - source.ObservedAtUtc.Value > MaximumAge);
 
     private static string StaleIfCurrent(string state) =>

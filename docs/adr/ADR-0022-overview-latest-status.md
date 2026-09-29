@@ -138,10 +138,12 @@ The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and
 timestamps, and removes cached issues from the actionable list. Alert and
 blocking observations also expire independently after two minutes, even when
-the row was published recently. Their stale issues are withheld while other
-current issues remain visible. Health freshness otherwise follows the
-collector-health projection state; its collection interval is not assumed to
-be the alert or blocking interval.
+the row was published recently. The same read-time check covers waits, TempDB,
+backups and AG observations. Their resource states become stale and cached
+alert, blocking, backup and AG issues are withheld when the corresponding
+source expires. Health and database-inventory freshness otherwise follow their
+collector-health projection states; their collection intervals are not assumed
+to be the alert or blocking interval.
 
 Rollback switches reads to the existing composition while leaving the new
 table and writer inert. A later migration can remove them after verification;
