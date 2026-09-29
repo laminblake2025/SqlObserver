@@ -365,6 +365,10 @@ to partitioned runs, and rollback restores the original evidence source.
 Migration 0205 adds a private partitioned-run SQL volume snapshot reader.
 Populated first and cursor pages are compared with the public reader; this
 migration does not change the public route or its original-run dependency.
+Migration 0206 routes that public reader through private original and
+partitioned functions. The installed route remains on original runs; only a
+migrator can activate the successor after the writer-fenced fleet proof, and
+the original route remains available for rollback.
 
 ## Implementation gates
 

@@ -97,6 +97,8 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
             foreach (bool next in new[] { false, true })
                 Assert.Equal(await ReadPage("list_sql_volume_snapshot", next),
                     await ReadPage("list_sql_volume_snapshot_v2_shadow", next));
+            Assert.Equal(await ReadPage("list_sql_volume_snapshot_legacy", false),
+                await ReadPage("list_sql_volume_snapshot", false));
 
             await using var grants = new NpgsqlCommand("""
                 SELECT has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
@@ -107,6 +109,44 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
                 WHERE n.nspname='reporting' AND p.proname='list_sql_volume_snapshot_v2_shadow';
                 """, shadow);
             Assert.True((bool)(await grants.ExecuteScalarAsync())!);
+
+            await using (var premature = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_sql_volume_read_route(true,10000);", shadow))
+                Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                    () => premature.ExecuteScalarAsync())).SqlState);
+            await using (NpgsqlTransaction backfill = await shadow.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@target,10);", shadow, backfill);
+                    copy.Parameters.AddWithValue("target", work.TargetId.Value);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,'storage.volume',
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run)),
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run))
+                        + interval '1 day',10);
+                    """, shadow, backfill);
+                certificate.Parameters.AddWithValue("target", work.TargetId.Value);
+                certificate.Parameters.AddWithValue("run", runId.Value);
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                await backfill.CommitAsync();
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_sql_volume_read_route(true,10000);", shadow))
+                Assert.Equal(1L, await activate.ExecuteScalarAsync());
+            foreach (bool next in new[] { false, true })
+                Assert.Equal(await ReadPage("list_sql_volume_snapshot_v2_shadow", next),
+                    await ReadPage("list_sql_volume_snapshot", next));
+            await using (var rollback = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_sql_volume_read_route(false,10000);", shadow))
+                Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+            Assert.Equal(await ReadPage("list_sql_volume_snapshot_legacy", false),
+                await ReadPage("list_sql_volume_snapshot", false));
         }
 
         await using (NpgsqlDataSource server = database.CreateServerDataSource())
