@@ -339,6 +339,53 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/destinations/{Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"):D}", approval)).StatusCode);
     }
 
+    [Fact]
+    public async Task DestinationAdminRoutesPreserveCanonicalKindReferenceAndRevision()
+    {
+        using HttpClient admin = CreateClient("admin");
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/destinations";
+        string destinationId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+        var create = new
+        {
+            destinationId, kind = "https-webhook", configurationReference = "ops-webhook",
+            enabled = false, operationId = "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        };
+        using HttpResponseMessage configured = await admin.PostAsJsonAsync(path, create);
+        Assert.Equal(HttpStatusCode.OK, configured.StatusCode);
+        AlertDestinationWriteRequest request = Assert.IsType<AlertDestinationWriteRequest>(factory.Administration.LastDestinationWriteRequest);
+        Assert.Equal("https-webhook", request.Kind);
+        Assert.Equal("ops-webhook", request.ConfigurationReference);
+        Assert.Null(request.ExpectedRevision);
+        Assert.False(request.Approve);
+
+        var revisioned = new
+        {
+            destinationId, kind = "https-webhook", configurationReference = "ops-webhook",
+            enabled = true, operationId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            expectedRevision = 4L,
+        };
+        using HttpResponseMessage approved = await admin.PostAsJsonAsync($"{path}/{destinationId}/approve", revisioned);
+        Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
+        request = Assert.IsType<AlertDestinationWriteRequest>(factory.Administration.LastDestinationWriteRequest);
+        Assert.Equal(4L, request.ExpectedRevision);
+        Assert.True(request.Approve);
+        Assert.Equal(AdministrativeAuditAction.ApproveAlertDestination, request.Audit.Action);
+
+        var disableBody = new
+        {
+            destinationId, kind = "https-webhook", configurationReference = "ops-webhook",
+            enabled = true, operationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            expectedRevision = 4L,
+        };
+        using HttpResponseMessage disabled = await admin.PostAsJsonAsync($"{path}/{destinationId}/disable", disableBody);
+        Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
+        request = Assert.IsType<AlertDestinationWriteRequest>(factory.Administration.LastDestinationWriteRequest);
+        Assert.False(request.Enabled);
+        Assert.False(request.Approve);
+        Assert.Equal(4L, request.ExpectedRevision);
+        Assert.Equal(AdministrativeAuditAction.RetireAlertDestination, request.Audit.Action);
+    }
+
     private HttpClient CreateClient(string identity)
     {
         HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -497,11 +544,12 @@ internal sealed class FakeAlertAdministration : IAlertAdministrationService
     internal AlertRuleWriteRequest? LastRuleWriteRequest { get; private set; }
     internal MaintenanceWriteRequest? LastMaintenanceWriteRequest { get; private set; }
     internal MaintenanceCancellationRequest? LastMaintenanceCancellationRequest { get; private set; }
+    internal AlertDestinationWriteRequest? LastDestinationWriteRequest { get; private set; }
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); UpsertRuleCalls++; LastRuleWriteRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(AuthorizationContext authorization, MaintenanceWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); LastMaintenanceWriteRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(AuthorizationContext authorization, MaintenanceCancellationRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); LastMaintenanceCancellationRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AuthorizationContext authorization, AlertAcknowledgeRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.Operator); AcknowledgeCalls++; return Run(); }
-    public ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AuthorizationContext authorization, AlertDestinationWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.SecurityAdministrator); return Run(); }
+    public ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AuthorizationContext authorization, AlertDestinationWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.SecurityAdministrator); LastDestinationWriteRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> CancelDeliveryAsync(AuthorizationContext authorization, AlertDeliveryAdminCancellationRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.Operator); return Run(); }
     private static void Require(AuthorizationContext authorization, ApplicationRole role) { if (!authorization.IsActive || !authorization.HasRole(role) || !authorization.CanAccess(new MonitoredInstanceId(M8AlertApiFactory.TargetId))) throw new UnauthorizedAccessException(); }
     private ValueTask<AdministrativeAuditReceipt> Run() => Mode switch

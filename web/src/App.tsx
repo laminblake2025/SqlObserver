@@ -323,7 +323,7 @@ export function App() {
               {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} />}
-              {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} />}
+              {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={slowRefresh} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
