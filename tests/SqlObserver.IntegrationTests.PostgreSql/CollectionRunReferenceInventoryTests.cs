@@ -63,6 +63,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.cutover_collection_run_identity_fks/1
             function control.ensure_target_collector_schedules/0
             function control.get_query_performance_database_catalog_legacy/1
+            function control.set_collection_run_v2_writer_route/2
             function control.stage_collection_run_identity_fk/2
             function control.validate_collection_run_identity_fk/1
             function control.verify_collection_run_v2_fleet_fenced/1
@@ -86,10 +87,12 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.read_m10_rollup_derivation_inputs_legacy/9
             function system.retire_query_performance_run/5
             function telemetry.capture_server_wait_category_summary_v1/0
+            function telemetry.insert_collection_run_runtime/13
             function telemetry.lock_collection_run_runtime/1
             function telemetry.lookup_active_collection_run/1
             function telemetry.lookup_collection_run_runtime/1
             function telemetry.lookup_previous_wait_collection_run_id/4
+            function telemetry.mirror_collection_run_original/0
             view reporting.activity_snapshot_evidence_legacy
             view reporting.collector_health_projection_legacy
             view telemetry.collection_run_alert_read

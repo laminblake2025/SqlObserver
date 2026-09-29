@@ -425,6 +425,11 @@ guarded nonlocking lookup for replay and identity checks. Their writes and
 payload accounting remain unchanged while the partitioned writer is staged.
 Migration 0224 routes the nested query-performance evidence writer through
 the guarded row-locking lookup, completing that commit chain's run reads.
+Migration 0225 adds a default-off writer route. Activation requires the
+validated 20-child identity-FK cutover and the guarded scheduler read route,
+then rechecks fleet parity under the writer fence. The selected writer mirrors
+each run to the other table in the same transaction, preserving replay and a
+verified rollback path while the remaining original readers are retired.
 
 ## Implementation gates
 
