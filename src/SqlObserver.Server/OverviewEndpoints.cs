@@ -16,6 +16,7 @@ public static class OverviewEndpoints
 
     private static async Task<IResult> ReadAsync(HttpContext context, IOverviewQueryService service,
         WindowsGroupRoleResolver resolver, DateTimeOffset fromUtc, DateTimeOffset toUtc, Guid? targetId = null,
+        bool useLatestStatus = false,
         CancellationToken cancellationToken = default)
     {
         context.Response.Headers.CacheControl = "no-store";
@@ -23,7 +24,8 @@ public static class OverviewEndpoints
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
-            var snapshot = await service.ReadAsync(new(resolver.Resolve(context.User), targetId, fromUtc, toUtc), deadline.Token);
+            var snapshot = await service.ReadAsync(
+                new(resolver.Resolve(context.User), targetId, fromUtc, toUtc, useLatestStatus), deadline.Token);
             // One envelope keeps summary, rankings and trends together; no shared cross-user cache.
             if (JsonSerializer.SerializeToUtf8Bytes(snapshot).Length > 1_048_576) return Results.StatusCode(413);
             return Results.Ok(snapshot);

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using SqlObserver.Application.Ports;
 
 namespace SqlObserver.ApiContractTests;
@@ -35,6 +36,24 @@ public sealed class OverviewHttpContractTests : IClassFixture<OverviewApiFactory
         Assert.Equal(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),snapshot!.TargetId);
         Assert.Equal(TimeSpan.FromDays(1),snapshot.ToUtc-snapshot.FromUtc);
         Assert.DoesNotContain("+00:00",await response.Content.ReadAsStringAsync());
+    }
+    [Fact]
+    public async Task SelectedServerCanOptIntoLatestStatusWithoutChangingTheDefault()
+    {
+        var capture = new CapturingOverviewHttpStub();
+        using var host = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IOverviewQueryService>();
+            services.AddSingleton<IOverviewQueryService>(capture);
+        }));
+        using var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        const string selection = "targetId=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa&fromUtc=2026-09-04T00:00:00Z&toUtc=2026-09-05T00:00:00Z";
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/v1/overview?" + selection)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/v1/overview?" + selection + "&useLatestStatus=true")).StatusCode);
+        Assert.Equal([false, true], capture.ReadModes);
     }
     [Theory]
     [InlineData("fromUtc=garbage&toUtc=2026-09-05T00:00:00Z")]
@@ -69,6 +88,7 @@ public sealed class OverviewApiFactory : WebApplicationFactory<Program>
     {
         // Reuse the application's established test authentication configuration.
         builder.UseEnvironment("ContractTesting");
+        builder.ConfigureLogging(static logging => logging.ClearProviders());
         builder.ConfigureTestServices(services=>
         {
             services.RemoveAll<IOverviewQueryService>();services.AddSingleton<IOverviewQueryService,OverviewHttpStub>();
@@ -89,5 +109,17 @@ public sealed class DelayedOverviewHttpStub : IOverviewQueryService
     {
         await Task.Delay(TimeSpan.FromSeconds(16), cancellationToken);
         return new OverviewSnapshot(DateTimeOffset.UtcNow, query.FromUtc, query.ToUtc, query.TargetId, [], 0, []);
+    }
+}
+
+public sealed class CapturingOverviewHttpStub : IOverviewQueryService
+{
+    public List<bool> ReadModes { get; } = [];
+
+    public Task<OverviewSnapshot> ReadAsync(OverviewQuery query, CancellationToken cancellationToken)
+    {
+        ReadModes.Add(query.UseLatestStatus);
+        return Task.FromResult(new OverviewSnapshot(DateTimeOffset.UtcNow, query.FromUtc,
+            query.ToUtc, query.TargetId, [], 0, []));
     }
 }

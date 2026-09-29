@@ -197,7 +197,8 @@ public sealed class OverviewAuthorizationTests
                 OverviewStub.Create<IHealthProjectionQueryService>(), OverviewStub.Create<IAlertQueryService>(),
                 OverviewStub.Create<IActivityProjectionQueryService>(), OverviewStub.Create<IDeadlockProjectionQueryService>(),
                 OverviewStub.Create<IOperationalHealthQueryService>(), OverviewStub.Create<IMetricSeriesQueryService>(),
-                OverviewStub.Create<IOverviewHistoryRepositoryPort>());
+                OverviewStub.Create<IOverviewHistoryRepositoryPort>(),
+                OverviewStub.Create<IOverviewLatestStatusRepositoryPort>());
         }
 
         public IObservationTargetRepositoryPort TargetRepository { get; }

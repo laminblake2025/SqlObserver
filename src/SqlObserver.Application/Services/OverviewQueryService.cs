@@ -13,7 +13,8 @@ namespace SqlObserver.Application.Services;
 public sealed class OverviewQueryService(
     IObservationTargetStatusQueryService targets, IHealthProjectionQueryService health,
     IAlertQueryService alerts, IActivityProjectionQueryService activity, IDeadlockProjectionQueryService deadlocks,
-    IOperationalHealthQueryService operations, IMetricSeriesQueryService metrics, IOverviewHistoryRepositoryPort history) : IOverviewQueryService
+    IOperationalHealthQueryService operations, IMetricSeriesQueryService metrics,
+    IOverviewHistoryRepositoryPort history, IOverviewLatestStatusRepositoryPort latestStatus) : IOverviewQueryService
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(5));
     private static readonly ApplicationRole[] ReadRoles =
@@ -26,6 +27,8 @@ public sealed class OverviewQueryService(
         if (query.FromUtc.Offset != TimeSpan.Zero || query.ToUtc.Offset != TimeSpan.Zero || query.ToUtc <= query.FromUtc ||
             query.ToUtc - query.FromUtc > TimeSpan.FromDays(31) || query.ToUtc > DateTimeOffset.UtcNow.AddMinutes(1))
             throw new ArgumentException("Select an increasing UTC window of at most 31 days.");
+        if (query.UseLatestStatus && query.TargetId is null)
+            throw new ArgumentException("Select a server to use its latest-status projection.");
         if (!ReadRoles.Any(query.Authorization.HasRole)) throw new UnauthorizedAccessException();
         if (query.TargetId is { } selectedId)
             query.Authorization.RequireAny(new MonitoredInstanceId(selectedId), ReadRoles);
@@ -89,7 +92,37 @@ public sealed class OverviewQueryService(
         void QueueRead(string label, Func<CancellationToken, Task> action) => reads.Add(Read(label, action));
         void Issue(string title, string detail, string destination, int priority, DateTimeOffset? at) => issues.Add(new(id.Value, target.DisplayName.Value, title, detail, destination, priority, at));
         void Resource(string label, double? value, string unit, string state, DateTimeOffset? at) => resources.Add(new(id.Value, target.DisplayName.Value, label, value, unit, state, at));
-        await Read("Collection health", async ct =>
+        OverviewLatestStatus? cached = null;
+        if (query.UseLatestStatus && target.Lifecycle == ObservationTargetLifecycle.Active)
+        {
+            bool readReturned = false;
+            await Read("Latest status", async ct =>
+            {
+                OverviewLatestStatus? candidate = await latestStatus.ReadAsync(
+                    id, target.Revision.Value, cutoff, ct);
+                readReturned = true;
+                if (candidate is not null &&
+                    (candidate.TargetId != id.Value ||
+                     candidate.TargetRevision != target.Revision.Value ||
+                     candidate.Issues.Any(issue => issue.TargetId != id.Value) ||
+                     candidate.Resources.Any(resource => resource.TargetId != id.Value)))
+                    throw new InvalidDataException("Overview latest status crossed its target or revision boundary.");
+                cached = candidate;
+            });
+            if (cached is null && readReturned)
+                gaps.Add("No latest status projection; direct source reads used");
+            if (cached is not null)
+            {
+                alertValue = cached.ActiveAlerts;
+                blockedValue = cached.BlockedSessions;
+                foreach (OverviewIssue issue in cached.Issues)
+                    issues.Add(issue with { Server = target.DisplayName.Value });
+                foreach (OverviewResource resource in cached.Resources)
+                    resources.Add(resource with { Server = target.DisplayName.Value });
+                foreach (string gap in cached.Gaps) gaps.Add(gap);
+            }
+        }
+        if (cached is null) await Read("Collection health", async ct =>
         {
             snapshot = await health.GetInstanceAsync(new(query.Authorization, id, Timeout), ct);
             if (snapshot is null) { gaps.Add("No SQL collection snapshot"); return; }
@@ -103,7 +136,7 @@ public sealed class OverviewQueryService(
         });
         if (target.Lifecycle is ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired)
             return new(id.Value, target.DisplayName.Value, target.Lifecycle.ToString().ToLowerInvariant(), snapshot?.CoreCollector.LastSuccessAtUtc, Unknown, Unknown, Unknown, issues.ToArray(), resources.ToArray(), series.ToArray(), ["Monitoring is disabled; live analytics are unavailable."]);
-        QueueRead("Alerts", async ct =>
+        if (cached is null) QueueRead("Alerts", async ct =>
         {
             var items = new Dictionary<Guid, AlertActiveDto>(); AlertActiveCursor? cursor = null; DateTimeOffset at = cutoff;
             for (int i = 0; i < MaxPages; i++)
@@ -119,7 +152,7 @@ public sealed class OverviewQueryService(
                 Issue(row.RuleName, $"{row.State}: {row.Reason ?? "Threshold or collector condition"}", "alerts", row.State == AlertState.Pending ? 3 : 1, row.FiredUtc ?? row.FirstObservedUtc);
             if (cursor is not null) gaps.Add("Alert count is a lower bound");
         });
-        QueueRead("Blocking", async ct =>
+        if (cached is null) QueueRead("Blocking", async ct =>
         {
             var blocked = new HashSet<int>(); BlockingEdgeCursor? cursor = null; ActivitySnapshotEvidence? ev = null;
             for (int i = 0; i < MaxPages; i++)
@@ -175,7 +208,7 @@ public sealed class OverviewQueryService(
                 }
             });
         }
-        QueueRead("Waits", async ct =>
+        if (cached is null) QueueRead("Waits", async ct =>
         {
             var items = new List<ServerWaitSummaryItem>(); ServerWaitSummaryCursor? cursor = null; ActivitySnapshotEvidence? evidence = null;
             for (int i = 0; i < MaxPages; i++)
@@ -238,7 +271,7 @@ public sealed class OverviewQueryService(
                 }
                 if (cursor is not null || points.Select(x => string.Join("|", x.Dimensions)).Distinct().Count() > 20) gaps.Add($"{metric}: bounded history is partial");
             });
-        QueueRead("Database states", async ct =>
+        if (cached is null) QueueRead("Database states", async ct =>
         {
             DatabaseHealthCursor? cursor = null;
             for (int i = 0; i < MaxPages; i++)
@@ -252,12 +285,12 @@ public sealed class OverviewQueryService(
             if (cursor is not null) gaps.Add("Database state scan partial");
         });
         var request = new OperationalHealthRequest(id, null, null, 100, null, Timeout);
-        QueueRead("TempDB", async ct =>
+        if (cached is null) QueueRead("TempDB", async ct =>
         {
             var temp = await operations.GetTempDbAsync(query.Authorization, request, ct);
             if (temp is not null) Resource("TempDB used", temp.TotalBytes > 0 && temp.UsedBytes.HasValue ? 100d * temp.UsedBytes.Value / temp.TotalBytes.Value : null, "%", temp.State.ToString().ToLowerInvariant(), temp.ObservedAtUtc);
         });
-        QueueRead("Backups", async ct =>
+        if (cached is null) QueueRead("Backups", async ct =>
         {
             var backup = await operations.GetBackupsAsync(query.Authorization, request, ct);
             if (backup is not null)
@@ -277,7 +310,7 @@ public sealed class OverviewQueryService(
                 if (failedOutcomes.Length > 0) Issue("SQL Agent failures", $"{failedOutcomes.Select(x => x.JobId).Distinct().Count()} jobs affected in the selected window", "operations", 2, agent.ObservedAtUtc);
             }
         });
-        QueueRead("Availability groups", async ct =>
+        if (cached is null) QueueRead("Availability groups", async ct =>
         {
             var ag = await operations.GetAvailabilityGroupReplicasAsync(query.Authorization, request, ct);
             if (ag is not null)
@@ -291,7 +324,9 @@ public sealed class OverviewQueryService(
         if (alertValue.Value is null) gaps.Add("No active-alert snapshot");
         if (blockedValue.Value is null) gaps.Add("No current blocking snapshot");
         if (deadlockValue.Value is null) gaps.Add("No deadlock evidence");
-        return new(id.Value, target.DisplayName.Value, snapshot?.CoreCollector.State.ToString().ToLowerInvariant() ?? "unavailable", snapshot?.CoreCollector.LastSuccessAtUtc,
+        return new(id.Value, target.DisplayName.Value,
+            cached?.CollectionState ?? snapshot?.CoreCollector.State.ToString().ToLowerInvariant() ?? "unavailable",
+            cached?.LastSuccessAtUtc ?? snapshot?.CoreCollector.LastSuccessAtUtc,
             alertValue, blockedValue, deadlockValue, issues.OrderBy(x => x.Priority).ThenBy(x => x.ObservedAtUtc).Take(10).ToArray(), resources.OrderBy(x => x.Label, StringComparer.Ordinal).ToArray(), series.OrderBy(x => x.Metric, StringComparer.Ordinal).ThenBy(x => x.Dimension, StringComparer.Ordinal).ToArray(), gaps.Order(StringComparer.Ordinal).ToArray());
     }
 

@@ -122,6 +122,15 @@ disconnected-replica issues. It retains secondary/local visibility and unknown
 replica states as partial or degraded evidence. A complete primary-all-known
 run with zero replicas can report a real zero; missing run coverage cannot.
 
+An explicitly selected server can trial the merged read with
+`useLatestStatus=true` on `/api/v1/overview`. The default route remains the
+existing composition. The opt-in uses the latest row for current health,
+alerts, blocking, waits, database state, TempDB, backups and AG; deadlocks,
+Agent failures, host series and other windowed history still follow the
+requested `fromUtc`/`toUtc`. A missing or failed latest-row read falls back to
+the direct source composition with an explicit gap. This switch is for parity
+validation, not a claim that response parity or fleet latency has passed.
+
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and
 timestamps, and removes cached issues from the actionable list. Alert and

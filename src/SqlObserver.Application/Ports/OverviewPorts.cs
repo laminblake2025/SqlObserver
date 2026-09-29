@@ -4,7 +4,8 @@ using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Application.Ports;
 
-public sealed record OverviewQuery(AuthorizationContext Authorization, Guid? TargetId, DateTimeOffset FromUtc, DateTimeOffset ToUtc);
+public sealed record OverviewQuery(AuthorizationContext Authorization, Guid? TargetId,
+    DateTimeOffset FromUtc, DateTimeOffset ToUtc, bool UseLatestStatus = false);
 public sealed record OverviewTarget(Guid TargetId, string DisplayName, string Lifecycle);
 public sealed record OverviewValue(double? Value, string State, DateTimeOffset? ObservedAtUtc);
 public sealed record OverviewPoint(DateTimeOffset TimeUtc, double? Value, int Samples);

@@ -32,16 +32,19 @@ public sealed class OverviewQueryServiceTests
     }
     private static OverviewQueryService Service(IReadOnlyList<ObservationTargetStatusSnapshot> inventory, IAlertQueryService? alertService = null,
         IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null,
-        IOperationalHealthQueryService? operationsService = null)
+        IOperationalHealthQueryService? operationsService = null,
+        IOverviewLatestStatusRepositoryPort? latestStatus = null,
+        IHealthProjectionQueryService? healthService = null)
     {
         var targets = OverviewStub.Create<IObservationTargetStatusQueryService>((_,args) =>
         {
             var query=(ListObservationTargetsQuery)args![0]!;
             return ValueTask.FromResult(new ObservationTargetStatusPage(inventory.Where(t=>query.Authorization.CanAccess(t.Target.TargetId)).ToArray(),null));
         });
-        return new(targets, OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
+        return new(targets, healthService??OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
             activityService??OverviewStub.Create<IActivityProjectionQueryService>(),OverviewStub.Create<IDeadlockProjectionQueryService>(),operationsService??OverviewStub.Create<IOperationalHealthQueryService>(),
-            OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>());
+            OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>(),
+            latestStatus??OverviewStub.Create<IOverviewLatestStatusRepositoryPort>());
     }
 
     [Theory]
@@ -59,6 +62,123 @@ public sealed class OverviewQueryServiceTests
         var inventory=Enumerable.Range(1,10).Select(i=>Target(i)).ToArray();
         var result=await Service(inventory).ReadAsync(new(Auth(),inventory[3].Target.TargetId.Value,At.AddHours(-1),At),CancellationToken.None);
         Assert.Equal(10,result.Targets.Count);Assert.Equal(inventory[3].Target.TargetId.Value,Assert.Single(result.Evidence).TargetId);
+    }
+
+    [Fact]
+    public async Task OptInSelectedServerUsesLatestCurrentEvidenceAndStillReadsWindowedHistory()
+    {
+        var target = Target(1);
+        int latestReads = 0, historyReads = 0, agentReads = 0, blockingHistoryReads = 0;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, args) =>
+        {
+            Interlocked.Increment(ref latestReads);
+            Assert.Equal(target.Target.TargetId, (MonitoredInstanceId)args![0]!);
+            Assert.Equal(1L, args[1]);
+            Assert.Equal(TimeSpan.Zero, ((DateTimeOffset)args[2]!).Offset);
+            return Task.FromResult<OverviewLatestStatus?>(new(
+                target.Target.TargetId.Value, 1, 4, now, "current", now,
+                new(3, "current", now), new(2, "current", now),
+                new Dictionary<string, OverviewLatestSource>
+                {
+                    ["alerts"] = new("current", now),
+                    ["blocking"] = new("current", now)
+                },
+                [new(target.Target.TargetId.Value, "Old display name", "Cached alert",
+                    "Evidence", "alerts", 1, now)],
+                [new(target.Target.TargetId.Value, "Old display name", "TempDB used",
+                    50, "%", "current", now)],
+                ["Partial wait coverage"]));
+        });
+        var health = OverviewStub.Create<IHealthProjectionQueryService>((_, _) =>
+            throw new InvalidOperationException("Current health must come from the latest row."));
+        var alerts = OverviewStub.Create<IAlertQueryService>((_, _) =>
+            throw new InvalidOperationException("Current alerts must come from the latest row."));
+        var activity = OverviewStub.Create<IActivityProjectionQueryService>((method, _) =>
+        {
+            if (method!.Name != nameof(IActivityProjectionQueryService.ListBlockingHistoryAsync))
+                throw new InvalidOperationException("Current activity must come from the latest row.");
+            Interlocked.Increment(ref blockingHistoryReads);
+            return ValueTask.FromResult<BlockingHistoryPage?>(null);
+        });
+        var operations = OverviewStub.Create<IOperationalHealthQueryService>((method, _) =>
+        {
+            if (method!.Name != nameof(IOperationalHealthQueryService.GetAgentFailuresAsync))
+                throw new InvalidOperationException("Current operational health must come from the latest row.");
+            Interlocked.Increment(ref agentReads);
+            return ValueTask.FromResult<SqlAgentFailureSnapshot?>(null);
+        });
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, _) =>
+        {
+            Interlocked.Increment(ref historyReads);
+            return Task.FromResult<IReadOnlyList<OverviewSeries>>([]);
+        });
+
+        OverviewSnapshot result = await Service([target], alerts, history, activity,
+            operations, latest, health).ReadAsync(new(Auth(), target.Target.TargetId.Value,
+            At.AddHours(-1), At, true), CancellationToken.None);
+        OverviewTargetEvidence evidence = Assert.Single(result.Evidence);
+        Assert.Equal(1, latestReads);
+        Assert.Equal(2, historyReads);
+        Assert.Equal(1, agentReads);
+        Assert.True(blockingHistoryReads > 0);
+        Assert.Equal("current", evidence.CollectionState);
+        Assert.Equal(3, evidence.ActiveAlerts.Value);
+        Assert.Equal(2, evidence.BlockedSessions.Value);
+        Assert.Equal("SQL 01", Assert.Single(evidence.Issues,
+            issue => issue.Title == "Cached alert").Server);
+        Assert.Equal("SQL 01", Assert.Single(evidence.Resources,
+            resource => resource.Label == "TempDB used").Server);
+        Assert.Contains("Partial wait coverage", evidence.Gaps);
+    }
+
+    [Fact]
+    public async Task MissingOptInProjectionFallsBackAndFleetOptInRequiresSelection()
+    {
+        var target = Target(1);
+        int healthReads = 0;
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, _) =>
+            Task.FromResult<OverviewLatestStatus?>(null));
+        var health = OverviewStub.Create<IHealthProjectionQueryService>((method, _) =>
+        {
+            if (method!.Name == nameof(IHealthProjectionQueryService.GetInstanceAsync))
+            {
+                Interlocked.Increment(ref healthReads);
+                return ValueTask.FromResult<InstanceHealthProjection?>(null);
+            }
+            return ValueTask.FromResult<DatabaseHealthPage?>(null);
+        });
+        OverviewQueryService service = Service([target], latestStatus: latest,
+            healthService: health);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ReadAsync(
+            new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None));
+        OverviewSnapshot result = await service.ReadAsync(new(Auth(),
+            target.Target.TargetId.Value, At.AddHours(-1), At, true), CancellationToken.None);
+        Assert.Equal(1, healthReads);
+        Assert.Contains("No latest status projection; direct source reads used",
+            Assert.Single(result.Evidence).Gaps);
+    }
+
+    [Fact]
+    public async Task WrongTargetLatestStatusFallsBackWithoutExposingItsIssues()
+    {
+        var target = Target(1);
+        var foreign = Target(2);
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, _) =>
+            Task.FromResult<OverviewLatestStatus?>(new(
+                target.Target.TargetId.Value, 1, 1, DateTimeOffset.UtcNow,
+                "current", DateTimeOffset.UtcNow, new(1, "current", At),
+                new(0, "current", At), new Dictionary<string, OverviewLatestSource>(),
+                [new(foreign.Target.TargetId.Value, "Foreign", "Foreign alert", "Leak",
+                    "alerts", 1, At)], [], [])));
+        OverviewSnapshot result = await Service([target], latestStatus: latest)
+            .ReadAsync(new(Auth(), target.Target.TargetId.Value,
+                At.AddHours(-1), At, true), CancellationToken.None);
+
+        OverviewTargetEvidence evidence = Assert.Single(result.Evidence);
+        Assert.DoesNotContain(evidence.Issues, issue => issue.Title == "Foreign alert");
+        Assert.Contains("Latest status unavailable", evidence.Gaps);
+        Assert.Null(evidence.ActiveAlerts.Value);
     }
 
     [Fact]
