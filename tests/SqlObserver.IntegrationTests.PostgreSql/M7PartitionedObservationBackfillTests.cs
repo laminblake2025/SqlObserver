@@ -156,7 +156,10 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
                     WHERE to_jsonb(new_row) IS DISTINCT FROM
                       jsonb_set(to_jsonb(old_row),'{instance_id}',to_jsonb(@target::uuid))),
                    has_function_privilege('sqlobserver_collector',
-                     'control.backfill_query_observation_v3(uuid,integer)','EXECUTE');
+                     'control.backfill_query_observation_v3(uuid,integer)','EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.verify_query_observation_v3_window(uuid,timestamptz,timestamptz,integer)',
+                     'EXECUTE');
             """, admin);
         inspect.Parameters.AddWithValue("target", target);
         await using NpgsqlDataReader resultReader = await inspect.ExecuteReaderAsync();
@@ -166,5 +169,65 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
         Assert.Equal(2L, resultReader.GetInt64(2));
         Assert.Equal(0L, resultReader.GetInt64(3));
         Assert.False(resultReader.GetBoolean(4));
+        Assert.False(resultReader.GetBoolean(5));
+        await resultReader.DisposeAsync();
+
+        async Task<(long Source, long Successor, string SourceHash,
+            string SuccessorHash, bool Parity)> VerifyAsync(int maxRows = 100)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var verify = new NpgsqlCommand("""
+                SELECT * FROM control.verify_query_observation_v3_window(
+                  @target,now()-interval '1 hour',now()+interval '1 hour',@maxRows);
+                """, admin, transaction);
+            verify.Parameters.AddWithValue("target", target);
+            verify.Parameters.AddWithValue("maxRows", maxRows);
+            await using NpgsqlDataReader reader = await verify.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            var result = (reader.GetInt64(0), reader.GetInt64(1),
+                reader.GetString(2), reader.GetString(3), reader.GetBoolean(4));
+            await reader.DisposeAsync();
+            await transaction.CommitAsync();
+            return result;
+        }
+
+        var matched = await VerifyAsync();
+        Assert.Equal((3L, 3L), (matched.Source, matched.Successor));
+        Assert.Equal(matched.SourceHash, matched.SuccessorHash);
+        Assert.Equal(64, matched.SourceHash.Length);
+        Assert.True(matched.Parity);
+
+        await using (var extra = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_observation_v3
+              (instance_id,collection_run_id,database_id,query_fingerprint,
+               observation_key,source,source_state,interval_start,
+               interval_end,observed_at,semantics,cpu_ms)
+            SELECT @target,collection_run_id,database_id,query_fingerprint,
+              decode(repeat('44',16),'hex'),source,source_state,interval_start,
+              interval_end,observed_at,semantics,cpu_ms
+            FROM events.query_performance_observation
+            WHERE collection_run_id=@run
+              AND observation_key=decode(repeat('33',16),'hex');
+            """, admin))
+        {
+            extra.Parameters.AddWithValue("target", target);
+            extra.Parameters.AddWithValue("run", run);
+            Assert.Equal(1, await extra.ExecuteNonQueryAsync());
+        }
+        var extraRowParity = await VerifyAsync();
+        Assert.Equal((3L, 4L), (extraRowParity.Source, extraRowParity.Successor));
+        Assert.NotEqual(extraRowParity.SourceHash, extraRowParity.SuccessorHash);
+        Assert.False(extraRowParity.Parity);
+        PostgresException tooDense = await Assert.ThrowsAsync<PostgresException>(
+            () => VerifyAsync(3));
+        Assert.Equal("54000", tooDense.SqlState);
     }
 }

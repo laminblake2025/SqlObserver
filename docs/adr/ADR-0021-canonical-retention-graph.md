@@ -100,6 +100,12 @@ derives ownership from the query row when a legacy target key is null, and
 checks every copied or already-mirrored row for equality. A mismatch rolls
 back the batch and its cursor. Operators must call it explicitly per target;
 completion of its cursor alone is not a global parity or cutover attestation.
+Migration 0167 adds a read-only, migrator-only parity check for a target and
+interval-end window of at most one day and 100,000 rows on either side. It
+compares counts and ordered SHA-256 digests of complete normalized rows under
+one MVCC snapshot; a different row, missing row, or extra row fails parity.
+All historical and live windows must be covered, with a fresh sweep at the
+cutover fence. One passing window cannot authorize changing readers.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

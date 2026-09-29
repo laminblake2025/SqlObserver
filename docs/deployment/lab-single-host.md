@@ -262,6 +262,14 @@ true. It reports rows checked and newly copied; already-mirrored rows count as
 checked. A divergent row aborts the batch without advancing its cursor. The
 copy does not change the read source or enable M7 retention. Full source and
 successor count/digest parity is still required before a read cutover.
+Migration `0167` adds
+`control.verify_query_observation_v3_window(target, from_utc, to_utc, max_rows)`
+for that check. Use the same migrator login and target scope after the backfill
+reports completion. Verify every interval-end window across the target's
+history; each call accepts at most one day and caps either side at 100,000
+rows. Split denser days into smaller windows. Record both counts and SHA-256
+digests, and investigate any `parity = false`. The function is read-only and
+does not itself authorize a read cutover or an M7 retention policy.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced
