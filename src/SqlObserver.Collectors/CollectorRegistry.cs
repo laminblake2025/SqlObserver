@@ -73,7 +73,8 @@ public sealed class CollectorRegistration
             (output.MaxBlockingEdgeObservations > 0 ? 1 : 0) +
             (output.MaxDeadlockObservations > 0 ? 1 : 0) +
             (output.MaxQueryPerformanceObservations > 0 ? 1 : 0) +
-            (output.MaxQueryStoreGroupObservations > 0 ? 1 : 0);
+            (output.MaxQueryStoreGroupObservations > 0 ? 1 : 0) +
+            (output.MaxServerConfigurationObservations > 0 ? 1 : 0);
             populatedKinds += output.MaxOperationalHealthObservations > 0 ? 1 : 0;
         bool valid = populatedKinds == 1 && manifest.OutputKind switch
         {
@@ -88,6 +89,7 @@ public sealed class CollectorRegistration
             CollectorOutputKind.Deadlocks => output.MaxDeadlockObservations > 0,
             CollectorOutputKind.QueryPerformance => output.MaxQueryPerformanceObservations > 0,
             CollectorOutputKind.QueryStoreGroups => output.MaxQueryStoreGroupObservations > 0,
+            CollectorOutputKind.ServerConfigurations => output.MaxServerConfigurationObservations > 0,
             CollectorOutputKind.BackupsStatus or CollectorOutputKind.SqlAgentFailures or CollectorOutputKind.TempDbHealth or CollectorOutputKind.AvailabilityGroupsHealth => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.ReplicationHealth => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.CapabilityProfile => false,

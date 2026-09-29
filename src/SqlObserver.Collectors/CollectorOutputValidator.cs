@@ -72,6 +72,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.QueryPerformance.Items.Count > Contract.MaxQueryPerformanceObservations ||
             (payload.QueryStoreGroups?.Items.Count ?? 0) > Contract.MaxQueryStoreGroupObservations ||
             (payload.QueryStoreGroups is not null && Contract.MaxQueryStoreGroupObservations == 0) ||
+            payload.ServerConfigurations.Items.Count > Contract.MaxServerConfigurationObservations ||
             (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations)
         {
             throw new InvalidDataException("Collector output exceeded its registered output cardinality.");
@@ -118,7 +119,11 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.QueryPerformance.Items.Any(item =>
                 item.TargetId != request.TargetId || item.TargetRevision != request.TargetRevision) ||
             payload.QueryStoreGroups is { } groupOutput &&
-                (groupOutput.TargetId != request.TargetId || groupOutput.TargetRevision != request.TargetRevision))
+                (groupOutput.TargetId != request.TargetId || groupOutput.TargetRevision != request.TargetRevision) ||
+            payload.ServerConfigurations.Items.Any(item =>
+                item.TargetId != request.TargetId ||
+                item.TargetRevision != request.TargetRevision ||
+                item.ServerMajorVersion != request.CapabilityProfile.ServerIdentity?.Version.Major))
         {
             throw new InvalidDataException("Collector inventory output belongs to a different target revision.");
         }
@@ -170,6 +175,16 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             }
             else if (groups is not null)
                 throw new InvalidDataException("A failed Query Store group run cannot carry source output.");
+        }
+        if (manifest.OutputKind == CollectorOutputKind.ServerConfigurations)
+        {
+            IReadOnlyList<ServerConfigurationObservation> items = payload.ServerConfigurations.Items;
+            if (result.Outcome == CollectorRunOutcome.Succeeded &&
+                (items.Count == 0 || result.Accounting.SourceRowsRead != items.Count ||
+                 result.Accounting.OutputItemsProduced != items.Count ||
+                 result.Accounting.OutputBytes < payload.ServerConfigurations.EstimatedSizeBytes) ||
+                result.Outcome != CollectorRunOutcome.Succeeded && items.Count != 0)
+                throw new InvalidDataException("Server configuration scan coverage or accounting is invalid.");
         }
     }
 

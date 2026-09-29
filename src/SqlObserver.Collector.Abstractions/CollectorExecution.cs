@@ -104,7 +104,8 @@ public sealed class CollectorPayload
         OperationalHealthPayload? operationalHealth = null,
         HostMetricsPayloadContext? hostMetricsContext = null,
         SqlVolumeObservationBatch? sqlVolumes = null,
-        QueryStoreGroupOutputBatch? queryStoreGroups = null)
+        QueryStoreGroupOutputBatch? queryStoreGroups = null,
+        ServerConfigurationObservationBatch? serverConfigurations = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -133,6 +134,7 @@ public sealed class CollectorPayload
         Deadlocks = deadlocks ?? new DeadlockObservationBatch([]);
         QueryPerformance = queryPerformance ?? new QueryPerformanceObservationBatch([]);
         QueryStoreGroups = queryStoreGroups;
+        ServerConfigurations = serverConfigurations ?? new ServerConfigurationObservationBatch([]);
         int protectedCount = QueryPerformance.Items.Count(static item => item.ProtectedContent is not null);
         int protectedBytes = QueryPerformance.Items.Sum(static item => item.ProtectedContent?.ProtectedSizeBytes ?? 0);
         if (protectedCount > 64 || protectedBytes > 64 * (16 * 1024 + 48))
@@ -155,6 +157,7 @@ public sealed class CollectorPayload
     public DeadlockObservationBatch Deadlocks { get; }
     public QueryPerformanceObservationBatch QueryPerformance { get; }
     public QueryStoreGroupOutputBatch? QueryStoreGroups { get; }
+    public ServerConfigurationObservationBatch ServerConfigurations { get; }
     public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
     public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
     public OperationalHealthPayload? OperationalHealth { get; }
@@ -171,6 +174,7 @@ public sealed class CollectorPayload
         Deadlocks.Items.Count +
         QueryPerformance.Items.Count +
         (QueryStoreGroups?.Items.Count ?? 0) +
+        ServerConfigurations.Items.Count +
         (OperationalHealth?.ItemCount ?? 0));
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
@@ -184,6 +188,7 @@ public sealed class CollectorPayload
         Deadlocks.Items.Sum(static item => item.EstimatedSizeBytes) +
         QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes) +
         (QueryStoreGroups?.EstimatedSizeBytes ?? 0) +
+        ServerConfigurations.EstimatedSizeBytes +
         (OperationalHealth?.EstimatedSizeBytes ?? 0));
 
     public static CollectorPayload Empty { get; } = new();
@@ -335,7 +340,8 @@ public sealed class CollectorOutputContract
         int maxQueryPerformanceObservations = 0,
         int maxOperationalHealthObservations = 0,
         int maxSqlVolumeObservations = 0,
-        int maxQueryStoreGroupObservations = 0)
+        int maxQueryStoreGroupObservations = 0,
+        int maxServerConfigurationObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -390,6 +396,8 @@ public sealed class CollectorOutputContract
         {
             throw new ArgumentOutOfRangeException(nameof(maxQueryStoreGroupObservations));
         }
+        if (maxServerConfigurationObservations is < 0 or > ServerConfigurationObservationBatch.MaximumItems)
+            throw new ArgumentOutOfRangeException(nameof(maxServerConfigurationObservations));
         if (maxOperationalHealthObservations is < 0 or > IngestionLimits.MaximumItemCount)
         {
             throw new ArgumentOutOfRangeException(nameof(maxOperationalHealthObservations));
@@ -428,6 +436,7 @@ public sealed class CollectorOutputContract
         MaxDeadlockObservations = maxDeadlockObservations;
         MaxQueryPerformanceObservations = maxQueryPerformanceObservations;
         MaxQueryStoreGroupObservations = maxQueryStoreGroupObservations;
+        MaxServerConfigurationObservations = maxServerConfigurationObservations;
         MaxOperationalHealthObservations = maxOperationalHealthObservations;
     }
 
@@ -444,6 +453,7 @@ public sealed class CollectorOutputContract
     public int MaxDeadlockObservations { get; }
     public int MaxQueryPerformanceObservations { get; }
     public int MaxQueryStoreGroupObservations { get; }
+    public int MaxServerConfigurationObservations { get; }
     public int MaxOperationalHealthObservations { get; }
 }
 

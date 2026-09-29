@@ -263,6 +263,7 @@ public enum CollectorOutputKind
     ReplicationHealth = 15,
     SqlVolumes = 16,
     QueryStoreGroups = 17,
+    ServerConfigurations = 18,
 }
 
 public sealed class CollectorResiliencePolicy

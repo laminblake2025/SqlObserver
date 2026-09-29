@@ -137,3 +137,9 @@ accepts only exact integer and bit source types until a lab run qualifies the
 actual catalog values on all three versions. The query is not registered as a
 collector or scheduled yet; the lab connection was unavailable during this
 source-only change.
+
+The collector envelope now has a dedicated `ServerConfigurations` output kind
+with bounded exact-value observations, and an adapter can turn a complete
+source scan into that payload. It remains outside the runtime registry. No
+repository writer exists yet, so registering it would publish an outcome
+without preserving the exact observations.

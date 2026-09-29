@@ -79,6 +79,10 @@ public sealed class SqlServerConfigurationSourceTests
         missing.Rows.Add(DateTime.UtcNow, 1, "option", "int", "int",
             DBNull.Value, "2", true, false);
         await AssertInvalidAsync(missing);
+
+        using DataTable invalidUtf16 = Rows();
+        Add(invalidUtf16, 1, "option\uD800", "int", "1", "2");
+        await AssertInvalidAsync(invalidUtf16);
     }
 
     private static async Task AssertInvalidAsync(DataTable table)

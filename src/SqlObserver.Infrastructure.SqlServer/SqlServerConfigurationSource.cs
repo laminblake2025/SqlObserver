@@ -105,10 +105,13 @@ internal static class SqlServerConfigurationSource
             sourceRowsRead, responseBytes, false, false);
     }
 
-    private static bool ValidText(string value, int maximumBytes) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        StrictUtf8.GetByteCount(value) <= maximumBytes &&
-        !value.Any(char.IsControl);
+    private static bool ValidText(string value, int maximumBytes)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Any(char.IsControl))
+            return false;
+        try { return StrictUtf8.GetByteCount(value) <= maximumBytes; }
+        catch (EncoderFallbackException) { return false; }
+    }
 
     private static bool ValidType(string value) =>
         value is "bit" or "tinyint" or "smallint" or "int" or "bigint";
