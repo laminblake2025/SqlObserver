@@ -76,6 +76,27 @@ public sealed class OverviewAuthorizationTests
     }
 
     [Fact]
+    public async Task LatestStatusOptInReadsOnlyTheSelectedOperationalGrant()
+    {
+        var probe = new InventoryProbe([TargetA, TargetB]);
+        AuthorizationContext authorization = Active(
+            Grant(ApplicationRole.Viewer, TargetA), Grant(ApplicationRole.Auditor, TargetB));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => probe.Overview.ReadAsync(
+            new(authorization, TargetB.TargetId.Value, At.AddHours(-1), At, true),
+            CancellationToken.None));
+        Assert.Empty(probe.ListCalls);
+        Assert.Empty(probe.LatestTargets);
+
+        OverviewSnapshot allowed = await probe.Overview.ReadAsync(
+            new(authorization, TargetA.TargetId.Value, At.AddHours(-1), At, true),
+            CancellationToken.None);
+        Assert.Equal(TargetA.TargetId.Value, Assert.Single(allowed.Evidence).TargetId);
+        Assert.Equal([TargetA.TargetId], probe.LatestTargets);
+        Assert.DoesNotContain(probe.ProfileTargets, id => id == TargetB.TargetId);
+    }
+
+    [Fact]
     public async Task EmptyOperationalScopeReturnsAnEmptyFleetWithoutReadingUnrelatedProfiles()
     {
         var probe = new InventoryProbe([TargetB])
@@ -198,7 +219,11 @@ public sealed class OverviewAuthorizationTests
                 OverviewStub.Create<IActivityProjectionQueryService>(), OverviewStub.Create<IDeadlockProjectionQueryService>(),
                 OverviewStub.Create<IOperationalHealthQueryService>(), OverviewStub.Create<IMetricSeriesQueryService>(),
                 OverviewStub.Create<IOverviewHistoryRepositoryPort>(),
-                OverviewStub.Create<IOverviewLatestStatusRepositoryPort>());
+                OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, arguments) =>
+                {
+                    LatestTargets.Add((MonitoredInstanceId)arguments![0]!);
+                    return Task.FromResult<OverviewLatestStatus?>(null);
+                }));
         }
 
         public IObservationTargetRepositoryPort TargetRepository { get; }
@@ -208,5 +233,6 @@ public sealed class OverviewAuthorizationTests
         public Action<ListObservationTargetsRequest>? BeforeList { get; init; }
         public List<ListObservationTargetsRequest> ListCalls { get; } = [];
         public List<MonitoredInstanceId> ProfileTargets { get; } = [];
+        public List<MonitoredInstanceId> LatestTargets { get; } = [];
     }
 }
