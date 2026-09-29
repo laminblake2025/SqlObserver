@@ -29,7 +29,8 @@ public static class AnalyticsEndpoints
         "m9_backup_status", "m9_agent_history", "m9_agent_occurrences",
         "m9_ag_replicas", "m9_ag_databases", "m9_tempdb",
         "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
-        "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas"
+        "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas",
+        "m7_query_performance"
     };
     private static readonly HashSet<string> MutationReceiptStates = new(StringComparer.Ordinal)
     {

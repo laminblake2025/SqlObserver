@@ -27,7 +27,9 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         var runner = new PostgreSqlMigrationPort(database.DataSource, PostgreSqlMigrationCatalog.LoadEmbedded());
         MigrationBatchResult result = await runner.ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
-        Assert.False(result.HasFailures);
+        Assert.False(result.HasFailures, string.Join(", ", result.Results
+            .Where(item => item.Outcome == MigrationOutcome.Failed)
+            .Select(item => $"{item.Migration.Name}: {item.FailureCode}")));
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand("SELECT to_regclass('events.query_performance_observation') IS NOT NULL, EXISTS (SELECT 1 FROM pg_proc WHERE proname='commit_query_performance_collection_run_canonical'), EXISTS (SELECT 1 FROM pg_proc WHERE proname='get_top_queries_projection'), NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname='list_query_performance_projection'), (SELECT relrowsecurity FROM pg_class WHERE oid='events.query_performance_run'::regclass), NOT has_table_privilege('sqlobserver_server','events.query_performance_observation','SELECT');", connection);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
@@ -57,12 +59,16 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         Assert.False(callable["commit_query_text_links"]);
         await privilegeRows.DisposeAsync();
         await using var writerGate = new NpgsqlCommand("""
-            SELECT use_v3,write_v3,
+            SELECT route.use_v3,route.write_v3,
                    has_function_privilege('sqlobserver_collector',
                      'control.activate_query_observation_v3_writer()','EXECUTE'),
                    has_function_privilege('sqlobserver_server',
-                     'control.activate_query_observation_v3_writer()','EXECUTE')
-            FROM system.query_observation_v3_read_route;
+                     'control.activate_query_observation_v3_writer()','EXECUTE'),
+                   policy.parent_table='query_performance_observation_v3',
+                   policy.enabled,policy.retain_for=interval '90 days'
+            FROM system.query_observation_v3_read_route AS route
+            CROSS JOIN system.retention_policy AS policy
+            WHERE policy.data_class='m7_query_performance';
             """, connection);
         await using (NpgsqlDataReader gate = await writerGate.ExecuteReaderAsync())
         {
@@ -71,6 +77,9 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
             Assert.False(gate.GetBoolean(1));
             Assert.False(gate.GetBoolean(2));
             Assert.False(gate.GetBoolean(3));
+            Assert.True(gate.GetBoolean(4));
+            Assert.False(gate.GetBoolean(5));
+            Assert.True(gate.GetBoolean(6));
         }
         await using NpgsqlTransaction inactive = await connection.BeginTransactionAsync();
         await using var premature = new NpgsqlCommand("""
@@ -81,6 +90,16 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
             () => premature.ExecuteNonQueryAsync());
         Assert.Equal("55000", denied.SqlState);
         await inactive.RollbackAsync();
+        await using NpgsqlTransaction earlyRetention = await connection.BeginTransactionAsync();
+        await using var enableTooEarly = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_migrator;
+            UPDATE system.retention_policy SET enabled=true
+            WHERE data_class='m7_query_performance';
+            """, connection, earlyRetention);
+        PostgresException retentionDenied = await Assert.ThrowsAsync<PostgresException>(
+            () => enableTooEarly.ExecuteNonQueryAsync());
+        Assert.Equal("55000", retentionDenied.SqlState);
+        await earlyRetention.RollbackAsync();
     }
 
     [Theory]
@@ -296,17 +315,24 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         if (writeV3)
         {
             await using var route = new NpgsqlCommand("""
-                SELECT use_v3,write_v3,
+                SELECT route.use_v3,route.write_v3,
                        has_function_privilege('sqlobserver_collector',
                          'control.commit_query_performance_with_text_original(uuid,uuid,bigint,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer,text,integer,bytea,timestamptz,timestamptz,events.query_performance_source,text,text,boolean,boolean,jsonb,jsonb)',
-                         'EXECUTE')
-                FROM system.query_observation_v3_read_route;
+                         'EXECUTE'),
+                       policy.parent_table='query_performance_observation_v3',
+                       policy.enabled,policy.retain_for=interval '90 days'
+                FROM system.query_observation_v3_read_route AS route
+                CROSS JOIN system.retention_policy AS policy
+                WHERE policy.data_class='m7_query_performance';
                 """, verifyConnection);
             await using NpgsqlDataReader routeRow = await route.ExecuteReaderAsync();
             Assert.True(await routeRow.ReadAsync());
             Assert.True(routeRow.GetBoolean(0));
             Assert.True(routeRow.GetBoolean(1));
             Assert.False(routeRow.GetBoolean(2));
+            Assert.True(routeRow.GetBoolean(3));
+            Assert.True(routeRow.GetBoolean(4));
+            Assert.True(routeRow.GetBoolean(5));
             await routeRow.DisposeAsync();
             await using NpgsqlTransaction rollback = await verifyConnection.BeginTransactionAsync();
             await using var disable = new NpgsqlCommand("""

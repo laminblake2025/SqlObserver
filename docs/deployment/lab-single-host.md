@@ -352,8 +352,19 @@ contract. Their new observation rows are mirrored to v3, checked against
 the committed count, and removed from the original table before commit.
 The read route cannot return to the original table after this switch.
 Treat writer activation as irreversible; verify v3 readers and backups
-first. It does not enable M7 retention or retire pre-switch rows. The
+first. The writer switch alone does not retire pre-switch rows. The
 original-to-v3 parity ledger ceases to describe new writes after activation.
+Migration `0177` redirects the M7 retention policy from the unused v2
+scaffold to the written v3 parent. On an untouched policy, writer activation
+also enables a 90-day default. The existing fenced worker then detaches
+expired v3 days and drops them after its 24-hour grace, subject to reader
+leases, recovery attestation, policy revision and analytics holds. A
+SecurityAdministrator can change the duration after activation; the minimum
+enabled duration is eight days because accepted source windows can span seven.
+The policy cannot be enabled before the writer switch. A policy previously
+customized for v2 stays disabled after migration until reviewed and enabled
+for v3. Expiring v3 days leaves run/query/plan and protected-content links
+in place; their separate graph cleanup is still required.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.

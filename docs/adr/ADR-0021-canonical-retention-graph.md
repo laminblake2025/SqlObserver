@@ -184,6 +184,15 @@ later read rollback because new runs no longer have original observations.
 Historical original rows and their dependencies remain until the M7
 retention graph is implemented; this switch alone does not permit dropping
 the original relation.
+Migration 0177 moves the `m7_query_performance` policy from the unused v2
+parent to the written v3 observation parent. It keeps the policy disabled
+until the writer route is active, then enables a 90-day default only for an
+untouched seed policy. The generic fenced worker can detach and drop an
+expired v3 day after its reader, analytics, recovery, policy-revision and
+grace gates. A populated PostgreSQL test confirms the v3 rows disappear
+while their run and query parents remain. This bounds observation storage;
+run/query/plan, wait, status and protected-link cleanup still needs a
+separate dependency-aware operation.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

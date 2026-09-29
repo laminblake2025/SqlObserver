@@ -266,6 +266,8 @@ public sealed class MutationRequestBoundaryHttpTests
     [InlineData(true, "m7_group_watermarks")]
     [InlineData(false, "m7_group_deltas")]
     [InlineData(true, "m7_group_deltas")]
+    [InlineData(false, "m7_query_performance")]
+    [InlineData(true, "m7_query_performance")]
     public async Task TypedPolicyPutEnforcesOriginWithoutBreakingValidJson(bool hostile, string dataClass)
     {
         using var factory = new MutationBoundaryFactory();
