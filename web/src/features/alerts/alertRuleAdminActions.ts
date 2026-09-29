@@ -82,6 +82,7 @@ export function prepareRule(values: RuleValues, template: RuleTemplate): RuleVal
 
 export class RuleAttempts {
   private readonly creates = new Map<string, { ruleId: string; operationId: string }>();
+  private readonly updates = new Map<string, string>();
   private readonly disables = new Map<string, string>();
   private createKey(targetId: string, rule: RuleValues) { return JSON.stringify([targetId.toLowerCase(), rule]); }
   createFor(targetId: string, rule: RuleValues) {
@@ -91,6 +92,18 @@ export class RuleAttempts {
     return attempt;
   }
   completeCreate(targetId: string, rule: RuleValues) { this.creates.delete(this.createKey(targetId, rule)); }
+  private updateKey(targetId: string, ruleId: string, revision: number, rule: RuleValues) {
+    return JSON.stringify([targetId.toLowerCase(), ruleId.toLowerCase(), revision, rule]);
+  }
+  updateFor(targetId: string, ruleId: string, revision: number, rule: RuleValues) {
+    const key = this.updateKey(targetId, ruleId, revision, rule);
+    let operationId = this.updates.get(key);
+    if (!operationId) { operationId = crypto.randomUUID(); this.updates.set(key, operationId); }
+    return operationId;
+  }
+  completeUpdate(targetId: string, ruleId: string, revision: number, rule: RuleValues) {
+    this.updates.delete(this.updateKey(targetId, ruleId, revision, rule));
+  }
   disableFor(targetId: string, ruleId: string, revision: number) {
     const key = JSON.stringify([targetId.toLowerCase(), ruleId.toLowerCase(), revision]);
     let operationId = this.disables.get(key);
@@ -116,6 +129,16 @@ export async function createRule(targetId: string, rule: RuleValues,
     method: "POST", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ ...rule, ...attempt }), signal,
+  });
+  if (!response.ok) throw mutationError(response);
+}
+
+export async function updateRule(targetId: string, ruleId: string, revision: number,
+    rule: RuleValues, operationId: string, signal: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules/${encodeURIComponent(ruleId)}`, {
+    method: "PUT", credentials: "same-origin",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ ...rule, ruleId, operationId, expectedRevision: revision }), signal,
   });
   if (!response.ok) throw mutationError(response);
 }

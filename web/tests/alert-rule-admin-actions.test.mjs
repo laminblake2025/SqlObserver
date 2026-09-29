@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  RuleAttempts, parseRuleCatalog, prepareRule, createRule, disableRule, getRuleCatalog,
+  RuleAttempts, parseRuleCatalog, prepareRule, createRule, updateRule, disableRule, getRuleCatalog,
 } from "../src/features/alerts/alertRuleAdminActions.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
@@ -61,6 +61,9 @@ test("rule mutations reuse identities and send revision-bound disable", async ()
   const operationId = attempts.disableFor(target, ruleId, 4);
   assert.equal(attempts.disableFor(target, ruleId, 4), operationId);
   assert.notEqual(attempts.disableFor(target, ruleId, 5), operationId);
+  const updateOperation = attempts.updateFor(target, ruleId, 4, values);
+  assert.equal(attempts.updateFor(target, ruleId, 4, values), updateOperation);
+  assert.notEqual(attempts.updateFor(target, ruleId, 5, values), updateOperation);
   const prior = globalThis.fetch;
   try {
     const requests = [];
@@ -70,18 +73,24 @@ test("rule mutations reuse identities and send revision-bound disable", async ()
     };
     const signal = new AbortController().signal;
     await createRule(target, values, first, signal);
+    await updateRule(target, ruleId, 4, values, updateOperation, signal);
     await disableRule(target, { ...values, ruleId, revision: 4 }, operationId, signal);
     assert.equal(requests[0].options.method, "POST");
     assert.deepEqual(requests[0].body, { ...values, ...first });
     assert.match(requests[0].url, /\/alerts\/rules$/);
-    assert.deepEqual(requests[1].body, { ...values, ruleId, revision: 4,
+    assert.equal(requests[1].options.method, "PUT");
+    assert.deepEqual(requests[1].body, { ...values, ruleId, operationId: updateOperation, expectedRevision: 4 });
+    assert.match(requests[1].url, /\/alerts\/rules\/33333333-3333-4333-8333-333333333333$/);
+    assert.deepEqual(requests[2].body, { ...values, ruleId, revision: 4,
       operationId, expectedRevision: 4, enabled: false });
-    assert.match(requests[1].url, /\/alerts\/rules\/33333333-3333-4333-8333-333333333333\/disable$/);
+    assert.match(requests[2].url, /\/alerts\/rules\/33333333-3333-4333-8333-333333333333\/disable$/);
     globalThis.fetch = async () => new Response(null, { status: 409 });
     await assert.rejects(() => disableRule(target, { ...values, ruleId, revision: 4 }, operationId, signal), /changed/);
   } finally { globalThis.fetch = prior; }
   attempts.completeCreate(target, values);
   assert.notDeepEqual(attempts.createFor(target, values), first);
+  attempts.completeUpdate(target, ruleId, 4, values);
+  assert.notEqual(attempts.updateFor(target, ruleId, 4, values), updateOperation);
   attempts.completeDisable(target, ruleId, 4);
   assert.notEqual(attempts.disableFor(target, ruleId, 4), operationId);
 });

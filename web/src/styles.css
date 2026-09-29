@@ -162,6 +162,7 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .maintenance-fields { display: flex; flex-wrap: wrap; gap: 12px; }
 .maintenance-fields label { display: grid; flex: 1 1 190px; gap: 5px; color: var(--muted-deep); font-size: 12px; font-weight: 700; }
 .maintenance-form > button { justify-self: start; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .screen-intro p:not(.eyebrow), .screen-subtitle { max-width: 760px; margin-bottom: 0; color: var(--muted); }
 .health-heading-row { margin-bottom: 16px; }
 .health-heading-row h3, .health-heading-row h2 { margin-bottom: 4px; }
