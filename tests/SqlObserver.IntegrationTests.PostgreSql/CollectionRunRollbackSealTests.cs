@@ -172,6 +172,58 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
             Assert.Equal(1L, await outcome.ExecuteScalarAsync());
         }
 
+        await using (var due = new NpgsqlCommand("""
+            UPDATE control.collector_schedule
+            SET next_due_at=statement_timestamp()-interval '1 second'
+            WHERE instance_id=@target AND collector_id='engine.core';
+            """, admin))
+        {
+            due.Parameters.AddWithValue("target", target);
+            await due.ExecuteNonQueryAsync();
+        }
+        CollectorDueWorkItem pending = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16,
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(10))),
+            CancellationToken.None)).Items, item =>
+                item.TargetId.Value == target && item.CollectorId.Value == "engine.core");
+        var invalidatedRun = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(
+                pending, invalidatedRun, lease,
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(10))),
+                CancellationToken.None)).Status);
+        await using (var revise = new NpgsqlCommand("""
+            UPDATE control.observation_target
+            SET revision=2,host_name='sql02',updated_at=statement_timestamp()
+            WHERE instance_id=@target;
+            """, admin))
+        {
+            revise.Parameters.AddWithValue("target", target);
+            await revise.ExecuteNonQueryAsync();
+        }
+        await using (var invalidated = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM telemetry.collection_run WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_v2 WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_outcome
+                    WHERE run_id=@run AND outcome='permanent_failure'
+                      AND reason_code='target_revision_changed'),
+                   (SELECT count(*) FROM telemetry.visibility_gap
+                    WHERE run_id=@run AND reason_code='target_revision_changed'),
+                   (SELECT active_run_id FROM control.collector_schedule
+                    WHERE instance_id=@target AND collector_id='engine.core');
+            """, admin))
+        {
+            invalidated.Parameters.AddWithValue("run", invalidatedRun.Value);
+            invalidated.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader row = await invalidated.ExecuteReaderAsync();
+            Assert.True(await row.ReadAsync());
+            Assert.Equal(0L, row.GetInt64(0));
+            Assert.Equal(1L, row.GetInt64(1));
+            Assert.Equal(1L, row.GetInt64(2));
+            Assert.Equal(1L, row.GetInt64(3));
+            Assert.True(row.IsDBNull(4));
+        }
+
         await using (NpgsqlTransaction rollback = await admin.BeginTransactionAsync())
         {
             await SetMigratorAsync(admin, rollback);
