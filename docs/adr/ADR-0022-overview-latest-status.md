@@ -140,7 +140,18 @@ bounded.
 On a populated target with one active alert and one blocked session, the real
 application service returns the same counts and alert/blocking issue summaries
 through direct composition and the opt-in latest-status read. This is limited
-current-evidence parity; resource and fleet parity still need validation.
+current-evidence parity. A valid 50% TempDB observation, one backup record
+with unknown source timezone, and a complete zero-replica AG observation also
+match in numeric value; broader resource-state and fleet parity still need
+validation.
+For a fixture with one comparable lock wait, both paths report the same
+1.2-second delta; the direct path labels the wait type and the materialized
+path labels its category, so their resource identities are intentionally
+different.
+An invalid TempDB byte total is rejected by the direct operational-health
+contract and appears as an unavailable gap; the materialized row preserves a
+null value with degraded state. Both avoid reporting an impossible percentage,
+but their response shapes differ and remain outside the parity claim.
 
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and

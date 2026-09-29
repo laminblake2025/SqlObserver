@@ -515,6 +515,19 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         OverviewResource lockWait = Assert.Single(comparable.Resources,
             resource => resource.Label == "Wait · Lock");
         Assert.Equal(1.2, lockWait.Value);
+        DateTimeOffset waitWindowEnd = DateTimeOffset.UtcNow;
+        OverviewTargetEvidence directWait = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, waitWindowEnd.AddHours(-1), waitWindowEnd),
+            CancellationToken.None)).Evidence);
+        OverviewTargetEvidence latestWait = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, waitWindowEnd.AddHours(-1), waitWindowEnd, true),
+            CancellationToken.None)).Evidence);
+        OverviewResource directLock = Assert.Single(directWait.Resources,
+            resource => resource.Label == "Wait · LCK_M_S");
+        OverviewResource cachedLock = Assert.Single(latestWait.Resources,
+            resource => resource.Label == "Wait · Lock");
+        Assert.Equal(1.2, directLock.Value);
+        Assert.Equal(directLock.Value, cachedLock.Value);
 
         await SeedWaitRunAsync(database.DataSource, target, Guid.NewGuid(),
             waitAt, 30, 1800, true);
@@ -539,6 +552,19 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Equal("current", tempComplete.Sources["tempDb"].State);
         Assert.Equal(50, Assert.Single(tempComplete.Resources,
             resource => resource.Label == "TempDB used").Value);
+        DateTimeOffset validTempWindowEnd = DateTimeOffset.UtcNow;
+        OverviewTargetEvidence directValidTemp = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, validTempWindowEnd.AddHours(-1), validTempWindowEnd),
+            CancellationToken.None)).Evidence);
+        OverviewTargetEvidence latestValidTemp = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, validTempWindowEnd.AddHours(-1), validTempWindowEnd, true),
+            CancellationToken.None)).Evidence);
+        OverviewResource directValidUsage = Assert.Single(directValidTemp.Resources,
+            resource => resource.Label == "TempDB used");
+        OverviewResource cachedValidUsage = Assert.Single(latestValidTemp.Resources,
+            resource => resource.Label == "TempDB used");
+        Assert.Equal(50, directValidUsage.Value);
+        Assert.Equal(directValidUsage.Value, cachedValidUsage.Value);
 
         await SeedTempDbRunAsync(database.DataSource, target, Guid.NewGuid(),
             DateTimeOffset.UtcNow, 2, 1500, true);
@@ -563,6 +589,20 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Null(Assert.Single(tempInvalid.Resources,
             resource => resource.Label == "TempDB used").Value);
         Assert.Contains("TempDB evidence degraded", tempInvalid.Gaps);
+        DateTimeOffset tempWindowEnd = DateTimeOffset.UtcNow;
+        OverviewTargetEvidence directInvalidTemp = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, tempWindowEnd.AddHours(-1), tempWindowEnd),
+            CancellationToken.None)).Evidence);
+        OverviewTargetEvidence latestInvalidTemp = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, tempWindowEnd.AddHours(-1), tempWindowEnd, true),
+            CancellationToken.None)).Evidence);
+        OverviewResource cachedTemp = Assert.Single(latestInvalidTemp.Resources,
+            resource => resource.Label == "TempDB used");
+        Assert.Null(cachedTemp.Value);
+        Assert.Equal("degraded", cachedTemp.State);
+        Assert.DoesNotContain(directInvalidTemp.Resources,
+            resource => resource.Label == "TempDB used");
+        Assert.Contains("TempDB unavailable", directInvalidTemp.Gaps);
 
         await SeedBackupRunAsync(database.DataSource, target, Guid.NewGuid(),
             DateTimeOffset.UtcNow, 0, false, false);
@@ -620,6 +660,21 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             resource => resource.Label == "Backup evidence").Value);
         Assert.DoesNotContain(unknownBackupTime.Issues, issue => issue.Title == "Damaged backup");
         Assert.Contains("Backup age unavailable: source timezone unknown", unknownBackupTime.Gaps);
+        DateTimeOffset backupWindowEnd = DateTimeOffset.UtcNow;
+        OverviewTargetEvidence directBackup = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, backupWindowEnd.AddHours(-1), backupWindowEnd),
+            CancellationToken.None)).Evidence);
+        OverviewTargetEvidence latestBackup = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, backupWindowEnd.AddHours(-1), backupWindowEnd, true),
+            CancellationToken.None)).Evidence);
+        OverviewResource directBackupCount = Assert.Single(directBackup.Resources,
+            resource => resource.Label == "Backup evidence");
+        OverviewResource cachedBackupCount = Assert.Single(latestBackup.Resources,
+            resource => resource.Label == "Backup evidence");
+        Assert.Equal(1, directBackupCount.Value);
+        Assert.Equal(directBackupCount.Value, cachedBackupCount.Value);
+        Assert.Contains("Backup age unavailable: source timezone unknown", directBackup.Gaps);
+        Assert.Contains("Backup age unavailable: source timezone unknown", latestBackup.Gaps);
 
         await SeedAgRunAsync(database.DataSource, target, Guid.NewGuid(),
             DateTimeOffset.UtcNow, 3, 2, 1, false);
@@ -691,6 +746,19 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             resource => resource.Label == "Availability replicas").Value);
         Assert.DoesNotContain(noAg.Issues,
             issue => issue.Title == "Availability replica disconnected");
+        DateTimeOffset agWindowEnd = DateTimeOffset.UtcNow;
+        OverviewTargetEvidence directAg = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, agWindowEnd.AddHours(-1), agWindowEnd),
+            CancellationToken.None)).Evidence);
+        OverviewTargetEvidence latestAg = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, agWindowEnd.AddHours(-1), agWindowEnd, true),
+            CancellationToken.None)).Evidence);
+        OverviewResource directReplicaCount = Assert.Single(directAg.Resources,
+            resource => resource.Label == "Availability replicas");
+        OverviewResource cachedReplicaCount = Assert.Single(latestAg.Resources,
+            resource => resource.Label == "Availability replicas");
+        Assert.Equal(0, directReplicaCount.Value);
+        Assert.Equal(directReplicaCount.Value, cachedReplicaCount.Value);
     }
 
     [Fact]
