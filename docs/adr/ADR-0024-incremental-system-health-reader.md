@@ -90,9 +90,12 @@ replays, reconnects, and the first scan of a new source epoch.
 4. Test multiple events at one offset, a page ending inside a buffer,
    non-deadlock-only buffers, duplicate commit, stale lease, target revision
    change, session restart, deleted bookmark file, oversized buffer, and
-   cancellation between read and commit. Run the SQL Server lab test because
-   mocked rows cannot establish the XE function's ordering and rollover
-   behavior.
+   cancellation between read and commit. Run the read-only
+   [bookmark probe](../../tools/lab/verify-system-health-bookmark.ps1) with the
+   collector login on SQL Server 2019, 2022, and 2025. It checks a retained
+   shared-offset buffer; separate controlled lab tests must cover rollover and
+   restart. Mocked rows cannot establish the XE function's ordering and
+   rollover behavior.
 
 Until this contract is implemented and qualified, the version-1 collector
 continues to use its bounded full-file read. The dashboard must not describe

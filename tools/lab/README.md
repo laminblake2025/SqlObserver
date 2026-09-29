@@ -1,5 +1,23 @@
 # Disposable SQL Server workload
 
+`verify-system-health-bookmark.ps1` is a read-only qualification probe for the
+incremental XE contract in [ADR-0024](../../docs/adr/ADR-0024-incremental-system-health-reader.md).
+It uses Windows authentication and validated TLS, discovers the running
+`system_health` event-file path from SQL Server, and compares a full metadata
+read with one resumed after a buffer that contains multiple events. It returns
+aggregate counts only. At least five retained buffers, including a shared-offset
+buffer with a stable successor, are needed for a conclusive result. Run it on
+each supported SQL Server major version with the intended least-privilege
+collector login before enabling a version-2 reader:
+
+```powershell
+pwsh ./tools/lab/verify-system-health-bookmark.ps1 -SqlInstance 'HOST\INSTANCE'
+```
+
+This checks one retained-file snapshot; it does not simulate file rollover,
+session restart, or a buffer growing during a read. Those need separate lab
+cases before the production bookmark can advance across a source epoch.
+
 `verify-sql-volume-capacity-local.ps1` performs a bounded, read-only probe of
 `sys.dm_os_volume_stats` for files visible on a SQL Server 2019/2022/2025
 instance. It prints aggregate coverage and the minimum free capacity across
