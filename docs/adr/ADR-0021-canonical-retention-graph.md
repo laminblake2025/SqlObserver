@@ -342,6 +342,10 @@ Migration 0199 adds an independent route for the three wait readers. It starts
 on the original implementations and only a migrator can enable partitioned
 reads after the writer-fenced fleet parity proof. The original functions stay
 private and available for rollback.
+Migration 0200 adds private partitioned-run versions of the M5 evidence and
+collector-health views. The health view feeds alerting and other readers, so
+its populated output and privileges are checked before its public definition
+or dependent alerting queries change.
 
 ## Implementation gates
 

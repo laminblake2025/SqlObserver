@@ -21,6 +21,63 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     public M5ActivityPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
 
     [Fact]
+    public async Task PartitionedRunShadowViewsMatchPopulatedActivityAndCollectorHealth()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset at = (await ReadRepositoryClockAsync(database)).AddSeconds(-10);
+        MonitoredInstanceId target = new(Guid.NewGuid());
+        Guid core = Guid.NewGuid(), activity = Guid.NewGuid();
+        await SeedTargetAndRunAsync(database, target, core, "engine.core", at);
+        await SeedTargetAndRunAsync(database, target, activity, "activity.sessions", at);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,false);", connection))
+        {
+            scope.Parameters.AddWithValue("target", target.Value);
+            await scope.ExecuteScalarAsync();
+        }
+        async Task<List<string>> Read(string name)
+        {
+            await using var command = new NpgsqlCommand(
+                $"SELECT (to_jsonb(row)-'repository_time')::text FROM reporting.{name} AS row WHERE instance_id=@target ORDER BY collector_id,run_id;",
+                connection);
+            command.Parameters.AddWithValue("target", target.Value);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+        List<string> evidence = await Read("activity_snapshot_evidence");
+        Assert.Equal(evidence, await Read("activity_snapshot_evidence_v2_shadow"));
+        using (JsonDocument row = JsonDocument.Parse(Assert.Single(evidence)))
+            Assert.Equal(activity, row.RootElement.GetProperty("run_id").GetGuid());
+        List<string> health = await Read("collector_health_projection");
+        Assert.Equal(health, await Read("collector_health_projection_v2_shadow"));
+        Assert.Contains(health, value =>
+        {
+            using JsonDocument row = JsonDocument.Parse(value);
+            return row.RootElement.GetProperty("run_id").ValueKind == JsonValueKind.String
+                && row.RootElement.GetProperty("run_id").GetGuid() == core;
+        });
+        await using var grants = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_class AS relation
+            JOIN pg_namespace AS n ON n.oid=relation.relnamespace
+            WHERE n.nspname='reporting'
+              AND relation.relname IN ('activity_snapshot_evidence_v2_shadow',
+                                       'collector_health_projection_v2_shadow')
+              AND relation.relkind='v'
+              AND has_table_privilege('sqlobserver_migrator',relation.oid,'SELECT')
+              AND NOT has_table_privilege('sqlobserver_server',relation.oid,'SELECT')
+              AND NOT has_table_privilege('sqlobserver_collector',relation.oid,'SELECT')
+              AND NOT has_table_privilege('sqlobserver_auditor',relation.oid,'SELECT');
+            """, connection);
+        Assert.Equal(2L, await grants.ExecuteScalarAsync());
+    }
+
+    [Fact]
     public async Task PartitionedRunShadowWaitReadersMatchBaselinesHistoryAndTrend()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
