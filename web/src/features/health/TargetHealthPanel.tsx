@@ -324,6 +324,8 @@ function DatabaseHealthCard({ database }: { readonly database: DatabaseHealthSum
         <HealthFact label="Access" value={formatToken(database.userAccess)} />
         <HealthFact label="Read only" value={database.isReadOnly ? "Yes" : "No"} />
         <HealthFact label="Compatibility" value={String(database.compatibilityLevel)} />
+        <HealthFact label="Log reuse wait" value={database.logReuseWaitDescription === null
+          ? "Not collected" : formatToken(database.logReuseWaitDescription)} />
         <HealthFact label="Observed" value={formatTimestamp(database.observedAtUtc)} />
       </dl>
     </article>

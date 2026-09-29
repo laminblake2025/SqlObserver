@@ -191,6 +191,7 @@ export interface DatabaseHealthSummary {
   readonly userAccess: DatabaseUserAccess;
   readonly isReadOnly: boolean;
   readonly compatibilityLevel: number;
+  readonly logReuseWaitDescription: string | null;
   readonly observedAtUtc: string;
   readonly collector: CollectorHealthSummary;
 }
