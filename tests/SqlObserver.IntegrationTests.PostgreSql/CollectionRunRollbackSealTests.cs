@@ -224,6 +224,65 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
             Assert.True(row.IsDBNull(4));
         }
 
+        Guid queryRun = Guid.NewGuid();
+        await using (NpgsqlTransaction seed = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, seed);
+            await using var insert = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                SELECT telemetry.insert_collection_run_runtime(
+                  @run,@target,'queries.performance',1,1,2,1,
+                  'test/m7-sealed',@owner,1,decode(repeat('00',32),'hex'),
+                  statement_timestamp(),statement_timestamp());
+                """, admin, seed);
+            insert.Parameters.AddWithValue("run", queryRun);
+            insert.Parameters.AddWithValue("target", target);
+            insert.Parameters.AddWithValue("owner", Guid.NewGuid());
+            await insert.ExecuteNonQueryAsync();
+            await seed.CommitAsync();
+        }
+        await using (var header = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_run
+              (collection_run_id,instance_id,target_revision,window_start,
+               window_end,source,source_state,coverage,freshness,truncated,
+               completion_digest)
+            VALUES(@run,@target,2,statement_timestamp()-interval '1 hour',
+                   statement_timestamp(),'query_store','read_write',
+                   'complete',true,false,decode(repeat('00',32),'hex'));
+            """, admin))
+        {
+            header.Parameters.AddWithValue("run", queryRun);
+            header.Parameters.AddWithValue("target", target);
+            await header.ExecuteNonQueryAsync();
+        }
+        LeaseAcquisitionResult retentionAcquired = await leases.AcquireAsync(
+            new AcquireWorkerLeaseRequest(
+                new WorkerLeaseKey("retention/maintenance"),
+                new WorkerExecutionId(Guid.NewGuid()),
+                new WorkerLeaseDuration(TimeSpan.FromMinutes(1)),
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(10))),
+            CancellationToken.None);
+        Assert.Equal(LeaseAcquisitionStatus.Acquired, retentionAcquired.Status);
+        WorkerLeaseIdentity retentionLease = Assert.IsType<WorkerLease>(retentionAcquired.Lease).Identity;
+        await using (NpgsqlTransaction retention = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, retention);
+            await using var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,true);",
+                admin, retention);
+            scope.Parameters.AddWithValue("target", target);
+            await scope.ExecuteScalarAsync();
+            await using var retire = new NpgsqlCommand("""
+                SELECT system.retire_query_performance_run(@target,@run,@owner,@fence,4096);
+                """, admin, retention);
+            retire.Parameters.AddWithValue("target", target);
+            retire.Parameters.AddWithValue("run", queryRun);
+            retire.Parameters.AddWithValue("owner", retentionLease.Owner.Value);
+            retire.Parameters.AddWithValue("fence", retentionLease.FencingToken.Value);
+            Assert.Equal("held", await retire.ExecuteScalarAsync());
+            await retention.RollbackAsync();
+        }
+
         await using (NpgsqlTransaction rollback = await admin.BeginTransactionAsync())
         {
             await SetMigratorAsync(admin, rollback);
