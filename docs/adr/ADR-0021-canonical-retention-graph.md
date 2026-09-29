@@ -330,6 +330,10 @@ partitioned successor. A populated PostgreSQL test compares both pages and
 cursor behavior with the public readers. The shadow functions are executable
 only by the migrator; routes remain on the original readers. The writer must
 remain dual-written until all active consumers move.
+Migration 0197 wraps the four public M5 readers in a shared route that starts
+on the original implementations. The migrator can enable partitioned reads
+only after the writer-fenced fleet parity proof succeeds. The original readers
+remain private rollback targets; no route changes when the migration installs.
 
 ## Implementation gates
 

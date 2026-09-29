@@ -80,11 +80,11 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.get_buffer_manager_ple_trend/3
             function reporting.get_buffer_node_ple_trend/4
             function reporting.get_latest_m9_run/2
-            function reporting.list_activity_requests/6
-            function reporting.list_activity_sessions/5
-            function reporting.list_blocking_history/10
+            function reporting.list_activity_requests_legacy/6
+            function reporting.list_activity_sessions_legacy/5
+            function reporting.list_blocking_history_legacy/10
             function reporting.list_buffer_node_ple_nodes/3
-            function reporting.list_current_blocking/8
+            function reporting.list_current_blocking_legacy/8
             function reporting.list_server_wait_category_trend/3
             function reporting.list_server_wait_history/7
             function reporting.list_server_wait_summary/6

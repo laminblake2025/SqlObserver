@@ -91,15 +91,104 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             JOIN pg_namespace AS n ON n.oid=p.pronamespace
             WHERE n.nspname='reporting'
               AND p.proname IN ('list_activity_sessions_v2_shadow',
+                                'list_activity_sessions_legacy',
                                 'list_activity_requests_v2_shadow',
+                                'list_activity_requests_legacy',
                                 'list_current_blocking_v2_shadow',
-                                'list_blocking_history_v2_shadow')
+                                'list_current_blocking_legacy',
+                                'list_blocking_history_v2_shadow',
+                                'list_blocking_history_legacy')
               AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
               AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
               AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
               AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
             """, connection);
-        Assert.Equal(4L, await grants.ExecuteScalarAsync());
+        Assert.Equal(8L, await grants.ExecuteScalarAsync());
+
+        await using (var premature = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_activity_read_route(true,10000);", connection))
+        {
+            PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteScalarAsync());
+            Assert.Equal("55000", rejected.SqlState);
+        }
+        await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
+        {
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,true);", connection, backfill))
+            {
+                scope.Parameters.AddWithValue("target", target.Value);
+                await scope.ExecuteScalarAsync();
+            }
+            foreach (string function in new[]
+                { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+            {
+                await using var copy = new NpgsqlCommand(
+                    $"SELECT complete FROM control.{function}(@target,10);", connection, backfill);
+                copy.Parameters.AddWithValue("target", target.Value);
+                Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            }
+            DateTimeOffset day = new(at.UtcDateTime.Date, TimeSpan.Zero);
+            foreach (string collector in new[]
+                { "activity.sessions", "activity.requests", "blocking.current" })
+            {
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,@collector,@day,@end,10);
+                    """, connection, backfill);
+                certificate.Parameters.AddWithValue("target", target.Value);
+                certificate.Parameters.AddWithValue("collector", collector);
+                certificate.Parameters.AddWithValue("day", day);
+                certificate.Parameters.AddWithValue("end", day.AddDays(1));
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            }
+            await backfill.CommitAsync();
+        }
+        await using (var activate = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_activity_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        await Compare("list_activity_sessions", "@target,NULL::uuid,NULL::bigint,NULL::integer,1",
+            "session_id", 51, true);
+        await Compare("list_activity_requests", "@target,NULL::uuid,NULL::bigint,NULL::integer,NULL::integer,1",
+            "session_id", 51, true);
+        await Compare("list_current_blocking", "@target,NULL::uuid,NULL::bigint,NULL::integer,NULL::text,NULL::integer,NULL::text,1",
+            "blocked_session_id", 51, true);
+        await Compare("list_blocking_history", "@target,@at - interval '1 minute',@at + interval '1 minute',NULL::timestamptz,NULL::uuid,NULL::integer,NULL::text,NULL::integer,NULL::text,1",
+            "blocked_session_id", 52, true);
+        await using (NpgsqlDataSource server = database.CreateServerDataSource())
+        {
+            var projections = new PostgreSqlActivityProjectionPort(server);
+            ActivitySessionPage sessionPage = Assert.IsType<ActivitySessionPage>(
+                await projections.ListSessionsAsync(
+                    new ListActivitySessionsRepositoryRequest(target, 1, null, Timeout),
+                    CancellationToken.None));
+            Assert.Equal(sessions, sessionPage.Evidence?.RunId.Value);
+            Assert.NotNull(sessionPage.NextCursor);
+            ActivityRequestPage requestPage = Assert.IsType<ActivityRequestPage>(
+                await projections.ListRequestsAsync(
+                    new ListActivityRequestsRepositoryRequest(target, 1, null, Timeout),
+                    CancellationToken.None));
+            Assert.Equal(requests, requestPage.Evidence?.RunId.Value);
+            Assert.NotNull(requestPage.NextCursor);
+            CurrentBlockingPage blockingPage = Assert.IsType<CurrentBlockingPage>(
+                await projections.ListCurrentBlockingAsync(
+                    new ListCurrentBlockingRepositoryRequest(target, 1, null, Timeout),
+                    CancellationToken.None));
+            Assert.Equal(blocking, blockingPage.Evidence?.RunId.Value);
+            Assert.NotNull(blockingPage.NextCursor);
+            BlockingHistoryPage historyPage = Assert.IsType<BlockingHistoryPage>(
+                await projections.ListBlockingHistoryAsync(
+                    new ListBlockingHistoryRepositoryRequest(target, at.AddMinutes(-1),
+                        at.AddMinutes(1), 1, null, Timeout), CancellationToken.None));
+            Assert.Single(historyPage.Items);
+            Assert.NotNull(historyPage.NextCursor);
+        }
+        await using (var rollback = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_activity_read_route(false,10000);", connection))
+            Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        await using (var route = new NpgsqlCommand(
+            "SELECT use_v2 FROM system.collection_run_v2_activity_read_route;", connection))
+            Assert.False((bool)(await route.ExecuteScalarAsync())!);
     }
 
     [Fact]
