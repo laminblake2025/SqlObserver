@@ -461,7 +461,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                     CreateDatabasePayload(inventory, 5)), CancellationToken.None)).Status);
         await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(runLease, DefaultTimeout),
             CancellationToken.None);
-        await ActivateInventoryV2Async(database, leases);
+        WorkerExecutionId v2Worker = await ActivateInventoryV2Async(database, leases);
 
         var newTarget = new MonitoredInstanceId(Guid.NewGuid());
         await InsertActiveTargetAsync(database, newTarget, revision: 1);
@@ -479,6 +479,25 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
         Assert.True(reader.GetBoolean(0));
         Assert.Equal(2, reader.GetInt32(1));
         Assert.Equal(2, reader.GetInt32(2));
+
+        await using (var isolateInventory = database.DataSource.CreateCommand("""
+            SET ROLE sqlobserver_migrator;
+            UPDATE control.collector_schedule
+            SET next_due_at=clock_timestamp()+interval '1 day'
+            WHERE collector_id<>'database.inventory';
+            """))
+            await isolateInventory.ExecuteNonQueryAsync();
+        Assert.Null(await runtime.ClaimDueAsync(
+            new ClaimDueCollectorWorkRequest(new WorkerExecutionId(Guid.NewGuid()),
+                new WorkerLeaseDuration(TimeSpan.FromSeconds(30)), DefaultTimeout),
+            CancellationToken.None));
+        CollectorClaimedWork v2Claim = Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(
+                new ClaimDueCollectorWorkRequest(v2Worker,
+                    new WorkerLeaseDuration(TimeSpan.FromSeconds(30)), DefaultTimeout),
+                CancellationToken.None));
+        Assert.Equal("database.inventory", v2Claim.Work.CollectorId.Value);
+        Assert.Equal(2, v2Claim.Work.CollectorManifestVersion);
     }
 
     [Fact]
@@ -2027,7 +2046,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             leases,
             new WorkerLeaseKey($"collector/run/{work.CollectorId.Value}/{work.TargetId.Value:N}"));
 
-    private static async Task ActivateInventoryV2Async(
+    private static async Task<WorkerExecutionId> ActivateInventoryV2Async(
         RepositoryTestDatabase database,
         PostgreSqlWorkerLeasePort leases)
     {
@@ -2053,6 +2072,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             activate.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
             activate.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
             await activate.ExecuteNonQueryAsync();
+            return lease.Owner;
         }
         finally
         {
