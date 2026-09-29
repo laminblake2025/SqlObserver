@@ -10,6 +10,8 @@ namespace SqlObserver.Infrastructure.PostgreSql;
 public sealed class PostgreSqlOverviewLatestStatusPort(NpgsqlDataSource dataSource)
     : IOverviewLatestStatusRepositoryPort
 {
+    private static readonly TimeSpan MaximumAge = TimeSpan.FromMinutes(2);
+    private const string ExpiredGap = "Latest status projection is stale";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -18,9 +20,12 @@ public sealed class PostgreSqlOverviewLatestStatusPort(NpgsqlDataSource dataSour
     };
 
     public async Task<OverviewLatestStatus?> ReadAsync(
-        MonitoredInstanceId targetId, long targetRevision, CancellationToken cancellationToken)
+        MonitoredInstanceId targetId, long targetRevision, DateTimeOffset cutoffUtc,
+        CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(targetRevision);
+        if (cutoffUtc.Offset != TimeSpan.Zero)
+            throw new ArgumentException("Overview cutoff must be UTC.", nameof(cutoffUtc));
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var scope = new NpgsqlCommand(
@@ -76,12 +81,68 @@ public sealed class PostgreSqlOverviewLatestStatusPort(NpgsqlDataSource dataSour
                                x.Value is { } value && !double.IsFinite(value)) ||
             gaps.Any(x => string.IsNullOrWhiteSpace(x) || x.Length > 256))
             throw new InvalidDataException("Overview latest status violates its target or payload contract.");
-        return new OverviewLatestStatus(
+        var status = new OverviewLatestStatus(
             targetId.Value, rowRevision, generation, publishedAt, collectionState, lastSuccessAt,
             new OverviewValue(alertCount, alertState, alertSource.ObservedAtUtc),
             new OverviewValue(blockedCount, blockedState, blockingSource.ObservedAtUtc),
             sources, issues, resources, gaps);
+        return ApplyFreshness(status, cutoffUtc);
     }
+
+    private static OverviewLatestStatus ApplyFreshness(OverviewLatestStatus status, DateTimeOffset cutoffUtc)
+    {
+        bool publicationExpired = cutoffUtc - status.PublishedAtUtc > MaximumAge;
+        bool alertsExpired = publicationExpired || SourceExpired(status.Sources["alerts"], cutoffUtc);
+        bool blockingExpired = publicationExpired || SourceExpired(status.Sources["blocking"], cutoffUtc);
+        if (!publicationExpired && !alertsExpired && !blockingExpired &&
+            IsActionable(status.ActiveAlerts.State) && IsActionable(status.BlockedSessions.State))
+            return status;
+
+        Dictionary<string, OverviewLatestSource> sources = status.Sources.ToDictionary(
+            pair => pair.Key,
+            pair => (publicationExpired ||
+                     (pair.Key == "alerts" && alertsExpired) ||
+                     (pair.Key == "blocking" && blockingExpired))
+                ? pair.Value with { State = StaleIfCurrent(pair.Value.State) }
+                : pair.Value,
+            StringComparer.Ordinal);
+        string alertState = sources["alerts"].State;
+        string blockingState = sources["blocking"].State;
+        IEnumerable<string> freshnessGaps = new[]
+        {
+            publicationExpired ? ExpiredGap : null,
+            alertsExpired || alertState == "stale" ? "Active alert evidence stale" : null,
+            blockingExpired || blockingState == "stale" ? "Current blocking evidence stale" : null,
+        }.OfType<string>();
+        string[] gaps = freshnessGaps.Concat(status.Gaps)
+            .Distinct(StringComparer.Ordinal).Take(32).ToArray();
+        return status with
+        {
+            CollectionState = publicationExpired
+                ? StaleIfCurrent(status.CollectionState) : status.CollectionState,
+            ActiveAlerts = status.ActiveAlerts with { State = alertState },
+            BlockedSessions = status.BlockedSessions with { State = blockingState },
+            Sources = sources,
+            Issues = status.Issues.Where(issue =>
+                (issue.Destination != "alerts" || IsActionable(alertState)) &&
+                (issue.Destination != "activity" || IsActionable(blockingState)) &&
+                !publicationExpired).ToArray(),
+            Resources = publicationExpired
+                ? status.Resources.Select(resource => resource with
+                    { State = StaleIfCurrent(resource.State) }).ToArray()
+                : status.Resources,
+            Gaps = gaps,
+        };
+    }
+
+    private static bool SourceExpired(OverviewLatestSource source, DateTimeOffset cutoffUtc) =>
+        source.State is "current" or "partial" &&
+        (source.ObservedAtUtc is null || cutoffUtc - source.ObservedAtUtc.Value > MaximumAge);
+
+    private static string StaleIfCurrent(string state) =>
+        state is "current" or "partial" or "degraded" ? "stale" : state;
+
+    private static bool IsActionable(string state) => state is "current" or "partial";
 
     private static DateTimeOffset Utc(DateTime value) =>
         new(DateTime.SpecifyKind(value, DateTimeKind.Unspecified), TimeSpan.Zero);

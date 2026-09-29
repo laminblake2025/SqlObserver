@@ -35,7 +35,8 @@ public sealed record OverviewLatestStatus(
 public interface IOverviewLatestStatusRepositoryPort
 {
     Task<OverviewLatestStatus?> ReadAsync(
-        MonitoredInstanceId targetId, long targetRevision, CancellationToken cancellationToken);
+        MonitoredInstanceId targetId, long targetRevision, DateTimeOffset cutoffUtc,
+        CancellationToken cancellationToken);
 }
 
 public sealed record OverviewRefreshTarget(MonitoredInstanceId TargetId, long TargetRevision);

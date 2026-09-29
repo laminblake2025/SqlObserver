@@ -123,7 +123,7 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         var port = new PostgreSqlOverviewLatestStatusPort(server);
         OverviewLatestStatus status = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
-            new MonitoredInstanceId(target), 1, CancellationToken.None));
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
         Assert.Equal(1, status.Generation);
         Assert.Equal("pending", status.CollectionState);
         Assert.Null(status.ActiveAlerts.Value);
@@ -153,7 +153,7 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
             CancellationToken.None));
         OverviewLatestStatus active = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
-            new MonitoredInstanceId(target), 1, CancellationToken.None));
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
         Assert.Equal(2, active.Generation);
         Assert.Equal(1, active.ActiveAlerts.Value);
         Assert.Equal("current", active.ActiveAlerts.State);
@@ -200,7 +200,7 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
             CancellationToken.None));
         OverviewLatestStatus blocked = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
-            new MonitoredInstanceId(target), 1, CancellationToken.None));
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
         Assert.Equal(3, blocked.Generation);
         Assert.Equal(1, blocked.BlockedSessions.Value);
         Assert.Equal("current", blocked.BlockedSessions.State);
@@ -288,13 +288,68 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
 
         var latest = new PostgreSqlOverviewLatestStatusPort(server);
         OverviewLatestStatus status = Assert.IsType<OverviewLatestStatus>(
-            await latest.ReadAsync(new MonitoredInstanceId(target), 1, CancellationToken.None));
+            await latest.ReadAsync(new MonitoredInstanceId(target), 1,
+                DateTimeOffset.UtcNow, CancellationToken.None));
         Assert.Equal(target, status.TargetId);
         Assert.Equal(2, status.Generation);
         Assert.Equal(3, status.ActiveAlerts.Value);
         Assert.Equal(2, status.BlockedSessions.Value);
         Assert.Equal("current", status.Sources["alerts"].State);
-        Assert.Null(await latest.ReadAsync(new MonitoredInstanceId(target), 2, CancellationToken.None));
+        Assert.Equal(2, status.Issues.Count);
+        Assert.Null(await latest.ReadAsync(new MonitoredInstanceId(target), 2,
+            DateTimeOffset.UtcNow, CancellationToken.None));
+
+        OverviewLatestStatus expired = Assert.IsType<OverviewLatestStatus>(
+            await latest.ReadAsync(new MonitoredInstanceId(target), 1,
+                status.PublishedAtUtc.AddMinutes(3), CancellationToken.None));
+        Assert.Equal(3, expired.ActiveAlerts.Value);
+        Assert.Equal(2, expired.BlockedSessions.Value);
+        Assert.Equal("stale", expired.CollectionState);
+        Assert.Equal("stale", expired.ActiveAlerts.State);
+        Assert.Equal("stale", expired.BlockedSessions.State);
+        Assert.Equal("stale", expired.Sources["health"].State);
+        Assert.Empty(expired.Issues);
+        Assert.Contains("Latest status projection is stale", expired.Gaps);
+
+        await using (var ageSource = database.DataSource.CreateCommand("""
+            UPDATE reporting.overview_latest_status
+            SET source_states = jsonb_set(source_states,
+                '{alerts,observedAtUtc}',
+                to_jsonb(clock_timestamp() - interval '3 minutes'))
+            WHERE instance_id = @target;
+            """))
+        {
+            ageSource.Parameters.AddWithValue("target", target);
+            await ageSource.ExecuteNonQueryAsync();
+        }
+        OverviewLatestStatus staleAlert = Assert.IsType<OverviewLatestStatus>(
+            await latest.ReadAsync(new MonitoredInstanceId(target), 1,
+                DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("current", staleAlert.CollectionState);
+        Assert.Equal("stale", staleAlert.ActiveAlerts.State);
+        Assert.Equal("current", staleAlert.BlockedSessions.State);
+        Assert.Single(staleAlert.Issues);
+        Assert.Equal("activity", staleAlert.Issues[0].Destination);
+        Assert.Contains("Active alert evidence stale", staleAlert.Gaps);
+
+        await using (var storedStale = database.DataSource.CreateCommand("""
+            UPDATE reporting.overview_latest_status
+            SET active_alert_state = 'stale',
+                source_states = jsonb_set(jsonb_set(source_states,
+                    '{alerts,state}', '"stale"'::jsonb),
+                    '{alerts,observedAtUtc}', to_jsonb(clock_timestamp()))
+            WHERE instance_id = @target;
+            """))
+        {
+            storedStale.Parameters.AddWithValue("target", target);
+            await storedStale.ExecuteNonQueryAsync();
+        }
+        OverviewLatestStatus stored = Assert.IsType<OverviewLatestStatus>(
+            await latest.ReadAsync(new MonitoredInstanceId(target), 1,
+                DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("stale", stored.ActiveAlerts.State);
+        Assert.Single(stored.Issues);
+        Assert.Equal("activity", stored.Issues[0].Destination);
 
         await using (var corrupt = database.DataSource.CreateCommand("""
             UPDATE reporting.overview_latest_status
@@ -310,7 +365,8 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             await corrupt.ExecuteNonQueryAsync();
         }
         await Assert.ThrowsAsync<InvalidDataException>(() =>
-            latest.ReadAsync(new MonitoredInstanceId(target), 1, CancellationToken.None));
+            latest.ReadAsync(new MonitoredInstanceId(target), 1,
+                DateTimeOffset.UtcNow, CancellationToken.None));
     }
 
     private static async Task<bool> PublishAsync(
@@ -323,8 +379,18 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             SELECT reporting.publish_overview_latest_status(
                 @target,1,@generation,'current',NULL::timestamptz,
                 3,'current',2,'current',
-                '{"schemaVersion":1,"health":{"state":"current"},"alerts":{"state":"current"},"blocking":{"state":"current"}}'::jsonb,
-                '[]'::jsonb,'[]'::jsonb,'[]'::jsonb,@owner,@token);
+                jsonb_build_object('schemaVersion',1,
+                    'health',jsonb_build_object('state','current','observedAtUtc',clock_timestamp()),
+                    'alerts',jsonb_build_object('state','current','observedAtUtc',clock_timestamp()),
+                    'blocking',jsonb_build_object('state','current','observedAtUtc',clock_timestamp())),
+                jsonb_build_array(
+                    jsonb_build_object('targetId',@target,'server','Overview boundary test',
+                        'title','Active alert','detail','Alert detail',
+                        'destination','alerts','priority',1,'observedAtUtc',clock_timestamp()),
+                    jsonb_build_object('targetId',@target,'server','Overview boundary test',
+                        'title','Sessions blocked','detail','Blocking detail',
+                        'destination','activity','priority',1,'observedAtUtc',clock_timestamp())),
+                '[]'::jsonb,'[]'::jsonb,@owner,@token);
             """, connection, transaction);
         command.Parameters.AddWithValue("target", target);
         command.Parameters.AddWithValue("generation", generation);
