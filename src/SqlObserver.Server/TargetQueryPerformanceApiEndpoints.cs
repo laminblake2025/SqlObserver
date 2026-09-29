@@ -34,6 +34,7 @@ public static class TargetQueryPerformanceApiEndpoints
     private static async Task<IResult> TopWaitsAsync(HttpContext context, Guid instanceId,
         IQueryStoreWaitRankingQueryService service, WindowsGroupRoleResolver roles,
         string? fromUtc = null, string? toUtc = null, int limit = 25,
+        int? category = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -41,7 +42,7 @@ public static class TargetQueryPerformanceApiEndpoints
             DateTimeOffset to = Parse(toUtc) ?? DateTimeOffset.UtcNow;
             DateTimeOffset from = Parse(fromUtc) ?? to.AddHours(-24);
             var request = new QueryStoreWaitRankingRequest(new MonitoredInstanceId(instanceId),
-                from, to, limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+                from, to, limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), category);
             QueryStoreWaitRankingResult result = await service.ReadAsync(
                 roles.Resolve(context.User), request, cancellationToken);
             return Results.Ok(new
@@ -50,6 +51,7 @@ public static class TargetQueryPerformanceApiEndpoints
                 fromUtc = from,
                 toUtc = to,
                 semantics = "query_store_group_wait_delta",
+                category = result.Category,
                 coverage = result.Items.Count == 0 ? "no_comparable_groups" : "observed_groups_only",
                 items = result.Items.Select(static item => new
                 {

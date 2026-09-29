@@ -8,15 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend, getQueryStoreTopWaits, getQueryStorePlanRegressions } from "./queryPerformanceApi";
 import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
-
-const waitCategoryNames: Record<number, string> = {
-  0: "Unknown", 1: "CPU", 2: "Worker thread", 3: "Lock", 4: "Latch",
-  5: "Buffer latch", 6: "Buffer I/O", 7: "Compilation", 8: "SQL CLR",
-  9: "Mirroring", 10: "Transaction", 11: "Idle", 12: "Preemptive",
-  13: "Service Broker", 14: "Transaction log I/O", 15: "Network I/O",
-  16: "Parallelism", 17: "Memory", 18: "User wait", 19: "Tracing",
-  20: "Full-text search",
-};
+import { queryStoreWaitCategoryNames as waitCategoryNames } from "./queryStoreWaitCategories";
 
 export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, refresh, canReadText, initialQuerySelection }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;

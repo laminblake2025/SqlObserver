@@ -23,7 +23,7 @@ async function withResponse(body, action) {
 }
 
 test("wait ranking retains exact large totals and missing-group coverage", async () => {
-  const body = { targetId, fromUtc, toUtc, semantics: "query_store_group_wait_delta",
+  const body = { targetId, fromUtc, toUtc, category: null, semantics: "query_store_group_wait_delta",
     coverage: "observed_groups_only", items: [row] };
   const result = await withResponse(body, () => getQueryStoreTopWaits(targetId,
     fromUtc, toUtc, new AbortController().signal));
@@ -33,11 +33,21 @@ test("wait ranking retains exact large totals and missing-group coverage", async
 });
 
 test("wait ranking rejects a false complete or out-of-order response", async () => {
-  const base = { targetId, fromUtc, toUtc, semantics: "query_store_group_wait_delta",
+  const base = { targetId, fromUtc, toUtc, category: null, semantics: "query_store_group_wait_delta",
     coverage: "observed_groups_only" };
   await assert.rejects(withResponse({ ...base, coverage: "no_comparable_groups", items: [row] },
     () => getQueryStoreTopWaits(targetId, fromUtc, toUtc, new AbortController().signal)));
   await assert.rejects(withResponse({ ...base, items: [row, { ...row,
     planFingerprint: "c".repeat(64), waitMilliseconds: "9007199254740994" }] },
     () => getQueryStoreTopWaits(targetId, fromUtc, toUtc, new AbortController().signal)));
+});
+
+test("category-scoped ranking keeps its category and rejects a mismatched response", async () => {
+  const base = { targetId, fromUtc, toUtc, category: 3,
+    semantics: "query_store_group_wait_delta", coverage: "observed_groups_only", items: [row] };
+  const result = await withResponse(base, () => getQueryStoreTopWaits(targetId,
+    fromUtc, toUtc, new AbortController().signal, 3));
+  assert.equal(result.category, 3);
+  await assert.rejects(withResponse({ ...base, category: 6 },
+    () => getQueryStoreTopWaits(targetId, fromUtc, toUtc, new AbortController().signal, 3)));
 });

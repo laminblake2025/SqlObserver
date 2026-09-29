@@ -24,7 +24,8 @@ public sealed class QueryStoreWaitRankingQueryService(IQueryStoreWaitRankingRepo
         QueryStoreWaitRankingResult result = await repository.ReadAsync(request,
             cancellationToken).ConfigureAwait(false);
         if (result.TargetId != request.TargetId || result.FromUtc != request.FromUtc ||
-            result.ToUtc != request.ToUtc || result.Items.Count > request.Limit ||
+            result.ToUtc != request.ToUtc || result.Category != request.Category ||
+            result.Items.Count > request.Limit ||
             result.Items.Any(item => item.ComparableRows is < 1 ||
                 item.SourceRows < item.ComparableRows ||
                 item.LastObservedAtUtc < request.FromUtc ||

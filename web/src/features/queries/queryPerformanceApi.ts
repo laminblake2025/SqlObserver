@@ -229,16 +229,19 @@ export async function getQueryPerformancePlan(instanceId: string, databaseId: nu
 }
 
 export async function getQueryStoreTopWaits(instanceId: string, fromUtc: string,
-    toUtc: string, signal: AbortSignal): Promise<QueryStoreWaitRanking> {
+    toUtc: string, signal: AbortSignal, category?: number): Promise<QueryStoreWaitRanking> {
   if (!timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc)
-      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000)
+      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000
+      || category !== undefined && (!Number.isInteger(category) || category < 0 || category > 20))
     throw new Error("Query wait ranking window was invalid.");
   const path = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/waits/top`
-    + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&limit=25`;
+    + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&limit=25`
+    + (category === undefined ? "" : `&category=${category}`);
   const value = await readJson(path, instanceId, signal, 64 * 1024) as Record<string, unknown>;
   if (!timestamp(value.fromUtc) || !timestamp(value.toUtc)
       || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc)
       || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)
+      || value.category !== (category ?? null)
       || value.semantics !== "query_store_group_wait_delta"
       || value.coverage !== "observed_groups_only" && value.coverage !== "no_comparable_groups"
       || !Array.isArray(value.items) || value.items.length > 25)
@@ -267,7 +270,7 @@ export async function getQueryStoreTopWaits(instanceId: string, fromUtc: string,
   });
   if (value.coverage === "no_comparable_groups" && items.length > 0)
     throw new Error("Query wait ranking coverage was invalid.");
-  return { fromUtc, toUtc,
+  return { fromUtc, toUtc, category: category ?? null,
     coverage: value.coverage as QueryStoreWaitRanking["coverage"], items };
 }
 

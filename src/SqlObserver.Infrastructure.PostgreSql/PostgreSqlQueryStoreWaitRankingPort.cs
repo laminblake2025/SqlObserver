@@ -11,8 +11,8 @@ public sealed class PostgreSqlQueryStoreWaitRankingPort(NpgsqlDataSource dataSou
     private const string ReadSql = """
         SELECT database_id,query_fingerprint,plan_fingerprint,
                wait_milliseconds,comparable_rows,source_rows,last_observed_at
-        FROM reporting.list_top_query_store_waits(
-            @target,@from_utc,@to_utc,@max_results);
+        FROM reporting.list_top_query_store_waits_for_category(
+            @target,@from_utc,@to_utc,@max_results,@category);
         """;
 
     public async ValueTask<QueryStoreWaitRankingResult> ReadAsync(
@@ -43,6 +43,8 @@ public sealed class PostgreSqlQueryStoreWaitRankingPort(NpgsqlDataSource dataSou
             command.Parameters.AddWithValue("from_utc", request.FromUtc);
             command.Parameters.AddWithValue("to_utc", request.ToUtc);
             command.Parameters.AddWithValue("max_results", request.Limit);
+            command.Parameters.Add("category", NpgsqlTypes.NpgsqlDbType.Integer).Value =
+                (object?)request.Category ?? DBNull.Value;
             var items = new List<QueryStoreWaitRankedPlan>(request.Limit);
             await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(timeout.Token)
                 .ConfigureAwait(false))
@@ -62,7 +64,7 @@ public sealed class PostgreSqlQueryStoreWaitRankingPort(NpgsqlDataSource dataSou
             }
             await transaction.CommitAsync(timeout.Token).ConfigureAwait(false);
             return new QueryStoreWaitRankingResult(request.TargetId, request.FromUtc,
-                request.ToUtc, items);
+                request.ToUtc, items, request.Category);
         }
         catch (PostgresException exception) when (exception.SqlState == "42501")
         {

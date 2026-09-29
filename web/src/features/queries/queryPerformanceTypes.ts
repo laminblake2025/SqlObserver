@@ -3,6 +3,7 @@ export type QueryStoreWaitRankedPlan = { readonly databaseId: number; readonly q
   readonly planFingerprint: string; readonly waitMilliseconds: string; readonly comparableRows: number;
   readonly sourceRows: number; readonly lastObservedAtUtc: string };
 export type QueryStoreWaitRanking = { readonly fromUtc: string; readonly toUtc: string;
+  readonly category: number | null;
   readonly coverage: "no_comparable_groups" | "observed_groups_only";
   readonly items: readonly QueryStoreWaitRankedPlan[] };
 export type QueryStorePlanRegression = { readonly databaseId: number; readonly queryFingerprint: string;

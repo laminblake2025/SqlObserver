@@ -10,6 +10,10 @@ import { resolveActivityWindow } from "./activityWindowModel";
 import { ActivityTable, Evidence, WaitCategoryChart, WaitHistory } from "./TargetActivityPanel";
 import { getServerWaitTrend, type WaitTrendResponse } from "./waitTrendApi";
 import { waitTrendChartData } from "./waitTrendChartModel";
+import { getQueryStoreTopWaits } from "../queries/queryPerformanceApi";
+import type { QueryStoreWaitRanking } from "../queries/queryPerformanceTypes";
+import { queryStoreWaitCategories } from "../queries/queryStoreWaitCategories";
+import { queryJumpHref } from "../../components/commandPaletteModel";
 
 export interface TargetWaitsPanelProps {
   readonly instanceId: string;
@@ -31,6 +35,9 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
   const [trend, setTrend] = useState<WaitTrendResponse>();
   const [trendError, setTrendError] = useState<string>();
   const [trendLoading, setTrendLoading] = useState(false);
+  const [queryCategory, setQueryCategory] = useState(3);
+  const [queryRanking, setQueryRanking] = useState<QueryStoreWaitRanking>();
+  const [queryRankingError, setQueryRankingError] = useState<string>();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -46,6 +53,20 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
     return () => controller.abort();
   }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setQueryRanking(undefined); setQueryRankingError(undefined);
+    if (!window) return () => controller.abort();
+    void getQueryStoreTopWaits(instanceId, window.fromUtc, window.toUtc,
+      controller.signal, queryCategory)
+      .then(value => { if (!controller.signal.aborted) setQueryRanking(value); })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setQueryRankingError(error instanceof Error
+          ? error.message : "Query Store plan wait ranking is unavailable.");
+      });
+    return () => controller.abort();
+  }, [instanceId, window?.fromUtc, window?.toUtc, queryCategory, refresh]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -71,6 +92,29 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       {trendLoading && <p role="status">Loading wait trend…</p>}
       {trendError && <p role="alert">{trendError} Refresh to retry.</p>}
       {trend && <WaitTrendChart trend={trend} onSelectWindow={onSelectWindow} />}
+    </section>}
+    {window && <section className="panel" aria-label="Query Store plans by wait category">
+      <h3>Queries with matching Query Store waits</h3>
+      <p>Query Store plan wait deltas are a separate source from the server wait trend above. They can point to queries worth investigating, but do not account for all server waits or identify a current waiting session.</p>
+      <label>Query Store category <select value={queryCategory} onChange={event => setQueryCategory(Number(event.target.value))}>
+        {queryStoreWaitCategories.map((name, category) => category === 11 ? null :
+          <option key={category} value={category}>{name}</option>)}
+      </select></label>
+      {queryRankingError && <p role="alert">{queryRankingError} Refresh to retry.</p>}
+      {!queryRanking && !queryRankingError && <p role="status">Loading Query Store wait groups…</p>}
+      {queryRanking && queryRanking.items.length === 0 && <p>No positive comparable Query Store wait delta was observed for this category and window.</p>}
+      {queryRanking && queryRanking.items.length > 0 && <div className="table-scroll"><table>
+        <caption>Top 25 Query Store plans by comparable category wait milliseconds</caption>
+        <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait ms</th>
+          <th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
+        <tbody>{queryRanking.items.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
+          <td><a className="fingerprint" href={queryJumpHref(scope, instanceId, item.databaseId, item.queryFingerprint)}>
+            Database ID {item.databaseId} / {item.queryFingerprint.slice(0, 12)}… / {item.planFingerprint.slice(0, 12)}…</a></td>
+          <td>{BigInt(item.waitMilliseconds).toLocaleString()}</td>
+          <td>{item.comparableRows} / {item.sourceRows}</td>
+          <td>{formatDisplayTime(item.lastObservedAtUtc, mode)}</td>
+        </tr>)}</tbody>
+      </table></div>}
     </section>}
     {scope.range !== "custom" && <CurrentWaits key={`${instanceId}:${refresh}`} instanceId={instanceId} refresh={refresh} />}
     <section className="panel" aria-label="Selected wait history">

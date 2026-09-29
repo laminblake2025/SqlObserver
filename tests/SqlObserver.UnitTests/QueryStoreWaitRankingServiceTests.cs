@@ -83,6 +83,27 @@ public sealed class QueryStoreWaitRankingServiceTests
                 authorization, request, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task CategoryMustMatchRepositoryResult()
+    {
+        var target = new MonitoredInstanceId(Guid.NewGuid());
+        DateTimeOffset to = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+        var request = new QueryStoreWaitRankingRequest(target, to.AddHours(-1), to,
+            25, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), 3);
+        var repository = new ProbeRepository
+        {
+            Result = new QueryStoreWaitRankingResult(target, request.FromUtc, request.ToUtc, [], 6),
+        };
+        var authorization = new AuthorizationContext(
+            new ActorSecurityIdentifier("S-1-5-21-914"), AuthorizationPrincipalState.Active,
+            [new RoleAuthorizationGrant(ApplicationRole.Viewer,
+                TargetAuthorizationScope.ForTargets([target]))]);
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await new QueryStoreWaitRankingQueryService(repository).ReadAsync(
+                authorization, request, CancellationToken.None));
+    }
+
     private sealed class ProbeRepository : IQueryStoreWaitRankingRepositoryPort
     {
         public QueryStoreWaitRankingResult? Result { get; init; }

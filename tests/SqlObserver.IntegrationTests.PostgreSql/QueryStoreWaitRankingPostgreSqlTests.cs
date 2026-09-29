@@ -59,10 +59,15 @@ public sealed class QueryStoreWaitRankingPostgreSqlTests(PostgreSql18Fixture fix
                   @now-interval '2 hours',@now,'comparable',
                   10,20,1,30,4,5,'comparable','{"3":5,"6":7}'::jsonb,@now),
                  (@now-interval '15 minutes',gen_random_uuid(),@target,1,6,
-                  @incarnation,decode(repeat('c',64),'hex'),decode(repeat('d',64),'hex'),
-                  @now-interval '1 day',3,@now-interval '1 hour',@now,0,
-                  @now-interval '2 hours',@now,'comparable',
-                  10,20,1,30,4,5,'comparable','{"3":30}'::jsonb,@now);
+                 @incarnation,decode(repeat('c',64),'hex'),decode(repeat('d',64),'hex'),
+                 @now-interval '1 day',3,@now-interval '1 hour',@now,0,
+                 @now-interval '2 hours',@now,'comparable',
+                  10,20,1,30,4,5,'comparable','{"3":30}'::jsonb,@now),
+                 (@now-interval '10 minutes',gen_random_uuid(),@target,1,6,
+                  @incarnation,decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),
+                  @now-interval '1 day',4,@now-interval '1 hour',@now,0,
+                  @now-interval '2 hours',@now,'baseline_unavailable',
+                  NULL,NULL,NULL,NULL,NULL,NULL,'unavailable',NULL,NULL);
                 """, connection, transaction);
             seed.Parameters.AddWithValue("target", target);
             seed.Parameters.AddWithValue("key", $"group.wait.ranking.{target:N}");
@@ -85,7 +90,25 @@ public sealed class QueryStoreWaitRankingPostgreSqlTests(PostgreSql18Fixture fix
         Assert.Equal(1, ranking.Items[0].SourceRows);
         Assert.Equal("12", ranking.Items[1].WaitMilliseconds);
         Assert.Equal(1, ranking.Items[1].ComparableRows);
-        Assert.Equal(2, ranking.Items[1].SourceRows);
+        Assert.Equal(3, ranking.Items[1].SourceRows);
+
+        var categoryRequest = new QueryStoreWaitRankingRequest(new MonitoredInstanceId(target),
+            now.AddHours(-1), now, 25, timeout, 6);
+        QueryStoreWaitRankingResult categoryRanking = await new PostgreSqlQueryStoreWaitRankingPort(server)
+            .ReadAsync(categoryRequest, CancellationToken.None);
+        QueryStoreWaitRankedPlan categoryPlan = Assert.Single(categoryRanking.Items);
+        Assert.Equal(6, categoryRanking.Category);
+        Assert.Equal(new string('b', 64), categoryPlan.Plan.PlanFingerprint);
+        Assert.Equal("7", categoryPlan.WaitMilliseconds);
+        Assert.Equal(1, categoryPlan.ComparableRows);
+        Assert.Equal(3, categoryPlan.SourceRows);
+        Assert.InRange(categoryPlan.LastObservedAtUtc,
+            now.AddMinutes(-20).AddTicks(-10), now.AddMinutes(-20).AddTicks(10));
+
+        var emptyCategory = new QueryStoreWaitRankingRequest(new MonitoredInstanceId(target),
+            now.AddHours(-1), now, 25, timeout, 2);
+        Assert.Empty((await new PostgreSqlQueryStoreWaitRankingPort(server)
+            .ReadAsync(emptyCategory, CancellationToken.None)).Items);
 
         await using NpgsqlConnection scoped = await server.OpenConnectionAsync();
         await using (var claim = new NpgsqlCommand(
@@ -95,7 +118,8 @@ public sealed class QueryStoreWaitRankingPostgreSqlTests(PostgreSql18Fixture fix
             await claim.ExecuteNonQueryAsync();
         }
         await using var denied = new NpgsqlCommand("""
-            SELECT count(*) FROM reporting.list_top_query_store_waits(@other,@from_utc,@to_utc,25);
+            SELECT count(*) FROM reporting.list_top_query_store_waits_for_category(
+                @other,@from_utc,@to_utc,25,6);
             """, scoped);
         denied.Parameters.AddWithValue("other", Guid.NewGuid());
         denied.Parameters.AddWithValue("from_utc", now.AddHours(-1));
