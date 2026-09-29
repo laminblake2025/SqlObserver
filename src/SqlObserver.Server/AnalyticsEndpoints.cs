@@ -26,6 +26,8 @@ public static class AnalyticsEndpoints
     {
         "raw_metric_samples", "diagnostic_events",
         "m5_activity", "m5_requests", "m5_waits", "m5_blocking",
+        "m9_backup_status", "m9_agent_history", "m9_agent_occurrences",
+        "m9_ag_replicas", "m9_ag_databases",
         "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
         "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas"
     };

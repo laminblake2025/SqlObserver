@@ -67,7 +67,7 @@ test("retention policy enforces bounded server TimeSpan and floor/revision", () 
   assert.throws(() => parseRetentionPolicy({ ...base, policy: { ...base.policy, minimumPartitionsToKeep: 0 } }));
 });
 
-test("core evidence policies can be updated through the bounded client", async () => {
+test("active evidence policies can be updated through the bounded client", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (path, options) => {
@@ -80,7 +80,9 @@ test("core evidence policies can be updated through the bounded client", async (
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   };
   try {
-    for (const dataClass of ["raw_metric_samples", "diagnostic_events"]) {
+    const classes = ["raw_metric_samples", "diagnostic_events", "m9_backup_status",
+      "m9_agent_history", "m9_agent_occurrences", "m9_ag_replicas", "m9_ag_databases"];
+    for (const dataClass of classes) {
       const result = await updateRetentionPolicy(dataClass, {
         dataClass, enabled: true, retainFor: "30.00:00:00",
         minimumPartitionsToKeep: 2, expectedRevision: 2,
@@ -88,14 +90,12 @@ test("core evidence policies can be updated through the bounded client", async (
       }, new AbortController().signal);
       assert.equal(result.policy.dataClass, dataClass);
     }
-    assert.deepEqual(calls.map(call => call.path), [
-      "/api/v1/retention/policies/raw_metric_samples",
-      "/api/v1/retention/policies/diagnostic_events",
-    ]);
+    assert.deepEqual(calls.map(call => call.path),
+      classes.map(dataClass => `/api/v1/retention/policies/${dataClass}`));
     assert.ok(calls.every(call => call.options.method === "PUT"
       && call.options.credentials === "same-origin"));
     await assert.rejects(updateRetentionPolicy("unknown", {}, new AbortController().signal));
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, classes.length);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -228,6 +228,14 @@ Migration `0158` enables defaults on the four M10 v2 streams that receive
 writes: 30 days for host metrics and replication snapshots, and 180 days for
 rollups and evidence packets. Operator-revised policies are preserved. The
 other unused v2 parents remain disabled pending an explicit cutover or cleanup.
+Migration `0162` enables guarded defaults on the actively written M9 daily
+parents: 90 days for backup status and Agent failure occurrences, and 30 days
+for Agent scan coverage and availability-group snapshots. Existing operator
+revisions remain intact. The unpartitioned Agent failure identity and the
+TempDB snapshot/file pair remain disabled; the latter has an incoming file
+foreign key and needs a coordinated retirement step. All enabled classes
+still require recovery attestation, reader/dependency checks, a minimum
+partition count, and a 24-hour detach grace before drop.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced
