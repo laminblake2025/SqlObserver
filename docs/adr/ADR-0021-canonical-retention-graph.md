@@ -193,6 +193,14 @@ grace gates. A populated PostgreSQL test confirms the v3 rows disappear
 while their run and query parents remain. This bounds observation storage;
 run/query/plan, wait, status and protected-link cleanup still needs a
 separate dependency-aware operation.
+Migration 0178 adds a target-scoped migrator preview for one M7 run. It
+distinguishes attached observations from a detached v3 partition in grace,
+and also reports active readers, incident evidence, analytics work, missing
+collection outcomes or recovery attestation, policy age, and foreign keys
+outside the reviewed graph. The preview is deliberately non-mutating;
+`no_known_hold` is not a deletion certificate. A future leased cleanup must
+repeat these checks after locking its candidate and bound the number of
+child rows removed in one transaction.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

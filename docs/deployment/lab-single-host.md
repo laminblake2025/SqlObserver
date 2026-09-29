@@ -365,6 +365,22 @@ The policy cannot be enabled before the writer switch. A policy previously
 customized for v2 stays disabled after migration until reviewed and enabled
 for v3. Expiring v3 days leaves run/query/plan and protected-content links
 in place; their separate graph cleanup is still required.
+Migration `0178` provides a scoped, migrator-only preview of holds for one
+run. Set the target scope in the same transaction and inspect all returned
+codes:
+
+```sql
+BEGIN;
+SELECT set_config('sqlobserver.target_scope','<target-uuid>',true);
+SELECT * FROM system.query_performance_run_retention_holds(
+  '<target-uuid>'::uuid,'<run-uuid>'::uuid);
+COMMIT;
+```
+
+It reports attached observations, detached v3 grace, reader leases,
+incident evidence, analytics work, missing outcome or recovery evidence,
+policy/age gates and unreviewed foreign keys. `no_known_hold` is a preview
+result, not permission to delete: cleanup must recheck under its own fence.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.

@@ -149,6 +149,46 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
             await seed.CommitAsync();
         }
 
+        async Task<string[]> HoldsAsync()
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction);
+            context.Parameters.AddWithValue("target", target);
+            await context.ExecuteNonQueryAsync();
+            await using var inspect = new NpgsqlCommand("""
+                SELECT hold_code
+                FROM system.query_performance_run_retention_holds(@target,@run);
+                """, admin, transaction);
+            inspect.Parameters.AddWithValue("target", target);
+            inspect.Parameters.AddWithValue("run", run);
+            var holds = new List<string>();
+            await using (NpgsqlDataReader rows = await inspect.ExecuteReaderAsync())
+                while (await rows.ReadAsync()) holds.Add(rows.GetString(0));
+            await transaction.CommitAsync();
+            return holds.ToArray();
+        }
+        string[] beforeDetach = await HoldsAsync();
+        Assert.Contains("v3_observation", beforeDetach);
+        Assert.Contains("outcome_missing", beforeDetach);
+        Assert.DoesNotContain("unreviewed_foreign_key", beforeDetach);
+        await using (NpgsqlTransaction denied = await admin.BeginTransactionAsync())
+        {
+            await using var server = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_server;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                SELECT * FROM system.query_performance_run_retention_holds(@target,@run);
+                """, admin, denied);
+            server.Parameters.AddWithValue("target", target);
+            server.Parameters.AddWithValue("run", run);
+            PostgresException error = await Assert.ThrowsAsync<PostgresException>(
+                () => server.ExecuteNonQueryAsync());
+            Assert.Equal("42501", error.SqlState);
+            await denied.RollbackAsync();
+        }
+
         Guid owner = Guid.NewGuid();
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         await using NpgsqlConnection worker = await collector.OpenConnectionAsync();
@@ -164,6 +204,9 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
         Assert.Equal(SystemRetentionStepOutcome.Detached,
             await retention.RunSystemRetentionStepAsync(identity, timeout,
                 CancellationToken.None));
+        string[] duringGrace = await HoldsAsync();
+        Assert.Contains("partition_grace", duringGrace);
+        Assert.DoesNotContain("v3_observation", duringGrace);
 
         await using (var grace = new NpgsqlCommand("""
             SELECT (SELECT count(*) FROM events.query_performance_observation_v3
@@ -196,6 +239,26 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
         Assert.Equal(SystemRetentionStepOutcome.Dropped,
             await retention.RunSystemRetentionStepAsync(identity, timeout,
                 CancellationToken.None));
+        string[] afterDrop = await HoldsAsync();
+        Assert.Contains("outcome_missing", afterDrop);
+        Assert.DoesNotContain("partition_grace", afterDrop);
+        await using (NpgsqlTransaction incident = await admin.BeginTransactionAsync())
+        {
+            await using var evidence = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                INSERT INTO analytics.evidence_packet_v2
+                  (occurred_at,packet_id,instance_id,target_revision,evidence_kind,
+                   source_run_id,source_digest,evidence,confidence,visibility_state)
+                VALUES(clock_timestamp(),gen_random_uuid(),@target,1,'metric',
+                  @run,sha256(convert_to('test','UTF8')),'{}'::jsonb,1,'complete');
+                """, admin, incident);
+            evidence.Parameters.AddWithValue("target", target);
+            evidence.Parameters.AddWithValue("run", run);
+            await evidence.ExecuteNonQueryAsync();
+            await incident.CommitAsync();
+        }
+        Assert.Contains("incident_evidence", await HoldsAsync());
         await using var retired = new NpgsqlCommand("""
             SELECT to_regclass('events.'||@partition) IS NULL,
                    (SELECT count(*) FROM system.partition_registry
