@@ -70,6 +70,45 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
         Assert.Equal("40001", divergent.SqlState);
         Assert.Equal(2L, await CountRowsAsync(database, runId));
 
+        await using (NpgsqlConnection shadow = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", shadow))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", shadow))
+            {
+                scope.Parameters.AddWithValue("target", work.TargetId.Value);
+                await scope.ExecuteScalarAsync();
+            }
+            async Task<string> ReadPage(string name, bool next)
+            {
+                await using var command = new NpgsqlCommand(
+                    $"SELECT (to_jsonb(row)-'repository_time')::text FROM reporting.{name}(@target,@run,@revision,@after_key,1) AS row;",
+                    shadow);
+                command.Parameters.AddWithValue("target", work.TargetId.Value);
+                command.Parameters.Add("run", NpgsqlTypes.NpgsqlDbType.Uuid).Value =
+                    next ? runId.Value : DBNull.Value;
+                command.Parameters.Add("revision", NpgsqlTypes.NpgsqlDbType.Bigint).Value =
+                    next ? 1L : DBNull.Value;
+                command.Parameters.Add("after_key", NpgsqlTypes.NpgsqlDbType.Bytea).Value =
+                    next ? Convert.FromHexString(new string('a', 64)) : DBNull.Value;
+                return Assert.IsType<string>(await command.ExecuteScalarAsync());
+            }
+            foreach (bool next in new[] { false, true })
+                Assert.Equal(await ReadPage("list_sql_volume_snapshot", next),
+                    await ReadPage("list_sql_volume_snapshot_v2_shadow", next));
+
+            await using var grants = new NpgsqlCommand("""
+                SELECT has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+                   AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+                   AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+                   AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE')
+                FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
+                WHERE n.nspname='reporting' AND p.proname='list_sql_volume_snapshot_v2_shadow';
+                """, shadow);
+            Assert.True((bool)(await grants.ExecuteScalarAsync())!);
+        }
+
         await using (NpgsqlDataSource server = database.CreateServerDataSource())
         await using (NpgsqlConnection readConnection = await server.OpenConnectionAsync())
         {

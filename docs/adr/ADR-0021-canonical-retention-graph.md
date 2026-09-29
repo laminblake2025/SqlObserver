@@ -362,6 +362,9 @@ Migration 0204 keeps the public M5 snapshot-evidence view and its security
 barrier while routing it with the activity-reader switch. Installation keeps
 original runs; fenced activation moves both the M5 readers and evidence view
 to partitioned runs, and rollback restores the original evidence source.
+Migration 0205 adds a private partitioned-run SQL volume snapshot reader.
+Populated first and cursor pages are compared with the public reader; this
+migration does not change the public route or its original-run dependency.
 
 ## Implementation gates
 
