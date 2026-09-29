@@ -116,3 +116,8 @@ separate and keeps its complete-run and rename guards.
 
 This ADR defines the implementation boundary. It does not claim the server
 configuration collector or log reuse feature has been shipped.
+
+Migration 0251 stages the private snapshot and change-event tables with run
+identity links, append-only triggers, forced RLS, and no direct server or
+collector grants. The collector, fenced writer, retention route, and reader
+remain to be implemented before any schedule is enabled.
