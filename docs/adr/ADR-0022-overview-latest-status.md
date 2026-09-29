@@ -94,6 +94,10 @@ continues to mean request cutoff, not source collection time.
    Windowed reads still need separate set-based aggregation for large fleets;
    this latest-status change alone does not establish a fleet latency target.
 
+Migration 0235 stages step 1's table and restricted functions. It leaves the
+existing route untouched; the materializer, application port, parity work,
+and read switch in steps 2–4 remain to be built.
+
 Rollback switches reads to the existing composition while leaving the new
 table and writer inert. A later migration can remove them after verification;
 no applied migration is edited.
