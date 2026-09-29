@@ -2,7 +2,7 @@
 
 The SQL Server 2019/2022/2025 backup queries now return the source time-zone offset instead of a constant NULL. They convert documented quarter-hour values to minutes; NULL, 127, and out-of-range values remain unknown. The mapper preserves local time when UTC cannot be established, and missing timestamps remain null instead of becoming year 1. Missing backup rows and backup sets with an unavailable finish time receive distinct existing coverage values.
 
-Copy-only full backups are excluded before ranking the latest full backup. Differential and log selection are unchanged. The current 35-day history window and database-name grouping remain in place.
+Copy-only full backups are excluded before ranking the latest full backup. Differential and log selection are unchanged. The current 35-day history window remains in place. A later change replaced database-name grouping with database-GUID matching and includes a full-backup row for current databases without backup history.
 
 Microsoft documents the offset as the value at backup start. A backup spanning a daylight-saving transition can therefore still have uncertainty in its finish-time conversion. The collector does not guess a historical time zone from the machine's current offset. See [backupset](https://learn.microsoft.com/en-us/sql/relational-databases/system-tables/backupset-transact-sql?view=sql-server-ver17).
 
@@ -10,7 +10,7 @@ Microsoft documents the offset as the value at backup start. A backup spanning a
 
 Forward migration 0085 updates the four collectors sharing the M9 asset bundle. It checks every prior binding, preserves run history and schedules, and restores the append-only protection. Deploy the matching application and assets with the migration; previously applied migrations remain unchanged.
 
-This completes only the timestamp and copy-only portion of the backup fix. Enumerating databases without backup history and matching by database GUID remain open. The documented GUID catalog can attempt to open unopened databases, so its use needs qualification against the passive collection requirement before replacing the current grouping. See [sys.database_recovery_status](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-database-recovery-status-transact-sql?view=sql-server-ver17).
+This document records the timestamp and copy-only change as it was delivered. The subsequent database-enumeration and GUID-matching change is present in the current SQL assets; its native SQL Server qualification remains separate. The documented GUID catalog can attempt to open unopened databases, so its use must be qualified against the passive collection requirement. See [sys.database_recovery_status](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-database-recovery-status-transact-sql?view=sql-server-ver17).
 
 ## Verification
 
