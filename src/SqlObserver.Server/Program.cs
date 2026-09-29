@@ -108,6 +108,7 @@ builder.Services.AddSingleton<IObservationTargetQueryService, ObservationTargetQ
 builder.Services.AddSingleton<IObservationTargetStatusQueryService, ObservationTargetStatusQueryService>();
 builder.Services.AddSingleton<IHealthProjectionQueryService, HealthProjectionQueryService>();
 builder.Services.AddSingleton<IOverviewHistoryRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OverviewHistory);
+builder.Services.AddSingleton<IOverviewLatestStatusRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OverviewLatestStatus);
 builder.Services.AddSingleton<IOverviewQueryService, OverviewQueryService>();
 builder.Services.AddSingleton<IActivityProjectionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ActivityProjections);

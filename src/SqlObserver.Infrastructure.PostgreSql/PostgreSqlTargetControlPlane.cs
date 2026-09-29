@@ -28,6 +28,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
         OverviewHistory = new PostgreSqlOverviewHistoryPort(dataSource);
+        OverviewLatestStatus = new PostgreSqlOverviewLatestStatusPort(dataSource);
         ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
         DeadlockProjections = new PostgreSqlDeadlockProjectionPort(dataSource);
         QueryPerformanceApiProjections = new PostgreSqlQueryPerformanceApiProjectionPort(dataSource);
@@ -70,6 +71,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }
     public IOverviewHistoryRepositoryPort OverviewHistory { get; }
+    public IOverviewLatestStatusRepositoryPort OverviewLatestStatus { get; }
 
     public IActivityProjectionRepositoryPort ActivityProjections { get; }
 

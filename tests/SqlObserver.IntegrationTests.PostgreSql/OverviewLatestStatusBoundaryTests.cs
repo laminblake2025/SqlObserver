@@ -1,6 +1,7 @@
 using Npgsql;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
@@ -86,6 +87,32 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Null(await ReadGenerationAsync(server, target, target, 2));
         Assert.Equal("42501", (await Assert.ThrowsAsync<PostgresException>(
             () => ReadGenerationAsync(server, target, other, 1))).SqlState);
+
+        var latest = new PostgreSqlOverviewLatestStatusPort(server);
+        OverviewLatestStatus status = Assert.IsType<OverviewLatestStatus>(
+            await latest.ReadAsync(new MonitoredInstanceId(target), 1, CancellationToken.None));
+        Assert.Equal(target, status.TargetId);
+        Assert.Equal(2, status.Generation);
+        Assert.Equal(3, status.ActiveAlerts.Value);
+        Assert.Equal(2, status.BlockedSessions.Value);
+        Assert.Equal("current", status.Sources["alerts"].State);
+        Assert.Null(await latest.ReadAsync(new MonitoredInstanceId(target), 2, CancellationToken.None));
+
+        await using (var corrupt = database.DataSource.CreateCommand("""
+            UPDATE reporting.overview_latest_status
+            SET issues = jsonb_build_array(jsonb_build_object(
+                'targetId', @other, 'server', 'Foreign server', 'title', 'Foreign issue',
+                'detail', 'Outside target', 'destination', 'health',
+                'priority', 1, 'observedAtUtc', NULL))
+            WHERE instance_id = @target;
+            """))
+        {
+            corrupt.Parameters.AddWithValue("target", target);
+            corrupt.Parameters.AddWithValue("other", other);
+            await corrupt.ExecuteNonQueryAsync();
+        }
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            latest.ReadAsync(new MonitoredInstanceId(target), 1, CancellationToken.None));
     }
 
     private static async Task<bool> PublishAsync(
@@ -98,7 +125,7 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             SELECT reporting.publish_overview_latest_status(
                 @target,1,@generation,'current',NULL::timestamptz,
                 3,'current',2,'current',
-                '{"schemaVersion":1,"health":{"state":"current"}}'::jsonb,
+                '{"schemaVersion":1,"health":{"state":"current"},"alerts":{"state":"current"},"blocking":{"state":"current"}}'::jsonb,
                 '[]'::jsonb,'[]'::jsonb,'[]'::jsonb,@owner,@token);
             """, connection, transaction);
         command.Parameters.AddWithValue("target", target);

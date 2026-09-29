@@ -20,6 +20,23 @@ public interface IOverviewQueryService
     Task<OverviewSnapshot> ReadAsync(OverviewQuery query, CancellationToken cancellationToken);
 }
 
+/// <summary>Current evidence published independently of any requested history window.</summary>
+public sealed record OverviewLatestSource(string State, DateTimeOffset? ObservedAtUtc);
+public sealed record OverviewLatestStatus(
+    Guid TargetId, long TargetRevision, long Generation, DateTimeOffset PublishedAtUtc,
+    string CollectionState, DateTimeOffset? LastSuccessAtUtc,
+    OverviewValue ActiveAlerts, OverviewValue BlockedSessions,
+    IReadOnlyDictionary<string, OverviewLatestSource> Sources,
+    IReadOnlyList<OverviewIssue> Issues, IReadOnlyList<OverviewResource> Resources,
+    IReadOnlyList<string> Gaps);
+
+/// <summary>Reads one target-scoped, revision-bound latest-status row from the repository.</summary>
+public interface IOverviewLatestStatusRepositoryPort
+{
+    Task<OverviewLatestStatus?> ReadAsync(
+        MonitoredInstanceId targetId, long targetRevision, CancellationToken cancellationToken);
+}
+
 /// <summary>Reads bounded overview history from persisted observations, never from a monitored server.</summary>
 public interface IOverviewHistoryRepositoryPort
 {
