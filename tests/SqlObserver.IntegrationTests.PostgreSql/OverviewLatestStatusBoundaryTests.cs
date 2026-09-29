@@ -1,7 +1,11 @@
 using Npgsql;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
+using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Security;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
 
@@ -354,6 +358,41 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Equal("current", blocked.BlockedSessions.State);
         Assert.Contains(blocked.Issues, issue => issue.Title == "Sessions blocked" &&
             issue.TargetId == target);
+
+        var overview = new OverviewQueryService(
+            new ObservationTargetStatusQueryService(
+                new PostgreSqlObservationTargetPort(server),
+                new PostgreSqlCapabilityProfilePort(server)),
+            new HealthProjectionQueryService(new PostgreSqlHealthProjectionPort(server)),
+            new AlertQueryService(new PostgreSqlAlertRepositoryPort(server)),
+            new ActivityProjectionQueryService(new PostgreSqlActivityProjectionPort(server)),
+            new DeadlockProjectionQueryService(new PostgreSqlDeadlockProjectionPort(server)),
+            new OperationalHealthQueryService(new PostgreSqlOperationalHealthProjectionPort(server)),
+            new MetricSeriesQueryService(new PostgreSqlAnalyticsRepositoryPort(
+                server, new IdentityFingerprintKey(new byte[32]))),
+            new PostgreSqlOverviewHistoryPort(server), port);
+        var authorization = new AuthorizationContext(
+            new ActorSecurityIdentifier("S-1-5-21-100"), AuthorizationPrincipalState.Active,
+            [ApplicationRole.Viewer], TargetAuthorizationScope.ForTargets([new MonitoredInstanceId(target)]));
+        DateTimeOffset toUtc = DateTimeOffset.UtcNow;
+        OverviewTargetEvidence direct = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, toUtc.AddHours(-1), toUtc),
+            CancellationToken.None)).Evidence);
+        OverviewTargetEvidence staged = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, toUtc.AddHours(-1), toUtc, true),
+            CancellationToken.None)).Evidence);
+        Assert.Equal(1, direct.ActiveAlerts.Value);
+        Assert.Equal(1, direct.BlockedSessions.Value);
+        Assert.Contains(direct.Issues, issue => issue.Title == "Connections high");
+        Assert.Contains(direct.Issues, issue => issue.Title == "Sessions blocked");
+        Assert.Equal(direct.ActiveAlerts.Value, staged.ActiveAlerts.Value);
+        Assert.Equal(direct.ActiveAlerts.State, staged.ActiveAlerts.State);
+        Assert.Equal(direct.BlockedSessions.Value, staged.BlockedSessions.Value);
+        Assert.Equal(direct.BlockedSessions.State, staged.BlockedSessions.State);
+        Assert.Equal(direct.Issues.Where(issue => issue.Destination is "alerts" or "activity")
+                .Select(issue => (issue.Title, issue.Detail)),
+            staged.Issues.Where(issue => issue.Destination is "alerts" or "activity")
+                .Select(issue => (issue.Title, issue.Detail)));
 
         Guid inventoryRun = Guid.NewGuid();
         DateTimeOffset inventoryAt = DateTimeOffset.UtcNow;

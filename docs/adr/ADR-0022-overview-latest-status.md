@@ -137,6 +137,10 @@ validation, not a claim that response parity or fleet latency has passed.
 The repository boundary fixture now verifies an exact active-alert count above
 the live composition's 4,000-row paging bound while the issue list remains
 bounded.
+On a populated target with one active alert and one blocked session, the real
+application service returns the same counts and alert/blocking issue summaries
+through direct composition and the opt-in latest-status read. This is limited
+current-evidence parity; resource and fleet parity still need validation.
 
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and
