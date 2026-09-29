@@ -423,6 +423,8 @@ row-locking lookup, retaining its target and collector identity checks.
 Migration 0223 routes both core collection-run commit entry points through the
 guarded nonlocking lookup for replay and identity checks. Their writes and
 payload accounting remain unchanged while the partitioned writer is staged.
+Migration 0224 routes the nested query-performance evidence writer through
+the guarded row-locking lookup, completing that commit chain's run reads.
 
 ## Implementation gates
 

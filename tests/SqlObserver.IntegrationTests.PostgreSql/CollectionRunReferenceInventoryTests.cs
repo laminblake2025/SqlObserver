@@ -57,7 +57,6 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.commit_collection_run_v2/59
             function control.commit_m10_collection_run/28
             function control.commit_m9_collection_run/28
-            function control.commit_query_performance_collection_run/13
             function control.commit_query_performance_collection_run_canonical/34
             function control.commit_query_store_group_collection_run/28
             function control.commit_sql_volume_collection_run/28

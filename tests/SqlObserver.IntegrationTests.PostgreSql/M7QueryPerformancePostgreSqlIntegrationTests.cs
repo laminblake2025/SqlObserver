@@ -565,11 +565,12 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
             WHERE namespace.nspname='control'
               AND procedure.proname IN (
                 'commit_query_performance_collection_run_canonical',
+                'commit_query_performance_collection_run',
                 'commit_query_text_links','commit_query_plan_links',
                 'commit_query_plan_wait_snapshots')
               AND procedure.prosrc LIKE '%telemetry.lock_collection_run_runtime(p_run_id)%';
             """, connection))
-            Assert.Equal(4L, await routedDefinitions.ExecuteScalarAsync());
+            Assert.Equal(5L, await routedDefinitions.ExecuteScalarAsync());
         await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
         {
             foreach (string function in new[]
