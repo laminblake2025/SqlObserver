@@ -71,6 +71,35 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
     }
 
     [Fact]
+    public async Task RuleListPagesDisabledRulesAndRequiresTargetAdministrator()
+    {
+        using HttpClient admin = CreateClient("admin");
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules?limit=1";
+        using HttpResponseMessage first = await admin.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal("no-store", first.Headers.CacheControl?.ToString());
+        using var firstJson = System.Text.Json.JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        Assert.True(firstJson.RootElement.GetProperty("hasMore").GetBoolean());
+        string cursor = firstJson.RootElement.GetProperty("nextCursor").GetString()!;
+        using HttpResponseMessage second = await admin.GetAsync($"{path}&cursor={Uri.EscapeDataString(cursor)}");
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        using var secondJson = System.Text.Json.JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        var disabled = Assert.Single(secondJson.RootElement.GetProperty("items").EnumerateArray());
+        Assert.False(disabled.GetProperty("enabled").GetBoolean());
+        Assert.Equal(7, disabled.GetProperty("revision").GetInt64());
+        Assert.Equal("metric_threshold", disabled.GetProperty("kind").GetString());
+        Assert.False(secondJson.RootElement.GetProperty("hasMore").GetBoolean());
+        using HttpResponseMessage malformed = await admin.GetAsync($"{path}&cursor=invalid%2A");
+        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        using HttpClient viewer = CreateClient("viewer");
+        using HttpResponseMessage forbidden = await viewer.GetAsync(path);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        using HttpClient anonymous = factory.CreateClient();
+        using HttpResponseMessage unauthenticated = await anonymous.GetAsync(path);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+    }
+
+    [Fact]
     public async Task MapAlertEndpointsReturns403409And503WithoutProviderDetails()
     {
         using HttpClient viewer = CreateClient("viewer");
@@ -234,6 +263,7 @@ public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
     internal static readonly Guid TargetId = Guid.Parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     internal static readonly Guid AlertId = Guid.Parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
     internal FakeAlertQuery Query { get; } = new();
+    internal FakeAlertRuleRead RuleReads { get; } = new();
     internal FakeAlertAdministration Administration { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -242,8 +272,10 @@ public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IAlertQueryService>();
+            services.RemoveAll<IAlertRuleReadPort>();
             services.RemoveAll<IAlertAdministrationService>();
             services.AddSingleton<IAlertQueryService>(Query);
+            services.AddSingleton<IAlertRuleReadPort>(RuleReads);
             services.AddSingleton<IAlertAdministrationService>(Administration);
             services.AddSingleton(new WindowsGroupRoleResolver([
                 new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M8AlertTestAuthenticationHandler.AdminGroupSid), [ApplicationRole.Operator, ApplicationRole.TargetAdministrator, ApplicationRole.SecurityAdministrator], true),
@@ -255,6 +287,25 @@ public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
                 options.DefaultChallengeScheme = M8AlertTestAuthenticationHandler.SchemeName;
             }).AddScheme<AuthenticationSchemeOptions, M8AlertTestAuthenticationHandler>(M8AlertTestAuthenticationHandler.SchemeName, static _ => { });
         });
+    }
+}
+
+internal sealed class FakeAlertRuleRead : IAlertRuleReadPort
+{
+    private static readonly DateTimeOffset Started = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
+
+    public ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertRuleListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        var rule = new AlertRuleListItem(
+            cursor is null ? Guid.Parse("11111111-1111-4111-8111-111111111111")
+                : Guid.Parse("22222222-2222-4222-8222-222222222222"),
+            cursor is null ? "Enabled rule" : "Disabled rule",
+            AlertRuleKind.MetricThreshold, "engine.user_connections", AlertComparison.GreaterThan,
+            80, 5, 2, 30, 15, 2, cursor is null, 7, Started);
+        return ValueTask.FromResult(new AlertRuleListPage(targetId, Started, [rule],
+            cursor is null ? new AlertRuleListCursor(targetId, Started, rule.RuleId) : null));
     }
 }
 

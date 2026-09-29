@@ -43,6 +43,24 @@ public sealed class AlertQueryService(IAlertRepositoryPort repository) : IAlertQ
     }
 }
 
+public sealed class AlertRuleQueryService(IAlertRuleReadPort repository) : IAlertRuleQueryService
+{
+    public ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertRuleListCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, [ApplicationRole.TargetAdministrator]);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value ||
+            cursor.ListingStartedUtc.Offset != TimeSpan.Zero || cursor.AfterRuleId == Guid.Empty))
+            throw new ArgumentException("Alert rule cursor does not match the target.", nameof(cursor));
+        return repository.ListRulesForAdminAsync(targetId, limit, cursor,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+}
+
 public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit, IAlertDestinationApprovalPort? destinationApproval = null) : IAlertAdministrationService
 {
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) =>

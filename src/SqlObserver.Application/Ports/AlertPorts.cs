@@ -152,6 +152,32 @@ public interface IAlertQueryService
         throw new NotSupportedException("The fleet alert read is not implemented by this service.");
 }
 
+public sealed record AlertRuleListItem(
+    Guid RuleId, string Name, AlertRuleKind Kind, string? MetricId,
+    AlertComparison Comparison, double Threshold, double Hysteresis,
+    int ConfirmationCount, int ConfirmationSeconds, int EvaluationSeconds,
+    int ClearConfirmationCount, bool Enabled, long Revision, DateTimeOffset UpdatedAtUtc);
+
+public sealed record AlertRuleListCursor(MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc, Guid AfterRuleId);
+
+public sealed record AlertRuleListPage(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    IReadOnlyList<AlertRuleListItem> Items, AlertRuleListCursor? NextCursor);
+
+public interface IAlertRuleReadPort
+{
+    ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertRuleListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+public interface IAlertRuleQueryService
+{
+    ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertRuleListCursor? cursor, CancellationToken cancellationToken);
+}
+
 public interface IAlertAdministrationService
 {
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken);

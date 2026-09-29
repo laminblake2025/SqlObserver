@@ -16,6 +16,7 @@ public static class AlertEndpoints
             .MapGet("/active", GetFleetActiveAsync);
         var group = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/alerts").RequireAuthorization();
         group.MapGet("/active", GetActiveAsync);
+        group.MapGet("/rules", GetRulesAsync);
         group.MapPost("/{alertId:guid}/acknowledge", AcknowledgeAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPost("/rules", CreateRuleAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPut("/rules/{ruleId:guid}", UpdateRuleAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
@@ -72,6 +73,67 @@ public static class AlertEndpoints
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static async Task<IResult> GetRulesAsync(
+        HttpContext context, Guid instanceId, IAlertRuleQueryService service,
+        WindowsGroupRoleResolver resolver, int limit = 100, string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 100) return Results.BadRequest();
+        try
+        {
+            var targetId = new MonitoredInstanceId(instanceId);
+            AlertRuleListCursor? after = DecodeRuleCursor(cursor, targetId);
+            AlertRuleListPage page = await service.ListRulesForAdminAsync(
+                resolver.Resolve(context.User), targetId, limit, after, cancellationToken).ConfigureAwait(false);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                listingStartedUtc = page.ListingStartedUtc,
+                items = page.Items.Select(static rule => new
+                {
+                    ruleId = rule.RuleId, rule.Name,
+                    kind = rule.Kind == AlertRuleKind.MetricThreshold ? "metric_threshold" : "collector_health",
+                    rule.MetricId,
+                    comparison = rule.Comparison switch
+                    {
+                        AlertComparison.GreaterThan => "greater_than",
+                        AlertComparison.GreaterThanOrEqual => "greater_than_or_equal",
+                        AlertComparison.LessThan => "less_than",
+                        AlertComparison.LessThanOrEqual => "less_than_or_equal",
+                        _ => "equal",
+                    },
+                    rule.Threshold, rule.Hysteresis, rule.ConfirmationCount,
+                    rule.ConfirmationSeconds, rule.EvaluationSeconds,
+                    rule.ClearConfirmationCount, rule.Enabled, rule.Revision,
+                    updatedAtUtc = rule.UpdatedAtUtc,
+                }),
+                hasMore = page.NextCursor is not null,
+                nextCursor = page.NextCursor is null ? null : EncodeRuleCursor(page.NextCursor),
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static string EncodeRuleCursor(AlertRuleListCursor cursor) =>
+        Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+            $"{cursor.TargetId.Value:D}|{cursor.ListingStartedUtc:O}|{cursor.AfterRuleId:D}"));
+
+    private static AlertRuleListCursor? DecodeRuleCursor(string? value, MonitoredInstanceId targetId)
+    {
+        if (value is null) return null;
+        if (value.Length is 0 or > 1024) throw new ArgumentException("Cursor is outside its bounds.");
+        string[] parts;
+        try { parts = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value)).Split('|'); }
+        catch (FormatException exception) { throw new ArgumentException("Cursor is invalid.", exception); }
+        if (parts.Length != 3 || !AlertIdentifier.TryParseRfc4122(parts[0], out Guid target) ||
+            target != targetId.Value || !TryCanonicalUtc(parts[1], out DateTimeOffset started) ||
+            !AlertIdentifier.TryParseRfc4122(parts[2], out Guid after))
+            throw new ArgumentException("Cursor binding is invalid.");
+        return new AlertRuleListCursor(targetId, started, after);
     }
 
     private static string EncodeFleetCursor(FleetAlertCursor cursor) =>

@@ -12,7 +12,7 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>Restricted alert repository. SQL functions own authorization, RLS, leases and idempotency.</summary>
-public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
+public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlertRuleReadPort
 {
     private sealed record ObservationWire(Guid TargetId, Guid RuleId, DateTimeOffset ObservedAtUtc, double? Value, bool? CollectorHealthy, string? Reason, Guid OperationId, string EvidenceDigest, string? SampleId = null, Guid? RunId = null, string? SourceKind = null, string? MetricId = null, string? SourceCollector = null, string? SourceVersion = null, int? SourceSchemaVersion = null, string? SourceDigest = null);
     private sealed record DestinationPayload(Guid DestinationId, string Kind, string ConfigurationReference, bool Enabled, long? ExpectedRevision, string? RequestDigest, bool Approve, AlertDestinationApproval? Approval, string Action);
@@ -85,6 +85,56 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await r.DisposeAsync().ConfigureAwait(false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return result;
+    }
+
+    public async ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertRuleListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (limit is < 1 or > 100 || cursor is not null &&
+            (cursor.TargetId.Value != targetId.Value || cursor.ListingStartedUtc.Offset != TimeSpan.Zero ||
+             cursor.AfterRuleId == Guid.Empty))
+            throw new ArgumentException("Invalid alert rule page request.");
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        DateTimeOffset listingStartedUtc;
+        if (cursor is null)
+        {
+            await using var clock = new NpgsqlCommand("SELECT transaction_timestamp();", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            DateTime repositoryTime = (DateTime)(await clock.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false)
+                ?? throw new InvalidDataException("Repository time is unavailable."));
+            listingStartedUtc = new DateTimeOffset(repositoryTime);
+        }
+        else listingStartedUtc = cursor.ListingStartedUtc;
+        await using var command = new NpgsqlCommand(
+            "SELECT * FROM alerting.list_rules_for_admin(@target,@started,@after,@limit);", connection, transaction)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        command.Parameters.AddWithValue("target", targetId.Value);
+        command.Parameters.AddWithValue("started", listingStartedUtc);
+        command.Parameters.Add("after", NpgsqlDbType.Uuid).Value = (object?)cursor?.AfterRuleId ?? DBNull.Value;
+        command.Parameters.AddWithValue("limit", limit + 1);
+        var rows = new List<AlertRuleListItem>(limit + 1);
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+                rows.Add(new AlertRuleListItem(
+                    reader.GetGuid(0), reader.GetString(1), (AlertRuleKind)reader.GetInt32(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3), (AlertComparison)reader.GetInt32(4),
+                    reader.GetDouble(5), reader.GetDouble(6), reader.GetInt32(7), reader.GetInt32(8),
+                    reader.GetInt32(9), reader.GetInt32(10), reader.GetBoolean(11), reader.GetInt64(12),
+                    reader.GetFieldValue<DateTimeOffset>(13)));
+        }
+        await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+        bool hasMore = rows.Count > limit;
+        if (hasMore) rows.RemoveAt(limit);
+        return new AlertRuleListPage(targetId, listingStartedUtc, rows,
+            hasMore ? new AlertRuleListCursor(targetId, listingStartedUtc, rows[^1].RuleId) : null);
     }
 
     public async ValueTask<bool> RecoverDeliveryClaimsAsync(MonitoredInstanceId targetId, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
