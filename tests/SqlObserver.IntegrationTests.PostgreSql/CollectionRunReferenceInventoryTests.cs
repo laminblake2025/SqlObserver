@@ -70,7 +70,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.commit_sql_volume_collection_run/28
             function control.cutover_collection_run_identity_fks/1
             function control.ensure_target_collector_schedules/0
-            function control.get_query_performance_database_catalog/1
+            function control.get_query_performance_database_catalog_legacy/1
             function control.list_due_collector_work/1
             function control.stage_collection_run_identity_fk/2
             function control.validate_collection_run_identity_fk/1
@@ -99,6 +99,151 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             view reporting.collector_health_projection_legacy
             """;
         Assert.Equal(expected.Split('\n'), names);
+    }
+
+    [Fact]
+    public async Task QueryDatabaseCatalogRoutesOnlyAfterFencedRunParity()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult applied = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(
+                MigrationBatchResult.MaximumResults,
+                new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+                CancellationToken.None);
+        Assert.False(applied.HasFailures);
+        Guid target = Guid.NewGuid(), run = Guid.NewGuid();
+        DateTimeOffset at;
+        await using (NpgsqlConnection seed = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var clock = new NpgsqlCommand("SELECT statement_timestamp();", seed))
+                at = new DateTimeOffset(((DateTime)(await clock.ExecuteScalarAsync())!).AddSeconds(-10));
+            await using var insert = new NpgsqlCommand("""
+                INSERT INTO control.observation_target
+                 (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+                  authentication_mode,transport_security_mode,lifecycle_state,revision,
+                  created_at,updated_at,discovery_requested_at)
+                VALUES (@target,@key,'catalog target','sql01',1433,interval '5 seconds',
+                 'windows_integrated_service_identity','mandatory_validated','active',1,@at,@at,@at);
+                INSERT INTO telemetry.collection_run
+                 (run_id,instance_id,collector_id,collector_version,output_schema_version,
+                  target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,
+                  request_digest,scheduled_for,started_at)
+                VALUES (@run,@target,'database.inventory',1,1,1,1,@work,@owner,1,
+                 decode(repeat('aa',32),'hex'),@at,@at);
+                INSERT INTO telemetry.collection_run_outcome
+                 (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+                  source_row_count,output_item_count,inserted_item_count,duplicate_item_count,
+                  rejected_item_count,response_bytes,output_bytes,persisted_bytes,truncated,
+                  loss_detected,loss_kind,loss_count_exact,lost_row_count,lost_byte_count,
+                  completion_digest,completed_at)
+                VALUES (@run,'succeeded','completed',1,0,10,3,3,3,0,0,128,128,128,
+                 false,false,'none',true,0,0,decode(repeat('bb',32),'hex'),@at);
+                INSERT INTO telemetry.database_inventory_snapshot
+                 (observed_at,snapshot_id,collection_run_id,instance_id,target_revision,
+                  database_id,database_name,state_code,is_read_only,recovery_model,
+                  user_access,compatibility_level,collected_at)
+                VALUES
+                 (@at,@first,@run,@target,1,5,'Ledger','online',false,'full','multi_user',160,@at),
+                 (@at,@second,@run,@target,1,6,'Offline','offline',false,'full','multi_user',160,@at),
+                 (@at,@third,@run,@target,1,7,'Restricted','online',false,'full','restricted_user',160,@at);
+                """, seed);
+            insert.Parameters.AddWithValue("target", target);
+            insert.Parameters.AddWithValue("key", $"catalog.{target:N}");
+            insert.Parameters.AddWithValue("run", run);
+            insert.Parameters.AddWithValue("work", $"collector/run/database.inventory/{target:N}");
+            insert.Parameters.AddWithValue("owner", Guid.NewGuid());
+            insert.Parameters.AddWithValue("at", at);
+            insert.Parameters.AddWithValue("first", Guid.NewGuid());
+            insert.Parameters.AddWithValue("second", Guid.NewGuid());
+            insert.Parameters.AddWithValue("third", Guid.NewGuid());
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,false);", connection))
+        {
+            scope.Parameters.AddWithValue("target", target);
+            await scope.ExecuteScalarAsync();
+        }
+        async Task<List<string>> Read(string name)
+        {
+            await using var command = new NpgsqlCommand(
+                $"SELECT database_id::text || ':' || database_name FROM control.{name}(@target);",
+                connection);
+            command.Parameters.AddWithValue("target", target);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+        Assert.Equal(["5:Ledger"], await Read("get_query_performance_database_catalog"));
+        Assert.Equal(await Read("get_query_performance_database_catalog_legacy"),
+            await Read("get_query_performance_database_catalog"));
+        Assert.Equal(await Read("get_query_performance_database_catalog_v2_shadow"),
+            await Read("get_query_performance_database_catalog"));
+        await using (var premature = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_query_catalog_read_route(true,10000);", connection))
+            Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteScalarAsync())).SqlState);
+        await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
+        {
+            foreach (string function in new[]
+                { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+            {
+                await using var copy = new NpgsqlCommand(
+                    $"SELECT complete FROM control.{function}(@target,10);", connection, backfill);
+                copy.Parameters.AddWithValue("target", target);
+                Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            }
+            await using var certificate = new NpgsqlCommand("""
+                SELECT parity FROM control.record_collection_run_v2_parity_window(
+                 @target,'database.inventory',date_trunc('day',@at::timestamptz),
+                 date_trunc('day',@at::timestamptz)+interval '1 day',10);
+                """, connection, backfill);
+            certificate.Parameters.AddWithValue("target", target);
+            certificate.Parameters.AddWithValue("at", at);
+            Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            await backfill.CommitAsync();
+        }
+        await using (var activate = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_query_catalog_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        Assert.Equal(await Read("get_query_performance_database_catalog_v2_shadow"),
+            await Read("get_query_performance_database_catalog"));
+        await using (NpgsqlDataSource server = database.CreateServerDataSource())
+        await using (NpgsqlConnection serverConnection = await server.OpenConnectionAsync())
+        {
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", serverConnection))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteScalarAsync();
+            }
+            await using var publicRead = new NpgsqlCommand(
+                "SELECT count(*) FROM control.get_query_performance_database_catalog(@target);",
+                serverConnection);
+            publicRead.Parameters.AddWithValue("target", target);
+            Assert.Equal(1L, await publicRead.ExecuteScalarAsync());
+        }
+        await using (var rollback = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_query_catalog_read_route(false,10000);", connection))
+            Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        Assert.Equal(await Read("get_query_performance_database_catalog_legacy"),
+            await Read("get_query_performance_database_catalog"));
+        await using var grants = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
+            WHERE n.nspname='control'
+              AND p.proname IN ('get_query_performance_database_catalog_legacy',
+                                'get_query_performance_database_catalog_v2_shadow')
+              AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
+            """, connection);
+        Assert.Equal(2L, await grants.ExecuteScalarAsync());
     }
 
     [Fact]

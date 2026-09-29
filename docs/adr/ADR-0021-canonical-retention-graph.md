@@ -382,6 +382,10 @@ NUMA and aggregate samples are compared before changing the public readers.
 Migration 0210 routes those four public PLE readers together, defaulting to
 the original definitions. Migrator activation requires the writer-fenced
 fleet proof, and the original path remains available for rollback.
+Migration 0211 stages a partitioned-run query-performance database catalog
+behind a default-original route. A populated inventory checks name filtering,
+parity, server access, and fenced activation before original runs can be
+retired from this display lookup.
 
 ## Implementation gates
 
