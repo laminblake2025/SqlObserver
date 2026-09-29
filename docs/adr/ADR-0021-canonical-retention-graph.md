@@ -159,7 +159,16 @@ Migration 0173 lets a migrator record the next uncovered window without
 manually splitting every day. It chooses the earlier of the source and
 successor `(row cap + 1)` interval ends, so both verifier scans stay bounded.
 If more than the cap shares one timestamp, it fails visibly with SQLSTATE
-`54000`; that target needs a composite-key verifier before cutover. Calls
+`54000`; migration 0174 supplies a composite-key chunk verifier for that
+timestamp. It keeps independent source and successor cursors and rolling
+SHA-256 digests, and adds a one-microsecond key-chunk certificate to the
+existing day-generation ledger only when both sides are exhausted. A later
+write resets the checkpoint, and an extra successor row fails parity. It also
+increments the day generation on original-table inserts independently of the
+mirror, so a source-only write cannot leave an earlier certificate valid;
+activation checks that trigger. Migration
+0175 builds the original-table target/time/key index concurrently for directly
+keyed rows; legacy null-target rows still use their owning query. Calls
 stop returning rows once current coverage is complete, and live writes still
 invalidate their UTC day through the existing generation ledger.
 

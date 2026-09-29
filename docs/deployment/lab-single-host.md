@@ -308,9 +308,28 @@ COMMIT;
 
 Investigate `parity = false` before retrying. SQLSTATE `54000` means more than
 the row cap shares one `interval_end`; a time-only window cannot split that
-point, so do not claim coverage until the verifier supports a bounded key
-split. Live writes can stale the current UTC day's windows, so rerun coverage
-immediately before activation.
+point. Migration `0174` adds a bounded key-chunk verifier for that exact
+timestamp. Use the timestamp returned as the uncovered point, and repeat this
+transaction until `complete = true` and `parity = true`:
+
+```sql
+BEGIN;
+SELECT set_config('sqlobserver.target_scope','<target-uuid>',true);
+SELECT * FROM control.record_query_observation_v3_dense_point(
+  '<target-uuid>'::uuid,'<dense-interval-end-utc>'::timestamptz,100000);
+COMMIT;
+```
+
+The first incomplete result has a null `parity`. A false final result means
+the old and successor rows differ; investigate it before cutover. The chunk
+cursor and rolling SHA-256 digest survive between calls, while a new successor
+or original-table insert invalidates the checkpoint for that UTC day. The
+source-generation trigger is independent of the mirror, and activation
+refuses to proceed if it is disabled. After a passing dense
+point, resume `record_next_query_observation_v3_parity_window`. Migration
+`0175` adds its original-table target/time/key index concurrently; allow time
+for the index build on a populated repository. Live writes can stale the
+current UTC day's windows, so rerun coverage immediately before activation.
 Migration `0172` installs an M7 read route that remains on the original table
 until a migrator calls `control.set_query_observation_v3_read_route(true)`.
 That call locks target registration and observation writes, checks every
