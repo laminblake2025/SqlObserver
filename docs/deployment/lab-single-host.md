@@ -285,6 +285,39 @@ max_rows)`. Each call stores counts and digests; a live insert makes its UTC
 day's earlier checks stale. `all_covered` means the currently recorded,
 generation-matched passing windows cover the observed bounds. Keep the API on
 the original path until replay, fencing, and read cutover are reviewed.
+Migration `0171` lists coverage for every registered target, including empty
+targets, in pages of at most 100:
+
+```sql
+SELECT * FROM control.list_query_observation_v3_parity_coverage(NULL,100);
+-- Pass the last instance_id as the first argument for the next page.
+```
+
+Use a migrator login. Complete `0166` backfill even for empty targets; otherwise
+their fleet coverage is false. Migration `0173` can choose and record the next
+bounded window for one target. Set that target's scope in the same transaction,
+commit each passing window, and repeat until the function returns no row:
+
+```sql
+BEGIN;
+SELECT set_config('sqlobserver.target_scope','<target-uuid>',true);
+SELECT * FROM control.record_next_query_observation_v3_parity_window(
+  '<target-uuid>'::uuid,100000);
+COMMIT;
+```
+
+Investigate `parity = false` before retrying. SQLSTATE `54000` means more than
+the row cap shares one `interval_end`; a time-only window cannot split that
+point, so do not claim coverage until the verifier supports a bounded key
+split. Live writes can stale the current UTC day's windows, so rerun coverage
+immediately before activation.
+Migration `0172` installs an M7 read route that remains on the original table
+until a migrator calls `control.set_query_observation_v3_read_route(true)`.
+That call locks target registration and observation writes, checks every
+registered target and required triggers/RLS, and flips the three public
+projections in the same transaction. `false` restores original reads while
+the original table is intact. Neither command moves canonical writes or
+enables M7 retention.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.

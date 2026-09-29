@@ -155,6 +155,13 @@ Focused PostgreSQL checks exercise an incomplete empty target, activation,
 all three routed projections, server grants, and rollback. Canonical writes
 still enter the original table and mirror into v3, so M7 retention and original
 table retirement remain gated on a later writer and dependency-graph cutover.
+Migration 0173 lets a migrator record the next uncovered window without
+manually splitting every day. It chooses the earlier of the source and
+successor `(row cap + 1)` interval ends, so both verifier scans stay bounded.
+If more than the cap shares one timestamp, it fails visibly with SQLSTATE
+`54000`; that target needs a composite-key verifier before cutover. Calls
+stop returning rows once current coverage is complete, and live writes still
+invalidate their UTC day through the existing generation ledger.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the
