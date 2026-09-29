@@ -14,14 +14,14 @@ SqlObserver is a Windows-hosted platform for understanding SQL Server health, in
 | --- | --- |
 | **Overview** | Fleet and selected-server health, historical charts, database activity, resource observations, and previous-period comparisons |
 | **Activity** | Sessions, requests, waits, blocking, and paginated history |
-| **Query performance** | Query Store observations and bounded DMV fallback evidence |
+| **Query performance** | Query Store observations, bounded DMV fallback evidence, and optional protected Query Store text and plans for target-scoped QueryTextReader users |
 | **Deadlocks** | Passive collection of system-health deadlock evidence and investigation views |
 | **Operational health** | Backup status, SQL Agent failures, TempDB, and Availability Groups |
 | **Host and replication** | Host metrics, replication status, and explicit visibility gaps |
 | **Alerts** | Alert evaluation, maintenance windows, notification handling, and audited administration |
 | **Analytics** | Rollups, baselines, forecasts, incident correlation, evidence packets, and backfill job inventory |
 | **Reports** | Bounded, target-scoped reporting with HTML and CSV export contracts; release certification is pending |
-| **MCP integration** | Authenticated, audited access through a reviewed catalog of 25 read-only diagnostic tools |
+| **MCP integration** | Authenticated, audited access through a reviewed catalog of 27 read-only diagnostic tools |
 
 The dashboard supports preset and custom UTC time ranges. Evidence views expose freshness, partial coverage, and unavailable data so missing observations are distinguishable from healthy results. Backfill jobs rebuild analytics from retained observations; retention controls remain disabled by default.
 
@@ -114,11 +114,11 @@ The initial platform targets are Windows Server 2022/2025, SQL Server 2019/2022/
 | M11 MCP | Authenticated, authorized, bounded, audited read-only diagnostic access |
 | M12 | Reports, export contracts, observability, installer contracts, and certification tooling; external release evidence remains incomplete |
 
-Recent repairs improve Overview reads, query collection, analytics transactions, backfill completion and cursor handling, retention function access, and consistent time-range selection. New database corrections are delivered through forward migrations 0073–0077.
+The revamp branch adds protected Query Store content, SQL resource and volume evidence, repository-claimed collector scheduling, and a leased retention worker through forward migrations. Fleet Overview still composes live reads and needs a precomputed latest-status projection for larger deployments.
 
 ### Collector catalog
 
-The 15 runtime-registered collectors, in execution order, are `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`.
+The 18 runtime-registered collectors, in execution order, are `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, `replication.health`, `storage.volume`, `queries.performance-groups`, and `engine.buffer-nodes`. Registration does not imply a collector is enabled or supported on every target.
 
 `capability.connection` is control-plane discovery and is not a scheduled collector. Capabilities and permissions determine which collectors can run; unsupported and degraded states remain visible.
 

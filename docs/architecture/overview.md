@@ -55,7 +55,7 @@ The default target path is passive and read-only. The worker cannot grant itself
 
 ### `SqlObserver.McpStdio`
 
-The local bridge translates stdio protocol messages through an adapter and authenticates to the server. It contains no domain data access and receives no database credential. Protocol SDK selection is deferred until Milestone 11 and must use the latest stable official C# SDK verified at that time. If 2.x is still preview, the stable 1.x line is shipped and compatibility-tested against current/2.x protocol behavior.
+The local bridge translates stdio protocol messages through an adapter and authenticates to the server. It contains no domain data access and receives no database credential. The current bridge uses the reviewed MCP C# SDK 2.2.0 protocol contract; its HTTP and stdio catalog identities are pinned and tested together.
 
 ### `SqlObserver.Cli`
 
@@ -77,7 +77,7 @@ The repository holds configuration, authorization metadata, telemetry, events, d
 | `audit` | MCP-call and administrative-write audit evidence |
 | `system` | Repository version, migration checksums, partition catalog, and internal health |
 
-Production schema changes are immutable, numbered SQL migrations with checksums; automatic ORM schema generation is prohibited. High-volume raw telemetry uses native daily range partitions. Lower-volume events use monthly partitions. BRIN indexes serve time-oriented scans and B-tree indexes serve justified instance/time access paths. High-volume metric and event ingestion uses PostgreSQL binary `COPY` into transaction-local staging. Sensitivity-controlled query text and plan storage remains planned; the collector currently marks that content unavailable. Repository observation times are UTC.
+Production schema changes are immutable, numbered SQL migrations with checksums; automatic ORM schema generation is prohibited. High-volume raw telemetry uses native daily range partitions. Lower-volume events use monthly partitions. BRIN indexes serve time-oriented scans and B-tree indexes serve justified instance/time access paths. High-volume metric and event ingestion uses PostgreSQL binary `COPY` into transaction-local staging. Query Store text and plan XML may be captured into encrypted, target-bound content when protection is configured; retrieval requires a target-scoped QueryTextReader role and is audited. Plan-cache fallback remains metadata-only, and MCP does not return protected content. Repository observation times are UTC.
 
 ## Module boundaries
 
