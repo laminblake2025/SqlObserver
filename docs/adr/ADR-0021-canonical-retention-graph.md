@@ -254,6 +254,11 @@ source-only and successor-only writes invalidate prior certificates. The
 target/collector coverage report merges only passing, current windows and
 exposes the first gap. This is preliminary coverage: it does not enumerate
 every fleet target and collector or provide the final writer-fenced sweep.
+Migration 0187 adds a migrator-only keyset page over every registered target
+and distinct collector contract, including combinations with no run rows. It
+preserves the caller's target scope after the page and reports incomplete
+backfill or coverage per pair. Pages are an operator inventory, not one
+coherent attestation while targets, contracts or runs can change.
 
 ## Implementation gates
 
