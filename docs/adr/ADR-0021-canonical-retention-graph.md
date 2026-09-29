@@ -259,6 +259,14 @@ and distinct collector contract, including combinations with no run rows. It
 preserves the caller's target scope after the page and reports incomplete
 backfill or coverage per pair. Pages are an operator inventory, not one
 coherent attestation while targets, contracts or runs can change.
+Migration 0188 checks every target/collector pair inside one migrator-owned
+transaction while SHARE locks block target/contract registration, run writes,
+partition changes and parity-ledger updates. It refuses disabled mirror,
+generation, append-only or forced-RLS gates, detached successor partitions,
+incomplete coverage and an operator-selected pair bound. The function returns
+only a transient verification result: future reader and foreign-key cutover
+must rerun it and make their changes before releasing the same transaction's
+locks. It does not itself switch reads or retire original run rows.
 
 ## Implementation gates
 
