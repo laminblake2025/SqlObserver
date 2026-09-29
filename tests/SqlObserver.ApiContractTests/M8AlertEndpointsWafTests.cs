@@ -129,6 +129,35 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
     }
 
     [Fact]
+    public async Task MaintenanceCreateAndCancelAcceptWebClientPayloadsWithRevisionFence()
+    {
+        using HttpClient admin = CreateClient("admin");
+        Guid windowId = Guid.NewGuid();
+        Guid operationId = Guid.NewGuid();
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/maintenance";
+        using HttpResponseMessage created = await admin.PostAsJsonAsync(path, new
+        {
+            windowId, startsAtUtc = "2026-10-01T12:00:00.000Z",
+            endsAtUtc = "2026-10-01T13:00:00.000Z", reason = "Planned patch",
+            operationId,
+        });
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        MaintenanceWriteRequest write = Assert.IsType<MaintenanceWriteRequest>(factory.Administration.LastMaintenanceWriteRequest);
+        Assert.Equal(windowId, write.Window.Id);
+        Assert.Equal("Planned patch", write.Window.Reason);
+        Assert.Null(write.ExpectedRevision);
+
+        using HttpResponseMessage cancelled = await admin.PostAsJsonAsync($"{path}/{windowId:D}/cancel", new
+        {
+            operationId = Guid.NewGuid(), expectedRevision = 3,
+        });
+        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+        MaintenanceCancellationRequest cancellation = Assert.IsType<MaintenanceCancellationRequest>(factory.Administration.LastMaintenanceCancellationRequest);
+        Assert.Equal(windowId, cancellation.WindowId);
+        Assert.Equal(3, cancellation.ExpectedRevision);
+    }
+
+    [Fact]
     public async Task DestinationListPagesWithoutConfigurationReferencesAndRequiresAdministrator()
     {
         using HttpClient admin = CreateClient("admin");
@@ -443,9 +472,11 @@ internal sealed class FakeAlertAdministration : IAlertAdministrationService
     internal int AcknowledgeCalls { get; private set; }
     internal int UpsertRuleCalls { get; private set; }
     internal AlertRuleWriteRequest? LastRuleWriteRequest { get; private set; }
+    internal MaintenanceWriteRequest? LastMaintenanceWriteRequest { get; private set; }
+    internal MaintenanceCancellationRequest? LastMaintenanceCancellationRequest { get; private set; }
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); UpsertRuleCalls++; LastRuleWriteRequest = request; return Run(); }
-    public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(AuthorizationContext authorization, MaintenanceWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); return Run(); }
-    public ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(AuthorizationContext authorization, MaintenanceCancellationRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); return Run(); }
+    public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(AuthorizationContext authorization, MaintenanceWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); LastMaintenanceWriteRequest = request; return Run(); }
+    public ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(AuthorizationContext authorization, MaintenanceCancellationRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); LastMaintenanceCancellationRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AuthorizationContext authorization, AlertAcknowledgeRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.Operator); AcknowledgeCalls++; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AuthorizationContext authorization, AlertDestinationWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.SecurityAdministrator); return Run(); }
     public ValueTask<AdministrativeAuditReceipt> CancelDeliveryAsync(AuthorizationContext authorization, AlertDeliveryAdminCancellationRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.Operator); return Run(); }

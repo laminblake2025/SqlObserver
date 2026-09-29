@@ -55,11 +55,12 @@ html { min-width: 320px; background: var(--canvas); }
 
 body { min-width: 320px; min-height: 100vh; margin: 0; color: var(--text); background: var(--canvas); }
 
-button, input, select { max-width: 100%; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; font: inherit; }
+button, input, select, textarea { max-width: 100%; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; font: inherit; }
 button, select { cursor: pointer; }
 button { min-height: 40px; padding: 9px 13px; }
 button:disabled { cursor: not-allowed; opacity: .5; }
 input, select { min-height: 40px; padding: 8px 11px; }
+textarea { min-height: 72px; padding: 8px 11px; resize: vertical; }
 input::placeholder { color: var(--placeholder); }
 
 a { color: var(--teal-deep); text-decoration: none; }
@@ -155,6 +156,12 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .rule-details > div { display: grid; grid-template-columns: minmax(125px, .7fr) 1fr; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .rule-details dt { color: var(--muted); }
 .rule-details dd { margin: 0; overflow-wrap: anywhere; }
+.maintenance-form { display: grid; gap: 14px; margin-bottom: 18px; padding: 18px; }
+.maintenance-form h3 { margin: 0 0 4px; }
+.maintenance-form p { margin: 0; color: var(--muted); }
+.maintenance-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+.maintenance-fields label { display: grid; flex: 1 1 190px; gap: 5px; color: var(--muted-deep); font-size: 12px; font-weight: 700; }
+.maintenance-form > button { justify-self: start; }
 .screen-intro p:not(.eyebrow), .screen-subtitle { max-width: 760px; margin-bottom: 0; color: var(--muted); }
 .health-heading-row { margin-bottom: 16px; }
 .health-heading-row h3, .health-heading-row h2 { margin-bottom: 4px; }
