@@ -85,9 +85,9 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.list_blocking_history_legacy/10
             function reporting.list_buffer_node_ple_nodes/3
             function reporting.list_current_blocking_legacy/8
-            function reporting.list_server_wait_category_trend/3
-            function reporting.list_server_wait_history/7
-            function reporting.list_server_wait_summary/6
+            function reporting.list_server_wait_category_trend_legacy/3
+            function reporting.list_server_wait_history_legacy/7
+            function reporting.list_server_wait_summary_legacy/6
             function reporting.list_sql_volume_snapshot/5
             function reporting.overview_database_activity_history/5
             function reporting.overview_workload_history/5

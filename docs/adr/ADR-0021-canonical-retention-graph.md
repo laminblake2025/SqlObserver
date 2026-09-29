@@ -338,6 +338,10 @@ Migration 0198 adds private shadow readers for current wait summary, wait
 history, and category trend. Their baseline, cursor, reset, and bucket outputs
 are compared with the original readers on populated PostgreSQL fixtures before
 any public wait route is changed.
+Migration 0199 adds an independent route for the three wait readers. It starts
+on the original implementations and only a migrator can enable partitioned
+reads after the writer-fenced fleet parity proof. The original functions stay
+private and available for rollback.
 
 ## Implementation gates
 
