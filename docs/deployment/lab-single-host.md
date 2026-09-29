@@ -254,6 +254,15 @@ by a bounded source window. This temporarily increases M7 storage. Reads and
 retention still use the original table until historical backfill and parity
 checks support a separate cutover.
 
+Migration `0166` provides `control.backfill_query_observation_v3(target, limit)`
+for an explicit historical copy. Connect with a migrator login, set the exact
+`sqlobserver.target_scope` for one target in the same transaction, and call it
+with a limit from 1 to 1,000. Commit each batch and repeat until `complete` is
+true. It reports rows checked and newly copied; already-mirrored rows count as
+checked. A divergent row aborts the batch without advancing its cursor. The
+copy does not change the read source or enable M7 retention. Full source and
+successor count/digest parity is still required before a read cutover.
+
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced
 worker reattaches one partition per step and records an audit event. If the

@@ -94,6 +94,12 @@ source windows; a mismatched or occupied partition fails the original insert.
 The original table remains the read source and neither table has an enabled M7
 retention policy. Historical backfill, digest/count parity, replay validation,
 and read cutover remain required before the old table can retire.
+Migration 0166 adds a migrator-only, target-scoped historical copy in batches
+of at most 1,000 rows. It resumes on the original observation primary key,
+derives ownership from the query row when a legacy target key is null, and
+checks every copied or already-mirrored row for equality. A mismatch rolls
+back the batch and its cursor. Operators must call it explicitly per target;
+completion of its cursor alone is not a global parity or cutover attestation.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the
