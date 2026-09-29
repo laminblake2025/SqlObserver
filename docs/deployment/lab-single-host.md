@@ -247,6 +247,13 @@ and enables a guarded 30-day snapshot default. The subordinate file policy
 remains disabled and direct file detach remains blocked. Both partitions
 retire together after the grace period.
 
+Migration `0165` begins the original M7 observation cutover with an
+`interval_end`-partitioned shadow table. New observations mirror atomically;
+daily partitions are registered and maintained, including older days reached
+by a bounded source window. This temporarily increases M7 storage. Reads and
+retention still use the original table until historical backfill and parity
+checks support a separate cutover.
+
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced
 worker reattaches one partition per step and records an audit event. If the

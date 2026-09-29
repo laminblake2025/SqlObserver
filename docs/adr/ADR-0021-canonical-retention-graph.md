@@ -87,6 +87,13 @@ backfill/replay verification. Keep run/query/plan and content-link rows until
 all dependent observation partitions and retained incidents/reports are
 accounted for. A partition drop must not silently cascade through those
 foreign keys. Use a separate bounded cleanup for graph nodes proven orphaned.
+Migration 0165 establishes the interval-end partitioned successor and mirrors
+new canonical inserts in the same transaction. Registered daily partitions
+are prepared ahead of normal windows and created on demand for older bounded
+source windows; a mismatched or occupied partition fails the original insert.
+The original table remains the read source and neither table has an enabled M7
+retention policy. Historical backfill, digest/count parity, replay validation,
+and read cutover remain required before the old table can retire.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the
