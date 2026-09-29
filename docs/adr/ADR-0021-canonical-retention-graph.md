@@ -201,6 +201,18 @@ outside the reviewed graph. The preview is deliberately non-mutating;
 `no_known_hold` is not a deletion certificate. A future leased cleanup must
 repeat these checks after locking its candidate and bound the number of
 child rows removed in one transaction.
+Migration 0179 supplies that per-run, operator-invoked cleanup primitive.
+It requires the dedicated retention lease and migrator target scope, locks
+the collection/run/query/plan graph and overlapping v3 registry rows,
+rechecks the holds and catalog dependencies, and removes at most 4,096
+child rows. It records counts, policy revision, attestation and fence in a
+durable retirement ledger plus audit. Collection-run accounting and shared
+ciphertext remain; the orphan-payload worker handles ciphertext later.
+The migration also fixes the shared M7 append-only trigger so deleting a
+plan does not access an `instance_id` field absent from that table. Migration
+0180 adds the target/window run index concurrently for future candidate
+scans. Automatic candidate discovery and scheduling remain open, as does
+collection-run history retirement.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

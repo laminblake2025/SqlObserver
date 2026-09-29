@@ -381,6 +381,17 @@ It reports attached observations, detached v3 grace, reader leases,
 incident evidence, analytics work, missing outcome or recovery evidence,
 policy/age gates and unreviewed foreign keys. `no_known_hold` is a preview
 result, not permission to delete: cleanup must recheck under its own fence.
+Migration `0179` adds `system.retire_query_performance_run` for one expired
+run once no attached or detached v3 evidence can depend on it. An operator
+with the migrator role and a live `retention/maintenance` lease can call it
+in a target-scoped transaction. It returns `held`, `oversize`, `retired`, or
+`missing`; only `retired` removes the bounded graph. Check
+`system.query_run_retirement` and the `retention.query_run.retire` audit
+entry for the child counts, policy revision, recovery attestation and fence.
+The function leaves collection-run outcomes and shared protected payloads
+intact. The retention worker does not discover M7 run candidates yet, so
+this is an explicit operator step. Migration `0180` adds the run target/time
+index concurrently for the scheduled candidate scan still to come.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
