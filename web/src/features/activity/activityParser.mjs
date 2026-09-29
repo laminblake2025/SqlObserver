@@ -3,7 +3,7 @@ export const maximumResponseBytes = 256 * 1024;
 
 export class ActivityRequestError extends Error {}
 
-export async function getPage(url, parseItem, expectedInstanceId, signal) {
+export async function getPage(url, parseItem, expectedInstanceId, signal, maximumItems = pageLimit) {
   let response;
   try { response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }); }
   catch (error) { if (signal.aborted) throw error; throw new ActivityRequestError("Activity evidence is temporarily unavailable."); }
@@ -13,7 +13,7 @@ export async function getPage(url, parseItem, expectedInstanceId, signal) {
   let value;
   try { value = JSON.parse(await readBoundedBody(response, signal)); }
   catch (error) { if (error instanceof ActivityRequestError) throw error; throw invalidResponse(); }
-  return parsePage(value, parseItem, expectedInstanceId);
+  return parsePage(value, parseItem, expectedInstanceId, maximumItems);
 }
 
 export async function readBoundedBody(response, signal, maximumBytes = maximumResponseBytes) {
@@ -35,12 +35,13 @@ export async function readBoundedBody(response, signal, maximumBytes = maximumRe
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
-export function parsePage(value, parseItem, expectedInstanceId) {
+export function parsePage(value, parseItem, expectedInstanceId, maximumItems = pageLimit) {
   const record = object(value);
   const instanceId = safeGuid(record.instanceId);
   if (expectedInstanceId !== undefined && instanceId.toLowerCase() !== expectedInstanceId.toLowerCase()) throw invalidResponse();
   const repositoryTimeUtc = safeTimestamp(record.repositoryTimeUtc);
-  if (!Array.isArray(record.items) || record.items.length > pageLimit) throw invalidResponse();
+  if (!Number.isSafeInteger(maximumItems) || maximumItems < 1 || maximumItems > 256 ||
+      !Array.isArray(record.items) || record.items.length > maximumItems) throw invalidResponse();
   const evidence = record.evidence === undefined || record.evidence === null ? undefined : parseEvidence(record.evidence);
   const fromUtc = record.fromUtc === undefined ? undefined : safeTimestamp(record.fromUtc);
   const toUtc = record.toUtc === undefined ? undefined : safeTimestamp(record.toUtc);

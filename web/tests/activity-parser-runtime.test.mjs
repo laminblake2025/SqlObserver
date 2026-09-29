@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getPage, maximumResponseBytes, parseEdge, parseHistory, parsePage, parseRequest, parseSession, parseWait, parseWaitHistory, safeCursor, safeStatusMessage } from "../src/features/activity/activityParser.mjs";
+import { getCurrentBlockingPage } from "../src/features/activity/activityApi.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
 const at = "2026-08-23T18:00:00Z";
@@ -32,6 +33,26 @@ test("production parser rejects malformed fields, oversized pages, and cross-tar
   assert.throws(() => parsePage(envelope([{ evidence, baselineRunId: "bad", wait }]), parseWaitHistory, target));
   assert.equal(safeCursor("x".repeat(512)).length, 512);
   assert.throws(() => safeCursor("x".repeat(513)));
+});
+
+test("dashboard blocking read accepts the full bounded graph without relaxing other page limits", async () => {
+  const originalFetch = globalThis.fetch;
+  const edges = Array.from({ length: 256 }, (_, index) => ({ ...edge, blockedSessionId: index + 1 }));
+  let requestedLimit;
+  try {
+    globalThis.fetch = async url => {
+      requestedLimit = new URL(String(url), "https://lab.invalid").searchParams.get("limit");
+      return streamResponse(JSON.stringify(envelope(edges, { evidence, maximumGraphNodes: 256 })));
+    };
+    const page = await getCurrentBlockingPage(target, new AbortController().signal);
+    assert.equal(requestedLimit, "256");
+    assert.equal(page.items.length, 256);
+    assert.equal(page.items.at(-1).blockedSessionId, 256);
+
+    globalThis.fetch = async () => streamResponse(JSON.stringify(envelope([...edges, edge], { evidence, maximumGraphNodes: 256 })));
+    await assert.rejects(() => getCurrentBlockingPage(target, new AbortController().signal));
+    assert.throws(() => parsePage(envelope(edges), parseEdge, target));
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("production HTTP reader enforces headers, streamed bytes, null bodies, and status messages", async () => {

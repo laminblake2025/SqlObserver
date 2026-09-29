@@ -3,8 +3,8 @@ declare module "*.mjs" {
   export const pageLimit: number;
   export const maximumResponseBytes: number;
   export class ActivityRequestError extends Error {}
-  export function getPage<T>(url: string, parseItem: (value: unknown) => T, expectedInstanceId: string, signal: AbortSignal): Promise<ActivityPage<T>>;
-  export function parsePage<T>(value: unknown, parseItem: (value: unknown) => T, expectedInstanceId?: string): ActivityPage<T>;
+  export function getPage<T>(url: string, parseItem: (value: unknown) => T, expectedInstanceId: string, signal: AbortSignal, maximumItems?: number): Promise<ActivityPage<T>>;
+  export function parsePage<T>(value: unknown, parseItem: (value: unknown) => T, expectedInstanceId?: string, maximumItems?: number): ActivityPage<T>;
   export function parseEvidence(value: unknown): ActivityEvidence;
   export function parseSession(value: unknown): ActivitySession;
   export function parseRequest(value: unknown): ActivityRequest;

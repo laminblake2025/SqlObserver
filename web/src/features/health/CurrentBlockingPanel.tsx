@@ -43,7 +43,7 @@ export function CurrentBlockingPanel({ instanceId, scope, refresh }: {
       <p className="server-dashboard-blocking-meta">Observed {formatTime(page.evidence?.completedAtUtc)}. {error ? "Previous current snapshot" : "Current snapshot"}, independent of the selected timeline window.</p>
       {groups.length === 0 && <p className="empty-state">{complete && !error ? "No blocked sessions in the current collection." : "No blocking rows on this page; collection is incomplete or unavailable."}</p>}
       {groups.length > 0 && <div className="server-dashboard-blocking-groups">{groups.map(group => <div className="server-dashboard-blocking-group" key={group.key}>
-        <h5>{group.label} · {group.edges.length} {group.edges.length === 1 ? "edge" : "edges"} on this page</h5>
+        <h5>{group.label} · {group.edges.length} {group.edges.length === 1 ? "edge" : "edges"} in this snapshot</h5>
         <ul>{group.edges.map((edge, index) => <li key={`${edge.blockedSessionId}:${edge.blockerKind}:${edge.blockerSessionId ?? "none"}:${edge.waitType}:${index}`} style={{ marginLeft: `${Math.min(edge.chainDepth - 1, 8) * 14}px` }}>
           <strong>Session {edge.blockedSessionId}</strong> ← {edge.blockerSessionId === undefined ? edge.blockerKind : `session ${edge.blockerSessionId}`}
           <span>{edge.waitType} · {edge.waitDurationMilliseconds} ms · depth {edge.chainDepth} · {edge.chainState}</span>

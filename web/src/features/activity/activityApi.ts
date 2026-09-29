@@ -3,6 +3,7 @@ import { getPage, parseEdge, parseHistory, parseRequest, parseSession, parseWait
 export { ActivityRequestError, safeStatusMessage } from "./activityParser.mjs";
 
 const pageLimit = 25;
+const blockingGraphLimit = 256;
 
 export async function getCurrentServerWaitPage(instanceId: string, signal: AbortSignal, cursor?: string): Promise<ActivityPage<ActivityWait>> {
   const parameters = new URLSearchParams({ limit: String(pageLimit) });
@@ -27,7 +28,7 @@ export async function getServerWaitHistoryPage(instanceId: string, window: { rea
 }
 
 export async function getCurrentBlockingPage(instanceId: string, signal: AbortSignal): Promise<ActivityPage<BlockingEdge>> {
-  return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal);
+  return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/current?limit=${String(blockingGraphLimit)}`, parseEdge, instanceId, signal, blockingGraphLimit);
 }
 
 export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historySelection: 1 | 6 | 24 | { readonly fromUtc: string; readonly toUtc: string } | null = 1): Promise<{
