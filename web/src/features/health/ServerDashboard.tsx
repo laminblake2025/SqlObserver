@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { OverviewChart } from "../overview/OverviewChart";
@@ -7,6 +7,10 @@ import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
 import { ServerWaitTrendPanel } from "./ServerWaitTrendPanel";
+import { getDatabaseOptionChanges } from "./healthApi";
+import type { DatabaseOptionChangeResult } from "./healthTypes";
+import { getDeadlocks } from "../deadlocks/deadlockApi";
+import type { DeadlockPage } from "../deadlocks/deadlockTypes";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh }: {
   readonly instanceId: string;
@@ -24,6 +28,75 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data) : [];
+  const [optionEvents, setOptionEvents] = useState<DatabaseOptionChangeResult>();
+  const [optionEventError, setOptionEventError] = useState(false);
+  const [deadlockEvents, setDeadlockEvents] = useState<{
+    page: DeadlockPage; fromUtc: string; toUtc: string;
+  }>();
+  const [deadlockEventError, setDeadlockEventError] = useState(false);
+  useEffect(() => {
+    if (!data || !evidence) {
+      setOptionEvents(undefined);
+      setOptionEventError(false);
+      return;
+    }
+    const controller = new AbortController();
+    setOptionEvents(undefined);
+    setOptionEventError(false);
+    void getDatabaseOptionChanges(instanceId, data, controller.signal)
+      .then(next => {
+        if (next.targetId.toLowerCase() !== instanceId.toLowerCase() ||
+            Date.parse(next.fromUtc) !== Date.parse(data.fromUtc) ||
+            Date.parse(next.toUtc) !== Date.parse(data.toUtc))
+          throw new Error("Option history does not match the selected window.");
+        if (!controller.signal.aborted) setOptionEvents(next);
+      })
+      .catch(() => { if (!controller.signal.aborted) setOptionEventError(true); });
+    return () => controller.abort();
+  }, [instanceId, data?.fromUtc, data?.toUtc, evidence !== undefined, refresh]);
+  useEffect(() => {
+    if (!data || !evidence) {
+      setDeadlockEvents(undefined);
+      setDeadlockEventError(false);
+      return;
+    }
+    const controller = new AbortController();
+    setDeadlockEvents(undefined);
+    setDeadlockEventError(false);
+    void getDeadlocks(instanceId, controller.signal, undefined, data)
+      .then(next => { if (!controller.signal.aborted) setDeadlockEvents({
+        page: next, fromUtc: data.fromUtc, toUtc: data.toUtc,
+      }); })
+      .catch(() => { if (!controller.signal.aborted) setDeadlockEventError(true); });
+    return () => controller.abort();
+  }, [instanceId, data?.fromUtc, data?.toUtc, evidence !== undefined, refresh]);
+  const groupedChanges = new Map<string, { timeUtc: string; databaseName: string; labels: string[] }>();
+  if (optionEvents?.targetId.toLowerCase() === instanceId.toLowerCase() &&
+      Date.parse(optionEvents.fromUtc) === Date.parse(data?.fromUtc ?? "") &&
+      Date.parse(optionEvents.toUtc) === Date.parse(data?.toUtc ?? "")) {
+    for (const item of optionEvents.items) {
+      const key = `${item.detectedAtUtc}:${item.databaseId}`;
+      const group = groupedChanges.get(key) ?? {
+        timeUtc: item.detectedAtUtc, databaseName: item.databaseName, labels: [],
+      };
+      group.labels.push(`${item.optionKey.replaceAll("_", " ")} ${item.previousValue} → ${item.currentValue}`);
+      groupedChanges.set(key, group);
+    }
+  }
+  const selectedDeadlocks = deadlockEvents?.page.targetId.toLowerCase() === instanceId.toLowerCase() &&
+    deadlockEvents.fromUtc === data?.fromUtc && deadlockEvents.toUtc === data?.toUtc
+      ? deadlockEvents.page : undefined;
+  const markers = [
+    ...issues.filter(issue => issue.observedAtUtc).map(issue => ({ timeUtc: issue.observedAtUtc!, label: issue.title })),
+    ...(selectedDeadlocks
+      ? selectedDeadlocks.items
+        .map(item => ({ timeUtc: item.occurredAtUtc,
+          label: `Deadlock · ${item.participantCount} sessions` })) : []),
+    ...[...groupedChanges.values()].slice(0, 20).map(group => ({
+      timeUtc: group.timeUtc,
+      label: `${group.databaseName} options: ${group.labels.join("; ")}`,
+    })),
+  ];
   const memorySeries = (source: typeof evidence) => source?.series
     .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "engine.os_available_memory_bytes" || item.metric === "host.memory.available_bytes")
     .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes" ? "SQL process used" : item.metric === "engine.os_available_memory_bytes" ? "OS available via SQL" : "Host available" })) ?? [];
@@ -37,7 +110,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       previous={previous?.series.filter(series => series.metric === metric)}
       fromUtc={data!.fromUtc}
       toUtc={data!.toUtc}
-      markers={issues.filter(issue => issue.observedAtUtc).map(issue => ({ timeUtc: issue.observedAtUtc!, label: issue.title }))}
+      markers={markers}
       crosshairUtc={crosshairUtc}
       onCrosshairChange={setCrosshairUtc}
       onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }}
@@ -56,6 +129,10 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     {data && !evidence && <p className="empty-state">No authorized dashboard evidence was returned for this server.</p>}
     {data && evidence && <>
       <p className="server-dashboard-window">Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. SQL core status: {evidence.collectionState.replaceAll("_", " ")}.</p>
+      {optionEventError && <p role="status">Database option change markers are unavailable for this window.</p>}
+      {deadlockEventError && <p role="status">Deadlock event markers are unavailable for this window.</p>}
+      {selectedDeadlocks?.nextCursor && <p role="status">The timeline shows the latest 25 deadlocks. Open Deadlocks to browse the rest.</p>}
+      {groupedChanges.size > 20 && <p role="status">The timeline shows the latest 20 database option change groups. Use a shorter window to see more.</p>}
       <div className="kpi-grid server-dashboard-kpis">
         <DashboardCount label="Active alerts now" value={evidence.activeAlerts} />
         <DashboardCount label="Blocked sessions now" value={evidence.blockedSessions} />
@@ -72,7 +149,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
         {chart("engine.sql_scheduler_cpu_percent", "SQL scheduler CPU", "Percent of online SQL scheduler capacity used by non-preemptive workers between samples. This excludes preemptive and hidden-scheduler work; it is not total SQL process CPU.")}
         <ServerWaitTrendPanel instanceId={instanceId} fromUtc={data.fromUtc} toUtc={data.toUtc} refresh={refresh}
-          markers={issues.filter(issue => issue.observedAtUtc).map(issue => ({ timeUtc: issue.observedAtUtc!, label: issue.title }))}
+          markers={markers}
           crosshairUtc={crosshairUtc} onCrosshairChange={setCrosshairUtc}
           onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }} />
         {chart("engine.scheduler_runnable_tasks", "SQL scheduler pressure", "Runnable tasks waiting for CPU across visible online SQL schedulers. This is a point-in-time queue, not SQL process CPU percent.")}

@@ -66,7 +66,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   </svg><figcaption className="overview-legend">{series.map(s=><span key={`${s.targetId}:${s.metric}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
   <small>Vertical scale follows observed values and may not start at zero.</small>
   {previous?.length ? <small>Dashed lines: previous equal-length window shifted for comparison. Observed bucket means; gaps and changing coverage can affect comparisons.</small> : null}
-  {markers.length>0&&<small>Event lines mark ranked issues returned for this window; they are not a complete event history.</small>}
+  {markers.length>0&&<small>Event lines mark available events in this window; they are not a complete event history.</small>}
   <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table><thead><tr><th>Server / resource</th><th>{mode==='local'?'Local time':'UTC'}</th><th>Value</th><th>Samples</th><th>Period</th></tr></thead><tbody>{all.flatMap(({s,shift})=>s.points.map(p=><tr key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}:${p.timeUtc}`}><td>{s.label} {s.dimension}</td><td title={p.timeUtc}>{timeLabel(p.timeUtc)}</td><td>{formatOverviewChartValue(p.value,range)} {s.unit}</td><td>{p.samples}</td><td>{shift?'Previous':'Selected'}</td></tr>))}</tbody></table></div></details></figure>;
 }
 
