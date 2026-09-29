@@ -17,6 +17,7 @@ public static class AlertEndpoints
         var group = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/alerts").RequireAuthorization();
         group.MapGet("/active", GetActiveAsync);
         group.MapGet("/rules", GetRulesAsync);
+        group.MapGet("/maintenance", GetMaintenanceWindowsAsync);
         group.MapPost("/{alertId:guid}/acknowledge", AcknowledgeAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPost("/rules", CreateRuleAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPut("/rules/{ruleId:guid}", UpdateRuleAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
@@ -134,6 +135,56 @@ public static class AlertEndpoints
             !AlertIdentifier.TryParseRfc4122(parts[2], out Guid after))
             throw new ArgumentException("Cursor binding is invalid.");
         return new AlertRuleListCursor(targetId, started, after);
+    }
+
+    private static async Task<IResult> GetMaintenanceWindowsAsync(
+        HttpContext context, Guid instanceId, IMaintenanceWindowQueryService service,
+        WindowsGroupRoleResolver resolver, int limit = 100, string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 100) return Results.BadRequest();
+        try
+        {
+            var targetId = new MonitoredInstanceId(instanceId);
+            MaintenanceWindowListCursor? after = DecodeMaintenanceCursor(cursor, targetId);
+            MaintenanceWindowListPage page = await service.ListMaintenanceForAdminAsync(
+                resolver.Resolve(context.User), targetId, limit, after, cancellationToken).ConfigureAwait(false);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                listingStartedUtc = page.ListingStartedUtc,
+                items = page.Items.Select(static window => new
+                {
+                    windowId = window.WindowId, startsAtUtc = window.StartsAtUtc,
+                    endsAtUtc = window.EndsAtUtc, window.Reason, window.Revision,
+                    cancelledAtUtc = window.CancelledAtUtc,
+                }),
+                hasMore = page.NextCursor is not null,
+                nextCursor = page.NextCursor is null ? null : EncodeMaintenanceCursor(page.NextCursor),
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static string EncodeMaintenanceCursor(MaintenanceWindowListCursor cursor) =>
+        Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+            $"{cursor.TargetId.Value:D}|{cursor.ListingStartedUtc:O}|{cursor.AfterStartsAtUtc:O}|{cursor.AfterWindowId:D}"));
+
+    private static MaintenanceWindowListCursor? DecodeMaintenanceCursor(string? value, MonitoredInstanceId targetId)
+    {
+        if (value is null) return null;
+        if (value.Length is 0 or > 1024) throw new ArgumentException("Cursor is outside its bounds.");
+        string[] parts;
+        try { parts = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value)).Split('|'); }
+        catch (FormatException exception) { throw new ArgumentException("Cursor is invalid.", exception); }
+        if (parts.Length != 4 || !AlertIdentifier.TryParseRfc4122(parts[0], out Guid target) ||
+            target != targetId.Value || !TryCanonicalUtc(parts[1], out DateTimeOffset started) ||
+            !TryCanonicalUtc(parts[2], out DateTimeOffset afterStarts) ||
+            !AlertIdentifier.TryParseRfc4122(parts[3], out Guid afterId))
+            throw new ArgumentException("Cursor binding is invalid.");
+        return new MaintenanceWindowListCursor(targetId, started, afterStarts, afterId);
     }
 
     private static string EncodeFleetCursor(FleetAlertCursor cursor) =>

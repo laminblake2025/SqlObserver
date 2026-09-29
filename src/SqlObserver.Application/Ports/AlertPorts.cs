@@ -178,6 +178,32 @@ public interface IAlertRuleQueryService
         AlertRuleListCursor? cursor, CancellationToken cancellationToken);
 }
 
+public sealed record MaintenanceWindowListItem(
+    Guid WindowId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc,
+    string Reason, long Revision, DateTimeOffset? CancelledAtUtc);
+
+public sealed record MaintenanceWindowListCursor(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    DateTimeOffset AfterStartsAtUtc, Guid AfterWindowId);
+
+public sealed record MaintenanceWindowListPage(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    IReadOnlyList<MaintenanceWindowListItem> Items, MaintenanceWindowListCursor? NextCursor);
+
+public interface IMaintenanceWindowReadPort
+{
+    ValueTask<MaintenanceWindowListPage> ListMaintenanceForAdminAsync(
+        MonitoredInstanceId targetId, int limit, MaintenanceWindowListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+public interface IMaintenanceWindowQueryService
+{
+    ValueTask<MaintenanceWindowListPage> ListMaintenanceForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        MaintenanceWindowListCursor? cursor, CancellationToken cancellationToken);
+}
+
 public interface IAlertAdministrationService
 {
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken);

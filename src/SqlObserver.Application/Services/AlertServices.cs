@@ -61,6 +61,25 @@ public sealed class AlertRuleQueryService(IAlertRuleReadPort repository) : IAler
     }
 }
 
+public sealed class MaintenanceWindowQueryService(IMaintenanceWindowReadPort repository) : IMaintenanceWindowQueryService
+{
+    public ValueTask<MaintenanceWindowListPage> ListMaintenanceForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        MaintenanceWindowListCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, [ApplicationRole.TargetAdministrator]);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value ||
+            cursor.ListingStartedUtc.Offset != TimeSpan.Zero ||
+            cursor.AfterStartsAtUtc.Offset != TimeSpan.Zero || cursor.AfterWindowId == Guid.Empty))
+            throw new ArgumentException("Maintenance cursor does not match the target.", nameof(cursor));
+        return repository.ListMaintenanceForAdminAsync(targetId, limit, cursor,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+}
+
 public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit, IAlertDestinationApprovalPort? destinationApproval = null) : IAlertAdministrationService
 {
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) =>
