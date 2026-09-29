@@ -476,8 +476,19 @@ FKs or unreviewed views. It then deletes only the old duplicates and writes an
 append-only ledger and audit row with the batch count, cutoff, attestation,
 and current policy snapshot. A separate trigger still rejects direct deletes;
 UPDATE remains append-only. This does not detach v2 partitions or retire any
-canonical run, child evidence, outcome, or identity key. Scheduling this batch
-and retiring the canonical graph remain future work.
+canonical run, child evidence, outcome, or identity key.
+Migration 0230 adds a separate `collection_run_original_copy` policy, disabled
+by default. A SecurityAdministrator may enable it only after the permanent
+rollback seal, with a retention window of at least 30 days. It is not a
+partition detach/drop policy. Migration 0231 lets the existing fenced
+retention worker scan at most 32 targets per step and retire at most 100
+duplicate original rows for one target. The collector receives only the
+scheduled wrapper grant; the target-scoped delete function remains private.
+The wrapper records blocked targets and advances a persistent scan cursor,
+while the inner function still checks the seal, child-FK cutover, recovery
+attestation, target scope, active schedules, whole-row parity, unexpected
+catalog references, and the retention lease before each delete. Canonical v2
+partition retirement and child/identity lifecycle policy remain future work.
 
 ## Implementation gates
 

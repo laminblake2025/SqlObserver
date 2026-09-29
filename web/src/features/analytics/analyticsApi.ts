@@ -37,6 +37,9 @@ const mutableRetentionDataClasses = new Set([
   "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
   "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas",
 ]);
+const policyRetentionDataClasses = new Set([
+  ...mutableRetentionDataClasses, "m7_query_performance", "collection_run_original_copy",
+]);
 function retentionBody(body: unknown, operation: "detach" | "drop"): Record<string, unknown> { const value = objectBody(body, ["operation", "operationId", "executionId", "dataClass", "parentSchema", "parentTable", "partitionName", "expectedPolicyRevision", "changeReason", "correlationId", "requestDigest"]); if (value.operation !== undefined && value.operation !== operation) throw new Error("Mismatched retention operation."); guidBody(value.operationId, "operationId"); guidBody(value.executionId, "executionId"); if (typeof value.dataClass !== "string" || !mutableRetentionDataClasses.has(value.dataClass)) throw new Error("Invalid dataClass."); for (const [name, max] of [["parentSchema", 128], ["parentTable", 128], ["partitionName", 128]] as const) if (typeof value[name] !== "string" || !/^[A-Za-z0-9_.-]{1,128}$/.test(value[name] as string) || (value[name] as string).length > max) throw new Error(`Invalid ${name}.`); if (!Number.isSafeInteger(value.expectedPolicyRevision) || Number(value.expectedPolicyRevision) < 1) throw new Error("Invalid expectedPolicyRevision."); if (typeof value.changeReason !== "string" || value.changeReason.length < 1 || value.changeReason.length > 512) throw new Error("Invalid changeReason."); guidBody(value.correlationId, "correlationId"); if (typeof value.requestDigest !== "string" || !/^[0-9a-f]{64}$/i.test(value.requestDigest)) throw new Error("Invalid requestDigest."); return value; }
 function attestationBody(body: unknown): Record<string, unknown> { const value = objectBody(body, ["attestationId", "attestedBy", "backupSetReference", "expiresAtUtc", "digest", "correlationId", "changeReason", "requestDigest"]); guidBody(value.attestationId, "attestationId"); if (typeof value.attestedBy !== "string" || value.attestedBy.length < 1 || value.attestedBy.length > 256 || typeof value.backupSetReference !== "string" || value.backupSetReference.length < 1 || value.backupSetReference.length > 512) throw new Error("Invalid attestation text."); if (Date.parse(utcBody(value.expiresAtUtc, "expiresAtUtc")) <= Date.now()) throw new Error("Attestation expiry must be future."); if (typeof value.digest !== "string" || !/^[0-9a-f]{64}$/i.test(value.digest)) throw new Error("Invalid digest."); if (typeof value.requestDigest !== "string" || !/^[0-9a-f]{64}$/i.test(value.requestDigest)) throw new Error("Invalid requestDigest."); guidBody(value.correlationId, "correlationId"); if (typeof value.changeReason !== "string" || value.changeReason.length < 1 || value.changeReason.length > 512) throw new Error("Invalid changeReason."); return value; }
 async function mutation(path: string, body: unknown, signal: AbortSignal): Promise<AnalyticsMutationReceipt> { const encoded = jsonBody(body); const result = await readJson(path, signal, { method: "POST", body: encoded }); return parseMutationReceipt(result); }
@@ -48,7 +51,7 @@ export async function updateRetentionPolicy(
   body: unknown,
   signal: AbortSignal,
 ): Promise<RetentionPolicyResult> {
-  if (!mutableRetentionDataClasses.has(dataClass)) throw new Error("Invalid retention data class.");
+  if (!policyRetentionDataClasses.has(dataClass)) throw new Error("Invalid retention data class.");
   const value = objectBody(body, [
     "dataClass", "enabled", "retainFor", "minimumPartitionsToKeep",
     "expectedRevision", "changeReason",

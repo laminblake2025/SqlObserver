@@ -23,6 +23,38 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
                 new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
                 CancellationToken.None);
         Assert.False(applied.HasFailures);
+        await using (NpgsqlConnection policyReader = await database.DataSource.OpenConnectionAsync())
+        await using (var policy = new NpgsqlCommand("""
+            SELECT enabled,retain_for IS NULL,minimum_partitions_to_keep,
+                   policy_revision
+            FROM system.retention_policy
+            WHERE data_class='collection_run_original_copy'
+              AND parent_schema='telemetry'
+              AND parent_table='collection_run'
+              AND partition_granularity='none';
+            """, policyReader))
+        await using (NpgsqlDataReader row = await policy.ExecuteReaderAsync())
+        {
+            Assert.True(await row.ReadAsync());
+            Assert.False(row.GetBoolean(0));
+            Assert.True(row.GetBoolean(1));
+            Assert.Equal(1, row.GetInt32(2));
+            Assert.Equal(1L, row.GetInt64(3));
+        }
+        await using (NpgsqlConnection policyAdmin = await database.DataSource.OpenConnectionAsync())
+        await using (NpgsqlTransaction premature = await policyAdmin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(policyAdmin, premature);
+            await using var enable = new NpgsqlCommand("""
+                UPDATE system.retention_policy
+                SET enabled=true,retain_for=interval '30 days',
+                    policy_revision=policy_revision+1
+                WHERE data_class='collection_run_original_copy';
+                """, policyAdmin, premature);
+            Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                () => enable.ExecuteNonQueryAsync())).SqlState);
+            await premature.RollbackAsync();
+        }
         await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
         var leases = new PostgreSqlWorkerLeasePort(collectorSource);
         LeaseAcquisitionResult acquired = await leases.AcquireAsync(
@@ -34,6 +66,11 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
             CancellationToken.None);
         Assert.Equal(LeaseAcquisitionStatus.Acquired, acquired.Status);
         WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>(acquired.Lease).Identity;
+        Assert.Equal(OriginalCopyRetentionStepOutcome.Idle,
+            await new PostgreSqlPartitionMaintenancePort(collectorSource)
+                .RunOriginalCopyRetentionStepAsync(lease,
+                    new RepositoryCallTimeout(TimeSpan.FromSeconds(15)),
+                    CancellationToken.None));
         await using (NpgsqlConnection collector = await collectorSource.OpenConnectionAsync())
         await using (var grant = new NpgsqlCommand("""
             SELECT has_function_privilege(current_user,
@@ -143,6 +180,41 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
                 "SELECT control.seal_collection_run_original_rollback(10000);", admin, activate);
             sealedAt = new DateTimeOffset((DateTime)(await seal.ExecuteScalarAsync())!);
             await activate.CommitAsync();
+        }
+        await using (NpgsqlTransaction policyUpdate = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, policyUpdate);
+            await using (var context = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.role','SecurityAdministrator',true);
+                SELECT set_config('sqlobserver.authorization_scope','global',true);
+                """, admin, policyUpdate))
+                await context.ExecuteNonQueryAsync();
+            await using (var tooShort = new NpgsqlCommand("""
+                SELECT system.update_m10_retention_policy(
+                  'collection_run_original_copy',true,interval '29 days',1,1,
+                  'test','original-copy retention');
+                """, admin, policyUpdate))
+            {
+                Assert.Equal("22023", (await Assert.ThrowsAsync<PostgresException>(
+                    () => tooShort.ExecuteScalarAsync())).SqlState);
+            }
+            await policyUpdate.RollbackAsync();
+        }
+        await using (NpgsqlTransaction policyUpdate = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, policyUpdate);
+            await using (var context = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.role','SecurityAdministrator',true);
+                SELECT set_config('sqlobserver.authorization_scope','global',true);
+                """, admin, policyUpdate))
+                await context.ExecuteNonQueryAsync();
+            await using var enable = new NpgsqlCommand("""
+                SELECT system.update_m10_retention_policy(
+                  'collection_run_original_copy',true,interval '30 days',1,1,
+                  'test','original-copy retention');
+                """, admin, policyUpdate);
+            Assert.Equal(2L, await enable.ExecuteScalarAsync());
+            await policyUpdate.CommitAsync();
         }
 
         Guid target = Guid.NewGuid();
@@ -461,6 +533,76 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
             Assert.Equal(1L, row.GetInt64(3));
             Assert.Equal(1L, row.GetInt64(4));
             Assert.Equal(1L, row.GetInt64(5));
+        }
+        Guid scheduledRun = Guid.NewGuid();
+        await using (NpgsqlTransaction seed = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, seed);
+            await using var insert = new NpgsqlCommand("""
+                INSERT INTO telemetry.collection_run_v2
+                  (run_id,instance_id,collector_id,collector_version,
+                   output_schema_version,target_revision,schedule_revision,
+                   work_key,owner_execution_id,fencing_token,request_digest,
+                   scheduled_for,started_at)
+                SELECT @new,instance_id,collector_id,collector_version,
+                       output_schema_version,target_revision,schedule_revision,
+                       work_key,owner_execution_id,fencing_token,request_digest,
+                       scheduled_for+interval '1 second',started_at+interval '1 second'
+                FROM telemetry.collection_run_v2 WHERE run_id=@old;
+                INSERT INTO telemetry.collection_run
+                  (run_id,instance_id,collector_id,collector_version,
+                   output_schema_version,target_revision,schedule_revision,
+                   work_key,owner_execution_id,fencing_token,request_digest,
+                   scheduled_for,started_at)
+                SELECT run_id,instance_id,collector_id,collector_version,
+                       output_schema_version,target_revision,schedule_revision,
+                       work_key,owner_execution_id,fencing_token,request_digest,
+                       scheduled_for,started_at
+                FROM telemetry.collection_run_v2 WHERE run_id=@new;
+                INSERT INTO telemetry.collection_run_outcome
+                  (run_id,outcome,reason_code,attempt_count,retry_count,
+                   duration_ms,source_row_count,output_item_count,
+                   inserted_item_count,duplicate_item_count,rejected_item_count,
+                   response_bytes,output_bytes,persisted_bytes,truncated,
+                   loss_detected,loss_kind,loss_count_exact,lost_row_count,
+                   lost_byte_count,completion_digest,completed_at)
+                SELECT @new,outcome,reason_code,attempt_count,retry_count,
+                       duration_ms,source_row_count,output_item_count,
+                       inserted_item_count,duplicate_item_count,rejected_item_count,
+                       response_bytes,output_bytes,persisted_bytes,truncated,
+                       loss_detected,loss_kind,loss_count_exact,lost_row_count,
+                       lost_byte_count,completion_digest,
+                       completed_at+interval '1 second'
+                FROM telemetry.collection_run_outcome WHERE run_id=@old;
+                """, admin, seed);
+            insert.Parameters.AddWithValue("new", scheduledRun);
+            insert.Parameters.AddWithValue("old", historicalRun);
+            await insert.ExecuteNonQueryAsync();
+            await seed.CommitAsync();
+        }
+        var maintenance = new PostgreSqlPartitionMaintenancePort(collectorSource);
+        Assert.Equal(OriginalCopyRetentionStepOutcome.Retired,
+            await maintenance.RunOriginalCopyRetentionStepAsync(
+                retentionLease,new RepositoryCallTimeout(TimeSpan.FromSeconds(15)),
+                CancellationToken.None));
+        await using (var scheduled = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM telemetry.collection_run WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_v2 WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_identity WHERE run_id=@run),
+                   (SELECT count(*) FROM system.collection_run_original_copy_retirement
+                    WHERE instance_id=@target),
+                   (SELECT count(*) FROM system.collection_run_original_copy_blocked);
+            """, admin))
+        {
+            scheduled.Parameters.AddWithValue("run", scheduledRun);
+            scheduled.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader row = await scheduled.ExecuteReaderAsync();
+            Assert.True(await row.ReadAsync());
+            Assert.Equal(0L, row.GetInt64(0));
+            Assert.Equal(1L, row.GetInt64(1));
+            Assert.Equal(1L, row.GetInt64(2));
+            Assert.Equal(2L, row.GetInt64(3));
+            Assert.Equal(0L, row.GetInt64(4));
         }
 
         await using (NpgsqlTransaction rollback = await admin.BeginTransactionAsync())

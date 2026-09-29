@@ -286,6 +286,8 @@ public sealed class MutationRequestBoundaryHttpTests
     [InlineData(true, "m7_group_deltas")]
     [InlineData(false, "m7_query_performance")]
     [InlineData(true, "m7_query_performance")]
+    [InlineData(false, "collection_run_original_copy")]
+    [InlineData(true, "collection_run_original_copy")]
     public async Task TypedPolicyPutEnforcesOriginWithoutBreakingValidJson(bool hostile, string dataClass)
     {
         using var factory = new MutationBoundaryFactory();
@@ -293,7 +295,8 @@ public sealed class MutationRequestBoundaryHttpTests
         string json = JsonSerializer.Serialize(new
         {
             dataClass, enabled = true, retainFor = "30.00:00:00",
-            minimumPartitionsToKeep = 3, expectedRevision = 1, changeReason = "HTTP boundary test"
+            minimumPartitionsToKeep = dataClass == "collection_run_original_copy" ? 1 : 3,
+            expectedRevision = 1, changeReason = "HTTP boundary test"
         });
         using HttpRequestMessage request = Request($"/api/v1/retention/policies/{dataClass}", json);
         request.Method = HttpMethod.Put;
