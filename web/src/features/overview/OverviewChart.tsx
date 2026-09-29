@@ -1,7 +1,7 @@
 import { useState, type PointerEvent } from 'react';
 import { useTimeDisplay } from '../../TimeDisplayContext';
 import { formatDisplayTime } from '../../timeDisplay';
-import { chartSelection, chartUtcAtX, chartX } from './chartTimeModel';
+import { chartObservedPoints, chartSelection, chartUtcAtX, chartX } from './chartTimeModel';
 import { formatOverviewChartValue, overviewChartRange } from './overviewChartRange';
 import type { OverviewSeries } from './overviewTypes';
 
@@ -75,14 +75,15 @@ function seriesIdentity(series: OverviewSeries): string {
 }
 
 function plotPoints(series: OverviewSeries, shift: number, from: number, to: number, x: (time: string, shift?: number) => number, y: (value: number) => number): readonly (PlotPoint | null)[] {
-  return series.points
-    .filter(point => Date.parse(point.timeUtc) + shift >= from && Date.parse(point.timeUtc) + shift < to)
-    .map(point => point.value === null || !Number.isFinite(point.value) ? null : {
+  const windowFrom = new Date(from - shift).toISOString();
+  const windowTo = new Date(to - shift).toISOString();
+  return chartObservedPoints(series.points, windowFrom, windowTo)
+    .map(point => point === null ? null : {
       timeUtc: point.timeUtc,
-      value: point.value,
+      value: point.value!,
       samples: point.samples,
       x: x(point.timeUtc, shift),
-      y: y(point.value),
+      y: y(point.value!),
     });
 }
 
