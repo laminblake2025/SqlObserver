@@ -415,6 +415,9 @@ Store group commits. Their fenced replay and payload logic is otherwise retained
 Migration 0220 applies the lookup to the M9 operational-health and M10 lifecycle
 commit functions. The writer remains the original relation; this prepares both
 commit families for a later coordinated writer switch.
+Migration 0221 routes the query-performance canonical commit and the atomic
+text, plan and per-plan wait link writers through the same row-locking lookup.
+The guarded route is exercised with protected content and Query Store waits.
 
 ## Implementation gates
 
