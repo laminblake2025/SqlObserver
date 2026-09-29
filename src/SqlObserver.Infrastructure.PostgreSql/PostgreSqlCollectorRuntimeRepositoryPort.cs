@@ -122,6 +122,20 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             @file_read_stall_ms,
             @file_write_stall_ms);
         """;
+    private static readonly string CommitDatabaseInventoryV2Sql = BuildDatabaseInventoryV2Sql();
+    private static string BuildDatabaseInventoryV2Sql()
+    {
+        const string oldFunction = "control.commit_collection_run_v2(";
+        const string compatibilityArgument = "@database_compatibility_levels,";
+        if (CommitCoreSql.Split(oldFunction, StringSplitOptions.None).Length != 2 ||
+            CommitCoreSql.Split(compatibilityArgument, StringSplitOptions.None).Length != 2)
+            throw new InvalidDataException("The version-2 inventory commit template is invalid.");
+        return CommitCoreSql
+            .Replace(oldFunction, "control.commit_database_inventory_v2(", StringComparison.Ordinal)
+            .Replace(compatibilityArgument,
+                compatibilityArgument + "\n            @database_log_reuse_wait_desc,",
+                StringComparison.Ordinal);
+    }
     // The legacy core function was upgraded in migration 0035 to accept the
     // startup marker. The v2 function introduced for directional file stalls
     // retained the earlier eight-metric rule, so engine.core must keep using
@@ -710,6 +724,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
                 .ConfigureAwait(false);
             bool activityCollector = IsActivityCollector(request.Work.CollectorId);
             bool deadlockCollector = request.Work.CollectorId.Value == "deadlocks.system-health";
+            bool databaseInventoryV2 = request.Work.CollectorId.Value == "database.inventory" &&
+                request.Work.CollectorManifestVersion == 2;
             bool queryPerformanceCollector = request.Work.CollectorId.Value == "queries.performance";
             bool m9Collector = request.Work.CollectorId.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health";
             bool m10HostCollector = request.Work.CollectorId.Value == "host.metrics";
@@ -728,13 +744,13 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             }
             string m9Sql = request.Work.CollectorId.Value switch { "backups.status" => CommitBackupsM9Sql, "sql-agent.failures" => CommitAgentM9Sql, "tempdb.health" => CommitTempDbM9Sql, "availability-groups.health" => CommitAgM9Sql, _ => CommitM9Sql };
             await using var command = new NpgsqlCommand(
-                queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : m9Collector ? m9Sql : request.Work.CollectorId.Value == "engine.core" ? CommitEngineCoreSql : CommitCoreSql,
+                queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : m9Collector ? m9Sql : request.Work.CollectorId.Value == "engine.core" ? CommitEngineCoreSql : databaseInventoryV2 ? CommitDatabaseInventoryV2Sql : CommitCoreSql,
                 connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
             AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
-            if (queryPerformanceCollector) AddQueryPerformanceCommitParameters(command, request); else if (m9Collector) AddM9CommitParameters(command, request); else AddCommitParameters(command, request, activityCollector, deadlockCollector);
+            if (queryPerformanceCollector) AddQueryPerformanceCommitParameters(command, request); else if (m9Collector) AddM9CommitParameters(command, request); else AddCommitParameters(command, request, activityCollector, deadlockCollector, databaseInventoryV2);
             await using NpgsqlDataReader reader = await command
                 .ExecuteReaderAsync(timeout.Token)
                 .ConfigureAwait(false);
@@ -1146,7 +1162,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         NpgsqlCommand command,
         CommitCollectorRunRequest request,
         bool activityCollector,
-        bool deadlockCollector)
+        bool deadlockCollector,
+        bool databaseInventoryV2)
     {
         CollectorRunSummary summary = request.Summary;
         CollectorPayload payload = request.Payload;
@@ -1194,6 +1211,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddArray(command, "database_user_access", NpgsqlDbType.Text, databases.Select(static item => MapUserAccess(item.UserAccess)).ToArray());
         AddArray(command, "database_is_read_only", NpgsqlDbType.Boolean, databases.Select(static item => item.IsReadOnly).ToArray());
         AddArray(command, "database_compatibility_levels", NpgsqlDbType.Integer, databases.Select(static item => item.CompatibilityLevel).ToArray());
+        if (databaseInventoryV2)
+            AddArray(command, "database_log_reuse_wait_desc", NpgsqlDbType.Text,
+                databases.Select(static item => item.LogReuseWaitDescription).ToArray());
         AddArray(command, "database_sizes", NpgsqlDbType.Integer, databases.Select(static item => item.EstimatedSizeBytes).ToArray());
 
         DatabaseFileObservation[] files = payload.DatabaseFiles.Items.ToArray();

@@ -346,6 +346,89 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task DatabaseInventoryV2PersistsLogReuseStateAndRejectsDivergentReplay()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+
+        CollectorDueWorkItem engine = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
+        await CommitSuccessAsync(runtime, leases, engine, CreateEnginePayload(engine));
+
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var upgrade = new NpgsqlCommand("""
+            SET ROLE sqlobserver_migrator;
+            INSERT INTO control.collector_contract
+                (collector_id,collector_version,execution_order,manifest_schema_version,
+                 output_schema_version,manifest_sha256,asset_bundle_sha256,
+                 default_interval,minimum_interval,execution_timeout,maximum_rows,
+                 maximum_response_bytes,estimated_cost,maximum_attempts,
+                 circuit_failure_threshold,circuit_open_interval)
+            SELECT collector_id,2,20,manifest_schema_version,2,manifest_sha256,
+                   asset_bundle_sha256,default_interval,minimum_interval,
+                   execution_timeout,maximum_rows,maximum_response_bytes,
+                   estimated_cost,maximum_attempts,circuit_failure_threshold,
+                   circuit_open_interval
+            FROM control.collector_contract
+            WHERE collector_id='database.inventory' AND collector_version=1;
+            UPDATE control.collector_schedule
+            SET collector_version=2,schedule_revision=schedule_revision+1
+            WHERE instance_id=@target AND collector_id='database.inventory';
+            """, connection))
+        {
+            upgrade.Parameters.AddWithValue("target", targetId.Value);
+            await upgrade.ExecuteNonQueryAsync();
+        }
+
+        CollectorDueWorkItem work = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.inventory");
+        Assert.Equal(2, work.CollectorManifestVersion);
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(
+            new BeginCollectorRunRequest(work, runId, lease, DefaultTimeout),
+            CancellationToken.None)).Status);
+
+        DateTimeOffset observedAt = MicrosecondNow();
+        DatabaseObservation Observation(string? token) => new(
+            work.TargetId, work.TargetRevision, 5,
+            new SqlServerObjectName("Ledger"), DatabaseOperationalState.Online,
+            DatabaseRecoveryModel.Full, DatabaseUserAccess.MultiUser,
+            isReadOnly: false, compatibilityLevel: 160, observedAt,
+            logReuseWaitDescription: token);
+        CollectorPayload Payload(string? token) => new(databases:
+            new DatabaseObservationBatch([Observation(token)]));
+        CommitCollectorRunRequest request = CreateSuccessCommit(work, runId, lease, Payload("LOG_BACKUP"));
+        CollectorRunCommitResult committed = await runtime.CommitRunAsync(request, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, committed.Status);
+        Assert.Equal(Observation("LOG_BACKUP").EstimatedSizeBytes, committed.PersistedBytes);
+
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var stored = new NpgsqlCommand("""
+            SET ROLE sqlobserver_migrator;
+            SELECT log_reuse_wait_desc FROM telemetry.database_inventory_snapshot
+            WHERE collection_run_id=@run;
+            """, connection))
+        {
+            stored.Parameters.AddWithValue("run", runId.Value);
+            Assert.Equal("LOG_BACKUP", await stored.ExecuteScalarAsync());
+        }
+
+        Assert.Equal(CollectorRunCommitStatus.Replayed,
+            (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
+        PostgresException divergent = await Assert.ThrowsAsync<PostgresException>(() =>
+            runtime.CommitRunAsync(
+                CreateSuccessCommit(work, runId, lease, Payload("LOG_REUSE")),
+                CancellationToken.None).AsTask());
+        Assert.Equal("22023", divergent.SqlState);
+    }
+
+    [Fact]
     public async Task BeginIsDurableReplayIsRepositoryBoundAndExpiredOwnerBecomesVisibleGap()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();

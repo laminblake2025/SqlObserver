@@ -81,5 +81,28 @@ public sealed class DatabaseLogReuseMigrationTests(PostgreSql18Fixture fixture)
         Assert.Equal("Ledger", reader.GetString(0));
         Assert.True(reader.IsDBNull(1));
         Assert.False(await reader.ReadAsync());
+        await reader.DisposeAsync();
+        await read.DisposeAsync();
+
+        MigrationBatchResult writer = await migrationPort.ApplyPendingAsync(
+            new MigrationApplyRequest(259, timeout), CancellationToken.None);
+        Assert.False(writer.HasFailures,
+            writer.Results.FirstOrDefault(result => result.Outcome == MigrationOutcome.Failed)?.FailureCode);
+
+        await using NpgsqlConnection catalog = await database.DataSource.OpenConnectionAsync();
+        await using var grants = new NpgsqlCommand("""
+            SELECT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE'),
+                   has_function_privilege('sqlobserver_server',p.oid,'EXECUTE'),
+                   p.prosecdef,p.proowner::regrole::text
+            FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
+            WHERE n.nspname='control' AND p.proname='commit_database_inventory_v2';
+            """, catalog);
+        await using NpgsqlDataReader grantReader = await grants.ExecuteReaderAsync();
+        Assert.True(await grantReader.ReadAsync());
+        Assert.True(grantReader.GetBoolean(0));
+        Assert.False(grantReader.GetBoolean(1));
+        Assert.True(grantReader.GetBoolean(2));
+        Assert.Equal("sqlobserver_migrator", grantReader.GetString(3));
+        Assert.False(await grantReader.ReadAsync());
     }
 }
