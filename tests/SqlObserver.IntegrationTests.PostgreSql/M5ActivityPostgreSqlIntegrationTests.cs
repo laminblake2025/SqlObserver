@@ -299,6 +299,35 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", connection))
             Assert.Equal(1L, await activateScheduler.ExecuteScalarAsync());
         Assert.Equal(await ReadRun("successor"), await ReadRun("runtime"));
+        await using (NpgsqlTransaction held = await connection.BeginTransactionAsync())
+        {
+            await using (var locked = new NpgsqlCommand(
+                "SELECT count(*) FROM telemetry.lock_collection_run_runtime(@run);",
+                connection, held))
+            {
+                locked.Parameters.AddWithValue("run", core);
+                Assert.Equal(1L, await locked.ExecuteScalarAsync());
+            }
+            await using NpgsqlConnection contender = await database.DataSource.OpenConnectionAsync();
+            await using (var originalLock = new NpgsqlCommand(
+                "SELECT run_id FROM telemetry.collection_run WHERE run_id=@run FOR UPDATE;",
+                contender))
+            {
+                originalLock.Parameters.AddWithValue("run", core);
+                Assert.Equal(core, await originalLock.ExecuteScalarAsync());
+            }
+            await using (var successorLock = new NpgsqlCommand("""
+                SET lock_timeout='200ms';
+                SELECT run_id FROM telemetry.collection_run_v2 WHERE run_id=@run FOR UPDATE;
+                """, contender))
+            {
+                successorLock.Parameters.AddWithValue("run", core);
+                PostgresException lockedRow = await Assert.ThrowsAsync<PostgresException>(
+                    () => successorLock.ExecuteScalarAsync());
+                Assert.Equal("55P03", lockedRow.SqlState);
+            }
+            await held.CommitAsync();
+        }
         await using (var waitTriggerRoute = new NpgsqlCommand("""
             SELECT prosrc LIKE '%lookup_collection_run_runtime%'
                AND prosrc LIKE '%lookup_previous_wait_collection_run_id%'

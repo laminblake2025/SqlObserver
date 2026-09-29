@@ -406,6 +406,10 @@ stages its read half ahead of a coordinated writer cutover.
 Migration 0217 uses the same switch for outcome-time wait-category summary run
 and baseline reads. The outcome trigger preserves its delta logic while the run
 identity source follows the scheduler route; installation still reads the original.
+Migration 0218 adds a row-locking run lookup under that switch and uses it for
+SQL-volume commit identity checks. The selected run row stays locked through the
+commit transaction, including replay; other collector commit paths remain on
+their original run lookups until routed explicitly.
 
 ## Implementation gates
 

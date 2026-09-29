@@ -91,6 +91,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.read_m10_rollup_derivation_inputs_legacy/9
             function system.retire_query_performance_run/5
             function telemetry.capture_server_wait_category_summary_v1/0
+            function telemetry.lock_collection_run_runtime/1
             function telemetry.lookup_active_collection_run/1
             function telemetry.lookup_collection_run_runtime/1
             function telemetry.lookup_previous_wait_collection_run_id/4

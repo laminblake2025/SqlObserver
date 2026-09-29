@@ -139,9 +139,27 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
             await using (var activate = new NpgsqlCommand(
                 "SELECT control.set_collection_run_v2_sql_volume_read_route(true,10000);", shadow))
                 Assert.Equal(1L, await activate.ExecuteScalarAsync());
+            await using (var lockGrant = new NpgsqlCommand("""
+                SELECT has_function_privilege('sqlobserver_migrator',
+                         'telemetry.lock_collection_run_runtime(uuid)','EXECUTE')
+                   AND NOT has_function_privilege('sqlobserver_collector',
+                         'telemetry.lock_collection_run_runtime(uuid)','EXECUTE')
+                   AND (SELECT prosrc LIKE '%lock_collection_run_runtime%'
+                        FROM pg_proc
+                        WHERE oid='control.commit_sql_volume_collection_run(uuid,uuid,bigint,text,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer,text,integer,jsonb,bytea)'::regprocedure);
+                """, shadow))
+                Assert.True((bool)(await lockGrant.ExecuteScalarAsync())!);
+            await using (var activateCommitRoute = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", shadow))
+                Assert.Equal(1L, await activateCommitRoute.ExecuteScalarAsync());
+            Assert.Equal(CollectorRunCommitStatus.Replayed,
+                (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
             foreach (bool next in new[] { false, true })
                 Assert.Equal(await ReadPage("list_sql_volume_snapshot_v2_shadow", next),
                     await ReadPage("list_sql_volume_snapshot", next));
+            await using (var rollbackCommitRoute = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(false,10000);", shadow))
+                Assert.Equal(2L, await rollbackCommitRoute.ExecuteScalarAsync());
             await using (var rollback = new NpgsqlCommand(
                 "SELECT control.set_collection_run_v2_sql_volume_read_route(false,10000);", shadow))
                 Assert.Equal(2L, await rollback.ExecuteScalarAsync());
