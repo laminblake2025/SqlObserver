@@ -58,6 +58,39 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         List<string> health = await Read("collector_health_projection");
         Assert.Equal(health, await Read("collector_health_projection_legacy"));
         Assert.Equal(health, await Read("collector_health_projection_v2_shadow"));
+        async Task<List<string>> ReadAlertRuns(string source)
+        {
+            await using var command = new NpgsqlCommand(
+                $"SELECT jsonb_build_array(run.run_id,run.instance_id,run.collector_id,run.collector_version,run.output_schema_version)::text FROM telemetry.{source} AS run WHERE instance_id=@target ORDER BY collector_id,run_id;",
+                connection);
+            command.Parameters.AddWithValue("target", target.Value);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+        List<string> alertRuns = await ReadAlertRuns("collection_run_alert_read");
+        Assert.Equal(2, alertRuns.Count);
+        await using (var sourceBindings = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_proc AS procedure
+            JOIN pg_namespace AS namespace ON namespace.oid=procedure.pronamespace
+            WHERE namespace.nspname='alerting'
+              AND procedure.proname IN ('assert_evaluation_claims',
+                                        'reconcile_due_evidence_internal')
+              AND procedure.prosrc LIKE '%JOIN telemetry.collection_run_alert_read%';
+            """, connection))
+            Assert.Equal(2L, await sourceBindings.ExecuteScalarAsync());
+        await using (var alertGrant = new NpgsqlCommand("""
+            SELECT has_table_privilege('sqlobserver_migrator',
+                       'telemetry.collection_run_alert_read','SELECT')
+               AND NOT has_table_privilege('sqlobserver_server',
+                       'telemetry.collection_run_alert_read','SELECT')
+               AND NOT has_table_privilege('sqlobserver_collector',
+                       'telemetry.collection_run_alert_read','SELECT')
+               AND NOT has_table_privilege('sqlobserver_auditor',
+                       'telemetry.collection_run_alert_read','SELECT');
+            """, connection))
+            Assert.True((bool)(await alertGrant.ExecuteScalarAsync())!);
         Assert.Contains(health, value =>
         {
             using JsonDocument row = JsonDocument.Parse(value);
@@ -115,6 +148,9 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await using (var activate = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_health_read_route(true,10000);", connection))
             Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        Assert.Equal(alertRuns, await ReadAlertRuns("collection_run_alert_read"));
+        Assert.Equal(await ReadAlertRuns("collection_run_v2"),
+            await ReadAlertRuns("collection_run_alert_read"));
         Assert.Equal(await Read("collector_health_projection_v2_shadow"),
             await Read("collector_health_projection"));
         await using (NpgsqlDataSource server = database.CreateServerDataSource())
@@ -126,9 +162,62 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
                     CancellationToken.None));
             Assert.Equal(core, projection.CoreCollector.LatestRun?.RunId.Value);
         }
+        Guid alertRule = Guid.NewGuid(), sample = Guid.NewGuid(), claimOwner = Guid.NewGuid();
+        await using (var alertEvidenceInsert = new NpgsqlCommand("""
+            SELECT control.ensure_daily_metric_partition(@at::date);
+            INSERT INTO alerting.rule
+             (rule_id,instance_id,name,kind,metric_id,comparison,threshold,hysteresis,
+              confirmation_count,confirmation_window,evaluation_interval,created_at,updated_at)
+            VALUES (@rule,@target,'cpu.high',1,'cpu.percent',1,80,5,1,
+                    interval '0 seconds',interval '15 seconds',@rule_at,@rule_at);
+            INSERT INTO telemetry.raw_metric_sample
+             (observed_at,sample_id,instance_id,metric_key,metric_value,dimensions,
+              collected_at,collection_run_id)
+            VALUES (@at,@sample,@target,'cpu.percent',90,'{}'::jsonb,@at,@run);
+            """, connection))
+        {
+            alertEvidenceInsert.Parameters.AddWithValue("rule", alertRule);
+            alertEvidenceInsert.Parameters.AddWithValue("target", target.Value);
+            alertEvidenceInsert.Parameters.AddWithValue("rule_at", at.AddMinutes(-1));
+            alertEvidenceInsert.Parameters.AddWithValue("at", at);
+            alertEvidenceInsert.Parameters.AddWithValue("sample", sample);
+            alertEvidenceInsert.Parameters.AddWithValue("run", core);
+            await alertEvidenceInsert.ExecuteNonQueryAsync();
+        }
+        await using (var reconcile = new NpgsqlCommand(
+            "SELECT count(*) FROM alerting.reconcile_due_evidence_internal(10);", connection))
+            Assert.Equal(1L, await reconcile.ExecuteScalarAsync());
+        await using (var claim = new NpgsqlCommand("""
+            UPDATE alerting.evaluation_queue
+            SET claimed_until=clock_timestamp()+interval '1 minute',
+                claim_work_key=@work,claim_owner_execution_id=@owner,claim_fencing=1
+            WHERE instance_id=@target AND rule_id=@rule AND run_id=@run;
+            """, connection))
+        {
+            claim.Parameters.AddWithValue("work", "alerts/partitioned-run-test");
+            claim.Parameters.AddWithValue("owner", claimOwner);
+            claim.Parameters.AddWithValue("target", target.Value);
+            claim.Parameters.AddWithValue("rule", alertRule);
+            claim.Parameters.AddWithValue("run", core);
+            Assert.Equal(1, await claim.ExecuteNonQueryAsync());
+        }
+        await using (var validate = new NpgsqlCommand("""
+            SELECT alerting.assert_evaluation_claims(@target,q.observations,@work,@owner,1)
+            FROM alerting.evaluation_queue AS q
+            WHERE q.instance_id=@target AND q.rule_id=@rule AND q.run_id=@run;
+            """, connection))
+        {
+            validate.Parameters.AddWithValue("target", target.Value);
+            validate.Parameters.AddWithValue("rule", alertRule);
+            validate.Parameters.AddWithValue("run", core);
+            validate.Parameters.AddWithValue("work", "alerts/partitioned-run-test");
+            validate.Parameters.AddWithValue("owner", claimOwner);
+            await validate.ExecuteScalarAsync();
+        }
         await using (var rollback = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_health_read_route(false,10000);", connection))
             Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        Assert.Equal(alertRuns, await ReadAlertRuns("collection_run_alert_read"));
         Assert.Equal(await Read("collector_health_projection_legacy"),
             await Read("collector_health_projection"));
     }

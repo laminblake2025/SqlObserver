@@ -392,6 +392,10 @@ the collector-facing analytics functions remain on original runs.
 Migration 0213 routes both collector-facing M10 readers together, initially
 to the original implementations. Activation requires the writer-fenced fleet
 proof; rollback restores the original path while those runs remain retained.
+Migration 0214 routes alert evidence reconciliation and claim validation through
+the collector-health read switch. The private run view exposes only the identity
+fields those functions need; the switch remains on original runs until fenced
+fleet parity is proven, and rollback restores the original source.
 
 ## Implementation gates
 

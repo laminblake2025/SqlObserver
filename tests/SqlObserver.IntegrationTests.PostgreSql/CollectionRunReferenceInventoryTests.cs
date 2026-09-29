@@ -48,8 +48,6 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
         await using (NpgsqlDataReader rows = await command.ExecuteReaderAsync())
             while (await rows.ReadAsync()) names.Add(rows.GetString(0));
         string expected = """
-            function alerting.assert_evaluation_claims/5
-            function alerting.reconcile_due_evidence_internal/1
             function control.backfill_collection_run_identity/2
             function control.backfill_collection_run_v2/2
             function control.begin_collection_run/12
@@ -97,6 +95,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function telemetry.capture_server_wait_category_summary_v1/0
             view reporting.activity_snapshot_evidence_legacy
             view reporting.collector_health_projection_legacy
+            view telemetry.collection_run_alert_read
             """;
         Assert.Equal(expected.Split('\n'), names);
     }
