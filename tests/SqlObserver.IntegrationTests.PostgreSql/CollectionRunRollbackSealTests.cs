@@ -605,6 +605,58 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
             Assert.Equal(0L, row.GetInt64(4));
         }
 
+        await using (NpgsqlTransaction addReference = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, addReference);
+            await using var create = new NpgsqlCommand("""
+                CREATE TABLE system.original_run_retention_reference_probe
+                 (run_id uuid REFERENCES telemetry.collection_run(run_id));
+                UPDATE system.collection_run_original_copy_scan_cursor
+                SET instance_id=NULL WHERE singleton;
+                """, admin, addReference);
+            await create.ExecuteNonQueryAsync();
+            await addReference.CommitAsync();
+        }
+        Assert.Equal(OriginalCopyRetentionStepOutcome.Blocked,
+            await maintenance.RunOriginalCopyRetentionStepAsync(
+                retentionLease,new RepositoryCallTimeout(TimeSpan.FromSeconds(15)),
+                CancellationToken.None));
+        await using (var blocked = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM system.collection_run_original_copy_blocked
+                    WHERE instance_id=@target
+                      AND reason='original collection run has an inbound foreign key'
+                      AND failure_count=1),
+                   (SELECT instance_id FROM system.collection_run_original_copy_scan_cursor
+                    WHERE singleton);
+            """, admin))
+        {
+            blocked.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader row = await blocked.ExecuteReaderAsync();
+            Assert.True(await row.ReadAsync());
+            Assert.Equal(1L, row.GetInt64(0));
+            Assert.Equal(target, row.GetGuid(1));
+        }
+        await using (NpgsqlTransaction removeReference = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, removeReference);
+            await using var drop = new NpgsqlCommand(
+                "DROP TABLE system.original_run_retention_reference_probe;",
+                admin, removeReference);
+            await drop.ExecuteNonQueryAsync();
+            await removeReference.CommitAsync();
+        }
+        Assert.Equal(OriginalCopyRetentionStepOutcome.Idle,
+            await maintenance.RunOriginalCopyRetentionStepAsync(
+                retentionLease,new RepositoryCallTimeout(TimeSpan.FromSeconds(15)),
+                CancellationToken.None));
+        Assert.Equal(OriginalCopyRetentionStepOutcome.Idle,
+            await maintenance.RunOriginalCopyRetentionStepAsync(
+                retentionLease,new RepositoryCallTimeout(TimeSpan.FromSeconds(15)),
+                CancellationToken.None));
+        await using (var unblocked = new NpgsqlCommand(
+            "SELECT count(*) FROM system.collection_run_original_copy_blocked;", admin))
+            Assert.Equal(0L, await unblocked.ExecuteScalarAsync());
+
         await using (NpgsqlTransaction rollback = await admin.BeginTransactionAsync())
         {
             await SetMigratorAsync(admin, rollback);
