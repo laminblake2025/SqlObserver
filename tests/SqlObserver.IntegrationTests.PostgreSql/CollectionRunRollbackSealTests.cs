@@ -14,6 +14,56 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
 {
     [Fact]
+    public async Task OriginalCopyCleanupRefusesTheDefaultUnsealedInstallation()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult applied = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(
+                MigrationBatchResult.MaximumResults,
+                new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+                CancellationToken.None);
+        Assert.False(applied.HasFailures);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+        LeaseAcquisitionResult acquired = await leases.AcquireAsync(
+            new AcquireWorkerLeaseRequest(
+                new WorkerLeaseKey("retention/maintenance"),
+                new WorkerExecutionId(Guid.NewGuid()),
+                new WorkerLeaseDuration(TimeSpan.FromMinutes(1)),
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(10))),
+            CancellationToken.None);
+        Assert.Equal(LeaseAcquisitionStatus.Acquired, acquired.Status);
+        WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>(acquired.Lease).Identity;
+        await using (NpgsqlConnection collector = await collectorSource.OpenConnectionAsync())
+        await using (var grant = new NpgsqlCommand("""
+            SELECT has_function_privilege(current_user,
+              'control.retire_collection_run_original_copies(uuid,timestamptz,uuid,bigint,integer)',
+              'EXECUTE');
+            """, collector))
+            Assert.False((bool)(await grant.ExecuteScalarAsync())!);
+        Guid target = Guid.NewGuid();
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+        await SetMigratorAsync(admin, transaction);
+        await using var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,true);",
+            admin, transaction);
+        scope.Parameters.AddWithValue("target", target);
+        await scope.ExecuteScalarAsync();
+        await using var cleanup = new NpgsqlCommand("""
+            SELECT control.retire_collection_run_original_copies(
+              @target,@cutoff,@owner,@fence,10);
+            """, admin, transaction);
+        cleanup.Parameters.AddWithValue("target", target);
+        cleanup.Parameters.AddWithValue("cutoff", DateTimeOffset.UtcNow.AddDays(-40));
+        cleanup.Parameters.AddWithValue("owner", lease.Owner.Value);
+        cleanup.Parameters.AddWithValue("fence", lease.FencingToken.Value);
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+            () => cleanup.ExecuteScalarAsync())).SqlState);
+        await transaction.RollbackAsync();
+    }
+
+    [Fact]
     public async Task SealRequiresAllRoutesAndStopsOriginalMirroringPermanently()
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
@@ -281,6 +331,136 @@ public sealed class CollectionRunRollbackSealTests(PostgreSql18Fixture fixture)
             retire.Parameters.AddWithValue("fence", retentionLease.FencingToken.Value);
             Assert.Equal("held", await retire.ExecuteScalarAsync());
             await retention.RollbackAsync();
+        }
+
+        Guid historicalRun = Guid.NewGuid();
+        DateTimeOffset historicalStart = DateTimeOffset.UtcNow.AddDays(-60);
+        DateTimeOffset cutoff = historicalStart.AddDays(1);
+        await using (NpgsqlTransaction seed = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, seed);
+            await using var insert = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                SELECT telemetry.insert_collection_run_runtime(
+                  @run,@target,'engine.core',1,1,2,1,
+                  'test/original-copy',@owner,1,decode(repeat('00',32),'hex'),
+                  @started,@started);
+                INSERT INTO telemetry.collection_run
+                  (run_id,instance_id,collector_id,collector_version,
+                   output_schema_version,target_revision,schedule_revision,
+                   work_key,owner_execution_id,fencing_token,request_digest,
+                   scheduled_for,started_at)
+                SELECT run_id,instance_id,collector_id,collector_version,
+                       output_schema_version,target_revision,schedule_revision,
+                       work_key,owner_execution_id,fencing_token,request_digest,
+                       scheduled_for,started_at
+                FROM telemetry.collection_run_v2 WHERE run_id=@run;
+                INSERT INTO telemetry.collection_run_outcome
+                  (run_id,outcome,reason_code,attempt_count,retry_count,
+                   duration_ms,source_row_count,output_item_count,
+                   inserted_item_count,duplicate_item_count,rejected_item_count,
+                   response_bytes,output_bytes,persisted_bytes,truncated,
+                   loss_detected,loss_kind,loss_count_exact,lost_row_count,
+                   lost_byte_count,completion_digest,completed_at)
+                VALUES(@run,'succeeded','completed',1,0,1,0,0,0,0,0,0,0,0,
+                       false,false,'none',true,0,0,
+                       decode(repeat('00',32),'hex'),@started+interval '1 minute');
+                """, admin, seed);
+            insert.Parameters.AddWithValue("run", historicalRun);
+            insert.Parameters.AddWithValue("target", target);
+            insert.Parameters.AddWithValue("owner", Guid.NewGuid());
+            insert.Parameters.AddWithValue("started", historicalStart);
+            await insert.ExecuteNonQueryAsync();
+            await seed.CommitAsync();
+        }
+        async Task<object?> RetireOriginalAsync(long fence)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await SetMigratorAsync(admin, transaction);
+            await using var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,true);",
+                admin, transaction);
+            scope.Parameters.AddWithValue("target", target);
+            await scope.ExecuteScalarAsync();
+            await using var command = new NpgsqlCommand("""
+                SELECT control.retire_collection_run_original_copies(
+                  @target,@cutoff,@owner,@fence,10);
+                """, admin, transaction);
+            command.Parameters.AddWithValue("target", target);
+            command.Parameters.AddWithValue("cutoff", cutoff);
+            command.Parameters.AddWithValue("owner", retentionLease.Owner.Value);
+            command.Parameters.AddWithValue("fence", fence);
+            object? result = await command.ExecuteScalarAsync();
+            await transaction.CommitAsync();
+            return result;
+        }
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+            () => RetireOriginalAsync(retentionLease.FencingToken.Value))).SqlState);
+        await using (NpgsqlTransaction directDelete = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorAsync(admin, directDelete);
+            await using var delete = new NpgsqlCommand(
+                "DELETE FROM telemetry.collection_run WHERE run_id=@run;",
+                admin, directDelete);
+            delete.Parameters.AddWithValue("run", historicalRun);
+            Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                () => delete.ExecuteNonQueryAsync())).SqlState);
+            await directDelete.RollbackAsync();
+        }
+        await using (var attestation = new NpgsqlCommand("""
+            INSERT INTO system.recovery_attestation
+              (attestation_id,attested_at,attested_by,backup_set_reference,
+               expires_at,attestation_digest)
+            VALUES(gen_random_uuid(),clock_timestamp(),'test','restore-tested',
+                   clock_timestamp()+interval '3 days',
+                   sha256(convert_to('sealed-copy-test','UTF8')));
+            """, admin))
+            await attestation.ExecuteNonQueryAsync();
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+            () => RetireOriginalAsync(retentionLease.FencingToken.Value + 1))).SqlState);
+        await using (var unexpected = new NpgsqlCommand("""
+            CREATE TABLE system.test_original_run_reference
+             (run_id uuid REFERENCES telemetry.collection_run(run_id));
+            """, admin))
+            await unexpected.ExecuteNonQueryAsync();
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+            () => RetireOriginalAsync(retentionLease.FencingToken.Value))).SqlState);
+        await using (var removeReference = new NpgsqlCommand(
+            "DROP TABLE system.test_original_run_reference;", admin))
+            await removeReference.ExecuteNonQueryAsync();
+        await using (var unexpectedView = new NpgsqlCommand("""
+            CREATE VIEW system.test_original_run_view AS
+            SELECT run_id FROM telemetry.collection_run;
+            """, admin))
+            await unexpectedView.ExecuteNonQueryAsync();
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+            () => RetireOriginalAsync(retentionLease.FencingToken.Value))).SqlState);
+        await using (var removeView = new NpgsqlCommand(
+            "DROP VIEW system.test_original_run_view;", admin))
+            await removeView.ExecuteNonQueryAsync();
+        Assert.Equal(1, await RetireOriginalAsync(retentionLease.FencingToken.Value));
+        Assert.Equal(0, await RetireOriginalAsync(retentionLease.FencingToken.Value));
+        await using (var retired = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM telemetry.collection_run WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_v2 WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_identity WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_outcome WHERE run_id=@run),
+                   (SELECT count(*) FROM system.collection_run_original_copy_retirement
+                    WHERE instance_id=@target AND row_count=1),
+                   (SELECT count(*) FROM audit.activity
+                    WHERE action_name='retention.collection_run_original.retire');
+            """, admin))
+        {
+            retired.Parameters.AddWithValue("run", historicalRun);
+            retired.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader row = await retired.ExecuteReaderAsync();
+            Assert.True(await row.ReadAsync());
+            Assert.Equal(0L, row.GetInt64(0));
+            Assert.Equal(1L, row.GetInt64(1));
+            Assert.Equal(1L, row.GetInt64(2));
+            Assert.Equal(1L, row.GetInt64(3));
+            Assert.Equal(1L, row.GetInt64(4));
+            Assert.Equal(1L, row.GetInt64(5));
         }
 
         await using (NpgsqlTransaction rollback = await admin.BeginTransactionAsync())

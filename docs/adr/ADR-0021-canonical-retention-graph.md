@@ -466,6 +466,18 @@ incomplete as old copies leave; every public reader must remain sealed on v2.
 Canonical v2 partition retirement is a separate step and remains blocked by
 the identity bridge and child-evidence lifecycle until those references have
 their own policy-aware cleanup.
+Migration 0229 adds a migrator-only, manually invoked original-copy retirement
+batch. Installation does not call it. It requires the permanent seal, completed
+child-FK cutover, target scope, a live retention lease, and a valid recovery
+attestation. It accepts at most 1,000 completed runs older than 30 days and a
+caller cutoff no newer than 30 days ago, locks the target schedules and old
+rows, checks whole-row v2 parity and identity keys, and refuses inbound old
+FKs or unreviewed views. It then deletes only the old duplicates and writes an
+append-only ledger and audit row with the batch count, cutoff, attestation,
+and current policy snapshot. A separate trigger still rejects direct deletes;
+UPDATE remains append-only. This does not detach v2 partitions or retire any
+canonical run, child evidence, outcome, or identity key. Scheduling this batch
+and retiring the canonical graph remain future work.
 
 ## Implementation gates
 

@@ -63,6 +63,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.cutover_collection_run_identity_fks/1
             function control.ensure_target_collector_schedules/0
             function control.get_query_performance_database_catalog_legacy/1
+            function control.retire_collection_run_original_copies/5
             function control.set_collection_run_v2_writer_route/2
             function control.stage_collection_run_identity_fk/2
             function control.validate_collection_run_identity_fk/1
