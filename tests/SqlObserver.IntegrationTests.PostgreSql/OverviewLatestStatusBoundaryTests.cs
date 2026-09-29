@@ -128,7 +128,8 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Equal("pending", status.CollectionState);
         Assert.Null(status.ActiveAlerts.Value);
         Assert.Null(status.BlockedSessions.Value);
-        Assert.Contains(status.Gaps, gap => gap.Contains("not materialized", StringComparison.Ordinal));
+        Assert.Equal("unavailable", status.Sources["availabilityGroups"].State);
+        Assert.Contains("AG evidence unavailable", status.Gaps);
 
         Guid rule = Guid.NewGuid();
         await using (var alert = database.DataSource.CreateCommand("""
@@ -412,6 +413,49 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             resource => resource.Label == "Backup evidence").Value);
         Assert.DoesNotContain(unknownBackupTime.Issues, issue => issue.Title == "Damaged backup");
         Assert.Contains("Backup age unavailable: source timezone unknown", unknownBackupTime.Gaps);
+
+        await SeedAgRunAsync(database.DataSource, target, Guid.NewGuid(),
+            DateTimeOffset.UtcNow, 3, 2, 1, false);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus localAg = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("degraded", localAg.Sources["availabilityGroups"].State);
+        Assert.Equal(1, Assert.Single(localAg.Resources,
+            resource => resource.Label == "Availability replicas").Value);
+        Assert.DoesNotContain(localAg.Issues,
+            issue => issue.Title == "Availability replica disconnected");
+        Assert.Contains("AG visibility is local-only", localAg.Gaps);
+
+        await SeedAgRunAsync(database.DataSource, target, Guid.NewGuid(),
+            DateTimeOffset.UtcNow, 1, 1, 6, true);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus disconnectedAg = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("partial", disconnectedAg.Sources["availabilityGroups"].State);
+        Assert.Equal(6, Assert.Single(disconnectedAg.Resources,
+            resource => resource.Label == "Availability replicas").Value);
+        Assert.Equal(5, disconnectedAg.Issues.Count(
+            issue => issue.Title == "Availability replica disconnected"));
+        Assert.Equal(10, disconnectedAg.Issues.Count);
+        Assert.Contains("Disconnected AG issue list partial", disconnectedAg.Gaps);
+        Assert.Contains("Overview issue list partial", disconnectedAg.Gaps);
+
+        await SeedAgRunAsync(database.DataSource, target, Guid.NewGuid(),
+            DateTimeOffset.UtcNow, 1, 1, 0, true);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus noAg = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("current", noAg.Sources["availabilityGroups"].State);
+        Assert.Equal(0, Assert.Single(noAg.Resources,
+            resource => resource.Label == "Availability replicas").Value);
+        Assert.DoesNotContain(noAg.Issues,
+            issue => issue.Title == "Availability replica disconnected");
     }
 
     [Fact]
@@ -746,6 +790,57 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         command.Parameters.AddWithValue("rows", rows);
         command.Parameters.AddWithValue("damaged", damaged);
         command.Parameters.AddWithValue("unknown", unknownTime);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task SeedAgRunAsync(NpgsqlDataSource source, Guid target,
+        Guid run, DateTimeOffset at, short state, short visibility,
+        int replicas, bool stateAvailable)
+    {
+        await using var command = source.CreateCommand("""
+            INSERT INTO telemetry.collection_run
+                (run_id,instance_id,collector_id,collector_version,output_schema_version,
+                 target_revision,schedule_revision,work_key,owner_execution_id,
+                 fencing_token,request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'availability-groups.health',1,1,1,1,
+                    @work,@owner,1,decode(repeat('c1',32),'hex'),@at,@at);
+            INSERT INTO telemetry.collection_run_outcome
+                (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+                 source_row_count,output_item_count,inserted_item_count,
+                 duplicate_item_count,rejected_item_count,response_bytes,
+                 output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,
+                 loss_count_exact,lost_row_count,lost_byte_count,completion_digest,
+                 completed_at)
+            VALUES (@run,'succeeded','completed',1,0,10,@replicas,@replicas,
+                    @replicas,0,0,128,128,128,false,false,'none',true,0,0,
+                    decode(repeat('c2',32),'hex'),@at);
+            INSERT INTO telemetry.m9_commit_replay
+                (run_id,instance_id,target_revision,collector_id,collector_version,
+                 output_schema_version,request_digest,payload_digest,
+                 m9_observation_state,m9_visibility_scope)
+            VALUES (@run,@target,1,'availability-groups.health',1,1,
+                    decode(repeat('c1',32),'hex'),decode(repeat('c2',32),'hex'),
+                    @state,@visibility);
+            INSERT INTO telemetry.availability_group_replica_snapshot
+                (instance_id,target_revision,run_id,observed_at,
+                 group_fingerprint,replica_fingerprint,role,operational_state,
+                 connected_state,visibility_scope,state_available)
+            SELECT @target,1,@run,@at,decode(lpad(to_hex(1),64,'0'),'hex'),
+                   decode(lpad(to_hex(n+100),64,'0'),'hex'),
+                   CASE WHEN @visibility=1 AND n=1 THEN 'PRIMARY'
+                        ELSE 'SECONDARY' END,
+                   'ONLINE','DISCONNECTED',@visibility,@stateAvailable
+            FROM generate_series(1,@replicas) AS n;
+            """);
+        command.Parameters.AddWithValue("run", run);
+        command.Parameters.AddWithValue("target", target);
+        command.Parameters.AddWithValue("work", $"collector/run/availability-groups.health/{target:N}");
+        command.Parameters.AddWithValue("owner", Guid.NewGuid());
+        command.Parameters.AddWithValue("at", at);
+        command.Parameters.AddWithValue("state", state);
+        command.Parameters.AddWithValue("visibility", visibility);
+        command.Parameters.AddWithValue("replicas", replicas);
+        command.Parameters.AddWithValue("stateAvailable", stateAvailable);
         await command.ExecuteNonQueryAsync();
     }
 

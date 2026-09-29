@@ -100,8 +100,7 @@ now validate the target and JSON boundary. Migration 0236 and the collector
 worker publish core health, active alerts, and coherent current blocking from
 committed repository data under a lease. The due-target list records attempts
 so a repeatedly failing target cannot monopolize its bounded batch. Waits,
-AG remains explicitly unavailable in this row. Migration
-0237 adds up to five critical database-state issues from the current inventory
+Migration 0237 adds up to five critical database-state issues from the current inventory
 run, marks a longer issue list partial, and withholds issues when inventory
 collection is not current. Other source materialization, full parity work, and
 the read switch remain to be built.
@@ -118,6 +117,10 @@ damaged-backup issues. A complete header with no rows remains unavailable,
 source-local finish times without a timezone produce an explicit age gap,
 and the shared ten-issue bound reports truncation. RPO-aware freshness still
 requires a separate policy and preferred-replica design.
+Migration 0241 adds an exact current AG replica count and up to five known
+disconnected-replica issues. It retains secondary/local visibility and unknown
+replica states as partial or degraded evidence. A complete primary-all-known
+run with zero replicas can report a real zero; missing run coverage cannot.
 
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and
