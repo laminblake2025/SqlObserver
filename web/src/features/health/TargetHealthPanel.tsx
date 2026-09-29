@@ -3,6 +3,7 @@ import { useTimeFormatter } from "../../TimeDisplayContext";
 import { Tabs } from "../../components/DiagnosticUi";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { ServerDashboard } from "./ServerDashboard";
+import { DatabaseOptionChanges } from "./DatabaseOptionChanges";
 
 import { getDatabaseHealth, getTargetHealthEvidence, HealthRequestError } from "./healthApi";
 import {
@@ -145,7 +146,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             <CoreMetrics metrics={evidence.target.coreMetrics} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}
+          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}
           {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
         </>
       )}

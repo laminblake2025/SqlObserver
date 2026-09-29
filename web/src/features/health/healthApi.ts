@@ -1,11 +1,20 @@
 import type {
   DatabaseFileHealthPage,
   DatabaseHealthPage,
+  DatabaseOptionChangeResult,
   TargetHealthEvidence,
   TargetHealthSnapshot,
 } from "./healthTypes";
 
 const firstPageLimit = 25;
+
+export async function getDatabaseOptionChanges(instanceId: string,
+  window: { readonly fromUtc: string; readonly toUtc: string },
+  signal: AbortSignal): Promise<DatabaseOptionChangeResult> {
+  const parameters = new URLSearchParams({ fromUtc: window.fromUtc,
+    toUtc: window.toUtc, limit: "100" });
+  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/database-option-changes?${parameters}`, signal);
+}
 
 export class HealthRequestError extends Error {
   public constructor(message: string) {

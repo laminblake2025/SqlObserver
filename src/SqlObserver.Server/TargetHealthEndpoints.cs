@@ -25,7 +25,41 @@ public static class TargetHealthEndpoints
         group.MapGet("/", GetAsync);
         group.MapGet("/databases", ListDatabasesAsync);
         group.MapGet("/files", ListDatabaseFilesAsync);
+        group.MapGet("/database-option-changes", ListDatabaseOptionChangesAsync);
         return endpoints;
+    }
+
+    private static async Task<IResult> ListDatabaseOptionChangesAsync(
+        HttpContext context, Guid instanceId,
+        IDatabaseOptionChangeQueryService service,
+        WindowsGroupRoleResolver roles,
+        string? fromUtc = null, string? toUtc = null, int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            DateTimeOffset to = toUtc is null ? DateTimeOffset.UtcNow :
+                DateTimeOffset.Parse(toUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            DateTimeOffset from = fromUtc is null ? to.AddHours(-24) :
+                DateTimeOffset.Parse(fromUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            var request = new DatabaseOptionChangeRequest(new MonitoredInstanceId(instanceId),
+                from, to, limit, RepositoryTimeout);
+            DatabaseOptionChangeResult result = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                fromUtc = from,
+                toUtc = to,
+                semantics = "detected_between_consecutive_complete_inventory_runs",
+                items = result.Items,
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (FormatException) { return Results.BadRequest(); }
     }
 
     private static async Task<IResult> GetAsync(

@@ -7,6 +7,26 @@ export type TargetHealthState =
   | "stale"
   | "disabled";
 
+export interface DatabaseOptionChange {
+  readonly databaseId: number;
+  readonly databaseName: string;
+  readonly optionKey: "recovery_model" | "user_access" | "is_read_only" | "compatibility_level";
+  readonly previousValue: string;
+  readonly currentValue: string;
+  readonly previousObservedAtUtc: string;
+  readonly observedAtUtc: string;
+  readonly detectedAtUtc: string;
+  readonly collectionRunId: string;
+}
+
+export interface DatabaseOptionChangeResult {
+  readonly targetId: string;
+  readonly fromUtc: string;
+  readonly toUtc: string;
+  readonly semantics: string;
+  readonly items: readonly DatabaseOptionChange[];
+}
+
 export type CollectorHealthReason =
   | "none"
   | "capability_profile_missing"
