@@ -171,6 +171,19 @@ activation checks that trigger. Migration
 keyed rows; legacy null-target rows still use their owning query. Calls
 stop returning rows once current coverage is complete, and live writes still
 invalidate their UTC day through the existing generation ledger.
+Migration 0176 adds an operator-gated M7 writer switch after the v3 read
+route has passed the fleet certificate. The collector's text wrapper first
+takes a writer lock on the original observation table, then invokes the
+existing canonical run and protected-text logic. Once the mirror and
+accounting exist in the same transaction, it checks the v3 row count and
+deletes that run's original observations using the established migrator
+retention context. The outer content wrapper still appends protected plan
+links; replay performs no second delete. Activation drains writers under a
+conflicting table lock and repeats the read-route parity gate. It blocks
+later read rollback because new runs no longer have original observations.
+Historical original rows and their dependencies remain until the M7
+retention graph is implemented; this switch alone does not permit dropping
+the original relation.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

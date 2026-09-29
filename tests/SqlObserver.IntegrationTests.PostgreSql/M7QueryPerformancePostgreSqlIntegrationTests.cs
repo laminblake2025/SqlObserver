@@ -55,13 +55,41 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         Assert.False(callable["commit_query_performance_collection_run_canonical"]);
         Assert.True(callable["commit_query_performance_with_text"]);
         Assert.False(callable["commit_query_text_links"]);
+        await privilegeRows.DisposeAsync();
+        await using var writerGate = new NpgsqlCommand("""
+            SELECT use_v3,write_v3,
+                   has_function_privilege('sqlobserver_collector',
+                     'control.activate_query_observation_v3_writer()','EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.activate_query_observation_v3_writer()','EXECUTE')
+            FROM system.query_observation_v3_read_route;
+            """, connection);
+        await using (NpgsqlDataReader gate = await writerGate.ExecuteReaderAsync())
+        {
+            Assert.True(await gate.ReadAsync());
+            Assert.False(gate.GetBoolean(0));
+            Assert.False(gate.GetBoolean(1));
+            Assert.False(gate.GetBoolean(2));
+            Assert.False(gate.GetBoolean(3));
+        }
+        await using NpgsqlTransaction inactive = await connection.BeginTransactionAsync();
+        await using var premature = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_migrator;
+            SELECT control.activate_query_observation_v3_writer();
+            """, connection, inactive);
+        PostgresException denied = await Assert.ThrowsAsync<PostgresException>(
+            () => premature.ExecuteNonQueryAsync());
+        Assert.Equal("55000", denied.SqlState);
+        await inactive.RollbackAsync();
     }
 
     [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, true)]
-    [InlineData(false, false)]
-    public async Task QueryTextLinkCommitsWithRunOrRollsBackBoth(bool payloadExists, bool attachReference)
+    [InlineData(true, true, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(true, true, true)]
+    [InlineData(false, true, true)]
+    public async Task QueryTextLinkCommitsWithRunOrRollsBackBoth(bool payloadExists, bool attachReference, bool writeV3)
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         MigrationBatchResult migrated = await new PostgreSqlMigrationPort(database.DataSource)
@@ -100,6 +128,8 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         CollectorRunId run = new(Guid.NewGuid());
         Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(
             new BeginCollectorRunRequest(work, run, lease, Timeout), CancellationToken.None)).Status);
+
+        if (writeV3) await ActivateV3WriterAsync(database, target.Value);
 
         byte[] fingerprint = RandomNumberGenerator.GetBytes(32);
         var protectedPayload = new ProtectedSensitivePayload(SensitivePayloadKind.QueryText,
@@ -259,15 +289,43 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         long expected = payloadExists || !attachReference ? 1 : 0;
         for (int column = 0; column < 4; column++)
             Assert.Equal(column == 2 && !attachReference ? 0 : expected, rows.GetInt64(column));
-        Assert.Equal(expected, rows.GetInt64(4));
+        Assert.Equal(writeV3 ? 0L : expected, rows.GetInt64(4));
         Assert.Equal(expected, rows.GetInt64(5));
-        Assert.Equal(0L, rows.GetInt64(6));
+        Assert.Equal(writeV3 ? expected : 0L, rows.GetInt64(6));
+        await rows.DisposeAsync();
+        if (writeV3)
+        {
+            await using var route = new NpgsqlCommand("""
+                SELECT use_v3,write_v3,
+                       has_function_privilege('sqlobserver_collector',
+                         'control.commit_query_performance_with_text_original(uuid,uuid,bigint,integer,integer,bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,boolean,integer,text,integer,bytea,timestamptz,timestamptz,events.query_performance_source,text,text,boolean,boolean,jsonb,jsonb)',
+                         'EXECUTE')
+                FROM system.query_observation_v3_read_route;
+                """, verifyConnection);
+            await using NpgsqlDataReader routeRow = await route.ExecuteReaderAsync();
+            Assert.True(await routeRow.ReadAsync());
+            Assert.True(routeRow.GetBoolean(0));
+            Assert.True(routeRow.GetBoolean(1));
+            Assert.False(routeRow.GetBoolean(2));
+            await routeRow.DisposeAsync();
+            await using NpgsqlTransaction rollback = await verifyConnection.BeginTransactionAsync();
+            await using var disable = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT control.set_query_observation_v3_read_route(false);
+                """, verifyConnection, rollback);
+            PostgresException denied = await Assert.ThrowsAsync<PostgresException>(
+                () => disable.ExecuteNonQueryAsync());
+            Assert.Equal("55000", denied.SqlState);
+            await rollback.RollbackAsync();
+        }
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task PlanLinksBindTwoPlansToOnePayloadAndRollbackMissingContent(bool payloadExists)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task PlanLinksBindTwoPlansToOnePayloadAndRollbackMissingContent(bool payloadExists, bool writeV3)
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         MigrationBatchResult migrated = await new PostgreSqlMigrationPort(database.DataSource)
@@ -307,6 +365,7 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         CollectorRunId run = new(Guid.NewGuid());
         Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(
             new BeginCollectorRunRequest(work, run, lease, Timeout), CancellationToken.None)).Status);
+        if (writeV3) await ActivateV3WriterAsync(database, target.Value);
 
         var protectedPlan = new ProtectedSensitivePayload(SensitivePayloadKind.ExecutionPlan,
             new SensitivePayloadFingerprint(RandomNumberGenerator.GetBytes(32)),
@@ -454,8 +513,25 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         Assert.Equal(payloadExists ? 1L : 0L, rows.GetInt64(4));
         Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(5));
         Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(6));
-        Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(7));
+        Assert.Equal(payloadExists && !writeV3 ? 2L : 0L, rows.GetInt64(7));
         Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(8));
+    }
+
+    private static async Task ActivateV3WriterAsync(
+        RepositoryTestDatabase database, Guid target)
+    {
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using NpgsqlTransaction activation = await admin.BeginTransactionAsync();
+        await using var activate = new NpgsqlCommand("""
+            SET LOCAL ROLE sqlobserver_migrator;
+            SELECT set_config('sqlobserver.target_scope',@target::text,true);
+            SELECT complete FROM control.backfill_query_observation_v3(@target,1);
+            SELECT control.set_query_observation_v3_read_route(true);
+            SELECT control.activate_query_observation_v3_writer();
+            """, admin, activation);
+        activate.Parameters.AddWithValue("target", target);
+        await activate.ExecuteNonQueryAsync();
+        await activation.CommitAsync();
     }
 
 }

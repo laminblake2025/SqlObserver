@@ -337,6 +337,23 @@ registered target and required triggers/RLS, and flips the three public
 projections in the same transaction. `false` restores original reads while
 the original table is intact. Neither command moves canonical writes or
 enables M7 retention.
+Migration `0176` adds a separate M7 writer gate, initially off. After v3
+reads are active and every target still has passing parity coverage, a
+migrator can run:
+
+```sql
+SELECT control.activate_query_observation_v3_writer();
+```
+
+Activation drains in-flight original-table writers and rechecks fleet
+coverage under the same locks. Subsequent collector commits retain the
+existing validation, accounting, protected text/plan links, and replay
+contract. Their new observation rows are mirrored to v3, checked against
+the committed count, and removed from the original table before commit.
+The read route cannot return to the original table after this switch.
+Treat writer activation as irreversible; verify v3 readers and backups
+first. It does not enable M7 retention or retire pre-switch rows. The
+original-to-v3 parity ledger ceases to describe new writes after activation.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
