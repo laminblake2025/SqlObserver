@@ -210,6 +210,52 @@ public sealed class OverviewQueryServiceTests
     }
 
     [Fact]
+    public async Task FleetUsesTargetSqlHistoryForCpuAndMemoryWithoutReturningFullSeries()
+    {
+        var target = Target(1);
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((method, _) =>
+            Task.FromResult<IReadOnlyList<OverviewSeries>>(method!.Name == nameof(IOverviewHistoryRepositoryPort.ReadAsync)
+                ? [
+                    new(target.Target.TargetId.Value, "", "engine.sql_scheduler_cpu_percent", "%", "observed", null,
+                        [new(At.AddMinutes(-20), 95, 1), new(At.AddMinutes(-5), 68.5, 3)]),
+                    new(target.Target.TargetId.Value, "", "engine.os_available_memory_bytes", "GiB", "observed", null,
+                        [new(At.AddMinutes(-20), 4.25, 2)])
+                  ] : []));
+
+        OverviewSnapshot result = await Service([target], history: history).ReadAsync(
+            new(Auth(), null, At.AddHours(-1), At), CancellationToken.None);
+        OverviewTargetEvidence evidence = Assert.Single(result.Evidence);
+        OverviewResource cpu = Assert.Single(evidence.Resources, item => item.Label == "SQL scheduler CPU · selected window");
+        Assert.Equal(68.5, cpu.Value);
+        Assert.Equal("observed", cpu.State);
+        Assert.Equal(At.AddMinutes(-5), cpu.ObservedAtUtc);
+        OverviewResource memory = Assert.Single(evidence.Resources, item => item.Label == "OS available memory via SQL · selected window");
+        Assert.Equal(4.25, memory.Value);
+        Assert.Equal("stale", memory.State);
+        Assert.DoesNotContain(evidence.Series, item => item.Metric is
+            "engine.sql_scheduler_cpu_percent" or "engine.os_available_memory_bytes");
+    }
+
+    [Fact]
+    public async Task FleetDoesNotReplaceMissingLatestSqlCpuBucketWithAnOlderValue()
+    {
+        var target = Target(1);
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, _) =>
+            Task.FromResult<IReadOnlyList<OverviewSeries>>([
+                new(target.Target.TargetId.Value, "", "engine.sql_scheduler_cpu_percent", "%", "observed", null,
+                    [new(At.AddMinutes(-20), 95, 1), new(At.AddMinutes(-5), null, 0)])
+            ]));
+
+        OverviewSnapshot result = await Service([target], history: history).ReadAsync(
+            new(Auth(), null, At.AddHours(-1), At), CancellationToken.None);
+        OverviewResource cpu = Assert.Single(Assert.Single(result.Evidence).Resources,
+            item => item.Label == "SQL scheduler CPU · selected window");
+        Assert.Null(cpu.Value);
+        Assert.Equal("no_data", cpu.State);
+        Assert.Equal(At.AddMinutes(-5), cpu.ObservedAtUtc);
+    }
+
+    [Fact]
     public async Task UnauthorizedSelectionFailsAndDisabledTargetsStaySelectable()
     {
         var first=Target(1);var disabled=Target(2,ObservationTargetLifecycle.Disabled);

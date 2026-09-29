@@ -34,8 +34,10 @@ test('signal cells distinguish source evidence from health and hide stale numeri
   fleet.evidence = [evidence('a', {
     blockedSessions: value(null, 'unavailable'),
     resources: [
-      { label: 'host.cpu.percent', value: 91.2, unit: '%', state: 'stale', observedAtUtc: '2026-09-20T00:00:00Z' },
-      { label: 'host.memory.available_bytes', value: 4.25, unit: 'GiB', state: 'observed', observedAtUtc: '2026-09-24T11:00:00Z' },
+      { label: 'host.cpu.percent', value: 91.2, unit: '%', state: 'observed', observedAtUtc: '2026-09-24T12:00:00Z' },
+      { label: 'host.memory.available_bytes', value: 99, unit: 'GiB', state: 'observed', observedAtUtc: '2026-09-24T12:00:00Z' },
+      { label: 'SQL scheduler CPU · selected window', value: 68.5, unit: '%', state: 'stale', observedAtUtc: '2026-09-20T00:00:00Z' },
+      { label: 'OS available memory via SQL · selected window', value: 4.25, unit: 'GiB', state: 'observed', observedAtUtc: '2026-09-24T11:00:00Z' },
       { label: 'Wait · LCK_M_X', value: 2.5, unit: 'seconds since prior sample', state: 'partial', observedAtUtc: '2026-09-24T12:00:00Z' },
       { label: 'Backup evidence', value: 0, unit: 'records', state: 'complete', observedAtUtc: '2026-09-24T12:00:00Z' },
     ],
@@ -48,4 +50,6 @@ test('signal cells distinguish source evidence from health and hide stale numeri
   assert.equal(signals.backups.text, '0 records');
   assert.match(signals.backups.detail, /does not establish RPO health/);
   assert.equal(signals.ha.tone, 'unknown');
+  fleet.evidence[0].resources.find(item => item.label === 'SQL scheduler CPU · selected window').state = 'observed';
+  assert.equal(fleetServerRows(fleet, '')[0].signals.cpu.text, '68.5 %');
 });

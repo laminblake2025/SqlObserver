@@ -56,8 +56,8 @@ function signals(evidence: OverviewEvidence | undefined): FleetServerRow['signal
   const backup = resource(evidence, 'Backup evidence');
   const ha = resource(evidence, 'Availability replicas');
   return {
-    cpu: resourceSignal(resource(evidence, 'host.cpu.percent'), 'Host CPU in selected window', '%'),
-    memory: resourceSignal(resource(evidence, 'host.memory.available_bytes'), 'Available host memory in selected window', 'GiB'),
+    cpu: resourceSignal(resource(evidence, 'SQL scheduler CPU · selected window'), 'SQL scheduler CPU in selected window', '%'),
+    memory: resourceSignal(resource(evidence, 'OS available memory via SQL · selected window'), 'OS available memory reported by SQL Server in selected window', 'GiB'),
     waits: resourceSignal(waits, waits ? `Largest observed wait delta: ${waits.label.slice('Wait · '.length)}` : 'Wait delta', 's'),
     blocking: countSignal(evidence?.blockedSessions, 'Currently blocked sessions'),
     backups: resourceSignal(backup, 'Backup records observed; this does not establish RPO health', 'records'),

@@ -18,12 +18,12 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime 
     <p className="table-note">Showing {rows.length} of {snapshot.targets.length} authorized targets, with observed exceptions first. Search covers this overview response only.</p>
     <div className="table-scroll"><table>
       <caption>Current alerts and blocking; other signals show the latest available source evidence.</caption>
-      <thead><tr><th scope="col">Server</th><th scope="col">Attention</th><th scope="col">Host CPU</th><th scope="col">Host memory</th><th scope="col">Waits</th><th scope="col">Blocking</th><th scope="col">Backups</th><th scope="col">HA</th><th scope="col">Last SQL core success</th></tr></thead>
+      <thead><tr><th scope="col">Server</th><th scope="col">Attention</th><th scope="col">SQL scheduler CPU</th><th scope="col">OS free via SQL</th><th scope="col">Waits</th><th scope="col">Blocking</th><th scope="col">Backups</th><th scope="col">HA</th><th scope="col">Last SQL core success</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.target.targetId}>
         <td><a href={overviewHref(scope, 'health', row.target.targetId)}>{row.target.displayName}</a><small>{row.target.targetId}</small></td>
         <td><a href={overviewHref(scope, 'alerts', row.target.targetId)}>{count(row.evidence?.activeAlerts)} active alerts</a><small>{row.attentionCount} observed issues · SQL core {row.evidence?.collectionState?.replaceAll('_', ' ') ?? 'unavailable'}</small></td>
-        <SignalCell label="Host CPU" signal={row.signals.cpu} />
-        <SignalCell label="Host memory" signal={row.signals.memory} />
+        <SignalCell label="SQL scheduler CPU" signal={row.signals.cpu} />
+        <SignalCell label="OS free via SQL" signal={row.signals.memory} />
         <SignalCell label="Waits" signal={row.signals.waits} />
         <SignalCell label="Blocking" signal={row.signals.blocking} />
         <SignalCell label="Backups" signal={row.signals.backups} />
@@ -32,7 +32,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime 
       </tr>)}</tbody>
     </table></div>
     {rows.length === 0 && <p className="empty-state">No loaded servers match this search.</p>}
-    <p className="table-note">Dots show evidence state; red blocking means blocked sessions were observed. CPU and memory have no threshold-based health verdict. Backup and HA counts do not establish RPO or replica health.</p>
+    <p className="table-note">Dots show evidence state; red blocking means blocked sessions were observed. SQL scheduler CPU excludes preemptive and hidden-scheduler work. CPU and memory have no threshold-based health verdict. Backup and HA counts do not establish RPO or replica health.</p>
   </section>;
 }
 

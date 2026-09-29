@@ -192,7 +192,24 @@ public sealed class OverviewQueryService(
             foreach (var item in await history.ReadAsync(id, target.Revision.Value, query.FromUtc, query.ToUtc, cutoff, ct) ?? [])
             {
                 if (item.TargetId != id.Value) throw new InvalidDataException("Overview history crossed target scope.");
-                if (!query.TargetId.HasValue && item.Metric is ("engine.process_physical_memory_bytes" or "engine.os_available_memory_bytes" or "engine.memory_grants_pending" or "engine.scheduler_runnable_tasks" or "engine.sql_scheduler_cpu_percent")) continue;
+                if (!query.TargetId.HasValue && item.Metric is
+                    ("engine.sql_scheduler_cpu_percent" or "engine.os_available_memory_bytes"))
+                {
+                    bool cpu = item.Metric == "engine.sql_scheduler_cpu_percent";
+                    string unit = cpu ? "%" : "GiB";
+                    if (item.Dimension is not null || item.Unit != unit ||
+                        item.Points.Any(point => point.Value is { } value &&
+                            (!double.IsFinite(value) || value < 0 || cpu && value > 100)))
+                        throw new InvalidDataException("Overview SQL resource history is invalid.");
+                    OverviewPoint? latest = item.Points.MaxBy(point => point.TimeUtc);
+                    string state = latest?.Value is null || latest.Samples == 0 ? "no_data" :
+                        query.ToUtc - latest.TimeUtc > TimeSpan.FromSeconds(BucketSeconds(query) + 120)
+                            ? "stale" : item.State;
+                    Resource(cpu ? "SQL scheduler CPU · selected window" : "OS available memory via SQL · selected window",
+                        latest?.Value, unit, state, latest?.TimeUtc);
+                    continue;
+                }
+                if (!query.TargetId.HasValue && item.Metric is ("engine.process_physical_memory_bytes" or "engine.memory_grants_pending" or "engine.scheduler_runnable_tasks")) continue;
                 series.Add(item with { Label = target.DisplayName.Value });
             }
         });
@@ -332,9 +349,12 @@ public sealed class OverviewQueryService(
 
     private static DateTimeOffset Bucket(DateTimeOffset at, OverviewQuery query)
     {
-        int seconds = query.ToUtc - query.FromUtc > TimeSpan.FromDays(1) ? 3600 : query.ToUtc - query.FromUtc > TimeSpan.FromHours(6) ? 900 : 300;
+        int seconds = BucketSeconds(query);
         return DateTimeOffset.FromUnixTimeSeconds(at.ToUnixTimeSeconds() / seconds * seconds);
     }
+    private static int BucketSeconds(OverviewQuery query) =>
+        query.ToUtc - query.FromUtc > TimeSpan.FromDays(1) ? 3600 :
+        query.ToUtc - query.FromUtc > TimeSpan.FromHours(6) ? 900 : 300;
     private static string Unit(string metric) => metric.EndsWith("_bytes", StringComparison.Ordinal) ? "GiB" : metric.EndsWith("_ms", StringComparison.Ordinal) ? "ms" : metric.EndsWith("seconds", StringComparison.Ordinal) ? "seconds" : "%";
     // Internal scheduler, flush, and maintenance workers are background engine activity, not user contention.
     private static bool IdleWait(string wait) => wait.StartsWith("SLEEP", StringComparison.Ordinal) || wait is
