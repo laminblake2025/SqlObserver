@@ -1,4 +1,5 @@
 using SqlObserver.Domain.Authorization;
+using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Application.Ports;
@@ -35,6 +36,17 @@ public interface IOverviewLatestStatusRepositoryPort
 {
     Task<OverviewLatestStatus?> ReadAsync(
         MonitoredInstanceId targetId, long targetRevision, CancellationToken cancellationToken);
+}
+
+public sealed record OverviewRefreshTarget(MonitoredInstanceId TargetId, long TargetRevision);
+
+/// <summary>Fenced, bounded materialization of committed current Overview evidence.</summary>
+public interface IOverviewLatestMaterializationPort
+{
+    ValueTask<IReadOnlyList<OverviewRefreshTarget>> ListDueAsync(
+        WorkerLeaseIdentity lease, int limit, CancellationToken cancellationToken);
+    ValueTask<bool> RefreshCoreAsync(
+        OverviewRefreshTarget target, WorkerLeaseIdentity lease, CancellationToken cancellationToken);
 }
 
 /// <summary>Reads bounded overview history from persisted observations, never from a monitored server.</summary>

@@ -96,8 +96,13 @@ continues to mean request cutoff, not source collection time.
 
 Migration 0235 stages step 1's table and restricted functions. It leaves the
 existing route untouched. A typed application read port and PostgreSQL adapter
-now validate the target and JSON boundary. The materializer, parity work, and
-read switch in steps 2–4 remain to be built.
+now validate the target and JSON boundary. Migration 0236 and the collector
+worker publish core health, active alerts, and coherent current blocking from
+committed repository data under a lease. The due-target list records attempts
+so a repeatedly failing target cannot monopolize its bounded batch. Waits,
+database states, TempDB, backups, and AG remain explicitly unavailable in this
+row. Their materialization, full parity work, and the read switch remain to be
+built.
 
 Rollback switches reads to the existing composition while leaving the new
 table and writer inert. A later migration can remove them after verification;

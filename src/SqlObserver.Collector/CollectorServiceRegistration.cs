@@ -72,6 +72,8 @@ public static class CollectorServiceRegistration
         services.AddSingleton<IRepositoryReadinessMonitor, PostgreSqlRepositoryReadinessMonitor>();
         services.AddSingleton<IWorkerLeasePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().WorkerLeases);
+        services.AddSingleton<IOverviewLatestMaterializationPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().OverviewLatestMaterialization);
         services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().PartitionMaintenance);
         services.AddSingleton<ICapabilityProfileRepositoryPort>(static provider =>
@@ -204,6 +206,7 @@ public static class CollectorServiceRegistration
         services.AddHostedService<AlertEvaluationWorker>();
         services.AddHostedService<AlertDeliveryWorker>();
         services.AddHostedService<ReportExpiryWorker>();
+        services.AddHostedService<OverviewLatestStatusWorker>();
         bool contractTesting = environment?.IsEnvironment("ContractTesting") == true ||
             string.Equals(configuration["DOTNET_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase);
