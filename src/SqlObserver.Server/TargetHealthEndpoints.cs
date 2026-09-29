@@ -353,7 +353,8 @@ public static class TargetHealthEndpoints
             observation.IsReadOnly,
             observation.CompatibilityLevel,
             observation.ObservedAtUtc,
-            Map(item.Collector));
+            Map(item.Collector),
+            observation.LogReuseWaitDescription);
     }
 
     private static DatabaseFileHealthResponse Map(DatabaseFileHealthItem item)

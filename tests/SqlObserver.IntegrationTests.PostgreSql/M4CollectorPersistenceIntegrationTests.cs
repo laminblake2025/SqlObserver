@@ -419,6 +419,14 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             Assert.Equal("LOG_BACKUP", await stored.ExecuteScalarAsync());
         }
 
+        await using NpgsqlDataSource serverSource = database.CreateServerDataSource();
+        var health = new PostgreSqlHealthProjectionPort(serverSource);
+        DatabaseHealthPage page = Assert.IsType<DatabaseHealthPage>(
+            await health.ListDatabaseHealthAsync(
+                new ListDatabaseHealthRepositoryRequest(targetId, 100, cursor: null, DefaultTimeout),
+                CancellationToken.None));
+        Assert.Equal("LOG_BACKUP", Assert.Single(page.Items).Observation.LogReuseWaitDescription);
+
         Assert.Equal(CollectorRunCommitStatus.Replayed,
             (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
         PostgresException divergent = await Assert.ThrowsAsync<PostgresException>(() =>

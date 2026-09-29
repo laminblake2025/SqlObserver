@@ -14,7 +14,7 @@ public sealed class PostgreSqlHealthProjectionPort : IHealthProjectionRepository
     private const string InstanceHealthSql = "SELECT * FROM reporting.get_instance_health(@instance_id);";
     private const string DatabaseHealthSql = """
         SELECT *
-        FROM reporting.list_database_health(
+        FROM reporting.list_database_health_v2(
             @instance_id,
             @snapshot_run_id,
             @snapshot_target_revision,
@@ -171,7 +171,8 @@ public sealed class PostgreSqlHealthProjectionPort : IHealthProjectionRepository
                             MapUserAccess(reader.GetString(6)),
                             reader.GetBoolean(7),
                             reader.GetInt32(8),
-                            PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 9));
+                            PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 9),
+                            reader.IsDBNull(44) ? null : reader.GetString(44));
                         items.Add(new DatabaseHealthItem(observation, health));
                     }
 
