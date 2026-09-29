@@ -51,7 +51,6 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.backfill_collection_run_identity/2
             function control.backfill_collection_run_v2/2
             function control.begin_collection_run/12
-            function control.bind_replication_run_gap/0
             function control.collection_run_v2_parity_coverage/2
             function control.commit_buffer_node_ple_collection_run/28
             function control.commit_collection_run/57
@@ -60,10 +59,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.commit_m9_collection_run/28
             function control.commit_query_performance_collection_run/13
             function control.commit_query_performance_collection_run_canonical/34
-            function control.commit_query_plan_links/4
-            function control.commit_query_plan_wait_snapshots/4
             function control.commit_query_store_group_collection_run/28
-            function control.commit_query_text_links/4
             function control.commit_sql_volume_collection_run/28
             function control.cutover_collection_run_identity_fks/1
             function control.ensure_target_collector_schedules/0
@@ -100,6 +96,103 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             view telemetry.collection_run_alert_read
             """;
         Assert.Equal(expected.Split('\n'), names);
+    }
+
+    [Fact]
+    public async Task ReplicationGapBindsToPartitionedRunAfterGuardedRouteActivation()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult applied = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(
+                MigrationBatchResult.MaximumResults,
+                new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+                CancellationToken.None);
+        Assert.False(applied.HasFailures);
+        Guid target = Guid.NewGuid(), run = Guid.NewGuid();
+        await using (NpgsqlConnection seed = await database.DataSource.OpenConnectionAsync())
+        {
+            await using var insert = new NpgsqlCommand("""
+                INSERT INTO control.observation_target
+                 (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+                  authentication_mode,transport_security_mode,lifecycle_state,revision,
+                  created_at,updated_at,discovery_requested_at)
+                VALUES (@target,@key,'replication gap target','sql01',1433,interval '5 seconds',
+                 'windows_integrated_service_identity','mandatory_validated','active',1,
+                 statement_timestamp(),statement_timestamp(),statement_timestamp());
+                INSERT INTO telemetry.collection_run
+                 (run_id,instance_id,collector_id,collector_version,output_schema_version,
+                  target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,
+                  request_digest,scheduled_for,started_at)
+                VALUES (@run,@target,'replication.health',1,1,1,1,@work,@owner,1,
+                 decode(repeat('aa',32),'hex'),statement_timestamp(),statement_timestamp());
+                """, seed);
+            insert.Parameters.AddWithValue("target", target);
+            insert.Parameters.AddWithValue("key", $"replication-gap.{target:N}");
+            insert.Parameters.AddWithValue("run", run);
+            insert.Parameters.AddWithValue("work", $"collector/run/replication.health/{target:N}");
+            insert.Parameters.AddWithValue("owner", Guid.NewGuid());
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,false);", connection))
+        {
+            scope.Parameters.AddWithValue("target", target);
+            await scope.ExecuteScalarAsync();
+        }
+        await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
+        {
+            foreach (string function in new[]
+                { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+            {
+                await using var copy = new NpgsqlCommand(
+                    $"SELECT complete FROM control.{function}(@target,10);", connection, backfill);
+                copy.Parameters.AddWithValue("target", target);
+                Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            }
+            await using var certificate = new NpgsqlCommand("""
+                SELECT parity FROM control.record_collection_run_v2_parity_window(
+                 @target,'replication.health',
+                 date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run)),
+                 date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run))
+                   + interval '1 day',10);
+                """, connection, backfill);
+            certificate.Parameters.AddWithValue("target", target);
+            certificate.Parameters.AddWithValue("run", run);
+            Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            await backfill.CommitAsync();
+        }
+        await using (var activate = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        await using (var insertGap = new NpgsqlCommand("""
+            INSERT INTO telemetry.visibility_gap
+             (gap_id,run_id,instance_id,collector_id,reason_code,gap_started_at,
+              gap_ended_at,lost_row_count,lost_byte_count,count_is_exact,recorded_at)
+            VALUES (gen_random_uuid(),@run,@target,'replication.health',
+             'transient_target_failure',statement_timestamp(),statement_timestamp(),
+             1,0,false,statement_timestamp());
+            """, connection))
+        {
+            insertGap.Parameters.AddWithValue("run", run);
+            insertGap.Parameters.AddWithValue("target", target);
+            await insertGap.ExecuteNonQueryAsync();
+        }
+        await using var evidence = new NpgsqlCommand("""
+            SELECT octet_length(topology_fingerprint),gap_evidence->>'kind',
+                   gap_evidence->>'reason',gap_evidence->>'targetRevision'
+            FROM telemetry.visibility_gap WHERE run_id=@run;
+            """, connection);
+        evidence.Parameters.AddWithValue("run", run);
+        await using NpgsqlDataReader row = await evidence.ExecuteReaderAsync();
+        Assert.True(await row.ReadAsync());
+        Assert.Equal(32, row.GetInt32(0));
+        Assert.Equal("collection_gap", row.GetString(1));
+        Assert.Equal("transient_target_failure", row.GetString(2));
+        Assert.Equal("1", row.GetString(3));
     }
 
     [Fact]

@@ -418,6 +418,8 @@ commit families for a later coordinated writer switch.
 Migration 0221 routes the query-performance canonical commit and the atomic
 text, plan and per-plan wait link writers through the same row-locking lookup.
 The guarded route is exercised with protected content and Query Store waits.
+Migration 0222 routes the replication visibility-gap trigger through the
+row-locking lookup, retaining its target and collector identity checks.
 
 ## Implementation gates
 
