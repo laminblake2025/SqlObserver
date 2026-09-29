@@ -236,6 +236,13 @@ and other run-ID columns that need an explicit lifecycle decision. The
 successor has no retention policy or read route. Historical backfill, row
 parity, replay verification, referencing-writer and foreign-key cutover, and
 run-level hold checks are required before any original run history can retire.
+Migration 0183 builds the original table's ascending target/collector/time/run
+index concurrently. Migration 0184 adds an explicit migrator-only,
+target-scoped historical copy. It follows that index and processes at
+most 1,000 starts per call, and compares every copied or previously mirrored
+row with the original. Its durable cursor is a copy-progress marker, not a
+fleet parity or cutover attestation; operators must sweep each target and
+then perform independent, writer-fenced parity and replay checks.
 
 ## Implementation gates
 

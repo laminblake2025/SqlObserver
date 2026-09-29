@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0182`
+The migration catalog contains the exact, contiguous `0001` through `0184`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -406,6 +406,15 @@ successor: historical backfill, parity, replay and every run-reference cutover
 are still outstanding. A blocked or mismatched successor partition causes the
 original insert to fail; inspect `system.partition_registry` and the matching
 `telemetry.collection_run_v2_pYYYYMMDD` relation before retrying a failed run.
+Migration `0183` builds the historical-run backfill index concurrently;
+allow time for its guarded build on a populated repository. Migration `0184`
+adds `control.backfill_collection_run_v2(target, limit)` for explicit
+historical copy. Use the migrator role with
+`sqlobserver.target_scope` set to that target, and call with a limit from 1
+through 1,000 until it returns `complete=true`. Review
+`system.collection_run_v2_backfill` for checked and copied counts. A completed
+cursor covers the rows encountered by that scan; it does not establish
+fleet-wide old/new parity or permit a reader or retention cutover.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
