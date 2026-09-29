@@ -69,13 +69,15 @@ the reattach path from migration 0159.
 For **TempDB days**, select the snapshot and exact-range file partitions as
 one unit. Both reader leases, backfill states, policy revision, minimum
 partition floors, analytics dependencies, and recovery attestation must be
-checked before grace and again before retirement. Do not enable either default
-policy until the worker and administrator path use the paired execution. At
-expiry, one fenced transaction must detach and drop the file partition first,
+checked before grace and again before retirement. Enable only the snapshot
+default after the worker and administrator path use the paired execution; keep
+the file policy disabled. At expiry, one fenced transaction must detach and
+drop the file partition first,
 then the snapshot partition; a failure must roll back both and preserve reads.
-Migration 0163 installs the fenced worker, excludes the pair from generic
-detach, and rejects manual single-partition detach. The administrative start
-path and default policy remain pending.
+Migration 0163 installs the fenced worker and excludes the pair from generic
+detach. Migration 0164 routes administrator snapshot requests into paired
+attached grace, makes preview check the file partition, and enables the
+30-day snapshot default. Direct file detach remains blocked.
 
 For **original M7 observations**, build a partitioned successor keyed by UTC
 `interval_end`; its primary key must include that partition key. Preserve

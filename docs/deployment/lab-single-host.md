@@ -231,9 +231,9 @@ other unused v2 parents remain disabled pending an explicit cutover or cleanup.
 Migration `0162` enables guarded defaults on the actively written M9 daily
 parents: 90 days for backup status and Agent failure occurrences, and 30 days
 for Agent scan coverage and availability-group snapshots. Existing operator
-revisions remain intact. The unpartitioned Agent failure identity and the
-TempDB snapshot/file pair remain disabled; the latter has an incoming file
-foreign key and needs a coordinated retirement step. A populated PostgreSQL
+revisions remain intact. The unpartitioned Agent failure identity remains
+disabled. The TempDB snapshot/file pair has an incoming file foreign key and
+needs a coordinated retirement step. A populated PostgreSQL
 test confirms parent-only detach fails with `23503`; the child-first drop and
 parent drop succeed together in one transaction. All enabled classes
 still require recovery attestation, reader/dependency checks, a minimum
@@ -241,9 +241,11 @@ partition count, and a 24-hour detach grace before drop.
 Migration `0163` installs the fenced paired TempDB worker, which keeps both
 daily partitions attached through grace and drops the file partition before
 the snapshot partition in one transaction. It excludes both from the generic
-detach worker and blocks direct administrator detach of either side. The
-TempDB policy defaults remain disabled until the administrator path can start
-the same paired grace and expose its preview state.
+detach worker. Migration `0164` routes SecurityAdministrator snapshot requests
+into that same attached grace, checks the matching file partition in preview,
+and enables a guarded 30-day snapshot default. The subordinate file policy
+remains disabled and direct file detach remains blocked. Both partitions
+retire together after the grace period.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced

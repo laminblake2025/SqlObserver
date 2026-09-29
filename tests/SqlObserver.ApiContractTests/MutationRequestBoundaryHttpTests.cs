@@ -260,6 +260,8 @@ public sealed class MutationRequestBoundaryHttpTests
     [InlineData(true, "diagnostic_events")]
     [InlineData(false, "m9_backup_status")]
     [InlineData(true, "m9_backup_status")]
+    [InlineData(false, "m9_tempdb")]
+    [InlineData(true, "m9_tempdb")]
     [InlineData(false, "m7_group_watermarks")]
     [InlineData(true, "m7_group_watermarks")]
     [InlineData(false, "m7_group_deltas")]

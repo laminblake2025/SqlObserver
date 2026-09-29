@@ -10,7 +10,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class ActiveM9RetentionDefaultsTests(PostgreSql18Fixture fixture)
 {
     [Fact]
-    public async Task FreshInstallEnablesOnlyIndependentWrittenParents()
+    public async Task FreshInstallEnablesWrittenParentsAndPairedTempDbParent()
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         var migrations = new PostgreSqlMigrationPort(database.DataSource);
@@ -51,7 +51,9 @@ public sealed class ActiveM9RetentionDefaultsTests(PostgreSql18Fixture fixture)
             "migration-0162", true), rows["m9_ag_replicas"]);
         Assert.Equal(("availability_group_database_snapshot", true, TimeSpan.FromDays(30), 2L,
             "migration-0162", true), rows["m9_ag_databases"]);
-        foreach (string dataClass in new[] { "m9_agent_failures", "m9_tempdb", "m9_tempdb_files" })
+        Assert.Equal(("tempdb_snapshot", true, TimeSpan.FromDays(30), 2L,
+            "migration-0164", true), rows["m9_tempdb"]);
+        foreach (string dataClass in new[] { "m9_agent_failures", "m9_tempdb_files" })
         {
             Assert.False(rows[dataClass].Enabled);
             Assert.Null(rows[dataClass].Duration);
@@ -150,5 +152,40 @@ public sealed class ActiveM9RetentionDefaultsTests(PostgreSql18Fixture fixture)
         Assert.Equal(2L, reader.GetInt64(2));
         Assert.Equal("operator-test", reader.GetString(3));
         Assert.False(await reader.ReadAsync());
+    }
+
+    [Fact]
+    public async Task TempDbUpgradePreservesOperatorPolicyRevision()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        var timeout = new RepositoryCallTimeout(TimeSpan.FromMinutes(2));
+        MigrationBatchResult prefix = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(163, timeout), CancellationToken.None);
+        Assert.False(prefix.HasFailures);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var configured = new NpgsqlCommand("""
+            UPDATE system.retention_policy
+            SET enabled=true,retain_for=interval '45 days',policy_revision=2,
+                updated_by='operator-test',updated_at=clock_timestamp()
+            WHERE data_class='m9_tempdb';
+            """, connection))
+        {
+            Assert.Equal(1, await configured.ExecuteNonQueryAsync());
+        }
+        MigrationBatchResult upgrade = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(1, timeout), CancellationToken.None);
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(164, Assert.Single(upgrade.Results).Migration.Number.Value);
+        await using var policy = new NpgsqlCommand("""
+            SELECT retain_for,policy_revision,updated_by FROM system.retention_policy
+            WHERE data_class='m9_tempdb';
+            """, connection);
+        await using NpgsqlDataReader reader = await policy.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(TimeSpan.FromDays(45), reader.GetFieldValue<TimeSpan>(0));
+        Assert.Equal(2L, reader.GetInt64(1));
+        Assert.Equal("operator-test", reader.GetString(2));
     }
 }

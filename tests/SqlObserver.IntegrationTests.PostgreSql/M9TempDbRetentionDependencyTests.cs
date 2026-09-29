@@ -128,8 +128,7 @@ public sealed class M9TempDbRetentionDependencyTests(PostgreSql18Fixture fixture
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         await using NpgsqlConnection serverConnection = await server.OpenConnectionAsync();
         foreach ((string parent, string partition) in new[]
-            { ("tempdb_snapshot", snapshotPartition),
-              ("tempdb_file_snapshot", filePartition) })
+            { ("tempdb_file_snapshot", filePartition) })
         {
             await using NpgsqlTransaction transaction = await serverConnection.BeginTransactionAsync();
             await using var context = new NpgsqlCommand("""
@@ -329,6 +328,165 @@ public sealed class M9TempDbRetentionDependencyTests(PostgreSql18Fixture fixture
         Assert.Equal(0L, retiredReader.GetInt64(1));
         Assert.Equal(2L, retiredReader.GetInt64(2));
         Assert.Equal(1L, retiredReader.GetInt64(3));
+    }
+
+    [Fact]
+    public async Task AdministratorStartsPairedGraceAndWorkerRetiresBothPartitions()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult applied = await migrations.ApplyPendingAsync(new MigrationApplyRequest(
+            MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(applied.HasFailures);
+
+        DateTimeOffset day = new(DateTime.UtcNow.Date.AddDays(-32), TimeSpan.Zero);
+        string suffix = day.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
+        string snapshot = $"tempdb_snapshot_{suffix}";
+        string file = $"tempdb_file_snapshot_{suffix}";
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var setup = new NpgsqlCommand($"""
+            SET ROLE sqlobserver_migrator;
+            CREATE TABLE telemetry.{snapshot} PARTITION OF telemetry.tempdb_snapshot
+              FOR VALUES FROM ('{day:yyyy-MM-dd} 00:00:00+00')
+              TO ('{day.AddDays(1):yyyy-MM-dd} 00:00:00+00');
+            CREATE TABLE telemetry.{file} PARTITION OF telemetry.tempdb_file_snapshot
+              FOR VALUES FROM ('{day:yyyy-MM-dd} 00:00:00+00')
+              TO ('{day.AddDays(1):yyyy-MM-dd} 00:00:00+00');
+            RESET ROLE;
+            INSERT INTO system.partition_registry
+              (parent_schema,parent_table,partition_schema,partition_name,
+               partition_granularity,range_start,range_end)
+            VALUES ('telemetry','tempdb_snapshot','telemetry',@snapshot,'day',@start,@end),
+                   ('telemetry','tempdb_file_snapshot','telemetry',@file,'day',@start,@end);
+            INSERT INTO system.recovery_attestation
+              (attestation_id,attested_at,attested_by,backup_set_reference,
+               expires_at,attestation_digest)
+            VALUES(gen_random_uuid(),clock_timestamp(),'test','restore-tested',
+              clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));
+            """, admin))
+        {
+            setup.Parameters.AddWithValue("snapshot", snapshot);
+            setup.Parameters.AddWithValue("file", file);
+            setup.Parameters.AddWithValue("start", day);
+            setup.Parameters.AddWithValue("end", day.AddDays(1));
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        Guid readerLease = Guid.NewGuid();
+        await using (var hold = new NpgsqlCommand("""
+            INSERT INTO system.partition_reader_lease
+              (lease_id,parent_schema,parent_table,partition_name,
+               owner_execution_id,expires_at)
+            VALUES(@lease,'telemetry','tempdb_file_snapshot',@file,
+              gen_random_uuid(),clock_timestamp()+interval '1 hour');
+            """, admin))
+        {
+            hold.Parameters.AddWithValue("lease", readerLease);
+            hold.Parameters.AddWithValue("file", file);
+            await hold.ExecuteNonQueryAsync();
+        }
+        async Task<string> PreviewReasonAsync()
+        {
+            await using var preview = new NpgsqlCommand("""
+                SELECT reason FROM system.preview_m10_retention()
+                WHERE data_class='m9_tempdb' AND partition_name=@snapshot;
+                """, admin);
+            preview.Parameters.AddWithValue("snapshot", snapshot);
+            return Assert.IsType<string>(await preview.ExecuteScalarAsync());
+        }
+        Assert.Equal("dependency_pending", await PreviewReasonAsync());
+        Guid operation = Guid.NewGuid(), execution = Guid.NewGuid(), correlation = Guid.NewGuid();
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        await using NpgsqlConnection connection = await server.OpenConnectionAsync();
+        async Task<bool> StartGraceAsync()
+        {
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+            await using var context = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.role','SecurityAdministrator',true),
+                       set_config('sqlobserver.authorization_scope','global',true),
+                       set_config('sqlobserver.actor_sid','S-1-5-21-1-2-3-1001',true),
+                       set_config('sqlobserver.retention_operation_id',@operation,true),
+                       set_config('sqlobserver.retention_correlation_id',@correlation,true),
+                       set_config('sqlobserver.retention_request_digest',repeat('a',64),true);
+                """, connection, transaction);
+            context.Parameters.AddWithValue("operation", operation.ToString());
+            context.Parameters.AddWithValue("correlation", correlation.ToString());
+            await context.ExecuteNonQueryAsync();
+            await using var start = new NpgsqlCommand(
+                "SELECT system.detach_m10_partition('telemetry','tempdb_snapshot',@snapshot,@execution);",
+                connection, transaction);
+            start.Parameters.AddWithValue("snapshot", snapshot);
+            start.Parameters.AddWithValue("execution", execution);
+            bool result = (bool)(await start.ExecuteScalarAsync())!;
+            await transaction.CommitAsync();
+            return result;
+        }
+        PostgresException blocked = await Assert.ThrowsAsync<PostgresException>(StartGraceAsync);
+        Assert.Equal("55000", blocked.SqlState);
+        await using (var release = new NpgsqlCommand("""
+            UPDATE system.partition_reader_lease SET released_at=clock_timestamp()
+            WHERE lease_id=@lease;
+            """, admin))
+        {
+            release.Parameters.AddWithValue("lease", readerLease);
+            await release.ExecuteNonQueryAsync();
+        }
+        Assert.Equal("eligible", await PreviewReasonAsync());
+        Assert.True(await StartGraceAsync());
+        Assert.Equal("grace_in_progress", await PreviewReasonAsync());
+        await using (var inspect = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM system.partition_registry
+                    WHERE partition_name IN (@snapshot,@file)
+                      AND lifecycle_state='attached'),
+                   (SELECT count(*) FROM system.retention_execution
+                    WHERE execution_id=@execution AND state='attached_grace'
+                      AND detached_at IS NULL),
+                   (SELECT count(*) FROM control.m10_mutation_replay
+                    WHERE operation_id=@operation AND result->>'state'='attached_grace'),
+                   (SELECT count(*) FROM audit.activity
+                    WHERE activity_id=@operation
+                      AND action_name='retention.partition.attached_grace_start');
+            """, admin))
+        {
+            inspect.Parameters.AddWithValue("snapshot", snapshot);
+            inspect.Parameters.AddWithValue("file", file);
+            inspect.Parameters.AddWithValue("execution", execution);
+            inspect.Parameters.AddWithValue("operation", operation);
+            await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(2L, reader.GetInt64(0));
+            for (int i = 1; i < 4; i++) Assert.Equal(1L, reader.GetInt64(i));
+        }
+        await using (var due = new NpgsqlCommand("""
+            UPDATE system.retention_execution SET drop_after=clock_timestamp()-interval '1 minute'
+            WHERE execution_id=@execution;
+            """, admin))
+        {
+            due.Parameters.AddWithValue("execution", execution);
+            Assert.Equal(1, await due.ExecuteNonQueryAsync());
+        }
+        Guid owner = Guid.NewGuid();
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlConnection worker = await collector.OpenConnectionAsync();
+        await using var acquire = new NpgsqlCommand(
+            "SELECT fencing_token FROM control.acquire_worker_lease('retention/maintenance',@owner,interval '5 minutes');",
+            worker);
+        acquire.Parameters.AddWithValue("owner", owner);
+        long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        var identity = new WorkerLeaseIdentity(new WorkerLeaseKey("retention/maintenance"),
+            new WorkerExecutionId(owner), new FencingToken(fence));
+        var retention = new PostgreSqlPartitionMaintenancePort(collector);
+        Assert.Equal(SystemRetentionStepOutcome.Dropped,
+            await retention.RunSystemRetentionStepAsync(identity,
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(30)), CancellationToken.None));
+        await using var retired = new NpgsqlCommand("""
+            SELECT count(*) FROM system.partition_registry
+            WHERE partition_name IN (@snapshot,@file) AND lifecycle_state='dropped';
+            """, admin);
+        retired.Parameters.AddWithValue("snapshot", snapshot);
+        retired.Parameters.AddWithValue("file", file);
+        Assert.Equal(2L, (long)(await retired.ExecuteScalarAsync())!);
     }
 
     [Fact]
