@@ -70,6 +70,31 @@ public sealed class McpTypedWireMapperTests
         AssertSchema(items[1], itemSchema, "get_availability_health");
     }
 
+    [Theory]
+    [InlineData("LOG_BACKUP")]
+    [InlineData(null)]
+    public void DatabaseHealthRetainsNullableLogReuseEvidence(string? logReuseWaitDescription)
+    {
+        DatabaseObservation observation = new(TargetId, new ObservationTargetRevision(3), 5,
+            new SqlServerObjectName("db"), DatabaseOperationalState.Online,
+            DatabaseRecoveryModel.Simple, DatabaseUserAccess.MultiUser, false, 160, Now,
+            logReuseWaitDescription);
+        CollectorHealthProjection collector = Collector();
+        DatabaseHealthPage page = new(TargetId, new CollectorRunId(Guid.NewGuid()),
+            new ObservationTargetRevision(3), collector,
+            [new DatabaseHealthItem(observation, collector)], null, Now);
+
+        CallToolResult result = McpResults.Json(page, Options, "get_database_health",
+            new Dictionary<string, JsonElement>(), Signer);
+        JsonElement data = result.StructuredContent!.Value.GetProperty("data");
+        bool present = data.GetProperty("items")[0].GetProperty("observation")
+            .TryGetProperty("logReuseWaitDescription", out JsonElement token);
+        Assert.Equal(logReuseWaitDescription is not null, present);
+        if (present) Assert.Equal(logReuseWaitDescription, token.GetString());
+        AssertSchema(data, McpCatalog.OutputSchema("get_database_health")
+            .GetProperty("properties").GetProperty("data"), "get_database_health");
+    }
+
     [Fact]
     public void ResponseLimitAccountsForEscapedTextCopyAndAllowsSafePayload()
     {

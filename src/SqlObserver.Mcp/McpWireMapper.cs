@@ -192,7 +192,7 @@ internal static class McpWireMapper
 
     private static JsonNode Database(DatabaseHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
     private static JsonNode Database(DatabaseFileHealthPage x, bool file) => O(("targetId", Id(x.TargetId)), ("items", A(x.Items, DatabaseFileItem)), ("snapshotRunId", NullableId(x.SnapshotRunId)), ("snapshotTargetRevision", x.SnapshotTargetRevision?.Value), ("collector", Collector(x.Collector)), ("nextCursor", Cursor(x.NextCursor)), ("hasMore", x.NextCursor is not null), ("repositoryTimeUtc", T(x.RepositoryTimeUtc)));
-    private static JsonNode DatabaseItem(DatabaseHealthItem x) => O(("observation", O(("databaseId", x.Observation.DatabaseId), ("databaseName", x.Observation.Name.Value), ("state", E(x.Observation.State)), ("observedAtUtc", T(x.Observation.ObservedAtUtc)))), ("collector", Collector(x.Collector)));
+    private static JsonNode DatabaseItem(DatabaseHealthItem x) => O(("observation", O(("databaseId", x.Observation.DatabaseId), ("databaseName", x.Observation.Name.Value), ("state", E(x.Observation.State)), ("logReuseWaitDescription", x.Observation.LogReuseWaitDescription), ("observedAtUtc", T(x.Observation.ObservedAtUtc)))), ("collector", Collector(x.Collector)));
     private static JsonNode DatabaseFileItem(DatabaseFileHealthItem x)
     {
         DatabaseFileObservation file = x.Observation;

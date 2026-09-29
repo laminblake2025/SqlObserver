@@ -100,6 +100,8 @@ public sealed class McpBoundaryScaffoldTests
             if (schema.TryGetProperty("format", out JsonElement format) && format.GetString() == "uuid") return JsonValue.Create("11111111-1111-4111-8111-111111111111")!;
             if (schema.TryGetProperty("pattern", out JsonElement pattern) && pattern.GetString() == "^(0|[1-9][0-9]*)$") return JsonValue.Create("1")!;
             if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9a-f]{64}$") return JsonValue.Create(new string('a', 64))!;
+            if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$")
+                return JsonValue.Create("2026-09-24T00:00:00")!;
             if (schema.TryGetProperty("format", out format) && format.GetString() == "date-time") return JsonValue.Create("2026-09-24T00:00:00Z")!;
             if (schema.TryGetProperty("type", out JsonElement type))
             {
