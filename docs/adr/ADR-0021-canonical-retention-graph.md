@@ -143,6 +143,18 @@ collector roles out. Operators can now find incomplete targets without
 maintaining an external inventory. Pages remain a preliminary report:
 concurrent target registration or writes between pages prevent this from
 serving as the final, writer-fenced cutover attestation.
+Migration 0172 installs a database-controlled read route for the three public
+M7 projections. It starts on the original table. A migrator can call
+`control.set_query_observation_v3_read_route(true)` only after one transaction
+blocks target registration and both observation writers, confirms identity,
+append-only, mirror, generation, and forced-RLS gates, and finds valid coverage
+for every registered target. The same operation changes the route before
+releasing the locks. `false` restores the original readers while original rows
+are retained.
+Focused PostgreSQL checks exercise an incomplete empty target, activation,
+all three routed projections, server grants, and rollback. Canonical writes
+still enter the original table and mirror into v3, so M7 retention and original
+table retirement remain gated on a later writer and dependency-graph cutover.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

@@ -383,6 +383,162 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
             await fleet.CommitAsync();
         }
 
+        await using (NpgsqlTransaction denied = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, denied))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, denied);
+            PostgresException incomplete = await Assert.ThrowsAsync<PostgresException>(
+                () => activate.ExecuteScalarAsync());
+            Assert.Equal("55000", incomplete.SqlState);
+            await denied.RollbackAsync();
+        }
+        await using (NpgsqlTransaction emptyCopy = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, emptyCopy))
+            {
+                context.Parameters.AddWithValue("target", emptyTarget);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var copy = new NpgsqlCommand("""
+                SELECT complete FROM control.backfill_query_observation_v3(@target,1);
+                """, admin, emptyCopy);
+            copy.Parameters.AddWithValue("target", emptyTarget);
+            Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            await emptyCopy.CommitAsync();
+        }
+        await using (NpgsqlTransaction disabledMirror = await admin.BeginTransactionAsync())
+        {
+            await using (var disable = new NpgsqlCommand("""
+                ALTER TABLE events.query_performance_observation
+                  DISABLE TRIGGER query_observation_v3_mirror;
+                SET LOCAL ROLE sqlobserver_migrator;
+                """, admin, disabledMirror))
+            {
+                await disable.ExecuteNonQueryAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, disabledMirror);
+            PostgresException unsafeRoute = await Assert.ThrowsAsync<PostgresException>(
+                () => activate.ExecuteScalarAsync());
+            Assert.Equal("55000", unsafeRoute.SqlState);
+            await disabledMirror.RollbackAsync();
+        }
+
+        // Roll back the synthetic v3-only row and route flip after proving all
+        // three public projections follow the selected relation.
+        await using (NpgsqlTransaction route = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, route))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, route))
+            {
+                Assert.Equal(1L, (long)(await activate.ExecuteScalarAsync())!);
+            }
+            await using (var extra = new NpgsqlCommand("""
+                INSERT INTO events.query_performance_observation_v3
+                  (instance_id,collection_run_id,database_id,query_fingerprint,
+                   plan_fingerprint,observation_key,source,source_state,
+                   interval_start,interval_end,observed_at,semantics,cpu_ms)
+                VALUES(@target,@run,5,decode(repeat('22',32),'hex'),
+                  decode(repeat('33',32),'hex'),decode(repeat('66',16),'hex'),
+                  'query_store','read_write',now()-interval '2 minutes',
+                  now()-interval '1 minute',now()+interval '1 minute',
+                  'query_store_interval',999);
+                """, admin, route))
+            {
+                extra.Parameters.AddWithValue("target", target);
+                extra.Parameters.AddWithValue("run", run);
+                Assert.Equal(1, await extra.ExecuteNonQueryAsync());
+            }
+            const string routedRead = """
+                SELECT
+                  (SELECT max(cpu_ms) FROM control.get_top_queries_projection(
+                    @target,now()-interval '1 hour',now()+interval '1 hour',
+                    'cpu',1,NULL::integer,NULL::timestamptz,NULL::bytea,
+                    NULL::bytea,NULL::uuid,NULL::bigint,NULL::bytea,
+                    now()+interval '1 hour')),
+                  (SELECT count(*) FROM control.get_query_history_projection(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',200,
+                    NULL::timestamptz,NULL::uuid,NULL::bytea,NULL::bytea,
+                    now()+interval '1 hour')),
+                  (SELECT observed_at>now() FROM control.get_query_plan_metadata(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    decode(repeat('33',32),'hex'))),
+                  current_setting('sqlobserver.target_scope',true)=@target::text;
+                """;
+            async Task AssertRouteAsync(long cpu, long history, bool newerPlan)
+            {
+                await using var read = new NpgsqlCommand(routedRead, admin, route);
+                read.Parameters.AddWithValue("target", target);
+                await using NpgsqlDataReader reader = await read.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal(cpu, reader.GetInt64(0));
+                Assert.Equal(history, reader.GetInt64(1));
+                Assert.Equal(newerPlan, reader.GetBoolean(2));
+                Assert.True(reader.GetBoolean(3));
+            }
+            await AssertRouteAsync(999, 2, true);
+            await using (var asServer = new NpgsqlCommand(
+                "SET LOCAL ROLE sqlobserver_server;", admin, route))
+            {
+                await asServer.ExecuteNonQueryAsync();
+            }
+            await AssertRouteAsync(999, 2, true);
+            await using (var asMigrator = new NpgsqlCommand(
+                "SET LOCAL ROLE sqlobserver_migrator;", admin, route))
+            {
+                await asMigrator.ExecuteNonQueryAsync();
+            }
+            await using (var disable = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(false);",
+                admin, route))
+            {
+                Assert.Equal(2L, (long)(await disable.ExecuteScalarAsync())!);
+            }
+            await AssertRouteAsync(44, 1, false);
+            await using (var grants = new NpgsqlCommand("""
+                SELECT has_function_privilege('sqlobserver_server',
+                         'control.get_top_queries_projection_legacy(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz)',
+                         'EXECUTE'),
+                       has_function_privilege('sqlobserver_server',
+                         'control.get_top_queries_projection(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz)',
+                         'EXECUTE'),
+                       has_function_privilege('sqlobserver_server',
+                         'control.set_query_observation_v3_read_route(boolean)',
+                         'EXECUTE');
+                """, admin, route))
+            await using (NpgsqlDataReader reader = await grants.ExecuteReaderAsync())
+            {
+                Assert.True(await reader.ReadAsync());
+                Assert.False(reader.GetBoolean(0));
+                Assert.True(reader.GetBoolean(1));
+                Assert.False(reader.GetBoolean(2));
+            }
+            await route.RollbackAsync();
+        }
+
         await using (NpgsqlTransaction shadow = await admin.BeginTransactionAsync())
         {
             await using (var context = new NpgsqlCommand("""
