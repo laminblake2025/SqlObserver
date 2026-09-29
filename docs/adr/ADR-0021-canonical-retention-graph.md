@@ -28,6 +28,13 @@ tables. Registering empty scaffolds or deleting them does not bound active
 storage. The repository review's fleet estimate therefore remains a design
 input, not a claim that current policies cover the whole repository.
 
+The active M9 TempDB file partition references its same-day snapshot rows.
+A populated PostgreSQL 18 test confirms that detaching the snapshot partition
+alone fails with `23503`. In one transaction, detaching and dropping the file
+partition first, then detaching and dropping the snapshot partition succeeds;
+rollback restores both visible rows. These two written parents must share one
+retention execution, not independent policies.
+
 ## Decision
 
 Treat the **written relation and its dependent rows** as the retention unit.
@@ -37,6 +44,7 @@ following canonical groups distinct:
 | Evidence | Canonical relation or envelope | Retention relationship |
 | --- | --- | --- |
 | Raw metrics, M5 activity/waits/blocking, M9 and M10 snapshots, SQL volume, Query Store group deltas | Their actively written partitioned parents in `telemetry`, `events`, and `analytics` | Continue the fenced partition policy and registry path. |
+| M9 TempDB snapshots and files | `telemetry.tempdb_snapshot` and `telemetry.tempdb_file_snapshot` for the same UTC day | Keep both attached and readable through grace. After all gates pass, drop the file partition before the snapshot partition in one fenced transaction. |
 | Diagnostic events and deadlocks | `events.diagnostic_event` plus `events.deadlock_summary`, `deadlock_participant`, and `deadlock_relation` | Retire the event envelope and all typed deadlock rows in one reviewed operation. |
 | Original M7 query performance | `events.query_performance_run`, `query`, `plan`, `observation`, status, wait snapshot, and text/plan links | Retain the complete run/query/plan graph while any observation, sensitive-content link, report, or reader dependency needs it. |
 | Collection run history | `telemetry.collection_run` and outcome, loss, inventory/file, and other run-linked evidence | Retire a run only after every referencing evidence class is eligible and its replay/audit requirement is met. |
@@ -57,6 +65,14 @@ SecurityAdministrator's diagnostic-event `detach` action also begins attached
 grace; the fenced worker completes its drop. A policy change during an
 existing detached grace uses
 the reattach path from migration 0159.
+
+For **TempDB days**, select the snapshot and exact-range file partitions as
+one unit. Both reader leases, backfill states, policy revision, minimum
+partition floors, analytics dependencies, and recovery attestation must be
+checked before grace and again before retirement. Do not enable either default
+policy until the worker and administrator path use the paired execution. At
+expiry, one fenced transaction must detach and drop the file partition first,
+then the snapshot partition; a failure must roll back both and preserve reads.
 
 For **original M7 observations**, build a partitioned successor keyed by UTC
 `interval_end`; its primary key must include that partition key. Preserve

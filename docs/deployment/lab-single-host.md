@@ -233,7 +233,9 @@ parents: 90 days for backup status and Agent failure occurrences, and 30 days
 for Agent scan coverage and availability-group snapshots. Existing operator
 revisions remain intact. The unpartitioned Agent failure identity and the
 TempDB snapshot/file pair remain disabled; the latter has an incoming file
-foreign key and needs a coordinated retirement step. All enabled classes
+foreign key and needs a coordinated retirement step. A populated PostgreSQL
+test confirms parent-only detach fails with `23503`; the child-first drop and
+parent drop succeed together in one transaction. All enabled classes
 still require recovery attestation, reader/dependency checks, a minimum
 partition count, and a 24-hour detach grace before drop.
 
