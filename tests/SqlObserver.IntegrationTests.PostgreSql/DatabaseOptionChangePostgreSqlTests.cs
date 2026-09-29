@@ -16,7 +16,7 @@ public sealed class DatabaseOptionChangePostgreSqlTests(PostgreSql18Fixture fixt
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         MigrationBatchResult migrated = await new PostgreSqlMigrationPort(database.DataSource)
-            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults,
+            .ApplyPendingAsync(new MigrationApplyRequest(249,
                 new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
         Assert.False(migrated.HasFailures,
             string.Join(", ", migrated.Results.Where(static result =>
@@ -46,6 +46,7 @@ public sealed class DatabaseOptionChangePostgreSqlTests(PostgreSql18Fixture fixt
                        sample.database_name,sample.recovery_model,sample.user_access,
                        sample.is_read_only,sample.compatibility_level
                 FROM (VALUES
+                    (0,1800,'succeeded','Ledger','simple','multi_user',false,160),
                     (1,90,'succeeded','Ledger','full','multi_user',false,160),
                     (2,80,'succeeded','Ledger','simple','single_user',true,150),
                     (3,70,'permission_denied','Ledger','simple','single_user',true,150),
@@ -110,10 +111,21 @@ public sealed class DatabaseOptionChangePostgreSqlTests(PostgreSql18Fixture fixt
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         var request = new DatabaseOptionChangeRequest(new MonitoredInstanceId(target),
             now.AddHours(-2), now, 100, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
-        DatabaseOptionChangeResult portResult = await new PostgreSqlDatabaseOptionChangePort(server)
+        var port = new PostgreSqlDatabaseOptionChangePort(server);
+        Assert.Equal(6, (await port.ReadAsync(request, CancellationToken.None)).Items.Count);
+        MigrationBatchResult upgraded = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1,
+                new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+        Assert.False(upgraded.HasFailures);
+        Assert.Equal(250, Assert.Single(upgraded.Results).Migration.Number.Value);
+        DatabaseOptionChangeResult portResult = await port
             .ReadAsync(request, CancellationToken.None);
-        Assert.Equal(6, portResult.Items.Count);
+        Assert.Equal(7, portResult.Items.Count);
         Assert.All(portResult.Items, item => Assert.Equal(5, item.DatabaseId));
+        Assert.Contains(portResult.Items, item => item.OptionKey == "recovery_model" &&
+            item.PreviousValue == "simple" && item.CurrentValue == "full" &&
+            item.DetectedAtUtc >= now.AddMinutes(-90) &&
+            item.DetectedAtUtc < now.AddMinutes(-89));
         await using NpgsqlConnection scoped = await server.OpenConnectionAsync();
         await using (NpgsqlTransaction transaction = await scoped.BeginTransactionAsync())
         {
@@ -137,14 +149,14 @@ public sealed class DatabaseOptionChangePostgreSqlTests(PostgreSql18Fixture fixt
                     changes.Add((rows.GetString(0), rows.GetString(1), rows.GetString(2),
                         rows.GetFieldValue<DateTimeOffset>(3)));
             }
-            Assert.Equal(6, changes.Count);
+            Assert.Equal(7, changes.Count);
             Assert.Contains(changes, item => item.Key == "recovery_model" &&
                 item.Previous == "full" && item.Current == "simple" &&
                 item.Detected >= now.AddMinutes(-80));
             Assert.Contains(changes, item => item.Key == "recovery_model" &&
                 item.Previous == "full" && item.Current == "bulk_logged" &&
                 item.Detected >= now.AddMinutes(-50));
-            Assert.DoesNotContain(changes, item => item.Detected < now.AddMinutes(-80));
+            Assert.DoesNotContain(changes, item => item.Detected < now.AddMinutes(-90));
             await transaction.CommitAsync();
         }
 
