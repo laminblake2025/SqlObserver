@@ -270,6 +270,10 @@ history; each call accepts at most one day and caps either side at 100,000
 rows. Split denser days into smaller windows. Record both counts and SHA-256
 digests, and investigate any `parity = false`. The function is read-only and
 does not itself authorize a read cutover or an M7 retention policy.
+Migration `0168` adds migrator-only shadow top-query and query-history
+projections for old/new read comparison. The API still calls the original
+functions. These shadow functions are not an operator-facing alternative read
+path until every target and time window has passed parity and replay checks.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced

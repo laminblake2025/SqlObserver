@@ -205,6 +205,127 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
         Assert.Equal(64, matched.SourceHash.Length);
         Assert.True(matched.Parity);
 
+        await using (var live = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_query
+              (collection_run_id,instance_id,database_id,query_fingerprint)
+            VALUES(@run,@target,5,decode(repeat('22',32),'hex'));
+            INSERT INTO events.query_performance_observation
+              (collection_run_id,database_id,query_fingerprint,observation_key,
+               source,source_state,interval_start,interval_end,observed_at,
+               semantics,cpu_ms)
+            VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('55',16),'hex'),
+               'query_store','read_write',now()-interval '6 minutes',
+               now()-interval '5 minutes',now(),'query_store_interval',44);
+            """, admin))
+        {
+            live.Parameters.AddWithValue("run", run);
+            live.Parameters.AddWithValue("target", target);
+            await live.ExecuteNonQueryAsync();
+        }
+
+        await using (NpgsqlTransaction shadow = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, shadow))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var compare = new NpgsqlCommand("""
+                WITH old_top AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_top_queries_projection(
+                    @target,now()-interval '1 hour',now()+interval '1 hour',
+                    'cpu',1,NULL::integer,NULL::timestamptz,NULL::bytea,
+                    NULL::bytea,NULL::uuid,NULL::bigint,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), new_top AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_top_queries_projection_v3(
+                    @target,now()-interval '1 hour',now()+interval '1 hour',
+                    'cpu',1,NULL::integer,NULL::timestamptz,NULL::bytea,
+                    NULL::bytea,NULL::uuid,NULL::bigint,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), old_history AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',200,
+                    NULL::timestamptz,NULL::uuid,NULL::bytea,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), new_history AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection_v3(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',200,
+                    NULL::timestamptz,NULL::uuid,NULL::bytea,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), old_history_page AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',1,
+                    (SELECT interval_end FROM events.query_performance_observation
+                     WHERE collection_run_id=@run
+                       AND observation_key=decode(repeat('11',16),'hex')),
+                    @run,NULL::bytea,decode(repeat('11',16),'hex'),
+                    now()+interval '1 hour') AS item
+                ), new_history_page AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection_v3(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',1,
+                    (SELECT interval_end FROM events.query_performance_observation
+                     WHERE collection_run_id=@run
+                       AND observation_key=decode(repeat('11',16),'hex')),
+                    @run,NULL::bytea,decode(repeat('11',16),'hex'),
+                    now()+interval '1 hour') AS item
+                )
+                SELECT (SELECT count(*) FROM (
+                  (SELECT payload FROM old_top EXCEPT ALL SELECT payload FROM new_top)
+                  UNION ALL
+                  (SELECT payload FROM new_top EXCEPT ALL SELECT payload FROM old_top)
+                ) AS differences),
+                (SELECT count(*) FROM (
+                  (SELECT payload FROM old_history EXCEPT ALL SELECT payload FROM new_history)
+                  UNION ALL
+                  (SELECT payload FROM new_history EXCEPT ALL SELECT payload FROM old_history)
+                ) AS differences),
+                (SELECT count(*) FROM new_top),
+                (SELECT count(*) FROM new_history),
+                (SELECT count(*) FROM (
+                  (SELECT payload FROM old_history_page EXCEPT ALL
+                   SELECT payload FROM new_history_page)
+                  UNION ALL
+                  (SELECT payload FROM new_history_page EXCEPT ALL
+                   SELECT payload FROM old_history_page)
+                ) AS differences),
+                (SELECT count(*) FROM new_history_page),
+                has_function_privilege('sqlobserver_server',
+                  'control.get_top_queries_projection_v3(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz)',
+                  'EXECUTE'),
+                has_function_privilege('sqlobserver_server',
+                  'control.get_query_history_projection_v3(uuid,integer,bytea,timestamptz,timestamptz,integer,timestamptz,uuid,bytea,bytea,timestamptz)',
+                  'EXECUTE');
+                """, admin, shadow);
+            compare.Parameters.AddWithValue("target", target);
+            compare.Parameters.AddWithValue("run", run);
+            await using NpgsqlDataReader comparison = await compare.ExecuteReaderAsync();
+            Assert.True(await comparison.ReadAsync());
+            Assert.Equal(0L, comparison.GetInt64(0));
+            Assert.Equal(0L, comparison.GetInt64(1));
+            Assert.Equal(2L, comparison.GetInt64(2));
+            Assert.Equal(3L, comparison.GetInt64(3));
+            Assert.Equal(0L, comparison.GetInt64(4));
+            Assert.Equal(2L, comparison.GetInt64(5));
+            Assert.False(comparison.GetBoolean(6));
+            Assert.False(comparison.GetBoolean(7));
+            await comparison.DisposeAsync();
+            await shadow.CommitAsync();
+        }
+
         await using (var extra = new NpgsqlCommand("""
             INSERT INTO events.query_performance_observation_v3
               (instance_id,collection_run_id,database_id,query_fingerprint,
@@ -223,11 +344,11 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
             Assert.Equal(1, await extra.ExecuteNonQueryAsync());
         }
         var extraRowParity = await VerifyAsync();
-        Assert.Equal((3L, 4L), (extraRowParity.Source, extraRowParity.Successor));
+        Assert.Equal((4L, 5L), (extraRowParity.Source, extraRowParity.Successor));
         Assert.NotEqual(extraRowParity.SourceHash, extraRowParity.SuccessorHash);
         Assert.False(extraRowParity.Parity);
         PostgresException tooDense = await Assert.ThrowsAsync<PostgresException>(
-            () => VerifyAsync(3));
+            () => VerifyAsync(4));
         Assert.Equal("54000", tooDense.SqlState);
     }
 }
