@@ -302,6 +302,43 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Equal("disabled", disabled.Sources["databaseStates"].State);
         Assert.DoesNotContain(disabled.Issues, issue => issue.Title == "Database state exception");
         Assert.Contains(disabled.Issues, issue => issue.Title == "Sessions blocked");
+
+        DateTimeOffset waitAt = DateTimeOffset.UtcNow;
+        await SeedWaitRunAsync(database.DataSource, target, Guid.NewGuid(),
+            waitAt.AddSeconds(-20), 10, 100, false);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus noBaseline = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("unavailable", noBaseline.Sources["waits"].State);
+        Assert.DoesNotContain(noBaseline.Resources, resource => resource.Label.StartsWith("Wait · ", StringComparison.Ordinal));
+        Assert.Contains("Comparable wait evidence unavailable", noBaseline.Gaps);
+
+        await SeedWaitRunAsync(database.DataSource, target, Guid.NewGuid(),
+            waitAt.AddSeconds(-10), 20, 1300, false);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus comparable = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("current", comparable.Sources["waits"].State);
+        OverviewResource lockWait = Assert.Single(comparable.Resources,
+            resource => resource.Label == "Wait · Lock");
+        Assert.Equal(1.2, lockWait.Value);
+
+        await SeedWaitRunAsync(database.DataSource, target, Guid.NewGuid(),
+            waitAt, 30, 1800, true);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus mixed = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("partial", mixed.Sources["waits"].State);
+        Assert.Equal(0.5, Assert.Single(mixed.Resources,
+            resource => resource.Label == "Wait · Lock").Value);
+        Assert.DoesNotContain(mixed.Resources, resource => resource.Label == "Wait · Log");
+        Assert.Contains("Comparable wait evidence partial", mixed.Gaps);
     }
 
     [Fact]
@@ -495,6 +532,53 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         bool published = (bool)(await command.ExecuteScalarAsync())!;
         await transaction.CommitAsync();
         return published;
+    }
+
+    private static async Task SeedWaitRunAsync(NpgsqlDataSource source, Guid target,
+        Guid run, DateTimeOffset at, long tasks, long waitMilliseconds, bool includeLog)
+    {
+        await using var command = source.CreateCommand("""
+            INSERT INTO telemetry.collection_run
+                (run_id,instance_id,collector_id,collector_version,output_schema_version,
+                 target_revision,schedule_revision,work_key,owner_execution_id,
+                 fencing_token,request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'waits.server',1,1,1,1,@work,@owner,1,
+                    decode(repeat('ee',32),'hex'),@at,@at);
+            INSERT INTO telemetry.server_wait_snapshot
+                (observed_at,collection_run_id,instance_id,target_revision,wait_type,
+                 waiting_tasks_count,wait_time_ms,maximum_wait_time_ms,
+                 signal_wait_time_ms,collected_at)
+            VALUES (@at,@run,@target,1,'LCK_M_S',@tasks,@wait,@wait,0,@at),
+                   (@at,@run,@target,1,'SLEEP_TASK',1,100,100,0,@at);
+            INSERT INTO telemetry.server_wait_snapshot
+                (observed_at,collection_run_id,instance_id,target_revision,wait_type,
+                 waiting_tasks_count,wait_time_ms,maximum_wait_time_ms,
+                 signal_wait_time_ms,collected_at)
+            SELECT @at,@run,@target,1,'WRITELOG',1,500,500,0,@at
+            WHERE @includeLog;
+            INSERT INTO telemetry.collection_run_outcome
+                (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+                 source_row_count,output_item_count,inserted_item_count,
+                 duplicate_item_count,rejected_item_count,response_bytes,
+                 output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,
+                 loss_count_exact,lost_row_count,lost_byte_count,completion_digest,
+                 completed_at)
+            VALUES (@run,'succeeded','completed',1,0,10,
+                    CASE WHEN @includeLog THEN 3 ELSE 2 END,
+                    CASE WHEN @includeLog THEN 3 ELSE 2 END,
+                    CASE WHEN @includeLog THEN 3 ELSE 2 END,
+                    0,0,128,128,128,false,false,'none',true,0,0,
+                    decode(repeat('ff',32),'hex'),@at);
+            """);
+        command.Parameters.AddWithValue("run", run);
+        command.Parameters.AddWithValue("target", target);
+        command.Parameters.AddWithValue("work", $"collector/run/waits.server/{target:N}");
+        command.Parameters.AddWithValue("owner", Guid.NewGuid());
+        command.Parameters.AddWithValue("at", at);
+        command.Parameters.AddWithValue("tasks", tasks);
+        command.Parameters.AddWithValue("wait", waitMilliseconds);
+        command.Parameters.AddWithValue("includeLog", includeLog);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task<bool> RefreshAsync(

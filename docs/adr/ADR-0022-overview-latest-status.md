@@ -106,6 +106,11 @@ run, marks a longer issue list partial, and withholds issues when inventory
 collection is not current. Other source materialization, full parity work, and
 the read switch remain to be built.
 
+Migration 0238 uses the persisted per-run wait category summary to add at most
+five non-idle, comparable wait deltas. It requires a prior run as baseline,
+keeps incomparable categories out of numeric results, and marks loss or missing
+comparability explicitly. It does not infer a zero wait from a missing summary.
+
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and
 timestamps, and removes cached issues from the actionable list. Alert and
