@@ -226,6 +226,16 @@ time, with every referencing writer and foreign key migrated in stages.
 Run-level cleanup occurs only after the per-class evidence and replay windows
 have ended. Preserve an audit record of the count, cutoff, policy revision,
 and recovery prerequisite for each batch.
+Migration 0182 creates a UTC-day `telemetry.collection_run_v2` successor keyed
+by `(run_id, started_at)` and mirrors new original-table inserts in the same
+transaction. It registers and precreates a bounded day window and creates
+older days on demand; an occupied or mismatched partition rolls back the
+original insert. The original table remains canonical and retains all 20
+inbound foreign keys. A catalog regression test inventories those constraints
+and other run-ID columns that need an explicit lifecycle decision. The
+successor has no retention policy or read route. Historical backfill, row
+parity, replay verification, referencing-writer and foreign-key cutover, and
+run-level hold checks are required before any original run history can retire.
 
 ## Implementation gates
 

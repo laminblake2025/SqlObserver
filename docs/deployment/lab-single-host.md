@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0137`
+The migration catalog contains the exact, contiguous `0001` through `0182`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -397,6 +397,15 @@ last examined target/run and hold result in
 runs. `oversize` needs operator review because a run with more than 4,096
 child rows is never deleted automatically. Inspect
 `system.query_run_retention_blocked` for the durable target and run IDs.
+Migration `0182` adds a daily partitioned collection-run successor. Existing
+run inserts mirror into it atomically, including historical run dates, and
+the collector's partition-maintenance step prepares the surrounding UTC days.
+The original `telemetry.collection_run` remains the canonical run key for its
+20 inbound foreign keys. Do not enable retention or switch readers to the
+successor: historical backfill, parity, replay and every run-reference cutover
+are still outstanding. A blocked or mismatched successor partition causes the
+original insert to fail; inspect `system.partition_registry` and the matching
+`telemetry.collection_run_v2_pYYYYMMDD` relation before retrying a failed run.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
