@@ -7,6 +7,7 @@ import { canAcknowledgeAlert, getMyAccess } from "../targets/meApi";
 import { acknowledgeAlert, getFleetActiveAlerts } from "./alertApi";
 import { AcknowledgementAttempts } from "./acknowledgementAttempts";
 import { alertMatchesFilter, type AlertFilter } from "./alertFilter";
+import { alertActivityHref, groupFleetAlerts, type FleetAlertGrouping } from "./fleetAlertGrouping";
 import type { FleetAlert } from "./alertTypes";
 import { fleetAlertKey, loadFleetAlertJump } from "./fleetAlertJump";
 import type { AlertSelection } from "../../components/commandPaletteModel";
@@ -23,6 +24,7 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
   const [reload, setReload] = useState(0);
   const [filter, setFilter] = useState<AlertFilter>("active");
   const [search, setSearch] = useState("");
+  const [grouping, setGrouping] = useState<FleetAlertGrouping>("server");
   const [selectedKey, setSelectedKey] = useState<string>();
   const [canAcknowledge, setCanAcknowledge] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -64,6 +66,7 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
     alertMatchesFilter(filter, item.state) &&
     (search === "" || `${item.targetName} ${item.ruleName} ${item.targetId}`.toLowerCase().includes(search.toLowerCase()))
   ), [filter, items, search]);
+  const groups = useMemo(() => groupFleetAlerts(visible, grouping), [visible, grouping]);
   const selected = visible.find(item => key(item) === selectedKey) ??
     (requestedKey && selectedKey === requestedKey ? undefined : visible[0]);
 
@@ -119,13 +122,61 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
   const scope = readOverviewScope(location.hash);
   return <section className="alerts-screen fleet-alerts-screen" aria-labelledby="fleet-alerts-heading">
     <div className="screen-intro"><div><p className="eyebrow">Alerts · fleet</p><h2 id="fleet-alerts-heading">Alert inbox</h2><p>Current firing and acknowledged alerts across servers you can read. Select one to investigate or acknowledge it.</p></div></div>
-    <div className="alert-filters"><label>State<select value={filter} onChange={event => setFilter(event.target.value as AlertFilter)}><option value="active">Active</option><option value="firing">Firing</option><option value="all">All loaded states</option></select></label><label>Server or rule<input aria-label="Filter loaded alerts" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search loaded alerts" /></label><span>{visible.length} shown · {items.length} loaded</span></div>
+    <div className="alert-filters">
+      <label>State<select value={filter} onChange={event => setFilter(event.target.value as AlertFilter)}>
+        <option value="active">Active</option><option value="firing">Firing</option><option value="all">All loaded states</option>
+      </select></label>
+      <label>Server or rule<input aria-label="Filter loaded alerts" value={search}
+        onChange={event => setSearch(event.target.value)} placeholder="Search loaded alerts" /></label>
+      <label>Group by<select value={grouping} onChange={event => setGrouping(event.target.value as FleetAlertGrouping)}>
+        <option value="server">Server</option><option value="rule">Rule</option><option value="none">None</option>
+      </select></label>
+      <span>{visible.length} shown · {items.length} loaded</span>
+    </div>
     {loading ? <p role="status" className="status-message">Loading fleet alerts…</p> : null}
     {error ? <p role="alert" className="status-message">{error} <button className="secondary-button" type="button" onClick={() => setReload(value => value + 1)}>Retry</button></p> : null}
     {message ? <p role="status" className="status-message">{message}</p> : null}
     <div className="alerts-layout">
-      <section className="alert-list panel" aria-label="Fleet alerts"><div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3><p>Sorted by when each alert fired. Severity is not supplied by the current rules.</p></div></div><div className="table-scroll"><table><caption>Current alerts on authorized servers</caption><thead><tr><th scope="col">State</th><th scope="col">Server</th><th scope="col">Rule</th><th scope="col">Fired</th><th scope="col">Value</th></tr></thead><tbody>{visible.map(item => <tr className={key(item) === key(selected) ? "selected-row" : ""} key={key(item)}><td><span className={`state-pill state-${item.state}`}>{item.state}</span></td><td><button className="table-link" type="button" onClick={() => setSelectedKey(key(item))}>{item.targetName}</button></td><td>{item.ruleName}</td><td>{formatTime(item.firedUtc ?? item.firstObservedUtc)}</td><td>{item.value === null || item.value === undefined ? "Unavailable" : item.value.toLocaleString()}</td></tr>)}</tbody></table></div>{!loading && !error && visible.length === 0 ? <p className="empty-state">No alerts match the loaded fleet evidence.</p> : null}<div className="pager"><span>{nextCursor ? "More alerts are available." : "End of loaded alerts."}</span><button className="secondary-button" type="button" disabled={!nextCursor || loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Loading…" : "Load more"}</button></div></section>
-      {selected ? <DetailPane title={selected.ruleName} subtitle={`${selected.targetName} · alert ${selected.alertId}`} actions={selected.state === "firing" && canAcknowledge ? <button className="primary" type="button" disabled={busy} onClick={() => void acknowledge(selected)}>{busy ? "Acknowledging…" : "Acknowledge"}</button> : undefined}><EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"} tone={selected.state === "firing" ? "critical" : "warning"} /><p className="detail-note">{selected.reason ?? "No reason was returned for this alert."}</p><p>First observed: {formatTime(selected.firstObservedUtc)}</p><p>Fired: {formatTime(selected.firedUtc)}</p><p>Acknowledged: {formatTime(selected.acknowledgedUtc)}</p><a href={overviewHref(scope, "alerts", selected.targetId)}>Open server alerts →</a><a href={overviewHref(scope, "activity", selected.targetId)}>Investigate activity →</a>{selected.state === "firing" && !canAcknowledge ? <p className="detail-note">An Operator or Target Administrator role on this server is required to acknowledge.</p> : null}</DetailPane> : <div className="detail-pane empty-state">Select an alert to inspect it.</div>}
+      <section className="alert-list panel" aria-label="Fleet alerts">
+        <div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3>
+          <p>Groups cover loaded alerts only; alerts within each group retain fired-time order. Severity is not supplied by the current rules.</p>
+        </div></div>
+        <div className="table-scroll"><table>
+          <caption>Current alerts on authorized servers</caption>
+          <thead><tr><th scope="col">State</th><th scope="col">Server</th><th scope="col">Rule</th>
+            <th scope="col">Fired</th><th scope="col">Value</th></tr></thead>
+          {groups.map(group => <tbody key={group.key}>
+            {grouping !== "none" && <tr className="alert-group-row"><th scope="rowgroup" colSpan={5}>
+              {group.label} · {group.items.length} loaded
+            </th></tr>}
+            {group.items.map(item => <tr className={key(item) === key(selected) ? "selected-row" : ""} key={key(item)}>
+              <td><span className={`state-pill state-${item.state}`}>{item.state}</span></td>
+              <td><button className="table-link" type="button" onClick={() => setSelectedKey(key(item))}>{item.targetName}</button></td>
+              <td>{item.ruleName}</td><td>{formatTime(item.firedUtc ?? item.firstObservedUtc)}</td>
+              <td>{item.value === null || item.value === undefined ? "Unavailable" : item.value.toLocaleString()}</td>
+            </tr>)}
+          </tbody>)}
+        </table></div>
+        {!loading && !error && visible.length === 0 ? <p className="empty-state">No alerts match the loaded fleet evidence.</p> : null}
+        <div className="pager"><span>{nextCursor ? "More alerts are available." : "End of loaded alerts."}</span>
+          <button className="secondary-button" type="button" disabled={!nextCursor || loadingMore}
+            onClick={() => void loadMore()}>{loadingMore ? "Loading…" : "Load more"}</button>
+        </div>
+      </section>
+      {selected ? <DetailPane title={selected.ruleName} subtitle={`${selected.targetName} · alert ${selected.alertId}`}
+        actions={selected.state === "firing" && canAcknowledge ? <button className="primary" type="button"
+          disabled={busy} onClick={() => void acknowledge(selected)}>{busy ? "Acknowledging…" : "Acknowledge"}</button> : undefined}>
+        <EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"}
+          tone={selected.state === "firing" ? "critical" : "warning"} />
+        <p className="detail-note">{selected.reason ?? "No reason was returned for this alert."}</p>
+        <p>First observed: {formatTime(selected.firstObservedUtc)}</p>
+        <p>Fired: {formatTime(selected.firedUtc)}</p>
+        <p>Acknowledged: {formatTime(selected.acknowledgedUtc)}</p>
+        <a href={overviewHref(scope, "alerts", selected.targetId)}>Open server alerts →</a>
+        <a href={alertActivityHref(selected, scope)}>Investigate at alert time →</a>
+        {selected.state === "firing" && !canAcknowledge ? <p className="detail-note">
+          An Operator or Target Administrator role on this server is required to acknowledge.</p> : null}
+      </DetailPane> : <div className="detail-pane empty-state">Select an alert to inspect it.</div>}
     </div>
   </section>;
 }
