@@ -141,6 +141,32 @@ public sealed class SqlServerCoreHealthIntegrationTests
 
     [Fact]
     [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalVersion2DatabaseInventoryReadsLogReuseEvidenceWithinBounds()
+    {
+        var connectionFactory = new LabSqlServerConnectionFactory();
+        var collector = new SqlServerDatabaseInventoryCollector(
+            SqlServerCollectorAssetCatalog.LoadVersion2Embedded(), connectionFactory);
+        CollectorExecutionRequest request = CreateRequest();
+        TargetStateSnapshot before = await CaptureTargetStateAsync(connectionFactory);
+
+        CollectorExecutionResult result = await collector.CollectAsync(request, CancellationToken.None);
+
+        TargetStateSnapshot after = await CaptureTargetStateAsync(connectionFactory);
+        Assert.Equal(before, after);
+        Assert.Equal(2, collector.Manifest.ManifestVersion.Value);
+        Assert.Equal(2, collector.Manifest.OutputSchemaVersion.Value);
+        Assert.Equal(CollectorRunOutcome.Succeeded, result.Outcome);
+        Assert.False(result.Loss.HasLoss);
+        Assert.InRange(result.Accounting.SourceRowsRead, 1, collector.Manifest.Limits.MaxRows - 1);
+        Assert.InRange(result.Accounting.ResponseBytes, 1, collector.Manifest.Limits.MaxResponseBytes);
+        Assert.Contains(result.Payload.Databases.Items,
+            static database => database.LogReuseWaitDescription is not null);
+        new CollectorOutputValidator(SqlServerDatabaseInventoryCollector.Version2OutputContract)
+            .Validate(collector.Manifest, request, result);
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
     public async Task LocalSqlServerCollectorsAreBoundedPassiveAndProduceExactOutputKinds()
     {
         SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadEmbedded();
