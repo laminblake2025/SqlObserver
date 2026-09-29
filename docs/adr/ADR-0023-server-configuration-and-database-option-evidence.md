@@ -171,3 +171,16 @@ live test confirms both paths and removes the login. This is evidence for major
 version 16 only. The v1 manifest's version-16 permission requirement is therefore
 conservative; correct it through a versioned collector contract after the 15/17
 permission behavior is qualified. The schedule remains disabled by default.
+
+Migration 0258 adds a nullable `log_reuse_wait_desc` column to inventory
+snapshots. Historical version-1 rows remain unknown, and the domain model
+accepts only bounded SQL Server state tokens. The existing
+`control.commit_collection_run_v2` checks each database row against the exact
+`96 + octet_length(database_name)` byte contract and hashes the version-1
+database arrays for replay. A version-2 inventory run must use a versioned
+fenced writer that includes the new token in both exact byte accounting and
+the completion digest, then inserts it with the snapshot in the same
+transaction. Merely adding an array to the current repository call would
+either reject the run or leave the token outside replay verification. Keep
+version-1 calls and historical rows unchanged while that writer and the
+version-2 SQL Server asset are staged.
