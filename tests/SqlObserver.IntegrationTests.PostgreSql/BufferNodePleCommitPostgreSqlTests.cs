@@ -122,24 +122,106 @@ public sealed class BufferNodePleCommitPostgreSqlTests(PostgreSql18Fixture fixtu
                 List<string> original = await Read(name, arguments);
                 Assert.NotEmpty(original);
                 Assert.Equal(original, await Read($"{name}_v2_shadow", arguments));
+                Assert.Equal(original, await Read($"{name}_legacy", arguments));
             }
             Assert.Equal(await Read("count_buffer_node_ple_gaps", "@target,@from,@to"),
                 await Read("count_buffer_node_ple_gaps_v2_shadow", "@target,@from,@to"));
+            Assert.Equal(await Read("count_buffer_node_ple_gaps_legacy", "@target,@from,@to"),
+                await Read("count_buffer_node_ple_gaps", "@target,@from,@to"));
 
             await using var grants = new NpgsqlCommand("""
                 SELECT count(*) FROM pg_proc AS p
                 JOIN pg_namespace AS n ON n.oid=p.pronamespace
                 WHERE n.nspname='reporting'
                   AND p.proname IN ('list_buffer_node_ple_nodes_v2_shadow',
+                                    'list_buffer_node_ple_nodes_legacy',
                                     'get_buffer_node_ple_trend_v2_shadow',
+                                    'get_buffer_node_ple_trend_legacy',
                                     'get_buffer_manager_ple_trend_v2_shadow',
-                                    'count_buffer_node_ple_gaps_v2_shadow')
+                                    'get_buffer_manager_ple_trend_legacy',
+                                    'count_buffer_node_ple_gaps_v2_shadow',
+                                    'count_buffer_node_ple_gaps_legacy')
                   AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
                   AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
                   AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
                   AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
                 """, parity);
-            Assert.Equal(4L, await grants.ExecuteScalarAsync());
+            Assert.Equal(8L, await grants.ExecuteScalarAsync());
+
+            await using (var premature = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_ple_read_route(true,10000);", parity))
+                Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                    () => premature.ExecuteScalarAsync())).SqlState);
+            await using (NpgsqlTransaction backfill = await parity.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@target,10);", parity, backfill);
+                    copy.Parameters.AddWithValue("target", work.TargetId.Value);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                var windows = new List<(string Collector, DateTimeOffset Day)>();
+                await using (var list = new NpgsqlCommand("""
+                    SELECT DISTINCT run.collector_id,date_trunc('day',run.started_at)
+                    FROM telemetry.collection_run AS run WHERE run.instance_id=@target;
+                    """, parity, backfill))
+                {
+                    list.Parameters.AddWithValue("target", work.TargetId.Value);
+                    await using NpgsqlDataReader reader = await list.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                        windows.Add((reader.GetString(0), reader.GetFieldValue<DateTimeOffset>(1)));
+                }
+                Assert.Equal(2, windows.Count);
+                foreach ((string collectorId, DateTimeOffset day) in windows)
+                {
+                    await using var certificate = new NpgsqlCommand("""
+                        SELECT parity FROM control.record_collection_run_v2_parity_window(
+                          @target,@collector,@day,@day + interval '1 day',10);
+                        """, parity, backfill);
+                    certificate.Parameters.AddWithValue("target", work.TargetId.Value);
+                    certificate.Parameters.AddWithValue("collector", collectorId);
+                    certificate.Parameters.AddWithValue("day", day);
+                    Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                }
+                await backfill.CommitAsync();
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_ple_read_route(true,10000);", parity))
+                Assert.Equal(1L, await activate.ExecuteScalarAsync());
+            foreach ((string name, string arguments) in new[]
+            {
+                ("list_buffer_node_ple_nodes", "@target,@from,@to"),
+                ("get_buffer_node_ple_trend", "@target,0,@from,@to"),
+                ("get_buffer_manager_ple_trend", "@target,@from,@to"),
+                ("count_buffer_node_ple_gaps", "@target,@from,@to"),
+            })
+                Assert.Equal(await Read($"{name}_v2_shadow", arguments),
+                    await Read(name, arguments));
+            await using (NpgsqlDataSource routedServer = database.CreateServerDataSource())
+            await using (NpgsqlConnection serverConnection = await routedServer.OpenConnectionAsync())
+            {
+                await using (var scope = new NpgsqlCommand(
+                    "SELECT set_config('sqlobserver.target_scope',@target::text,false);",
+                    serverConnection))
+                {
+                    scope.Parameters.AddWithValue("target", work.TargetId.Value);
+                    await scope.ExecuteScalarAsync();
+                }
+                await using var nodes = new NpgsqlCommand(
+                    "SELECT count(*) FROM reporting.list_buffer_node_ple_nodes(@target,@from,@to);",
+                    serverConnection);
+                nodes.Parameters.AddWithValue("target", work.TargetId.Value);
+                nodes.Parameters.AddWithValue("from", work.RepositoryTimeUtc.AddMinutes(-5));
+                nodes.Parameters.AddWithValue("to", work.RepositoryTimeUtc.AddHours(1));
+                Assert.Equal(2L, await nodes.ExecuteScalarAsync());
+            }
+            await using (var rollback = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_ple_read_route(false,10000);", parity))
+                Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+            Assert.Equal(await Read("list_buffer_node_ple_nodes_legacy", "@target,@from,@to"),
+                await Read("list_buffer_node_ple_nodes", "@target,@from,@to"));
         }
 
         await using (NpgsqlDataSource server = database.CreateServerDataSource())

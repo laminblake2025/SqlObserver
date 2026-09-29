@@ -379,6 +379,9 @@ definitions while original rows remain available.
 Migration 0209 stages private partitioned-run readers for Buffer Node and
 Buffer Manager PLE trends, node enumeration, and visibility gaps. Populated
 NUMA and aggregate samples are compared before changing the public readers.
+Migration 0210 routes those four public PLE readers together, defaulting to
+the original definitions. Migrator activation requires the writer-fenced
+fleet proof, and the original path remains available for rollback.
 
 ## Implementation gates
 

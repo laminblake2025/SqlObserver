@@ -76,14 +76,14 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.validate_collection_run_identity_fk/1
             function control.verify_collection_run_v2_fleet_fenced/1
             function control.verify_collection_run_v2_window/5
-            function reporting.count_buffer_node_ple_gaps/3
-            function reporting.get_buffer_manager_ple_trend/3
-            function reporting.get_buffer_node_ple_trend/4
+            function reporting.count_buffer_node_ple_gaps_legacy/3
+            function reporting.get_buffer_manager_ple_trend_legacy/3
+            function reporting.get_buffer_node_ple_trend_legacy/4
             function reporting.get_latest_m9_run_legacy/2
             function reporting.list_activity_requests_legacy/6
             function reporting.list_activity_sessions_legacy/5
             function reporting.list_blocking_history_legacy/10
-            function reporting.list_buffer_node_ple_nodes/3
+            function reporting.list_buffer_node_ple_nodes_legacy/3
             function reporting.list_current_blocking_legacy/8
             function reporting.list_server_wait_category_trend_legacy/3
             function reporting.list_server_wait_history_legacy/7
