@@ -49,6 +49,8 @@ the editor updates the URL and closes it.
 The dashboard adds a target-scoped Overview request alongside the existing
 health request. Overview currently composes live reads, so its known latency
 remains until the planned precomputed latest-status projection replaces it.
+The source boundary and staged rollout for that projection are specified in
+[ADR-0022](../adr/ADR-0022-overview-latest-status.md).
 
 The focused URL-scope test and existing Overview and Health tests passed, as
 did the production web build. A synthetic target was rendered and visually
