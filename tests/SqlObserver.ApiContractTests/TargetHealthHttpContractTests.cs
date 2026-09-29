@@ -231,6 +231,7 @@ public sealed class TargetHealthHttpContractTests : IClassFixture<TargetHealthAp
         Assert.Equal("online", database.State);
         Assert.Equal("full", database.RecoveryModel);
         Assert.Equal("multi_user", database.UserAccess);
+        Assert.Equal("LOG_BACKUP", database.LogReuseWaitDescription);
         Assert.Equal("database.inventory", first?.Collector.CollectorId);
         Assert.Equal("current", first?.Collector.State);
         Assert.Equal("current", database.Collector.State);
@@ -642,7 +643,8 @@ internal sealed class FakeHealthProjectionRepository : IHealthProjectionReposito
             DatabaseUserAccess.MultiUser,
             isReadOnly: false,
             compatibilityLevel: 160,
-            RepositoryTime.AddMinutes(-1));
+            RepositoryTime.AddMinutes(-1),
+            logReuseWaitDescription: databaseId == 5 ? "LOG_BACKUP" : null);
         return new DatabaseHealthItem(
             observation,
             collector);

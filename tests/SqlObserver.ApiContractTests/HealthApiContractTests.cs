@@ -73,6 +73,7 @@ public sealed class HealthApiContractTests
         "CompatibilityLevel",
         "DatabaseId",
         "IsReadOnly",
+        "LogReuseWaitDescription",
         "Name",
         "ObservedAtUtc",
         "RecoveryModel",
