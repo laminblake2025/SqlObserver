@@ -15,6 +15,24 @@ namespace SqlObserver.UnitTests;
 public sealed class M9OperationalHealthContractTests
 {
     private static readonly string[] ServerMajors = ["15", "16", "17"];
+
+    [Fact]
+    public void StagedAvailabilityGroupV2BundlePreservesReplicaDatabaseIdentity()
+    {
+        SqlServerAvailabilityGroupV2AssetCatalog assets = SqlServerAvailabilityGroupV2AssetCatalog.LoadEmbedded();
+        using JsonDocument manifest = JsonDocument.Parse(assets.Manifest);
+        Assert.Equal(2, manifest.RootElement.GetProperty("collectorVersion").GetInt32());
+        Assert.Equal(2, manifest.RootElement.GetProperty("outputSchemaVersion").GetInt32());
+        foreach (string major in ServerMajors)
+        {
+            string query = assets.GetQuery(int.Parse(major, CultureInfo.InvariantCulture));
+            Assert.Contains("drs.replica_id = ar.replica_id", query, StringComparison.Ordinal);
+            Assert.Contains("drs.group_database_id = adc.group_database_id", query, StringComparison.Ordinal);
+            Assert.Contains("drs.last_commit_time", query, StringComparison.Ordinal);
+            Assert.Contains("sys.availability_databases_cluster", query, StringComparison.Ordinal);
+            Assert.DoesNotContain("drs.is_local=1", query, StringComparison.OrdinalIgnoreCase);
+        }
+    }
     [Fact]
     public void BackupTimestampConvertsOnlyQuarterHourOffsets()
     {

@@ -77,6 +77,12 @@
     <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m9-ag-v2.assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.m9-ag-v2.assets.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v6.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.collector-manifest.v6.schema.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/availability-groups.health.v2.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.v2.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver15-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.sqlserver15-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver16-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.sqlserver16-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver17-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.sqlserver17-windows.v2.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/queries.performance.v1.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.v1.json</LogicalName>
     </EmbeddedResource>
