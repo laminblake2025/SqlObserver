@@ -355,6 +355,9 @@ Migration 0202 adds a private partitioned-run M9 latest-header function. It
 preserves the completion-frontier selection and target-scope check. Populated
 completed, unfinished, cross-target, and invalid-collector cases are compared
 with the public header before any operational-health route changes.
+Migration 0203 stages a default-original route for that header. Activation
+requires the writer-fenced fleet parity proof, leaves the original header
+private for rollback, and keeps direct server access on the public function.
 
 ## Implementation gates
 

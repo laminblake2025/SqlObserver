@@ -811,15 +811,81 @@ public sealed partial class M9OperationalHealthPostgreSqlIntegrationFixtureTests
         var latest = Assert.Single(await Compare(target, "backups.status"));
         Assert.Equal(unfinished, latest.Run);
         Assert.Equal("NoData", latest.State);
+        await using (var premature = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m9_read_route(true,10000);", connection))
+        {
+            PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteScalarAsync());
+            Assert.Equal("55000", rejected.SqlState);
+        }
+        DateTimeOffset firstDay = new(at.UtcDateTime.Date, TimeSpan.Zero);
+        DateTimeOffset lastDay = new(at.AddMinutes(2).UtcDateTime.Date, TimeSpan.Zero);
+        foreach (Guid scopeId in new[] { target, other })
+        {
+            await using NpgsqlTransaction backfill = await connection.BeginTransactionAsync();
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@scope::text,true);",
+                connection, backfill))
+            {
+                scope.Parameters.AddWithValue("scope", scopeId);
+                await scope.ExecuteScalarAsync();
+            }
+            foreach (string function in new[]
+                { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+            {
+                await using var copy = new NpgsqlCommand(
+                    $"SELECT complete FROM control.{function}(@target,10);",
+                    connection, backfill);
+                copy.Parameters.AddWithValue("target", scopeId);
+                Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            }
+            for (DateTimeOffset day = firstDay; day <= lastDay; day = day.AddDays(1))
+            {
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,'backups.status',@day,@end,10);
+                    """, connection, backfill);
+                certificate.Parameters.AddWithValue("target", scopeId);
+                certificate.Parameters.AddWithValue("day", day);
+                certificate.Parameters.AddWithValue("end", day.AddDays(1));
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            }
+            await backfill.CommitAsync();
+        }
+        await using (var activate = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m9_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        Assert.Equal(unfinished, Assert.Single(await Compare(target, "backups.status")).Run);
+        await using (NpgsqlDataSource server = database.CreateServerDataSource())
+        await using (NpgsqlConnection scoped = await server.OpenConnectionAsync())
+        {
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", scoped))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteScalarAsync();
+            }
+            await using var read = new NpgsqlCommand(
+                "SELECT run_id FROM reporting.get_latest_m9_run(@target,'backups.status');", scoped);
+            read.Parameters.AddWithValue("target", target);
+            Assert.Equal(unfinished, await read.ExecuteScalarAsync());
+        }
+        await using (var rollback = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m9_read_route(false,10000);", connection))
+            Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        Assert.Equal(unfinished, Assert.Single(await Compare(target, "backups.status")).Run);
         await using var grants = new NpgsqlCommand("""
-            SELECT has_function_privilege('sqlobserver_migrator',
-                     'reporting.get_latest_m9_run_v2_shadow(uuid,text)','EXECUTE')
-               AND NOT has_function_privilege('sqlobserver_server',
-                     'reporting.get_latest_m9_run_v2_shadow(uuid,text)','EXECUTE')
-               AND NOT has_function_privilege('sqlobserver_collector',
-                     'reporting.get_latest_m9_run_v2_shadow(uuid,text)','EXECUTE');
+            SELECT count(*) FROM pg_proc AS p
+            JOIN pg_namespace AS n ON n.oid=p.pronamespace
+            WHERE n.nspname='reporting'
+              AND p.proname IN ('get_latest_m9_run_v2_shadow',
+                                'get_latest_m9_run_legacy')
+              AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
             """, connection);
-        Assert.True((bool)(await grants.ExecuteScalarAsync())!);
+        Assert.Equal(2L, await grants.ExecuteScalarAsync());
     }
 
     private static async Task<CollectorRunId> CommitBackupForTargetAsync(RepositoryTestDatabase database, Guid target, string key)

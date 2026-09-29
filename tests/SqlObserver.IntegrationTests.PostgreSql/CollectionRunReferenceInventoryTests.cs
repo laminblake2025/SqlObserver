@@ -79,7 +79,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.count_buffer_node_ple_gaps/3
             function reporting.get_buffer_manager_ple_trend/3
             function reporting.get_buffer_node_ple_trend/4
-            function reporting.get_latest_m9_run/2
+            function reporting.get_latest_m9_run_legacy/2
             function reporting.list_activity_requests_legacy/6
             function reporting.list_activity_sessions_legacy/5
             function reporting.list_blocking_history_legacy/10

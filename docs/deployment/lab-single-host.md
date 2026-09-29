@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0202`
+The migration catalog contains the exact, contiguous `0001` through `0203`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -526,6 +526,11 @@ max_pairs)` to enable its partitioned source under the writer fence. Passing
 Migration `0202` adds a private partitioned-run M9 latest-header comparison
 function. Public backup, Agent, TempDB, and availability-group headers still
 read original runs until a later gated route is installed.
+Migration `0203` adds that default-original M9 header route. After complete
+fleet backfill and current parity certificates, the migrator can call
+`control.set_collection_run_v2_m9_read_route(true, max_pairs)` under the
+writer fence. Passing `false` restores the original header while its run
+table remains available.
 
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
