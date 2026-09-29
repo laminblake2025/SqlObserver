@@ -439,12 +439,33 @@ only after the seal commits; v2 run identity and child references continue to
 be written. A PostgreSQL test proves the default hold, seal, route guard,
 v2-only collector begin/commit/replay, and idempotent seal call after new
 v2-only history exists.
+Migration 0227 routes target-revision invalidation through the active run
+lookup. A target change now records the outcome and visibility gap for an
+unfinished v2-only run before clearing its schedule. Migration 0228 routes
+query-performance graph retirement through the active row-locking lookup, so
+its lease and hold checks can inspect a v2-only run without losing the lock
+shared with late query-evidence writers. Focused PostgreSQL tests exercise
+both paths after sealing.
 This bounds future growth of the original run table but does not delete its
 historical rows or make a v2 day eligible for detach. The identity bridge FK
 and 20 child evidence classes remain explicit retention holds. The next
 cleanup step must account for their class-specific policies, active schedules,
 replay and audit windows, reader leases, recovery attestation, and any
 unexpected catalog reference before removing original or identity rows.
+The original-to-v2 fleet parity verifier is a cutover gate, not a post-seal
+cleanup gate: after sealing, new runs intentionally have no original copy.
+Retiring an old original copy must instead lock a bounded target-scoped batch,
+compare every complete row with its v2 row and identity key, and leave v2 and
+the identity bridge intact. It must refuse unsealed or partially cut-over
+installations, unexpected inbound original-table foreign keys, active runs,
+unfinished outcomes, and absent recovery attestation. The deletion requires a
+narrow exception to the original table's append-only trigger, a live fenced
+retention lease, and an append-only audit record of the cutoff, count,
+attestation, and policy context. The existing private legacy readers become
+incomplete as old copies leave; every public reader must remain sealed on v2.
+Canonical v2 partition retirement is a separate step and remains blocked by
+the identity bridge and child-evidence lifecycle until those references have
+their own policy-aware cleanup.
 
 ## Implementation gates
 
