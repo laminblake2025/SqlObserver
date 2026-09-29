@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0195`
+The migration catalog contains the exact, contiguous `0001` through `0196`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -496,6 +496,10 @@ and removes all 20 old FKs atomically under the writer fence. A result of
 cutover was already present. Any partial graph raises an error and rolls back.
 The original collection-run table remains the writer and reader after this
 reference change; do not retire it yet.
+Migration `0196` adds private M5 activity and blocking shadow readers on the
+partitioned run successor. They are migrator-only comparison surfaces; public
+routes still read the original run table. Verify populated page and cursor
+parity before considering a coordinated reader cutover.
 
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves

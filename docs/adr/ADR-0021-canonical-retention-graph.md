@@ -324,10 +324,12 @@ commit and scheduling functions, alert evaluation, reporting projections,
 retention helpers, and two reporting views. A catalog regression test records
 those current definitions, including function arity, so reader and writer
 cutovers must account for the actual installed objects rather than every
-historical migration text. The first shadow-read slice will cover activity
-sessions, requests, blocking history and current blocking on the partitioned
-successor, with populated output and cursor parity checks before any route
-changes. The writer must remain dual-written until all active consumers move.
+historical migration text. Migration 0196 adds private shadow readers for
+activity sessions, requests, current blocking, and blocking history over the
+partitioned successor. A populated PostgreSQL test compares both pages and
+cursor behavior with the public readers. The shadow functions are executable
+only by the migrator; routes remain on the original readers. The writer must
+remain dual-written until all active consumers move.
 
 ## Implementation gates
 

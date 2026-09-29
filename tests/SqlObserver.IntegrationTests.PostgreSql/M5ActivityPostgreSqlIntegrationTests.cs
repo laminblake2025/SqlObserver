@@ -1,4 +1,5 @@
 using Npgsql;
+using System.Text.Json;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
@@ -18,6 +19,88 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     private readonly PostgreSql18Fixture _fixture;
 
     public M5ActivityPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
+
+    [Fact]
+    public async Task PartitionedRunShadowActivityReadersMatchPopulatedPagesAndCursors()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset at = (await ReadRepositoryClockAsync(database)).AddMinutes(-1);
+        MonitoredInstanceId target = new(Guid.NewGuid());
+        Guid sessions = Guid.NewGuid(), requests = Guid.NewGuid(), blocking = Guid.NewGuid();
+        await SeedTargetAndRunAsync(database, target, sessions, "activity.sessions", at);
+        await SeedTargetAndRunAsync(database, target, requests, "activity.requests", at);
+        await SeedTargetAndRunAsync(database, target, blocking, "blocking.current", at);
+        await EnsurePartitionsAsync(database, at, at);
+        await EnsureBlockingPartitionAsync(database, at);
+        foreach (int session in new[] { 51, 52 })
+        {
+            await InsertSessionAsync(database, target, sessions, at, session);
+            await InsertRequestAsync(database, target, requests, at, session, 1);
+            await InsertBlockingAsync(database, target, blocking, at, session, Guid.NewGuid());
+        }
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+
+        async Task<List<string>> Read(string name, string arguments)
+        {
+            await using var command = new NpgsqlCommand(
+                $"SELECT (to_jsonb(row) - 'repository_time')::text FROM reporting.{name}({arguments}) AS row;",
+                connection);
+            command.Parameters.AddWithValue("target", target.Value);
+            command.Parameters.AddWithValue("sessions", sessions);
+            command.Parameters.AddWithValue("requests", requests);
+            command.Parameters.AddWithValue("blocking", blocking);
+            command.Parameters.AddWithValue("at", at);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+
+        async Task Compare(string name, string arguments, string itemField, int itemValue, bool hasMore)
+        {
+            List<string> canonical = await Read(name, arguments);
+            List<string> shadow = await Read($"{name}_v2_shadow", arguments);
+            Assert.Equal(canonical, shadow);
+            using JsonDocument row = JsonDocument.Parse(Assert.Single(shadow));
+            Assert.Equal(itemValue, row.RootElement.GetProperty(itemField).GetInt32());
+            Assert.Equal(hasMore, row.RootElement.GetProperty("has_more").GetBoolean());
+        }
+
+        await Compare("list_activity_sessions", "@target,NULL::uuid,NULL::bigint,NULL::integer,1",
+            "session_id", 51, true);
+        await Compare("list_activity_sessions", "@target,@sessions,1,51,1",
+            "session_id", 52, false);
+        await Compare("list_activity_requests", "@target,NULL::uuid,NULL::bigint,NULL::integer,NULL::integer,1",
+            "session_id", 51, true);
+        await Compare("list_activity_requests", "@target,@requests,1,51,1,1",
+            "session_id", 52, false);
+        await Compare("list_current_blocking", "@target,NULL::uuid,NULL::bigint,NULL::integer,NULL::text,NULL::integer,NULL::text,1",
+            "blocked_session_id", 51, true);
+        await Compare("list_current_blocking", "@target,@blocking,1,51,'session',99,'LCK_M_S',1",
+            "blocked_session_id", 52, false);
+        await Compare("list_blocking_history", "@target,@at - interval '1 minute',@at + interval '1 minute',NULL::timestamptz,NULL::uuid,NULL::integer,NULL::text,NULL::integer,NULL::text,1",
+            "blocked_session_id", 52, true);
+        await Compare("list_blocking_history", "@target,@at - interval '1 minute',@at + interval '1 minute',@at,@blocking,52,'session',99,'LCK_M_S',1",
+            "blocked_session_id", 51, false);
+
+        await using var grants = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_proc AS p
+            JOIN pg_namespace AS n ON n.oid=p.pronamespace
+            WHERE n.nspname='reporting'
+              AND p.proname IN ('list_activity_sessions_v2_shadow',
+                                'list_activity_requests_v2_shadow',
+                                'list_current_blocking_v2_shadow',
+                                'list_blocking_history_v2_shadow')
+              AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
+            """, connection);
+        Assert.Equal(4L, await grants.ExecuteScalarAsync());
+    }
 
     [Fact]
     public async Task CanonicalM5PoliciesCoverWrittenPartitionsAndAllowAuthorizedUpdates()
