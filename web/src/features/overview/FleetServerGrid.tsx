@@ -32,7 +32,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime 
       </tr>)}</tbody>
     </table></div>
     {rows.length === 0 && <p className="empty-state">No loaded servers match this search.</p>}
-    <p className="table-note">Dots show evidence state; red blocking means blocked sessions were observed. SQL scheduler CPU excludes preemptive and hidden-scheduler work. CPU and memory have no threshold-based health verdict. Backup and HA counts do not establish RPO or replica health.</p>
+    <p className="table-note">Dots show evidence state; red marks observed blocking, damaged backups, or disconnected replicas. SQL scheduler CPU excludes preemptive and hidden-scheduler work. CPU and memory have no threshold-based health verdict. Backup and HA counts do not establish RPO or replica health.</p>
   </section>;
 }
 

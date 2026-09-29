@@ -53,3 +53,25 @@ test('signal cells distinguish source evidence from health and hide stale numeri
   fleet.evidence[0].resources.find(item => item.label === 'SQL scheduler CPU · selected window').state = 'observed';
   assert.equal(fleetServerRows(fleet, '')[0].signals.cpu.text, '68.5 %');
 });
+
+test('backup and HA dots surface confirmed exceptions only with usable source evidence', () => {
+  const fleet = snapshot([['a', 'Alpha']]);
+  fleet.evidence = [evidence('a', {
+    issues: [{ title: 'Damaged backup' }, { title: 'Availability replica disconnected' }],
+    resources: [
+      { label: 'Backup evidence', value: 3, unit: 'records', state: 'complete', observedAtUtc: '2026-09-24T12:00:00Z' },
+      { label: 'Availability replicas', value: 2, unit: 'replicas', state: 'partial', observedAtUtc: '2026-09-24T12:00:00Z' },
+    ],
+  })];
+  const signals = fleetServerRows(fleet, '')[0].signals;
+  assert.equal(signals.backups.tone, 'attention');
+  assert.equal(signals.backups.text, 'Damaged · 3 records');
+  assert.equal(signals.ha.tone, 'attention');
+  assert.match(signals.ha.detail, /Availability replica disconnected/);
+
+  fleet.evidence[0].resources[0].state = 'stale';
+  fleet.evidence[0].resources[1].value = null;
+  const unavailable = fleetServerRows(fleet, '')[0].signals;
+  assert.equal(unavailable.backups.tone, 'unknown');
+  assert.equal(unavailable.ha.tone, 'unknown');
+});

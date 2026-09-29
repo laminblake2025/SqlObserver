@@ -50,6 +50,14 @@ function countSignal(value: OverviewValue | undefined, description: string): Fle
   };
 }
 
+function operationalSignal(evidence: OverviewEvidence | undefined, item: OverviewResource | undefined,
+  description: string, unit: string, issueTitle: string, exceptionLabel: string): FleetSignal {
+  const base = resourceSignal(item, description, unit);
+  if (base.tone === 'unknown' || !evidence?.issues.some(issue => issue.title === issueTitle)) return base;
+  return { ...base, text: `${exceptionLabel} · ${base.text}`, tone: 'attention',
+    detail: `${issueTitle} was observed; ${base.detail}` };
+}
+
 function signals(evidence: OverviewEvidence | undefined): FleetServerRow['signals'] {
   const waits = evidence?.resources.filter(item => item.label.startsWith('Wait · ') && item.value !== null && knownState(item.state) !== 'unknown')
     .sort((left, right) => (right.value ?? 0) - (left.value ?? 0))[0];
@@ -60,8 +68,8 @@ function signals(evidence: OverviewEvidence | undefined): FleetServerRow['signal
     memory: resourceSignal(resource(evidence, 'OS available memory via SQL · selected window'), 'OS available memory reported by SQL Server in selected window', 'GiB'),
     waits: resourceSignal(waits, waits ? `Largest observed wait delta: ${waits.label.slice('Wait · '.length)}` : 'Wait delta', 's'),
     blocking: countSignal(evidence?.blockedSessions, 'Currently blocked sessions'),
-    backups: resourceSignal(backup, 'Backup records observed; this does not establish RPO health', 'records'),
-    ha: resourceSignal(ha, 'Availability replicas observed; this does not establish replica health', 'replicas'),
+    backups: operationalSignal(evidence, backup, 'Backup records observed; this does not establish RPO health', 'records', 'Damaged backup', 'Damaged'),
+    ha: operationalSignal(evidence, ha, 'Availability replicas observed; this does not establish replica health', 'replicas', 'Availability replica disconnected', 'Disconnected'),
   };
 }
 
