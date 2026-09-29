@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fleetServerRows } from '../src/features/overview/fleetGridModel.ts';
+import { fleetServerRows, groupFleetServerRows } from '../src/features/overview/fleetGridModel.ts';
 
 const value = (number, state = 'current') => ({ value: number, state, observedAtUtc: '2026-09-24T12:00:00Z' });
 const evidence = (targetId, overrides = {}) => ({
@@ -11,8 +11,22 @@ const evidence = (targetId, overrides = {}) => ({
 const snapshot = (rows) => ({
   refreshedAtUtc: '2026-09-24T12:00:00Z', fromUtc: '2026-09-23T12:00:00Z',
   toUtc: '2026-09-24T12:00:00Z', targetId: null, excludedTargets: 0,
-  targets: rows.map(([targetId, displayName]) => ({ targetId, displayName, lifecycle: 'active' })),
+  targets: rows.map(([targetId, displayName]) => ({ targetId, displayName, lifecycle: 'active', environment: null, tags: [], groupingRevision: 0, canManageGrouping: false })),
   evidence: rows.map(([targetId]) => evidence(targetId)),
+});
+
+test('fleet grouping uses persisted environment and tags without losing severity order', () => {
+  const fleet = snapshot([['a', 'Alpha'], ['b', 'Beta'], ['c', 'Charlie']]);
+  fleet.targets[0].environment = 'production'; fleet.targets[0].tags = ['critical', 'east'];
+  fleet.targets[1].environment = 'staging'; fleet.targets[1].tags = ['east'];
+  fleet.evidence[2].issues = [{ priority: 0, title: 'Damaged backup' }];
+  const rows = fleetServerRows(fleet, '');
+  assert.deepEqual(groupFleetServerRows(rows, 'environment').map(group => [group.label, group.rows.map(row => row.target.targetId)]),
+    [['Unassigned', ['c']], ['production', ['a']], ['staging', ['b']]]);
+  assert.deepEqual(groupFleetServerRows(rows, 'tag').map(group => [group.label, group.rows.map(row => row.target.targetId)]),
+    [['Untagged', ['c']], ['critical', ['a']], ['east', ['a', 'b']]]);
+  assert.deepEqual(fleetServerRows(fleet, 'east').map(row => row.target.targetId), ['a', 'b']);
+  assert.deepEqual(fleetServerRows(fleet, 'production').map(row => row.target.targetId), ['a']);
 });
 
 test('fleet grid ranks observed exceptions before inventory order without treating gaps as healthy', () => {

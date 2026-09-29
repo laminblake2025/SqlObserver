@@ -268,6 +268,17 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .overview-servers .table-scroll table { min-width: 1180px; }
 .overview-servers .table-scroll td:first-child { min-width: 170px; }
 .overview-servers .table-scroll td small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.fleet-grid-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.fleet-grid-controls select { min-width: 150px; }
+.fleet-group-row th { padding: 9px 14px; color: var(--muted-deep); background: var(--surface-soft); font-size: 12px; text-align: left; }
+.fleet-group-row small { color: var(--muted); font-weight: 500; }
+.fleet-grouping-editor { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 16px; padding: 14px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px; }
+.fleet-grouping-editor > div:first-child { display: grid; gap: 3px; flex: 1 1 100%; }
+.fleet-grouping-editor small { color: var(--muted); font-size: 11px; }
+.fleet-grouping-editor label { display: grid; gap: 5px; flex: 1 1 180px; color: var(--muted-deep); font-size: 11px; font-weight: 700; }
+.fleet-grouping-editor label:nth-of-type(2) { flex: 2 1 250px; }
+.fleet-grouping-actions { display: flex; gap: 8px; }
+.fleet-grouping-editor p[role="alert"] { flex-basis: 100%; margin: 0; color: var(--red); }
 .fleet-signal { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
 .fleet-signal-dot { flex: 0 0 8px; height: 8px; border-radius: 50%; background: var(--slate); }
 .fleet-signal-observed .fleet-signal-dot { background: var(--teal); }

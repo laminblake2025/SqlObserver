@@ -177,6 +177,27 @@ public sealed class OverviewAuthorizationTests
         Assert.Equal(2, result.Evidence.Count);
     }
 
+    [Fact]
+    public async Task GroupingReadAndEditCapabilityFollowEachTargetsAuthorizedRole()
+    {
+        var probe = new InventoryProbe([TargetA, TargetB, TargetC]);
+        AuthorizationContext authorization = Active(
+            Grant(ApplicationRole.TargetAdministrator, TargetA),
+            Grant(ApplicationRole.Viewer, TargetB),
+            Grant(ApplicationRole.Auditor, TargetC));
+
+        OverviewSnapshot result = await probe.Overview.ReadAsync(
+            new(authorization, null, At.AddHours(-1), At), CancellationToken.None);
+
+        Assert.Equal([TargetA.TargetId.Value, TargetB.TargetId.Value], probe.GroupingTargets);
+        Assert.Equal([TargetA.TargetId.Value, TargetB.TargetId.Value], result.Targets.Select(target => target.TargetId));
+        Assert.True(result.Targets[0].CanManageGrouping);
+        Assert.False(result.Targets[1].CanManageGrouping);
+        Assert.Equal("production", result.Targets[0].Environment);
+        Assert.Equal(["critical"], result.Targets[0].Tags);
+        Assert.Equal(1, result.Targets[0].GroupingRevision);
+    }
+
     private static AuthorizationContext Active(params RoleAuthorizationGrant[] grants) =>
         new(new ActorSecurityIdentifier("S-1-5-21-100"), AuthorizationPrincipalState.Active, grants);
 
@@ -223,6 +244,15 @@ public sealed class OverviewAuthorizationTests
                 {
                     LatestTargets.Add((MonitoredInstanceId)arguments![0]!);
                     return Task.FromResult<OverviewLatestStatus?>(null);
+                }),
+                OverviewStub.Create<IObservationTargetGroupingPort>((_, arguments) =>
+                {
+                    var ids = (IReadOnlyList<Guid>)arguments![0]!;
+                    GroupingTargets.AddRange(ids);
+                    return Task.FromResult<IReadOnlyDictionary<Guid, ObservationTargetGrouping>>(
+                        ids.ToDictionary(id => id, id => id == TargetA.TargetId.Value
+                            ? new ObservationTargetGrouping(id, "production", ["critical"], 1)
+                            : new ObservationTargetGrouping(id, null, [], 0)));
                 }));
         }
 
@@ -234,5 +264,6 @@ public sealed class OverviewAuthorizationTests
         public List<ListObservationTargetsRequest> ListCalls { get; } = [];
         public List<MonitoredInstanceId> ProfileTargets { get; } = [];
         public List<MonitoredInstanceId> LatestTargets { get; } = [];
+        public List<Guid> GroupingTargets { get; } = [];
     }
 }

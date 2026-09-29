@@ -1,4 +1,4 @@
-export interface OverviewTarget { targetId: string; displayName: string; lifecycle: string; }
+export interface OverviewTarget { targetId: string; displayName: string; lifecycle: string; environment: string | null; tags: readonly string[]; groupingRevision: number; canManageGrouping: boolean; }
 export interface OverviewValue { value: number | null; state: string; observedAtUtc: string | null; }
 export interface OverviewPoint { timeUtc: string; value: number | null; samples: number; }
 export interface OverviewSeries { targetId: string; label: string; metric: string; unit: string; state: string; dimension: string | null; points: readonly OverviewPoint[]; }

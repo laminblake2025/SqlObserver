@@ -20,6 +20,24 @@ export interface FleetSignal {
   readonly detail: string;
 }
 
+export type FleetGrouping = 'environment' | 'tag' | 'none';
+export interface FleetServerGroup { readonly label: string | null; readonly rows: readonly FleetServerRow[]; }
+
+export function groupFleetServerRows(rows: readonly FleetServerRow[], by: FleetGrouping): FleetServerGroup[] {
+  if (by === 'none') return [{ label: null, rows }];
+  const groups = new Map<string, FleetServerRow[]>();
+  for (const row of rows) {
+    const labels = by === 'environment' ? [row.target.environment ?? 'Unassigned']
+      : row.target.tags.length ? row.target.tags : ['Untagged'];
+    for (const label of labels) {
+      const group = groups.get(label) ?? [];
+      group.push(row);
+      groups.set(label, group);
+    }
+  }
+  return [...groups].map(([label, groupedRows]) => ({ label, rows: groupedRows }));
+}
+
 const unknown = (detail: string): FleetSignal => ({ text: '—', tone: 'unknown', detail });
 const knownState = (state: string): FleetSignal['tone'] =>
   state === 'observed' || state === 'complete' || state === 'current' ? 'observed' :
@@ -76,7 +94,7 @@ function signals(evidence: OverviewEvidence | undefined): FleetServerRow['signal
 export function fleetServerRows(snapshot: OverviewSnapshot, search: string): FleetServerRow[] {
   const byTarget = new Map(snapshot.evidence.map(item => [item.targetId, item]));
   const term = search.trim().toLocaleLowerCase();
-  return snapshot.targets.filter(target => `${target.displayName} ${target.targetId}`.toLocaleLowerCase().includes(term))
+  return snapshot.targets.filter(target => `${target.displayName} ${target.targetId} ${target.environment ?? ''} ${target.tags.join(' ')}`.toLocaleLowerCase().includes(term))
     .map(target => {
       const evidence = byTarget.get(target.targetId);
       return { target, evidence, attentionCount: evidence?.issues.length ?? 0, signals: signals(evidence) };

@@ -370,7 +370,8 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             new OperationalHealthQueryService(new PostgreSqlOperationalHealthProjectionPort(server)),
             new MetricSeriesQueryService(new PostgreSqlAnalyticsRepositoryPort(
                 server, new IdentityFingerprintKey(new byte[32]))),
-            new PostgreSqlOverviewHistoryPort(server), port);
+            new PostgreSqlOverviewHistoryPort(server), port,
+            new PostgreSqlObservationTargetGroupingPort(server));
         var authorization = new AuthorizationContext(
             new ActorSecurityIdentifier("S-1-5-21-100"), AuthorizationPrincipalState.Active,
             [ApplicationRole.Viewer], TargetAuthorizationScope.ForTargets([new MonitoredInstanceId(target)]));

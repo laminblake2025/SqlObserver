@@ -71,6 +71,8 @@ builder.Services.AddSingleton(static services =>
 });
 builder.Services.AddSingleton<IObservationTargetRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().Targets);
+builder.Services.AddSingleton<IObservationTargetGroupingPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().TargetGrouping);
 builder.Services.AddSingleton<ICapabilityProfileRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().CapabilityProfiles);
 builder.Services.AddSingleton<IAdministrativeAuditPort>(static services =>
@@ -104,6 +106,7 @@ builder.Services.AddSingleton<IBufferNodePleWindowQueryService, BufferNodePleWin
 builder.Services.AddSingleton<SqlVolumeCursorProtector>();
 builder.Services.AddSingleton<IObservationTargetOnboardingService, ObservationTargetOnboardingService>();
 builder.Services.AddSingleton<IObservationTargetManagementService, ObservationTargetManagementService>();
+builder.Services.AddSingleton<IObservationTargetGroupingService, ObservationTargetGroupingService>();
 builder.Services.AddSingleton<IObservationTargetQueryService, ObservationTargetQueryService>();
 builder.Services.AddSingleton<IObservationTargetStatusQueryService, ObservationTargetStatusQueryService>();
 builder.Services.AddSingleton<IHealthProjectionQueryService, HealthProjectionQueryService>();

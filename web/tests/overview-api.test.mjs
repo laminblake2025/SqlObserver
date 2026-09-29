@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {getOverview} from '../src/features/overview/overviewApi.ts';
 const window={fromUtc:'2026-09-04T00:00:00Z',toUtc:'2026-09-05T00:00:00Z'};
 const id='11111111-1111-4111-8111-000000000001';
-const value=()=>({refreshedAtUtc:window.toUtc,...window,targetId:id,targets:[{targetId:id,displayName:'SQL 1',lifecycle:'active'}],excludedTargets:0,evidence:[{targetId:id,displayName:'SQL 1',collectionState:'unavailable',lastObservedUtc:null,activeAlerts:{value:null,state:'unavailable'},blockedSessions:{value:null,state:'unavailable'},deadlocks:{value:null,state:'unavailable'},series:[],resources:[],issues:[],gaps:[]}]});
+const value=()=>({refreshedAtUtc:window.toUtc,...window,targetId:id,targets:[{targetId:id,displayName:'SQL 1',lifecycle:'active',environment:null,tags:[],groupingRevision:0,canManageGrouping:false}],excludedTargets:0,evidence:[{targetId:id,displayName:'SQL 1',collectionState:'unavailable',lastObservedUtc:null,activeAlerts:{value:null,state:'unavailable'},blockedSessions:{value:null,state:'unavailable'},deadlocks:{value:null,state:'unavailable'},series:[],resources:[],issues:[],gaps:[]}]});
 test('one credentialed request carries the complete selected scope and window',async()=>{
  const original=globalThis.fetch;let count=0;
  try{
@@ -23,7 +23,7 @@ test('accepts database-dimension workload series',async()=>{
 test('rejects wrong server, mismatched window, unsafe destinations and invalid numeric points',async()=>{
  const original=globalThis.fetch;
  try{
-  const cases=[v=>v.targetId='another',v=>v.fromUtc='2026-09-03T00:00:00Z',v=>v.evidence[0].issues=[{targetId:id,destination:'javascript:alert(1)',title:'x',detail:'x',priority:0}],v=>v.evidence[0].series=[{targetId:id,label:'SQL 1',metric:'host.cpu.percent',unit:'%',points:[{timeUtc:window.fromUtc,value:-3,samples:1}]}]];
+  const cases=[v=>v.targetId='another',v=>v.fromUtc='2026-09-03T00:00:00Z',v=>v.targets[0].tags=null,v=>v.evidence[0].issues=[{targetId:id,destination:'javascript:alert(1)',title:'x',detail:'x',priority:0}],v=>v.evidence[0].series=[{targetId:id,label:'SQL 1',metric:'host.cpu.percent',unit:'%',points:[{timeUtc:window.fromUtc,value:-3,samples:1}]}]];
   for(const change of cases){const body=value();change(body);globalThis.fetch=async()=>Response.json(body);await assert.rejects(()=>getOverview(id,window,new AbortController().signal));}
  }finally{globalThis.fetch=original;}
 });

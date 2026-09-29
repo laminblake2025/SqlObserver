@@ -14,7 +14,8 @@ public sealed class OverviewQueryService(
     IObservationTargetStatusQueryService targets, IHealthProjectionQueryService health,
     IAlertQueryService alerts, IActivityProjectionQueryService activity, IDeadlockProjectionQueryService deadlocks,
     IOperationalHealthQueryService operations, IMetricSeriesQueryService metrics,
-    IOverviewHistoryRepositoryPort history, IOverviewLatestStatusRepositoryPort latestStatus) : IOverviewQueryService
+    IOverviewHistoryRepositoryPort history, IOverviewLatestStatusRepositoryPort latestStatus,
+    IObservationTargetGroupingPort grouping) : IOverviewQueryService
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(5));
     private static readonly ApplicationRole[] ReadRoles =
@@ -50,6 +51,11 @@ public sealed class OverviewQueryService(
             if (inventory.Count >= 1000 && cursor is not null) throw new InvalidOperationException("Overview scope exceeds the bounded inventory read.");
         } while (cursor is not null);
         inventory = inventory.DistinctBy(x => x.Target.TargetId).OrderBy(x => x.Target.DisplayName.Value, StringComparer.OrdinalIgnoreCase).ToList();
+        var inventoryIds = inventory.Select(x => x.Target.TargetId.Value).ToArray();
+        IReadOnlyDictionary<Guid, ObservationTargetGrouping> groupings = await grouping.ReadAsync(inventoryIds, Timeout, cancellationToken);
+        if (groupings.Count != inventoryIds.Length || groupings.Keys.Except(inventoryIds).Any() ||
+            groupings.Any(pair => pair.Value.TargetId != pair.Key))
+            throw new InvalidDataException("Target grouping read did not match the authorized inventory.");
         var selected = inventory.Where(x => query.TargetId.HasValue ? x.Target.TargetId.Value == query.TargetId : x.Target.Lifecycle is not (ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired)).ToArray();
         if (query.TargetId.HasValue && selected.Length == 0) throw new UnauthorizedAccessException();
         // Validate the returned scope before dispatching any evidence read.
@@ -60,7 +66,13 @@ public sealed class OverviewQueryService(
         var evidence = await Task.WhenAll(selected.Select(target =>
             ReadTargetAsync(query, target.Target, cutoff, concurrency, evidenceDeadline.Token, cancellationToken)));
         return new(cutoff, query.FromUtc, query.ToUtc, query.TargetId,
-            inventory.Select(x => new OverviewTarget(x.Target.TargetId.Value, x.Target.DisplayName.Value, x.Target.Lifecycle.ToString().ToLowerInvariant())).ToArray(),
+            inventory.Select(x => {
+                Guid id = x.Target.TargetId.Value;
+                ObservationTargetGrouping metadata = groupings[id];
+                return new OverviewTarget(id, x.Target.DisplayName.Value, x.Target.Lifecycle.ToString().ToLowerInvariant(),
+                    metadata.Environment, metadata.Tags, metadata.Revision,
+                    query.Authorization.CanAccess(ApplicationRole.TargetAdministrator, x.Target.TargetId));
+            }).ToArray(),
             inventory.Count(x => x.Target.Lifecycle is ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired), evidence);
     }
 

@@ -44,7 +44,13 @@ public sealed class OverviewQueryServiceTests
         return new(targets, healthService??OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
             activityService??OverviewStub.Create<IActivityProjectionQueryService>(),OverviewStub.Create<IDeadlockProjectionQueryService>(),operationsService??OverviewStub.Create<IOperationalHealthQueryService>(),
             OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>(),
-            latestStatus??OverviewStub.Create<IOverviewLatestStatusRepositoryPort>());
+            latestStatus??OverviewStub.Create<IOverviewLatestStatusRepositoryPort>(),
+            OverviewStub.Create<IObservationTargetGroupingPort>((_, args) =>
+            {
+                var ids = (IReadOnlyList<Guid>)args![0]!;
+                return Task.FromResult<IReadOnlyDictionary<Guid, ObservationTargetGrouping>>(
+                    ids.ToDictionary(id => id, id => new ObservationTargetGrouping(id, null, [], 0)));
+            }));
     }
 
     [Theory]

@@ -19,6 +19,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         _dataSource = dataSource;
         LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
         Targets = new PostgreSqlObservationTargetPort(dataSource);
+        TargetGrouping = new PostgreSqlObservationTargetGroupingPort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         AdministrativeAudit = new PostgreSqlAdministrativeAuditPort(dataSource);
         McpInvocationAudit = new PostgreSqlMcpInvocationAuditPort(dataSource);
@@ -53,6 +54,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
+    public IObservationTargetGroupingPort TargetGrouping { get; }
     public ILiveActivityRepository LiveActivity { get; }
 
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }

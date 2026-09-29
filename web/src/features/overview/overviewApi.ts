@@ -7,6 +7,11 @@ export async function getOverview(target: string, window: {fromUtc: string; toUt
   if (!response.ok) throw new Error(response.status === 403 ? 'This server selection is unavailable or outside your access.' : response.status === 400 ? 'The selected time range is invalid.' : response.status === 504 ? 'Overview took too long to load. Try a shorter time range or a single server.' : 'Overview evidence is temporarily unavailable.');
   const value = JSON.parse(await readBoundedBody(response, signal)) as OverviewSnapshot;
   if (!value || !Array.isArray(value.targets) || !Array.isArray(value.evidence) || (value.targetId ?? '') !== target || Date.parse(value.fromUtc) !== Date.parse(window.fromUtc) || Date.parse(value.toUtc) !== Date.parse(window.toUtc) || !Number.isFinite(Date.parse(value.refreshedAtUtc))) throw new Error('Overview returned a mismatched scope or time range.');
+  if (value.targets.some(item => typeof item.targetId !== 'string' || typeof item.displayName !== 'string'
+    || typeof item.lifecycle !== 'string' || (item.environment !== null && typeof item.environment !== 'string')
+    || !Array.isArray(item.tags) || item.tags.length > 16 || item.tags.some((tag: unknown) => typeof tag !== 'string')
+    || !Number.isSafeInteger(item.groupingRevision) || item.groupingRevision < 0
+    || typeof item.canManageGrouping !== 'boolean')) throw new Error('Overview returned invalid target grouping.');
   const ids = new Set(value.targets.map(t => t.targetId));
   if (value.evidence.some(e => !ids.has(e.targetId) || (target && e.targetId !== target) || !Array.isArray(e.series) || !Array.isArray(e.resources) || !Array.isArray(e.issues))) throw new Error('Overview returned invalid server evidence.');
   const timestamp = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v));
