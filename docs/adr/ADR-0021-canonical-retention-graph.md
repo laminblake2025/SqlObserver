@@ -283,6 +283,13 @@ batches of at most 1,000, compares each complete original row with its
 successor, and verifies each copied or already-mirrored identity. A mismatch
 rolls back the batch and cursor. A completed cursor is still not a global
 identity parity or foreign-key cutover certificate.
+Migration 0191 adds an independent, read-only, migrator-only identity check
+for one target, collector and UTC-day-bounded successor window. It requires
+both copy cursors to complete, compares the ordered run IDs and start times
+against the identity bridge under one snapshot, and rejects windows above
+100,000 successor rows. A missing bridge row fails parity. Every historical
+and live window still needs coverage under the writer fence before any child
+foreign key can move; this single-window result is not a cutover gate.
 
 ## Implementation gates
 

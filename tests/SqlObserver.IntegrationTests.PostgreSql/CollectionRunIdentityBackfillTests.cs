@@ -102,6 +102,22 @@ public sealed class CollectionRunIdentityBackfillTests(PostgreSql18Fixture fixtu
             await sourceCopy.CommitAsync();
         }
 
+        await using (NpgsqlTransaction prematureParity = await admin.BeginTransactionAsync())
+        {
+            await SetScopeAsync(prematureParity);
+            await using var verify = new NpgsqlCommand("""
+                SELECT * FROM control.verify_collection_run_identity_window(
+                  @target,'queries.performance',@from,@to,10);
+                """, admin, prematureParity);
+            verify.Parameters.AddWithValue("target", target);
+            verify.Parameters.AddWithValue("from", started);
+            verify.Parameters.AddWithValue("to", started.AddDays(1));
+            PostgresException incomplete = await Assert.ThrowsAsync<PostgresException>(
+                () => verify.ExecuteNonQueryAsync());
+            Assert.Equal("55000", incomplete.SqlState);
+            await prematureParity.RollbackAsync();
+        }
+
         // A source-only row inserted after the predecessor's cursor completed
         // still fails the identity batch, without advancing its own cursor.
         await using (NpgsqlTransaction missing = await admin.BeginTransactionAsync())
@@ -157,6 +173,43 @@ public sealed class CollectionRunIdentityBackfillTests(PostgreSql18Fixture fixtu
         Assert.Equal((0, 0, true), await CopyAsync(1));
         Assert.Equal((0, 0, true), await CopyAsync(1));
 
+        async Task<(long Successor, long Identity, bool Parity)> VerifyAsync(
+            NpgsqlTransaction transaction)
+        {
+            await SetScopeAsync(transaction);
+            await using var verify = new NpgsqlCommand("""
+                SELECT successor_rows,identity_rows,parity
+                FROM control.verify_collection_run_identity_window(
+                  @target,'queries.performance',@from,@to,10);
+                """, admin, transaction);
+            verify.Parameters.AddWithValue("target", target);
+            verify.Parameters.AddWithValue("from", started);
+            verify.Parameters.AddWithValue("to", started.AddDays(1));
+            await using NpgsqlDataReader result = await verify.ExecuteReaderAsync();
+            Assert.True(await result.ReadAsync());
+            return (result.GetInt64(0), result.GetInt64(1), result.GetBoolean(2));
+        }
+
+        await using (NpgsqlTransaction completeParity = await admin.BeginTransactionAsync())
+        {
+            Assert.Equal((1L, 1L, true), await VerifyAsync(completeParity));
+            await completeParity.RollbackAsync();
+        }
+        await using (NpgsqlTransaction missingIdentity = await admin.BeginTransactionAsync())
+        {
+            await using (var corrupt = new NpgsqlCommand("""
+                ALTER TABLE telemetry.collection_run_identity
+                  DISABLE TRIGGER collection_run_identity_append_only;
+                DELETE FROM telemetry.collection_run_identity WHERE run_id=@run;
+                """, admin, missingIdentity))
+            {
+                corrupt.Parameters.AddWithValue("run", oldRun);
+                await corrupt.ExecuteNonQueryAsync();
+            }
+            Assert.Equal((1L, 0L, false), await VerifyAsync(missingIdentity));
+            await missingIdentity.RollbackAsync();
+        }
+
         await using var inspect = new NpgsqlCommand("""
             SELECT (SELECT count(*) FROM telemetry.collection_run_identity),
                    (SELECT checked_rows FROM system.collection_run_identity_backfill
@@ -174,6 +227,12 @@ public sealed class CollectionRunIdentityBackfillTests(PostgreSql18Fixture fixtu
                      'EXECUTE'),
                    has_function_privilege('sqlobserver_collector',
                      'control.backfill_collection_run_identity(uuid,integer)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.verify_collection_run_identity_window(uuid,text,timestamptz,timestamptz,integer)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_collector',
+                     'control.verify_collection_run_identity_window(uuid,text,timestamptz,timestamptz,integer)',
                      'EXECUTE');
             """, admin);
         inspect.Parameters.AddWithValue("target", target);
@@ -185,5 +244,7 @@ public sealed class CollectionRunIdentityBackfillTests(PostgreSql18Fixture fixtu
         Assert.Equal(0L, rows.GetInt64(3));
         Assert.False(rows.GetBoolean(4));
         Assert.False(rows.GetBoolean(5));
+        Assert.False(rows.GetBoolean(6));
+        Assert.False(rows.GetBoolean(7));
     }
 }

@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0190`
+The migration catalog contains the exact, contiguous `0001` through `0191`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -456,6 +456,14 @@ until `complete=true`. Review `system.collection_run_identity_backfill` for
 checked and copied counts. Each batch verifies original/successor row equality
 and identity timestamp; an error leaves its cursor unchanged. The cursor is
 copy progress, not a fleet-wide identity or foreign-key cutover attestation.
+Migration `0191` adds
+`control.verify_collection_run_identity_window(target, collector, from, to, max_rows)`.
+Call it under the migrator role and matching target scope after both backfills
+complete. Each window must fit one UTC day and 100,000 successor rows. It
+checks ordered run IDs and start times against the bridge under one snapshot;
+a missing identity fails parity. This is a per-window check, not the fenced
+fleet-wide gate needed before moving child foreign keys.
+
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
