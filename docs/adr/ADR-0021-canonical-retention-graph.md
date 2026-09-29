@@ -277,6 +277,12 @@ explicit identity backfill and parity check. No child foreign key moves in
 this migration; the original run table remains canonical. A populated
 PostgreSQL test confirms the bridge FK blocks detaching a successor day while
 its run ID is still referenced by the bridge.
+Migration 0190 adds an explicit migrator-only, target-scoped bridge backfill
+after the successor copy completes. It follows the original run keyset in
+batches of at most 1,000, compares each complete original row with its
+successor, and verifies each copied or already-mirrored identity. A mismatch
+rolls back the batch and cursor. A completed cursor is still not a global
+identity parity or foreign-key cutover certificate.
 
 ## Implementation gates
 
