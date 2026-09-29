@@ -474,6 +474,19 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Contains(databases.Issues, issue => issue.Detail == "Database 2: RecoveryPending");
         Assert.Contains("Database state issue list partial", databases.Gaps);
         Assert.Contains("Overview issue list partial", databases.Gaps);
+        DateTimeOffset largeAlertWindowEnd = DateTimeOffset.UtcNow;
+        OverviewTargetEvidence directLargeAlerts = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, largeAlertWindowEnd.AddHours(-1), largeAlertWindowEnd),
+            CancellationToken.None)).Evidence);
+        OverviewTargetEvidence latestLargeAlerts = Assert.Single((await overview.ReadAsync(
+            new(authorization, target, largeAlertWindowEnd.AddHours(-1), largeAlertWindowEnd, true),
+            CancellationToken.None)).Evidence);
+        Assert.Equal(4001, latestLargeAlerts.ActiveAlerts.Value);
+        Assert.Equal("current", latestLargeAlerts.ActiveAlerts.State);
+        Assert.True(directLargeAlerts.ActiveAlerts.Value is null or <= 4000);
+        Assert.NotEqual("current", directLargeAlerts.ActiveAlerts.State);
+        Assert.Contains(directLargeAlerts.Gaps, gap =>
+            gap is "Alert count is a lower bound" or "Alerts unavailable");
 
         await using (var disable = database.DataSource.CreateCommand("""
             UPDATE control.collector_schedule SET enabled=false

@@ -136,7 +136,9 @@ the direct source composition with an explicit gap. This switch is for parity
 validation, not a claim that response parity or fleet latency has passed.
 The repository boundary fixture now verifies an exact active-alert count above
 the live composition's 4,000-row paging bound while the issue list remains
-bounded.
+bounded. In the application-service comparison at 4,001 active alerts, the
+opt-in result remains exact and current; direct composition returns a bounded
+lower count or an unavailable alert read with an explicit gap.
 On a populated target with one active alert and one blocked session, the real
 application service returns the same counts and alert/blocking issue summaries
 through direct composition and the opt-in latest-status read. This is limited
