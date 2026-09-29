@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0213`
+The migration catalog contains the exact, contiguous `0001` through `0263`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -570,6 +570,22 @@ Migration `0213` adds one default-original route for both M10 analytics
 readers. After complete fleet backfill and parity certificates, the migrator
 can call `control.set_collection_run_v2_m10_read_route(true, max_pairs)` under
 the writer fence. Passing `false` restores original-run reads.
+
+Migrations `0259`–`0263` stage and activate database inventory version 2 so
+health reads can include SQL Server's `log_reuse_wait_desc`. Apply all five
+repository migrations before deploying the new Collector. For an existing
+fleet, stop the old Collector processes and let every active version-1
+`database.inventory` run finish. The new Collector reconciles its pinned
+19-entry catalog under the catalog lease; that transaction refuses a pending
+version-1 inventory run, then switches existing schedules to version 2. New
+targets follow the same activated version. The version-2 claim gate admits
+only workers that completed this reconciliation, so an older process cannot
+start a version-2 inventory run during a mixed-process rollout. If activation
+keeps failing because an old run is pending, use the old Collector to complete
+or recover that run; do not edit the schedule or run history by hand. Verify
+the activation row, inventory schedule versions, and a successful version-2
+collection before treating the new field as current evidence. Older snapshots
+continue to show the field as uncollected.
 
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
