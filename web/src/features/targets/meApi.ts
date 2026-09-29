@@ -50,6 +50,11 @@ export function canAcknowledgeAlert(access: MyAccess | undefined, targetId: stri
     && (access.targetRoles.includes("Operator") || access.targetRoles.includes("TargetAdministrator"));
 }
 
+export function canManageAlertRules(access: MyAccess | undefined, targetId: string): boolean {
+  return access?.active === true && access.targetId?.toLowerCase() === targetId.toLowerCase()
+    && access.targetRoles.includes("TargetAdministrator");
+}
+
 export function canReadQueryText(access: MyAccess | undefined, targetId: string): boolean {
   return access?.active === true && access.targetId?.toLowerCase() === targetId.toLowerCase()
     && access.targetRoles.includes("QueryTextReader")

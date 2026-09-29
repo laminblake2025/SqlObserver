@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAcknowledgeAlert, canReadQueryText, canRegisterTarget, getMyAccess, parseMyAccess } from "../src/features/targets/meApi.ts";
+import { canAcknowledgeAlert, canManageAlertRules, canReadQueryText, canRegisterTarget, getMyAccess, parseMyAccess } from "../src/features/targets/meApi.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
 const other = "22222222-2222-4222-8222-222222222222";
@@ -37,6 +37,15 @@ test("query text action requires both read and QueryTextReader on the exact targ
   assert.equal(canReadQueryText(allowed, target), true);
   assert.equal(canReadQueryText(allowed, other), false);
   assert.equal(canReadQueryText(undefined, target), false);
+});
+
+test("rule administration requires TargetAdministrator on the exact target", () => {
+  const mixed = parseMyAccess(scoped, target);
+  assert.equal(canManageAlertRules(mixed, target), false);
+  const allowed = parseMyAccess({ ...scoped, targetRoles: ["TargetAdministrator"] }, target);
+  assert.equal(canManageAlertRules(allowed, target), true);
+  assert.equal(canManageAlertRules(allowed, other), false);
+  assert.equal(canManageAlertRules(undefined, target), false);
 });
 
 test("access lookup sends the selected target and refuses an unrelated response", async () => {

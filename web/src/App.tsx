@@ -10,6 +10,7 @@ import { useTimeDisplay } from "./TimeDisplayContext";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetWaitsPanel } from "./features/activity/TargetWaitsPanel";
 import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
+import { TargetAlertRulesPanel } from "./features/alerts/TargetAlertRulesPanel";
 import { FleetAlertsPage } from "./features/alerts/FleetAlertsPage";
 import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
 import { TargetHealthPanel } from "./features/health/TargetHealthPanel";
@@ -23,7 +24,7 @@ import { ReportsPanel } from "./features/reports/ReportsPanel";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
 import { ServersPage } from "./features/targets/ServersPage";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
-import { canAcknowledgeAlert, canReadQueryText, canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
+import { canAcknowledgeAlert, canManageAlertRules, canReadQueryText, canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { activityHistoryHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
@@ -180,14 +181,15 @@ export function App() {
   };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
   const canAddServer = canRegisterTarget(myAccess);
+  const canManageRules = canManageAlertRules(myAccess, route.target);
   const queryWindow = useMemo(
     () => resolveQueryWindow(scope, Date.now()),
     [route.page, scope.target, scope.range, scope.from, scope.to, slowRefresh],
   );
-  const currentNavigation = route.page === "health" ? "servers" : route.page;
+  const currentNavigation = route.page === "health" ? "servers" : route.page === "rules" ? "alerts" : route.page;
   const routeHref = (page: Destination, target = route.target) => overviewHref(scope, page, target);
   const closeTarget = () => {
-    location.hash = route.page === "alerts" ? routeHref("alerts", "") : routeHref("overview", route.target);
+    location.hash = route.page === "alerts" || route.page === "rules" ? routeHref("alerts", route.page === "rules" ? route.target : "") : routeHref("overview", route.target);
   };
   const props = selected
     ? { instanceId: selected.instanceId, displayName: selected.displayName, onClose: closeTarget }
@@ -312,7 +314,8 @@ export function App() {
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
               {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh} />}
-              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} />}
+              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} />}
+              {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={slowRefresh} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}

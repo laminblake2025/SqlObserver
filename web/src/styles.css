@@ -150,6 +150,11 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .health-screen { display: grid; gap: 20px; padding: 0; }
 .screen-intro, .health-heading-row, .collector-title-row, .detail-heading, .operation-card-heading, .table-card-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
 .screen-intro { margin-bottom: 22px; }
+.screen-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rule-details { margin: 0; display: grid; gap: 10px; }
+.rule-details > div { display: grid; grid-template-columns: minmax(125px, .7fr) 1fr; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.rule-details dt { color: var(--muted); }
+.rule-details dd { margin: 0; overflow-wrap: anywhere; }
 .screen-intro p:not(.eyebrow), .screen-subtitle { max-width: 760px; margin-bottom: 0; color: var(--muted); }
 .health-heading-row { margin-bottom: 16px; }
 .health-heading-row h3, .health-heading-row h2 { margin-bottom: 4px; }
