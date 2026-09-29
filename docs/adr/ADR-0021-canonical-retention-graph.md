@@ -412,6 +412,9 @@ commit transaction, including replay; other collector commit paths remain on
 their original run lookups until routed explicitly.
 Migration 0219 applies the same locking lookup to buffer-node PLE and Query
 Store group commits. Their fenced replay and payload logic is otherwise retained.
+Migration 0220 applies the lookup to the M9 operational-health and M10 lifecycle
+commit functions. The writer remains the original relation; this prepares both
+commit families for a later coordinated writer switch.
 
 ## Implementation gates
 

@@ -172,6 +172,43 @@ public sealed partial class M9OperationalHealthPostgreSqlIntegrationFixtureTests
         CollectorRunCommitResult committed = await runtime.CommitRunAsync(new CommitCollectorRunRequest(work, summary, payload, CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(10))), CancellationToken.None);
         Assert.Equal(CollectorRunCommitStatus.Committed, committed.Status);
 
+        await using (NpgsqlConnection route = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", route))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", route))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteScalarAsync();
+            }
+            await using (NpgsqlTransaction backfill = await route.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@target,10);", route, backfill);
+                    copy.Parameters.AddWithValue("target", target);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,'tempdb.health',
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run)),
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run))
+                        + interval '1 day',10);
+                    """, route, backfill);
+                certificate.Parameters.AddWithValue("target", target);
+                certificate.Parameters.AddWithValue("run", run.Value);
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                await backfill.CommitAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", route);
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        }
+
         CollectorRunCommitResult replay = await runtime.CommitRunAsync(new CommitCollectorRunRequest(work, summary, payload, CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(10))), CancellationToken.None);
         Assert.Equal(CollectorRunCommitStatus.Replayed, replay.Status);
         CollectorRunSummary divergentSummary = new(run, new MonitoredInstanceId(target), work.TargetRevision, work.CollectorId, work.CollectorManifestVersion, work.OutputSchemaVersion, CollectorRunOutcome.OutputInvalid, CollectorRunReason.OutputValidationFailed, TimeSpan.FromMilliseconds(1), 1, new CollectorRunAccounting(1, 1, 1, 1), new CollectorLossEvidence(CollectorLossKind.OutputValidationFailure, 1, true, 1));

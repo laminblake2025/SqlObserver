@@ -272,10 +272,12 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             WHERE namespace.nspname='control'
               AND procedure.proname IN ('commit_sql_volume_collection_run',
                                         'commit_buffer_node_ple_collection_run',
-                                        'commit_query_store_group_collection_run')
+                                        'commit_query_store_group_collection_run',
+                                        'commit_m9_collection_run',
+                                        'commit_m10_collection_run')
               AND procedure.prosrc LIKE '%FROM telemetry.lock_collection_run_runtime(p_run_id)%';
             """, connection))
-            Assert.Equal(3L, await lockedCommitRoutes.ExecuteScalarAsync());
+            Assert.Equal(5L, await lockedCommitRoutes.ExecuteScalarAsync());
         async Task<string> ReadRun(string source)
         {
             await using var command = new NpgsqlCommand(source switch
@@ -400,6 +402,64 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         Guid firstWaitRun = Guid.NewGuid(), secondWaitRun = Guid.NewGuid();
         await AssertWaitSummaryAsync(firstWaitRun, at.AddSeconds(1), 100, null);
         await AssertWaitSummaryAsync(secondWaitRun, at.AddSeconds(2), 125, firstWaitRun);
+        Guid m10Run = Guid.NewGuid(), m10Owner = Guid.NewGuid();
+        DateTimeOffset m10ScheduledAt = at.AddSeconds(3);
+        string m10WorkKey = $"collector/run/host.metrics/{target.Value:N}";
+        await using (var seedM10Replay = new NpgsqlCommand("""
+            INSERT INTO telemetry.collection_run
+             (run_id,instance_id,collector_id,collector_version,output_schema_version,
+              target_revision,schedule_revision,work_key,owner_execution_id,
+              fencing_token,request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'host.metrics',1,1,1,1,@work,@owner,1,
+                    decode(repeat('aa',32),'hex'),@scheduled,@scheduled);
+            INSERT INTO telemetry.collection_run_outcome
+             (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+              source_row_count,output_item_count,inserted_item_count,
+              duplicate_item_count,rejected_item_count,response_bytes,
+              output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,
+              loss_count_exact,lost_row_count,lost_byte_count,completion_digest,completed_at)
+            VALUES (@run,'unsupported','target_unsupported',1,0,10,0,0,0,0,0,
+                    0,0,0,false,false,'none',true,0,0,
+                    decode(repeat('cc',32),'hex'),@scheduled+interval '1 second');
+            INSERT INTO control.worker_lease
+             (work_key,owner_execution_id,fencing_token,acquired_at,renewed_at,expires_at)
+            VALUES (@work,@owner,1,clock_timestamp(),clock_timestamp(),
+                    clock_timestamp()+interval '1 minute');
+            """, connection))
+        {
+            seedM10Replay.Parameters.AddWithValue("run", m10Run);
+            seedM10Replay.Parameters.AddWithValue("target", target.Value);
+            seedM10Replay.Parameters.AddWithValue("work", m10WorkKey);
+            seedM10Replay.Parameters.AddWithValue("owner", m10Owner);
+            seedM10Replay.Parameters.AddWithValue("scheduled", m10ScheduledAt);
+            await seedM10Replay.ExecuteNonQueryAsync();
+        }
+        await using (var replayM10 = new NpgsqlCommand("""
+            SELECT result_status FROM control.commit_m10_collection_run(
+              @run,@target,1::bigint,'host.metrics',1,1,1::bigint,@scheduled,
+              @work,@owner,1::bigint,decode(repeat('aa',32),'hex'),
+              'unsupported','target_unsupported',10::bigint,1,0,0,
+              0::bigint,0::bigint,'none',0,true,0,'closed',0,
+              @payload::jsonb,decode(repeat('cc',32),'hex'));
+            """, collectorConnection))
+        {
+            replayM10.Parameters.AddWithValue("run", m10Run);
+            replayM10.Parameters.AddWithValue("target", target.Value);
+            replayM10.Parameters.AddWithValue("scheduled", m10ScheduledAt);
+            replayM10.Parameters.AddWithValue("work", m10WorkKey);
+            replayM10.Parameters.AddWithValue("owner", m10Owner);
+            replayM10.Parameters.AddWithValue("payload", NpgsqlTypes.NpgsqlDbType.Jsonb,
+                JsonSerializer.Serialize(new
+                {
+                    schemaVersion = 1,
+                    targetId = target.Value.ToString(),
+                    targetRevision = 1,
+                    items = Array.Empty<object>(),
+                    outcome = "unsupported",
+                    reason = "target_unsupported"
+                }));
+            Assert.Equal("replayed", await replayM10.ExecuteScalarAsync());
+        }
         Guid originalOwner;
         await using (var runOwner = new NpgsqlCommand(
             "SELECT owner_execution_id FROM telemetry.collection_run WHERE run_id=@run;",
