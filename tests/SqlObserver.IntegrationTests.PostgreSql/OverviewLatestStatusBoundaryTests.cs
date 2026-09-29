@@ -339,6 +339,41 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             resource => resource.Label == "Wait · Lock").Value);
         Assert.DoesNotContain(mixed.Resources, resource => resource.Label == "Wait · Log");
         Assert.Contains("Comparable wait evidence partial", mixed.Gaps);
+
+        await SeedTempDbRunAsync(database.DataSource, target, Guid.NewGuid(),
+            DateTimeOffset.UtcNow, 1, 1000, false);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus tempComplete = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("current", tempComplete.Sources["tempDb"].State);
+        Assert.Equal(50, Assert.Single(tempComplete.Resources,
+            resource => resource.Label == "TempDB used").Value);
+
+        await SeedTempDbRunAsync(database.DataSource, target, Guid.NewGuid(),
+            DateTimeOffset.UtcNow, 2, 1500, true);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus tempPartial = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("partial", tempPartial.Sources["tempDb"].State);
+        Assert.Equal(75, Assert.Single(tempPartial.Resources,
+            resource => resource.Label == "TempDB used").Value);
+        Assert.Contains("TempDB evidence partial", tempPartial.Gaps);
+
+        await SeedTempDbRunAsync(database.DataSource, target, Guid.NewGuid(),
+            DateTimeOffset.UtcNow, 1, 2500, false);
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus tempInvalid = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("degraded", tempInvalid.Sources["tempDb"].State);
+        Assert.Null(Assert.Single(tempInvalid.Resources,
+            resource => resource.Label == "TempDB used").Value);
+        Assert.Contains("TempDB evidence degraded", tempInvalid.Gaps);
     }
 
     [Fact]
@@ -578,6 +613,52 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         command.Parameters.AddWithValue("tasks", tasks);
         command.Parameters.AddWithValue("wait", waitMilliseconds);
         command.Parameters.AddWithValue("includeLog", includeLog);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task SeedTempDbRunAsync(NpgsqlDataSource source, Guid target,
+        Guid run, DateTimeOffset at, short state, long usedBytes, bool truncated)
+    {
+        await using var command = source.CreateCommand("""
+            INSERT INTO telemetry.collection_run
+                (run_id,instance_id,collector_id,collector_version,output_schema_version,
+                 target_revision,schedule_revision,work_key,owner_execution_id,
+                 fencing_token,request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'tempdb.health',1,1,1,1,@work,@owner,1,
+                    decode(repeat('a1',32),'hex'),@at,@at);
+            INSERT INTO telemetry.collection_run_outcome
+                (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+                 source_row_count,output_item_count,inserted_item_count,
+                 duplicate_item_count,rejected_item_count,response_bytes,
+                 output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,
+                 loss_count_exact,lost_row_count,lost_byte_count,completion_digest,
+                 completed_at)
+            VALUES (@run,CASE WHEN @state=2 THEN 'partial' ELSE 'succeeded' END,
+                    CASE WHEN @state=2 THEN 'source_row_limit' ELSE 'completed' END,
+                    1,0,10,1,1,1,0,0,128,128,128,
+                    @truncated,@truncated,
+                    CASE WHEN @truncated THEN 'source_row_limit' ELSE 'none' END,
+                    true,CASE WHEN @truncated THEN 1 ELSE 0 END,0,
+                    decode(repeat('a2',32),'hex'),@at);
+            INSERT INTO telemetry.m9_commit_replay
+                (run_id,instance_id,target_revision,collector_id,collector_version,
+                 output_schema_version,request_digest,payload_digest,
+                 m9_observation_state)
+            VALUES (@run,@target,1,'tempdb.health',1,1,
+                    decode(repeat('a1',32),'hex'),decode(repeat('a2',32),'hex'),@state);
+            INSERT INTO telemetry.tempdb_snapshot
+                (instance_id,target_revision,run_id,observed_at,state,
+                 total_bytes,used_bytes,log_total_bytes,log_used_bytes,truncated)
+            VALUES (@target,1,@run,@at,@state,2000,@used,1000,500,@truncated);
+            """);
+        command.Parameters.AddWithValue("run", run);
+        command.Parameters.AddWithValue("target", target);
+        command.Parameters.AddWithValue("work", $"collector/run/tempdb.health/{target:N}");
+        command.Parameters.AddWithValue("owner", Guid.NewGuid());
+        command.Parameters.AddWithValue("at", at);
+        command.Parameters.AddWithValue("state", state);
+        command.Parameters.AddWithValue("used", usedBytes);
+        command.Parameters.AddWithValue("truncated", truncated);
         await command.ExecuteNonQueryAsync();
     }
 
