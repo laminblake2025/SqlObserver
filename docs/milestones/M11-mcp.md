@@ -68,10 +68,10 @@ It returns the complete bounded definition list without pagination. Definitions
 describe supported inputs; they do not report available samples or collection
 coverage on any instance.
 
-For `get_storage_forecast` with a `host.volume.*` metric, pass the exact opaque
-`dimensions.volume` fingerprint from a matching `get_metric_series` item as
-`volumeFingerprint`. Other forecast metrics use no dimensions. The fingerprint
-does not expose the volume name or filesystem path.
+For `get_storage_forecast` with a `host.volume.*` metric, find the matching
+`get_metric_series` item's `dimensions` entry whose `key` is `volume` and pass
+its opaque `value` as `volumeFingerprint`. Other forecast metrics use no
+dimensions. The fingerprint does not expose the volume name or filesystem path.
 
 `list_incidents` discovers thread IDs within a UTC opening-time window of up to
 31 days (default: last 24 hours), with at most 100 items per page. It returns

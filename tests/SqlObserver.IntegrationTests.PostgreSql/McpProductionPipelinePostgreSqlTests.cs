@@ -16,6 +16,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Npgsql;
 using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Analytics;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Infrastructure.PostgreSql;
 
@@ -40,6 +41,8 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
 
         Guid[] targetIds = [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()];
         Guid incidentEvidenceThreadId = Guid.NewGuid();
+        string selectedVolume = new('a', 64);
+        string otherVolume = new('b', 64);
         await using (NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync())
         {
             foreach (Guid targetId in targetIds)
@@ -84,6 +87,31 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 """, admin);
             otherForecast.Parameters.AddWithValue("target", targetIds[1]);
             await otherForecast.ExecuteNonQueryAsync();
+            foreach (var (target, volume, model) in new[]
+            {
+                (targetIds[0], selectedVolume, "selected-volume"),
+                (targetIds[0], otherVolume, "other-volume"),
+                (targetIds[1], selectedVolume, "other-target-volume"),
+            })
+            {
+                await using var volumeForecast = new NpgsqlCommand("""
+                    INSERT INTO analytics.metric_forecast
+                        (forecast_id, instance_id, target_revision, metric_key, horizon_start, horizon_end,
+                         model, predicted_value, lower_bound, upper_bound, confidence, residual,
+                         slope_per_day, source_generation, visibility_state, dimensions, dimension_hash, computed_at)
+                    VALUES (gen_random_uuid(), @target, 1, 'host.volume.free_bytes',
+                            statement_timestamp() - interval '1 minute', statement_timestamp() + interval '1 hour',
+                            @model, 42, 41, 43, 1, 0, 0, 1, 'complete',
+                            jsonb_build_object('volume', @volume), @dimension_hash,
+                            statement_timestamp() - interval '1 minute');
+                    """, admin);
+                volumeForecast.Parameters.AddWithValue("target", target);
+                volumeForecast.Parameters.AddWithValue("volume", volume);
+                volumeForecast.Parameters.AddWithValue("model", model);
+                volumeForecast.Parameters.AddWithValue("dimension_hash", Convert.FromHexString(
+                    CanonicalDimensions.Sha256(new Dictionary<string, string> { ["volume"] = volume })));
+                await volumeForecast.ExecuteNonQueryAsync();
+            }
             await using var diagnosticEvents = new NpgsqlCommand("""
                 INSERT INTO events.diagnostic_event
                     (occurred_at, event_id, instance_id, event_kind, severity, safe_metadata, collected_at)
@@ -258,6 +286,22 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
                 metricSeries.Parameters.AddWithValue("host", Guid.NewGuid());
                 metricSeries.Parameters.AddWithValue("other_target", targetId != targetIds[0]);
                 await metricSeries.ExecuteNonQueryAsync();
+                if (targetId == targetIds[0])
+                {
+                    await using var volumeSample = new NpgsqlCommand("""
+                        INSERT INTO telemetry.host_metric_snapshot_v2
+                            (observed_at, run_id, instance_id, target_revision, host_id,
+                             binding_revision, profile_revision, metric_key, metric_value,
+                             dimensions, collected_at)
+                        SELECT statement_timestamp() - interval '2 minutes', gen_random_uuid(),
+                               @target, 1, host_id, 1, 1, 'host.volume.free_bytes', 1024,
+                               jsonb_build_object('volume', @volume), statement_timestamp() - interval '2 minutes'
+                        FROM control.host_binding WHERE instance_id = @target;
+                        """, admin);
+                    volumeSample.Parameters.AddWithValue("target", targetId);
+                    volumeSample.Parameters.AddWithValue("volume", selectedVolume);
+                    await volumeSample.ExecuteNonQueryAsync();
+                }
             }
         }
 
@@ -392,6 +436,45 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             if (paged) Assert.Equal(expectedPages, seenIds.Count);
             if (incidentEvidence) Assert.Equal(expectedPages, seenGenerations.Count);
         }
+
+        Dictionary<string, JsonElement> volumeSeriesArguments = ArgumentsFor(
+            "get_metric_series", targetIds[0], incidentEvidenceThreadId);
+        volumeSeriesArguments["metricKey"] = JsonSerializer.SerializeToElement("host.volume.free_bytes");
+        CallToolResult volumeSeries = await client.CallToolAsync(new CallToolRequestParams
+        {
+            Name = "get_metric_series", Arguments = volumeSeriesArguments,
+        });
+        Assert.False(volumeSeries.IsError);
+        JsonElement volumeSeriesOutput = Assert.IsType<JsonElement>(volumeSeries.StructuredContent);
+        Assert.True(JsonSchema.Build(Assert.IsType<JsonElement>(Assert.Single(tools, x => x.Name == "get_metric_series").ProtocolTool.OutputSchema))
+            .Evaluate(volumeSeriesOutput).IsValid);
+        JsonElement volumeDimension = Assert.Single(Assert.Single(volumeSeriesOutput.GetProperty("data")
+            .GetProperty("items").EnumerateArray()).GetProperty("dimensions").EnumerateArray());
+        Assert.Equal("volume", volumeDimension.GetProperty("key").GetString());
+        string volumeFingerprint = volumeDimension.GetProperty("value").GetString()!;
+        Assert.Equal(selectedVolume, volumeFingerprint);
+        totalCalls++;
+        Assert.Equal(withCursorSigner ? 4 : 2, await AuditCountAsync(auditConnection, "get_metric_series"));
+
+        Dictionary<string, JsonElement> volumeForecastArguments = ArgumentsFor(
+            "get_storage_forecast", targetIds[0], incidentEvidenceThreadId);
+        volumeForecastArguments["metricKey"] = JsonSerializer.SerializeToElement("host.volume.free_bytes");
+        volumeForecastArguments["volumeFingerprint"] = JsonSerializer.SerializeToElement(volumeFingerprint);
+        CallToolResult selectedForecast = await client.CallToolAsync(new CallToolRequestParams
+        {
+            Name = "get_storage_forecast", Arguments = volumeForecastArguments,
+        });
+        Assert.False(selectedForecast.IsError);
+        JsonElement selectedForecastOutput = Assert.IsType<JsonElement>(selectedForecast.StructuredContent);
+        Assert.True(JsonSchema.Build(Assert.IsType<JsonElement>(Assert.Single(tools, x => x.Name == "get_storage_forecast").ProtocolTool.OutputSchema))
+            .Evaluate(selectedForecastOutput).IsValid);
+        JsonElement selectedForecastItem = Assert.Single(selectedForecastOutput.GetProperty("data")
+            .GetProperty("items").EnumerateArray());
+        Assert.Equal("selected-volume", selectedForecastItem.GetProperty("model").GetString());
+        Assert.Equal(CanonicalDimensions.Sha256(new Dictionary<string, string> { ["volume"] = selectedVolume }),
+            selectedForecastItem.GetProperty("dimensionsSha256").GetString());
+        totalCalls++;
+        Assert.Equal(withCursorSigner ? 4 : 2, await AuditCountAsync(auditConnection, "get_storage_forecast"));
 
         await using NpgsqlCommand count = database.DataSource.CreateCommand(
             "SELECT count(*) FROM audit.mcp_invocation;");

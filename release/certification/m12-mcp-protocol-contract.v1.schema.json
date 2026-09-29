@@ -11,7 +11,7 @@
     "currentProtocol": { "const": "2026-07-28" },
     "downlevelProtocol": { "const": "2025-11-25" },
     "toolCount": { "const": 27 },
-    "catalogDigest": { "const": "D9AFF561145F357A06A5E722A296136AABAF7DDFB04A988DF69F63D5459231DD" },
-    "serverVersion": { "const": "m11-2.2.0+catalog-D9AFF561145F357A06A5E722A296136AABAF7DDFB04A988DF69F63D5459231DD" }
+    "catalogDigest": { "const": "583DCA6CF1A4C471C7D219048A3C7EC121E967BE17B5B3047C069D2745B2AF51" },
+    "serverVersion": { "const": "m11-2.2.0+catalog-583DCA6CF1A4C471C7D219048A3C7EC121E967BE17B5B3047C069D2745B2AF51" }
   }
 }

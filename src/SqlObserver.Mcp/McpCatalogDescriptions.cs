@@ -44,7 +44,7 @@ internal static class McpCatalogDescriptions
         "eventId" => "Deadlock event UUID returned by search_deadlocks for this instance.",
         "threadId" => "Incident thread UUID returned by list_incidents for this same instance.",
         "horizonDays" => "Maximum stored forecast horizon in whole days, from 1 to 366; defaults to 30. This selects stored results and does not create or refresh a forecast.",
-        "volumeFingerprint" => "Exact lowercase 64-character opaque volume fingerprint returned in a host.volume.* get_metric_series item's dimensions.volume. Required for volume forecasts and invalid for other metrics; it is not a filesystem path or volume name.",
+        "volumeFingerprint" => "Exact lowercase 64-character opaque fingerprint from the get_metric_series item's dimensions entry whose key is volume; use that entry's value. Required for host.volume.* forecasts and invalid for other metrics; it is not a filesystem path or volume name.",
         "metric" => "Metric used to rank query observations: cpuMilliseconds, durationMilliseconds, executions, logicalReads, writes, or rows. Check each result's source and semantics before interpreting its value.",
         "databaseId" => "SQL Server database ID, from 1 to 32767, taken from the selected query or plan identity. It must belong to instanceId.",
         "queryFingerprint" => "Opaque 64-character hexadecimal query fingerprint returned by get_top_queries or get_query_history. Use it with the same instanceId and databaseId; this is not SQL text.",
