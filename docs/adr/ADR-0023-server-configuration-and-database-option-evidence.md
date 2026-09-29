@@ -130,3 +130,10 @@ purpose-bound API HMAC signer. A configured `SqlObserver:Api:CursorSigningKey`
 keeps cursors valid across server processes; without one, a process-local key
 allows paging until restart and logs the limitation. No configuration data is
 published by these read-path changes alone.
+
+The staged source query now has separate pinned SQL Server 15, 16, and 17
+assets and a bounded parser that withholds a truncated or invalid scan. It
+accepts only exact integer and bit source types until a lab run qualifies the
+actual catalog values on all three versions. The query is not registered as a
+collector or scheduled yet; the lab connection was unavailable during this
+source-only change.

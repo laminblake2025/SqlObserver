@@ -4,6 +4,9 @@
     <AssemblyName>SqlObserver.Infrastructure.SqlServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../collectors/sql/engine.configurations.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationSourceAssets.engine.configurations.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.configurations.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationSourceAssets.engine.configurations.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.configurations.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationSourceAssets.engine.configurations.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/query-store-groups/collector.assets-v1.sha256">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.collector.assets-v1.sha256</LogicalName>
     </EmbeddedResource>
