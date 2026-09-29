@@ -31,11 +31,13 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     [InlineData(16)]
     [InlineData(17)]
     [InlineData(18)]
+    [InlineData(19)]
     public async Task FreshRepositoryAcceptsTheActualUpdatedApplicationCatalog(int count)
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(MigrationBatchResult.MaximumResults);
         await using ServiceProvider application = CreateApplication();
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(count).ToArray();
+        if (count < 19) entries = WithLegacyInventory(entries);
         Assert.Equal(UpdatedBundle, SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.All(entries.Skip(3).Take(4), entry => Assert.Equal(UpdatedBundle, entry.AssetBundleDigest.Value));
         if (count == 15)
@@ -52,6 +54,11 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         Assert.Equal(0, result.InsertedCount);
         Assert.Equal(0, result.UpdatedCount);
         Assert.Equal(count, result.UnchangedCount);
+        if (count == 19)
+        {
+            Assert.Equal(2, entries[1].Manifest.ManifestVersion.Value);
+            Assert.Equal(2, entries[1].Manifest.OutputSchemaVersion.Value);
+        }
         await AssertAppendOnlyTriggerAsync(database);
     }
 
@@ -103,7 +110,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         WorkerLeaseIdentity lease = await AcquireCatalogLeaseAsync(collector);
-        Assert.Equal(18, (await new PostgreSqlCollectorRuntimeRepositoryPort(collector)
+        Assert.Equal(19, (await new PostgreSqlCollectorRuntimeRepositoryPort(collector)
             .ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
         Assert.False(await EnabledAsync());
         Assert.False(await GroupEnabledAsync());
@@ -138,7 +145,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         string historyBefore = await ReadHistoryAndSchedulesAsync(database);
         Assert.Equal(Enumerable.Repeat(PriorBundle, 4).Append(PriorReplicationBundle), await ReadRepairedBundlesAsync(database));
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray();
+        CollectorCatalogEntry[] entries = WithLegacyInventory(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
         CollectorCatalogEntry[] frozenM9Entries = WithHistoricalQueryBundle(
             WithActivityBundle(WithBackupBundle(WithBackupManifest(
                 WithCoreBundle(entries, "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c"),
@@ -297,6 +304,17 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
                 new CollectorSha256Digest("d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69"),
                 new CollectorSha256Digest("ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f"))
             : entry).ToArray();
+
+    private static CollectorCatalogEntry[] WithLegacyInventory(CollectorCatalogEntry[] entries)
+    {
+        SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadEmbedded();
+        SqlServerCollectorAsset inventory = catalog.Get(new SqlObserver.Domain.Capabilities.CollectorId("database.inventory"));
+        CollectorCatalogEntry[] copy = entries.ToArray();
+        copy[1] = new CollectorCatalogEntry(2, inventory.Manifest,
+            new CollectorSha256Digest(inventory.ManifestChecksum),
+            new CollectorSha256Digest(catalog.BundleChecksum));
+        return copy;
+    }
 
     private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync(int maximum)
     {

@@ -24,7 +24,8 @@ public sealed partial class PassiveCollectorBundleMigrationTests
             .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
         Assert.False(result.HasFailures);
         Assert.Equal(114, Assert.Single(result.Results).Migration.Number.Value);
-        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4),
+        // Migration 0243 advances this bundle again; 0114 must retain its own pin.
+        Assert.Equal(Enumerable.Repeat("5ab54f5ac93eb67a2626d0c005fc15cda9289d7fc0e3b083c52e7fc58a1a0987", 4),
             await ReadBackupBundlesAsync(database));
         Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
@@ -35,7 +36,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         Assert.False(remaining.HasFailures);
 
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray();
+        CollectorCatalogEntry[] entries = WithLegacyInventory(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);

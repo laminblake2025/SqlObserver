@@ -112,8 +112,8 @@ public static class CollectorServiceRegistration
         services.AddSingleton(static _ => SqlServerCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerCoreEngineCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
-        services.AddSingleton(static provider => new SqlServerDatabaseInventoryCollector(
-            provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
+        services.AddSingleton(static _ => new SqlServerDatabaseInventoryCollector(
+            SqlServerCollectorAssetCatalog.LoadVersion2Embedded()));
         services.AddSingleton(static provider => new SqlServerDatabaseFilesCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
         services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
@@ -236,7 +236,10 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>();
         var bundleDigest = new CollectorSha256Digest(catalog.BundleChecksum);
         SqlServerCollectorAsset coreAsset = catalog.Get(CollectorCatalogIds.EngineCore);
-        SqlServerCollectorAsset inventoryAsset = catalog.Get(CollectorCatalogIds.DatabaseInventory);
+        SqlServerCollectorAssetCatalog inventoryV2Catalog =
+            SqlServerCollectorAssetCatalog.LoadVersion2Embedded();
+        SqlServerCollectorAsset inventoryAsset = inventoryV2Catalog.Get(CollectorCatalogIds.DatabaseInventory);
+        var inventoryV2BundleDigest = new CollectorSha256Digest(inventoryV2Catalog.BundleChecksum);
         SqlServerCollectorAsset filesAsset = catalog.Get(CollectorCatalogIds.DatabaseFiles);
         SqlServerActivityCollectorAssetCatalog activityCatalog =
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>();
@@ -273,9 +276,9 @@ public static class CollectorServiceRegistration
             new CollectorRegistration(
                 executionOrder: 2,
                 provider.GetRequiredService<SqlServerDatabaseInventoryCollector>(),
-                new CollectorOutputValidator(SqlServerDatabaseInventoryCollector.OutputContract),
+                new CollectorOutputValidator(SqlServerDatabaseInventoryCollector.Version2OutputContract),
                 new CollectorSha256Digest(inventoryAsset.ManifestChecksum),
-                bundleDigest),
+                inventoryV2BundleDigest),
             new CollectorRegistration(
                 executionOrder: 3,
                 provider.GetRequiredService<SqlServerDatabaseFilesCollector>(),

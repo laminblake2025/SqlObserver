@@ -359,30 +359,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
         await CommitSuccessAsync(runtime, leases, engine, CreateEnginePayload(engine));
 
-        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
-        await using (var upgrade = new NpgsqlCommand("""
-            SET ROLE sqlobserver_migrator;
-            INSERT INTO control.collector_contract
-                (collector_id,collector_version,execution_order,manifest_schema_version,
-                 output_schema_version,manifest_sha256,asset_bundle_sha256,
-                 default_interval,minimum_interval,execution_timeout,maximum_rows,
-                 maximum_response_bytes,estimated_cost,maximum_attempts,
-                 circuit_failure_threshold,circuit_open_interval)
-            SELECT collector_id,2,20,manifest_schema_version,2,manifest_sha256,
-                   asset_bundle_sha256,default_interval,minimum_interval,
-                   execution_timeout,maximum_rows,maximum_response_bytes,
-                   estimated_cost,maximum_attempts,circuit_failure_threshold,
-                   circuit_open_interval
-            FROM control.collector_contract
-            WHERE collector_id='database.inventory' AND collector_version=1;
-            UPDATE control.collector_schedule
-            SET collector_version=2,schedule_revision=schedule_revision+1
-            WHERE instance_id=@target AND collector_id='database.inventory';
-            """, connection))
-        {
-            upgrade.Parameters.AddWithValue("target", targetId.Value);
-            await upgrade.ExecuteNonQueryAsync();
-        }
+        await ActivateInventoryV2Async(database, leases);
 
         CollectorDueWorkItem work = Assert.Single((await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
@@ -435,18 +412,6 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                 CancellationToken.None).AsTask());
         Assert.Equal("22023", divergent.SqlState);
 
-        Assert.DoesNotContain((await runtime.ListDueAsync(
-            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
-            static item => item.CollectorId.Value == "database.files");
-        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
-        await using (var compatible = new NpgsqlCommand("""
-            SET ROLE sqlobserver_migrator;
-            INSERT INTO control.collector_prerequisite_compatibility
-                (collector_id,collector_version,prerequisite_collector_id,
-                 prerequisite_collector_version,acceptable_collector_version)
-            VALUES ('database.files',1,'database.inventory',1,2);
-            """, connection))
-            await compatible.ExecuteNonQueryAsync();
         Assert.Contains((await runtime.ListDueAsync(
             new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
             static item => item.CollectorId.Value == "database.files");
@@ -456,6 +421,64 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                     new WorkerLeaseDuration(TimeSpan.FromSeconds(30)), DefaultTimeout),
                 CancellationToken.None));
         Assert.Equal("database.files", claimed.Work.CollectorId.Value);
+    }
+
+    [Fact]
+    public async Task InventoryV2ActivationWaitsForOldRunAndRoutesNewTargets()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+
+        CollectorDueWorkItem engine = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
+        await CommitSuccessAsync(runtime, leases, engine, CreateEnginePayload(engine));
+        CollectorDueWorkItem inventory = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.inventory");
+        Assert.Equal(1, inventory.CollectorManifestVersion);
+        WorkerLeaseIdentity runLease = await AcquireRunLeaseAsync(leases, inventory);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(
+            new BeginCollectorRunRequest(inventory, runId, runLease, DefaultTimeout),
+            CancellationToken.None)).Status);
+
+        PostgresException pending = await Assert.ThrowsAsync<PostgresException>(() =>
+            ActivateInventoryV2Async(database, leases));
+        Assert.Equal("55000", pending.SqlState);
+        await using (var gate = database.DataSource.CreateCommand("""
+            SELECT NOT active FROM control.database_inventory_v2_activation
+            WHERE singleton;
+            """))
+            Assert.Equal(true, await gate.ExecuteScalarAsync());
+
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await runtime.CommitRunAsync(
+                CreateSuccessCommit(inventory, runId, runLease,
+                    CreateDatabasePayload(inventory, 5)), CancellationToken.None)).Status);
+        await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(runLease, DefaultTimeout),
+            CancellationToken.None);
+        await ActivateInventoryV2Async(database, leases);
+
+        var newTarget = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, newTarget, revision: 1);
+        await using var routes = database.DataSource.CreateCommand("""
+            SELECT (SELECT active FROM control.database_inventory_v2_activation WHERE singleton),
+                   (SELECT collector_version FROM control.collector_schedule
+                    WHERE instance_id=@old AND collector_id='database.inventory'),
+                   (SELECT collector_version FROM control.collector_schedule
+                    WHERE instance_id=@fresh AND collector_id='database.inventory');
+            """);
+        routes.Parameters.AddWithValue("old", targetId.Value);
+        routes.Parameters.AddWithValue("fresh", newTarget.Value);
+        await using NpgsqlDataReader reader = await routes.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.True(reader.GetBoolean(0));
+        Assert.Equal(2, reader.GetInt32(1));
+        Assert.Equal(2, reader.GetInt32(2));
     }
 
     [Fact]
@@ -2003,6 +2026,40 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
         AcquireAsync(
             leases,
             new WorkerLeaseKey($"collector/run/{work.CollectorId.Value}/{work.TargetId.Value:N}"));
+
+    private static async Task ActivateInventoryV2Async(
+        RepositoryTestDatabase database,
+        PostgreSqlWorkerLeasePort leases)
+    {
+        WorkerLeaseIdentity lease = await AcquireAsync(leases,
+            new WorkerLeaseKey("collector/catalog/reconcile"));
+        try
+        {
+            await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+            await using var activate = new NpgsqlCommand("""
+                SET ROLE sqlobserver_migrator;
+                WITH catalog AS MATERIALIZED (
+                    SELECT * FROM control.collector_contract
+                    WHERE collector_id <> 'database.inventory' OR collector_version=2)
+                SELECT * FROM control.reconcile_collector_catalog_m15(
+                    ARRAY(SELECT collector_id FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT collector_version FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT manifest_sha256 FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT asset_bundle_sha256 FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT execution_order FROM catalog ORDER BY execution_order),
+                    @work_key,@owner_execution_id,@fencing_token);
+                """, connection);
+            activate.Parameters.AddWithValue("work_key", lease.Key.Value);
+            activate.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            activate.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
+            await activate.ExecuteNonQueryAsync();
+        }
+        finally
+        {
+            await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(lease, DefaultTimeout),
+                CancellationToken.None);
+        }
+    }
 
     private static async Task<CollectorRunCommitResult> CommitSuccessAsync(
         PostgreSqlCollectorRuntimeRepositoryPort runtime,

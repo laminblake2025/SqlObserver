@@ -40,6 +40,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string ReconcileM12Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m12(", StringComparison.Ordinal);
     private static readonly string ReconcileM13Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m13(", StringComparison.Ordinal);
     private static readonly string ReconcileM14Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m14(", StringComparison.Ordinal);
+    private static readonly string ReconcileM15Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m15(", StringComparison.Ordinal);
     private const string ListDueSql = "SELECT * FROM control.list_due_collector_work(@max_items);";
     private const string ClaimDueSql = "SELECT * FROM control.claim_due_collector_work(@owner_execution_id,@ttl);";
     private const string BeginSql = """
@@ -447,7 +448,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
-            await using var command = new NpgsqlCommand(request.Entries.Count switch { 19 => ReconcileM14Sql, 18 => ReconcileM13Sql, 17 => ReconcileM12Sql, 16 => ReconcileM11Sql, 15 => ReconcileM10Sql, 13 => ReconcileM9Sql, 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
+            await using var command = new NpgsqlCommand(request.Entries.Count switch { 19 when request.Entries[1].Manifest.ManifestVersion.Value == 2 => ReconcileM15Sql, 19 => ReconcileM14Sql, 18 => ReconcileM13Sql, 17 => ReconcileM12Sql, 16 => ReconcileM11Sql, 15 => ReconcileM10Sql, 13 => ReconcileM9Sql, 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
@@ -1575,12 +1576,20 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         for (int index = 0; index < entries.Count; index++)
         {
             CollectorCatalogEntry entry = entries[index];
+            bool inventoryV2 = entries.Count == 19 && index == 1 &&
+                entry.Manifest.ManifestVersion.Value == 2 &&
+                entry.Manifest.OutputSchemaVersion.Value == 2 &&
+                entry.ManifestDigest.Value ==
+                    "5536227e577cd6f2c3d8bdab685fcd7c10eb915d0d1f2273c3733eebd43b4f21" &&
+                entry.AssetBundleDigest.Value ==
+                    "e48082564bda4f8f0a06c545640832b13dd99b01db1755ec3a2a8d0b794a7311";
             if (entry.ExecutionOrder != index + 1 ||
                 entry.Manifest.Id.Value != RequiredCollectorIds[index] ||
-                entry.Manifest.ManifestVersion.Value != 1 ||
-                entry.Manifest.OutputSchemaVersion.Value != 1 ||
-                entry.ManifestDigest.Value != RequiredManifestDigests[index] ||
-                entry.AssetBundleDigest.Value != RequiredBundleDigests[index])
+                (!inventoryV2 &&
+                    (entry.Manifest.ManifestVersion.Value != 1 ||
+                     entry.Manifest.OutputSchemaVersion.Value != 1 ||
+                     entry.ManifestDigest.Value != RequiredManifestDigests[index] ||
+                     entry.AssetBundleDigest.Value != RequiredBundleDigests[index])))
             {
                 throw new InvalidDataException($"PostgreSQL catalog reconciliation requires an exact ordered and checksum-pinned contract at execution order {index + 1}.");
             }
