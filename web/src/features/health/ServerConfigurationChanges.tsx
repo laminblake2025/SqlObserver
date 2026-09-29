@@ -5,11 +5,12 @@ import type { OverviewScope } from "../overview/overviewTypes";
 import { getServerConfigurationChanges } from "./healthApi";
 import type { CollectorHealthSummary, ServerConfigurationChange, ServerConfigurationChangeResult } from "./healthTypes";
 
-export function ServerConfigurationChanges({ instanceId, scope, refresh, collector }: {
+export function ServerConfigurationChanges({ instanceId, scope, refresh, collector, canManage }: {
   readonly instanceId: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
   readonly collector?: CollectorHealthSummary;
+  readonly canManage: boolean;
 }) {
   const formatTime = useTimeFormatter();
   const selection = useMemo(() => {
@@ -68,7 +69,9 @@ export function ServerConfigurationChanges({ instanceId, scope, refresh, collect
   return <section className="bounded-health-section" aria-labelledby="server-configuration-changes-heading">
     <div className="bounded-health-heading"><h4 id="server-configuration-changes-heading">Server configuration changes</h4></div>
     <p>Changes are detected between complete scans. Detection time is the later observation, not the exact time a setting changed.</p>
-    {disabled && <p role="status">Configuration collection is disabled for this server. Ask an administrator to enable it after read permissions are verified.</p>}
+    {disabled && <p role="status">Configuration collection is disabled for this server. {canManage
+      ? "Verify SQL Server read permissions, then enable it under Current server settings."
+      : "Ask a target administrator to enable it after read permissions are verified."}</p>}
     {selection.error && <p role="status">{selection.error}</p>}
     {failed && <p role="alert">Configuration history is unavailable or changed while paging. <button type="button" onClick={restart}>Restart from latest</button></p>}
     {!disabled && !selection.error && !failed && !result && <p role="status">Loading configuration history…</p>}

@@ -857,6 +857,17 @@ Windows login.
 Only request the optional replication plan when replication is configured and
 the distribution database has been explicitly identified.
 
+The `engine.configurations` collector is disabled for each new or revised
+target. After the permission plan is applied, a TargetAdministrator can open
+the target's Health page and enable it under **Current server settings**.
+The collector reads `sys.configurations` and never changes server settings.
+Microsoft documents public-role access before SQL Server 2022 and a
+`VIEW SERVER PERFORMANCE STATE` requirement on SQL Server 2022 and later;
+the generated permission plan already covers these versions. See
+[sys.configurations permissions](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-configurations-transact-sql?view=sql-server-ver17).
+Only complete scans become the current settings snapshot or produce change
+events. Disabling collection preserves previously recorded evidence.
+
 ## 8. Authenticated lab web interface
 
 `pnpm --dir web build` produces deterministic static assets in `web/dist`.

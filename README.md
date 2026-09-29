@@ -114,11 +114,11 @@ The initial platform targets are Windows Server 2022/2025, SQL Server 2019/2022/
 | M11 MCP | Authenticated, authorized, bounded, audited read-only diagnostic access |
 | M12 | Reports, export contracts, observability, installer contracts, and certification tooling; external release evidence remains incomplete |
 
-The revamp branch adds protected Query Store content, SQL resource and volume evidence, repository-claimed collector scheduling, and a leased retention worker through forward migrations. Fleet Overview still composes live reads and needs a precomputed latest-status projection for larger deployments.
+The revamp branch adds protected Query Store content, SQL resource and volume evidence, repository-claimed collector scheduling, a leased retention worker, and a precomputed latest-status projection. Fleet Overview falls back to direct source reads when the latest-status projection is unavailable.
 
 ### Collector catalog
 
-The 18 runtime-registered collectors, in execution order, are `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, `replication.health`, `storage.volume`, `queries.performance-groups`, and `engine.buffer-nodes`. Registration does not imply a collector is enabled or supported on every target.
+The 19 runtime-registered collectors, in execution order, are `engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, `replication.health`, `storage.volume`, `queries.performance-groups`, `engine.buffer-nodes`, and `engine.configurations`. Registration does not imply a collector is enabled or supported on every target. Server configuration collection is opt-in per target; a TargetAdministrator can enable it from Current server settings after verifying SQL Server read permissions.
 
 `capability.connection` is control-plane discovery and is not a scheduled collector. Capabilities and permissions determine which collectors can run; unsupported and degraded states remain visible.
 

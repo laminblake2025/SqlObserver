@@ -153,7 +153,8 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh}
               canManage={canManageConfiguration} />
             <ServerConfigurationChanges instanceId={instanceId} scope={scope} refresh={refresh}
-              collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")} />
+              collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")}
+              canManage={canManageConfiguration} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
           </> : null}
           {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}
