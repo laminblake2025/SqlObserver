@@ -1054,6 +1054,36 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         Assert.Equal(3, unknown.Points[0].Samples);
         Assert.DoesNotContain(result, item => item.Dimension?.Contains("Database 7", StringComparison.Ordinal) == true);
 
+        await using (NpgsqlConnection parity = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", parity))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.role','Viewer',false),
+                       set_config('sqlobserver.target_scope',@id::text,false);
+                """, parity))
+            {
+                scope.Parameters.AddWithValue("id", targetId.Value);
+                await scope.ExecuteNonQueryAsync();
+            }
+            async Task<List<string>> Read(string name)
+            {
+                await using var query = new NpgsqlCommand(
+                    $"SELECT to_jsonb(row)::text FROM reporting.{name}(@id,1,@from,@to,@cutoff) AS row ORDER BY database_id NULLS LAST,bucket_at;",
+                    parity);
+                query.Parameters.AddWithValue("id", targetId.Value);
+                query.Parameters.AddWithValue("from", from);
+                query.Parameters.AddWithValue("to", observedAt.AddSeconds(30));
+                query.Parameters.AddWithValue("cutoff", repositoryNow);
+                var rows = new List<string>();
+                await using NpgsqlDataReader reader = await query.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+                return rows;
+            }
+            Assert.Equal(await Read("overview_database_activity_history"),
+                await Read("overview_database_activity_history_v2_shadow"));
+        }
+
         await using NpgsqlConnection connection = await server.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
             "SELECT * FROM reporting.overview_database_activity_history(@id,1,@from,@to,@to)", connection);

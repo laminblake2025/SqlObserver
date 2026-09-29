@@ -1251,6 +1251,34 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
         Assert.Equal(includeMarker ? 1 : 0, rates.Points.Sum(x => x.Samples));
         if (includeMarker) Assert.Equal(100 / (observed[1] - observed[0]).TotalSeconds, Assert.Single(rates.Points, x => x.Value.HasValue).Value!.Value, precision: 5);
         else Assert.All(rates.Points, point => Assert.Null(point.Value));
+        await using (var parity = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", parity))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.role','Viewer',false),
+                       set_config('sqlobserver.target_scope',@id::text,false);
+                """, parity))
+            {
+                scope.Parameters.AddWithValue("id", targetId.Value);
+                await scope.ExecuteNonQueryAsync();
+            }
+            async Task<List<string>> Read(string name)
+            {
+                await using var query = new NpgsqlCommand(
+                    $"SELECT to_jsonb(row)::text FROM reporting.{name}(@id,1,@from,@to,@to) AS row ORDER BY metric_key,bucket_at;",
+                    parity);
+                query.Parameters.AddWithValue("id", targetId.Value);
+                query.Parameters.AddWithValue("from", cutoff.AddHours(-1));
+                query.Parameters.AddWithValue("to", cutoff);
+                var rows = new List<string>();
+                await using NpgsqlDataReader reader = await query.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+                return rows;
+            }
+            Assert.Equal(await Read("overview_workload_history"),
+                await Read("overview_workload_history_v2_shadow"));
+        }
         await using var connection = await server.OpenConnectionAsync();
         await using var command = new NpgsqlCommand("SELECT * FROM reporting.overview_workload_history(@id,1,@from,@to,@to)",connection);
         command.Parameters.AddWithValue("id",targetId.Value);command.Parameters.AddWithValue("from",cutoff.AddHours(-1));command.Parameters.AddWithValue("to",cutoff);

@@ -369,6 +369,9 @@ Migration 0206 routes that public reader through private original and
 partitioned functions. The installed route remains on original runs; only a
 migrator can activate the successor after the writer-fenced fleet proof, and
 the original route remains available for rollback.
+Migration 0207 adds private partitioned-run readers for workload and database
+activity overview history. Populated metric and session fixtures compare their
+outputs before either public overview route changes.
 
 ## Implementation gates
 
