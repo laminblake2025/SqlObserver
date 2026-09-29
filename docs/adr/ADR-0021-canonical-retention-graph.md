@@ -243,6 +243,11 @@ most 1,000 starts per call, and compares every copied or previously mirrored
 row with the original. Its durable cursor is a copy-progress marker, not a
 fleet parity or cutover attestation; operators must sweep each target and
 then perform independent, writer-fenced parity and replay checks.
+Migration 0185 adds a read-only, migrator-only parity check for one target,
+collector and UTC-day-bounded start-time window of at most 100,000 rows on
+each side. It compares counts and ordered SHA-256 digests of complete rows
+under one MVCC snapshot. Every target, collector and historical/live window
+still needs coverage, followed by a writer-fenced final sweep before cutover.
 
 ## Implementation gates
 

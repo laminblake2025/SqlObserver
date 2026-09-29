@@ -102,6 +102,14 @@ public sealed class CollectionRunBackfillTests(PostgreSql18Fixture fixture)
             await divergent.RollbackAsync();
         }
 
+        await using (NpgsqlTransaction premature = await admin.BeginTransactionAsync())
+        {
+            PostgresException incomplete = await Assert.ThrowsAsync<PostgresException>(
+                () => VerifyAsync(premature, 2));
+            Assert.Equal("55000", incomplete.SqlState);
+            await premature.RollbackAsync();
+        }
+
         async Task<(int Checked, int Copied, bool Complete)> BackfillAsync(int limit)
         {
             await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
@@ -149,7 +157,10 @@ public sealed class CollectionRunBackfillTests(PostgreSql18Fixture fixture)
                    has_function_privilege('sqlobserver_server',
                      'control.backfill_collection_run_v2(uuid,integer)','EXECUTE'),
                    (SELECT indisvalid FROM pg_index WHERE indexrelid=
-                     'telemetry.ix_collection_run_v2_backfill_order'::regclass);
+                     'telemetry.ix_collection_run_v2_backfill_order'::regclass),
+                   has_function_privilege('sqlobserver_server',
+                     'control.verify_collection_run_v2_window(uuid,text,timestamptz,timestamptz,integer)',
+                     'EXECUTE');
             """, admin);
         inspect.Parameters.AddWithValue("target", target);
         await using NpgsqlDataReader results = await inspect.ExecuteReaderAsync();
@@ -161,5 +172,79 @@ public sealed class CollectionRunBackfillTests(PostgreSql18Fixture fixture)
         Assert.False(results.GetBoolean(4));
         Assert.False(results.GetBoolean(5));
         Assert.True(results.GetBoolean(6));
+        Assert.False(results.GetBoolean(7));
+        await results.DisposeAsync();
+
+        async Task<(long Source, long Successor, string SourceHash,
+            string SuccessorHash, bool Parity)> VerifyAsync(
+            NpgsqlTransaction transaction, int maxRows,
+            DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null)
+        {
+            await using (var scope = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteNonQueryAsync();
+            }
+            await using var command = new NpgsqlCommand("""
+                SELECT * FROM control.verify_collection_run_v2_window(
+                  @target,'queries.performance',@start,@end,@limit);
+                """, admin, transaction);
+            command.Parameters.AddWithValue("target", target);
+            command.Parameters.AddWithValue("start", fromUtc ?? start);
+            command.Parameters.AddWithValue("end", toUtc ?? start.AddDays(1));
+            command.Parameters.AddWithValue("limit", maxRows);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            return (reader.GetInt64(0), reader.GetInt64(1), reader.GetString(2),
+                reader.GetString(3), reader.GetBoolean(4));
+        }
+
+        await using (NpgsqlTransaction matching = await admin.BeginTransactionAsync())
+        {
+            var parity = await VerifyAsync(matching, 2);
+            Assert.Equal((1L, 1L), (parity.Source, parity.Successor));
+            Assert.True(parity.Parity);
+            Assert.Equal(parity.SourceHash, parity.SuccessorHash);
+            await matching.CommitAsync();
+        }
+
+        await using (NpgsqlTransaction crossing = await admin.BeginTransactionAsync())
+        {
+            PostgresException invalid = await Assert.ThrowsAsync<PostgresException>(
+                () => VerifyAsync(crossing, 2, start.AddHours(12),
+                    start.AddDays(1).AddHours(12)));
+            Assert.Equal("22023", invalid.SqlState);
+            await crossing.RollbackAsync();
+        }
+
+        await using (NpgsqlTransaction extra = await admin.BeginTransactionAsync())
+        {
+            await using (var insert = new NpgsqlCommand("""
+                INSERT INTO telemetry.collection_run_v2
+                  (run_id,instance_id,collector_id,collector_version,
+                   output_schema_version,target_revision,schedule_revision,
+                   work_key,owner_execution_id,fencing_token,request_digest,
+                   scheduled_for,started_at)
+                SELECT gen_random_uuid(),instance_id,collector_id,
+                  collector_version,output_schema_version,target_revision,
+                  schedule_revision,work_key,owner_execution_id,fencing_token,
+                  request_digest,scheduled_for,started_at
+                FROM telemetry.collection_run WHERE run_id=@run;
+                """, admin, extra))
+            {
+                insert.Parameters.AddWithValue("run", first);
+                await insert.ExecuteNonQueryAsync();
+            }
+            var parity = await VerifyAsync(extra, 2);
+            Assert.Equal((1L, 2L), (parity.Source, parity.Successor));
+            Assert.False(parity.Parity);
+            PostgresException bounded = await Assert.ThrowsAsync<PostgresException>(
+                () => VerifyAsync(extra, 1));
+            Assert.Equal("54000", bounded.SqlState);
+            await extra.RollbackAsync();
+        }
     }
 }
