@@ -59,6 +59,14 @@ internal static class McpInputValidation
                     _ => $"{key} does not match its advertised format."
                 });
         }
+        if (name == "get_storage_forecast")
+        {
+            bool volumeMetric = args["metricKey"].GetString()!.StartsWith("host.volume.", StringComparison.Ordinal);
+            if (volumeMetric && !args.ContainsKey("volumeFingerprint"))
+                throw new McpInputValidationException("volumeFingerprint is required for host.volume.* metricKey.");
+            if (!volumeMetric && args.ContainsKey("volumeFingerprint"))
+                throw new McpInputValidationException("volumeFingerprint is only valid for host.volume.* metricKey.");
+        }
         if (name == "compare_metric_windows") ValidateComparison(args);
     }
 

@@ -40,8 +40,8 @@ public static class McpCatalog
     public const string DownlevelProtocolVersion = "2025-11-25";
     // Reviewed catalog approval point. Digest is re-derived below and must
     // agree, so changing the catalog cannot silently retain this identity.
-    public const string ApprovedCatalogDigest = "1AD2819475AADBC4D3C396DD6EEF6817EE721EF282757BCA882B9C7B6E5EC2C0";
-    public const string ServerVersion = "m11-2.2.0+catalog-1AD2819475AADBC4D3C396DD6EEF6817EE721EF282757BCA882B9C7B6E5EC2C0";
+    public const string ApprovedCatalogDigest = "D9AFF561145F357A06A5E722A296136AABAF7DDFB04A988DF69F63D5459231DD";
+    public const string ServerVersion = "m11-2.2.0+catalog-D9AFF561145F357A06A5E722A296136AABAF7DDFB04A988DF69F63D5459231DD";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {
@@ -77,7 +77,11 @@ public static class McpCatalog
         if (name is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Add("metricKey", "{\"type\":\"string\",\"minLength\":1,\"maxLength\":128}");
         if (name is "get_deadlock") Add("eventId", "{\"type\":\"string\",\"format\":\"uuid\"}");
         if (name is "get_incident_evidence") Add("threadId", "{\"type\":\"string\",\"format\":\"uuid\"}");
-        if (name is "get_storage_forecast") Add("horizonDays", "{\"type\":\"integer\",\"minimum\":1,\"maximum\":366}");
+        if (name is "get_storage_forecast")
+        {
+            Add("horizonDays", "{\"type\":\"integer\",\"minimum\":1,\"maximum\":366}");
+            Add("volumeFingerprint", "{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}");
+        }
         if (name is "get_top_queries") Add("metric", "{\"type\":\"string\",\"enum\":[\"cpuMilliseconds\",\"durationMilliseconds\",\"executions\",\"logicalReads\",\"writes\",\"rows\"]}");
         if (name is "get_query_history" or "get_query_plan_metadata") { Add("databaseId", "{\"type\":\"integer\",\"minimum\":1,\"maximum\":32767}"); Add("queryFingerprint", "{\"type\":\"string\",\"pattern\":\"^[0-9A-Fa-f]{64}$\"}"); }
         if (name is "get_query_plan_metadata") Add("planFingerprint", "{\"type\":\"string\",\"pattern\":\"^[0-9A-Fa-f]{64}$\"}");
@@ -433,7 +437,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
             "search_deadlocks" when id.HasValue => await _services.GetRequiredService<IDeadlockProjectionQueryService>().ListDeadlocksAsync(new ListDeadlocksQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<DeadlockPageCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
             "get_deadlock" when id.HasValue && ReadGuid(args, "eventId").HasValue => await _services.GetRequiredService<IDeadlockProjectionQueryService>().GetDeadlockAsync(authorization, new MonitoredInstanceId(id.Value), ReadGuid(args, "eventId")!.Value, timeout, token).ConfigureAwait(false),
             "get_metric_series" when id.HasValue => await _services.GetRequiredService<IMetricSeriesQueryService>().GetAsync(new MetricSeriesQuery(authorization, new MonitoredInstanceId(id.Value), metric, from, to, limit, timeout, Cursor: continuation?.Read<MetricSeriesCursor>(JsonOptions)), token).ConfigureAwait(false),
-            "get_storage_forecast" when id.HasValue => await _services.GetRequiredService<IStorageForecastQueryService>().GetAsync(new StorageForecastQuery(authorization, new MonitoredInstanceId(id.Value), metric, TimeSpan.FromDays(ReadInt(args, "horizonDays", 30)), limit, timeout, Cursor: continuation?.Read<StorageForecastCursor>(JsonOptions)), token).ConfigureAwait(false),
+            "get_storage_forecast" when id.HasValue => await _services.GetRequiredService<IStorageForecastQueryService>().GetAsync(new StorageForecastQuery(authorization, new MonitoredInstanceId(id.Value), metric, TimeSpan.FromDays(ReadInt(args, "horizonDays", 30)), limit, timeout, Dimensions: ReadString(args, "volumeFingerprint") is { } volume ? new Dictionary<string, string>(StringComparer.Ordinal) { ["volume"] = volume } : null, Cursor: continuation?.Read<StorageForecastCursor>(JsonOptions)), token).ConfigureAwait(false),
             "search_diagnostic_events" when id.HasValue => await _services.GetRequiredService<IDiagnosticEventQueryService>().SearchAsync(new DiagnosticEventSearchQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, timeout, Cursor: continuation?.Read<DiagnosticEventCursor>(JsonOptions)), token).ConfigureAwait(false),
             "get_incident_evidence" when id.HasValue && ReadGuid(args, "threadId").HasValue => await _services.GetRequiredService<IIncidentEvidenceQueryService>().GetAsync(new IncidentEvidenceQuery(authorization, new MonitoredInstanceId(id.Value), ReadGuid(args, "threadId")!.Value, limit, timeout, Cursor: continuation?.Read<IncidentEvidenceCursor>(JsonOptions)), token).ConfigureAwait(false),
             "compare_metric_windows" when id.HasValue => await _services.GetRequiredService<IAnalyticsQueryService>().CompareAsync(authorization, new AnalyticsQueryRequest(new MonitoredInstanceId(id.Value), metric, from, to, limit, timeout), ReadUtc(args, "leftFromUtc")!.Value, ReadUtc(args, "leftToUtc")!.Value, ReadUtc(args, "rightFromUtc")!.Value, ReadUtc(args, "rightToUtc")!.Value, token).ConfigureAwait(false),

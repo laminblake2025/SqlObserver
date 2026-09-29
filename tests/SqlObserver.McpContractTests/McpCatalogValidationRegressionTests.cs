@@ -57,9 +57,9 @@ public sealed class McpCatalogValidationRegressionTests
         ("get_database_health", "List database health", "does not evaluate backup RPO", "instanceId limit cursor"),
         ("get_tempdb_health", "Get TempDB file usage", "does not provide session-level", "instanceId limit cursor"),
         ("get_file_io", "Get database file I/O counters", "cumulative total", "instanceId limit cursor"),
-        ("get_storage_forecast", "Get stored metric forecasts", "does not compute a forecast", "instanceId limit cursor metricKey horizonDays"),
+        ("get_storage_forecast", "Get stored metric forecasts", "does not compute a forecast", "instanceId limit cursor metricKey horizonDays volumeFingerprint"),
         ("get_backup_status", "Get backup observations", "opaque database fingerprint", "instanceId limit cursor"),
-        ("get_job_failures", "Get observed Agent failures", "not the job's execution time", "instanceId fromUtc toUtc limit cursor"),
+        ("get_job_failures", "Get observed Agent failures", "first observed within a UTC window", "instanceId fromUtc toUtc limit cursor"),
         ("get_availability_health", "Get availability group health", "Replica and database rows have different fields", "instanceId"),
         ("get_incident_evidence", "Get incident evidence", "threadId returned by list_incidents", "instanceId limit cursor threadId"),
         ("search_diagnostic_events", "Search diagnostic events", "not a SQL Server error-log", "instanceId fromUtc toUtc limit cursor")
@@ -148,7 +148,8 @@ public sealed class McpCatalogValidationRegressionTests
         Assert.Equal(MetricKeys, MetricCatalogV1.All.Where(x => x.Enabled).Select(x => x.Key).Order(StringComparer.Ordinal));
         JsonElement forecast = Assert.Single(tools, x => x.Name == "get_storage_forecast").ProtocolTool.InputSchema.GetProperty("properties");
         Assert.Equal(30, forecast.GetProperty("horizonDays").GetProperty("default").GetInt32());
-        Assert.Contains("empty dimension set", forecast.GetProperty("metricKey").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("volumeFingerprint", forecast.GetProperty("metricKey").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("get_metric_series", forecast.GetProperty("volumeFingerprint").GetProperty("description").GetString()!, StringComparison.Ordinal);
         foreach (string instruction in new[] { "Call list_instances first", "ending in Z", "24 hours", "7 days", "31 days", "originally omitted", "first-observed time" })
             Assert.Contains(instruction, client.ServerInstructions!, StringComparison.Ordinal);
         Assert.Empty(state.Calls);
@@ -241,6 +242,7 @@ public sealed class McpCatalogValidationRegressionTests
         { "get_query_history", "queryFingerprint", "\"private-invalid-fingerprint\"", "queryFingerprint must contain exactly 64 hexadecimal characters." },
         { "get_query_plan_metadata", "planFingerprint", "\"private-invalid-plan\"", "planFingerprint must contain exactly 64 hexadecimal characters." },
         { "get_storage_forecast", "horizonDays", "367", "horizonDays must be an integer from 1 to 366." },
+        { "get_storage_forecast", "volumeFingerprint", "\"private-volume\"", "volumeFingerprint does not match its advertised format." },
         { "get_metric_series", "cursor", "\"private_invalid_cursor\"", "cursor is invalid or does not match this tool and its original arguments." }
     };
 
@@ -309,6 +311,35 @@ public sealed class McpCatalogValidationRegressionTests
         AssertSuccess(await fixture.CallAsync("get_metric_series", args), fixture.State);
         object request = Assert.Single(fixture.State.Calls).Arguments.First(x => x is not AuthorizationContext && x is not CancellationToken)!;
         Assert.Equal(metric, request.GetType().GetProperty("MetricKey")!.GetValue(request));
+    }
+
+    [Fact]
+    public async Task VolumeForecastDispatchesTheSelectedOpaqueVolume()
+    {
+        using var fixture = new HandlerFixture();
+        Dictionary<string, JsonElement> args = Arguments("get_storage_forecast");
+        Put(args, "metricKey", "host.volume.free_bytes");
+        Put(args, "volumeFingerprint", Fingerprint);
+
+        AssertSuccess(await fixture.CallAsync("get_storage_forecast", args), fixture.State);
+        StorageForecastQuery query = Assert.IsType<StorageForecastQuery>(
+            Assert.Single(fixture.State.Calls).Arguments.First(value => value is StorageForecastQuery));
+        KeyValuePair<string, string> dimension = Assert.Single(query.Dimensions!);
+        Assert.Equal("volume", dimension.Key);
+        Assert.Equal(Fingerprint, dimension.Value);
+    }
+
+    [Theory]
+    [InlineData("host.volume.free_bytes", false, "volumeFingerprint is required for host.volume.* metricKey.")]
+    [InlineData("host.cpu.percent", true, "volumeFingerprint is only valid for host.volume.* metricKey.")]
+    public async Task ForecastRejectsMissingOrUnrelatedVolumeBeforeDispatch(string metric, bool includeVolume, string message)
+    {
+        using var fixture = new HandlerFixture();
+        Dictionary<string, JsonElement> args = Arguments("get_storage_forecast");
+        Put(args, "metricKey", metric);
+        if (includeVolume) Put(args, "volumeFingerprint", Fingerprint);
+
+        AssertInvalid(await fixture.CallAsync("get_storage_forecast", args), fixture.State, message);
     }
 
     [Fact]
