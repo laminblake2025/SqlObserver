@@ -319,6 +319,15 @@ under the writer fence, and drops the 20 original FKs in one transaction. A
 durable append-only ledger records completion; a partial or unrecorded graph
 is rejected. This changes child referential integrity only. The original run
 table remains the writer and read source until their own verified cutovers.
+The active PostgreSQL catalog still has original-run references in collector
+commit and scheduling functions, alert evaluation, reporting projections,
+retention helpers, and two reporting views. A catalog regression test records
+those current definitions, including function arity, so reader and writer
+cutovers must account for the actual installed objects rather than every
+historical migration text. The first shadow-read slice will cover activity
+sessions, requests, blocking history and current blocking on the partitioned
+successor, with populated output and cursor parity checks before any route
+changes. The writer must remain dual-written until all active consumers move.
 
 ## Implementation gates
 

@@ -10,6 +10,98 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fixture)
 {
     [Fact]
+    public async Task ActiveRunDefinitionInventoryIsExplicit()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult applied = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(
+                MigrationBatchResult.MaximumResults,
+                new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+                CancellationToken.None);
+        Assert.False(applied.HasFailures);
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT dependency FROM (
+              SELECT DISTINCT 'function ' || namespace.nspname || '.' ||
+                procedure.proname || '/' || procedure.pronargs::text AS dependency
+              FROM pg_proc AS procedure
+              JOIN pg_namespace AS namespace ON namespace.oid=procedure.pronamespace
+              WHERE namespace.nspname IN ('control','telemetry','events','reporting',
+                                          'analytics','alerting','system','security')
+                AND procedure.prosrc ~ 'telemetry[.]collection_run([^_[:alnum:]]|$)'
+              UNION ALL
+              SELECT 'view ' || schemaname || '.' || viewname
+              FROM pg_views
+              WHERE schemaname IN ('control','telemetry','events','reporting',
+                                   'analytics','alerting','system','security')
+                AND definition ~ 'telemetry[.]collection_run([^_[:alnum:]]|$)'
+              UNION ALL
+              SELECT 'materialized_view ' || schemaname || '.' || matviewname
+              FROM pg_matviews
+              WHERE schemaname IN ('control','telemetry','events','reporting',
+                                   'analytics','alerting','system','security')
+                AND definition ~ 'telemetry[.]collection_run([^_[:alnum:]]|$)'
+            ) AS dependencies
+            ORDER BY 1;
+            """, connection);
+        var names = new List<string>();
+        await using (NpgsqlDataReader rows = await command.ExecuteReaderAsync())
+            while (await rows.ReadAsync()) names.Add(rows.GetString(0));
+        string expected = """
+            function alerting.assert_evaluation_claims/5
+            function alerting.reconcile_due_evidence_internal/1
+            function control.backfill_collection_run_identity/2
+            function control.backfill_collection_run_v2/2
+            function control.begin_collection_run/12
+            function control.bind_replication_run_gap/0
+            function control.claim_due_collector_work/2
+            function control.collection_run_v2_parity_coverage/2
+            function control.commit_buffer_node_ple_collection_run/28
+            function control.commit_collection_run/57
+            function control.commit_collection_run_v2/59
+            function control.commit_m10_collection_run/28
+            function control.commit_m9_collection_run/28
+            function control.commit_query_performance_collection_run/13
+            function control.commit_query_performance_collection_run_canonical/34
+            function control.commit_query_plan_links/4
+            function control.commit_query_plan_wait_snapshots/4
+            function control.commit_query_store_group_collection_run/28
+            function control.commit_query_text_links/4
+            function control.commit_sql_volume_collection_run/28
+            function control.cutover_collection_run_identity_fks/1
+            function control.ensure_target_collector_schedules/0
+            function control.get_query_performance_database_catalog/1
+            function control.list_due_collector_work/1
+            function control.stage_collection_run_identity_fk/2
+            function control.validate_collection_run_identity_fk/1
+            function control.verify_collection_run_v2_fleet_fenced/1
+            function control.verify_collection_run_v2_window/5
+            function reporting.count_buffer_node_ple_gaps/3
+            function reporting.get_buffer_manager_ple_trend/3
+            function reporting.get_buffer_node_ple_trend/4
+            function reporting.get_latest_m9_run/2
+            function reporting.list_activity_requests/6
+            function reporting.list_activity_sessions/5
+            function reporting.list_blocking_history/10
+            function reporting.list_buffer_node_ple_nodes/3
+            function reporting.list_current_blocking/8
+            function reporting.list_server_wait_category_trend/3
+            function reporting.list_server_wait_history/7
+            function reporting.list_server_wait_summary/6
+            function reporting.list_sql_volume_snapshot/5
+            function reporting.overview_database_activity_history/5
+            function reporting.overview_workload_history/5
+            function reporting.read_m10_backfill_page/10
+            function reporting.read_m10_rollup_derivation_inputs/9
+            function system.retire_query_performance_run/5
+            function telemetry.capture_server_wait_category_summary_v1/0
+            view reporting.activity_snapshot_evidence
+            view reporting.collector_health_projection
+            """;
+        Assert.Equal(expected.Split('\n'), names);
+    }
+
+    [Fact]
     public async Task CurrentRunReferenceGraphIsReviewedBeforeHistoryRetirement()
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
