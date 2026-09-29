@@ -161,3 +161,13 @@ configuration changes in the selected window. Both surfaces identify detection
 time as the later complete scan and show disabled collection explicitly. They
 remain empty in ordinary installations until the SQL Server lab qualification
 allows collection to be enabled.
+
+A local SQL Server 2022 Express live run exposed a `SequentialAccess` read-order
+bug in the source parser; it now reads and validates the nine columns in ordinal
+order. The exact pinned query returned 93 complete integer-valued rows. A
+disposable non-sysadmin login returned the same 93 configuration identities and
+values as sysadmin with and without `VIEW SERVER PERFORMANCE STATE`; the focused
+live test confirms both paths and removes the login. This is evidence for major
+version 16 only. The v1 manifest's version-16 permission requirement is therefore
+conservative; correct it through a versioned collector contract after the 15/17
+permission behavior is qualified. The schedule remains disabled by default.

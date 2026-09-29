@@ -66,20 +66,37 @@ internal static class SqlServerConfigurationSource
             if (sourceRowsRead > MaximumConfigurations)
                 return new SqlServerConfigurationRead(observedAt, [], sourceRowsRead,
                     responseBytes, SourceRowLimitReached: true, ResponseByteLimitReached: false);
-            for (int column = 0; column < 9; column++)
-                if (reader.IsDBNull(column))
-                    throw new InvalidDataException("The configuration source omitted a required value.");
+            if (reader.IsDBNull(0))
+                throw new InvalidDataException("The configuration source omitted a required value.");
             DateTime timestamp = reader.GetDateTime(0);
             if (timestamp.Kind == DateTimeKind.Local)
                 throw new InvalidDataException("The configuration scan time is not UTC.");
             var rowTime = new DateTimeOffset(new DateTime(timestamp.Ticks -
                 timestamp.Ticks % TimeSpan.TicksPerMicrosecond, DateTimeKind.Utc));
+            if (reader.IsDBNull(1))
+                throw new InvalidDataException("The configuration source omitted a required value.");
             int id = reader.GetInt32(1);
+            if (reader.IsDBNull(2))
+                throw new InvalidDataException("The configuration source omitted a required value.");
             string name = reader.GetString(2);
+            if (reader.IsDBNull(3))
+                throw new InvalidDataException("The configuration source omitted a required value.");
             string configuredType = reader.GetString(3);
+            if (reader.IsDBNull(4))
+                throw new InvalidDataException("The configuration source omitted a required value.");
             string inUseType = reader.GetString(4);
+            if (reader.IsDBNull(5))
+                throw new InvalidDataException("The configuration source omitted a required value.");
             string configured = reader.GetString(5);
+            if (reader.IsDBNull(6))
+                throw new InvalidDataException("The configuration source omitted a required value.");
             string inUse = reader.GetString(6);
+            if (reader.IsDBNull(7))
+                throw new InvalidDataException("The configuration source omitted a required value.");
+            bool isDynamic = reader.GetBoolean(7);
+            if (reader.IsDBNull(8))
+                throw new InvalidDataException("The configuration source omitted a required value.");
+            bool isAdvanced = reader.GetBoolean(8);
             if (id is < 1 or > 1_000_000 || id <= previousId ||
                 sourceRowsRead > 1 && rowTime != observedAt ||
                 !ValidText(name, 256) || !ValidType(configuredType) ||
@@ -97,7 +114,7 @@ internal static class SqlServerConfigurationSource
                     responseBytes, SourceRowLimitReached: false, ResponseByteLimitReached: true);
             responseBytes += rowBytes;
             values.Add(new SqlServerConfigurationValue(id, name, configuredType,
-                configured, inUse, reader.GetBoolean(7), reader.GetBoolean(8)));
+                configured, inUse, isDynamic, isAdvanced));
         }
         if (sourceRowsRead == 0)
             throw new InvalidDataException("The configuration source returned no visible rows.");
