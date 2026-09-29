@@ -18,12 +18,13 @@ const waitCategoryNames: Record<number, string> = {
   20: "Full-text search",
 };
 
-export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, refresh, canReadText }: {
+export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, refresh, canReadText, initialQuerySelection }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
   readonly timeWindow: QueryWindow;
   readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly refresh: number;
   readonly canReadText: boolean;
+  readonly initialQuerySelection?: { readonly databaseId: number; readonly queryFingerprint: string };
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value?: string) => value ? formatDisplayTime(value, mode) : "Time unavailable";
@@ -119,11 +120,32 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     return () => c.abort();
   }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
   useEffect(() => {
-    if (!page || !historySelection || page.items.some(item => item.query.databaseId === historySelection.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint)) return;
+    if (!page || !historySelection || page.items.some(item => item.query.databaseId === historySelection.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint)
+      || initialQuerySelection?.databaseId === historySelection.databaseId && initialQuerySelection.queryFingerprint === historySelection.queryFingerprint) return;
     setHistorySelection(undefined);
     setHistory(undefined);
     setPlan(undefined);
-  }, [page, historySelection]);
+  }, [page, historySelection, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint]);
+  useEffect(() => {
+    if (!initialQuerySelection) return;
+    const controller = new AbortController();
+    const selection = { ...initialQuerySelection, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc };
+    historyRequest.current?.abort();
+    historyRequest.current = controller;
+    setDatabase(String(selection.databaseId));
+    setHistorySelection(selection);
+    setHistory(undefined);
+    setMessage(undefined);
+    void getQueryPerformanceHistory(instanceId, selection.databaseId, selection.queryFingerprint, selection.fromUtc, selection.toUtc, controller.signal)
+      .then(value => {
+        if (controller.signal.aborted) return;
+        setHistory(value);
+        if (value.items[0]) setSource(value.items[0].source);
+        if (value.items.length === 0) setMessage("No history was observed for this query hash in the selected time window.");
+      })
+      .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Query history is unavailable."); });
+    return () => controller.abort();
+  }, [instanceId, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint, timeWindow.fromUtc, timeWindow.toUtc, ranking, refresh]);
   const loadHistory = (selection: { databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string }, cursor?: string) => {
     historyRequest.current?.abort();
     const c = new AbortController(); historyRequest.current = c;
@@ -151,6 +173,9 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const selectedItem = page?.items.find(item => item.query.databaseId === historySelection?.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint && (historySelection.planFingerprint === undefined || item.plan?.planFingerprint === historySelection.planFingerprint) && (source === "mixed" || item.source === source));
   const selectedMetrics = metricsForObservation(selectedItem, history);
   const databaseOptions = queryPerformanceDatabaseOptions(page, status);
+  if (initialQuerySelection && !databaseOptions.some(option => option.databaseId === initialQuerySelection.databaseId)) {
+    databaseOptions.push({ databaseId: initialQuerySelection.databaseId, databaseName: undefined });
+  }
   const databaseNames = new Map(databaseOptions.map(option => [option.databaseId, option.databaseName]));
   const displayDatabase = (databaseId: number | undefined) => databaseId === undefined ? "—" : databaseNames.get(databaseId) ?? `Database ID ${databaseId}`;
   const rows = page?.items.filter(item => (source === "mixed" || item.source === source) && (!database || String(item.query.databaseId) === database)) ?? [];
@@ -168,16 +193,16 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       <div className="query-investigation"><section className="panel"><h2>Query CPU and duration history</h2>
         {history ? (source === "mixed" ? <p>Select Query Store or Plan cache to chart one source with consistent semantics.</p> :
           <ObservationChart
-            label={`Query activity (ms) · ${selectedItem?.semantics ?? "semantics unavailable"}`}
+            label={`Query activity (ms) · ${selectedItem?.semantics ?? history.items[0]?.semantics ?? "semantics unavailable"}`}
             fromUtc={historySelection?.fromUtc ?? timeWindow.fromUtc}
             toUtc={historySelection?.toUtc ?? timeWindow.toUtc}
             series={[
-              { id: "duration", label: "Duration (ms)", items: history.items.filter(x => x.source === source && x.semantics === selectedItem?.semantics).map(x => ({ time: x.intervalEndUtc, value: x.metrics.durationMilliseconds ?? null })) },
-              { id: "cpu", label: "CPU (ms)", items: history.items.filter(x => x.source === source && x.semantics === selectedItem?.semantics).map(x => ({ time: x.intervalEndUtc, value: x.metrics.cpuMilliseconds ?? null })) },
+              { id: "duration", label: "Duration (ms)", items: history.items.filter(x => x.source === source && x.semantics === (selectedItem?.semantics ?? history.items[0]?.semantics)).map(x => ({ time: x.intervalEndUtc, value: x.metrics.durationMilliseconds ?? null })) },
+              { id: "cpu", label: "CPU (ms)", items: history.items.filter(x => x.source === source && x.semantics === (selectedItem?.semantics ?? history.items[0]?.semantics)).map(x => ({ time: x.intervalEndUtc, value: x.metrics.cpuMilliseconds ?? null })) },
             ]}
             onSelectWindow={onSelectWindow}
           />) : <p>Select a query to load its bounded history.</p>}
-      </section><section className="panel"><h2>Selected query</h2><p className="fingerprint">{historySelection?.queryFingerprint ?? "No query selected"}</p><p>{displayDatabase(historySelection?.databaseId)} · {source.replaceAll("_", " ")}</p><p>{selectedItem?.semantics ?? "Semantics unavailable"} · {selectedItem?.coverage ?? "Coverage unavailable"}</p><p className="fingerprint">Plan: {plan?.planFingerprint ?? "Metadata unavailable"}</p>
+      </section><section className="panel"><h2>Selected query</h2><p className="fingerprint">{historySelection?.queryFingerprint ?? "No query selected"}</p><p>{displayDatabase(historySelection?.databaseId)} · {source.replaceAll("_", " ")}</p><p>{selectedItem?.semantics ?? history?.items[0]?.semantics ?? "Semantics unavailable"} · {selectedItem?.coverage ?? history?.items[0]?.coverage ?? "Coverage unavailable"}</p><p className="fingerprint">Plan: {plan?.planFingerprint ?? "Metadata unavailable"}</p>
         {selectedItem?.source === "query_store" && canReadText ? <button className="secondary-button" type="button" onClick={() => openText(selectedItem)}>Open query text for selected observation</button> : selectedItem ? <p>{selectedItem.source === "query_store" ? "Query text requires the QueryTextReader role on this server." : "Plan-cache query text is not collected."}</p> : null}
         {canReadText && textResult ? <div role="status" className="query-text-result"><p>{textResult.state === "loading" ? "Opening query text…" : textResult.state === "available" ? `Query text from run ${textResult.runId}` : textResult.state === "unavailable" ? "Query text was not captured for this observation. Check the collector key, Query Store permissions, or source text restrictions." : textResult.message}</p>{textResult.state === "available" && <pre>{textResult.text}</pre>}</div> : null}
         {selectedItem?.source === "query_store" && selectedItem.plan && canReadText ? <button className="secondary-button" type="button" onClick={() => openPlan(selectedItem)}>Open plan XML for selected observation</button> : selectedItem?.source === "query_store" && selectedItem.plan && !canReadText ? <p>Plan XML requires the QueryTextReader role on this server.</p> : null}

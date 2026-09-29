@@ -66,14 +66,16 @@ export interface TargetHealthPanelProps {
   readonly refresh: number;
   readonly healthRefresh: number;
   readonly blockingRefresh: number;
+  readonly selectedDatabaseId?: number;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const [evidence, setEvidence] = useState<TargetHealthEvidence>();
   const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"summary" | "databases" | "collection">("summary");
+  const [tab, setTab] = useState<"summary" | "databases" | "collection">(selectedDatabaseId === undefined ? "summary" : "databases");
+  useEffect(() => { if (selectedDatabaseId !== undefined) setTab("databases"); }, [selectedDatabaseId]);
   const snapshot = evidence?.target;
 
   useEffect(() => {
@@ -143,7 +145,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             <CoreMetrics metrics={evidence.target.coreMetrics} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} /><DatabaseFileHealth page={evidence.files} /></> : null}
+          {tab === "databases" ? <><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}
           {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
         </>
       )}
@@ -165,7 +167,7 @@ function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricS
   })}</div>;
 }
 
-function DatabaseHealth({ instanceId, firstPage }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage }) {
+function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage; readonly selectedDatabaseId?: number }) {
   const formatTimestamp = useTimeFormatter();
   const [page, setPage] = useState(firstPage);
   const [pageIndex, setPageIndex] = useState(0);
@@ -173,6 +175,7 @@ function DatabaseHealth({ instanceId, firstPage }: { readonly instanceId: string
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const request = useRef<AbortController | undefined>(undefined);
+  const [selectionMissing, setSelectionMissing] = useState(false);
 
   useEffect(() => {
     request.current?.abort();
@@ -182,8 +185,52 @@ function DatabaseHealth({ instanceId, firstPage }: { readonly instanceId: string
     setCursors([undefined]);
     setLoading(false);
     setError(false);
+    setSelectionMissing(false);
     return () => request.current?.abort();
   }, [instanceId, firstPage]);
+
+  useEffect(() => {
+    if (selectedDatabaseId === undefined) return;
+    const controller = new AbortController();
+    request.current?.abort();
+    request.current = controller;
+    setSelectionMissing(false);
+    if (firstPage.items.some(item => item.databaseId === selectedDatabaseId)) {
+      request.current = undefined;
+      return;
+    }
+    setLoading(true);
+    void (async () => {
+      let current = firstPage;
+      const visited = new Set<string>();
+      const pageCursors: (string | undefined)[] = [undefined];
+      for (let index = 1; index < 20 && current.nextCursor; index += 1) {
+        if (visited.has(current.nextCursor)) throw new Error("Database paging repeated a cursor.");
+        visited.add(current.nextCursor);
+        pageCursors.push(current.nextCursor);
+        const next = await getDatabaseHealth(instanceId, controller.signal, current.nextCursor);
+        if (controller.signal.aborted) return;
+        if (next.instanceId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Database page target mismatch.");
+        if (next.items.some(item => item.databaseId === selectedDatabaseId)) {
+          setPage(next);
+          setPageIndex(index);
+          setCursors(pageCursors);
+          return;
+        }
+        current = next;
+      }
+      setSelectionMissing(true);
+    })().catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => {
+      if (!controller.signal.aborted) { request.current = undefined; setLoading(false); }
+    });
+    return () => controller.abort();
+  }, [instanceId, firstPage, selectedDatabaseId]);
+
+  useEffect(() => {
+    if (selectedDatabaseId !== undefined && page.items.some(item => item.databaseId === selectedDatabaseId)) {
+      document.getElementById(`database-health-${selectedDatabaseId}`)?.scrollIntoView({ block: "center" });
+    }
+  }, [page, selectedDatabaseId]);
 
   async function navigate(index: number, cursor?: string) {
     if (request.current) return;
@@ -224,6 +271,7 @@ function DatabaseHealth({ instanceId, firstPage }: { readonly instanceId: string
       <p className="page-boundary">Page {pageIndex + 1} · {page.items.length} databases{page.nextCursor ? " · More available" : " · End of snapshot"}</p>
       {loading ? <p role="status">Loading database page…</p> : null}
       {error ? <p role="alert">Database page is unavailable. Try again.</p> : null}
+      {selectionMissing ? <p role="status">Database ID {selectedDatabaseId} is not in the first 500 database rows. Browse the remaining pages below.</p> : null}
       {page.items.length === 0 ? (
         <p className="empty-state">
           {isCurrentLossFree(page.collector)
@@ -233,7 +281,7 @@ function DatabaseHealth({ instanceId, firstPage }: { readonly instanceId: string
       ) : (
         <div className="bounded-health-grid">
           {page.items.map((database) => (
-            <DatabaseHealthCard database={database} key={database.databaseId} />
+            <div id={`database-health-${database.databaseId}`} key={database.databaseId}><DatabaseHealthCard database={database} /></div>
           ))}
         </div>
       )}

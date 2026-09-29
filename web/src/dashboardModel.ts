@@ -8,6 +8,8 @@ export interface DashboardRoute {
   readonly target: string;
   readonly activityAtUtc?: string;
   readonly activityEventId?: string;
+  readonly databaseId?: number;
+  readonly queryFingerprint?: string;
 }
 const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/;
 const guid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -15,6 +17,15 @@ export function readRoute(hash: string): DashboardRoute {
   const [path, query] = hash.replace(/^#\/?/, '').split('?');
   const page = Object.hasOwn(destinations, path ?? '') ? path as Destination : 'overview';
   const params = new URLSearchParams(query);
+  const databaseId = params.get('databaseId');
+  if (page === 'health' && databaseId !== null && /^[1-9]\d{0,4}$/.test(databaseId) && Number(databaseId) <= 32767) {
+    return { page, target: params.get('target') ?? '', databaseId: Number(databaseId) };
+  }
+  const queryFingerprint = params.get('queryFingerprint');
+  if (page === 'queries' && databaseId !== null && /^[1-9]\d{0,4}$/.test(databaseId) && Number(databaseId) <= 32767
+      && queryFingerprint !== null && /^[0-9a-f]{64}$/i.test(queryFingerprint)) {
+    return { page, target: params.get('target') ?? '', databaseId: Number(databaseId), queryFingerprint: queryFingerprint.toLowerCase() };
+  }
   const activityAtUtc = params.get('at');
   if (page === 'activity' && activityAtUtc !== null && utcTimestamp.test(activityAtUtc) && Number.isFinite(Date.parse(activityAtUtc))) {
     const activityEventId = params.get('event');

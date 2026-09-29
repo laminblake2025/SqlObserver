@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { alertJumpHref, alertSelectionFromHash, matchingAlerts } from '../src/components/commandPaletteModel.ts';
+import { alertJumpHref, alertSelectionFromHash, databaseJumpHref, matchingAlerts, matchingDatabases, queryJumpHref } from '../src/components/commandPaletteModel.ts';
+import { readRoute } from '../src/dashboardModel.ts';
 import { loadFleetAlertJump } from '../src/features/alerts/fleetAlertJump.ts';
 
 const scope = { target: 'server-prior', range: 'custom', from: '2026-09-24T00:00:00Z', to: '2026-09-25T00:00:00Z', compare: true };
@@ -25,6 +26,37 @@ test('alert search matches authorized loaded rows by server, rule, target or ale
   assert.deepEqual(matchingAlerts(alerts, 'alert-b'), [alerts[1]]);
   assert.deepEqual(matchingAlerts(alerts, 'target-a'), [alerts[0]]);
   assert.deepEqual(matchingAlerts(alerts, 'missing'), []);
+});
+
+test('database jump preserves time context and selects its exact server and database', () => {
+  const href = databaseJumpHref(scope, 'target-b', 42);
+  const params = new URLSearchParams(href.split('?')[1]);
+  assert.deepEqual(readRoute(href), { page: 'health', target: 'target-b', databaseId: 42 });
+  assert.equal(params.get('range'), 'custom');
+  assert.equal(params.get('from'), scope.from);
+  assert.equal(params.get('to'), scope.to);
+  assert.equal(params.get('compare'), '1');
+  assert.deepEqual(readRoute('#/health?target=target-b&databaseId=0'), { page: 'health', target: 'target-b' });
+  assert.deepEqual(readRoute('#/health?target=target-b&databaseId=32768'), { page: 'health', target: 'target-b' });
+});
+
+test('database search matches bounded loaded names and IDs', () => {
+  const databases = [{ databaseId: 5, name: 'Orders' }, { databaseId: 42, name: 'Warehouse' }];
+  assert.deepEqual(matchingDatabases(databases, ' WARE '), [databases[1]]);
+  assert.deepEqual(matchingDatabases(databases, '5'), [databases[0]]);
+  assert.deepEqual(matchingDatabases(databases, 'missing'), []);
+});
+
+test('query hash jump preserves time context and only accepts an exact database and hash', () => {
+  const hash = 'A'.repeat(64);
+  const href = queryJumpHref(scope, 'target-b', 42, hash);
+  const params = new URLSearchParams(href.split('?')[1]);
+  assert.deepEqual(readRoute(href), { page: 'queries', target: 'target-b', databaseId: 42, queryFingerprint: hash.toLowerCase() });
+  assert.equal(params.get('range'), 'custom');
+  assert.equal(params.get('from'), scope.from);
+  assert.equal(params.get('to'), scope.to);
+  assert.deepEqual(readRoute('#/queries?target=target-b&databaseId=42&queryFingerprint=abcd'), { page: 'queries', target: 'target-b' });
+  assert.deepEqual(readRoute(`#/queries?target=target-b&databaseId=0&queryFingerprint=${hash}`), { page: 'queries', target: 'target-b' });
 });
 
 test('an alert jump follows bounded cursor pages and selects the exact target and alert', async () => {
