@@ -88,6 +88,60 @@ public sealed class BufferNodePleCommitPostgreSqlTests(PostgreSql18Fixture fixtu
         Assert.Equal(2L, await CountRowsAsync(database, runId));
         await SeedCommittedAggregateAsync(database, work, 200);
 
+        await using (NpgsqlConnection parity = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", parity))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", parity))
+            {
+                scope.Parameters.AddWithValue("target", work.TargetId.Value);
+                await scope.ExecuteScalarAsync();
+            }
+            async Task<List<string>> Read(string name, string arguments)
+            {
+                await using var command = new NpgsqlCommand(
+                    $"SELECT to_jsonb(row)::text FROM reporting.{name}({arguments}) AS row;",
+                    parity);
+                command.Parameters.AddWithValue("target", work.TargetId.Value);
+                command.Parameters.AddWithValue("from", work.RepositoryTimeUtc.AddMinutes(-5));
+                command.Parameters.AddWithValue("to", work.RepositoryTimeUtc.AddHours(1));
+                var rows = new List<string>();
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+                return rows;
+            }
+            foreach ((string name, string arguments) in new[]
+            {
+                ("list_buffer_node_ple_nodes", "@target,@from,@to"),
+                ("get_buffer_node_ple_trend", "@target,0,@from,@to"),
+                ("get_buffer_node_ple_trend", "@target,1,@from,@to"),
+                ("get_buffer_manager_ple_trend", "@target,@from,@to"),
+            })
+            {
+                List<string> original = await Read(name, arguments);
+                Assert.NotEmpty(original);
+                Assert.Equal(original, await Read($"{name}_v2_shadow", arguments));
+            }
+            Assert.Equal(await Read("count_buffer_node_ple_gaps", "@target,@from,@to"),
+                await Read("count_buffer_node_ple_gaps_v2_shadow", "@target,@from,@to"));
+
+            await using var grants = new NpgsqlCommand("""
+                SELECT count(*) FROM pg_proc AS p
+                JOIN pg_namespace AS n ON n.oid=p.pronamespace
+                WHERE n.nspname='reporting'
+                  AND p.proname IN ('list_buffer_node_ple_nodes_v2_shadow',
+                                    'get_buffer_node_ple_trend_v2_shadow',
+                                    'get_buffer_manager_ple_trend_v2_shadow',
+                                    'count_buffer_node_ple_gaps_v2_shadow')
+                  AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+                  AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+                  AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+                  AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
+                """, parity);
+            Assert.Equal(4L, await grants.ExecuteScalarAsync());
+        }
+
         await using (NpgsqlDataSource server = database.CreateServerDataSource())
         {
             var service = new BufferNodePleWindowQueryService(

@@ -376,6 +376,9 @@ Migration 0208 gives those two public overview histories one default-original
 route. Migrator activation repeats the writer-fenced fleet proof, then both
 histories read the partitioned successor; rollback restores the original
 definitions while original rows remain available.
+Migration 0209 stages private partitioned-run readers for Buffer Node and
+Buffer Manager PLE trends, node enumeration, and visibility gaps. Populated
+NUMA and aggregate samples are compared before changing the public readers.
 
 ## Implementation gates
 
