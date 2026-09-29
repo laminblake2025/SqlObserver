@@ -1278,6 +1278,50 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             }
             Assert.Equal(await Read("overview_workload_history"),
                 await Read("overview_workload_history_v2_shadow"));
+            await using (NpgsqlTransaction backfill = await parity.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@id,10);", parity, backfill);
+                    copy.Parameters.AddWithValue("id", targetId.Value);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                var days = new List<DateTimeOffset>();
+                await using (var dayQuery = new NpgsqlCommand("""
+                    SELECT DISTINCT date_trunc('day',run.started_at)
+                    FROM telemetry.collection_run AS run
+                    WHERE run.instance_id=@id AND run.collector_id='engine.core';
+                    """, parity, backfill))
+                {
+                    dayQuery.Parameters.AddWithValue("id", targetId.Value);
+                    await using NpgsqlDataReader reader = await dayQuery.ExecuteReaderAsync();
+                    while (await reader.ReadAsync()) days.Add(reader.GetFieldValue<DateTimeOffset>(0));
+                }
+                Assert.NotEmpty(days);
+                foreach (DateTimeOffset day in days)
+                {
+                    await using var certificate = new NpgsqlCommand("""
+                        SELECT parity FROM control.record_collection_run_v2_parity_window(
+                          @id,'engine.core',@day,@day + interval '1 day',10);
+                        """, parity, backfill);
+                    certificate.Parameters.AddWithValue("id", targetId.Value);
+                    certificate.Parameters.AddWithValue("day", day);
+                    Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                }
+                await backfill.CommitAsync();
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_overview_read_route(true,10000);", parity))
+                Assert.Equal(1L, await activate.ExecuteScalarAsync());
+            Assert.Equal(await Read("overview_workload_history_v2_shadow"),
+                await Read("overview_workload_history"));
+            await using (var rollback = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_overview_read_route(false,10000);", parity))
+                Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+            Assert.Equal(await Read("overview_workload_history_legacy"),
+                await Read("overview_workload_history"));
         }
         await using var connection = await server.OpenConnectionAsync();
         await using var command = new NpgsqlCommand("SELECT * FROM reporting.overview_workload_history(@id,1,@from,@to,@to)",connection);

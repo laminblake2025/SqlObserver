@@ -372,6 +372,10 @@ the original route remains available for rollback.
 Migration 0207 adds private partitioned-run readers for workload and database
 activity overview history. Populated metric and session fixtures compare their
 outputs before either public overview route changes.
+Migration 0208 gives those two public overview histories one default-original
+route. Migrator activation repeats the writer-fenced fleet proof, then both
+histories read the partitioned successor; rollback restores the original
+definitions while original rows remain available.
 
 ## Implementation gates
 

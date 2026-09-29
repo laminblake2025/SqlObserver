@@ -1082,6 +1082,70 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             }
             Assert.Equal(await Read("overview_database_activity_history"),
                 await Read("overview_database_activity_history_v2_shadow"));
+            Assert.Equal(await Read("overview_database_activity_history_legacy"),
+                await Read("overview_database_activity_history"));
+            await using (var grants = new NpgsqlCommand("""
+                SELECT count(*) FROM pg_proc AS p
+                JOIN pg_namespace AS n ON n.oid=p.pronamespace
+                WHERE n.nspname='reporting'
+                  AND p.proname IN ('overview_workload_history_legacy',
+                                    'overview_workload_history_v2_shadow',
+                                    'overview_database_activity_history_legacy',
+                                    'overview_database_activity_history_v2_shadow')
+                  AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+                  AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+                  AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+                  AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
+                """, parity))
+                Assert.Equal(4L, await grants.ExecuteScalarAsync());
+            await using (var premature = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_overview_read_route(true,10000);", parity))
+                Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                    () => premature.ExecuteScalarAsync())).SqlState);
+            await using (NpgsqlTransaction backfill = await parity.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@id,10);", parity, backfill);
+                    copy.Parameters.AddWithValue("id", targetId.Value);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @id,'activity.sessions',date_trunc('day',@at::timestamptz),
+                      date_trunc('day',@at::timestamptz) + interval '1 day',10);
+                    """, parity, backfill);
+                certificate.Parameters.AddWithValue("id", targetId.Value);
+                certificate.Parameters.AddWithValue("at", observedAt);
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                await backfill.CommitAsync();
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_overview_read_route(true,10000);", parity))
+                Assert.Equal(1L, await activate.ExecuteScalarAsync());
+            Assert.Equal(await Read("overview_database_activity_history_v2_shadow"),
+                await Read("overview_database_activity_history"));
+            IReadOnlyList<OverviewSeries> routed = await history.ReadDatabaseActivityAsync(
+                targetId, 1, from, observedAt.AddSeconds(30), repositoryNow,
+                CancellationToken.None);
+            Assert.Equal(result.Count, routed.Count);
+            await using (var workload = new NpgsqlCommand(
+                "SELECT count(*) FROM reporting.overview_workload_history(@id,1,@from,@to,@cutoff);",
+                parity))
+            {
+                workload.Parameters.AddWithValue("id", targetId.Value);
+                workload.Parameters.AddWithValue("from", from);
+                workload.Parameters.AddWithValue("to", observedAt.AddSeconds(30));
+                workload.Parameters.AddWithValue("cutoff", repositoryNow);
+                Assert.Equal(0L, await workload.ExecuteScalarAsync());
+            }
+            await using (var rollback = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_overview_read_route(false,10000);", parity))
+                Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+            Assert.Equal(await Read("overview_database_activity_history_legacy"),
+                await Read("overview_database_activity_history"));
         }
 
         await using NpgsqlConnection connection = await server.OpenConnectionAsync();

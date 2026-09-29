@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0207`
+The migration catalog contains the exact, contiguous `0001` through `0208`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -546,6 +546,10 @@ the writer fence. Passing `false` restores original-run reads.
 Migration `0207` adds private partitioned-run overview workload and database
 activity readers for populated parity checks. The public overview histories
 still read original runs pending their own guarded route.
+Migration `0208` adds one default-original route for both overview histories.
+After complete fleet backfill and parity certificates, the migrator can call
+`control.set_collection_run_v2_overview_read_route(true, max_pairs)` under the
+writer fence. Passing `false` restores both original-run readers.
 
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
