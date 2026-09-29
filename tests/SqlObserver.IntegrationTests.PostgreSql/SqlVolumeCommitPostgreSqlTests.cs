@@ -194,6 +194,36 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
                 Assert.True(reader.GetBoolean(13));
                 Assert.False(await reader.ReadAsync());
             }
+            await using (var history = new NpgsqlCommand("""
+                SELECT volume_key,total_bytes,available_bytes
+                FROM reporting.list_sql_volume_capacity_history(@target,1,@run,@keys);
+                """, readConnection))
+            {
+                history.Parameters.AddWithValue("target", work.TargetId.Value);
+                history.Parameters.AddWithValue("run", runId.Value);
+                history.Parameters.Add("keys", NpgsqlTypes.NpgsqlDbType.Array |
+                    NpgsqlTypes.NpgsqlDbType.Bytea).Value =
+                    new[] { Convert.FromHexString(new string('a', 64)) };
+                await using NpgsqlDataReader reader = await history.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal(new string('a', 64), reader.GetString(0));
+                Assert.Equal(long.MaxValue, reader.GetInt64(1));
+                Assert.Equal(long.MaxValue - 1, reader.GetInt64(2));
+                Assert.False(await reader.ReadAsync());
+            }
+            await using (var wrongHistoryScope = new NpgsqlCommand("""
+                SELECT * FROM reporting.list_sql_volume_capacity_history(
+                    @target,1,@run,@keys);
+                """, readConnection))
+            {
+                wrongHistoryScope.Parameters.AddWithValue("target", Guid.NewGuid());
+                wrongHistoryScope.Parameters.AddWithValue("run", runId.Value);
+                wrongHistoryScope.Parameters.Add("keys", NpgsqlTypes.NpgsqlDbType.Array |
+                    NpgsqlTypes.NpgsqlDbType.Bytea).Value =
+                    new[] { Convert.FromHexString(new string('a', 64)) };
+                Assert.Equal("42501", (await Assert.ThrowsAsync<PostgresException>(
+                    () => wrongHistoryScope.ExecuteNonQueryAsync())).SqlState);
+            }
             await using (var second = new NpgsqlCommand("""
                 SELECT * FROM reporting.list_sql_volume_snapshot(
                     @target,@run,1,@after_key,1);
@@ -244,6 +274,7 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
                 CancellationToken.None));
             Assert.Equal(SqlVolumeEvidenceState.Current, first.State);
             Assert.Equal(long.MaxValue, Assert.Single(first.Items).TotalBytes);
+            Assert.Equal("insufficient_history", Assert.Single(first.Trends).State);
             SqlVolumeReadCursor cursor = Assert.IsType<SqlVolumeReadCursor>(first.NextCursor);
             var protector = new SqlVolumeCursorProtector(new EphemeralDataProtectionProvider());
             string token = protector.Protect(cursor);
@@ -256,6 +287,7 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
                 authorized, new SqlVolumeReadRequest(work.TargetId, 1, decoded, Timeout),
                 CancellationToken.None));
             Assert.Null(Assert.Single(second.Items).TotalBytes);
+            Assert.Equal("capacity_unknown", Assert.Single(second.Trends).State);
             Assert.Null(second.NextCursor);
             var other = new MonitoredInstanceId(Guid.NewGuid());
             var mixedGrant = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-712"),
@@ -290,6 +322,8 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
             Assert.Equal(JsonValueKind.String, firstItem.GetProperty("totalBytes").ValueKind);
             Assert.Equal(long.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 firstItem.GetProperty("totalBytes").GetString());
+            Assert.Equal("insufficient_history", firstItem.GetProperty("trendState").GetString());
+            Assert.Equal(JsonValueKind.Null, firstItem.GetProperty("daysUntilFull").ValueKind);
             Assert.False(firstItem.TryGetProperty("volumePath", out _));
             string next = firstRoot.GetProperty("nextCursor").GetString()!;
             using HttpResponseMessage secondResponse = await http.GetAsync(
@@ -298,6 +332,7 @@ public sealed class SqlVolumeCommitPostgreSqlTests(PostgreSql18Fixture fixture)
             using JsonDocument secondBody = JsonDocument.Parse(await secondResponse.Content.ReadAsStringAsync());
             JsonElement secondItem = Assert.Single(secondBody.RootElement.GetProperty("items").EnumerateArray());
             Assert.Equal(JsonValueKind.Null, secondItem.GetProperty("totalBytes").ValueKind);
+            Assert.Equal("capacity_unknown", secondItem.GetProperty("trendState").GetString());
             Assert.Equal(JsonValueKind.Null, secondBody.RootElement.GetProperty("nextCursor").ValueKind);
             using HttpResponseMessage wrongTarget = await http.GetAsync(
                 $"/api/v1/observation-targets/{Guid.NewGuid():D}/resources/volumes?cursor=" +

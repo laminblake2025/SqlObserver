@@ -41,6 +41,8 @@ public static class SqlVolumeEndpoints
             if (page is null)
                 return Problem("not_found", "The observation target was not found.",
                     StatusCodes.Status404NotFound, correlation);
+            var trends = page.Trends.ToDictionary(static trend => trend.VolumeKey,
+                StringComparer.Ordinal);
             return Results.Ok(new SqlVolumePageResponse(
                 page.TargetId.Value,
                 page.TargetRevision.Value,
@@ -52,7 +54,7 @@ public static class SqlVolumeEndpoints
                 page.MinimumLostItems,
                 page.HasVisibilityGap,
                 page.RepositoryTimeUtc,
-                page.Items.Select(static item => new SqlVolumeResponse(
+                page.Items.Select(item => new SqlVolumeResponse(
                     item.VolumeKey,
                     item.IdentityKind switch
                     {
@@ -64,7 +66,11 @@ public static class SqlVolumeEndpoints
                     item.MappedFileCount,
                     item.TotalBytes?.ToString(CultureInfo.InvariantCulture),
                     item.AvailableBytes?.ToString(CultureInfo.InvariantCulture),
-                    item.ObservedAtUtc)).ToArray(),
+                    item.ObservedAtUtc,
+                    trends.TryGetValue(item.VolumeKey, out SqlVolumeCapacityTrend? trend)
+                        ? trend.State : "evidence_unavailable",
+                    trend?.SampleDays ?? 0,
+                    trend?.DaysUntilFull)).ToArray(),
                 page.NextCursor is null ? null : cursorProtector.Protect(page.NextCursor)));
         }
         catch (UnauthorizedAccessException)
@@ -104,7 +110,8 @@ public sealed record SqlVolumePageResponse(Guid InstanceId, long TargetRevision,
 
 public sealed record SqlVolumeResponse(string VolumeKey, string IdentityKind,
     int MappedFileCount, string? TotalBytes, string? AvailableBytes,
-    DateTimeOffset ObservedAtUtc);
+    DateTimeOffset ObservedAtUtc, string TrendState, int TrendSampleDays,
+    double? DaysUntilFull);
 
 /// <summary>Short-lived, tamper-resistant Live snapshot continuation token.</summary>
 public sealed class SqlVolumeCursorProtector

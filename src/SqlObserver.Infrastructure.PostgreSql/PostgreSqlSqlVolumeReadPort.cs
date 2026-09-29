@@ -14,6 +14,10 @@ public sealed class PostgreSqlSqlVolumeReadPort(NpgsqlDataSource dataSource) : I
         SELECT * FROM reporting.list_sql_volume_snapshot(
             @instance_id,@snapshot_run_id,@snapshot_target_revision,@after_volume_key,@max_results);
         """;
+    private const string HistorySql = """
+        SELECT * FROM reporting.list_sql_volume_capacity_history(
+            @instance_id,@target_revision,@snapshot_run_id,@volume_keys);
+        """;
 
     public async ValueTask<SqlVolumeReadPage?> ReadAsync(
         SqlVolumeReadRequest request, CancellationToken cancellationToken)
@@ -112,9 +116,14 @@ public sealed class PostgreSqlSqlVolumeReadPort(NpgsqlDataSource dataSource) : I
             SqlVolumeReadCursor? nextCursor = hasMore
                 ? new SqlVolumeReadCursor(request.TargetId, revision, runId!, items[^1].VolumeKey)
                 : null;
+            IReadOnlyList<SqlVolumeCapacityTrend> trends = state == SqlVolumeEvidenceState.Current &&
+                runId is not null && items.Count > 0
+                ? await ReadTrendsAsync(connection, transaction, request, revision, runId,
+                    items, deadline.Token).ConfigureAwait(false)
+                : [];
             var page = new SqlVolumeReadPage(request.TargetId, revision, runId,
                 state, reason!, completedAt, lossKind, minimumLostItems,
-                items, nextCursor, repositoryTime);
+                items, nextCursor, repositoryTime, trends);
             await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
             return page;
         }
@@ -130,6 +139,44 @@ public sealed class PostgreSqlSqlVolumeReadPort(NpgsqlDataSource dataSource) : I
         {
             throw PostgreSqlRuntimeSupport.CreateTimeoutException("SQL volume snapshot read", exception);
         }
+    }
+
+    private static async Task<IReadOnlyList<SqlVolumeCapacityTrend>> ReadTrendsAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction,
+        SqlVolumeReadRequest request, ObservationTargetRevision revision, CollectorRunId runId,
+        List<SqlVolumeObservation> items, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(HistorySql, connection, transaction)
+        {
+            CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
+        };
+        command.Parameters.AddWithValue("instance_id", request.TargetId.Value);
+        command.Parameters.AddWithValue("target_revision", revision.Value);
+        command.Parameters.AddWithValue("snapshot_run_id", runId.Value);
+        command.Parameters.Add("volume_keys", NpgsqlDbType.Array | NpgsqlDbType.Bytea).Value =
+            items.Select(static item => Convert.FromHexString(item.VolumeKey)).ToArray();
+        var samples = items.ToDictionary(static item => item.VolumeKey,
+            static _ => new List<SqlVolumeDailyCapacitySample>(), StringComparer.Ordinal);
+        int rowCount = 0;
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (++rowCount > items.Count * 15)
+                    throw new InvalidDataException("SQL volume history exceeded its daily bound.");
+                string key = reader.GetString(0);
+                if (!samples.TryGetValue(key, out List<SqlVolumeDailyCapacitySample>? history))
+                    throw new InvalidDataException("SQL volume history returned an unrequested key.");
+                DateTimeOffset observedAt = PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 1);
+                if (history.Count > 0 && history[^1].ObservedAtUtc >= observedAt)
+                    throw new InvalidDataException("SQL volume history order is invalid.");
+                history.Add(new SqlVolumeDailyCapacitySample(key, observedAt,
+                    reader.GetInt64(2), reader.GetInt64(3)));
+            }
+        }
+        return items.Select(item => SqlVolumeCapacityTrendEstimator.Estimate(item, samples[item.VolumeKey]))
+            .ToArray();
     }
 
     private static SqlVolumeEvidenceState ReadState(string value) => value switch

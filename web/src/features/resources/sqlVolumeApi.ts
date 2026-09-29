@@ -7,6 +7,9 @@ export interface SqlVolumeItem {
   readonly totalBytes: string | null;
   readonly availableBytes: string | null;
   readonly observedAtUtc: string;
+  readonly trendState: string;
+  readonly trendSampleDays: number;
+  readonly daysUntilFull: number | null;
 }
 
 export interface SqlVolumePage {

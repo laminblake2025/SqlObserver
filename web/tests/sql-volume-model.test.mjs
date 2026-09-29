@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { volumeEvidenceMessage, volumeUsedPercent } from "../src/features/resources/sqlVolumeModel.ts";
+import { volumeDaysUntilFull, volumeEvidenceMessage, volumeUsedPercent } from "../src/features/resources/sqlVolumeModel.ts";
 
 test("volume percentages retain exact 64-bit capacity before rounding", () => {
   assert.equal(volumeUsedPercent("9223372036854775807", "4611686018427387903"), "50.00%");
@@ -15,4 +15,13 @@ test("volume evidence names gaps without inventing capacity", () => {
   assert.match(volumeEvidenceMessage("unavailable", "not_collected"), /has not produced a snapshot/);
   assert.match(volumeEvidenceMessage("unavailable", "evidence_expired"), /expired/);
   assert.match(volumeEvidenceMessage("stale", "completed"), /overdue/);
+});
+
+test("volume trend labels never turn missing or unstable evidence into a deadline", () => {
+  assert.equal(volumeDaysUntilFull("estimated", 3.2), "4 days");
+  assert.equal(volumeDaysUntilFull("estimated", .25), "<1 day");
+  assert.equal(volumeDaysUntilFull("unstable_trend", null), "Unstable trend");
+  assert.equal(volumeDaysUntilFull("insufficient_history", null), "Needs history");
+  assert.equal(volumeDaysUntilFull("capacity_changed", null), "Capacity changed");
+  assert.equal(volumeDaysUntilFull("estimated", null), "No estimate");
 });

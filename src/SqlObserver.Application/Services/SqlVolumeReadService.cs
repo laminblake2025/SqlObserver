@@ -62,12 +62,14 @@ public sealed class SqlVolumeReadPage
         ObservationTargetRevision targetRevision, CollectorRunId? snapshotRunId,
         SqlVolumeEvidenceState state, string reason, DateTimeOffset? completedAtUtc,
         string? lossKind, long? minimumLostItems, IReadOnlyList<SqlVolumeObservation> items,
-        SqlVolumeReadCursor? nextCursor, DateTimeOffset repositoryTimeUtc)
+        SqlVolumeReadCursor? nextCursor, DateTimeOffset repositoryTimeUtc,
+        IReadOnlyList<SqlVolumeCapacityTrend>? trends = null)
     {
         ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(targetRevision);
         ArgumentNullException.ThrowIfNull(reason);
         ArgumentNullException.ThrowIfNull(items);
+        trends ??= [];
         if (!Enum.IsDefined(state) || reason.Length is < 1 or > 128 ||
             reason.Any(static character => character is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '_')) ||
             items.Count > SqlVolumeReadRequest.MaximumResults ||
@@ -77,7 +79,10 @@ public sealed class SqlVolumeReadPage
                 nextCursor.TargetRevision != targetRevision || nextCursor.RunId != snapshotRunId ||
                 items.Count == 0 || nextCursor.AfterVolumeKey != items[^1].VolumeKey)) ||
             (completedAtUtc is not null && completedAtUtc.Value.Offset != TimeSpan.Zero) ||
-            repositoryTimeUtc.Offset != TimeSpan.Zero)
+            repositoryTimeUtc.Offset != TimeSpan.Zero ||
+            trends.Any(trend => trend is null ||
+                !items.Any(item => item.VolumeKey == trend.VolumeKey)) ||
+            trends.Select(static trend => trend.VolumeKey).Distinct(StringComparer.Ordinal).Count() != trends.Count)
             throw new ArgumentException("SQL volume page evidence is inconsistent.", nameof(items));
         TargetId = targetId;
         TargetRevision = targetRevision;
@@ -90,6 +95,7 @@ public sealed class SqlVolumeReadPage
         Items = Array.AsReadOnly(items.ToArray());
         NextCursor = nextCursor;
         RepositoryTimeUtc = repositoryTimeUtc;
+        Trends = Array.AsReadOnly(trends.ToArray());
     }
 
     public MonitoredInstanceId TargetId { get; }
@@ -103,6 +109,7 @@ public sealed class SqlVolumeReadPage
     public IReadOnlyList<SqlVolumeObservation> Items { get; }
     public SqlVolumeReadCursor? NextCursor { get; }
     public DateTimeOffset RepositoryTimeUtc { get; }
+    public IReadOnlyList<SqlVolumeCapacityTrend> Trends { get; }
     public bool HasVisibilityGap => State != SqlVolumeEvidenceState.Current || LossKind is not null and not "none";
 }
 

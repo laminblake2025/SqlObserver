@@ -3,7 +3,7 @@ import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { fileSizeGib } from "./resourceFileModel";
 import { getSqlVolumePage, type SqlVolumePage } from "./sqlVolumeApi";
-import { volumeEvidenceMessage, volumeUsedPercent } from "./sqlVolumeModel";
+import { volumeDaysUntilFull, volumeEvidenceMessage, volumeUsedPercent } from "./sqlVolumeModel";
 
 export function SqlVolumePanel({ instanceId, refresh, isRewind }: {
   readonly instanceId: string;
@@ -74,7 +74,7 @@ export function SqlVolumePanel({ instanceId, refresh, isRewind }: {
   return <section className="panel" aria-label="SQL-reported target-host volume capacity" aria-busy={loading}>
     <h3>SQL-reported target-host volume capacity</h3>
     {isRewind ? <p>Historical volume capacity is not available in Rewind. Choose a live range to see the latest snapshot.</p> : <>
-      <p>Capacity comes from SQL Server's view of volumes used by its database files. It describes the target host, not the collector host. Shared volumes appear once; paths are withheld.</p>
+      <p>Capacity comes from SQL Server's view of volumes used by its database files. It describes the target host, not the collector host. Shared volumes appear once; paths are withheld. Days until full uses a 14-day trend of complete daily snapshots; changing or erratic capacity has no estimate.</p>
       {loading && <p role="status">Loading volume snapshot…</p>}
       {error && <p role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Load latest snapshot</button></p>}
       {page && <>
@@ -88,7 +88,7 @@ export function SqlVolumePanel({ instanceId, refresh, isRewind }: {
           <caption>Latest SQL-reported volume capacity</caption>
           <thead><tr><th scope="col">Volume</th><th scope="col">Mapped files</th>
             <th scope="col">Total</th><th scope="col">Available</th>
-            <th scope="col">Used</th><th scope="col">Observed</th></tr></thead>
+            <th scope="col">Used</th><th scope="col">Days until full</th><th scope="col">Observed</th></tr></thead>
           <tbody>{page.items.map(item => <tr key={item.volumeKey}>
             <td title={`Opaque volume key ${item.volumeKey}`}>
               {item.identityKind === "file_scoped_unknown" ? "Unidentified file volume" : "Volume"} {item.volumeKey.slice(0, 8)}</td>
@@ -98,6 +98,8 @@ export function SqlVolumePanel({ instanceId, refresh, isRewind }: {
             <td title={item.availableBytes === null ? "Capacity unavailable" : `${item.availableBytes} bytes`}>
               {item.availableBytes === null ? "—" : fileSizeGib(item.availableBytes) ?? "—"}</td>
             <td>{volumeUsedPercent(item.totalBytes, item.availableBytes) ?? "—"}</td>
+            <td title={`${item.trendSampleDays ?? 0} complete daily samples · ${(item.trendState ?? "evidence_unavailable").replaceAll("_", " ")}`}>
+              {volumeDaysUntilFull(item.trendState ?? "evidence_unavailable", item.daysUntilFull ?? null)}</td>
             <td>{formatDisplayTime(item.observedAtUtc, mode)}</td>
           </tr>)}</tbody>
         </table></div> : <p>No volume rows were returned for this snapshot.</p>}
