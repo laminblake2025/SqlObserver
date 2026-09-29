@@ -140,6 +140,14 @@ source-only change.
 
 The collector envelope now has a dedicated `ServerConfigurations` output kind
 with bounded exact-value observations, and an adapter can turn a complete
-source scan into that payload. It remains outside the runtime registry. No
-repository writer exists yet, so registering it would publish an outcome
-without preserving the exact observations.
+source scan into that payload. It remains outside the runtime registry until
+the writer and source permissions are qualified together.
+
+Migration 0253 adds the fenced repository commit for exact-value scans. A
+successful run writes every bounded snapshot and compares only with the
+immediately preceding terminal run when that run was also complete for the
+same target revision and SQL Server major version. Matching IDs with changed
+names or types establish new baselines. Partial and failed runs record
+visibility gaps without snapshots or change events. Replay uses the canonical
+completion digest; the collector adapter routes this output kind through the
+new function, but runtime registration still waits for source qualification.
