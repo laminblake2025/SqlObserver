@@ -100,9 +100,11 @@ now validate the target and JSON boundary. Migration 0236 and the collector
 worker publish core health, active alerts, and coherent current blocking from
 committed repository data under a lease. The due-target list records attempts
 so a repeatedly failing target cannot monopolize its bounded batch. Waits,
-database states, TempDB, backups, and AG remain explicitly unavailable in this
-row. Their materialization, full parity work, and the read switch remain to be
-built.
+TempDB, backups, and AG remain explicitly unavailable in this row. Migration
+0237 adds up to five critical database-state issues from the current inventory
+run, marks a longer issue list partial, and withholds issues when inventory
+collection is not current. Other source materialization, full parity work, and
+the read switch remain to be built.
 
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and

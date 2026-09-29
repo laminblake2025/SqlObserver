@@ -206,6 +206,102 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
         Assert.Equal("current", blocked.BlockedSessions.State);
         Assert.Contains(blocked.Issues, issue => issue.Title == "Sessions blocked" &&
             issue.TargetId == target);
+
+        Guid inventoryRun = Guid.NewGuid();
+        DateTimeOffset inventoryAt = DateTimeOffset.UtcNow;
+        await using (var inventory = database.DataSource.CreateCommand("""
+            INSERT INTO control.collector_schedule
+                (instance_id,collector_id,collector_version,target_revision,
+                 schedule_revision,enabled,collection_interval,next_due_at,
+                 circuit_state,consecutive_failure_count,last_completed_at,
+                 last_succeeded_at,created_at,updated_at)
+            VALUES (@target,'database.inventory',1,1,1,true,interval '1 hour',
+                    @at,'closed',0,@at,@at,@at,@at)
+            ON CONFLICT (instance_id,collector_id) DO UPDATE SET
+                target_revision=1,schedule_revision=1,enabled=true,
+                collection_interval=interval '1 hour',next_due_at=EXCLUDED.next_due_at,
+                circuit_state='closed',consecutive_failure_count=0,
+                last_completed_at=EXCLUDED.last_completed_at,
+                last_succeeded_at=EXCLUDED.last_succeeded_at;
+            INSERT INTO telemetry.collection_run
+                (run_id,instance_id,collector_id,collector_version,output_schema_version,
+                 target_revision,schedule_revision,work_key,owner_execution_id,
+                 fencing_token,request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'database.inventory',1,1,1,1,@work,@owner,1,
+                    decode(repeat('cc',32),'hex'),@at,@at);
+            INSERT INTO telemetry.collection_run_outcome
+                (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+                 source_row_count,output_item_count,inserted_item_count,
+                 duplicate_item_count,rejected_item_count,response_bytes,
+                 output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,
+                 loss_count_exact,lost_row_count,lost_byte_count,completion_digest,
+                 completed_at)
+            VALUES (@run,'succeeded','completed',1,0,10,7,7,7,0,0,128,128,128,
+                    false,false,'none',true,0,0,
+                    decode(repeat('dd',32),'hex'),@at);
+            INSERT INTO telemetry.database_inventory_snapshot
+                (observed_at,snapshot_id,collection_run_id,instance_id,
+                 target_revision,database_id,database_name,state_code,
+                 is_read_only,recovery_model,user_access,compatibility_level,collected_at)
+            SELECT @at,gen_random_uuid(),@run,@target,1,n,
+                   'Database ' || n::text,
+                   CASE WHEN n=1 THEN 'online'
+                        WHEN n=2 THEN 'recovery_pending'
+                        WHEN n=3 THEN 'emergency'
+                        ELSE 'suspect' END,
+                   false,'full','multi_user',160,@at
+            FROM generate_series(1,7) AS n;
+            INSERT INTO alerting.rule
+                (rule_id,instance_id,name,kind,metric_id,comparison,threshold,
+                 confirmation_count,confirmation_window,evaluation_interval)
+            SELECT gen_random_uuid(),@target,'Extra alert ' || n::text,
+                   1,'engine.user_connections',2,10,1,
+                   interval '0 seconds',interval '15 seconds'
+            FROM generate_series(1,4) AS n;
+            INSERT INTO alerting.rule_state
+                (instance_id,rule_id,alert_id,state,consecutive_matches,
+                 first_match_at,last_observed_at,fired_at,last_value,reason)
+            SELECT @target,r.rule_id,gen_random_uuid(),3,1,@at,@at,@at,15,
+                   'Extra alert threshold exceeded'
+            FROM alerting.rule AS r
+            WHERE r.instance_id=@target AND r.name LIKE 'Extra alert %';
+            """))
+        {
+            inventory.Parameters.AddWithValue("target", target);
+            inventory.Parameters.AddWithValue("at", inventoryAt);
+            inventory.Parameters.AddWithValue("run", inventoryRun);
+            inventory.Parameters.AddWithValue("work", $"collector/run/database.inventory/{target:N}");
+            inventory.Parameters.AddWithValue("owner", Guid.NewGuid());
+            await inventory.ExecuteNonQueryAsync();
+        }
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus databases = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("partial", databases.Sources["databaseStates"].State);
+        Assert.Equal(5, databases.Issues.Count(issue => issue.Title == "Database state exception"));
+        Assert.Equal(10, databases.Issues.Count);
+        Assert.Contains(databases.Issues, issue => issue.Detail == "Database 2: RecoveryPending");
+        Assert.Contains("Database state issue list partial", databases.Gaps);
+        Assert.Contains("Overview issue list partial", databases.Gaps);
+
+        await using (var disable = database.DataSource.CreateCommand("""
+            UPDATE control.collector_schedule SET enabled=false
+            WHERE instance_id=@target AND collector_id='database.inventory';
+            """))
+        {
+            disable.Parameters.AddWithValue("target", target);
+            await disable.ExecuteNonQueryAsync();
+        }
+        Assert.True(await materializer.RefreshCoreAsync(
+            new OverviewRefreshTarget(new MonitoredInstanceId(target), 1), identity,
+            CancellationToken.None));
+        OverviewLatestStatus disabled = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
+            new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal("disabled", disabled.Sources["databaseStates"].State);
+        Assert.DoesNotContain(disabled.Issues, issue => issue.Title == "Database state exception");
+        Assert.Contains(disabled.Issues, issue => issue.Title == "Sessions blocked");
     }
 
     [Fact]
