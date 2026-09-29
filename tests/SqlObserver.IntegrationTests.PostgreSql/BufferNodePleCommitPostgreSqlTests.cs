@@ -190,6 +190,11 @@ public sealed class BufferNodePleCommitPostgreSqlTests(PostgreSql18Fixture fixtu
             await using (var activate = new NpgsqlCommand(
                 "SELECT control.set_collection_run_v2_ple_read_route(true,10000);", parity))
                 Assert.Equal(1L, await activate.ExecuteScalarAsync());
+            await using (var activateCommitRoute = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", parity))
+                Assert.Equal(1L, await activateCommitRoute.ExecuteScalarAsync());
+            Assert.Equal(CollectorRunCommitStatus.Replayed,
+                (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
             foreach ((string name, string arguments) in new[]
             {
                 ("list_buffer_node_ple_nodes", "@target,@from,@to"),
@@ -220,6 +225,9 @@ public sealed class BufferNodePleCommitPostgreSqlTests(PostgreSql18Fixture fixtu
             await using (var rollback = new NpgsqlCommand(
                 "SELECT control.set_collection_run_v2_ple_read_route(false,10000);", parity))
                 Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+            await using (var rollbackCommitRoute = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(false,10000);", parity))
+                Assert.Equal(2L, await rollbackCommitRoute.ExecuteScalarAsync());
             Assert.Equal(await Read("list_buffer_node_ple_nodes_legacy", "@target,@from,@to"),
                 await Read("list_buffer_node_ple_nodes", "@target,@from,@to"));
         }

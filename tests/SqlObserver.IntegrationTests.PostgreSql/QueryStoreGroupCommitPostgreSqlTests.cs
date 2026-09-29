@@ -76,6 +76,42 @@ public sealed class QueryStoreGroupCommitPostgreSqlTests(PostgreSql18Fixture fix
         CollectorRunCommitResult committed = await runtime.CommitRunAsync(request, CancellationToken.None);
         Assert.Equal(CollectorRunCommitStatus.Committed, committed.Status);
         Assert.Equal(1, committed.InsertedCount);
+        await using (NpgsqlConnection route = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", route))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", route))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteScalarAsync();
+            }
+            await using (NpgsqlTransaction backfill = await route.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@target,10);", route, backfill);
+                    copy.Parameters.AddWithValue("target", target);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,'queries.performance-groups',
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run)),
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run))
+                        + interval '1 day',10);
+                    """, route, backfill);
+                certificate.Parameters.AddWithValue("target", target);
+                certificate.Parameters.AddWithValue("run", runId.Value);
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                await backfill.CommitAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", route);
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        }
         Assert.Equal(CollectorRunCommitStatus.Replayed,
             (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
         Assert.Equal(work.RepositoryTimeUtc,

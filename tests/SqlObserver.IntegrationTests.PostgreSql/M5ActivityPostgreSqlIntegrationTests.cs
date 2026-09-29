@@ -266,6 +266,16 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
                      'EXECUTE');
             """, connection))
             Assert.True((bool)(await schedulerGrants.ExecuteScalarAsync())!);
+        await using (var lockedCommitRoutes = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_proc AS procedure
+            JOIN pg_namespace AS namespace ON namespace.oid=procedure.pronamespace
+            WHERE namespace.nspname='control'
+              AND procedure.proname IN ('commit_sql_volume_collection_run',
+                                        'commit_buffer_node_ple_collection_run',
+                                        'commit_query_store_group_collection_run')
+              AND procedure.prosrc LIKE '%FROM telemetry.lock_collection_run_runtime(p_run_id)%';
+            """, connection))
+            Assert.Equal(3L, await lockedCommitRoutes.ExecuteScalarAsync());
         async Task<string> ReadRun(string source)
         {
             await using var command = new NpgsqlCommand(source switch

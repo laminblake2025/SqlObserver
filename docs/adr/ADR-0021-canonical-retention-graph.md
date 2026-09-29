@@ -410,6 +410,8 @@ Migration 0218 adds a row-locking run lookup under that switch and uses it for
 SQL-volume commit identity checks. The selected run row stays locked through the
 commit transaction, including replay; other collector commit paths remain on
 their original run lookups until routed explicitly.
+Migration 0219 applies the same locking lookup to buffer-node PLE and Query
+Store group commits. Their fenced replay and payload logic is otherwise retained.
 
 ## Implementation gates
 
