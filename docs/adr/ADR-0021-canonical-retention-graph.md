@@ -430,6 +430,21 @@ validated 20-child identity-FK cutover and the guarded scheduler read route,
 then rechecks fleet parity under the writer fence. The selected writer mirrors
 each run to the other table in the same transaction, preserving replay and a
 verified rollback path while the remaining original readers are retired.
+Migration 0226 adds a separately invoked, permanent rollback seal. Installation
+does not activate it. Sealing requires all ten reviewed reader routes and the
+writer route on v2, the complete child-FK cutover, and fresh fleet parity under
+the same writer fence. Enabled triggers then reject any route returning to the
+original table. The v2-to-original mirror stops inserting new original rows
+only after the seal commits; v2 run identity and child references continue to
+be written. A PostgreSQL test proves the default hold, seal, route guard,
+v2-only collector begin/commit/replay, and idempotent seal call after new
+v2-only history exists.
+This bounds future growth of the original run table but does not delete its
+historical rows or make a v2 day eligible for detach. The identity bridge FK
+and 20 child evidence classes remain explicit retention holds. The next
+cleanup step must account for their class-specific policies, active schedules,
+replay and audit windows, reader leases, recovery attestation, and any
+unexpected catalog reference before removing original or identity rows.
 
 ## Implementation gates
 
