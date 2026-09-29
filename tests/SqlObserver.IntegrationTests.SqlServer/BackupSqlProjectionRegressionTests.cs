@@ -11,6 +11,53 @@ public sealed class BackupSqlProjectionRegressionTests
     [InlineData(16)]
     [InlineData(17)]
     [Trait("Category", "RequiresSqlServer")]
+    public async Task BoundedBackupProjectionPrioritizesMissingAndOldFullBackups(int major)
+    {
+        var settings = new SqlConnectionStringBuilder(SqlServerLabContract.ConnectionString);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var connection = new SqlConnection(settings.ConnectionString);
+        await connection.OpenAsync(deadline.Token);
+        await using var clock = new SqlCommand("SELECT GETDATE();", connection) { CommandTimeout = 5 };
+        DateTime now = Assert.IsType<DateTime>(await clock.ExecuteScalarAsync(deadline.Token));
+        const string identities = """
+            DECLARE @never uniqueidentifier='00000000-0000-0000-0000-000000000001';
+            DECLARE @busy uniqueidentifier='00000000-0000-0000-0000-000000000002';
+            DECLARE @old uniqueidentifier='00000000-0000-0000-0000-000000000003';
+            """;
+        const string databases = """
+            (VALUES (5,N'never'),(6,N'busy'),(7,N'old')) AS d(database_id,name)
+            """;
+        const string identitiesByDatabase = """
+            (VALUES (5,@never),(6,@busy),(7,@old)) AS rs(database_id,database_guid)
+            """;
+        const string backups = """
+            (VALUES
+              (N'busy',@busy,CONVERT(char(1),'D'),DATEADD(hour,-1,@now),1,CONVERT(numeric(20,0),100),CONVERT(bit,0),CONVERT(bit,1),CONVERT(bit,0),CONVERT(smallint,0)),
+              (N'busy',@busy,'I',DATEADD(minute,-30,@now),2,100,0,1,0,0),
+              (N'busy',@busy,'L',DATEADD(minute,-10,@now),3,100,0,1,0,0),
+              (N'old',@old,'D',DATEADD(day,-30,@now),4,100,0,1,0,0)
+            ) AS b(database_name,database_guid,type,backup_finish_date,backup_set_id,backup_size,is_copy_only,has_backup_checksums,is_damaged,time_zone)
+            """;
+        string query = SqlServerOperationalHealthAssetCatalog.LoadEmbedded()
+            .Get($"backups.status.sqlserver{major}-windows.v1.sql");
+        query = identities + query.Replace("sys.databases AS d", databases, StringComparison.Ordinal)
+            .Replace("sys.database_recovery_status AS rs", identitiesByDatabase, StringComparison.Ordinal)
+            .Replace("msdb.dbo.backupset AS b", backups, StringComparison.Ordinal);
+        await using var command = new SqlCommand(query, connection) { CommandTimeout = 5 };
+        command.Parameters.Add("now", SqlDbType.DateTime).Value = now;
+        command.Parameters.Add("maximum_rows", SqlDbType.Int).Value = 2;
+        await using SqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token);
+        var selected = new List<long?>();
+        while (await reader.ReadAsync(deadline.Token))
+            selected.Add(reader.IsDBNull(7) ? null : reader.GetInt64(7));
+        Assert.Equal(new long?[] { null, 4 }, selected);
+    }
+
+    [Theory]
+    [InlineData(15)]
+    [InlineData(16)]
+    [InlineData(17)]
+    [Trait("Category", "RequiresSqlServer")]
     public async Task NativeBackupProjectionSelectsRegularFullAndConvertsSourceOffset(int major)
     {
         // Exercise the embedded query against a fixed VALUES source. No target

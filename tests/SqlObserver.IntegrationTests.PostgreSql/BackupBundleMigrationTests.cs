@@ -10,6 +10,36 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 public sealed partial class PassiveCollectorBundleMigrationTests
 {
+    [Fact]
+    public async Task BackupMissingFirstBundleUpgradePreservesRegistryAndHistory()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(242);
+        Assert.Equal(Enumerable.Repeat("5ab54f5ac93eb67a2626d0c005fc15cda9289d7fc0e3b083c52e7fc58a1a0987", 4),
+            await ReadBackupBundlesAsync(database));
+        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: true);
+        string historyBefore = await ReadHistoryAndSchedulesAsync(database);
+
+        MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(243, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4),
+            await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        await AssertAppendOnlyTriggerAsync(database);
+        await using ServiceProvider application = CreateApplication();
+        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>()
+            .CatalogEntries.Take(15).ToArray();
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var lease = await AcquireCatalogLeaseAsync(collector);
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        Assert.Equal(15, (await runtime.ReconcileCatalogAsync(
+            new ReconcileCollectorCatalogRequest(entries, lease, Timeout),
+            CancellationToken.None)).UnchangedCount);
+    }
+
     private const string PriorBackupBundle = "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484";
     private const string UpdatedBackupBundle = "5cead2f81a535b7726c5eb6c6b4abac35cbc8cd85301b60e1867ba694e4a3e8e";
 

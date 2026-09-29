@@ -31,4 +31,5 @@ SELECT TOP (@maximum_rows)
  CONVERT(bit,CASE WHEN k.database_guid IS NULL THEN 1 ELSE 0 END) AS database_identity_unknown
 FROM requested AS k
 LEFT JOIN bounded AS b ON b.database_guid=k.database_guid AND b.type=k.backup_type AND b.rn=1
-ORDER BY b.backup_finish_date DESC,b.backup_set_id DESC,k.database_name,k.backup_type;
+ORDER BY CASE WHEN b.backup_finish_date IS NULL THEN 0 WHEN k.backup_type='D' THEN 1 ELSE 2 END,
+b.backup_finish_date ASC,b.backup_set_id ASC,k.database_name,k.backup_type;

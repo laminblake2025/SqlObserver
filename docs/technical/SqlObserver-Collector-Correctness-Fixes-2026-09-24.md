@@ -142,3 +142,21 @@ These results cover .NET behavior and disposable PostgreSQL. The changed SQL
 Server assets still require live SQL Server qualification. They do not establish
 production certification, repair backup age or Agent event times, or replace the
 remaining analytics, MCP, and refactor work in the review plan.
+
+## Bounded backup priority (2026-09-29)
+
+The M9 backup query now orders databases with no backup first, followed by the
+oldest regular full backups, before differential and log backups. This keeps
+the highest-risk backup rows in the bounded result when many recent backups
+would otherwise fill `TOP (@maximum_rows)`. The three SQL Server major-version
+assets use the same query and have new checksums. Migration 0243 advances all
+four M9 collector contract bundle pins; it preserves schedules and run history
+and rejects an unexpected prior bundle. Deploy the migration and matching
+collector binaries together.
+
+A native SQL Server Express regression reproduced the truncation before the
+change and passed for all three embedded asset variants afterward. The focused
+PostgreSQL migration test passed, including production catalog reconciliation.
+Static asset, migration-schema, preamble, and certification-producer tests
+passed. The native test executed against one local SQL Server Express instance;
+the other engine major versions were not independently exercised here.
