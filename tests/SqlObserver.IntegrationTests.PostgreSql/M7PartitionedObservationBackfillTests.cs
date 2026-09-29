@@ -159,6 +159,12 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
                      'control.backfill_query_observation_v3(uuid,integer)','EXECUTE'),
                    has_function_privilege('sqlobserver_server',
                      'control.verify_query_observation_v3_window(uuid,timestamptz,timestamptz,integer)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.record_query_observation_v3_parity_window(uuid,timestamptz,timestamptz,integer)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.query_observation_v3_parity_coverage(uuid)',
                      'EXECUTE');
             """, admin);
         inspect.Parameters.AddWithValue("target", target);
@@ -170,6 +176,8 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
         Assert.Equal(0L, resultReader.GetInt64(3));
         Assert.False(resultReader.GetBoolean(4));
         Assert.False(resultReader.GetBoolean(5));
+        Assert.False(resultReader.GetBoolean(6));
+        Assert.False(resultReader.GetBoolean(7));
         await resultReader.DisposeAsync();
 
         async Task<(long Source, long Successor, string SourceHash,
@@ -205,6 +213,77 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
         Assert.Equal(64, matched.SourceHash.Length);
         Assert.True(matched.Parity);
 
+        async Task<(DateTimeOffset? From, DateTimeOffset? To,
+            DateTimeOffset? CoveredThrough, bool All, long Verified,
+            long Failed)> CoverageAsync()
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var coverage = new NpgsqlCommand(
+                "SELECT * FROM control.query_observation_v3_parity_coverage(@target);",
+                admin, transaction);
+            coverage.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader reader = await coverage.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            var result = (
+                reader.IsDBNull(0) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(0),
+                reader.IsDBNull(1) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(1),
+                reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2),
+                reader.GetBoolean(3), reader.GetInt64(4), reader.GetInt64(5));
+            await reader.DisposeAsync();
+            await transaction.CommitAsync();
+            return result;
+        }
+
+        async Task<bool> RecordAsync(DateTimeOffset from, DateTimeOffset to)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var record = new NpgsqlCommand("""
+                SELECT parity FROM control.record_query_observation_v3_parity_window(
+                  @target,@from,@to,100);
+                """, admin, transaction);
+            record.Parameters.AddWithValue("target", target);
+            record.Parameters.AddWithValue("from", from);
+            record.Parameters.AddWithValue("to", to);
+            bool parity = (bool)(await record.ExecuteScalarAsync())!;
+            await transaction.CommitAsync();
+            return parity;
+        }
+
+        var initialCoverage = await CoverageAsync();
+        Assert.False(initialCoverage.All);
+        Assert.Equal(initialCoverage.From, initialCoverage.CoveredThrough);
+        Assert.Equal(0L, initialCoverage.Verified);
+        DateTimeOffset firstDay = initialCoverage.From!.Value;
+        DateTimeOffset endDay = initialCoverage.To!.Value;
+        Assert.True(await RecordAsync(firstDay.AddDays(-30), firstDay.AddDays(-29)));
+        Assert.False((await CoverageAsync()).All);
+        Assert.True(await RecordAsync(firstDay, firstDay.AddHours(12)));
+        var partialCoverage = await CoverageAsync();
+        Assert.False(partialCoverage.All);
+        Assert.Equal(firstDay.AddHours(12), partialCoverage.CoveredThrough);
+        Assert.True(await RecordAsync(firstDay.AddHours(12), firstDay.AddDays(1)));
+        for (DateTimeOffset day = firstDay.AddDays(1); day < endDay; day = day.AddDays(1))
+        {
+            Assert.True(await RecordAsync(day, day.AddDays(1)));
+        }
+        Assert.True((await CoverageAsync()).All);
+
         await using (var live = new NpgsqlCommand("""
             INSERT INTO events.query_performance_query
               (collection_run_id,instance_id,database_id,query_fingerprint)
@@ -227,6 +306,14 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
             live.Parameters.AddWithValue("target", target);
             await live.ExecuteNonQueryAsync();
         }
+        Assert.False((await CoverageAsync()).All);
+        var expandedCoverage = await CoverageAsync();
+        for (DateTimeOffset day = expandedCoverage.From!.Value;
+             day < expandedCoverage.To!.Value; day = day.AddDays(1))
+        {
+            Assert.True(await RecordAsync(day, day.AddDays(1)));
+        }
+        Assert.True((await CoverageAsync()).All);
 
         await using (NpgsqlTransaction shadow = await admin.BeginTransactionAsync())
         {
@@ -374,6 +461,18 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
         Assert.Equal((4L, 5L), (extraRowParity.Source, extraRowParity.Successor));
         Assert.NotEqual(extraRowParity.SourceHash, extraRowParity.SuccessorHash);
         Assert.False(extraRowParity.Parity);
+        Assert.False((await CoverageAsync()).All);
+        var failedCoverage = await CoverageAsync();
+        bool sawFailure = false;
+        for (DateTimeOffset day = failedCoverage.From!.Value;
+             day < failedCoverage.To!.Value; day = day.AddDays(1))
+        {
+            sawFailure |= !await RecordAsync(day, day.AddDays(1));
+        }
+        Assert.True(sawFailure);
+        failedCoverage = await CoverageAsync();
+        Assert.False(failedCoverage.All);
+        Assert.True(failedCoverage.Failed > 0);
         PostgresException tooDense = await Assert.ThrowsAsync<PostgresException>(
             () => VerifyAsync(4));
         Assert.Equal("54000", tooDense.SqlState);

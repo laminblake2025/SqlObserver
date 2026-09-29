@@ -117,6 +117,15 @@ successor-backed plan-metadata reader with the same protected-plan-link
 availability check. The focused test compares its result with the active
 function for a plan-bearing observation and confirms no server grant. The
 production API still uses the original plan-metadata function.
+Migration 0170 records bounded, target-scoped parity windows and reports the
+first uncovered UTC interval across source and successor evidence. Windows may
+split a dense day, but each must fit within one UTC day. A successor insert
+increments that target/day generation, making earlier checks for that day
+stale; the mirror now processes targets in sorted order to avoid lock-order
+inversion. It also corrects the empty-window SHA-256 seed width from migration
+0167 in a forward function replacement. The coverage report is a preliminary
+operator ledger, not a cutover attestation: final replay and writer fencing
+still have to close the active day and the remaining dependency graph.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

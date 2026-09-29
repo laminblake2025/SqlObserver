@@ -277,6 +277,14 @@ path until every target and time window has passed parity and replay checks.
 Migration `0169` adds a similarly private plan-metadata shadow reader. It
 preserves the protected-plan-link availability check; the API still calls the
 original plan-metadata function.
+Migration `0170` adds a migrator-only parity sweep ledger. Call
+`control.query_observation_v3_parity_coverage(target)` to get the UTC bounds
+and first uncovered point, then record each day or smaller piece with
+`control.record_query_observation_v3_parity_window(target, from_utc, to_utc,
+max_rows)`. Each call stores counts and digests; a live insert makes its UTC
+day's earlier checks stale. `all_covered` means the currently recorded,
+generation-matched passing windows cover the observed bounds. Keep the API on
+the original path until replay, fencing, and read cutover are reviewed.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced
