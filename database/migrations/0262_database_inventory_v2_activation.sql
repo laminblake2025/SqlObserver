@@ -3,8 +3,8 @@
 SET LOCAL ROLE sqlobserver_migrator;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '5min';
-SET LOCAL idle_in_transaction_session_timeout = '5min';
 SET LOCAL TIME ZONE 'UTC';
+SET LOCAL idle_in_transaction_session_timeout = '5min';
 
 ALTER TABLE control.collector_contract
     DROP CONSTRAINT uq_collector_contract_execution_order;
