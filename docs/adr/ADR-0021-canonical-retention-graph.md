@@ -136,6 +136,13 @@ top-query projections on both cursor pages with 60,000 older observations,
 120 recent observations, and a foreign target. The two 100/20-row pages match
 under a five-second command limit for each successor query. This checks the
 shadow read path at a realistic historical volume, not fleet-wide latency.
+Migration 0171 exposes a migrator-only, 100-target keyset page of parity
+coverage across every registered target, including targets with no M7 rows.
+It restores the caller's target scope after each page and keeps server and
+collector roles out. Operators can now find incomplete targets without
+maintaining an external inventory. Pages remain a preliminary report:
+concurrent target registration or writes between pages prevent this from
+serving as the final, writer-fenced cutover attestation.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

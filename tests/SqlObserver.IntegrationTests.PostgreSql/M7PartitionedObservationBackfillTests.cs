@@ -315,6 +315,74 @@ public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fi
         }
         Assert.True((await CoverageAsync()).All);
 
+        // A target without observations must still appear in the fleet page;
+        // its absent backfill state must keep the page visibly incomplete.
+        Guid emptyTarget = Guid.NewGuid();
+        await using (var seedEmpty = new NpgsqlCommand("""
+            INSERT INTO control.observation_target
+              (instance_id,instance_key,display_name,host_name,tcp_port,
+               connect_timeout,authentication_mode,transport_security_mode,
+               lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
+            VALUES(@target,@target::text,'Empty M7 target','sql02',1433,
+              interval '5 seconds','windows_integrated_service_identity',
+              'mandatory_validated','active',1,now(),now(),now());
+            """, admin))
+        {
+            seedEmpty.Parameters.AddWithValue("target", emptyTarget);
+            await seedEmpty.ExecuteNonQueryAsync();
+        }
+        await using (NpgsqlTransaction fleet = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, fleet))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            Guid first;
+            await using (var firstPage = new NpgsqlCommand("""
+                SELECT instance_id,all_covered
+                FROM control.list_query_observation_v3_parity_coverage(NULL::uuid,1);
+                """, admin, fleet))
+            await using (NpgsqlDataReader reader = await firstPage.ExecuteReaderAsync())
+            {
+                Assert.True(await reader.ReadAsync());
+                first = reader.GetGuid(0);
+                Assert.True(first == target || first == emptyTarget);
+                Assert.Equal(first == target, reader.GetBoolean(1));
+                Assert.False(await reader.ReadAsync());
+            }
+            await using (var secondPage = new NpgsqlCommand("""
+                SELECT instance_id,all_covered
+                FROM control.list_query_observation_v3_parity_coverage(@after,1);
+                """, admin, fleet))
+            {
+                secondPage.Parameters.AddWithValue("after", first);
+                await using NpgsqlDataReader reader = await secondPage.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Guid second = reader.GetGuid(0);
+                Assert.Equal(first == target ? emptyTarget : target, second);
+                Assert.Equal(second == target, reader.GetBoolean(1));
+                Assert.False(await reader.ReadAsync());
+            }
+            await using (var boundary = new NpgsqlCommand("""
+                SELECT current_setting('sqlobserver.target_scope',true)=@target::text,
+                       has_function_privilege('sqlobserver_server',
+                         'control.list_query_observation_v3_parity_coverage(uuid,integer)',
+                         'EXECUTE');
+                """, admin, fleet))
+            {
+                boundary.Parameters.AddWithValue("target", target);
+                await using NpgsqlDataReader reader = await boundary.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.True(reader.GetBoolean(0));
+                Assert.False(reader.GetBoolean(1));
+            }
+            await fleet.CommitAsync();
+        }
+
         await using (NpgsqlTransaction shadow = await admin.BeginTransactionAsync())
         {
             await using (var context = new NpgsqlCommand("""
