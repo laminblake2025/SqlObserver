@@ -312,6 +312,13 @@ function takes the table's validation lock without holding the fleet writer
 fence for the scan. It also exposes the reviewed 20-table inventory to the
 migrator for the final cutover. A validated constraint is still not permission
 to drop the original run table or its references without a fresh fleet proof.
+Migration 0195 adds the operator-invoked final child-reference cutover. It
+requires all 20 staged identity FKs to be validated and enabled, locks their
+parent relations in a stable order, repeats the complete fleet parity proof
+under the writer fence, and drops the 20 original FKs in one transaction. A
+durable append-only ledger records completion; a partial or unrecorded graph
+is rejected. This changes child referential integrity only. The original run
+table remains the writer and read source until their own verified cutovers.
 
 ## Implementation gates
 
