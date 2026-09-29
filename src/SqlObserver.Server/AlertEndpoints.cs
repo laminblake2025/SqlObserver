@@ -1,4 +1,5 @@
 using SqlObserver.Application.Ports;
+using SqlObserver.Alerting;
 using SqlObserver.Domain.Alerting;
 using SqlObserver.Domain.Auditing;
 using SqlObserver.Domain.Authorization;
@@ -17,6 +18,7 @@ public static class AlertEndpoints
         var group = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/alerts").RequireAuthorization();
         group.MapGet("/active", GetActiveAsync);
         group.MapGet("/rules", GetRulesAsync);
+        group.MapGet("/rules/catalog", GetRuleCatalog);
         group.MapGet("/maintenance", GetMaintenanceWindowsAsync);
         group.MapGet("/destinations", GetDestinationsAsync);
         group.MapPost("/{alertId:guid}/acknowledge", AcknowledgeAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
@@ -118,6 +120,38 @@ public static class AlertEndpoints
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static IResult GetRuleCatalog(HttpContext context, Guid instanceId, WindowsGroupRoleResolver resolver)
+    {
+        var targetId = new MonitoredInstanceId(instanceId);
+        if (!resolver.Resolve(context.User).CanAccess(ApplicationRole.TargetAdministrator, targetId))
+            return Results.Forbid();
+        context.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(new
+        {
+            targetId = instanceId,
+            digest = AlertCatalog.Digest,
+            items = AlertCatalog.Entries.Select(static entry => new
+            {
+                name = entry.Name,
+                kind = entry.Kind == AlertRuleKind.MetricThreshold ? "metric_threshold" : "collector_health",
+                metricId = entry.Metric,
+                unit = entry.Unit,
+                comparison = entry.Comparison switch
+                {
+                    AlertComparison.GreaterThan => "greater_than",
+                    AlertComparison.GreaterThanOrEqual => "greater_than_or_equal",
+                    AlertComparison.LessThan => "less_than",
+                    AlertComparison.LessThanOrEqual => "less_than_or_equal",
+                    _ => "equal",
+                },
+                entry.Threshold, entry.Hysteresis, entry.ConfirmationCount,
+                confirmationSeconds = (int)entry.ConfirmationWindow.TotalSeconds,
+                evaluationSeconds = (int)entry.EvaluationInterval.TotalSeconds,
+                entry.ClearConfirmationCount,
+            }),
+        });
     }
 
     private static string EncodeRuleCursor(AlertRuleListCursor cursor) =>

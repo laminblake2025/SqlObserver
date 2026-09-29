@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using SqlObserver.Application.Ports;
+using SqlObserver.Alerting;
 using SqlObserver.Domain.Alerting;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Auditing;
@@ -91,6 +92,28 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.False(secondJson.RootElement.GetProperty("hasMore").GetBoolean());
         using HttpResponseMessage malformed = await admin.GetAsync($"{path}&cursor=invalid%2A");
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        using HttpClient viewer = CreateClient("viewer");
+        using HttpResponseMessage forbidden = await viewer.GetAsync(path);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        using HttpClient anonymous = factory.CreateClient();
+        using HttpResponseMessage unauthenticated = await anonymous.GetAsync(path);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+    }
+
+    [Fact]
+    public async Task RuleCatalogExposesApprovedTemplatesOnlyToTargetAdministrator()
+    {
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules/catalog";
+        using HttpClient admin = CreateClient("admin");
+        using HttpResponseMessage response = await admin.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(AlertCatalog.Digest, document.RootElement.GetProperty("digest").GetString());
+        Assert.Equal(AlertCatalog.Entries.Count, document.RootElement.GetProperty("items").GetArrayLength());
+        Assert.Contains(document.RootElement.GetProperty("items").EnumerateArray(),
+            item => item.GetProperty("metricId").GetString() == "engine.user_connections");
+
         using HttpClient viewer = CreateClient("viewer");
         using HttpResponseMessage forbidden = await viewer.GetAsync(path);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);

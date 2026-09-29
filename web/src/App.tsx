@@ -321,7 +321,7 @@ export function App() {
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
               {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh} />}
               {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
-              {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} />}
+              {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={slowRefresh} />}
