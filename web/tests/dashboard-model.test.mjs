@@ -6,6 +6,8 @@ test('hash routes preserve target identity and reject unknown destinations', () 
   assert.deepEqual(readRoute(routeHref('waits', 'a b')), {page:'waits', target:'a b'});
   assert.deepEqual(readRoute(routeHref('resources', 'a b')), {page:'resources', target:'a b'});
   assert.deepEqual(readRoute(routeHref('rules', 'a b')), {page:'rules', target:'a b'});
+  assert.deepEqual(readRoute(routeHref('maintenance', 'a b')), {page:'maintenance', target:'a b'});
+  assert.deepEqual(readRoute(routeHref('destinations', 'a b')), {page:'destinations', target:'a b'});
   assert.deepEqual(readRoute('#/not-a-page'), {page:'overview',target:''});
   assert.deepEqual(readRoute('#/alerts?target=target-2'), {page:'alerts',target:'target-2'});
   assert.deepEqual(readRoute('#/constructor'), {page:'overview',target:''});

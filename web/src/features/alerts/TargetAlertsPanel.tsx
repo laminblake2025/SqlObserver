@@ -11,7 +11,7 @@ import type { AlertFilter } from "./alertFilter";
 
 const acknowledgementAttempts = new AcknowledgementAttempts();
 
-export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowledge, canManageRules, refresh }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly canAcknowledge: boolean; readonly canManageRules: boolean; readonly refresh: number }) {
+export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowledge, canManageRules, canManageDestinations, refresh }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly canAcknowledge: boolean; readonly canManageRules: boolean; readonly canManageDestinations: boolean; readonly refresh: number }) {
   const formatTime = useTimeFormatter();
   const [items, setItems] = useState<readonly ActiveAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +83,7 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowl
   }
 
   return <section className="alerts-screen" aria-labelledby="alerts-heading">
-    <div className="screen-intro"><div><p className="eyebrow">Alerts · {displayName}</p><h2 id="alerts-heading">Alert triage</h2><p>Review target-scoped alert state and supporting evidence. Acknowledgement records review, not resolution.</p></div><div className="screen-actions">{canManageRules ? <a className="secondary-button" href={overviewHref(scope, "rules", instanceId)}>View configured rules</a> : null}<button className="secondary-button" onClick={onClose} type="button">Close</button></div></div>
+    <div className="screen-intro"><div><p className="eyebrow">Alerts · {displayName}</p><h2 id="alerts-heading">Alert triage</h2><p>Review target-scoped alert state and supporting evidence. Acknowledgement records review, not resolution.</p></div><div className="screen-actions">{canManageRules ? <><a className="secondary-button" href={overviewHref(scope, "rules", instanceId)}>View rules</a><a className="secondary-button" href={overviewHref(scope, "maintenance", instanceId)}>Maintenance windows</a></> : null}{canManageDestinations ? <a className="secondary-button" href={overviewHref(scope, "destinations", instanceId)}>Destinations</a> : null}<button className="secondary-button" onClick={onClose} type="button">Close</button></div></div>
     <div className="alert-filters"><label>State<select value={filter} onChange={(event) => setFilter(event.target.value as AlertFilter)}><option value="active">Active</option><option value="firing">Firing</option><option value="all">All loaded states</option></select></label><label>Rule identifier<input aria-label="Filter by rule identifier" value={ruleFilter} onChange={(event) => setRuleFilter(event.target.value)} placeholder="Search loaded rules" /></label><span>{visible.length} shown · {items.length} loaded</span></div>
     {loading ? <p role="status" className="status-message">Loading target-scoped alerts…</p> : null}
     {error ? <div role="alert" className="status-message">{error} <button className="secondary-button" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></div> : null}

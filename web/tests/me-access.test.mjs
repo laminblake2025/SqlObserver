@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAcknowledgeAlert, canManageAlertRules, canReadQueryText, canRegisterTarget, getMyAccess, parseMyAccess } from "../src/features/targets/meApi.ts";
+import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canReadQueryText, canRegisterTarget, getMyAccess, parseMyAccess } from "../src/features/targets/meApi.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
 const other = "22222222-2222-4222-8222-222222222222";
@@ -46,6 +46,15 @@ test("rule administration requires TargetAdministrator on the exact target", () 
   assert.equal(canManageAlertRules(allowed, target), true);
   assert.equal(canManageAlertRules(allowed, other), false);
   assert.equal(canManageAlertRules(undefined, target), false);
+});
+
+test("destination administration requires SecurityAdministrator on the exact target", () => {
+  const mixed = parseMyAccess({ ...scoped, grantedRoles: ["SecurityAdministrator", "Viewer"], targetRoles: ["Viewer"] }, target);
+  assert.equal(canManageAlertDestinations(mixed, target), false);
+  const allowed = parseMyAccess({ ...scoped, grantedRoles: ["SecurityAdministrator", "Viewer"], targetRoles: ["SecurityAdministrator"] }, target);
+  assert.equal(canManageAlertDestinations(allowed, target), true);
+  assert.equal(canManageAlertDestinations(allowed, other), false);
+  assert.equal(canManageAlertDestinations(undefined, target), false);
 });
 
 test("access lookup sends the selected target and refuses an unrelated response", async () => {
