@@ -93,6 +93,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function telemetry.capture_server_wait_category_summary_v1/0
             function telemetry.lookup_active_collection_run/1
             function telemetry.lookup_collection_run_runtime/1
+            function telemetry.lookup_previous_wait_collection_run_id/4
             view reporting.activity_snapshot_evidence_legacy
             view reporting.collector_health_projection_legacy
             view telemetry.collection_run_alert_read

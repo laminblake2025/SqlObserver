@@ -257,7 +257,13 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
                AND has_function_privilege('sqlobserver_migrator',
                      'telemetry.lookup_collection_run_runtime(uuid)','EXECUTE')
                AND NOT has_function_privilege('sqlobserver_collector',
-                     'telemetry.lookup_collection_run_runtime(uuid)','EXECUTE');
+                     'telemetry.lookup_collection_run_runtime(uuid)','EXECUTE')
+               AND has_function_privilege('sqlobserver_migrator',
+                     'telemetry.lookup_previous_wait_collection_run_id(uuid,bigint,timestamptz,uuid)',
+                     'EXECUTE')
+               AND NOT has_function_privilege('sqlobserver_collector',
+                     'telemetry.lookup_previous_wait_collection_run_id(uuid,bigint,timestamptz,uuid)',
+                     'EXECUTE');
             """, connection))
             Assert.True((bool)(await schedulerGrants.ExecuteScalarAsync())!);
         async Task<string> ReadRun(string source)
@@ -293,6 +299,68 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", connection))
             Assert.Equal(1L, await activateScheduler.ExecuteScalarAsync());
         Assert.Equal(await ReadRun("successor"), await ReadRun("runtime"));
+        await using (var waitTriggerRoute = new NpgsqlCommand("""
+            SELECT prosrc LIKE '%lookup_collection_run_runtime%'
+               AND prosrc LIKE '%lookup_previous_wait_collection_run_id%'
+            FROM pg_proc WHERE oid='telemetry.capture_server_wait_category_summary_v1()'::regprocedure;
+            """, connection))
+            Assert.True((bool)(await waitTriggerRoute.ExecuteScalarAsync())!);
+        async Task AssertWaitSummaryAsync(Guid runId, DateTimeOffset observedAt,
+            long waitMilliseconds, Guid? expectedBaseline)
+        {
+            await using var insert = new NpgsqlCommand("""
+                SELECT control.ensure_activity_daily_partitions(@observed::date);
+                INSERT INTO telemetry.collection_run
+                 (run_id,instance_id,collector_id,collector_version,output_schema_version,
+                  target_revision,schedule_revision,work_key,owner_execution_id,
+                  fencing_token,request_digest,scheduled_for,started_at)
+                VALUES (@run,@target,'waits.server',1,1,1,1,@work,@owner,1,
+                        decode(repeat('aa',32),'hex'),@observed,@observed);
+                INSERT INTO telemetry.server_wait_snapshot
+                 (observed_at,collection_run_id,instance_id,target_revision,wait_type,
+                  waiting_tasks_count,wait_time_ms,maximum_wait_time_ms,
+                  signal_wait_time_ms,collected_at)
+                VALUES (@observed,@run,@target,1,'LCK_M_S',@tasks,@wait,@wait,0,@observed);
+                INSERT INTO telemetry.collection_run_outcome
+                 (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+                  source_row_count,output_item_count,inserted_item_count,
+                  duplicate_item_count,rejected_item_count,response_bytes,
+                  output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,
+                  loss_count_exact,lost_row_count,lost_byte_count,completion_digest,completed_at)
+                VALUES (@run,'succeeded','completed',1,0,10,1,1,1,0,0,128,128,128,
+                        false,false,'none',true,0,0,decode(repeat('bb',32),'hex'),
+                        @observed+interval '1 millisecond');
+                """, connection);
+            insert.Parameters.AddWithValue("run", runId);
+            insert.Parameters.AddWithValue("target", target.Value);
+            insert.Parameters.AddWithValue("work", $"collector/run/waits.server/{target.Value:N}");
+            insert.Parameters.AddWithValue("owner", Guid.NewGuid());
+            insert.Parameters.AddWithValue("observed", observedAt);
+            insert.Parameters.AddWithValue("tasks", waitMilliseconds / 25);
+            insert.Parameters.AddWithValue("wait", waitMilliseconds);
+            await insert.ExecuteNonQueryAsync();
+            await using var summary = new NpgsqlCommand("""
+                SELECT server_wait_category_summary::text
+                FROM telemetry.collection_run_outcome WHERE run_id=@run;
+                """, connection);
+            summary.Parameters.AddWithValue("run", runId);
+            using JsonDocument document = JsonDocument.Parse((string)(await summary.ExecuteScalarAsync())!);
+            JsonElement root = document.RootElement;
+            JsonElement baseline = root.GetProperty("baselineRunId");
+            if (expectedBaseline is null)
+                Assert.Equal(JsonValueKind.Null, baseline.ValueKind);
+            else
+                Assert.Equal(expectedBaseline.Value.ToString(), baseline.GetString());
+            JsonElement category = Assert.Single(root.GetProperty("categories").EnumerateArray());
+            Assert.Equal("Lock", category.GetProperty("category").GetString());
+            Assert.Equal(expectedBaseline is null ? JsonValueKind.Null : JsonValueKind.String,
+                category.GetProperty("waitMilliseconds").ValueKind);
+            if (expectedBaseline is not null)
+                Assert.Equal("25", category.GetProperty("waitMilliseconds").GetString());
+        }
+        Guid firstWaitRun = Guid.NewGuid(), secondWaitRun = Guid.NewGuid();
+        await AssertWaitSummaryAsync(firstWaitRun, at.AddSeconds(1), 100, null);
+        await AssertWaitSummaryAsync(secondWaitRun, at.AddSeconds(2), 125, firstWaitRun);
         Guid originalOwner;
         await using (var runOwner = new NpgsqlCommand(
             "SELECT owner_execution_id FROM telemetry.collection_run WHERE run_id=@run;",
@@ -400,6 +468,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await using (var rollbackScheduler = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_scheduler_read_route(false,10000);", connection))
             Assert.Equal(2L, await rollbackScheduler.ExecuteScalarAsync());
+        await AssertWaitSummaryAsync(Guid.NewGuid(), at.AddSeconds(3), 150, secondWaitRun);
         Assert.Equal(await ReadRun("original"), await ReadRun("runtime"));
         await using (var rollback = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_health_read_route(false,10000);", connection))

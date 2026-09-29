@@ -402,7 +402,10 @@ activation repeats the writer-fenced fleet proof. Installation and rollback
 keep active-run lease checks on the original writer.
 Migration 0216 uses that switch for collection-run begin/replay and abandoned-run
 identity reads. The begin function still inserts into the original writer; this
-stages its read half ahead of a coordinated writer and outcome-trigger cutover.
+stages its read half ahead of a coordinated writer cutover.
+Migration 0217 uses the same switch for outcome-time wait-category summary run
+and baseline reads. The outcome trigger preserves its delta logic while the run
+identity source follows the scheduler route; installation still reads the original.
 
 ## Implementation gates
 
