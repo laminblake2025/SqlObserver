@@ -9,8 +9,7 @@ import type { ActivityPage, ActivityWait, ServerWaitHistoryItem } from "./activi
 import { resolveActivityWindow } from "./activityWindowModel";
 import { ActivityTable, Evidence, WaitCategoryChart, WaitHistory } from "./TargetActivityPanel";
 import { getServerWaitTrend, type WaitTrendResponse } from "./waitTrendApi";
-
-const trendCategories = ["Lock", "I/O", "CPU/signal", "Memory", "Parallelism", "Log", "Other"] as const;
+import { waitTrendChartData } from "./waitTrendChartModel";
 
 export interface TargetWaitsPanelProps {
   readonly instanceId: string;
@@ -89,25 +88,15 @@ function WaitTrendChart({ trend, onSelectWindow }: {
   readonly trend: WaitTrendResponse;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }) {
-  const safeMaximum = BigInt(Number.MAX_SAFE_INTEGER);
-  const series: ObservationSeries[] = trendCategories.map(category => ({
-    id: category, label: category,
-    items: trend.points.filter(point => point.category === category).map(point => ({
-      time: point.bucketStartUtc,
-      value: point.waitMilliseconds === null || BigInt(point.waitMilliseconds) > safeMaximum
-        ? null : Number(point.waitMilliseconds),
-    })),
+  const chart = waitTrendChartData(trend);
+  const series: ObservationSeries[] = chart.series.map(category => ({
+    id: category.category, label: category.category,
+    items: category.points.map(point => ({ time: point.timeUtc, value: point.value })),
   }));
-  const buckets = new Set(trend.points.map(point => point.bucketStartUtc)).size;
-  const incomplete = new Set(trend.points.filter(point => point.waitMilliseconds === null ||
-    BigInt(point.waitMilliseconds) > safeMaximum)
-    .map(point => point.bucketStartUtc)).size;
-  const oversized = trend.points.filter(point => point.waitMilliseconds !== null &&
-    BigInt(point.waitMilliseconds) > safeMaximum).length;
   return <>
     <ObservationChart label="Server wait time by category (ms per five minutes)" series={series}
       fromUtc={trend.fromUtc} toUtc={trend.toUtc} onSelectWindow={onSelectWindow} />
-    <p className="activity-evidence">{buckets - incomplete} of {buckets} buckets are comparable across all categories among committed runs; {incomplete} remain gaps.{oversized ? ` ${oversized} values exceed chart precision and are shown as gaps.` : ""} Repository time: {trend.repositoryTimeUtc}.</p>
+    <p className="activity-evidence">{chart.comparableBuckets} of {chart.totalBuckets} buckets are comparable across all categories among committed runs; {chart.totalBuckets - chart.comparableBuckets} remain gaps.{chart.oversizedValues ? ` ${chart.oversizedValues} values exceed chart precision and are shown as gaps.` : ""} Repository time: {trend.repositoryTimeUtc}.</p>
   </>;
 }
 

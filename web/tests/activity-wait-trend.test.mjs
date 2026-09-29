@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getServerWaitTrend, parseWaitTrend } from "../src/features/activity/waitTrendParser.mjs";
+import { waitTrendChartData } from "../src/features/activity/waitTrendChartModel.ts";
 
 const instanceId = "11111111-1111-4111-8111-111111111111";
 const window = { fromUtc: "2026-09-25T07:55:00Z", toUtc: "2026-09-25T08:00:00Z" };
@@ -43,4 +44,21 @@ test("wait trend requests only the selected target and UTC window without cachin
     await assert.rejects(() => getServerWaitTrend(instanceId,
       { fromUtc: window.fromUtc, toUtc: "2026-09-27T08:00:00Z" }, new AbortController().signal));
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("dashboard and Waits share ordered, precision-safe category values and gap counts", () => {
+  const earlier = "2026-09-25T07:55:00Z", later = "2026-09-25T08:00:00Z";
+  const trend = { ...body(), toUtc: "2026-09-25T08:05:00Z",
+    points: [later, earlier].flatMap(bucketStartUtc => labels.map(category => ({
+      bucketStartUtc, category, runCount: 1,
+      waitMilliseconds: bucketStartUtc === later && category === "Lock" ? "9007199254740992"
+        : bucketStartUtc === later && category === "Memory" ? null : "25",
+    }))) };
+  const chart = waitTrendChartData(trend);
+  assert.equal(chart.totalBuckets, 2);
+  assert.equal(chart.comparableBuckets, 1);
+  assert.equal(chart.oversizedValues, 1);
+  assert.deepEqual(chart.series.find(series => series.category === "Lock").points,
+    [{ timeUtc: earlier, value: 25, samples: 1 }, { timeUtc: later, value: null, samples: 1 }]);
+  assert.equal(chart.series.find(series => series.category === "Memory").points[1].value, null);
 });

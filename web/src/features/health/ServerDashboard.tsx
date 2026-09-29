@@ -6,6 +6,7 @@ import { issueHref, overviewEvidenceFooter, overviewHref, rankedIssues } from ".
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
+import { ServerWaitTrendPanel } from "./ServerWaitTrendPanel";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh }: {
   readonly instanceId: string;
@@ -70,6 +71,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
         {chart("engine.sql_scheduler_cpu_percent", "SQL scheduler CPU", "Percent of online SQL scheduler capacity used by non-preemptive workers between samples. This excludes preemptive and hidden-scheduler work; it is not total SQL process CPU.")}
+        <ServerWaitTrendPanel instanceId={instanceId} fromUtc={data.fromUtc} toUtc={data.toUtc} refresh={refresh}
+          crosshairUtc={crosshairUtc} onCrosshairChange={setCrosshairUtc}
+          onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }} />
         {chart("engine.scheduler_runnable_tasks", "SQL scheduler pressure", "Runnable tasks waiting for CPU across visible online SQL schedulers. This is a point-in-time queue, not SQL process CPU percent.")}
         {chart("engine.memory_grants_pending", "SQL memory grant pressure", "Queries waiting for execution memory grants. This is a point-in-time count; a zero means none were waiting at the sample time.")}
         <section className="panel server-dashboard-chart">
