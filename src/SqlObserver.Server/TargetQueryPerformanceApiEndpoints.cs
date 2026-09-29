@@ -17,6 +17,7 @@ public static class TargetQueryPerformanceApiEndpoints
             .RequireAuthorization();
         group.MapGet("/status", StatusAsync);
         group.MapGet("/top", TopAsync);
+        group.MapGet("/waits/top", TopWaitsAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/text", TextAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/plans/{planFingerprint}/content", PlanContentAsync);
@@ -29,6 +30,41 @@ public static class TargetQueryPerformanceApiEndpoints
     { try { DateTimeOffset to=Parse(toUtc)??DateTimeOffset.UtcNow, from=Parse(fromUtc)??to.AddHours(-24); var row=await s.GetStatusAsync(r.Resolve(h.User),new QueryPerformanceStatusRequest(new MonitoredInstanceId(instanceId),from,to,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); return row is null?Results.NotFound():Results.Ok(new { targetId=instanceId,snapshotUtc=row.SnapshotUtc,source=row.Source is null?null:SourceName(row.Source.Value),sourceState=row.SourceState,coverage=CoverageName(row.Coverage),fresh=row.Fresh,truncated=row.Truncated,contentAvailable=false,reason=row.Reason,targetStatus=row.TargetStatus,targetReason=row.TargetReason,databaseStatuses=row.DatabaseStatuses,databaseCatalog=row.DatabaseCatalog }); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
     private static async Task<IResult> TopAsync(HttpContext h, Guid instanceId, IQueryPerformanceApiQueryService s, WindowsGroupRoleResolver r, string? metric=null, int limit=25, string? fromUtc=null, string? toUtc=null, string? cursor=null, CancellationToken c=default)
     { try { if (limit is <= 0 or > 200) throw new ArgumentException("Page limit is outside its bounds."); RequireExplicitCursorWindow(cursor,fromUtc,toUtc); DateTimeOffset to=Parse(toUtc)??DateTimeOffset.UtcNow, from=Parse(fromUtc)??to.AddHours(-24); QueryPerformanceMetric m=ParseMetric(metric); var decoded=DecodeCursor(cursor,instanceId,m,from,to,true); var page=await s.GetTopAsync(r.Resolve(h.User),new TopQueryRequest(new MonitoredInstanceId(instanceId),from,to,m,limit,decoded,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); string? next=page.HasMore&&page.Items.Count>0?EncodeCursor(new QueryPerformanceCursorEnvelope(new MonitoredInstanceId(instanceId),page.Items[^1].Query.DatabaseId,from,to,m,page.SnapshotUtc,page.Items[^1].IntervalEndUtc,page.Items[^1].Query.QueryFingerprint,page.Items[^1].Value,page.Items[^1].CollectionRunId,page.Items[^1].Plan?.PlanFingerprint,page.Items[^1].ObservationKey)):null; return Results.Ok(new {targetId=instanceId,metric=MetricName(m),items=page.Items.Select(MapTopItem),nextCursor=next,snapshotUtc=page.SnapshotUtc,fromUtc=from,toUtc=to}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
+    private static async Task<IResult> TopWaitsAsync(HttpContext context, Guid instanceId,
+        IQueryStoreWaitRankingQueryService service, WindowsGroupRoleResolver roles,
+        string? fromUtc = null, string? toUtc = null, int limit = 25,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            DateTimeOffset to = Parse(toUtc) ?? DateTimeOffset.UtcNow;
+            DateTimeOffset from = Parse(fromUtc) ?? to.AddHours(-24);
+            var request = new QueryStoreWaitRankingRequest(new MonitoredInstanceId(instanceId),
+                from, to, limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            QueryStoreWaitRankingResult result = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                fromUtc = from,
+                toUtc = to,
+                semantics = "query_store_group_wait_delta",
+                coverage = result.Items.Count == 0 ? "no_comparable_groups" : "observed_groups_only",
+                items = result.Items.Select(static item => new
+                {
+                    databaseId = item.Plan.Query.DatabaseId,
+                    queryFingerprint = item.Plan.Query.QueryFingerprint,
+                    planFingerprint = item.Plan.PlanFingerprint,
+                    waitMilliseconds = item.WaitMilliseconds,
+                    comparableRows = item.ComparableRows,
+                    sourceRows = item.SourceRows,
+                    lastObservedAtUtc = item.LastObservedAtUtc,
+                }),
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
     private static async Task<IResult> HistoryAsync(HttpContext h, Guid instanceId, int databaseId, string queryFingerprint, IQueryPerformanceApiQueryService s, WindowsGroupRoleResolver r, int limit=25, string? fromUtc=null, string? toUtc=null, string? cursor=null, CancellationToken c=default)
     { try { if (limit is <= 0 or > 200 || databaseId is <= 0 or > 32767) throw new ArgumentException("Page limit or database is outside its bounds."); RequireExplicitCursorWindow(cursor,fromUtc,toUtc); DateTimeOffset to=Parse(toUtc)??DateTimeOffset.UtcNow, from=Parse(fromUtc)??to.AddHours(-24); var q=new QueryOpaqueIdentity(databaseId,queryFingerprint); var decoded=DecodeCursor(cursor,instanceId,QueryPerformanceMetric.CpuMilliseconds,from,to); if(decoded is not null&&(decoded.DatabaseId!=databaseId||decoded.QueryFingerprint!=q.QueryFingerprint))throw new ArgumentException("Cursor query binding mismatch."); var page=await s.GetHistoryAsync(r.Resolve(h.User),new QueryHistoryRequest(new MonitoredInstanceId(instanceId),q,from,to,limit,decoded,new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),c); string? next=page.HasMore&&page.Items.Count>0?EncodeCursor(new QueryPerformanceCursorEnvelope(new MonitoredInstanceId(instanceId),databaseId,from,to,QueryPerformanceMetric.CpuMilliseconds,page.SnapshotUtc,page.Items[^1].IntervalEndUtc,q.QueryFingerprint,page.Items[^1].Metrics.CpuMilliseconds,page.Items[^1].CollectionRunId,page.Items[^1].PlanFingerprint,page.Items[^1].ObservationKey), requireMetricValue:false):null; return Results.Ok(new {targetId=instanceId,databaseId,queryFingerprint=q.QueryFingerprint,items=page.Items.Select(MapHistoryItem),nextCursor=next,snapshotUtc=page.SnapshotUtc,fromUtc=from,toUtc=to}); } catch(UnauthorizedAccessException){return Results.Forbid();} catch(ArgumentException){return Results.BadRequest();} }
     private static async Task<IResult> PlanAsync(HttpContext h, Guid instanceId, int databaseId, string planFingerprint, IQueryPerformanceApiQueryService s, WindowsGroupRoleResolver r, string? queryFingerprint=null, CancellationToken c=default)

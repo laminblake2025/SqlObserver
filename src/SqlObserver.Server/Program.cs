@@ -131,12 +131,15 @@ builder.Services.AddSingleton<IQueryPlanReadRepositoryPort>(static services => s
 builder.Services.AddSingleton<IQueryPlanWaitReadRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryPlanWaitReads);
 builder.Services.AddSingleton<IQueryStoreGroupPlanTrendRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryStoreGroupPlanTrends);
+builder.Services.AddSingleton<IQueryStoreWaitRankingRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryStoreWaitRankings);
 builder.Services.AddSingleton<SqlObserver.Domain.SensitiveData.IQuerySensitiveContentProtector>(_ =>
     new SqlObserver.Infrastructure.Windows.QuerySensitiveContentProtector(builder.Configuration["SqlObserver:QueryContent:ProtectedKeyPath"]));
 builder.Services.AddSingleton<IQueryTextReadService, QueryTextReadService>();
 builder.Services.AddSingleton<IQueryPlanReadService, QueryPlanReadService>();
 builder.Services.AddSingleton<IQueryPlanWaitReadService, QueryPlanWaitReadService>();
 builder.Services.AddSingleton<IQueryStoreGroupPlanTrendQueryService, QueryStoreGroupPlanTrendQueryService>();
+builder.Services.AddSingleton<IQueryStoreWaitRankingQueryService, QueryStoreWaitRankingQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertRuleReads);
 builder.Services.AddSingleton<IMaintenanceWindowReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceWindowReads);

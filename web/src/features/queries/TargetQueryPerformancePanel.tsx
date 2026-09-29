@@ -5,9 +5,9 @@ import { QueryStoreGroupTrendPanel, type GroupTrendState } from "./QueryStoreGro
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { useEffect, useRef, useState } from "react";
-import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend } from "./queryPerformanceApi";
+import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend, getQueryStoreTopWaits } from "./queryPerformanceApi";
 import type { QueryWindow } from "./queryWindowModel";
-import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus } from "./queryPerformanceTypes";
+import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking } from "./queryPerformanceTypes";
 
 const waitCategoryNames: Record<number, string> = {
   0: "Unknown", 1: "CPU", 2: "Worker thread", 3: "Lock", 4: "Latch",
@@ -47,6 +47,8 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   useEffect(() => () => { selectionRequest.current?.abort(); historyRequest.current?.abort(); pagingRequest.current?.abort(); textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); trendRequest.current?.abort(); }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc]);
   const [page, setPage] = useState<QueryPerformancePage>();
   const [status, setStatus] = useState<QueryPerformanceStatus>();
+  const [waitRanking, setWaitRanking] = useState<QueryStoreWaitRanking>();
+  const [waitRankingError, setWaitRankingError] = useState<string>();
   const [history, setHistory] = useState<QueryPerformanceHistoryPage>();
   const [historySelection, setHistorySelection] = useState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string; planFingerprint?: string }>();
   const [groupTrend, setGroupTrend] = useState<GroupTrendState>();
@@ -95,6 +97,18 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   };
   const metrics: QueryPerformanceMetric[] = ["cpu", "duration", "executions", "logical_reads", "writes", "rows"];
   useEffect(() => {
+    const controller = new AbortController();
+    setWaitRanking(undefined);
+    setWaitRankingError(undefined);
+    void getQueryStoreTopWaits(instanceId, timeWindow.fromUtc, timeWindow.toUtc, controller.signal)
+      .then(value => { if (!controller.signal.aborted) setWaitRanking(value); })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setWaitRankingError(error instanceof Error
+          ? error.message : "Query wait ranking is unavailable.");
+      });
+    return () => controller.abort();
+  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
+  useEffect(() => {
     trendRequest.current?.abort();
     const selection = historySelection;
     if (!selection?.planFingerprint) { setGroupTrend(undefined); return; }
@@ -121,11 +135,12 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
   useEffect(() => {
     if (!page || !historySelection || page.items.some(item => item.query.databaseId === historySelection.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint)
+      || waitRanking?.items.some(item => item.databaseId === historySelection.databaseId && item.queryFingerprint === historySelection.queryFingerprint)
       || initialQuerySelection?.databaseId === historySelection.databaseId && initialQuerySelection.queryFingerprint === historySelection.queryFingerprint) return;
     setHistorySelection(undefined);
     setHistory(undefined);
     setPlan(undefined);
-  }, [page, historySelection, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint]);
+  }, [page, historySelection, waitRanking, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint]);
   useEffect(() => {
     if (!initialQuerySelection) return;
     const controller = new AbortController();
@@ -183,6 +198,28 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     <div className="health-heading-row"><div><p className="eyebrow">Milestone 7 · read-only</p><h3 id="query-performance-heading">Top queries for {displayName}</h3></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {message === undefined ? null : <p className="status-message">{message}</p>}
     {status === undefined ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></div>}
+    <section className="panel" aria-label="Top Query Store waits">
+      <h4>Top by waits</h4>
+      <p>Measured Query Store wait deltas across comparable plan groups in this window. Missing baselines, resets, and unavailable waits are excluded from totals; coverage shows how many observed groups contributed.</p>
+      {waitRankingError ? <p role="alert">{waitRankingError}</p> : null}
+      {!waitRanking && !waitRankingError ? <p role="status">Loading query wait ranking…</p> : null}
+      {waitRanking && waitRanking.items.length === 0 ? <p>No comparable Query Store wait groups were observed in this window. This does not prove that queries had no waits.</p> : null}
+      {waitRanking && waitRanking.items.length > 0 ? <div className="table-scroll"><table>
+        <caption>Top 25 plans by comparable Query Store wait milliseconds</caption>
+        <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait ms</th>
+          <th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
+        <tbody>{waitRanking.items.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
+          <td><button className="fingerprint" type="button" onClick={() => {
+            setSource("query_store");
+            select(item.databaseId, item.queryFingerprint, timeWindow.fromUtc,
+              timeWindow.toUtc, item.planFingerprint, "query_store");
+          }}>{displayDatabase(item.databaseId)} / {item.queryFingerprint.slice(0, 12)}… / {item.planFingerprint.slice(0, 12)}…</button></td>
+          <td>{BigInt(item.waitMilliseconds).toLocaleString()}</td>
+          <td>{item.comparableRows} / {item.sourceRows}</td>
+          <td>{timeLabel(item.lastObservedAtUtc)}</td>
+        </tr>)}</tbody>
+      </table></div> : null}
+    </section>
     {page === undefined && message === undefined ? <p>Loading bounded query evidence…</p> : null}
     {page === undefined ? null : <>
       <p className="activity-evidence">Query Store and plan-cache rows are explicitly labelled; interval and cumulative semantics are not mixed. Protected Query Store text and plan XML can be opened by a QueryTextReader. Repository time: {timeLabel(page.repositoryTimeUtc)}.</p><div className="toolbar"><label>Rank by <select value={ranking} onChange={event => setRanking(event.target.value as QueryPerformanceMetric)}>{metrics.map(metric => <option key={metric}>{metric}</option>)}</select></label><button disabled={!page.nextCursor || paging} onClick={loadMetricPage}>Next ranking page</button></div>

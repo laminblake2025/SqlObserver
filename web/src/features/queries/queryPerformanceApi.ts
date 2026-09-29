@@ -1,5 +1,5 @@
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -226,4 +226,47 @@ export async function getQueryPerformancePlan(instanceId: string, databaseId: nu
   const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/databases/${databaseId}/plans/${planFingerprint}?queryFingerprint=${queryFingerprint}`, instanceId, signal) as Record<string, unknown>;
   if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint || value.planFingerprint !== planFingerprint || !sources.has(String(value.source)) || value.source === "mixed" || value.source === "unavailable" || !timestamp(value.observedAtUtc) || !coverage.has(String(value.coverage)) || typeof value.contentAvailable !== "boolean") throw new Error("Query performance plan response was outside its bounds.");
   return { targetId: instanceId, databaseId, queryFingerprint, planFingerprint, source: value.source as QueryPerformancePlan["source"], observedAtUtc: value.observedAtUtc, coverage: String(value.coverage), contentAvailable: value.contentAvailable };
+}
+
+export async function getQueryStoreTopWaits(instanceId: string, fromUtc: string,
+    toUtc: string, signal: AbortSignal): Promise<QueryStoreWaitRanking> {
+  if (!timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc)
+      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000)
+    throw new Error("Query wait ranking window was invalid.");
+  const path = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/waits/top`
+    + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&limit=25`;
+  const value = await readJson(path, instanceId, signal, 64 * 1024) as Record<string, unknown>;
+  if (!timestamp(value.fromUtc) || !timestamp(value.toUtc)
+      || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc)
+      || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)
+      || value.semantics !== "query_store_group_wait_delta"
+      || value.coverage !== "observed_groups_only" && value.coverage !== "no_comparable_groups"
+      || !Array.isArray(value.items) || value.items.length > 25)
+    throw new Error("Query wait ranking response was outside its bounds.");
+  const seen = new Set<string>();
+  let prior: bigint | undefined;
+  const items = value.items.map((raw: unknown) => {
+    if (typeof raw !== "object" || raw === null) throw new Error("Query wait ranking row was invalid.");
+    const row = raw as Record<string, unknown>;
+    if (!Number.isSafeInteger(row.databaseId) || (row.databaseId as number) < 1 ||
+        (row.databaseId as number) > 32767 || !digest(row.queryFingerprint) ||
+        !digest(row.planFingerprint) || typeof row.waitMilliseconds !== "string" ||
+        !/^(?:0|[1-9]\d{0,38})$/u.test(row.waitMilliseconds) ||
+        !Number.isSafeInteger(row.comparableRows) || (row.comparableRows as number) < 1 ||
+        !Number.isSafeInteger(row.sourceRows) || (row.sourceRows as number) < (row.comparableRows as number) ||
+        !timestamp(row.lastObservedAtUtc) || Date.parse(row.lastObservedAtUtc) < Date.parse(fromUtc) ||
+        Date.parse(row.lastObservedAtUtc) >= Date.parse(toUtc))
+      throw new Error("Query wait ranking row was invalid.");
+    const identity = `${row.databaseId}:${row.queryFingerprint}:${row.planFingerprint}`;
+    const wait = BigInt(row.waitMilliseconds);
+    if (seen.has(identity) || prior !== undefined && wait > prior)
+      throw new Error("Query wait ranking order was invalid.");
+    seen.add(identity);
+    prior = wait;
+    return row as QueryStoreWaitRanking["items"][number];
+  });
+  if (value.coverage === "no_comparable_groups" && items.length > 0)
+    throw new Error("Query wait ranking coverage was invalid.");
+  return { fromUtc, toUtc,
+    coverage: value.coverage as QueryStoreWaitRanking["coverage"], items };
 }
