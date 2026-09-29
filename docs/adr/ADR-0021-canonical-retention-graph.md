@@ -248,6 +248,12 @@ collector and UTC-day-bounded start-time window of at most 100,000 rows on
 each side. It compares counts and ordered SHA-256 digests of complete rows
 under one MVCC snapshot. Every target, collector and historical/live window
 still needs coverage, followed by a writer-fenced final sweep before cutover.
+Migration 0186 records checked windows with a target/day generation. Inserts
+into either the canonical or successor run table advance that generation, so
+source-only and successor-only writes invalidate prior certificates. The
+target/collector coverage report merges only passing, current windows and
+exposes the first gap. This is preliminary coverage: it does not enumerate
+every fleet target and collector or provide the final writer-fenced sweep.
 
 ## Implementation gates
 

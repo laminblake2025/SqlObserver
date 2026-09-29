@@ -246,5 +246,135 @@ public sealed class CollectionRunBackfillTests(PostgreSql18Fixture fixture)
             Assert.Equal("54000", bounded.SqlState);
             await extra.RollbackAsync();
         }
+
+        async Task<(DateTimeOffset From, DateTimeOffset To,
+            DateTimeOffset Through, bool Complete, long Verified,
+            long Failed)> CoverageAsync(NpgsqlTransaction transaction)
+        {
+            await using (var scope = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteNonQueryAsync();
+            }
+            await using var command = new NpgsqlCommand("""
+                SELECT * FROM control.collection_run_v2_parity_coverage(
+                  @target,'queries.performance');
+                """, admin, transaction);
+            command.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            return (reader.GetFieldValue<DateTimeOffset>(0),
+                reader.GetFieldValue<DateTimeOffset>(1),
+                reader.GetFieldValue<DateTimeOffset>(2), reader.GetBoolean(3),
+                reader.GetInt64(4), reader.GetInt64(5));
+        }
+
+        async Task RecordDayAsync(int day)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var scope = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteNonQueryAsync();
+            }
+            await using var command = new NpgsqlCommand("""
+                SELECT parity FROM control.record_collection_run_v2_parity_window(
+                  @target,'queries.performance',@start,@end,2);
+                """, admin, transaction);
+            command.Parameters.AddWithValue("target", target);
+            command.Parameters.AddWithValue("start", start.AddDays(day));
+            command.Parameters.AddWithValue("end", start.AddDays(day + 1));
+            Assert.True((bool)(await command.ExecuteScalarAsync())!);
+            await transaction.CommitAsync();
+        }
+
+        await using (NpgsqlTransaction initial = await admin.BeginTransactionAsync())
+        {
+            var coverage = await CoverageAsync(initial);
+            Assert.Equal((start, start.AddDays(3), start),
+                (coverage.From, coverage.To, coverage.Through));
+            Assert.False(coverage.Complete);
+            Assert.Equal((0L, 0L), (coverage.Verified, coverage.Failed));
+            await initial.CommitAsync();
+        }
+        await RecordDayAsync(0);
+        await using (NpgsqlTransaction partial = await admin.BeginTransactionAsync())
+        {
+            var coverage = await CoverageAsync(partial);
+            Assert.Equal(start.AddDays(1), coverage.Through);
+            Assert.False(coverage.Complete);
+            await partial.CommitAsync();
+        }
+        await RecordDayAsync(1);
+        await RecordDayAsync(2);
+        await using (NpgsqlTransaction complete = await admin.BeginTransactionAsync())
+        {
+            var coverage = await CoverageAsync(complete);
+            Assert.Equal(start.AddDays(3), coverage.Through);
+            Assert.True(coverage.Complete);
+            Assert.Equal((3L, 0L), (coverage.Verified, coverage.Failed));
+            await complete.CommitAsync();
+        }
+
+        // Even if the mirror is disabled, a source write must invalidate the
+        // old certificate. All changes in this disposable scenario roll back.
+        await using (NpgsqlTransaction sourceOnly = await admin.BeginTransactionAsync())
+        {
+            await using (var insert = new NpgsqlCommand("""
+                ALTER TABLE telemetry.collection_run
+                  DISABLE TRIGGER collection_run_v2_mirror;
+                INSERT INTO telemetry.collection_run
+                  (run_id,instance_id,collector_id,collector_version,
+                   output_schema_version,target_revision,schedule_revision,
+                   work_key,owner_execution_id,fencing_token,request_digest,
+                   scheduled_for,started_at)
+                SELECT gen_random_uuid(),instance_id,collector_id,
+                  collector_version,output_schema_version,target_revision,
+                  schedule_revision,work_key,owner_execution_id,fencing_token,
+                  request_digest,@time,@time
+                FROM telemetry.collection_run WHERE run_id=@run;
+                """, admin, sourceOnly))
+            {
+                insert.Parameters.AddWithValue("run", first);
+                insert.Parameters.AddWithValue("time", start.AddHours(1));
+                await insert.ExecuteNonQueryAsync();
+            }
+            var coverage = await CoverageAsync(sourceOnly);
+            Assert.Equal(start, coverage.Through);
+            Assert.False(coverage.Complete);
+            Assert.Equal((2L, 1L), (coverage.Verified, coverage.Failed));
+            await sourceOnly.RollbackAsync();
+        }
+
+        await using (NpgsqlTransaction successorOnly = await admin.BeginTransactionAsync())
+        {
+            await using (var insert = new NpgsqlCommand("""
+                INSERT INTO telemetry.collection_run_v2
+                  (run_id,instance_id,collector_id,collector_version,
+                   output_schema_version,target_revision,schedule_revision,
+                   work_key,owner_execution_id,fencing_token,request_digest,
+                   scheduled_for,started_at)
+                SELECT gen_random_uuid(),instance_id,collector_id,
+                  collector_version,output_schema_version,target_revision,
+                  schedule_revision,work_key,owner_execution_id,fencing_token,
+                  request_digest,scheduled_for,started_at
+                FROM telemetry.collection_run WHERE run_id=@run;
+                """, admin, successorOnly))
+            {
+                insert.Parameters.AddWithValue("run", first);
+                await insert.ExecuteNonQueryAsync();
+            }
+            var coverage = await CoverageAsync(successorOnly);
+            Assert.Equal(start, coverage.Through);
+            Assert.False(coverage.Complete);
+            Assert.Equal((2L, 1L), (coverage.Verified, coverage.Failed));
+            await successorOnly.RollbackAsync();
+        }
     }
 }

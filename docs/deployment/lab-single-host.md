@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0185`
+The migration catalog contains the exact, contiguous `0001` through `0186`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -422,6 +422,12 @@ checks at most one day and 100,000 rows per side. Compare the `parity` result
 and both counts and digests. A passing window alone is not a fleet or cutover
 attestation; repeat for every target, collector and relevant window under a
 final writer fence before changing readers or foreign keys.
+Migration `0186` records verified windows with
+`control.record_collection_run_v2_parity_window` and reports the first gap
+through `control.collection_run_v2_parity_coverage`. Original and successor
+inserts invalidate their target/day certificates. Sweep every target and
+collector, revisit stale days, and perform a final writer-fenced verification;
+the coverage report alone cannot authorize a cutover.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
