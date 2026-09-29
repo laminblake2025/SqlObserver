@@ -334,6 +334,10 @@ Migration 0197 wraps the four public M5 readers in a shared route that starts
 on the original implementations. The migrator can enable partitioned reads
 only after the writer-fenced fleet parity proof succeeds. The original readers
 remain private rollback targets; no route changes when the migration installs.
+Migration 0198 adds private shadow readers for current wait summary, wait
+history, and category trend. Their baseline, cursor, reset, and bucket outputs
+are compared with the original readers on populated PostgreSQL fixtures before
+any public wait route is changed.
 
 ## Implementation gates
 

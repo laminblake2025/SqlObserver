@@ -21,6 +21,99 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
     public M5ActivityPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
 
     [Fact]
+    public async Task PartitionedRunShadowWaitReadersMatchBaselinesHistoryAndTrend()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        DateTimeOffset currentAt = (await ReadRepositoryClockAsync(database)).AddMinutes(-1);
+        DateTimeOffset baselineAt = currentAt.AddMinutes(-1);
+        MonitoredInstanceId target = new(Guid.NewGuid());
+        Guid baseline = Guid.NewGuid(), current = Guid.NewGuid();
+        await SeedTargetAndRunAsync(database, target, baseline, "waits.server", baselineAt);
+        await SeedTargetAndRunAsync(database, target, current, "waits.server", currentAt);
+        await EnsurePartitionsAsync(database, baselineAt, currentAt);
+        await InsertWaitAsync(database, target, baseline, baselineAt, "LCK_M_S", 10, 100, 80, 20);
+        await InsertWaitAsync(database, target, current, currentAt, "LCK_M_S", 2, 20, 15, 5);
+        await InsertWaitAsync(database, target, current, currentAt, "PAGEIOLATCH_SH", 3, 30, 20, 10);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+        async Task<List<string>> Read(string name, string arguments)
+        {
+            await using var command = new NpgsqlCommand(
+                $"SELECT (to_jsonb(row) - 'repository_time')::text FROM reporting.{name}({arguments}) AS row;",
+                connection);
+            command.Parameters.AddWithValue("target", target.Value);
+            command.Parameters.AddWithValue("baseline", baseline);
+            command.Parameters.AddWithValue("current", current);
+            command.Parameters.AddWithValue("baseline_at", baselineAt);
+            command.Parameters.AddWithValue("current_at", currentAt);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+        async Task<List<string>> Compare(string name, string arguments)
+        {
+            List<string> canonical = await Read(name, arguments);
+            List<string> shadow = await Read($"{name}_v2_shadow", arguments);
+            Assert.Equal(canonical, shadow);
+            return shadow;
+        }
+
+        List<string> first = await Compare("list_server_wait_summary",
+            "@target,NULL::uuid,NULL::uuid,NULL::bigint,NULL::text,1");
+        using (JsonDocument row = JsonDocument.Parse(Assert.Single(first)))
+        {
+            Assert.Equal(current, row.RootElement.GetProperty("snapshot_run_id").GetGuid());
+            Assert.Equal(baseline, row.RootElement.GetProperty("baseline_run_id").GetGuid());
+            Assert.Equal("LCK_M_S", row.RootElement.GetProperty("wait_type").GetString());
+            Assert.True(row.RootElement.GetProperty("reset_detected").GetBoolean());
+            Assert.True(row.RootElement.GetProperty("has_more").GetBoolean());
+        }
+        List<string> next = await Compare("list_server_wait_summary",
+            "@target,@current,@baseline,1,'LCK_M_S',1");
+        using (JsonDocument row = JsonDocument.Parse(Assert.Single(next)))
+        {
+            Assert.Equal("PAGEIOLATCH_SH", row.RootElement.GetProperty("wait_type").GetString());
+            Assert.False(row.RootElement.GetProperty("has_more").GetBoolean());
+        }
+        List<string> history = await Compare("list_server_wait_history",
+            "@target,@baseline_at - interval '1 minute',@current_at + interval '1 minute',NULL::timestamptz,NULL::uuid,NULL::text,1");
+        using (JsonDocument row = JsonDocument.Parse(Assert.Single(history)))
+        {
+            Assert.Equal("PAGEIOLATCH_SH", row.RootElement.GetProperty("wait_type").GetString());
+            Assert.True(row.RootElement.GetProperty("has_more").GetBoolean());
+        }
+        List<string> historyNext = await Compare("list_server_wait_history",
+            "@target,@baseline_at - interval '1 minute',@current_at + interval '1 minute',@current_at,@current,'PAGEIOLATCH_SH',1");
+        using (JsonDocument row = JsonDocument.Parse(Assert.Single(historyNext)))
+            Assert.Equal("LCK_M_S", row.RootElement.GetProperty("wait_type").GetString());
+        List<string> trend = await Compare("list_server_wait_category_trend",
+            "@target,@baseline_at - interval '1 minute',@current_at + interval '1 minute'");
+        Assert.NotEmpty(trend);
+        Assert.Contains(trend, value =>
+        {
+            using JsonDocument row = JsonDocument.Parse(value);
+            return row.RootElement.GetProperty("run_count").GetInt64() > 0;
+        });
+
+        await using var grants = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_proc AS p
+            JOIN pg_namespace AS n ON n.oid=p.pronamespace
+            WHERE n.nspname='reporting'
+              AND p.proname IN ('list_server_wait_summary_v2_shadow',
+                                'list_server_wait_history_v2_shadow',
+                                'list_server_wait_category_trend_v2_shadow')
+              AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
+            """, connection);
+        Assert.Equal(3L, await grants.ExecuteScalarAsync());
+    }
+
+    [Fact]
     public async Task PartitionedRunShadowActivityReadersMatchPopulatedPagesAndCursors()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();

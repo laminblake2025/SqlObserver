@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0197`
+The migration catalog contains the exact, contiguous `0001` through `0198`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -506,6 +506,9 @@ cover every target and collector, the migrator can call
 `control.set_collection_run_v2_activity_read_route(true, max_pairs)` to
 switch the four readers under the fleet writer fence. Passing `false` returns
 them to the original readers while those rows remain available.
+Migration `0198` adds private wait summary, wait history, and wait category
+trend readers over the partitioned run table. Public wait routes remain on
+the original readers pending a separate gated cutover.
 
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
