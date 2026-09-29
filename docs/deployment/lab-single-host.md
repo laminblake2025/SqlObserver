@@ -285,6 +285,9 @@ max_rows)`. Each call stores counts and digests; a live insert makes its UTC
 day's earlier checks stale. `all_covered` means the currently recorded,
 generation-matched passing windows cover the observed bounds. Keep the API on
 the original path until replay, fencing, and read cutover are reviewed.
+The focused production-writer replay test checks that a retry does not insert
+another successor row or advance its day generation. A failed M7 commit leaves
+both observation tables empty for that run.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced

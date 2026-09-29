@@ -147,8 +147,21 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         {
             Assert.Equal(CollectorRunCommitStatus.Committed,
                 (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
+            async Task<long> ReadMirrorGenerationAsync()
+            {
+                await using var generation = database.DataSource.CreateCommand("""
+                    SELECT coalesce(sum(revision),0)::bigint
+                    FROM system.query_observation_v3_day_generation
+                    WHERE instance_id=@target;
+                    """);
+                generation.Parameters.AddWithValue("target", target.Value);
+                return (long)(await generation.ExecuteScalarAsync())!;
+            }
+            long generationBeforeReplay = await ReadMirrorGenerationAsync();
+            Assert.True(generationBeforeReplay > 0);
             Assert.Equal(CollectorRunCommitStatus.Replayed,
                 (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
+            Assert.Equal(generationBeforeReplay, await ReadMirrorGenerationAsync());
             if (attachReference)
             {
                 await using NpgsqlDataSource server = database.CreateServerDataSource();
@@ -219,7 +232,26 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
             SELECT (SELECT count(*) FROM events.query_performance_run WHERE collection_run_id=@run),
                    (SELECT count(*) FROM events.query_performance_query WHERE collection_run_id=@run),
                    (SELECT count(*) FROM events.query_performance_content_link WHERE collection_run_id=@run),
-                   (SELECT count(*) FROM telemetry.collection_run_outcome WHERE run_id=@run);
+                   (SELECT count(*) FROM telemetry.collection_run_outcome WHERE run_id=@run),
+                   (SELECT count(*) FROM events.query_performance_observation WHERE collection_run_id=@run),
+                   (SELECT count(*) FROM events.query_performance_observation_v3 WHERE collection_run_id=@run),
+                   (SELECT count(*) FROM (
+                     (SELECT to_jsonb(old_row) AS evidence
+                      FROM events.query_performance_observation AS old_row
+                      WHERE old_row.collection_run_id=@run
+                      EXCEPT ALL
+                      SELECT to_jsonb(new_row) AS evidence
+                      FROM events.query_performance_observation_v3 AS new_row
+                      WHERE new_row.collection_run_id=@run)
+                     UNION ALL
+                     (SELECT to_jsonb(new_row) AS evidence
+                      FROM events.query_performance_observation_v3 AS new_row
+                      WHERE new_row.collection_run_id=@run
+                      EXCEPT ALL
+                      SELECT to_jsonb(old_row) AS evidence
+                      FROM events.query_performance_observation AS old_row
+                      WHERE old_row.collection_run_id=@run)
+                   ) AS differences);
             """, verifyConnection);
         verify.Parameters.AddWithValue("run", run.Value);
         await using NpgsqlDataReader rows = await verify.ExecuteReaderAsync();
@@ -227,6 +259,9 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         long expected = payloadExists || !attachReference ? 1 : 0;
         for (int column = 0; column < 4; column++)
             Assert.Equal(column == 2 && !attachReference ? 0 : expected, rows.GetInt64(column));
+        Assert.Equal(expected, rows.GetInt64(4));
+        Assert.Equal(expected, rows.GetInt64(5));
+        Assert.Equal(0L, rows.GetInt64(6));
     }
 
     [Theory]
@@ -405,7 +440,9 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
                    (SELECT count(*) FROM events.query_plan_access_audit WHERE collection_run_id=@run AND outcome='opened'),
                    (SELECT count(*) FROM events.query_performance_wait_snapshot WHERE collection_run_id=@run),
                    (SELECT count(*) FROM events.query_performance_wait_snapshot
-                    WHERE collection_run_id=@run AND categories @> '[{"category": 3}]'::jsonb);
+                    WHERE collection_run_id=@run AND categories @> '[{"category": 3}]'::jsonb),
+                   (SELECT count(*) FROM events.query_performance_observation WHERE collection_run_id=@run),
+                   (SELECT count(*) FROM events.query_performance_observation_v3 WHERE collection_run_id=@run);
             """, verifyConnection);
         verify.Parameters.AddWithValue("run", run.Value);
         await using NpgsqlDataReader rows = await verify.ExecuteReaderAsync();
@@ -417,6 +454,8 @@ public sealed class M7QueryPerformancePostgreSqlIntegrationTests
         Assert.Equal(payloadExists ? 1L : 0L, rows.GetInt64(4));
         Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(5));
         Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(6));
+        Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(7));
+        Assert.Equal(payloadExists ? 2L : 0L, rows.GetInt64(8));
     }
 
 }

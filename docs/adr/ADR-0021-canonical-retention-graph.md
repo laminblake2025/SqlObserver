@@ -126,6 +126,11 @@ inversion. It also corrects the empty-window SHA-256 seed width from migration
 0167 in a forward function replacement. The coverage report is a preliminary
 operator ledger, not a cutover attestation: final replay and writer fencing
 still have to close the active day and the remaining dependency graph.
+The production fenced M7 writer now has focused PostgreSQL replay coverage
+against both observation relations: an idempotent retry leaves the successor
+row count and day generation unchanged, while a rejected commit or divergent
+replay leaves no extra successor row. This confirms the current mirror path;
+it does not yet authorize switching the writer or readers.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the
