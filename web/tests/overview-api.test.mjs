@@ -7,7 +7,7 @@ const value=()=>({refreshedAtUtc:window.toUtc,...window,targetId:id,targets:[{ta
 test('one credentialed request carries the complete selected scope and window',async()=>{
  const original=globalThis.fetch;let count=0;
  try{
-  globalThis.fetch=async(url,options)=>{count++;assert.equal(options.credentials,'same-origin');const query=new URL(url,'http://localhost').searchParams;assert.equal(query.get('targetId'),id);assert.equal(query.get('fromUtc'),window.fromUtc);return Response.json(value());};
+  globalThis.fetch=async(url,options)=>{count++;assert.equal(options.credentials,'same-origin');const query=new URL(url,'http://localhost').searchParams;assert.equal(query.get('targetId'),id);assert.equal(query.get('fromUtc'),window.fromUtc);assert.equal(query.get('useLatestStatus'),'true');return Response.json(value());};
   const result=await getOverview(id,window,new AbortController().signal);assert.equal(result.evidence[0].activeAlerts.value,null);assert.equal(count,1);
  }finally{globalThis.fetch=original;}
 });

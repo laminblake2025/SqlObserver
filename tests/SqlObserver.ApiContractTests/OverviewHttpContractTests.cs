@@ -38,7 +38,7 @@ public sealed class OverviewHttpContractTests : IClassFixture<OverviewApiFactory
         Assert.DoesNotContain("+00:00",await response.Content.ReadAsStringAsync());
     }
     [Fact]
-    public async Task SelectedServerCanOptIntoLatestStatusWithoutChangingTheDefault()
+    public async Task SelectedServerAndFleetCanOptIntoLatestStatusWithoutChangingTheDefault()
     {
         var capture = new CapturingOverviewHttpStub();
         using var host = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
@@ -53,7 +53,9 @@ public sealed class OverviewHttpContractTests : IClassFixture<OverviewApiFactory
             (await client.GetAsync("/api/v1/overview?" + selection)).StatusCode);
         Assert.Equal(HttpStatusCode.OK,
             (await client.GetAsync("/api/v1/overview?" + selection + "&useLatestStatus=true")).StatusCode);
-        Assert.Equal([false, true], capture.ReadModes);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/v1/overview?fromUtc=2026-09-04T00:00:00Z&toUtc=2026-09-05T00:00:00Z&useLatestStatus=true")).StatusCode);
+        Assert.Equal([false, true, true], capture.ReadModes);
     }
     [Theory]
     [InlineData("fromUtc=garbage&toUtc=2026-09-05T00:00:00Z")]

@@ -133,7 +133,57 @@ public sealed class OverviewQueryServiceTests
     }
 
     [Fact]
-    public async Task MissingOptInProjectionFallsBackAndFleetOptInRequiresSelection()
+    public async Task FleetLatestStatusReadsEachAuthorizedTargetAndKeepsWindowedHistory()
+    {
+        ObservationTargetStatusSnapshot[] inventory = [Target(1), Target(2)];
+        var latestReads = new System.Collections.Concurrent.ConcurrentBag<Guid>();
+        var historyReads = new System.Collections.Concurrent.ConcurrentBag<Guid>();
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, args) =>
+        {
+            var id = (MonitoredInstanceId)args![0]!;
+            latestReads.Add(id.Value);
+            Assert.Contains(inventory, target => target.Target.TargetId == id);
+            return Task.FromResult<OverviewLatestStatus?>(new(
+                id.Value, 1, 1, DateTimeOffset.UtcNow, "current", DateTimeOffset.UtcNow,
+                new(id == inventory[0].Target.TargetId ? 1 : 2, "current", At),
+                new(0, "current", At),
+                new Dictionary<string, OverviewLatestSource>
+                {
+                    ["alerts"] = new("current", At),
+                    ["blocking"] = new("current", At)
+                }, [], [], []));
+        });
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, args) =>
+        {
+            var id = (MonitoredInstanceId)args![0]!;
+            historyReads.Add(id.Value);
+            return Task.FromResult<IReadOnlyList<OverviewSeries>>([
+                new(id.Value, "", "engine.batch_requests_per_second", "batches/sec", "observed", null,
+                    [new(At.AddMinutes(-5), 12, 1)])
+            ]);
+        });
+        var health = OverviewStub.Create<IHealthProjectionQueryService>((_, _) =>
+            throw new InvalidOperationException("Fleet current health must use the latest row."));
+        var alerts = OverviewStub.Create<IAlertQueryService>((_, _) =>
+            throw new InvalidOperationException("Fleet current alerts must use the latest row."));
+
+        OverviewSnapshot result = await Service(inventory, alerts, history,
+            latestStatus: latest, healthService: health).ReadAsync(
+                new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None);
+
+        Assert.Equal(inventory.Select(target => target.Target.TargetId.Value).Order(), latestReads.Order());
+        Assert.Equal(inventory.Select(target => target.Target.TargetId.Value).Order(), historyReads.Order());
+        Assert.Equal([1d, 2d], result.Evidence.OrderBy(item => item.DisplayName)
+            .Select(item => item.ActiveAlerts.Value));
+        Assert.All(result.Evidence, item =>
+        {
+            Assert.Single(item.Series, series => series.Metric == "engine.batch_requests_per_second");
+            Assert.DoesNotContain(item.Gaps, gap => gap is "Collection health unavailable" or "Alerts unavailable");
+        });
+    }
+
+    [Fact]
+    public async Task MissingOptInProjectionFallsBackForSelectedServerAndFleet()
     {
         var target = Target(1);
         int healthReads = 0;
@@ -150,11 +200,13 @@ public sealed class OverviewQueryServiceTests
         });
         OverviewQueryService service = Service([target], latestStatus: latest,
             healthService: health);
-        await Assert.ThrowsAsync<ArgumentException>(() => service.ReadAsync(
-            new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None));
+        OverviewSnapshot fleet = await service.ReadAsync(
+            new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None);
+        Assert.Contains("No latest status projection; direct source reads used",
+            Assert.Single(fleet.Evidence).Gaps);
         OverviewSnapshot result = await service.ReadAsync(new(Auth(),
             target.Target.TargetId.Value, At.AddHours(-1), At, true), CancellationToken.None);
-        Assert.Equal(1, healthReads);
+        Assert.Equal(2, healthReads);
         Assert.Contains("No latest status projection; direct source reads used",
             Assert.Single(result.Evidence).Gaps);
     }

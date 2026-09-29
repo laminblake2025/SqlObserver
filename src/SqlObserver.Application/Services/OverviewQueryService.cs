@@ -27,8 +27,6 @@ public sealed class OverviewQueryService(
         if (query.FromUtc.Offset != TimeSpan.Zero || query.ToUtc.Offset != TimeSpan.Zero || query.ToUtc <= query.FromUtc ||
             query.ToUtc - query.FromUtc > TimeSpan.FromDays(31) || query.ToUtc > DateTimeOffset.UtcNow.AddMinutes(1))
             throw new ArgumentException("Select an increasing UTC window of at most 31 days.");
-        if (query.UseLatestStatus && query.TargetId is null)
-            throw new ArgumentException("Select a server to use its latest-status projection.");
         if (!ReadRoles.Any(query.Authorization.HasRole)) throw new UnauthorizedAccessException();
         if (query.TargetId is { } selectedId)
             query.Authorization.RequireAny(new MonitoredInstanceId(selectedId), ReadRoles);

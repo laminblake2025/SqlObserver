@@ -35,3 +35,20 @@ The two older frontend source-contract tests now follow the extracted Servers co
 ## Subsequent lab rollout
 
 This Overview is now deployed on WIN-QNGOV5GDM24 with real host and replication series. See [Replication and Overview validation](SqlObserver-Replication-Overview-Validation-2026-09-05.md) for the combined rollout, forward migrations and live workload evidence. The earlier verification section describes the original implementation run.
+
+## Latest-status read path (September 29, 2026)
+
+The web Overview now requests the revision-bound latest-status projection for
+both All servers and a selected server. Each authorized active target is read
+through its own scoped repository call. A missing projection falls back to the
+direct source reads and reports that gap. A stale projection remains visibly
+stale. Deadlocks, workload, blocking history and other selected-window evidence
+still use their time-bounded reads; current alerts and blocking are independent
+of the selected historical window.
+
+This reduces current-source read fan-out, but it is not yet a set-based fleet
+read model. There is no measured cold/warm latency claim for a representative
+fleet, and the existing inventory, per-target history reads, 20-second evidence
+deadline, and 1 MiB response ceiling still constrain scale. Focused service,
+HTTP, web API and production-build checks passed; no full validation run was
+performed for this change.
