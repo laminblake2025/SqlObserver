@@ -38,6 +38,27 @@ test("one unavailable activity route preserves four independent evidence section
   assert.match(result.errors[0],/^Requests:/u);
  } finally {globalThis.fetch=original;}
 });
+test("activity snapshot requests the complete bounded blocking graph", async () => {
+ const original = globalThis.fetch;
+ const urls = [];
+ const at = "2026-09-05T12:00:00Z";
+ const edges = Array.from({length: 26}, (_, index) => ({
+  blockedSessionId:index + 1, blockerKind:"session", blockerSessionId:100,
+  waitType:"LCK_M_S", waitingTaskCount:"1", waitDurationMilliseconds:"100",
+  rootBlockerSessionId:100, chainDepth:1, chainState:"resolved", observedAtUtc:at,
+ }));
+ try {
+  globalThis.fetch = async url => {
+   const parsed = new URL(String(url), "https://lab.invalid");
+   urls.push(parsed);
+   return new Response(JSON.stringify({instanceId:target,repositoryTimeUtc:at,evidence:null,
+    items:parsed.pathname.endsWith("/blocking/current") ? edges : []}),{headers:{"content-type":"application/json"}});
+  };
+  const result = await getActivitySnapshot(target,new AbortController().signal,null);
+  assert.equal(result.blocking?.items.length,26);
+  assert.equal(urls.find(url => url.pathname.endsWith("/blocking/current"))?.searchParams.get("limit"),"256");
+ }finally{globalThis.fetch=original;}
+});
 test("aborting activity loading rejects instead of displaying section failures", async () => {
  const original = globalThis.fetch;
  const controller=new AbortController();controller.abort();

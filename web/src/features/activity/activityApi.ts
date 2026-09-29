@@ -48,7 +48,7 @@ export async function getActivitySnapshot(instanceId: string, signal: AbortSigna
     read("Sessions", getPage(`${base}/sessions?limit=${String(pageLimit)}`, parseSession, instanceId, signal)),
     read("Requests", getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal)),
     read("Waits", getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal)),
-    read("Current blocking", getPage(`${base}/blocking/current?limit=${String(pageLimit)}`, parseEdge, instanceId, signal)),
+    read("Current blocking", getCurrentBlockingPage(instanceId, signal)),
     historyWindow === null ? Promise.resolve(undefined) : read("Blocking history", getBlockingHistoryPage(instanceId, historyWindow, signal)),
     historyWindow === null ? Promise.resolve(undefined) : read("Wait history", getServerWaitHistoryPage(instanceId, historyWindow, signal)),
   ]);
