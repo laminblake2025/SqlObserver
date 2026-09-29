@@ -147,7 +147,35 @@ public static class AnalyticsEndpoints
     private static async Task<IResult> StartBackfillAsync(HttpContext context, Guid instanceId, IAnalyticsSurfaceRepositoryPort repository, WindowsGroupRoleResolver resolver, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? metricKey = null, long? expectedRevision = null, CancellationToken cancellationToken = default)
     { try { AuthorizationContext auth = resolver.Resolve(context.User); var target = new MonitoredInstanceId(instanceId); if (!auth.CanAccess(ApplicationRole.TargetAdministrator, target)) return Results.Forbid(); using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false); BackfillBody body = ParseBackfill(document.RootElement, instanceId, fromUtc, toUtc, metricKey, expectedRevision); byte[] computed = MutationDigestV1.Backfill(instanceId, body.FromUtc, body.ToUtc, body.MetricKey, body.ExpectedRevision, body.OperationId, auth.ActorSid.Value, MutationDigestV1.Scope(auth.GetScopeForRoles(new[] { ApplicationRole.TargetAdministrator })), body.CorrelationId, body.ChangeReason); VerifyDigest(body.RequestDigest, computed); AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.StartBackfillAsync(new BackfillMutationRequest(instanceId, body.FromUtc, body.ToUtc, body.MetricKey, body.ExpectedRevision, body.OperationId, computed, auth.ActorSid.Value, body.CorrelationId, body.ChangeReason), cancellationToken).ConfigureAwait(false)); context.Response.Headers["X-Correlation-ID"] = body.CorrelationId.ToString("D"); return Results.Accepted($"/api/v1/observation-targets/{instanceId:D}/analytics/jobs", receipt); } catch (UnsupportedMutationMediaTypeException) { return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType); } catch (InvalidOperationException) { return Results.Conflict(); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (JsonException) { return Results.BadRequest(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
     private static async Task<IResult> RecordAttestationAsync(HttpContext context, IAnalyticsSurfaceRepositoryPort repository, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken = default)
-    { try { AuthorizationContext auth = resolver.Resolve(context.User); if (!auth.HasRoleForAllTargets(ApplicationRole.SecurityAdministrator)) return Results.Forbid(); using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false); (JsonElement Payload, Guid OperationId, Guid CorrelationId, string ChangeReason, string? RequestDigest) = ParseAttestation(document.RootElement); JsonElement root = Payload; byte[] computed = MutationDigestV1.Attestation(OperationId, RequiredText(root, "digest", 64), RequiredText(root, "backupSetReference", 512), RequiredText(root, "attestedBy", 256), DateTimeOffset.Parse(root.GetProperty("expiresAtUtc").GetString()!, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind), auth.ActorSid.Value, "all", CorrelationId, ChangeReason); if (RequestDigest is not null) VerifyDigest(RequestDigest, computed); AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.RecordAttestationAsync(new AttestationMutationRequest(Payload, OperationId, auth.ActorSid.Value, CorrelationId, ChangeReason, computed), cancellationToken).ConfigureAwait(false)); context.Response.Headers["X-Correlation-ID"] = CorrelationId.ToString("D"); return Results.Ok(receipt); } catch (UnsupportedMutationMediaTypeException) { return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType); } catch (InvalidOperationException) { return Results.Conflict(); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (JsonException) { return Results.BadRequest(); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
+    {
+        try
+        {
+            AuthorizationContext auth = resolver.Resolve(context.User);
+            if (!auth.HasRoleForAllTargets(ApplicationRole.SecurityAdministrator)) return Results.Forbid();
+            using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false);
+            (JsonElement payload, Guid operationId, Guid correlationId, string changeReason, string requestDigest) =
+                ParseAttestation(document.RootElement);
+            byte[] computed = MutationDigestV1.Attestation(
+                operationId,
+                RequiredText(payload, "digest", 64),
+                RequiredText(payload, "backupSetReference", 512),
+                RequiredText(payload, "attestedBy", 256),
+                DateTimeOffset.Parse(payload.GetProperty("expiresAtUtc").GetString()!, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                auth.ActorSid.Value, "all", correlationId, changeReason);
+            VerifyDigest(requestDigest, computed);
+            AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.RecordAttestationAsync(
+                new AttestationMutationRequest(payload, operationId, auth.ActorSid.Value, correlationId, changeReason, computed),
+                cancellationToken).ConfigureAwait(false));
+            context.Response.Headers["X-Correlation-ID"] = correlationId.ToString("D");
+            return Results.Ok(receipt);
+        }
+        catch (UnsupportedMutationMediaTypeException) { return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (JsonException) { return Results.BadRequest(); }
+        catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+    }
     private static async Task<JsonDocument> ReadBoundedJsonAsync(HttpContext context, CancellationToken cancellationToken)
     {
         if (!MediaTypeHeaderValue.TryParse(context.Request.ContentType, out MediaTypeHeaderValue? contentType)
@@ -226,13 +254,13 @@ public static class AnalyticsEndpoints
         return new HostBindingBody(root.Clone(), hostId, hostName, fingerprint, bindingRevision, profileRevision, expectedRevision, operationId, correlationId, requestDigest, changeReason);
     }
 
-    private static (JsonElement Payload, Guid OperationId, Guid CorrelationId, string ChangeReason, string? RequestDigest) ParseAttestation(JsonElement root)
+    private static (JsonElement Payload, Guid OperationId, Guid CorrelationId, string ChangeReason, string RequestDigest) ParseAttestation(JsonElement root)
     {
         EnsureKeys(root, ["attestationId", "attestedBy", "backupSetReference", "expiresAtUtc", "digest", "correlationId", "changeReason", "requestDigest"]);
         Guid id = RequiredGuid(root, "attestationId"); _ = RequiredText(root, "attestedBy", 256); _ = RequiredText(root, "backupSetReference", 512);
         if (!root.TryGetProperty("expiresAtUtc", out JsonElement expiry) || expiry.ValueKind != JsonValueKind.String || !DateTimeOffset.TryParse(expiry.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTimeOffset expires) || expires.Offset != TimeSpan.Zero || expires <= DateTimeOffset.UtcNow) throw new ArgumentException("Attestation expiry must be future UTC.");
         _ = RequiredSha256(root, "digest"); Guid correlation = root.TryGetProperty("correlationId", out JsonElement correlationValue) ? GuidFromElement(correlationValue, "correlationId") : id; string reason = RequiredText(root, "changeReason", 512);
-        string? requestDigest = root.TryGetProperty("requestDigest", out JsonElement requestValue) && requestValue.ValueKind != JsonValueKind.Null ? RequiredSha256(root, "requestDigest") : null;
+        string requestDigest = RequiredSha256(root, "requestDigest");
         return (root.Clone(), id, correlation, reason, requestDigest);
     }
 

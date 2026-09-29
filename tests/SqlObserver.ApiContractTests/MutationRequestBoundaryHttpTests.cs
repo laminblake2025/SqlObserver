@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -152,8 +153,7 @@ public sealed class MutationRequestBoundaryHttpTests
     {
         using var factory = new MutationBoundaryFactory();
         using HttpClient client = factory.Client();
-        // An otherwise valid attestation also works without its optional digest. The digest is not a CSRF token.
-        using HttpRequestMessage request = Request(Route("attestations", false), Payload("attestations", includeDigest: false));
+        using HttpRequestMessage request = Request(Route("attestations", false), Payload("attestations"));
         BrowserHeaders(request, origin, fetchSite);
         using HttpResponseMessage response = await client.SendAsync(request);
 
@@ -171,6 +171,24 @@ public sealed class MutationRequestBoundaryHttpTests
         using HttpResponseMessage response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        AssertNoPortCalls(factory.Ports);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("null")]
+    [InlineData("mismatch")]
+    public async Task AttestationRequiresMatchingCanonicalRequestDigest(string variation)
+    {
+        using var factory = new MutationBoundaryFactory();
+        using HttpClient client = factory.Client();
+        JsonObject payload = JsonNode.Parse(Payload("attestations"))!.AsObject();
+        if (variation == "missing") payload.Remove("requestDigest");
+        else payload["requestDigest"] = variation == "null" ? null : new string('b', 64);
+        using HttpRequestMessage request = Request(Route("attestations", false), payload.ToJsonString());
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         AssertNoPortCalls(factory.Ports);
     }
 
@@ -319,7 +337,7 @@ public sealed class MutationRequestBoundaryHttpTests
         if (fetchSite is not null) request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", fetchSite);
     }
 
-    private static string Payload(string operation, bool includeDigest = true)
+    private static string Payload(string operation)
     {
         Guid operationId = Guid.NewGuid();
         Guid correlationId = Guid.NewGuid();
@@ -362,9 +380,9 @@ public sealed class MutationRequestBoundaryHttpTests
             var body = new Dictionary<string, object>
             {
                 ["attestationId"] = operationId, ["attestedBy"] = "HTTP test", ["backupSetReference"] = "synthetic-test-backup",
-                ["expiresAtUtc"] = expires.ToString("O"), ["digest"] = evidence, ["correlationId"] = correlationId, ["changeReason"] = reason
+                ["expiresAtUtc"] = expires.ToString("O"), ["digest"] = evidence, ["correlationId"] = correlationId, ["changeReason"] = reason,
+                ["requestDigest"] = MutationDigestV1.Hex(digest)
             };
-            if (includeDigest) body["requestDigest"] = MutationDigestV1.Hex(digest);
             return JsonSerializer.Serialize(body);
         }
         Guid executionId = Guid.NewGuid();
@@ -401,6 +419,7 @@ internal sealed class MutationBoundaryFactory(int requestsPerWindow = 1000) : We
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("ContractTesting");
+        builder.ConfigureLogging(logging => logging.ClearProviders());
         // Program reads these settings before the late application-configuration callback.
         builder.UseSetting("SqlObserver:AdministrativeMutationLimits:RequestsPerWindow", requestsPerWindow.ToString(CultureInfo.InvariantCulture));
         builder.UseSetting("SqlObserver:AdministrativeMutationLimits:WindowSeconds", "60");
