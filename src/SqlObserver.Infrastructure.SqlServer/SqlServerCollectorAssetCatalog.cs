@@ -52,6 +52,9 @@ public sealed class SqlServerCollectorAssetCatalog
 {
     private const string ResourcePrefix = "SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.";
     private const string ChecksumFileName = "m4-core-health.assets.sha256";
+    private const string Version2ChecksumFileName = "m4-core-health.assets-v2.sha256";
+    public const string ExpectedVersion2BundleChecksum =
+        "e48082564bda4f8f0a06c545640832b13dd99b01db1755ec3a2a8d0b794a7311";
     private const int MaximumAssetBytes = 4 * 1024 * 1024;
 
     private static readonly string[] ExpectedAssetNames =
@@ -77,6 +80,15 @@ public sealed class SqlServerCollectorAssetCatalog
         "database.inventory.v1.json",
         "database.files.v1.json",
     ];
+
+    private static readonly string[] Version2AssetNames = ExpectedAssetNames
+        .Select(static name => name.StartsWith("database.inventory.", StringComparison.Ordinal)
+            ? name.Replace(".v1.", ".v2.", StringComparison.Ordinal)
+                  .Replace(".v1.json", ".v2.json", StringComparison.Ordinal)
+            : name)
+        .ToArray();
+    private static readonly string[] Version2CollectorManifestNames =
+        ["engine.core.v1.json", "database.inventory.v2.json", "database.files.v1.json"];
 
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
@@ -109,12 +121,29 @@ public sealed class SqlServerCollectorAssetCatalog
     }
 
     public static SqlServerCollectorAssetCatalog LoadEmbedded(Assembly? assembly = null)
+        => LoadEmbeddedVersion(assembly, ChecksumFileName, ExpectedAssetNames,
+            ExpectedCollectorManifestNames, expectedBundleChecksum: null);
+
+    public static SqlServerCollectorAssetCatalog LoadVersion2Embedded(Assembly? assembly = null)
+        => LoadEmbeddedVersion(assembly, Version2ChecksumFileName, Version2AssetNames,
+            Version2CollectorManifestNames, ExpectedVersion2BundleChecksum);
+
+    private static SqlServerCollectorAssetCatalog LoadEmbeddedVersion(
+        Assembly? assembly,
+        string checksumFileName,
+        string[] expectedAssetNames,
+        string[] expectedManifestNames,
+        string? expectedBundleChecksum)
     {
         assembly ??= typeof(SqlServerCollectorAssetCatalog).Assembly;
-        byte[] checksumBytes = ReadResource(assembly, ChecksumFileName);
-        string checksumText = DecodeExactLf(checksumBytes, ChecksumFileName);
-        IReadOnlyList<ChecksumEntry> checksumEntries = ParseChecksums(checksumText);
-        if (!checksumEntries.Select(static entry => entry.FileName).SequenceEqual(ExpectedAssetNames))
+        byte[] checksumBytes = ReadResource(assembly, checksumFileName);
+        string bundleChecksum = Convert.ToHexString(SHA256.HashData(checksumBytes)).ToLowerInvariant();
+        if (expectedBundleChecksum is not null &&
+            !string.Equals(bundleChecksum, expectedBundleChecksum, StringComparison.Ordinal))
+            throw new InvalidDataException("The version-2 collector bundle checksum is not approved.");
+        string checksumText = DecodeExactLf(checksumBytes, checksumFileName);
+        IReadOnlyList<ChecksumEntry> checksumEntries = ParseChecksums(checksumText, expectedAssetNames.Length);
+        if (!checksumEntries.Select(static entry => entry.FileName).SequenceEqual(expectedAssetNames))
         {
             throw new InvalidDataException("The M4 collector checksum manifest has an unexpected asset order.");
         }
@@ -137,8 +166,8 @@ public sealed class SqlServerCollectorAssetCatalog
             checksums.Add(entry.FileName, actualChecksum);
         }
 
-        var collectors = new List<SqlServerCollectorAsset>(ExpectedCollectorManifestNames.Length);
-        foreach (string manifestFileName in ExpectedCollectorManifestNames)
+        var collectors = new List<SqlServerCollectorAsset>(expectedManifestNames.Length);
+        foreach (string manifestFileName in expectedManifestNames)
         {
             collectors.Add(ParseCollector(
                 verifiedAssets[manifestFileName],
@@ -155,7 +184,7 @@ public sealed class SqlServerCollectorAssetCatalog
 
         return new SqlServerCollectorAssetCatalog(
             collectors,
-            Convert.ToHexString(SHA256.HashData(checksumBytes)).ToLowerInvariant());
+            bundleChecksum);
     }
 
     private static SqlServerCollectorAsset ParseCollector(
@@ -410,7 +439,7 @@ public sealed class SqlServerCollectorAssetCatalog
         }
     }
 
-    private static List<ChecksumEntry> ParseChecksums(string manifest)
+    private static List<ChecksumEntry> ParseChecksums(string manifest, int expectedCount)
     {
         string[] lines = manifest.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var entries = new List<ChecksumEntry>(lines.Length);
@@ -440,7 +469,7 @@ public sealed class SqlServerCollectorAssetCatalog
             entries.Add(new ChecksumEntry(checksum, fileName));
         }
 
-        if (entries.Count != ExpectedAssetNames.Length)
+        if (entries.Count != expectedCount)
         {
             throw new InvalidDataException("The M4 collector checksum manifest has the wrong entry count.");
         }

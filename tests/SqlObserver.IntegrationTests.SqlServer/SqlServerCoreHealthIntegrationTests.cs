@@ -115,6 +115,31 @@ public sealed class SqlServerCoreHealthIntegrationTests
     }
 
     [Fact]
+    public void Version2DatabaseInventoryBundlePreservesVersion1AndPinsNullableLogReuseSource()
+    {
+        SqlServerCollectorAssetCatalog original = SqlServerCollectorAssetCatalog.LoadEmbedded();
+        SqlServerCollectorAssetCatalog updated = SqlServerCollectorAssetCatalog.LoadVersion2Embedded();
+        SqlServerCollectorAsset inventory = updated.Get(new CollectorId("database.inventory"));
+
+        Assert.NotEqual(original.BundleChecksum, updated.BundleChecksum);
+        Assert.Equal(1, original.Get(new CollectorId("database.inventory")).Manifest.ManifestVersion.Value);
+        Assert.Equal(2, inventory.Manifest.ManifestVersion.Value);
+        Assert.Equal(2, inventory.Manifest.OutputSchemaVersion.Value);
+        Assert.Equal(2, SqlServerDatabaseInventoryCollector.Version2OutputContract.SchemaVersion.Value);
+        Assert.Equal(original.Get(new CollectorId("engine.core")).ManifestChecksum,
+            updated.Get(new CollectorId("engine.core")).ManifestChecksum);
+        Assert.Equal(original.Get(new CollectorId("database.files")).ManifestChecksum,
+            updated.Get(new CollectorId("database.files")).ManifestChecksum);
+        foreach (int major in SupportedMajorVersions)
+        {
+            string sql = inventory.GetQuery(major);
+            Assert.Contains("databases.log_reuse_wait_desc", sql, StringComparison.Ordinal);
+            Assert.Contains("FROM sys.databases AS databases", sql, StringComparison.Ordinal);
+            AssertPassiveSql(sql);
+        }
+    }
+
+    [Fact]
     [Trait("Category", "RequiresSqlServer")]
     public async Task LocalSqlServerCollectorsAreBoundedPassiveAndProduceExactOutputKinds()
     {

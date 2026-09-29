@@ -480,8 +480,15 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
         maxMetricSamples: 0,
         maxDatabaseObservations: 1_000,
         maxDatabaseFileObservations: 0);
+    private static readonly CollectorOutputContract Version2RegisteredOutputContract = new(
+        new CollectorOutputSchemaVersion(2),
+        metrics: [],
+        maxMetricSamples: 0,
+        maxDatabaseObservations: 1_000,
+        maxDatabaseFileObservations: 0);
 
     public static CollectorOutputContract OutputContract => RegisteredOutputContract;
+    public static CollectorOutputContract Version2OutputContract => Version2RegisteredOutputContract;
 
     public SqlServerDatabaseInventoryCollector()
         : this(
@@ -515,6 +522,9 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
             Manifest.Limits.MaxResponseBytes);
         try
         {
+            int expectedFields = Manifest.ManifestVersion.Value >= 2 ? 9 : 8;
+            if (reader.FieldCount != expectedFields)
+                throw new InvalidDataException("Database inventory returned an unexpected column shape.");
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 if (!budget.TryBeginRow())
@@ -528,8 +538,12 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
                 string state = reader.GetString(3);
                 string access = reader.GetString(4);
                 string recovery = reader.GetString(5);
+                string? logReuseWaitDescription = Manifest.ManifestVersion.Value >= 2 &&
+                    !reader.IsDBNull(8) ? reader.GetString(8) : null;
                 int rowBytes = checked(
-                    48 + Utf8Bytes(name) + Utf8Bytes(state) + Utf8Bytes(access) + Utf8Bytes(recovery));
+                    48 + Utf8Bytes(name) + Utf8Bytes(state) + Utf8Bytes(access) +
+                    Utf8Bytes(recovery) + (logReuseWaitDescription is null ? 0 :
+                        Utf8Bytes(logReuseWaitDescription)));
                 if (!budget.TryAcceptResponseBytes(rowBytes))
                 {
                     break;
@@ -545,7 +559,8 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
                     ParseUserAccess(access),
                     reader.GetBoolean(6),
                     reader.GetByte(7),
-                    observedAt));
+                    observedAt,
+                    logReuseWaitDescription));
             }
         }
         catch (Exception exception) when (exception is

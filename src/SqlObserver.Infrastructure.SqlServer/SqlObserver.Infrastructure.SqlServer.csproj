@@ -160,11 +160,17 @@
     <EmbeddedResource Include="../../collectors/manifests/database.inventory.v1.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.v1.json</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/database.inventory.v2.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.v2.json</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/database.files.v1.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.v1.json</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/m4-core-health.assets.sha256">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.m4-core-health.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m4-core-health.assets-v2.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.m4-core-health.assets-v2.sha256</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/engine.core.sqlserver15-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.engine.core.sqlserver15-windows.v1.sql</LogicalName>
@@ -183,6 +189,15 @@
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver15-windows.v2.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver15-windows.v2.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver16-windows.v2.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver16-windows.v2.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver17-windows.v2.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver17-windows.v2.sql</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver15-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.sqlserver15-windows.v1.sql</LogicalName>
