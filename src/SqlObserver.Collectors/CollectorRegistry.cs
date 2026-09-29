@@ -128,6 +128,7 @@ public sealed class CollectorRegistry
                 [CollectorCatalogIds.ReplicationHealth.Value] = (15, CollectorOutputKind.ReplicationHealth),
                 [CollectorCatalogIds.QueryStoreGroups.Value] = (17, CollectorOutputKind.QueryStoreGroups),
                 ["engine.buffer-nodes"] = (18, CollectorOutputKind.Metrics),
+                ["engine.configurations"] = (19, CollectorOutputKind.ServerConfigurations),
             });
 
     private readonly ReadOnlyCollection<CollectorRegistration> _registrations;

@@ -150,4 +150,7 @@ same target revision and SQL Server major version. Matching IDs with changed
 names or types establish new baselines. Partial and failed runs record
 visibility gaps without snapshots or change events. Replay uses the canonical
 completion digest; the collector adapter routes this output kind through the
-new function, but runtime registration still waits for source qualification.
+new function. Migration 0254 and the pinned v1 asset bundle add the runtime
+contract with disabled schedules for existing and newly added targets. The
+collector remains disabled by default until its source and permissions are
+qualified on SQL Server 15, 16, and 17.

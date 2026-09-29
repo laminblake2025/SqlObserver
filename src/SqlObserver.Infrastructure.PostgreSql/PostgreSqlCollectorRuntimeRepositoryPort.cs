@@ -39,6 +39,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string ReconcileM11Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m11(", StringComparison.Ordinal);
     private static readonly string ReconcileM12Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m12(", StringComparison.Ordinal);
     private static readonly string ReconcileM13Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m13(", StringComparison.Ordinal);
+    private static readonly string ReconcileM14Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m14(", StringComparison.Ordinal);
     private const string ListDueSql = "SELECT * FROM control.list_due_collector_work(@max_items);";
     private const string ClaimDueSql = "SELECT * FROM control.claim_due_collector_work(@owner_execution_id,@ttl);";
     private const string BeginSql = """
@@ -341,6 +342,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "storage.volume",
         "queries.performance-groups",
         "engine.buffer-nodes",
+        "engine.configurations",
     ];
 
     private static readonly string[] RequiredManifestDigests =
@@ -363,6 +365,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "1aa2087ea8ac53aefdc04fa2d7e87345de3d0de072690b26bc084d61c43ca5c2",
         "2a026abedbde62a7c8ad101ef1716c15a31f82b576c2610ef03e60552803e7f9",
         "2051ddb3e18434a0839e346a3b6361c2e371ce83072ea28e65956c3b6a442451",
+        "0e2091d6e4e8246154aeacb7c7fe1578a9264623aae883e0ec7088b9ca266aeb",
     ];
 
     private static readonly string[] RequiredBundleDigests =
@@ -385,6 +388,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "a7628baac6bb1c84a409e17ac39d702de1b22f72b80a64b619cc25c63e35c648",
         "4d6c86e95950d0a60c72d7876283c505058b96ee25a102cf967aa8ffa220aa8a",
         "043d739a50b552e9f1859059ce067baa234d28edf669f9566e78cc7f01a0042e",
+        "0eb242b28bd428bbcb5bc3ea146c6fa8739226fbc779da470e431832a156a4c9",
     ];
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
@@ -429,7 +433,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
-            await using var command = new NpgsqlCommand(request.Entries.Count switch { 18 => ReconcileM13Sql, 17 => ReconcileM12Sql, 16 => ReconcileM11Sql, 15 => ReconcileM10Sql, 13 => ReconcileM9Sql, 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
+            await using var command = new NpgsqlCommand(request.Entries.Count switch { 19 => ReconcileM14Sql, 18 => ReconcileM13Sql, 17 => ReconcileM12Sql, 16 => ReconcileM11Sql, 15 => ReconcileM10Sql, 13 => ReconcileM9Sql, 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
@@ -1543,7 +1547,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCatalog(IReadOnlyList<CollectorCatalogEntry> entries)
     {
-        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18))
+        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18 or 19))
         {
                 throw new InvalidDataException("PostgreSQL accepts only an exact reviewed collector catalog.");
         }

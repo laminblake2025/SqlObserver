@@ -146,6 +146,8 @@ public static class CollectorServiceRegistration
         services.AddSingleton<SqlServerVolumeCapacityCollector>();
         services.AddSingleton(static _ => SqlServerBufferNodePleAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerBufferNodePleCollector>();
+        services.AddSingleton(static _ => SqlServerConfigurationAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerConfigurationsCollector>();
         services.AddSingleton(static _ => SqlServerQueryStoreGroupAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerQueryStoreGroupCollector>();
         services.AddSingleton(static _ => HostMetricsAssetCatalog.LoadEmbedded());
@@ -253,6 +255,8 @@ public static class CollectorServiceRegistration
         var volumeBundle = new CollectorSha256Digest(volumeCatalog.BundleChecksum);
         SqlServerBufferNodePleAssetCatalog bufferNodeCatalog =
             provider.GetRequiredService<SqlServerBufferNodePleAssetCatalog>();
+        SqlServerConfigurationAssetCatalog configurationCatalog =
+            provider.GetRequiredService<SqlServerConfigurationAssetCatalog>();
         SqlServerQueryStoreGroupAssetCatalog groupCatalog =
             provider.GetRequiredService<SqlServerQueryStoreGroupAssetCatalog>();
         HostMetricsAssetCatalog hostCatalog = provider.GetRequiredService<HostMetricsAssetCatalog>();
@@ -329,6 +333,10 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerBufferNodePleCollector.OutputContract),
                 Digest(bufferNodeCatalog.ManifestJson),
                 new CollectorSha256Digest(bufferNodeCatalog.BundleChecksum)),
+            new CollectorRegistration(19, provider.GetRequiredService<SqlServerConfigurationsCollector>(),
+                new CollectorOutputValidator(SqlServerConfigurationsCollector.OutputContract),
+                Digest(configurationCatalog.ManifestJson),
+                new CollectorSha256Digest(configurationCatalog.BundleChecksum)),
         ]);
     }
 }

@@ -1,0 +1,15 @@
+{
+  "$schema":"engine.configurations.v1.schema.json","schemaVersion":6,
+  "collectorId":"engine.configurations","collectorVersion":1,
+  "displayName":"SQL Server configuration evidence","operationalMode":"passive",
+  "dependsOn":["capability.connection","engine.core"],
+  "supportedTargets":{"product":"Microsoft SQL Server","minimumMajorVersion":15,"maximumMajorVersion":17,"platforms":["Windows"],"engineEditions":[2,3,4]},
+  "requiredCapabilities":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"],
+  "requiredPermissionsByMajor":{"15":[],"16":["server.view-performance-state"],"17":["server.view-performance-state"]},
+  "cadence":{"defaultIntervalSeconds":300,"minimumIntervalSeconds":60,"nonOverlappingPerTarget":true},
+  "executionBounds":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":5,"maximumRows":513,"maximumResponseBytes":65536},
+  "resilience":{"maximumAttempts":2,"transientRetryDelayMilliseconds":100,"circuitFailureThreshold":3,"circuitOpenSeconds":300},
+  "estimatedCostClass":"low","fallback":{"mode":"unsupported"},
+  "queryResources":{"15":"engine.configurations.sqlserver15-windows.v1.sql","16":"engine.configurations.sqlserver16-windows.v1.sql","17":"engine.configurations.sqlserver17-windows.v1.sql"},
+  "outputSchemaVersion":1,"outputKind":"server-configurations","defaultEnabled":false
+}

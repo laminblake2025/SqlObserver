@@ -4,11 +4,33 @@ using SqlObserver.Collectors;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.SqlServer;
+using System.Text.Json;
 
 namespace SqlObserver.UnitTests;
 
 public sealed class ServerConfigurationObservationTests
 {
+    [Fact]
+    public void PinnedManifestMatchesDisabledRuntimeContract()
+    {
+        SqlServerConfigurationAssetCatalog assets = SqlServerConfigurationAssetCatalog.LoadEmbedded();
+        CollectorManifest runtime = new SqlServerConfigurationsCollector().Manifest;
+        using JsonDocument document = JsonDocument.Parse(assets.ManifestJson);
+        JsonElement manifest = document.RootElement;
+        Assert.Equal(SqlServerConfigurationAssetCatalog.ExpectedBundleChecksum, assets.BundleChecksum);
+        Assert.Equal(runtime.Id.Value, manifest.GetProperty("collectorId").GetString());
+        Assert.Equal(runtime.ManifestVersion.Value, manifest.GetProperty("collectorVersion").GetInt32());
+        Assert.Equal(runtime.OutputSchemaVersion.Value, manifest.GetProperty("outputSchemaVersion").GetInt32());
+        Assert.Equal(runtime.Limits.MaxRows,
+            manifest.GetProperty("executionBounds").GetProperty("maximumRows").GetInt32());
+        Assert.Equal(runtime.Limits.MaxResponseBytes,
+            manifest.GetProperty("executionBounds").GetProperty("maximumResponseBytes").GetInt32());
+        Assert.Equal((int)runtime.Intervals.DefaultInterval.TotalSeconds,
+            manifest.GetProperty("cadence").GetProperty("defaultIntervalSeconds").GetInt32());
+        Assert.False(manifest.GetProperty("defaultEnabled").GetBoolean());
+        Assert.Equal("server-configurations", manifest.GetProperty("outputKind").GetString());
+    }
+
     [Fact]
     public void ExactValuesUseADedicatedBoundedOutputContract()
     {

@@ -18,6 +18,73 @@ public sealed class ServerConfigurationCommitPostgreSqlTests(PostgreSql18Fixture
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
 
     [Fact]
+    public async Task CatalogReconciliationKeepsNewTargetScheduleDisabled()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        MigrationBatchResult migrated = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults,
+                Timeout), CancellationToken.None);
+        Assert.False(migrated.HasFailures);
+        Guid target = Guid.NewGuid();
+        await using (var seed = database.DataSource.CreateCommand("""
+            INSERT INTO control.observation_target
+             (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+              authentication_mode,transport_security_mode,lifecycle_state,revision,
+              created_at,updated_at,discovery_requested_at)
+            VALUES (@target,@key,'Configuration catalog target','sql01',1433,
+              interval '5 seconds','windows_integrated_service_identity',
+              'mandatory_validated','active',1,statement_timestamp(),
+              statement_timestamp(),statement_timestamp());
+            """))
+        {
+            seed.Parameters.AddWithValue("target", target);
+            seed.Parameters.AddWithValue("key", $"config.catalog.{target:N}");
+            await seed.ExecuteNonQueryAsync();
+        }
+        await AssertDisabledAsync(database, target);
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        LeaseAcquisitionResult acquired = await leases.AcquireAsync(
+            new AcquireWorkerLeaseRequest(new WorkerLeaseKey("collector/catalog/reconcile"),
+                new WorkerExecutionId(Guid.NewGuid()),
+                new WorkerLeaseDuration(TimeSpan.FromMinutes(1)), Timeout),
+            CancellationToken.None);
+        Assert.Equal(LeaseAcquisitionStatus.Acquired, acquired.Status);
+        WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>(acquired.Lease).Identity;
+        await using (var reconcile = database.DataSource.CreateCommand("""
+            SELECT unchanged_count FROM control.reconcile_collector_catalog_m14(
+              ARRAY(SELECT collector_id FROM control.collector_contract
+                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+              ARRAY(SELECT collector_version FROM control.collector_contract
+                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+              ARRAY(SELECT manifest_sha256 FROM control.collector_contract
+                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+              ARRAY(SELECT asset_bundle_sha256 FROM control.collector_contract
+                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+              ARRAY(SELECT execution_order FROM control.collector_contract
+                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+              'collector/catalog/reconcile',@owner,@fence);
+            """))
+        {
+            reconcile.Parameters.AddWithValue("owner", lease.Owner.Value);
+            reconcile.Parameters.AddWithValue("fence", lease.FencingToken.Value);
+            Assert.Equal(19, (int)(await reconcile.ExecuteScalarAsync())!);
+        }
+        await AssertDisabledAsync(database, target);
+    }
+
+    private static async Task AssertDisabledAsync(RepositoryTestDatabase database, Guid target)
+    {
+        await using var status = database.DataSource.CreateCommand("""
+            SELECT enabled FROM control.collector_schedule
+            WHERE instance_id=@target AND collector_id='engine.configurations';
+            """);
+        status.Parameters.AddWithValue("target", target);
+        Assert.False((bool)(await status.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
     public async Task AdjacentCompleteScansPublishDriftButPartialScanBreaksComparison()
     {
         await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
@@ -38,25 +105,11 @@ public sealed class ServerConfigurationCommitPostgreSqlTests(PostgreSql18Fixture
               interval '5 seconds','windows_integrated_service_identity',
               'mandatory_validated','active',1,statement_timestamp(),
               statement_timestamp(),statement_timestamp());
-            INSERT INTO control.collector_contract
-             (collector_id,collector_version,execution_order,manifest_schema_version,
-              output_schema_version,manifest_sha256,asset_bundle_sha256,
-              default_interval,minimum_interval,execution_timeout,maximum_rows,
-              maximum_response_bytes,estimated_cost,maximum_attempts,
-              circuit_failure_threshold,circuit_open_interval)
-            VALUES ('engine.configurations',1,19,6,1,
-              decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),
-              interval '5 minutes',interval '1 minute',interval '5 seconds',
-              513,65536,'low',2,3,interval '5 minutes');
-            UPDATE control.collector_schedule SET enabled=false
+            UPDATE control.collector_schedule
+            SET enabled=(collector_id IN ('engine.core','engine.configurations')),
+                last_outcome=CASE WHEN collector_id='engine.core'
+                    THEN 'succeeded' ELSE last_outcome END
             WHERE instance_id=@target;
-            INSERT INTO control.collector_schedule
-             (instance_id,collector_id,collector_version,target_revision,
-              schedule_revision,enabled,collection_interval,next_due_at,
-              created_at,updated_at)
-            VALUES (@target,'engine.configurations',1,1,1,true,
-              interval '5 minutes',statement_timestamp(),
-              statement_timestamp(),statement_timestamp());
             """))
         {
             seed.Parameters.AddWithValue("target", target);
