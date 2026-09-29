@@ -273,6 +273,19 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .fleet-signal-observed .fleet-signal-dot { background: var(--teal); }
 .fleet-signal-partial .fleet-signal-dot { background: var(--amber-border); }
 .fleet-signal-attention .fleet-signal-dot { background: var(--red); }
+.fleet-strip { position: sticky; z-index: 4; top: 0; align-self: start; min-width: 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.fleet-strip-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; white-space: nowrap; }
+.fleet-strip-heading strong { font-size: 12px; }
+.fleet-strip-heading small { color: var(--muted); font-size: 11px; }
+.fleet-strip-list { display: flex; gap: 8px; margin: 0; padding: 0 0 3px; overflow-x: auto; list-style: none; }
+.fleet-strip-list li { flex: 0 0 210px; min-width: 0; }
+.fleet-strip-list a { display: grid; gap: 4px; padding: 8px 10px; color: var(--text); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 7px; }
+.fleet-strip-list a:hover, .fleet-strip-list a:focus-visible { border-color: var(--teal); text-decoration: none; }
+.fleet-strip-name { overflow: hidden; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-strip-list a > small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-strip-signals { display: flex; flex-wrap: wrap; gap: 4px 9px; }
+.fleet-strip-signals .fleet-signal { gap: 3px; font-size: 10px; }
+.fleet-strip-signals .fleet-signal-dot { flex-basis: 6px; height: 6px; }
 
 .overview-chart { min-height: 180px; }
 .chart-interactive { cursor: crosshair; touch-action: none; }
@@ -595,6 +608,7 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .overview-coverage small { flex-basis: 100%; margin-left: 0; }
   .overview-panel { padding: 16px; }
   .overview-servers .table-scroll { margin: 0 -16px; }
+  .fleet-strip { position: static; }
   .inline-search, .inline-search input { width: 100%; min-width: 0; }
   .screen-intro, .health-heading-row, .detail-heading, .operation-card-heading { display: grid; }
   .health-heading-row > .secondary-button, .screen-intro > .secondary-button { justify-self: start; }
