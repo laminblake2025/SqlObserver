@@ -208,6 +208,79 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             metric.MetricId.Value == "engine.user_connections");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CoreCommitAndReplayUseGuardedPartitionedRunRead(bool directionalEntryPoint)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+        await RecordUsableCapabilityProfileAsync(collectorSource, leases, targetId);
+        CollectorDueWorkItem work = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(
+                work, runId, lease, DefaultTimeout), CancellationToken.None)).Status);
+
+        await using (NpgsqlConnection route = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", route))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", route))
+            {
+                scope.Parameters.AddWithValue("target", targetId.Value);
+                await scope.ExecuteScalarAsync();
+            }
+            await using (var definitions = new NpgsqlCommand("""
+                SELECT count(*) FROM pg_proc AS procedure
+                JOIN pg_namespace AS namespace ON namespace.oid=procedure.pronamespace
+                WHERE namespace.nspname='control'
+                  AND procedure.proname IN ('commit_collection_run','commit_collection_run_v2')
+                  AND procedure.prosrc LIKE '%telemetry.lookup_collection_run_runtime(p_run_id)%';
+                """, route))
+                Assert.Equal(2L, await definitions.ExecuteScalarAsync());
+            await using (NpgsqlTransaction backfill = await route.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@target,10);", route, backfill);
+                    copy.Parameters.AddWithValue("target", targetId.Value);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,'engine.core',
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run)),
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run))
+                        + interval '1 day',10);
+                    """, route, backfill);
+                certificate.Parameters.AddWithValue("target", targetId.Value);
+                certificate.Parameters.AddWithValue("run", runId.Value);
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                await backfill.CommitAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", route);
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        }
+
+        CommitCollectorRunRequest request = CreateSuccessCommit(
+            work, runId, lease, CreateEnginePayload(work));
+        Assert.Equal("committed", await ExecuteFileStallCommitAsync(
+            collectorSource, request, legacy: !directionalEntryPoint));
+        Assert.Equal("replayed", await ExecuteFileStallCommitAsync(
+            collectorSource, request, legacy: !directionalEntryPoint));
+    }
+
     [Fact]
     public async Task ExactCatalogAndDependenciesStaggerEngineInventoryAndFiles()
     {

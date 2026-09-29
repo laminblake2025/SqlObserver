@@ -420,6 +420,9 @@ text, plan and per-plan wait link writers through the same row-locking lookup.
 The guarded route is exercised with protected content and Query Store waits.
 Migration 0222 routes the replication visibility-gap trigger through the
 row-locking lookup, retaining its target and collector identity checks.
+Migration 0223 routes both core collection-run commit entry points through the
+guarded nonlocking lookup for replay and identity checks. Their writes and
+payload accounting remain unchanged while the partitioned writer is staged.
 
 ## Implementation gates
 
