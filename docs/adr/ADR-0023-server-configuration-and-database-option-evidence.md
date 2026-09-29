@@ -120,4 +120,13 @@ configuration collector or log reuse feature has been shipped.
 Migration 0251 stages the private snapshot and change-event tables with run
 identity links, append-only triggers, forced RLS, and no direct server or
 collector grants. The collector, fenced writer, retention route, and reader
-remain to be implemented before any schedule is enabled.
+are staged separately before any schedule is enabled.
+
+Migration 0252 and the server adapter add a bounded, target-scoped change read
+with keyset paging. A database trigger increments its publication generation
+in the change insertion transaction; a changed
+generation invalidates a continuation. The HTTP cursor uses the reusable
+purpose-bound API HMAC signer. A configured `SqlObserver:Api:CursorSigningKey`
+keeps cursors valid across server processes; without one, a process-local key
+allows paging until restart and logs the limitation. No configuration data is
+published by these read-path changes alone.

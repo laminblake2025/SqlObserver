@@ -135,6 +135,8 @@ builder.Services.AddSingleton<IQueryStoreWaitRankingRepositoryPort>(static servi
     services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryStoreWaitRankings);
 builder.Services.AddSingleton<IDatabaseOptionChangeRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().DatabaseOptionChanges);
+builder.Services.AddSingleton<IServerConfigurationChangeRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerConfigurationChanges);
 builder.Services.AddSingleton<IQueryStorePlanRegressionRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().QueryStorePlanRegressions);
 builder.Services.AddSingleton<SqlObserver.Domain.SensitiveData.IQuerySensitiveContentProtector>(_ =>
@@ -145,6 +147,25 @@ builder.Services.AddSingleton<IQueryPlanWaitReadService, QueryPlanWaitReadServic
 builder.Services.AddSingleton<IQueryStoreGroupPlanTrendQueryService, QueryStoreGroupPlanTrendQueryService>();
 builder.Services.AddSingleton<IQueryStoreWaitRankingQueryService, QueryStoreWaitRankingQueryService>();
 builder.Services.AddSingleton<IDatabaseOptionChangeQueryService, DatabaseOptionChangeQueryService>();
+builder.Services.AddSingleton<IServerConfigurationChangeQueryService, ServerConfigurationChangeQueryService>();
+builder.Services.AddSingleton<ApiCursorSigner>(static services =>
+{
+    string? encoded = services.GetRequiredService<IConfiguration>()["SqlObserver:Api:CursorSigningKey"];
+    if (string.IsNullOrWhiteSpace(encoded))
+    {
+        LoggerMessage.Define(LogLevel.Warning,
+            new EventId(1, "ApiCursorSigningEphemeral"),
+            "API cursor signing uses a process-local key; existing cursors expire after restart or routing to another server. Configure SqlObserver:Api:CursorSigningKey for stable paging.")(
+                services.GetRequiredService<ILogger<ApiCursorSigner>>(), null);
+        return new ApiCursorSigner(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+    }
+    try { return new ApiCursorSigner(Convert.FromBase64String(encoded)); }
+    catch (Exception exception) when (exception is FormatException or ArgumentException)
+    {
+        throw new InvalidOperationException("SqlObserver:Api:CursorSigningKey must be base64 for a 32-to-4096-byte key.", exception);
+    }
+});
+builder.Services.AddSingleton<ServerConfigurationChangeCursorCodec>();
 builder.Services.AddSingleton<IQueryStorePlanRegressionQueryService, QueryStorePlanRegressionQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertRuleReads);

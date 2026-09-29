@@ -26,7 +26,56 @@ public static class TargetHealthEndpoints
         group.MapGet("/databases", ListDatabasesAsync);
         group.MapGet("/files", ListDatabaseFilesAsync);
         group.MapGet("/database-option-changes", ListDatabaseOptionChangesAsync);
+        group.MapGet("/server-configuration-changes", ListServerConfigurationChangesAsync);
         return endpoints;
+    }
+
+    private static async Task<IResult> ListServerConfigurationChangesAsync(
+        HttpContext context, Guid instanceId,
+        IServerConfigurationChangeQueryService service,
+        WindowsGroupRoleResolver roles,
+        ServerConfigurationChangeCursorCodec cursorCodec,
+        string? fromUtc = null, string? toUtc = null, int limit = 50,
+        string? cursor = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (cursor is not null && (fromUtc is null || toUtc is null))
+                throw new ArgumentException("A continuation needs its original UTC window.");
+            DateTimeOffset to = toUtc is null ? DateTimeOffset.UtcNow :
+                DateTimeOffset.Parse(toUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            DateTimeOffset from = fromUtc is null ? to.AddHours(-24) :
+                DateTimeOffset.Parse(fromUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            ServerConfigurationChangeCursor? decoded = cursor is null ? null :
+                cursorCodec.Decode(cursor);
+            var request = new ServerConfigurationChangeRequest(
+                new MonitoredInstanceId(instanceId), from, to, limit,
+                RepositoryTimeout, decoded);
+            ServerConfigurationChangePage page = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                fromUtc = from,
+                toUtc = to,
+                targetRevision = page.TargetRevision,
+                publicationGeneration = page.PublicationGeneration,
+                coverage = page.PublicationGeneration == 0 ? "never_collected" : "observed_changes_only",
+                items = page.Items,
+                nextCursor = page.NextCursor is null ? null :
+                    cursorCodec.Encode(page.NextCursor),
+            });
+        }
+        catch (ServerConfigurationCursorStaleException)
+        {
+            return Results.Conflict(new { code = "cursor_stale",
+                message = "Configuration history changed. Restart from the first page." });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (FormatException) { return Results.BadRequest(); }
     }
 
     private static async Task<IResult> ListDatabaseOptionChangesAsync(
