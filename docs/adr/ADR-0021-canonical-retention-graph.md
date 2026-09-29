@@ -358,6 +358,10 @@ with the public header before any operational-health route changes.
 Migration 0203 stages a default-original route for that header. Activation
 requires the writer-fenced fleet parity proof, leaves the original header
 private for rollback, and keeps direct server access on the public function.
+Migration 0204 keeps the public M5 snapshot-evidence view and its security
+barrier while routing it with the activity-reader switch. Installation keeps
+original runs; fenced activation moves both the M5 readers and evidence view
+to partitioned runs, and rollback restores the original evidence source.
 
 ## Implementation gates
 

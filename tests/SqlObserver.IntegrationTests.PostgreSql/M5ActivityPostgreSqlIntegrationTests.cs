@@ -51,6 +51,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             return rows;
         }
         List<string> evidence = await Read("activity_snapshot_evidence");
+        Assert.Equal(evidence, await Read("activity_snapshot_evidence_legacy"));
         Assert.Equal(evidence, await Read("activity_snapshot_evidence_v2_shadow"));
         using (JsonDocument row = JsonDocument.Parse(Assert.Single(evidence)))
             Assert.Equal(activity, row.RootElement.GetProperty("run_id").GetGuid());
@@ -68,6 +69,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             JOIN pg_namespace AS n ON n.oid=relation.relnamespace
             WHERE n.nspname='reporting'
               AND relation.relname IN ('activity_snapshot_evidence_v2_shadow',
+                                       'activity_snapshot_evidence_legacy',
                                        'collector_health_projection_v2_shadow',
                                        'collector_health_projection_legacy')
               AND relation.relkind='v'
@@ -76,7 +78,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
               AND NOT has_table_privilege('sqlobserver_collector',relation.oid,'SELECT')
               AND NOT has_table_privilege('sqlobserver_auditor',relation.oid,'SELECT');
             """, connection);
-        Assert.Equal(3L, await grants.ExecuteScalarAsync());
+        Assert.Equal(4L, await grants.ExecuteScalarAsync());
 
         await using (var premature = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_health_read_route(true,10000);", connection))
@@ -320,6 +322,28 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
             await role.ExecuteNonQueryAsync();
 
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,false);", connection))
+        {
+            scope.Parameters.AddWithValue("target", target.Value);
+            await scope.ExecuteScalarAsync();
+        }
+
+        async Task<List<string>> ReadEvidence(string name)
+        {
+            await using var command = new NpgsqlCommand(
+                $"SELECT to_jsonb(row)::text FROM reporting.{name} AS row WHERE instance_id=@target ORDER BY collector_id,run_id;",
+                connection);
+            command.Parameters.AddWithValue("target", target.Value);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+
+        Assert.Equal(await ReadEvidence("activity_snapshot_evidence_legacy"),
+            await ReadEvidence("activity_snapshot_evidence"));
+
         async Task<List<string>> Read(string name, string arguments)
         {
             await using var command = new NpgsqlCommand(
@@ -424,6 +448,8 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await using (var activate = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_activity_read_route(true,10000);", connection))
             Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        Assert.Equal(await ReadEvidence("activity_snapshot_evidence_v2_shadow"),
+            await ReadEvidence("activity_snapshot_evidence"));
         await Compare("list_activity_sessions", "@target,NULL::uuid,NULL::bigint,NULL::integer,1",
             "session_id", 51, true);
         await Compare("list_activity_requests", "@target,NULL::uuid,NULL::bigint,NULL::integer,NULL::integer,1",
@@ -463,6 +489,8 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await using (var rollback = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_activity_read_route(false,10000);", connection))
             Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        Assert.Equal(await ReadEvidence("activity_snapshot_evidence_legacy"),
+            await ReadEvidence("activity_snapshot_evidence"));
         await using (var route = new NpgsqlCommand(
             "SELECT use_v2 FROM system.collection_run_v2_activity_read_route;", connection))
             Assert.False((bool)(await route.ExecuteScalarAsync())!);
