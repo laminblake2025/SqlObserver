@@ -297,6 +297,14 @@ results; the fenced fleet check also locks the bridge and its backfill state
 and requires the mirror, append-only, forced-RLS and bridge-FK gates. The
 result remains transient. A future child-FK cutover must run it and make the
 reference changes in the same fenced transaction.
+Migration 0193 adds an operator-invoked staging function for the 20 reviewed
+single-column child foreign keys. Each call rechecks fleet parity under the
+writer fence, confirms the selected original FK's column and semantics, and
+adds a `NOT VALID` FK to the global identity bridge. This enforces future
+child writes while preserving the original FK and avoiding a historical child
+scan in the short staging transaction. Validate the staged constraints over
+existing rows separately, then recheck the full graph under a final fence
+before removing any original FK. Neither stage nor validation retires runs.
 
 ## Implementation gates
 

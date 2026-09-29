@@ -56,6 +56,24 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.visibility_gap.run_id
             """;
         Assert.Equal(expectedForeignKeys.Split('\n'), references);
+        await using (var semantics = new NpgsqlCommand("""
+            SELECT fk.conrelid::regclass::text || '.' || child.attname
+            FROM pg_constraint AS fk
+            JOIN pg_attribute AS child
+              ON child.attrelid=fk.conrelid AND child.attnum=fk.conkey[1]
+            JOIN pg_attribute AS source
+              ON source.attrelid=fk.confrelid AND source.attnum=fk.confkey[1]
+            WHERE fk.contype='f' AND fk.conparentid=0
+              AND fk.confrelid='telemetry.collection_run'::regclass
+              AND (array_length(fk.conkey,1)<>1
+                   OR array_length(fk.confkey,1)<>1
+                   OR source.attname<>'run_id' OR NOT fk.convalidated
+                   OR fk.condeferrable OR fk.confupdtype<>'a'
+                   OR fk.confdeltype<>'a' OR fk.confmatchtype<>'s')
+            ORDER BY 1;
+            """, connection))
+        await using (NpgsqlDataReader differences = await semantics.ExecuteReaderAsync())
+            Assert.False(await differences.ReadAsync());
         await using var columns = new NpgsqlCommand("""
             SELECT namespace.nspname || '.' || relation.relname || '.' || attribute.attname
             FROM pg_attribute AS attribute
