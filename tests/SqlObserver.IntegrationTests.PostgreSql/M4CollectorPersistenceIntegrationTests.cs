@@ -434,6 +434,28 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                 CreateSuccessCommit(work, runId, lease, Payload("LOG_REUSE")),
                 CancellationToken.None).AsTask());
         Assert.Equal("22023", divergent.SqlState);
+
+        Assert.DoesNotContain((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.files");
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var compatible = new NpgsqlCommand("""
+            SET ROLE sqlobserver_migrator;
+            INSERT INTO control.collector_prerequisite_compatibility
+                (collector_id,collector_version,prerequisite_collector_id,
+                 prerequisite_collector_version,acceptable_collector_version)
+            VALUES ('database.files',1,'database.inventory',1,2);
+            """, connection))
+            await compatible.ExecuteNonQueryAsync();
+        Assert.Contains((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.files");
+        CollectorClaimedWork claimed = Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(
+                new ClaimDueCollectorWorkRequest(new WorkerExecutionId(Guid.NewGuid()),
+                    new WorkerLeaseDuration(TimeSpan.FromSeconds(30)), DefaultTimeout),
+                CancellationToken.None));
+        Assert.Equal("database.files", claimed.Work.CollectorId.Value);
     }
 
     [Fact]
