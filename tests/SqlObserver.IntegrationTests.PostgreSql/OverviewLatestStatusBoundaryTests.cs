@@ -258,7 +258,7 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             SELECT gen_random_uuid(),@target,'Extra alert ' || n::text,
                    1,'engine.user_connections',2,10,1,
                    interval '0 seconds',interval '15 seconds'
-            FROM generate_series(1,4) AS n;
+            FROM generate_series(1,4000) AS n;
             INSERT INTO alerting.rule_state
                 (instance_id,rule_id,alert_id,state,consecutive_matches,
                  first_match_at,last_observed_at,fired_at,last_value,reason)
@@ -280,6 +280,8 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             CancellationToken.None));
         OverviewLatestStatus databases = Assert.IsType<OverviewLatestStatus>(await port.ReadAsync(
             new MonitoredInstanceId(target), 1, DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.Equal(4001, databases.ActiveAlerts.Value);
+        Assert.Equal("current", databases.ActiveAlerts.State);
         Assert.Equal("partial", databases.Sources["databaseStates"].State);
         Assert.Equal(5, databases.Issues.Count(issue => issue.Title == "Database state exception"));
         Assert.Equal(10, databases.Issues.Count);

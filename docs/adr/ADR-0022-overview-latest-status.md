@@ -99,11 +99,11 @@ existing route untouched. A typed application read port and PostgreSQL adapter
 now validate the target and JSON boundary. Migration 0236 and the collector
 worker publish core health, active alerts, and coherent current blocking from
 committed repository data under a lease. The due-target list records attempts
-so a repeatedly failing target cannot monopolize its bounded batch. Waits,
+so a repeatedly failing target cannot monopolize its bounded batch.
 Migration 0237 adds up to five critical database-state issues from the current inventory
 run, marks a longer issue list partial, and withholds issues when inventory
-collection is not current. Other source materialization, full parity work, and
-the read switch remain to be built.
+collection is not current. Other source materialization and full parity work
+remain to be built.
 
 Migration 0238 uses the persisted per-run wait category summary to add at most
 five non-idle, comparable wait deltas. It requires a prior run as baseline,
@@ -130,6 +130,9 @@ Agent failures, host series and other windowed history still follow the
 requested `fromUtc`/`toUtc`. A missing or failed latest-row read falls back to
 the direct source composition with an explicit gap. This switch is for parity
 validation, not a claim that response parity or fleet latency has passed.
+The repository boundary fixture now verifies an exact active-alert count above
+the live composition's 4,000-row paging bound while the issue list remains
+bounded.
 
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and
