@@ -4,6 +4,7 @@ import { Tabs } from "../../components/DiagnosticUi";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { ServerDashboard } from "./ServerDashboard";
 import { DatabaseOptionChanges } from "./DatabaseOptionChanges";
+import { ServerConfigurationChanges } from "./ServerConfigurationChanges";
 
 import { getDatabaseHealth, getTargetHealthEvidence, HealthRequestError } from "./healthApi";
 import {
@@ -112,7 +113,10 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
 
   return (
     <section className="health-screen" aria-labelledby="health-heading">
-      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh} blockingRefresh={blockingRefresh} />
+      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
+        blockingRefresh={blockingRefresh}
+        configurationCollectorState={snapshot?.instanceId.toLowerCase() === instanceId.toLowerCase()
+          ? snapshot.collectors.find(item => item.collectorId === "engine.configurations")?.state : undefined} />
       <div className="health-heading-row">
         <div>
           <p className="eyebrow">Server summary · target-scoped snapshot</p>
@@ -144,6 +148,8 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           {tab === "summary" ? <>
             <HealthMetricStrip metrics={evidence.target.coreMetrics} />
             <CoreMetrics metrics={evidence.target.coreMetrics} />
+            <ServerConfigurationChanges instanceId={instanceId} scope={scope} refresh={refresh}
+              collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
           </> : null}
           {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}

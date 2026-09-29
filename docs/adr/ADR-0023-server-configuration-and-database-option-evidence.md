@@ -154,3 +154,10 @@ new function. Migration 0254 and the pinned v1 asset bundle add the runtime
 contract with disabled schedules for existing and newly added targets. The
 collector remains disabled by default until its source and permissions are
 qualified on SQL Server 15, 16, and 17.
+
+The server Health view now reads the bounded configuration-change API with
+signed cursor pagination, and the shared dashboard charts mark detected
+configuration changes in the selected window. Both surfaces identify detection
+time as the later complete scan and show disabled collection explicitly. They
+remain empty in ordinary installations until the SQL Server lab qualification
+allows collection to be enabled.

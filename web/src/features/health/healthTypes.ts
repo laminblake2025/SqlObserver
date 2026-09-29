@@ -27,6 +27,33 @@ export interface DatabaseOptionChangeResult {
   readonly items: readonly DatabaseOptionChange[];
 }
 
+export interface ServerConfigurationChange {
+  readonly configurationId: number;
+  readonly configurationName: string;
+  readonly sourceType: string;
+  readonly previousConfiguredValue: string;
+  readonly configuredValue: string;
+  readonly previousInUseValue: string;
+  readonly inUseValue: string;
+  readonly configuredChanged: boolean;
+  readonly inUseChanged: boolean;
+  readonly previousObservedAtUtc: string;
+  readonly observedAtUtc: string;
+  readonly detectedAtUtc: string;
+  readonly runId: string;
+}
+
+export interface ServerConfigurationChangeResult {
+  readonly targetId: string;
+  readonly fromUtc: string;
+  readonly toUtc: string;
+  readonly targetRevision: number;
+  readonly publicationGeneration: number;
+  readonly coverage: "never_collected" | "observed_changes_only";
+  readonly items: readonly ServerConfigurationChange[];
+  readonly nextCursor: string | null;
+}
+
 export type CollectorHealthReason =
   | "none"
   | "capability_profile_missing"

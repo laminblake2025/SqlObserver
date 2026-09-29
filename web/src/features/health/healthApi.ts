@@ -2,6 +2,7 @@ import type {
   DatabaseFileHealthPage,
   DatabaseHealthPage,
   DatabaseOptionChangeResult,
+  ServerConfigurationChangeResult,
   TargetHealthEvidence,
   TargetHealthSnapshot,
 } from "./healthTypes";
@@ -14,6 +15,15 @@ export async function getDatabaseOptionChanges(instanceId: string,
   const parameters = new URLSearchParams({ fromUtc: window.fromUtc,
     toUtc: window.toUtc, limit: "100" });
   return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/database-option-changes?${parameters}`, signal);
+}
+
+export async function getServerConfigurationChanges(instanceId: string,
+  window: { readonly fromUtc: string; readonly toUtc: string },
+  signal: AbortSignal, cursor?: string): Promise<ServerConfigurationChangeResult> {
+  const parameters = new URLSearchParams({ fromUtc: window.fromUtc,
+    toUtc: window.toUtc, limit: "100" });
+  if (cursor !== undefined) parameters.set("cursor", cursor);
+  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-changes?${parameters}`, signal);
 }
 
 export class HealthRequestError extends Error {
@@ -112,6 +122,8 @@ function getSafeHealthFailure(status: number): string {
       return "You are not authorized to view health for this target.";
     case 404:
       return "No health snapshot is available for this target.";
+    case 409:
+      return "Health evidence changed. Restart from the first page.";
     case 429:
       return "Too many health requests. Wait briefly and retry.";
     case 504:

@@ -7,17 +7,18 @@ import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
 import { ServerWaitTrendPanel } from "./ServerWaitTrendPanel";
-import { getDatabaseOptionChanges } from "./healthApi";
-import type { DatabaseOptionChangeResult } from "./healthTypes";
+import { getDatabaseOptionChanges, getServerConfigurationChanges } from "./healthApi";
+import type { DatabaseOptionChangeResult, ServerConfigurationChangeResult, TargetHealthState } from "./healthTypes";
 import { getDeadlocks } from "../deadlocks/deadlockApi";
 import type { DeadlockPage } from "../deadlocks/deadlockTypes";
 
-export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh }: {
+export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
   readonly blockingRefresh: number;
+  readonly configurationCollectorState?: TargetHealthState;
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
@@ -30,6 +31,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const issues = data ? rankedIssues(data) : [];
   const [optionEvents, setOptionEvents] = useState<DatabaseOptionChangeResult>();
   const [optionEventError, setOptionEventError] = useState(false);
+  const [configurationEvents, setConfigurationEvents] = useState<ServerConfigurationChangeResult>();
+  const [configurationEventError, setConfigurationEventError] = useState(false);
   const [deadlockEvents, setDeadlockEvents] = useState<{
     page: DeadlockPage; fromUtc: string; toUtc: string;
   }>();
@@ -54,6 +57,29 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       .catch(() => { if (!controller.signal.aborted) setOptionEventError(true); });
     return () => controller.abort();
   }, [instanceId, data?.fromUtc, data?.toUtc, evidence !== undefined, refresh]);
+  const configurationWindowTooLong = data !== undefined &&
+    Date.parse(data.toUtc) - Date.parse(data.fromUtc) > 7 * 86400000;
+  useEffect(() => {
+    if (!data || !evidence || configurationWindowTooLong || configurationCollectorState === "disabled") {
+      setConfigurationEvents(undefined);
+      setConfigurationEventError(false);
+      return;
+    }
+    const controller = new AbortController();
+    setConfigurationEvents(undefined);
+    setConfigurationEventError(false);
+    void getServerConfigurationChanges(instanceId, data, controller.signal)
+      .then(next => {
+        if (next.targetId.toLowerCase() !== instanceId.toLowerCase() ||
+            Date.parse(next.fromUtc) !== Date.parse(data.fromUtc) ||
+            Date.parse(next.toUtc) !== Date.parse(data.toUtc))
+          throw new Error("Configuration history does not match the selected window.");
+        if (!controller.signal.aborted) setConfigurationEvents(next);
+      })
+      .catch(() => { if (!controller.signal.aborted) setConfigurationEventError(true); });
+    return () => controller.abort();
+  }, [instanceId, data?.fromUtc, data?.toUtc, evidence !== undefined, refresh,
+    configurationWindowTooLong, configurationCollectorState]);
   useEffect(() => {
     if (!data || !evidence) {
       setDeadlockEvents(undefined);
@@ -86,6 +112,23 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const selectedDeadlocks = deadlockEvents?.page.targetId.toLowerCase() === instanceId.toLowerCase() &&
     deadlockEvents.fromUtc === data?.fromUtc && deadlockEvents.toUtc === data?.toUtc
       ? deadlockEvents.page : undefined;
+  const groupedConfigurations = new Map<string, { timeUtc: string; labels: string[] }>();
+  if (configurationCollectorState !== "disabled" && !configurationWindowTooLong &&
+      configurationEvents?.targetId.toLowerCase() === instanceId.toLowerCase() &&
+      Date.parse(configurationEvents.fromUtc) === Date.parse(data?.fromUtc ?? "") &&
+      Date.parse(configurationEvents.toUtc) === Date.parse(data?.toUtc ?? "")) {
+    for (const item of configurationEvents.items) {
+      const group = groupedConfigurations.get(item.runId) ?? {
+        timeUtc: item.detectedAtUtc, labels: [],
+      };
+      const changes = [
+        item.configuredChanged ? `configured ${item.previousConfiguredValue} → ${item.configuredValue}` : null,
+        item.inUseChanged ? `in use ${item.previousInUseValue} → ${item.inUseValue}` : null,
+      ].filter((value): value is string => value !== null);
+      group.labels.push(`${item.configurationName}: ${changes.join("; ")}`);
+      groupedConfigurations.set(item.runId, group);
+    }
+  }
   const markers = [
     ...issues.filter(issue => issue.observedAtUtc).map(issue => ({ timeUtc: issue.observedAtUtc!, label: issue.title })),
     ...(selectedDeadlocks
@@ -95,6 +138,10 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     ...[...groupedChanges.values()].slice(0, 20).map(group => ({
       timeUtc: group.timeUtc,
       label: `${group.databaseName} options: ${group.labels.join("; ")}`,
+    })),
+    ...[...groupedConfigurations.values()].slice(0, 20).map(group => ({
+      timeUtc: group.timeUtc,
+      label: `Server configuration detected: ${group.labels.slice(0, 3).join("; ")}${group.labels.length > 3 ? `; +${group.labels.length - 3} more` : ""}`,
     })),
   ];
   const memorySeries = (source: typeof evidence) => source?.series
@@ -130,9 +177,14 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     {data && evidence && <>
       <p className="server-dashboard-window">Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. SQL core status: {evidence.collectionState.replaceAll("_", " ")}.</p>
       {optionEventError && <p role="status">Database option change markers are unavailable for this window.</p>}
+      {configurationCollectorState === "disabled" && <p role="status">Server configuration collection is disabled; no configuration change markers are available.</p>}
+      {configurationWindowTooLong && <p role="status">Server configuration markers support windows up to seven days.</p>}
+      {configurationEventError && <p role="status">Server configuration change markers are unavailable for this window.</p>}
+      {configurationEvents?.coverage === "never_collected" && configurationCollectorState !== "disabled" && <p role="status">No server configuration change evidence has been published yet.</p>}
       {deadlockEventError && <p role="status">Deadlock event markers are unavailable for this window.</p>}
       {selectedDeadlocks?.nextCursor && <p role="status">The timeline shows the latest 25 deadlocks. Open Deadlocks to browse the rest.</p>}
       {groupedChanges.size > 20 && <p role="status">The timeline shows the latest 20 database option change groups. Use a shorter window to see more.</p>}
+      {(groupedConfigurations.size > 20 || configurationEvents?.nextCursor) && <p role="status">The timeline shows the latest 20 server configuration change groups. Use a shorter window to see more.</p>}
       <div className="kpi-grid server-dashboard-kpis">
         <DashboardCount label="Active alerts now" value={evidence.activeAlerts} />
         <DashboardCount label="Blocked sessions now" value={evidence.blockedSessions} />
@@ -161,6 +213,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
             previous={memorySeries(previous)}
             fromUtc={data.fromUtc}
             toUtc={data.toUtc}
+            markers={markers}
             crosshairUtc={crosshairUtc}
             onCrosshairChange={setCrosshairUtc}
             onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }}
