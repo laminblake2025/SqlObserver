@@ -396,6 +396,10 @@ Migration 0214 routes alert evidence reconciliation and claim validation through
 the collector-health read switch. The private run view exposes only the identity
 fields those functions need; the switch remains on original runs until fenced
 fleet parity is proven, and rollback restores the original source.
+Migration 0215 gives due-work listing and claiming a separate run lookup switch.
+The successor lookup uses the global run-ID bridge to supply the partition key;
+activation repeats the writer-fenced fleet proof. Installation and rollback
+keep active-run lease checks on the original writer.
 
 ## Implementation gates
 

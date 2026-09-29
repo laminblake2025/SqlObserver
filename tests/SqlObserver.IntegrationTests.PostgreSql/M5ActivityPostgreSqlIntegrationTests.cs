@@ -120,6 +120,13 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
                 () => premature.ExecuteScalarAsync());
             Assert.Equal("55000", rejected.SqlState);
         }
+        await using (var premature = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", connection))
+        {
+            PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteScalarAsync());
+            Assert.Equal("55000", rejected.SqlState);
+        }
         await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
         {
             foreach (string function in new[]
@@ -214,6 +221,92 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             validate.Parameters.AddWithValue("owner", claimOwner);
             await validate.ExecuteScalarAsync();
         }
+        await using (var schedulerSetup = new NpgsqlCommand("""
+            UPDATE control.collector_schedule
+            SET enabled=(collector_id='engine.core'),
+                active_run_id=CASE WHEN collector_id='engine.core' THEN @run ELSE NULL END,
+                next_due_at=clock_timestamp()-interval '1 second'
+            WHERE instance_id=@target;
+            INSERT INTO control.worker_lease
+             (work_key,owner_execution_id,fencing_token,acquired_at,renewed_at,expires_at)
+            SELECT run.work_key,run.owner_execution_id,run.fencing_token,
+                   clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 minute'
+            FROM telemetry.collection_run AS run WHERE run.run_id=@run;
+            """, connection))
+        {
+            schedulerSetup.Parameters.AddWithValue("target", target.Value);
+            schedulerSetup.Parameters.AddWithValue("run", core);
+            await schedulerSetup.ExecuteNonQueryAsync();
+        }
+        await using (var defaultRoute = new NpgsqlCommand(
+            "SELECT use_v2 FROM system.collection_run_v2_scheduler_read_route;", connection))
+            Assert.False((bool)(await defaultRoute.ExecuteScalarAsync())!);
+        await using (var schedulerGrants = new NpgsqlCommand("""
+            SELECT has_function_privilege('sqlobserver_migrator',
+                     'telemetry.lookup_active_collection_run(uuid)','EXECUTE')
+               AND NOT has_function_privilege('sqlobserver_collector',
+                     'telemetry.lookup_active_collection_run(uuid)','EXECUTE')
+               AND NOT has_function_privilege('sqlobserver_server',
+                     'telemetry.lookup_active_collection_run(uuid)','EXECUTE')
+               AND has_function_privilege('sqlobserver_migrator',
+                     'control.set_collection_run_v2_scheduler_read_route(boolean,integer)',
+                     'EXECUTE')
+               AND NOT has_function_privilege('sqlobserver_collector',
+                     'control.set_collection_run_v2_scheduler_read_route(boolean,integer)',
+                     'EXECUTE');
+            """, connection))
+            Assert.True((bool)(await schedulerGrants.ExecuteScalarAsync())!);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        await using NpgsqlConnection collectorConnection = await collectorSource.OpenConnectionAsync();
+        async Task AssertNoDueActiveRunAsync()
+        {
+            await using var due = new NpgsqlCommand(
+                "SELECT count(*) FROM control.list_due_collector_work(16) WHERE target_instance_id=@target;",
+                collectorConnection);
+            due.Parameters.AddWithValue("target", target.Value);
+            Assert.Equal(0L, await due.ExecuteScalarAsync());
+            await using var claimDue = new NpgsqlCommand(
+                "SELECT count(*) FROM control.claim_due_collector_work(@owner,interval '30 seconds');",
+                collectorConnection);
+            claimDue.Parameters.AddWithValue("owner", Guid.NewGuid());
+            Assert.Equal(0L, await claimDue.ExecuteScalarAsync());
+        }
+        await AssertNoDueActiveRunAsync();
+        await using (var activateScheduler = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activateScheduler.ExecuteScalarAsync());
+        await AssertNoDueActiveRunAsync();
+        await using (var release = new NpgsqlCommand("""
+            UPDATE control.worker_lease
+            SET released_at=clock_timestamp()
+            WHERE work_key=(SELECT work_key FROM telemetry.collection_run WHERE run_id=@run);
+            """, connection))
+        {
+            release.Parameters.AddWithValue("run", core);
+            Assert.Equal(1, await release.ExecuteNonQueryAsync());
+        }
+        await using (var due = new NpgsqlCommand(
+            "SELECT count(*) FROM control.list_due_collector_work(16) WHERE target_instance_id=@target AND collector_id='engine.core';",
+            collectorConnection))
+        {
+            due.Parameters.AddWithValue("target", target.Value);
+            Assert.Equal(1L, await due.ExecuteScalarAsync());
+        }
+        await using (var claimDue = new NpgsqlCommand("""
+            SELECT target_instance_id,collector_id
+            FROM control.claim_due_collector_work(@owner,interval '30 seconds');
+            """, collectorConnection))
+        {
+            claimDue.Parameters.AddWithValue("owner", Guid.NewGuid());
+            await using NpgsqlDataReader claimed = await claimDue.ExecuteReaderAsync();
+            Assert.True(await claimed.ReadAsync());
+            Assert.Equal(target.Value, claimed.GetGuid(0));
+            Assert.Equal("engine.core", claimed.GetString(1));
+            Assert.False(await claimed.ReadAsync());
+        }
+        await using (var rollbackScheduler = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_scheduler_read_route(false,10000);", connection))
+            Assert.Equal(2L, await rollbackScheduler.ExecuteScalarAsync());
         await using (var rollback = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_health_read_route(false,10000);", connection))
             Assert.Equal(2L, await rollback.ExecuteScalarAsync());
