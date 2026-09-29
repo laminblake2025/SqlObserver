@@ -386,6 +386,9 @@ Migration 0211 stages a partitioned-run query-performance database catalog
 behind a default-original route. A populated inventory checks name filtering,
 parity, server access, and fenced activation before original runs can be
 retired from this display lookup.
+Migration 0212 adds private partitioned-run M10 backfill and rollup-input
+readers. A populated raw-metric fixture compares both result contracts while
+the collector-facing analytics functions remain on original runs.
 
 ## Implementation gates
 

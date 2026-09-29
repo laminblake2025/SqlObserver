@@ -387,6 +387,87 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     }
 
     [Fact]
+    public async Task PartitionedRunM10ShadowReadersMatchPopulatedBackfillAndRollupInputs()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), run = Guid.NewGuid(), sample = Guid.NewGuid(), job = Guid.NewGuid();
+        DateTimeOffset day = new(DateTime.UtcNow.Date.AddDays(-1), TimeSpan.Zero);
+        DateTimeOffset at = day.AddMinutes(10);
+        await InsertTargetAsync(database, target, "m10-run-shadow", 1);
+        await ExecuteAsync(database, """
+            SELECT control.ensure_daily_metric_partition((@at AT TIME ZONE 'UTC')::date);
+            INSERT INTO telemetry.collection_run
+             (run_id,instance_id,collector_id,collector_version,output_schema_version,
+              target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,
+              request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'engine.core',1,1,1,1,@work,@owner,1,
+             decode(repeat('aa',32),'hex'),@at,@at);
+            INSERT INTO telemetry.collection_run_outcome
+             (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+              source_row_count,output_item_count,inserted_item_count,duplicate_item_count,
+              rejected_item_count,response_bytes,output_bytes,persisted_bytes,truncated,
+              loss_detected,loss_kind,loss_count_exact,lost_row_count,lost_byte_count,
+              completion_digest,completed_at)
+            VALUES (@run,'succeeded','completed',1,0,10,1,1,1,0,0,128,128,128,
+             false,false,'none',true,0,0,decode(repeat('bb',32),'hex'),@at);
+            INSERT INTO telemetry.raw_metric_sample
+             (observed_at,sample_id,instance_id,metric_key,metric_value,
+              dimensions,collected_at,collection_run_id)
+            VALUES (@at,@sample,@target,'host.cpu.percent',42,
+             '{}'::jsonb,@at,@run);
+            INSERT INTO control.analytics_job
+             (job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status)
+            VALUES (@job,'backfill',@target,1,'analytics/backfill',@day,@end,'queued');
+            """, ("target", target), ("run", run), ("sample", sample),
+            ("owner", Guid.NewGuid()), ("work", $"collector/run/engine.core/{target:N}"),
+            ("at", at), ("day", day), ("end", day.AddHours(1)), ("job", job));
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,false);", connection))
+        {
+            scope.Parameters.AddWithValue("target", target);
+            await scope.ExecuteScalarAsync();
+        }
+        async Task<List<string>> Read(string name, bool backfill)
+        {
+            string arguments = backfill
+                ? "@target,1,@day,@end,'host.cpu.percent',NULL::text,100,8388608,@job,1"
+                : "@target,1,@day,@end,'host.cpu.percent',100,@end,'hour',NULL::bytea";
+            await using var command = new NpgsqlCommand(
+                $"SELECT to_jsonb(row)::text FROM reporting.{name}({arguments}) AS row;",
+                connection);
+            command.Parameters.AddWithValue("target", target);
+            command.Parameters.AddWithValue("day", day);
+            command.Parameters.AddWithValue("end", day.AddHours(1));
+            command.Parameters.AddWithValue("job", job);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+        List<string> backfillRows = await Read("read_m10_backfill_page", true);
+        Assert.Single(backfillRows);
+        Assert.Equal(backfillRows, await Read("read_m10_backfill_page_v2_shadow", true));
+        List<string> rollupRows = await Read("read_m10_rollup_derivation_inputs", false);
+        Assert.Single(rollupRows);
+        Assert.Equal(rollupRows, await Read("read_m10_rollup_derivation_inputs_v2_shadow", false));
+        await using var grants = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
+            WHERE n.nspname='reporting'
+              AND p.proname IN ('read_m10_backfill_page_v2_shadow',
+                                'read_m10_rollup_derivation_inputs_v2_shadow')
+              AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
+            """, connection);
+        Assert.Equal(2L, await grants.ExecuteScalarAsync());
+    }
+
+    [Fact]
     public async Task DerivationReadsCloseTheirReadersBeforeCompletingTransactions()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
