@@ -124,6 +124,29 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
             worker);
         acquire.Parameters.AddWithValue("owner", owner);
         long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        await using (var grants = new NpgsqlCommand("""
+            SELECT has_function_privilege(current_user,
+                     'system.query_performance_run_retention_holds(uuid,uuid)',
+                     'EXECUTE'),
+                   has_function_privilege(current_user,
+                     'system.retire_query_performance_run(uuid,uuid,uuid,bigint,integer)',
+                     'EXECUTE'),
+                   has_function_privilege(current_user,
+                     'system.run_query_run_retention_step(uuid,bigint)',
+                     'EXECUTE');
+            """, worker))
+        {
+            await using NpgsqlDataReader grantReader = await grants.ExecuteReaderAsync();
+            Assert.True(await grantReader.ReadAsync());
+            Assert.False(grantReader.GetBoolean(0));
+            Assert.False(grantReader.GetBoolean(1));
+            Assert.True(grantReader.GetBoolean(2));
+        }
+        var identity = new WorkerLeaseIdentity(
+            new WorkerLeaseKey("retention/maintenance"),
+            new WorkerExecutionId(owner), new FencingToken(fence));
+        var retention = new PostgreSqlPartitionMaintenancePort(collector);
+        var timeout = new RepositoryCallTimeout(TimeSpan.FromSeconds(15));
 
         async Task<string> RetireAsync(int limit, long? suppliedFence = null)
         {
@@ -169,6 +192,9 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
             await denied.RollbackAsync();
         }
         Assert.Equal("held", await RetireAsync(4096));
+        Assert.Equal(QueryRunRetentionStepOutcome.Held,
+            await retention.RunQueryRunRetentionStepAsync(
+                identity, timeout, CancellationToken.None));
         await using (var outcome = new NpgsqlCommand("""
             INSERT INTO telemetry.collection_run_outcome
               (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
@@ -186,7 +212,46 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
             await outcome.ExecuteNonQueryAsync();
         }
         Assert.Equal("oversize", await RetireAsync(1));
-        Assert.Equal("retired", await RetireAsync(4096));
+        Assert.Equal(QueryRunRetentionStepOutcome.Idle,
+            await retention.RunQueryRunRetentionStepAsync(
+                identity, timeout, CancellationToken.None));
+        await using (var bulk = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_stage
+              (collection_run_id,instance_id,database_id,payload,payload_bytes)
+            SELECT @run,@target,database_id,'{}'::jsonb,2
+            FROM generate_series(6,4101) AS database_id;
+            """, admin))
+        {
+            bulk.Parameters.AddWithValue("run", run);
+            bulk.Parameters.AddWithValue("target", target);
+            Assert.Equal(4096, await bulk.ExecuteNonQueryAsync());
+        }
+        Assert.Equal(QueryRunRetentionStepOutcome.Oversize,
+            await retention.RunQueryRunRetentionStepAsync(
+                identity, timeout, CancellationToken.None));
+        await using (var blocked = new NpgsqlCommand("""
+            SELECT count(*) FROM system.query_run_retention_blocked
+            WHERE run_id=@run AND instance_id=@target AND reason='oversize';
+            """, admin))
+        {
+            blocked.Parameters.AddWithValue("run", run);
+            blocked.Parameters.AddWithValue("target", target);
+            Assert.Equal(1L, (long)(await blocked.ExecuteScalarAsync())!);
+        }
+        await using (var clearBulk = new NpgsqlCommand("""
+            DELETE FROM events.query_performance_stage
+            WHERE collection_run_id=@run AND database_id>=6;
+            """, admin))
+        {
+            clearBulk.Parameters.AddWithValue("run", run);
+            Assert.Equal(4096, await clearBulk.ExecuteNonQueryAsync());
+        }
+        Assert.Equal(QueryRunRetentionStepOutcome.Idle,
+            await retention.RunQueryRunRetentionStepAsync(
+                identity, timeout, CancellationToken.None));
+        Assert.Equal(QueryRunRetentionStepOutcome.Retired,
+            await retention.RunQueryRunRetentionStepAsync(
+                identity, timeout, CancellationToken.None));
         Assert.Equal("missing", await RetireAsync(4096));
         await using var inspect = new NpgsqlCommand("""
             SELECT (SELECT count(*) FROM events.query_performance_run
@@ -203,6 +268,8 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
                     WHERE instance_id=@target),
                    (SELECT child_count FROM system.query_run_retirement
                     WHERE run_id=@run),
+                   (SELECT count(*) FROM system.query_run_retention_blocked
+                    WHERE run_id=@run),
                    (SELECT count(*) FROM audit.activity
                     WHERE action_name='retention.query_run.retire'
                       AND safe_details->>'runId'=@run::text);
@@ -215,7 +282,8 @@ public sealed class M7ObservationRetentionPolicyTests(PostgreSql18Fixture fixtur
         Assert.Equal(1L, rows.GetInt64(4));
         Assert.Equal(2L, rows.GetInt64(5));
         Assert.Equal(7, rows.GetInt32(6));
-        Assert.Equal(1L, rows.GetInt64(7));
+        Assert.Equal(0L, rows.GetInt64(7));
+        Assert.Equal(1L, rows.GetInt64(8));
     }
 
     [Fact]

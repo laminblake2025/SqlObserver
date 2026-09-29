@@ -65,14 +65,31 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
                     }
                     else
                     {
-                        int textPruned = await _partitions.PruneOrphanQueryTextPayloadsAsync(
-                            identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
-                        int planPruned = await _partitions.PruneOrphanQueryPlanPayloadsAsync(
-                            identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
-                        if (textPruned + planPruned > 0)
+                        QueryRunRetentionStepOutcome graphOutcome = await _partitions
+                            .RunQueryRunRetentionStepAsync(identity, StepTimeout, stoppingToken)
+                            .ConfigureAwait(false);
+                        if (graphOutcome == QueryRunRetentionStepOutcome.Retired)
                         {
-                            LogOrphansPruned(_logger, textPruned + planPruned);
+                            LogQueryRunRetired(_logger);
                             delay = BusyDelay;
+                        }
+                        else if (graphOutcome != QueryRunRetentionStepOutcome.Idle)
+                        {
+                            if (graphOutcome == QueryRunRetentionStepOutcome.Oversize)
+                                LogQueryRunOversize(_logger);
+                            delay = BusyDelay;
+                        }
+                        else
+                        {
+                            int textPruned = await _partitions.PruneOrphanQueryTextPayloadsAsync(
+                                identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
+                            int planPruned = await _partitions.PruneOrphanQueryPlanPayloadsAsync(
+                                identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
+                            if (textPruned + planPruned > 0)
+                            {
+                                LogOrphansPruned(_logger, textPruned + planPruned);
+                                delay = BusyDelay;
+                            }
                         }
                     }
                 }
@@ -126,4 +143,12 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
     [LoggerMessage(EventId = 3154, Level = LogLevel.Information,
         Message = "Fenced retention removed old unlinked query-text payloads. Count={Count}")]
     private static partial void LogOrphansPruned(ILogger logger, int count);
+
+    [LoggerMessage(EventId = 3155, Level = LogLevel.Information,
+        Message = "Fenced retention retired one expired M7 run graph.")]
+    private static partial void LogQueryRunRetired(ILogger logger);
+
+    [LoggerMessage(EventId = 3156, Level = LogLevel.Warning,
+        Message = "M7 run graph exceeds the bounded retention step; inspect system.query_run_retention_scan_cursor.")]
+    private static partial void LogQueryRunOversize(ILogger logger);
 }

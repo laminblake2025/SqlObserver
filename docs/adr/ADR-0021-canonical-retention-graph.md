@@ -198,9 +198,9 @@ distinguishes attached observations from a detached v3 partition in grace,
 and also reports active readers, incident evidence, analytics work, missing
 collection outcomes or recovery attestation, policy age, and foreign keys
 outside the reviewed graph. The preview is deliberately non-mutating;
-`no_known_hold` is not a deletion certificate. A future leased cleanup must
-repeat these checks after locking its candidate and bound the number of
-child rows removed in one transaction.
+`no_known_hold` is not a deletion certificate. The leased cleanup repeats
+these checks after locking its candidate and bounds the number of child rows
+removed in one transaction.
 Migration 0179 supplies that per-run, operator-invoked cleanup primitive.
 It requires the dedicated retention lease and migrator target scope, locks
 the collection/run/query/plan graph and overlapping v3 registry rows,
@@ -210,9 +210,14 @@ durable retirement ledger plus audit. Collection-run accounting and shared
 ciphertext remain; the orphan-payload worker handles ciphertext later.
 The migration also fixes the shared M7 append-only trigger so deleting a
 plan does not access an `instance_id` field absent from that table. Migration
-0180 adds the target/window run index concurrently for future candidate
-scans. Automatic candidate discovery and scheduling remain open, as does
-collection-run history retirement.
+0180 adds the target/window run index concurrently for bounded candidate
+scans. Migration 0181 moves candidate discovery into the existing leased
+retention worker. A migrator-owned, collector-callable step scans at most 32
+targets or retires one old run per cycle, persists its cursor and hold result,
+and revisits held runs on the next sweep. Oversized runs stay in a separate
+blocked-run ledger for operator review. The target-scoped hold and delete
+functions remain ungranted to the collector; the step checks the live lease
+before and after work. Collection-run history retirement remains open.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

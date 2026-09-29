@@ -389,9 +389,14 @@ in a target-scoped transaction. It returns `held`, `oversize`, `retired`, or
 `system.query_run_retirement` and the `retention.query_run.retire` audit
 entry for the child counts, policy revision, recovery attestation and fence.
 The function leaves collection-run outcomes and shared protected payloads
-intact. The retention worker does not discover M7 run candidates yet, so
-this is an explicit operator step. Migration `0180` adds the run target/time
-index concurrently for the scheduled candidate scan still to come.
+intact. Migration `0180` adds the run target/time index concurrently.
+Migration `0181` makes the existing retention worker scan at most 32 targets
+per lease cycle and retire at most one eligible M7 run graph. It stores the
+last examined target/run and hold result in
+`system.query_run_retention_scan_cursor`; a complete sweep revisits held
+runs. `oversize` needs operator review because a run with more than 4,096
+child rows is never deleted automatically. Inspect
+`system.query_run_retention_blocked` for the durable target and run IDs.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
