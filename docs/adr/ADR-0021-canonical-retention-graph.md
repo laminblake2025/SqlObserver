@@ -351,6 +351,10 @@ barrier while routing it through private original and partitioned definitions.
 It defaults to original data. Migrator activation requires the writer-fenced
 fleet parity proof, and the original route remains available for rollback.
 Dependent alerting functions continue to resolve the public view.
+Migration 0202 adds a private partitioned-run M9 latest-header function. It
+preserves the completion-frontier selection and target-scope check. Populated
+completed, unfinished, cross-target, and invalid-collector cases are compared
+with the public header before any operational-health route changes.
 
 ## Implementation gates
 

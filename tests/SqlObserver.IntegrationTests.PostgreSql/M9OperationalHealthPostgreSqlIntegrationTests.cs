@@ -729,6 +729,99 @@ public sealed partial class M9OperationalHealthPostgreSqlIntegrationFixtureTests
         Assert.Equal("NoData", await state.ExecuteScalarAsync());
     }
 
+    [Fact]
+    public async Task PartitionedRunShadowM9HeaderMatchesCompletedUnfinishedAndScopedReads()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), other = Guid.NewGuid();
+        Guid completed = Guid.NewGuid(), foreign = Guid.NewGuid(), unfinished = Guid.NewGuid();
+        DateTimeOffset at = DateTimeOffset.UtcNow.AddMinutes(-2);
+        await ExecuteAsync(database, """
+            INSERT INTO control.observation_target
+              (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+               authentication_mode,transport_security_mode,lifecycle_state,revision,
+               created_at,updated_at,discovery_requested_at)
+            SELECT id,id::text,'M9 shadow header','sql01',1433,interval '5 seconds',
+              'windows_integrated_service_identity','mandatory_validated','active',1,
+              now(),now(),now() FROM (VALUES(@target),(@other)) AS source(id);
+            INSERT INTO telemetry.collection_run
+              (run_id,instance_id,collector_id,collector_version,output_schema_version,
+               target_revision,schedule_revision,work_key,owner_execution_id,
+               fencing_token,request_digest,scheduled_for,started_at)
+            VALUES(@completed,@target,'backups.status',1,1,1,1,'test/m9-shadow',
+                     gen_random_uuid(),1,decode(repeat('00',32),'hex'),@at,@at),
+                  (@foreign,@other,'backups.status',1,1,1,1,'test/m9-shadow',
+                     gen_random_uuid(),1,decode(repeat('00',32),'hex'),@at,@at);
+            INSERT INTO telemetry.collection_run_outcome
+              (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+               source_row_count,output_item_count,inserted_item_count,
+               duplicate_item_count,rejected_item_count,response_bytes,
+               output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,
+               loss_count_exact,lost_row_count,lost_byte_count,completion_digest,
+               completed_at)
+            SELECT run_id,'succeeded','completed',1,0,1,0,0,0,0,0,0,0,0,
+              false,false,'none',true,0,0,decode(repeat('00',32),'hex'),@at+interval '1 minute'
+            FROM telemetry.collection_run WHERE work_key='test/m9-shadow';
+            """, ("target", target), ("other", other), ("completed", completed),
+            ("foreign", foreign), ("at", at));
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,false);", connection))
+        {
+            scope.Parameters.AddWithValue("target", target);
+            await scope.ExecuteScalarAsync();
+        }
+        async Task<List<(Guid Run, long Revision, DateTimeOffset At, string State)>> Read(
+            string function, Guid requestedTarget, string collector)
+        {
+            await using var command = new NpgsqlCommand(
+                $"SELECT run_id,target_revision,observed_at,state FROM reporting.{function}(@target,@collector);",
+                connection);
+            command.Parameters.AddWithValue("target", requestedTarget);
+            command.Parameters.AddWithValue("collector", collector);
+            var rows = new List<(Guid, long, DateTimeOffset, string)>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                rows.Add((reader.GetGuid(0), reader.GetInt64(1),
+                    reader.GetFieldValue<DateTimeOffset>(2), reader.GetString(3)));
+            return rows;
+        }
+        async Task<List<(Guid Run, long Revision, DateTimeOffset At, string State)>> Compare(
+            Guid requestedTarget, string collector)
+        {
+            var canonical = await Read("get_latest_m9_run", requestedTarget, collector);
+            var shadow = await Read("get_latest_m9_run_v2_shadow", requestedTarget, collector);
+            Assert.Equal(canonical, shadow);
+            return shadow;
+        }
+        Assert.Equal(completed, Assert.Single(await Compare(target, "backups.status")).Run);
+        Assert.Empty(await Compare(other, "backups.status"));
+        Assert.Empty(await Compare(target, "not-an-operational-collector"));
+        await ExecuteAsync(database, """
+            INSERT INTO telemetry.collection_run
+              (run_id,instance_id,collector_id,collector_version,output_schema_version,
+               target_revision,schedule_revision,work_key,owner_execution_id,
+               fencing_token,request_digest,scheduled_for,started_at)
+            VALUES(@run,@target,'backups.status',1,1,1,1,'test/m9-unfinished',
+              gen_random_uuid(),1,decode(repeat('00',32),'hex'),@at,@at);
+            """, ("run", unfinished), ("target", target), ("at", at.AddMinutes(2)));
+        var latest = Assert.Single(await Compare(target, "backups.status"));
+        Assert.Equal(unfinished, latest.Run);
+        Assert.Equal("NoData", latest.State);
+        await using var grants = new NpgsqlCommand("""
+            SELECT has_function_privilege('sqlobserver_migrator',
+                     'reporting.get_latest_m9_run_v2_shadow(uuid,text)','EXECUTE')
+               AND NOT has_function_privilege('sqlobserver_server',
+                     'reporting.get_latest_m9_run_v2_shadow(uuid,text)','EXECUTE')
+               AND NOT has_function_privilege('sqlobserver_collector',
+                     'reporting.get_latest_m9_run_v2_shadow(uuid,text)','EXECUTE');
+            """, connection);
+        Assert.True((bool)(await grants.ExecuteScalarAsync())!);
+    }
+
     private static async Task<CollectorRunId> CommitBackupForTargetAsync(RepositoryTestDatabase database, Guid target, string key)
     {
         await ExecuteAsync(database, "INSERT INTO control.observation_target (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at) VALUES (@target,@key,'M9 scope target','sql01',1433,interval '5 seconds','windows_integrated_service_identity','mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());", ("target", target), ("key", $"m9.{key}.{target:N}"));
