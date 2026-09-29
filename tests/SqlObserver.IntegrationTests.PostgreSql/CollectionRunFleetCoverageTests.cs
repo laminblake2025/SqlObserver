@@ -55,6 +55,11 @@ public sealed class CollectionRunFleetCoverageTests(PostgreSql18Fixture fixture)
                 admin, backfill);
             complete.Parameters.AddWithValue("target", copiedTarget);
             Assert.True((bool)(await complete.ExecuteScalarAsync())!);
+            await using var identity = new NpgsqlCommand(
+                "SELECT complete FROM control.backfill_collection_run_identity(@target,10);",
+                admin, backfill);
+            identity.Parameters.AddWithValue("target", copiedTarget);
+            Assert.True((bool)(await identity.ExecuteScalarAsync())!);
             await backfill.CommitAsync();
         }
 

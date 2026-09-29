@@ -193,6 +193,14 @@ public sealed class CollectionRunIdentityBackfillTests(PostgreSql18Fixture fixtu
         await using (NpgsqlTransaction completeParity = await admin.BeginTransactionAsync())
         {
             Assert.Equal((1L, 1L, true), await VerifyAsync(completeParity));
+            await using var record = new NpgsqlCommand("""
+                SELECT parity FROM control.record_collection_run_v2_parity_window(
+                  @target,'queries.performance',@from,@to,10);
+                """, admin, completeParity);
+            record.Parameters.AddWithValue("target", target);
+            record.Parameters.AddWithValue("from", started);
+            record.Parameters.AddWithValue("to", started.AddDays(1));
+            Assert.True((bool)(await record.ExecuteScalarAsync())!);
             await completeParity.RollbackAsync();
         }
         await using (NpgsqlTransaction missingIdentity = await admin.BeginTransactionAsync())
@@ -207,6 +215,14 @@ public sealed class CollectionRunIdentityBackfillTests(PostgreSql18Fixture fixtu
                 await corrupt.ExecuteNonQueryAsync();
             }
             Assert.Equal((1L, 0L, false), await VerifyAsync(missingIdentity));
+            await using var record = new NpgsqlCommand("""
+                SELECT parity FROM control.record_collection_run_v2_parity_window(
+                  @target,'queries.performance',@from,@to,10);
+                """, admin, missingIdentity);
+            record.Parameters.AddWithValue("target", target);
+            record.Parameters.AddWithValue("from", started);
+            record.Parameters.AddWithValue("to", started.AddDays(1));
+            Assert.False((bool)(await record.ExecuteScalarAsync())!);
             await missingIdentity.RollbackAsync();
         }
 

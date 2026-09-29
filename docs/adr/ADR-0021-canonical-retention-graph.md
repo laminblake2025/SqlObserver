@@ -290,6 +290,13 @@ against the identity bridge under one snapshot, and rejects windows above
 100,000 successor rows. A missing bridge row fails parity. Every historical
 and live window still needs coverage under the writer fence before any child
 foreign key can move; this single-window result is not a cutover gate.
+Migration 0192 extends the parity ledger with identity counts, hashes and a
+separate identity result. Existing windows default to identity-unverified and
+must be re-recorded. Coverage now requires both backfills and both parity
+results; the fenced fleet check also locks the bridge and its backfill state
+and requires the mirror, append-only, forced-RLS and bridge-FK gates. The
+result remains transient. A future child-FK cutover must run it and make the
+reference changes in the same fenced transaction.
 
 ## Implementation gates
 

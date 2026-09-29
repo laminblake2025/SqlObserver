@@ -140,6 +140,24 @@ public sealed class CollectionRunBackfillTests(PostgreSql18Fixture fixture)
         Assert.Equal((0, 0, true), await BackfillAsync(1));
         Assert.Equal((0, 0, true), await BackfillAsync(1));
 
+        await using (NpgsqlTransaction identityCopy = await admin.BeginTransactionAsync())
+        {
+            await using (var scope = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, identityCopy))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteNonQueryAsync();
+            }
+            await using var copy = new NpgsqlCommand(
+                "SELECT complete FROM control.backfill_collection_run_identity(@target,10);",
+                admin, identityCopy);
+            copy.Parameters.AddWithValue("target", target);
+            Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            await identityCopy.CommitAsync();
+        }
+
         await using var inspect = new NpgsqlCommand("""
             SELECT (SELECT count(*) FROM telemetry.collection_run_v2
                     WHERE instance_id=@target),

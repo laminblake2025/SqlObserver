@@ -94,6 +94,65 @@ public sealed class CollectionRunFleetFenceTests(PostgreSql18Fixture fixture)
             Assert.True((bool)(await copy.ExecuteScalarAsync())!);
             await backfill.CommitAsync();
         }
+        await using (NpgsqlTransaction noIdentityCopy = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorScopeAsync(noIdentityCopy, sentinel);
+            PostgresException incomplete = await Assert.ThrowsAsync<PostgresException>(
+                () => VerifyAsync(noIdentityCopy));
+            Assert.Equal("55000", incomplete.SqlState);
+            await noIdentityCopy.RollbackAsync();
+        }
+        foreach (Guid scope in new[] { target, emptyTarget })
+        {
+            await using NpgsqlTransaction backfill = await admin.BeginTransactionAsync();
+            await SetMigratorScopeAsync(backfill, scope);
+            await using var copy = new NpgsqlCommand(
+                "SELECT complete FROM control.backfill_collection_run_identity(@target,10);",
+                admin, backfill);
+            copy.Parameters.AddWithValue("target", scope);
+            Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            await backfill.CommitAsync();
+        }
+        // A certificate from before identity parity was recorded cannot
+        // authorize the new fleet gate, even if source and successor match.
+        await using (NpgsqlTransaction legacy = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorScopeAsync(legacy, target);
+            await using var certificate = new NpgsqlCommand("""
+                INSERT INTO system.collection_run_v2_parity_window
+                  (instance_id,collector_id,from_utc,to_utc,utc_day,
+                   day_revision,max_rows,source_rows,successor_rows,
+                   source_sha256,successor_sha256,parity)
+                SELECT @target,'queries.performance',@start,@end,
+                       (@start AT TIME ZONE 'UTC')::date,
+                       coalesce((SELECT revision
+                         FROM system.collection_run_v2_day_generation
+                         WHERE instance_id=@target
+                           AND utc_day=(@start AT TIME ZONE 'UTC')::date),0),
+                       10,check_row.source_rows,check_row.successor_rows,
+                       check_row.source_sha256,check_row.successor_sha256,
+                       check_row.parity
+                FROM control.verify_collection_run_v2_window(
+                  @target,'queries.performance',@start,@end,10) AS check_row;
+                SELECT parity AND NOT identity_parity
+                FROM system.collection_run_v2_parity_window
+                WHERE instance_id=@target
+                  AND collector_id='queries.performance';
+                """, admin, legacy);
+            certificate.Parameters.AddWithValue("target", target);
+            certificate.Parameters.AddWithValue("start", start);
+            certificate.Parameters.AddWithValue("end", start.AddDays(1));
+            Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            await legacy.CommitAsync();
+        }
+        await using (NpgsqlTransaction stale = await admin.BeginTransactionAsync())
+        {
+            await SetMigratorScopeAsync(stale, sentinel);
+            PostgresException incomplete = await Assert.ThrowsAsync<PostgresException>(
+                () => VerifyAsync(stale));
+            Assert.Equal("55000", incomplete.SqlState);
+            await stale.RollbackAsync();
+        }
         await using (NpgsqlTransaction record = await admin.BeginTransactionAsync())
         {
             await SetMigratorScopeAsync(record, target);
@@ -186,6 +245,18 @@ public sealed class CollectionRunFleetFenceTests(PostgreSql18Fixture fixture)
                 () => VerifyAsync(disabled));
             Assert.Equal("55000", gate.SqlState);
             await disabled.RollbackAsync();
+        }
+        await using (NpgsqlTransaction disabledIdentity = await admin.BeginTransactionAsync())
+        {
+            await using (var alter = new NpgsqlCommand(
+                "ALTER TABLE telemetry.collection_run_v2 DISABLE TRIGGER collection_run_identity_mirror;",
+                admin, disabledIdentity))
+                await alter.ExecuteNonQueryAsync();
+            await SetMigratorScopeAsync(disabledIdentity, sentinel);
+            PostgresException gate = await Assert.ThrowsAsync<PostgresException>(
+                () => VerifyAsync(disabledIdentity));
+            Assert.Equal("55000", gate.SqlState);
+            await disabledIdentity.RollbackAsync();
         }
         await using var privilege = new NpgsqlCommand("""
             SELECT has_function_privilege('sqlobserver_server',
