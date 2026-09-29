@@ -389,6 +389,9 @@ retired from this display lookup.
 Migration 0212 adds private partitioned-run M10 backfill and rollup-input
 readers. A populated raw-metric fixture compares both result contracts while
 the collector-facing analytics functions remain on original runs.
+Migration 0213 routes both collector-facing M10 readers together, initially
+to the original implementations. Activation requires the writer-fenced fleet
+proof; rollback restores the original path while those runs remain retained.
 
 ## Implementation gates
 

@@ -451,20 +451,82 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         List<string> backfillRows = await Read("read_m10_backfill_page", true);
         Assert.Single(backfillRows);
         Assert.Equal(backfillRows, await Read("read_m10_backfill_page_v2_shadow", true));
+        Assert.Equal(backfillRows, await Read("read_m10_backfill_page_legacy", true));
         List<string> rollupRows = await Read("read_m10_rollup_derivation_inputs", false);
         Assert.Single(rollupRows);
         Assert.Equal(rollupRows, await Read("read_m10_rollup_derivation_inputs_v2_shadow", false));
+        Assert.Equal(rollupRows, await Read("read_m10_rollup_derivation_inputs_legacy", false));
         await using var grants = new NpgsqlCommand("""
             SELECT count(*) FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
             WHERE n.nspname='reporting'
               AND p.proname IN ('read_m10_backfill_page_v2_shadow',
-                                'read_m10_rollup_derivation_inputs_v2_shadow')
+                                'read_m10_backfill_page_legacy',
+                                'read_m10_rollup_derivation_inputs_v2_shadow',
+                                'read_m10_rollup_derivation_inputs_legacy')
               AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
               AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
               AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
               AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
             """, connection);
-        Assert.Equal(2L, await grants.ExecuteScalarAsync());
+        Assert.Equal(4L, await grants.ExecuteScalarAsync());
+
+        await using (var premature = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m10_read_route(true,10000);", connection))
+            Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteScalarAsync())).SqlState);
+        await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
+        {
+            foreach (string function in new[]
+                { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+            {
+                await using var copy = new NpgsqlCommand(
+                    $"SELECT complete FROM control.{function}(@target,10);", connection, backfill);
+                copy.Parameters.AddWithValue("target", target);
+                Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            }
+            await using var certificate = new NpgsqlCommand("""
+                SELECT parity FROM control.record_collection_run_v2_parity_window(
+                 @target,'engine.core',@day,@day + interval '1 day',10);
+                """, connection, backfill);
+            certificate.Parameters.AddWithValue("target", target);
+            certificate.Parameters.AddWithValue("day", day);
+            Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            await backfill.CommitAsync();
+        }
+        await using (var activate = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m10_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        Assert.Equal(await Read("read_m10_backfill_page_v2_shadow", true),
+            await Read("read_m10_backfill_page", true));
+        Assert.Equal(await Read("read_m10_rollup_derivation_inputs_v2_shadow", false),
+            await Read("read_m10_rollup_derivation_inputs", false));
+        await using (NpgsqlDataSource collector = database.CreateCollectorDataSource())
+        await using (NpgsqlConnection collectorConnection = await collector.OpenConnectionAsync())
+        {
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);",
+                collectorConnection))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteScalarAsync();
+            }
+            await using var publicRead = new NpgsqlCommand("""
+                SELECT count(*) FROM reporting.read_m10_backfill_page(
+                 @target,1,@day,@end,'host.cpu.percent',NULL::text,100,8388608,@job,1);
+                """, collectorConnection);
+            publicRead.Parameters.AddWithValue("target", target);
+            publicRead.Parameters.AddWithValue("day", day);
+            publicRead.Parameters.AddWithValue("end", day.AddHours(1));
+            publicRead.Parameters.AddWithValue("job", job);
+            Assert.Equal(1L, await publicRead.ExecuteScalarAsync());
+        }
+        await using (var rollback = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m10_read_route(false,10000);", connection))
+            Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        Assert.Equal(await Read("read_m10_backfill_page_legacy", true),
+            await Read("read_m10_backfill_page", true));
+        Assert.Equal(await Read("read_m10_rollup_derivation_inputs_legacy", false),
+            await Read("read_m10_rollup_derivation_inputs", false));
     }
 
     [Fact]

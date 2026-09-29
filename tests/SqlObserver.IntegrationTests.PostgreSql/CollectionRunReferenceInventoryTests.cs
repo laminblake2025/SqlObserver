@@ -91,8 +91,8 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.list_sql_volume_snapshot_legacy/5
             function reporting.overview_database_activity_history_legacy/5
             function reporting.overview_workload_history_legacy/5
-            function reporting.read_m10_backfill_page/10
-            function reporting.read_m10_rollup_derivation_inputs/9
+            function reporting.read_m10_backfill_page_legacy/10
+            function reporting.read_m10_rollup_derivation_inputs_legacy/9
             function system.retire_query_performance_run/5
             function telemetry.capture_server_wait_category_summary_v1/0
             view reporting.activity_snapshot_evidence_legacy
