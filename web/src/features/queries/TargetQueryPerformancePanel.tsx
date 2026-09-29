@@ -10,13 +10,16 @@ import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
 import { queryStoreWaitCategoryNames as waitCategoryNames } from "./queryStoreWaitCategories";
 
-export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, refresh, canReadText, initialQuerySelection }: {
+export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, onSelectQuery, refresh, canReadText, initialQuerySelection }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
   readonly timeWindow: QueryWindow;
   readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
+  readonly onSelectQuery: (databaseId: number, queryFingerprint: string,
+    planFingerprint?: string, sourceKind?: "query_store" | "plan_cache") => void;
   readonly refresh: number;
   readonly canReadText: boolean;
-  readonly initialQuerySelection?: { readonly databaseId: number; readonly queryFingerprint: string };
+  readonly initialQuerySelection?: { readonly databaseId: number; readonly queryFingerprint: string;
+    readonly planFingerprint?: string; readonly sourceKind?: "query_store" | "plan_cache" };
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value?: string) => value ? formatDisplayTime(value, mode) : "Time unavailable";
@@ -155,28 +158,49 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     const selection = { ...initialQuerySelection, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc };
     historyRequest.current?.abort();
     historyRequest.current = controller;
+    selectionRequest.current?.abort();
+    selectionRequest.current = controller;
     setDatabase(String(selection.databaseId));
+    if (selection.planFingerprint || selection.sourceKind === "query_store") setSource("query_store");
+    else if (selection.sourceKind === "plan_cache") setSource("plan_cache");
     setHistorySelection(selection);
     setHistory(undefined);
+    setPlan(undefined);
     setMessage(undefined);
     void getQueryPerformanceHistory(instanceId, selection.databaseId, selection.queryFingerprint, selection.fromUtc, selection.toUtc, controller.signal)
       .then(value => {
         if (controller.signal.aborted) return;
         setHistory(value);
-        if (value.items[0]) setSource(value.items[0].source);
+        if (value.items[0] && !selection.planFingerprint && !selection.sourceKind)
+          setSource(value.items[0].source);
         if (value.items.length === 0) setMessage("No history was observed for this query hash in the selected time window.");
       })
       .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Query history is unavailable."); });
+    if (selection.planFingerprint) void getQueryPerformancePlan(instanceId, selection.databaseId,
+      selection.queryFingerprint, selection.planFingerprint, controller.signal)
+      .then(value => { if (!controller.signal.aborted) setPlan(value); })
+      .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Plan metadata is unavailable."); });
     return () => controller.abort();
-  }, [instanceId, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint, timeWindow.fromUtc, timeWindow.toUtc, ranking, refresh]);
+  }, [instanceId, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint,
+      initialQuerySelection?.planFingerprint, initialQuerySelection?.sourceKind,
+      timeWindow.fromUtc, timeWindow.toUtc, ranking, refresh]);
   const loadHistory = (selection: { databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string }, cursor?: string) => {
     historyRequest.current?.abort();
     const c = new AbortController(); historyRequest.current = c;
     void getQueryPerformanceHistory(instanceId, selection.databaseId, selection.queryFingerprint, selection.fromUtc, selection.toUtc, c.signal, cursor).then(value => { if (!c.signal.aborted) setHistory(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query history is unavailable."); });
   };
   const select = (databaseId: number, queryFingerprint: string, from: string, to: string, planFingerprint: string | undefined, sourceKind: string) => {
+    const selectedPlan = sourceKind === "query_store" ? planFingerprint : undefined;
+    const selectedSource = sourceKind === "query_store" ? "query_store" : "plan_cache";
+    if (initialQuerySelection?.databaseId !== databaseId ||
+        initialQuerySelection.queryFingerprint !== queryFingerprint ||
+        initialQuerySelection.planFingerprint !== selectedPlan ||
+        initialQuerySelection.sourceKind !== selectedSource) {
+      onSelectQuery(databaseId, queryFingerprint, selectedPlan, selectedSource);
+      return;
+    }
     const selection = { databaseId, queryFingerprint, fromUtc: page?.fromUtc ?? from,
-      toUtc: page?.toUtc ?? to, planFingerprint: sourceKind === "query_store" ? planFingerprint : undefined };
+      toUtc: page?.toUtc ?? to, planFingerprint: selectedPlan };
     const c = new AbortController();
     selectionRequest.current?.abort(); selectionRequest.current = c;
     clearContent(); setPlan(undefined); setMessage(undefined); setHistorySelection(selection); setHistory(undefined);

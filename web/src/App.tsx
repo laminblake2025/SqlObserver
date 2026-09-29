@@ -3,7 +3,7 @@ import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
 import { CommandPalette } from "./components/CommandPalette";
-import { alertSelectionFromHash } from "./components/commandPaletteModel";
+import { alertSelectionFromHash, queryJumpHref } from "./components/commandPaletteModel";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { useTimeDisplay } from "./TimeDisplayContext";
@@ -177,9 +177,13 @@ export function App() {
   const selected = listedTarget ?? (directTargetLookup?.targetId === route.target && directTargetLookup.state !== "error" ? directTargetLookup.target : undefined);
   const changeTimeContext = (next: Partial<typeof scope>) => {
     const selectedScope = { ...scope, ...next };
-    location.hash = route.page === "activity" && route.activityAtUtc
-      ? activityHistoryHref(route.target, route.activityAtUtc, route.activityEventId, selectedScope)
-      : overviewHref(selectedScope, route.page, route.target);
+    const selectedRoute = readRoute(location.hash);
+    location.hash = selectedRoute.page === "activity" && selectedRoute.activityAtUtc
+      ? activityHistoryHref(selectedRoute.target, selectedRoute.activityAtUtc, selectedRoute.activityEventId, selectedScope)
+      : selectedRoute.page === "queries" && selectedRoute.databaseId !== undefined && selectedRoute.queryFingerprint !== undefined
+        ? queryJumpHref(selectedScope, selectedRoute.target, selectedRoute.databaseId,
+            selectedRoute.queryFingerprint, selectedRoute.planFingerprint, selectedRoute.querySource)
+      : overviewHref(selectedScope, selectedRoute.page, selectedRoute.target);
   };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
   const canAddServer = canRegisterTarget(myAccess);
@@ -316,7 +320,13 @@ export function App() {
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint } : undefined}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
+                onSelectQuery={(databaseId, queryFingerprint, planFingerprint, sourceKind) => {
+                  const href = queryJumpHref(scope, props.instanceId, databaseId, queryFingerprint,
+                    planFingerprint, sourceKind);
+                  window.history.replaceState(window.history.state, "", href);
+                  setRoute(readRoute(href));
+                }}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
               {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh} />}

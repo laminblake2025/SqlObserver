@@ -10,6 +10,8 @@ export interface DashboardRoute {
   readonly activityEventId?: string;
   readonly databaseId?: number;
   readonly queryFingerprint?: string;
+  readonly planFingerprint?: string;
+  readonly querySource?: 'query_store' | 'plan_cache';
 }
 const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/;
 const guid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -24,7 +26,15 @@ export function readRoute(hash: string): DashboardRoute {
   const queryFingerprint = params.get('queryFingerprint');
   if (page === 'queries' && databaseId !== null && /^[1-9]\d{0,4}$/.test(databaseId) && Number(databaseId) <= 32767
       && queryFingerprint !== null && /^[0-9a-f]{64}$/i.test(queryFingerprint)) {
-    return { page, target: params.get('target') ?? '', databaseId: Number(databaseId), queryFingerprint: queryFingerprint.toLowerCase() };
+    const planFingerprint = params.get('planFingerprint');
+    const validPlan = planFingerprint !== null && /^[0-9a-f]{64}$/i.test(planFingerprint);
+    const source = params.get('source');
+    const querySource = source === 'query_store' || source === 'plan_cache' && !validPlan
+      ? source : undefined;
+    return { page, target: params.get('target') ?? '', databaseId: Number(databaseId),
+      queryFingerprint: queryFingerprint.toLowerCase(),
+      ...(validPlan ? { planFingerprint: planFingerprint.toLowerCase() } : {}),
+      ...(querySource ? { querySource } : {}) };
   }
   const activityAtUtc = params.get('at');
   if (page === 'activity' && activityAtUtc !== null && utcTimestamp.test(activityAtUtc) && Number.isFinite(Date.parse(activityAtUtc))) {

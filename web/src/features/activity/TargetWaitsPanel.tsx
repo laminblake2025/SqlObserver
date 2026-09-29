@@ -108,7 +108,9 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
         <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait ms</th>
           <th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
         <tbody>{queryRanking.items.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
-          <td><a className="fingerprint" href={queryJumpHref(scope, instanceId, item.databaseId, item.queryFingerprint)}>
+          <td><a className="fingerprint" href={queryJumpHref(
+            { ...scope, range: "custom", from: window.fromUtc, to: window.toUtc },
+            instanceId, item.databaseId, item.queryFingerprint, item.planFingerprint, "query_store")}>
             Database ID {item.databaseId} / {item.queryFingerprint.slice(0, 12)}… / {item.planFingerprint.slice(0, 12)}…</a></td>
           <td>{BigInt(item.waitMilliseconds).toLocaleString()}</td>
           <td>{item.comparableRows} / {item.sourceRows}</td>
