@@ -111,6 +111,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.backup_status_snapshot.run_id
             telemetry.backup_status_snapshot_v2.run_id
             telemetry.collection_run.run_id
+            telemetry.collection_run_identity.run_id
             telemetry.collection_run_outcome.run_id
             telemetry.collection_run_v2.run_id
             telemetry.database_file_snapshot.collection_run_id

@@ -125,7 +125,7 @@ package source to make the build pass.
 
 ## 4. PostgreSQL repository gate
 
-The migration catalog contains the exact, contiguous `0001` through `0188`
+The migration catalog contains the exact, contiguous `0001` through `0189`
 sequence and `database/migrations/checksums.sha256`. The embedded
 `PostgreSqlMigrationPort` verifies those bytes, requires PostgreSQL major 18,
 holds an advisory lock, validates the existing ledger as an exact prefix, and
@@ -442,6 +442,13 @@ checks trigger/RLS/partition gates, and returns target, collector and pair
 counts. The locks end at transaction commit. A later cutover must repeat this
 check and change its routes and references before releasing those locks;
 this preliminary function does not authorize retention or switch reads.
+Migration `0189` adds `telemetry.collection_run_identity`, a global run-ID
+bridge pointing to the partitioned successor. New successor inserts populate
+it atomically and duplicate IDs across partitions fail. Existing successor
+rows are not copied by the migration, and all 20 child foreign keys still
+reference the original run table. Backfill and verify identity coverage
+before changing any child reference; do not treat the new bridge as canonical
+yet.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.

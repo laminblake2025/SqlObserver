@@ -267,6 +267,16 @@ incomplete coverage and an operator-selected pair bound. The function returns
 only a transient verification result: future reader and foreign-key cutover
 must rerun it and make their changes before releasing the same transaction's
 locks. It does not itself switch reads or retire original run rows.
+Migration 0189 adds an unpartitioned, globally unique `run_id` identity
+bridge with a foreign key to the successor's `(run_id, started_at)` key.
+Successor inserts mirror identity rows in the same transaction, so a reused
+run ID fails even across UTC partitions. This bridge gives the 20 existing
+single-column child foreign keys a future target without requiring every
+child to carry the partition key. Historical successor rows still need an
+explicit identity backfill and parity check. No child foreign key moves in
+this migration; the original run table remains canonical. A populated
+PostgreSQL test confirms the bridge FK blocks detaching a successor day while
+its run ID is still referenced by the bridge.
 
 ## Implementation gates
 
