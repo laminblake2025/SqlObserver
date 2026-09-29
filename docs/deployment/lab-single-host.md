@@ -238,6 +238,12 @@ test confirms parent-only detach fails with `23503`; the child-first drop and
 parent drop succeed together in one transaction. All enabled classes
 still require recovery attestation, reader/dependency checks, a minimum
 partition count, and a 24-hour detach grace before drop.
+Migration `0163` installs the fenced paired TempDB worker, which keeps both
+daily partitions attached through grace and drops the file partition before
+the snapshot partition in one transaction. It excludes both from the generic
+detach worker and blocks direct administrator detach of either side. The
+TempDB policy defaults remain disabled until the administrator path can start
+the same paired grace and expose its preview state.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced

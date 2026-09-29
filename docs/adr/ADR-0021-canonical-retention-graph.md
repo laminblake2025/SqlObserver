@@ -73,6 +73,9 @@ checked before grace and again before retirement. Do not enable either default
 policy until the worker and administrator path use the paired execution. At
 expiry, one fenced transaction must detach and drop the file partition first,
 then the snapshot partition; a failure must roll back both and preserve reads.
+Migration 0163 installs the fenced worker, excludes the pair from generic
+detach, and rejects manual single-partition detach. The administrative start
+path and default policy remain pending.
 
 For **original M7 observations**, build a partitioned successor keyed by UTC
 `interval_end`; its primary key must include that partition key. Preserve
