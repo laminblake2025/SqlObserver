@@ -100,7 +100,7 @@ now validate the target and JSON boundary. Migration 0236 and the collector
 worker publish core health, active alerts, and coherent current blocking from
 committed repository data under a lease. The due-target list records attempts
 so a repeatedly failing target cannot monopolize its bounded batch. Waits,
-Backups and AG remain explicitly unavailable in this row. Migration
+AG remains explicitly unavailable in this row. Migration
 0237 adds up to five critical database-state issues from the current inventory
 run, marks a longer issue list partial, and withholds issues when inventory
 collection is not current. Other source materialization, full parity work, and
@@ -113,6 +113,11 @@ comparability explicitly. It does not infer a zero wait from a missing summary.
 Migration 0239 adds the M9 TempDB percentage from the current summary run,
 carrying its observed time and partial/degraded state. Missing or invalid byte
 totals do not produce a percentage.
+Migration 0240 adds an exact per-run backup evidence count and up to five
+damaged-backup issues. A complete header with no rows remains unavailable,
+source-local finish times without a timezone produce an explicit age gap,
+and the shared ten-issue bound reports truncation. RPO-aware freshness still
+requires a separate policy and preferred-replica design.
 
 The read adapter accepts the request's UTC cutoff. A publication older than
 two minutes makes its current states stale, preserves observed counts and
