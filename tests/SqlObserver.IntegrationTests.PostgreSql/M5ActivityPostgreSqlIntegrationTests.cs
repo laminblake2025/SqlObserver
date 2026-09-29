@@ -253,9 +253,26 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
                      'EXECUTE')
                AND NOT has_function_privilege('sqlobserver_collector',
                      'control.set_collection_run_v2_scheduler_read_route(boolean,integer)',
-                     'EXECUTE');
+                     'EXECUTE')
+               AND has_function_privilege('sqlobserver_migrator',
+                     'telemetry.lookup_collection_run_runtime(uuid)','EXECUTE')
+               AND NOT has_function_privilege('sqlobserver_collector',
+                     'telemetry.lookup_collection_run_runtime(uuid)','EXECUTE');
             """, connection))
             Assert.True((bool)(await schedulerGrants.ExecuteScalarAsync())!);
+        async Task<string> ReadRun(string source)
+        {
+            await using var command = new NpgsqlCommand(source switch
+            {
+                "runtime" => "SELECT to_jsonb(run)::text FROM telemetry.lookup_collection_run_runtime(@run) AS run;",
+                "original" => "SELECT to_jsonb(run)::text FROM telemetry.collection_run AS run WHERE run_id=@run;",
+                "successor" => "SELECT to_jsonb(run)::text FROM telemetry.collection_run_v2 AS run WHERE run_id=@run;",
+                _ => throw new ArgumentOutOfRangeException(nameof(source))
+            }, connection);
+            command.Parameters.AddWithValue("run", core);
+            return (string)(await command.ExecuteScalarAsync())!;
+        }
+        Assert.Equal(await ReadRun("original"), await ReadRun("runtime"));
         await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
         await using NpgsqlConnection collectorConnection = await collectorSource.OpenConnectionAsync();
         async Task AssertNoDueActiveRunAsync()
@@ -275,6 +292,36 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         await using (var activateScheduler = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", connection))
             Assert.Equal(1L, await activateScheduler.ExecuteScalarAsync());
+        Assert.Equal(await ReadRun("successor"), await ReadRun("runtime"));
+        Guid originalOwner;
+        await using (var runOwner = new NpgsqlCommand(
+            "SELECT owner_execution_id FROM telemetry.collection_run WHERE run_id=@run;",
+            connection))
+        {
+            runOwner.Parameters.AddWithValue("run", core);
+            originalOwner = (Guid)(await runOwner.ExecuteScalarAsync())!;
+        }
+        async Task<object?> ReplayAsync(bool divergent)
+        {
+            await using var replay = new NpgsqlCommand("""
+                SELECT result_status FROM control.begin_collection_run(
+                  @run,@target,1::bigint,'engine.core',1,1,1::bigint,
+                  @scheduled,@work,@owner,1::bigint,
+                  CASE WHEN @divergent THEN decode(repeat('ee',32),'hex')
+                       ELSE decode(repeat('aa',32),'hex') END);
+                """, collectorConnection);
+            replay.Parameters.AddWithValue("run", core);
+            replay.Parameters.AddWithValue("target", target.Value);
+            replay.Parameters.AddWithValue("scheduled", at);
+            replay.Parameters.AddWithValue("work", $"collector/run/engine.core/{target.Value:N}");
+            replay.Parameters.AddWithValue("owner", originalOwner);
+            replay.Parameters.AddWithValue("divergent", divergent);
+            return await replay.ExecuteScalarAsync();
+        }
+        Assert.Equal("replayed", await ReplayAsync(false));
+        PostgresException divergentReplayError = await Assert.ThrowsAsync<PostgresException>(
+            () => ReplayAsync(true));
+        Assert.Equal("22023", divergentReplayError.SqlState);
         await AssertNoDueActiveRunAsync();
         await using (var release = new NpgsqlCommand("""
             UPDATE control.worker_lease
@@ -292,25 +339,73 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
             due.Parameters.AddWithValue("target", target.Value);
             Assert.Equal(1L, await due.ExecuteScalarAsync());
         }
+        Guid recoveryOwner = Guid.NewGuid(), recoveryRun = Guid.NewGuid();
+        DateTimeOffset recoveryScheduledAt;
+        long recoveryFencing, recoveryTargetRevision, recoveryScheduleRevision;
+        int recoveryCollectorVersion, recoverySchemaVersion;
         await using (var claimDue = new NpgsqlCommand("""
-            SELECT target_instance_id,collector_id
+            SELECT target_instance_id,collector_id,scheduled_at,fencing_token,
+                   target_revision,collector_version,output_schema_version,
+                   schedule_revision
             FROM control.claim_due_collector_work(@owner,interval '30 seconds');
             """, collectorConnection))
         {
-            claimDue.Parameters.AddWithValue("owner", Guid.NewGuid());
+            claimDue.Parameters.AddWithValue("owner", recoveryOwner);
             await using NpgsqlDataReader claimed = await claimDue.ExecuteReaderAsync();
             Assert.True(await claimed.ReadAsync());
             Assert.Equal(target.Value, claimed.GetGuid(0));
             Assert.Equal("engine.core", claimed.GetString(1));
+            recoveryScheduledAt = claimed.GetFieldValue<DateTimeOffset>(2);
+            recoveryFencing = claimed.GetInt64(3);
+            recoveryTargetRevision = claimed.GetInt64(4);
+            recoveryCollectorVersion = claimed.GetInt32(5);
+            recoverySchemaVersion = claimed.GetInt32(6);
+            recoveryScheduleRevision = claimed.GetInt64(7);
             Assert.False(await claimed.ReadAsync());
+        }
+        await using (var begin = new NpgsqlCommand("""
+            SELECT result_status FROM control.begin_collection_run(
+              @run,@target,@target_revision,'engine.core',@collector_version,
+              @schema_version,@schedule_revision,@scheduled,@work,@owner,
+              @fencing,decode(repeat('cc',32),'hex'));
+            """, collectorConnection))
+        {
+            begin.Parameters.AddWithValue("run", recoveryRun);
+            begin.Parameters.AddWithValue("target", target.Value);
+            begin.Parameters.AddWithValue("target_revision", recoveryTargetRevision);
+            begin.Parameters.AddWithValue("collector_version", recoveryCollectorVersion);
+            begin.Parameters.AddWithValue("schema_version", recoverySchemaVersion);
+            begin.Parameters.AddWithValue("schedule_revision", recoveryScheduleRevision);
+            begin.Parameters.AddWithValue("scheduled", recoveryScheduledAt);
+            begin.Parameters.AddWithValue("work", $"collector/run/engine.core/{target.Value:N}");
+            begin.Parameters.AddWithValue("owner", recoveryOwner);
+            begin.Parameters.AddWithValue("fencing", recoveryFencing);
+            Assert.Equal("started", await begin.ExecuteScalarAsync());
+        }
+        await using (var mirroredBegin = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM telemetry.collection_run WHERE run_id=@run),
+                   (SELECT count(*) FROM telemetry.collection_run_v2 WHERE run_id=@run),
+                   (SELECT active_run_id FROM control.collector_schedule
+                    WHERE instance_id=@target AND collector_id='engine.core');
+            """, connection))
+        {
+            mirroredBegin.Parameters.AddWithValue("run", recoveryRun);
+            mirroredBegin.Parameters.AddWithValue("target", target.Value);
+            await using NpgsqlDataReader row = await mirroredBegin.ExecuteReaderAsync();
+            Assert.True(await row.ReadAsync());
+            Assert.Equal(1L, row.GetInt64(0));
+            Assert.Equal(1L, row.GetInt64(1));
+            Assert.Equal(recoveryRun, row.GetGuid(2));
         }
         await using (var rollbackScheduler = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_scheduler_read_route(false,10000);", connection))
             Assert.Equal(2L, await rollbackScheduler.ExecuteScalarAsync());
+        Assert.Equal(await ReadRun("original"), await ReadRun("runtime"));
         await using (var rollback = new NpgsqlCommand(
             "SELECT control.set_collection_run_v2_health_read_route(false,10000);", connection))
             Assert.Equal(2L, await rollback.ExecuteScalarAsync());
-        Assert.Equal(alertRuns, await ReadAlertRuns("collection_run_alert_read"));
+        Assert.Equal(await ReadAlertRuns("collection_run"),
+            await ReadAlertRuns("collection_run_alert_read"));
         Assert.Equal(await Read("collector_health_projection_legacy"),
             await Read("collector_health_projection"));
     }

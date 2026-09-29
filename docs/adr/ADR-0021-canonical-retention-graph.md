@@ -400,6 +400,9 @@ Migration 0215 gives due-work listing and claiming a separate run lookup switch.
 The successor lookup uses the global run-ID bridge to supply the partition key;
 activation repeats the writer-fenced fleet proof. Installation and rollback
 keep active-run lease checks on the original writer.
+Migration 0216 uses that switch for collection-run begin/replay and abandoned-run
+identity reads. The begin function still inserts into the original writer; this
+stages its read half ahead of a coordinated writer and outcome-trigger cutover.
 
 ## Implementation gates
 
