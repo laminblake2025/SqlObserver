@@ -129,6 +129,37 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
     }
 
     [Fact]
+    public async Task DestinationListPagesWithoutConfigurationReferencesAndRequiresAdministrator()
+    {
+        using HttpClient admin = CreateClient("admin");
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/destinations?limit=1";
+        using HttpResponseMessage first = await admin.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal("no-store", first.Headers.CacheControl?.ToString());
+        using var firstJson = System.Text.Json.JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        Assert.True(firstJson.RootElement.GetProperty("hasMore").GetBoolean());
+        string cursor = firstJson.RootElement.GetProperty("nextCursor").GetString()!;
+        using HttpResponseMessage second = await admin.GetAsync($"{path}&cursor={Uri.EscapeDataString(cursor)}");
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        string body = await second.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("configuration", body, StringComparison.OrdinalIgnoreCase);
+        using var secondJson = System.Text.Json.JsonDocument.Parse(body);
+        var disabled = Assert.Single(secondJson.RootElement.GetProperty("items").EnumerateArray());
+        Assert.False(disabled.GetProperty("enabled").GetBoolean());
+        Assert.False(disabled.GetProperty("approved").GetBoolean());
+        Assert.Equal(4, disabled.GetProperty("revision").GetInt64());
+        Assert.False(secondJson.RootElement.GetProperty("hasMore").GetBoolean());
+        using HttpResponseMessage malformed = await admin.GetAsync($"{path}&cursor=invalid%2A");
+        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        using HttpClient viewer = CreateClient("viewer");
+        using HttpResponseMessage forbidden = await viewer.GetAsync(path);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        using HttpClient anonymous = factory.CreateClient();
+        using HttpResponseMessage unauthenticated = await anonymous.GetAsync(path);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+    }
+
+    [Fact]
     public async Task MapAlertEndpointsReturns403409And503WithoutProviderDetails()
     {
         using HttpClient viewer = CreateClient("viewer");
@@ -294,6 +325,7 @@ public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
     internal FakeAlertQuery Query { get; } = new();
     internal FakeAlertRuleRead RuleReads { get; } = new();
     internal FakeMaintenanceWindowRead MaintenanceReads { get; } = new();
+    internal FakeAlertDestinationRead DestinationReads { get; } = new();
     internal FakeAlertAdministration Administration { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -304,10 +336,12 @@ public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IAlertQueryService>();
             services.RemoveAll<IAlertRuleReadPort>();
             services.RemoveAll<IMaintenanceWindowReadPort>();
+            services.RemoveAll<IAlertDestinationReadPort>();
             services.RemoveAll<IAlertAdministrationService>();
             services.AddSingleton<IAlertQueryService>(Query);
             services.AddSingleton<IAlertRuleReadPort>(RuleReads);
             services.AddSingleton<IMaintenanceWindowReadPort>(MaintenanceReads);
+            services.AddSingleton<IAlertDestinationReadPort>(DestinationReads);
             services.AddSingleton<IAlertAdministrationService>(Administration);
             services.AddSingleton(new WindowsGroupRoleResolver([
                 new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M8AlertTestAuthenticationHandler.AdminGroupSid), [ApplicationRole.Operator, ApplicationRole.TargetAdministrator, ApplicationRole.SecurityAdministrator], true),
@@ -357,6 +391,23 @@ internal sealed class FakeMaintenanceWindowRead : IMaintenanceWindowReadPort
             cursor is null ? null : Started);
         return ValueTask.FromResult(new MaintenanceWindowListPage(targetId, Started, [window],
             cursor is null ? new MaintenanceWindowListCursor(targetId, Started, starts, window.WindowId) : null));
+    }
+}
+
+internal sealed class FakeAlertDestinationRead : IAlertDestinationReadPort
+{
+    private static readonly DateTimeOffset Started = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+
+    public ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertDestinationListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        var destination = new AlertDestinationListItem(
+            cursor is null ? Guid.Parse("11111111-1111-4111-8111-111111111111")
+                : Guid.Parse("22222222-2222-4222-8222-222222222222"),
+            "https-webhook", cursor is null, cursor is null, 4);
+        return ValueTask.FromResult(new AlertDestinationListPage(targetId, Started, [destination],
+            cursor is null ? new AlertDestinationListCursor(targetId, Started, destination.DestinationId) : null));
     }
 }
 

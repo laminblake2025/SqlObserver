@@ -204,6 +204,30 @@ public interface IMaintenanceWindowQueryService
         MaintenanceWindowListCursor? cursor, CancellationToken cancellationToken);
 }
 
+public sealed record AlertDestinationListItem(
+    Guid DestinationId, string Kind, bool Enabled, bool Approved, long Revision);
+
+public sealed record AlertDestinationListCursor(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc, Guid AfterDestinationId);
+
+public sealed record AlertDestinationListPage(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    IReadOnlyList<AlertDestinationListItem> Items, AlertDestinationListCursor? NextCursor);
+
+public interface IAlertDestinationReadPort
+{
+    ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertDestinationListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+public interface IAlertDestinationQueryService
+{
+    ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertDestinationListCursor? cursor, CancellationToken cancellationToken);
+}
+
 public interface IAlertAdministrationService
 {
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken);

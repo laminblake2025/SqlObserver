@@ -136,6 +136,7 @@ builder.Services.AddSingleton<IQueryStoreGroupPlanTrendQueryService, QueryStoreG
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertRuleReads);
 builder.Services.AddSingleton<IMaintenanceWindowReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceWindowReads);
+builder.Services.AddSingleton<IAlertDestinationReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertDestinationReads);
 builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OperationalHealth);
 // The Server retains read/query and administrative analytics ports for its
 // HTTP API; the derivation/backfill workers themselves are owned by Collector.
@@ -150,6 +151,7 @@ builder.Services.AddSingleton<IOperationalHealthQueryService, OperationalHealthQ
 builder.Services.AddSingleton<IAlertQueryService, AlertQueryService>();
 builder.Services.AddSingleton<IAlertRuleQueryService, AlertRuleQueryService>();
 builder.Services.AddSingleton<IMaintenanceWindowQueryService, MaintenanceWindowQueryService>();
+builder.Services.AddSingleton<IAlertDestinationQueryService, AlertDestinationQueryService>();
 builder.Services.AddSingleton<IAlertDestinationApprovalPort, ConfiguredAlertDestinationApproval>();
 builder.Services.AddSingleton<IAlertDnsResolver, SystemAlertDnsResolver>();
 builder.Services.AddSingleton<IEventLogAlertWriter, WindowsEventLogAlertWriter>();

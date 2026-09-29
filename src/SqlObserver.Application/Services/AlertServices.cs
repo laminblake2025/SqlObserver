@@ -80,6 +80,24 @@ public sealed class MaintenanceWindowQueryService(IMaintenanceWindowReadPort rep
     }
 }
 
+public sealed class AlertDestinationQueryService(IAlertDestinationReadPort repository) : IAlertDestinationQueryService
+{
+    public ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertDestinationListCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, [ApplicationRole.SecurityAdministrator]);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value ||
+            cursor.ListingStartedUtc.Offset != TimeSpan.Zero || cursor.AfterDestinationId == Guid.Empty))
+            throw new ArgumentException("Destination cursor does not match the target.", nameof(cursor));
+        return repository.ListDestinationsForAdminAsync(targetId, limit, cursor,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+}
+
 public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit, IAlertDestinationApprovalPort? destinationApproval = null) : IAlertAdministrationService
 {
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) =>

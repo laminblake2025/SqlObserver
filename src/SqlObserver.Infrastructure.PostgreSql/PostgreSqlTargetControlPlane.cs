@@ -40,6 +40,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         Alerts = alertRepository;
         AlertRuleReads = alertRepository;
         MaintenanceWindowReads = alertRepository;
+        AlertDestinationReads = alertRepository;
         OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
         Analytics = new PostgreSqlAnalyticsRepositoryPort(dataSource, fingerprintKey);
         AnalyticsDerivation = (IAnalyticsDerivationStore)Analytics;
@@ -83,6 +84,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IAlertRepositoryPort Alerts { get; }
     public IAlertRuleReadPort AlertRuleReads { get; }
     public IMaintenanceWindowReadPort MaintenanceWindowReads { get; }
+    public IAlertDestinationReadPort AlertDestinationReads { get; }
     public IOperationalHealthRepositoryPort OperationalHealth { get; }
 
     public IAnalyticsRepositoryPort Analytics { get; }
