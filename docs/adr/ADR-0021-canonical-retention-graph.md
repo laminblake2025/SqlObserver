@@ -131,6 +131,11 @@ against both observation relations: an idempotent retry leaves the successor
 row count and day generation unchanged, while a rejected commit or divergent
 replay leaves no extra successor row. This confirms the current mirror path;
 it does not yet authorize switching the writer or readers.
+The large-history ranking fixture also compares the old and partitioned
+top-query projections on both cursor pages with 60,000 older observations,
+120 recent observations, and a foreign target. The two 100/20-row pages match
+under a five-second command limit for each successor query. This checks the
+shadow read path at a realistic historical volume, not fleet-wide latency.
 
 For **collection runs**, do not delete rows simply because `started_at` is old:
 the existing `run_id` primary key is the target of foreign keys across the

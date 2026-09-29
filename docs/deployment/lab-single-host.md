@@ -288,6 +288,9 @@ the original path until replay, fencing, and read cutover are reviewed.
 The focused production-writer replay test checks that a retry does not insert
 another successor row or advance its day generation. A failed M7 commit leaves
 both observation tables empty for that run.
+The focused large-history ranking test compares both pages from the active
+and partitioned top-query readers with 60,000 older observations; it does not
+replace a production fleet performance check before cutover.
 
 Migration `0159` restores a detached partition if its retention policy is
 disabled or its revision changes during the 24-hour grace period. The fenced

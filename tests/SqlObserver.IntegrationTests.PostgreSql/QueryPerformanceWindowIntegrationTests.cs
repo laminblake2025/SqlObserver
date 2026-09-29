@@ -70,6 +70,34 @@ public sealed class QueryPerformanceWindowIntegrationTests(PostgreSql18Fixture f
         var final = await port.GetTopAsync(request with { Cursor = cursor }, CancellationToken.None);
         Assert.Equal(20, final.Items.Count); Assert.False(final.HasMore);
         Assert.Equal(Enumerable.Range(1,20).Reverse().Select(x => (long?)x), final.Items.Select(x => x.Value));
+        await using (NpgsqlConnection migrator = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("""
+                SET ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,false);
+                """, migrator))
+            {
+                role.Parameters.AddWithValue("target", target);
+                await role.ExecuteNonQueryAsync();
+            }
+            ProjectionPage originalFirst = await ReadTopPageAsync(
+                migrator, target, request.FromUtc, request.ToUtc, 100, null);
+            ProjectionPage partitionedFirst = await ReadTopPageAsync(
+                migrator, target, request.FromUtc, request.ToUtc, 100, null,
+                usePartitioned: true);
+            AssertPageEqual(originalFirst, partitionedFirst);
+            ProjectionCursor pageCursor = CursorFor(originalFirst.Items[^1]);
+            ProjectionPage originalFinal = await ReadTopPageAsync(
+                migrator, target, request.FromUtc, request.ToUtc, 100, pageCursor);
+            ProjectionPage partitionedFinal = await ReadTopPageAsync(
+                migrator, target, request.FromUtc, request.ToUtc, 100, pageCursor,
+                usePartitioned: true);
+            AssertPageEqual(originalFinal, partitionedFinal);
+            Assert.Equal(100, partitionedFirst.Items.Count);
+            Assert.Equal(20, partitionedFinal.Items.Count);
+            Assert.All(partitionedFirst.Items.Concat(partitionedFinal.Items),
+                row => Assert.Equal(recentRun, row.CollectionRunId));
+        }
         await using var connection = await server.OpenConnectionAsync();
         foreach (string scope in new[] { target.ToString("D"), "" })
         {
@@ -394,17 +422,27 @@ public sealed class QueryPerformanceWindowIntegrationTests(PostgreSql18Fixture f
         DateTimeOffset from,
         DateTimeOffset to,
         int limit,
-        ProjectionCursor? cursor)
+        ProjectionCursor? cursor,
+        bool usePartitioned = false)
     {
-        await using var command = new NpgsqlCommand("""
-            SELECT *
-            FROM control.get_top_queries_projection(
+        string functionName = usePartitioned
+            ? "control.get_top_queries_projection_v3"
+            : "control.get_top_queries_projection";
+        await using var command = new NpgsqlCommand($"""
+            SELECT item.database_id,item.query_fingerprint,item.plan_fingerprint,
+                   item.interval_start,item.interval_end,item.observed_at,
+                   item.semantics,item.cpu_ms,item.duration_ms,item.execution_count,
+                   item.logical_reads,item.writes,item.rows_processed,
+                   item.source::text,item.source_state,item.coverage,item.freshness,
+                   item.truncated,item.committed_at,item.collection_run_id,
+                   item.observation_key
+            FROM {functionName}(
                 @instance_id,@from_utc,@to_utc,'cpu',@limit,
                 @after_database_id,@after_interval_end,@after_query,@after_plan,
-                @after_run_id,@after_metric,@after_observation_key,@snapshot_utc);
+                @after_run_id,@after_metric,@after_observation_key,@snapshot_utc) AS item;
             """, connection)
         {
-            CommandTimeout = 60,
+            CommandTimeout = usePartitioned ? 5 : 60,
         };
         command.Parameters.AddWithValue("instance_id", target);
         command.Parameters.AddWithValue("from_utc", from);
