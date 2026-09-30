@@ -1,8 +1,9 @@
 # Saved incident storage and API
 
 The plan's **Open incident** workflow now has storage, an API and a dashboard
-action and saved-investigation browsing. Report/export integration remains to
-be implemented. Analytics-generated incidents continue to work.
+action, saved-investigation browsing and materialized reports/exports.
+Release certification for the new report kind remains outstanding.
+Analytics-generated incidents continue to work.
 
 ## Contract
 
@@ -144,4 +145,65 @@ A Viewer browser exercise on the synthetic loopback fixture verified two pages
 of 20 and five investigations, 25 distinct titles, an older investigation link,
 URL reload, retained notes/window and no save action. `mode=browse` seeds those
 25 synthetic snapshots. This fixture does not establish database behavior; the
-native PostgreSQL cases above do. Report/export integration remains pending.
+native PostgreSQL cases above do.
+
+## Saved-investigation reports and exports
+
+Opening a saved investigation now offers **Generate investigation report** to
+its matching monitoring readers. The command posts `reportKind:
+"saved-investigation"`, its `threadId` and an operation ID to the existing target
+report endpoint. It accepts no caller-supplied window: the notes, window,
+historical revision, capture limit and evidence all come from the durable saved
+snapshot. The four window/current report kinds retain their definitions.
+
+Migration `0290_saved_investigation_reports.sql` adds the fixed fifth report
+definition and a server-only, migrator-owned materializer. The original window
+materializer is kept as a private helper behind an allowlisted entry point;
+neither entry point accepts a saved investigation as a free-window report.
+The report run uses the saved target revision and the ordinary 24-hour expiry.
+It copies both sections and commits an accepted audit entry atomically. Exact
+concurrent retries return the same run; another actor or thread with the same
+operation conflicts. Missing or expired saved reports are explicit failures.
+Current target-scoped read authorization continues to apply to every export.
+
+The **investigation** section contains `field`, `part` and `value`. Concatenate
+the ordered parts of each field, notably `notes`, to recover its original text.
+The **saved-evidence** section carries packet identity, observed time, kind,
+visibility, confidence and all source digests/cutoff metadata, followed by
+`part` and `evidenceJson`. Each `evidenceJson` cell is a JSON string: decode it
+as a string, then concatenate the ordered decoded parts for a packet to obtain
+its original evidence JSON. The string envelope prevents a split fragment
+starting with a spreadsheet formula sentinel from being changed by formula
+neutralization. Notes keep their line breaks and Unicode spelling; formula
+sentinels in free text still receive the protective CSV apostrophe.
+
+Parts contain at most 1000 Unicode characters. All cells remain below the
+existing 4096-byte limit; existing row, page, materialization and export limits
+remain in force. Only saved-note value cells permit CR/LF/TAB. HTML is inert
+and displays multiline text, with the existing strict CSP and size bound. A
+large capture can exceed the printable-view bound; the separate CSV exports
+preserve all materialized details and evidence within their larger bound.
+The target report routes now consistently use `no-store`.
+
+The dashboard retains the same report operation on an uncertain outcome and
+offers **Retry report generation**. It verifies the returned target, saved
+revision, kind, version, state, expiry and thread-bound parameter digest before
+showing links to printable HTML, saved details CSV and saved evidence CSV.
+
+Validation on 2026-09-30 passed 16 report/preamble unit checks, nine relevant
+HTTP checks, five affected native PostgreSQL report checks and 17 frontend
+incident/report checks. Native tests use concurrent retries, long Unicode
+notes, more than 200 evidence-part rows, actual source partition retirement,
+historical revisions, missing/conflicting requests, restricted helper/function
+privileges, atomic audit rollback and full CSV-to-JSON reconstruction. The
+three original native report tests still pass through the new entry point.
+The real HTTP pipeline verifies Viewer report creation, escaped HTML, multiline
+CSV, successful export auditing, no-store and invalid parameter rejection.
+TypeScript, the production build and asset verification pass.
+
+A synthetic Viewer browser check simulated a post-commit 503, confirmed two
+identical report request bodies, and then displayed all three export links.
+That fixture checks UI behavior only. The release report certification contract
+and its source pins still cover the original four kinds and must be expanded
+and recertified for the saved-investigation kind; this is not a release-suite
+pass or a complete revamp claim.

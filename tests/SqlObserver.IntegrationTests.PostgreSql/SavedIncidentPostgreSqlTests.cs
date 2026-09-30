@@ -2,6 +2,7 @@ using Npgsql;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Reporting;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
@@ -245,6 +246,93 @@ public sealed class SavedIncidentPostgreSqlTests(PostgreSql18Fixture fixture)
         VALUES(@target,@key,'Saved incident target','sql01',1433,interval '5 seconds','windows_integrated_service_identity',
           'mandatory_validated','active',1,statement_timestamp(),statement_timestamp(),statement_timestamp());
         """,("target",target),("key","saved-incident-"+target.ToString("N")));
+    [Fact]
+    public async Task SavedReportPreservesDurableNotesAndAllJsonPartsAfterSourceExpiry()
+    {
+        await using RepositoryTestDatabase database=await Database(); SaveIncidentRequest request=Request() with
+            {Notes="<script>Plain text</script>\r\n"+new string('界',2000),Title="=Safe investigation"};
+        await Target(database,request.TargetId); await Seed(database,request,3,large:true);
+        await using NpgsqlDataSource server=database.CreateServerDataSource();
+        SavedIncident saved=await new PostgreSqlSavedIncidentPort(server).SaveAsync(request,Actor,Guid.NewGuid(),Timeout,default);
+        await RetireSourcePartitions(database,request.TargetId);
+        await Execute(database,"UPDATE control.observation_target SET revision=2 WHERE instance_id=@target;",("target",request.TargetId));
+        var reports=new PostgreSqlReportRepository(server);
+        var command=new ReportRequest("saved-investigation",Guid.NewGuid(),ThreadId:saved.ThreadId);
+        ReportRun[] concurrent=await Task.WhenAll(reports.CreateAsync(request.TargetId,command,Actor,default).AsTask(),
+            reports.CreateAsync(request.TargetId,command,Actor,default).AsTask());
+        ReportRun run=concurrent[0]; Assert.Equal(run.RunId,concurrent[1].RunId);
+        Assert.Equal(ReportKind.SavedInvestigation,run.Kind); Assert.Equal(1,run.TargetRevision);
+        Assert.Equal(TimeSpan.FromHours(24),run.ExpiresAtUtc-run.SnapshotUtc);
+        Assert.Equal(run.RunId,(await reports.CreateAsync(request.TargetId,command,Actor,default)).RunId);
+        ReportSectionPage metadata=await reports.ReadPageAsync(request.TargetId,run.RunId,"investigation",0,200,default);
+        Assert.Equal(request.Notes,string.Concat(metadata.Rows.Where(row=>row.Values["field"]=="notes").Select(row=>row.Values["value"])));
+        var evidence=new List<ReportRow>(); long after=0;
+        while(true)
+        {
+            var page=await reports.ReadPageAsync(request.TargetId,run.RunId,"saved-evidence",after,200,default);
+            evidence.AddRange(page.Rows); if(!page.HasMore)break; after=page.Rows[^1].Ordinal;
+        }
+        Assert.True(evidence.Count>200);
+        foreach(var packet in saved.Evidence)
+        {
+            string raw=string.Concat(evidence.Where(row=>row.Values["packetId"]==packet.PacketId.ToString("D"))
+                .Select(row=>System.Text.Json.JsonSerializer.Deserialize<string>(row.Values["evidenceJson"]!)));
+            using var parsed=System.Text.Json.JsonDocument.Parse(raw);
+            Assert.Equal(packet.Evidence.GetRawText(),parsed.RootElement.GetRawText());
+        }
+        Assert.Equal(saved.Evidence.Count,evidence.Select(row=>row.Values["packetId"]).Distinct().Count());
+        Assert.All(evidence,row=>Assert.All(row.Values.Values,value=>Assert.True(value is null||System.Text.Encoding.UTF8.GetByteCount(value)<=4096)));
+        var definition=ReportCatalog.Get(ReportKind.SavedInvestigation);
+        string csv=System.Text.Encoding.UTF8.GetString(ReportRenderer.RenderCsv(definition,definition.Sections[1],evidence));
+        using(var parser=new Microsoft.VisualBasic.FileIO.TextFieldParser(new StringReader(csv)))
+        {
+            parser.TextFieldType=Microsoft.VisualBasic.FileIO.FieldType.Delimited;
+            parser.SetDelimiters(",");parser.HasFieldsEnclosedInQuotes=true;parser.TrimWhiteSpace=false;
+            Assert.Equal("evidenceJson",parser.ReadFields()![11]);
+            var payloads=new Dictionary<string,List<string>>();
+            while(!parser.EndOfData)
+            {
+                string[] values=parser.ReadFields()!;
+                if(!payloads.TryGetValue(values[0],out var parts))payloads[values[0]]=parts=[];
+                parts.Add(System.Text.Json.JsonSerializer.Deserialize<string>(values[11])!);
+            }
+            foreach(var packet in saved.Evidence)
+                Assert.Equal(packet.Evidence.GetRawText(),string.Concat(payloads[packet.PacketId.ToString("D")]));
+        }
+        Assert.Equal(1L,await Scalar(database,"SELECT count(*) FROM audit.report_activity WHERE activity_kind='create' AND outcome='accepted';"));
+        await Assert.ThrowsAsync<PostgresException>(()=>reports.CreateAsync(request.TargetId,command,"S-1-5-21-1002",default).AsTask());
+        await Assert.ThrowsAsync<PostgresException>(()=>reports.CreateAsync(request.TargetId,command with {ThreadId=Guid.NewGuid()},Actor,default).AsTask());
+        await Assert.ThrowsAsync<KeyNotFoundException>(()=>reports.CreateAsync(request.TargetId,command with {OperationId=Guid.NewGuid(),ThreadId=Guid.NewGuid()},Actor,default).AsTask());
+    }
+
+    [Fact]
+    public async Task SavedReportAuditFailureRollsBackAndLegacyProducerRejectsSavedKind()
+    {
+        await using RepositoryTestDatabase database=await Database(); SaveIncidentRequest request=Request(); await Target(database,request.TargetId);
+        await using NpgsqlDataSource server=database.CreateServerDataSource();
+        SavedIncident saved=await new PostgreSqlSavedIncidentPort(server).SaveAsync(request,Actor,Guid.NewGuid(),Timeout,default);
+        await Execute(database,"""
+            CREATE FUNCTION public.reject_saved_report_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN IF NEW.activity_kind='create' THEN RAISE EXCEPTION 'test report audit unavailable'; END IF; RETURN NEW; END $$;
+            CREATE TRIGGER reject_saved_report_audit BEFORE INSERT ON audit.report_activity FOR EACH ROW EXECUTE FUNCTION public.reject_saved_report_audit();
+            """);
+        var reports=new PostgreSqlReportRepository(server);
+        await Assert.ThrowsAsync<PostgresException>(()=>reports.CreateAsync(request.TargetId,new("saved-investigation",Guid.NewGuid(),ThreadId:saved.ThreadId),Actor,default).AsTask());
+        Assert.Equal(0L,await Scalar(database,"SELECT count(*) FROM reporting.report_run;"));
+        Assert.Equal(0L,await Scalar(database,"SELECT count(*) FROM reporting.report_section_row;"));
+        await using NpgsqlConnection connection=await server.OpenConnectionAsync(); await Scope(connection,request.TargetId);
+        await using var invalid=new NpgsqlCommand("SELECT reporting.create_report_run(@target,'saved-investigation',gen_random_uuid(),@actor,clock_timestamp()-interval '1 hour',clock_timestamp(),decode(repeat('00',32),'hex'));",connection);
+        invalid.Parameters.AddWithValue("target",request.TargetId); invalid.Parameters.AddWithValue("actor",Actor);
+        Assert.Equal("22023",(await Assert.ThrowsAsync<PostgresException>(()=>invalid.ExecuteScalarAsync())).SqlState);
+        Assert.Equal(0L,await Scalar(database,"""
+            SELECT count(*) FROM pg_proc p WHERE p.oid='reporting.create_saved_investigation_report(uuid,uuid,uuid,text,bytea)'::regprocedure
+            AND (pg_get_userbyid(p.proowner)<>'sqlobserver_migrator' OR NOT p.prosecdef
+              OR has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE') OR has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE')
+              OR EXISTS(SELECT FROM aclexplode(p.proacl) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE'));
+            """));
+        invalid.CommandText="SELECT reporting.create_window_report_run(@target,'saved-investigation',gen_random_uuid(),@actor,clock_timestamp()-interval '1 hour',clock_timestamp(),decode(repeat('00',32),'hex'));";
+        Assert.Equal("42501",(await Assert.ThrowsAsync<PostgresException>(()=>invalid.ExecuteScalarAsync())).SqlState);
+    }
     private static Task Seed(RepositoryTestDatabase database,SaveIncidentRequest request,int count,int offset=0,bool large=false) => Execute(database,"""
         INSERT INTO analytics.evidence_packet_v2(occurred_at,packet_id,instance_id,target_revision,evidence_kind,
             source_digest,identity_digest,source_cutoff_digest,evidence,confidence,visibility_state)

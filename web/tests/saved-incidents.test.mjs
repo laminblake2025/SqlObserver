@@ -11,6 +11,7 @@ import { getSavedIncident, listSavedIncidents, saveIncident, IncidentRequestErro
 import { canSaveIncident } from "../src/features/targets/meApi.ts";
 import { readOverviewScope, overviewWindow } from "../src/features/overview/overviewModel.ts";
 import { clearApiCache } from "../src/apiClient.ts";
+import { createSavedInvestigationReport } from "../src/features/incidents/savedIncidentReportApi.ts";
 
 const target="11111111-1111-4111-8111-111111111111",thread="22222222-2222-4222-8222-222222222222",operation="33333333-3333-4333-8333-333333333333";
 const window={ fromUtc:"2026-09-29T12:00:00.000001Z",toUtc:"2026-09-29T13:00:00.000002Z" };
@@ -128,7 +129,12 @@ async function compile(name,replacements={}) {
     javascript=javascript.replaceAll(JSON.stringify(from),JSON.stringify(to));
   return `data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`;
 }
-const viewUrl=await compile("SavedIncidentView"); const {SavedIncidentView}=await import(viewUrl);
+const reportActionsUrl=await compile("SavedIncidentReportActions",{
+  "./incidentApi.ts":new URL("../src/features/incidents/incidentApi.ts",import.meta.url).href,
+  "./savedIncidentReportApi.ts":new URL("../src/features/incidents/savedIncidentReportApi.ts",import.meta.url).href,
+  "../reports/reportsApi.ts":new URL("../src/features/reports/reportsApi.ts",import.meta.url).href,
+});
+const viewUrl=await compile("SavedIncidentView",{"./SavedIncidentReportActions.tsx":reportActionsUrl}); const {SavedIncidentView}=await import(viewUrl);
 const listUrl=await compile("SavedIncidentList",{
   "./incidentApi.ts":new URL("../src/features/incidents/incidentApi.ts",import.meta.url).href,
   "./incidentModel.ts":new URL("../src/features/incidents/incidentModel.ts",import.meta.url).href,
@@ -145,8 +151,27 @@ test("rendered investigations escape notes and evidence and explain empty, parti
   const html=render(parseSavedIncident(fixture(),target));
   assert.match(html,/&lt;script&gt;Plain text/); assert.doesNotMatch(html,/<script>/); assert.doesNotMatch(html,/<img /);
   assert.match(html,/partial or unavailable coverage/); assert.match(html,/Confidence Unknown/);
+  assert.match(html,/Generate investigation report/);
   const empty=render({ ...parseSavedIncident(fixture(),target),evidence:[] }); assert.match(empty,/does not mean the server was healthy/);
   const truncated=render({ ...parseSavedIncident(fixture(),target),evidenceTruncated:true }); assert.match(truncated,/not the entire window/);
+});
+
+test("saved report generation binds the thread receipt and retries an identical operation",async()=>{
+  const saved=parseSavedIncident(fixture(),target),requests=[];
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify({reportKind:"saved-investigation",threadId:thread})));
+  const parameterDigest=Array.from(new Uint8Array(digest),value=>value.toString(16).padStart(2,"0")).join("");
+  const receipt={runId:operation,targetId:target,targetRevision:7,kind:4,definitionVersion:1,snapshotUtc:"2026-09-29T15:00:00Z",expiresAtUtc:"2026-09-30T15:00:00Z",parameterDigest,state:"finalized"};
+  await withFetch(async(url,options)=>{requests.push({url,options});return requests.length===1?new Response(null,{status:503}):new Response(JSON.stringify(receipt));},async()=>{
+    await assert.rejects(()=>createSavedInvestigationReport(saved,operation,new AbortController().signal),error=>error instanceof IncidentRequestError&&error.retryable);
+    assert.equal((await createSavedInvestigationReport(saved,operation,new AbortController().signal)).runId,operation);
+    assert.equal(requests[0].options.body,requests[1].options.body);
+    assert.deepEqual(JSON.parse(requests[1].options.body),{reportKind:"saved-investigation",operationId:operation,threadId:thread});
+    assert.equal(requests[1].options.cache,"no-store");
+  });
+  for(const changed of [{targetId:thread},{targetRevision:8},{kind:2},{parameterDigest:"0".repeat(64)},{expiresAtUtc:"2026-09-30T15:00:00.000001Z"}])
+    await withFetch(async()=>new Response(JSON.stringify({...receipt,...changed})),async()=>{
+      await assert.rejects(()=>createSavedInvestigationReport(saved,operation,new AbortController().signal),error=>error instanceof IncidentRequestError&&error.retryable);
+    });
 });
 
 test("rendered workspace gates save actions and handles invalid selection without a read",()=>{

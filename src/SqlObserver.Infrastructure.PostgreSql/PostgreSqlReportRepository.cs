@@ -16,6 +16,11 @@ public sealed class PostgreSqlReportRepository(NpgsqlDataSource dataSource) : IR
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(operationToken).ConfigureAwait(false);
         await SetScopeAsync(connection, transaction, targetId, operationToken).ConfigureAwait(false);
         await using var command = new NpgsqlCommand("SELECT run_id,target_revision,definition_version,snapshot_utc,expires_at_utc,state FROM reporting.create_report_run(@target,@kind,@operation,@actor,@from_utc,@to_utc,@digest);", connection, transaction) { CommandTimeout = 5 };
+        if (request.ParsedKind == ReportKind.SavedInvestigation)
+        {
+            command.CommandText = "SELECT * FROM reporting.create_saved_investigation_report(@target,@thread,@operation,@actor,@digest);";
+            command.Parameters.AddWithValue("thread", NpgsqlTypes.NpgsqlDbType.Uuid, (object?)request.ThreadId ?? DBNull.Value);
+        }
         command.Parameters.AddWithValue("target", targetId); command.Parameters.AddWithValue("kind", request.ReportKind); command.Parameters.AddWithValue("operation", request.OperationId); command.Parameters.AddWithValue("actor", actorSid); command.Parameters.AddWithValue("from_utc", (object?)request.FromUtc ?? DBNull.Value); command.Parameters.AddWithValue("to_utc", (object?)request.ToUtc ?? DBNull.Value); command.Parameters.AddWithValue("digest", digest);
         NpgsqlDataReader reader;
         try { reader = await command.ExecuteReaderAsync(operationToken).ConfigureAwait(false); }

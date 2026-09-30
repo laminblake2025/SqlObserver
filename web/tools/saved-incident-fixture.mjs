@@ -1,6 +1,6 @@
 // Loopback-only synthetic UI exercise. This is not an authorization/storage test.
-import { randomUUID } from "node:crypto";
-const saved=new Map(); const observations=[]; const listCursors=new Map();
+import { randomUUID,createHash } from "node:crypto";
+const saved=new Map(); const observations=[]; const listCursors=new Map(); const reports=new Map();
 const send=(response,value,status=200)=>{response.writeHead(status,{"content-type":"application/json","cache-control":"no-store"});response.end(JSON.stringify(value));};
 const cookie=(request,key)=>request.headers.cookie?.split(";").map(value=>value.trim()).find(value=>value.startsWith(`${key}=`))?.slice(key.length+1);
 
@@ -25,6 +25,32 @@ export async function handleSavedIncidentFixture(url,response,request,targets) {
   if (url.pathname==="/api/v1/me") {
     const targetId=url.searchParams.get("targetId");const roles=cookie(request,"incidentRole")==="operator"?["Viewer","Operator"]:["Viewer"];
     send(response,{active:true,targetId,grantedRoles:roles,allTargetRoles:roles,targetRoles:targetId?roles:[]});return true;
+  }
+  const reportRoute=/^\/api\/v1\/observation-targets\/([^/]+)\/reports(?:\/([^/]+)\/(html|investigation\.csv|saved-evidence\.csv))?\/?$/.exec(url.pathname);
+  if(reportRoute){
+    const targetId=reportRoute[1];
+    if(request.method==="POST"&&!reportRoute[2]){
+      let body="";for await(const chunk of request){body+=chunk.toString("utf8");if(Buffer.byteLength(body)>16384){send(response,{},413);return true;}}
+      const command=JSON.parse(body);observations.push({kind:"report",targetId,body});
+      const existing=reports.get(command.operationId);
+      if(existing){send(response,existing.run,existing.body===body&&existing.run.targetId===targetId?200:409);return true;}
+      const incident=[...saved.values()].find(value=>value.result.targetId===targetId&&value.result.threadId===command.threadId)?.result;
+      if(!incident||command.reportKind!=="saved-investigation"){send(response,{},404);return true;}
+      const at=new Date(),run={runId:randomUUID(),targetId,targetRevision:incident.targetRevision,kind:4,definitionVersion:1,
+        snapshotUtc:at.toISOString(),expiresAtUtc:new Date(at.getTime()+86400000).toISOString(),state:"finalized",
+        parameterDigest:createHash("sha256").update(JSON.stringify({reportKind:"saved-investigation",threadId:incident.threadId.toLowerCase()})).digest("hex")};
+      reports.set(command.operationId,{body,run,incident});
+      const uncertain=cookie(request,"incidentMode")==="uncertain";send(response,uncertain?{}:run,uncertain?503:200);return true;
+    }
+    const record=[...reports.values()].find(value=>value.run.targetId===targetId&&value.run.runId===reportRoute[2]);
+    if(request.method!=="GET"||!record){send(response,{},404);return true;}
+    if(reportRoute[3]==="html"){
+      const escape=value=>String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+      response.writeHead(200,{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; base-uri 'none'; frame-ancestors 'none'"});
+      response.end(`<!doctype html><title>Synthetic saved report</title><h1>${escape(record.incident.title)}</h1><pre>${escape(record.incident.notes)}</pre><p>SYNTHETIC export UI fixture</p>`);return true;
+    }
+    response.writeHead(200,{"content-type":"text/csv; charset=utf-8","cache-control":"no-store"});
+    response.end('"field","part","value"\r\n"fixture","1","SYNTHETIC export UI fixture"\r\n');return true;
   }
   const route=/^\/api\/v1\/observation-targets\/([^/]+)\/incidents\/saved(?:\/([^/]+))?\/?$/.exec(url.pathname);
   if (!route) return false;

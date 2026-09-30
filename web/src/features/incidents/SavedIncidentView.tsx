@@ -1,4 +1,5 @@
 import type { SavedIncident } from "./incidentModel.ts";
+import { SavedIncidentReportActions } from "./SavedIncidentReportActions.tsx";
 
 export function SavedIncidentView({ incident, formatTime, href, onClose }: {
   readonly incident: SavedIncident; readonly formatTime: (value: string) => string;
@@ -20,5 +21,6 @@ export function SavedIncidentView({ incident, formatTime, href, onClose }: {
       <p>Source digest: <code>{packet.sourceSha256}</code></p>
       <pre>{JSON.stringify(packet.evidence,null,2)}</pre>
     </details>)}
+    <SavedIncidentReportActions key={`${incident.targetId}:${incident.threadId}`} incident={incident} formatTime={formatTime}/>
   </section>;
 }
