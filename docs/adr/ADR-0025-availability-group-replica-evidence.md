@@ -97,6 +97,21 @@ includes the expanded snapshot envelope. Focused tests exercise these
 boundaries, cancellation and malformed input. The active v1 validator still
 rejects this v2 snapshot; no collector registration or writer is activated.
 
+Forward migration 0265 stages a private version-2 fenced commit and a separate
+.NET persistence route. The commit verifies the exact JSON shape, replica and
+database relationships, coverage, row/byte bounds, lease/run/schedule identity,
+and circuit transitions. PostgreSQL computes and verifies the canonical payload
+digest; identical retries replay and changed payloads fail. Snapshot rows,
+completion accounting, visibility gaps and schedule advancement commit together.
+Failed and rejected output never becomes replica evidence. The PostgreSQL 18
+fixture exercises primary faults and NULLs, secondary coverage, row and byte
+truncation, no-data and failure receipts, divergent replay, malformed payloads,
+stale fences and rollback when the database partition is absent. The existing
+version-1 AG commit regression also passes. Fixture-only contracts and manually
+created partitions test this private boundary; they do not qualify production
+activation. Collector/server/auditor execution remains revoked until partition
+maintenance, retention and the versioned catalog gate are installed.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.
