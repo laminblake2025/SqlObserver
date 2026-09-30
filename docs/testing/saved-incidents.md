@@ -1,8 +1,8 @@
 # Saved incident storage and API
 
-This is the storage/API stage of the plan's **Open incident** workflow. The
-dashboard action, saved-investigation browsing and report/export integration
-remain to be implemented. Analytics-generated incidents continue to work.
+The plan's **Open incident** workflow now has storage, an API and a dashboard
+action. Saved-investigation browsing and report/export integration remain to
+be implemented. Analytics-generated incidents continue to work.
 
 ## Contract
 
@@ -64,3 +64,39 @@ counts and the digest, excluding plaintext titles, notes and source evidence.
 These **21 focused tests** passed. Native tests used disposable PostgreSQL 18.4;
 no SQL Server collector changes required a VM run. No full release-suite claim
 is made by this validation.
+
+## Dashboard workflow and validation
+
+Operators and TargetAdministrators see **Open incident** on the server
+dashboard. Opening the draft freezes its concrete window and server revision;
+changing the shared range or refreshing live charts does not move that draft.
+The save command is immutable once dispatched. An uncertain result locks the
+title and notes and offers **Retry same save**, preserving the operation ID and
+exact request body. Closing an unverified draft does not undo an operation that
+may have committed. A conflicting or invalid result is never shown as success.
+
+Confirmed saves open a URL containing the target, saved window and incident
+selection. Reloading the URL reads the durable snapshot. Monitoring readers
+can reopen the investigation; saving still requires the matching mutation role.
+Notes and evidence render as text. Empty, truncated and partial captures explain
+their limits rather than implying healthy or complete coverage.
+
+The shared custom-window helper preserves PostgreSQL microsecond precision in
+UTC URLs. Ordinary millisecond and local time controls retain their display
+behavior. Tests include equivalent `Z`/`+00:00` receipt timestamps and a window
+only one microsecond wide.
+
+The frontend validation passed **114 related tests**, including 11 new runtime
+and rendered-component tests for the incident flow. TypeScript checking, the
+production build and asset-manifest verification passed. A synthetic loopback
+browser exercise on port 4187 verified a frozen draft across a range change,
+locked inputs after a simulated post-commit 503, two identical request bodies,
+successful retry, URL reload, escaped notes, and a Viewer reading the result
+without a save action. This browser fixture validates UI behavior; the native
+PostgreSQL tests above establish storage and authorization behavior separately.
+
+The synthetic handler is isolated in `web/tools/saved-incident-fixture.mjs` and
+the Overview fixture. It is never imported by production code. For visual QA,
+run the existing `pnpm run fixture:overview` script after building; the default
+port remains 4185 and `SQLOBSERVER_OVERVIEW_FIXTURE_PORT` selects another loopback
+port. `/__incident_fixture?role=operator&mode=uncertain` selects the retry case.

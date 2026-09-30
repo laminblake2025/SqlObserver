@@ -26,7 +26,7 @@ import { ReportsPanel } from "./features/reports/ReportsPanel";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
 import { ServersPage } from "./features/targets/ServersPage";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
-import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
+import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { activityHistoryHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
@@ -314,7 +314,7 @@ export function App() {
 
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
-              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={route.databaseId} canManageConfiguration={canManageRules} />}
+              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={route.databaseId} canManageConfiguration={canManageRules} canSaveIncident={canSaveIncident(myAccess,props.instanceId)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}

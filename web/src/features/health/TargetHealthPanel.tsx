@@ -71,9 +71,12 @@ export interface TargetHealthPanelProps {
   readonly blockingRefresh: number;
   readonly selectedDatabaseId?: number;
   readonly canManageConfiguration: boolean;
+  readonly canSaveIncident: boolean;
+  readonly targetRevision: number;
+  readonly selectionHash: string;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, canManageConfiguration }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, canManageConfiguration, canSaveIncident, targetRevision, selectionHash }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const [evidence, setEvidence] = useState<TargetHealthEvidence>();
   const [message, setMessage] = useState<string>();
@@ -116,6 +119,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
   return (
     <section className="health-screen" aria-labelledby="health-heading">
       <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
+        canSaveIncident={canSaveIncident} targetRevision={targetRevision} selectionHash={selectionHash}
         blockingRefresh={blockingRefresh}
         configurationCollectorState={snapshot?.instanceId.toLowerCase() === instanceId.toLowerCase()
           ? snapshot.collectors.find(item => item.collectorId === "engine.configurations")?.state : undefined} />

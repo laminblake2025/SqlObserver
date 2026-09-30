@@ -3,11 +3,13 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
 import {overviewBackupFixture} from './overview-backup-fixture.mjs';
+import {handleSavedIncidentFixture} from './saved-incident-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ if(await handleSavedIncidentFixture(url,res,req,targets))return;
  if(url.pathname==='/__fixture') {const mode=url.searchParams.get('mode');if(!['empty','partial','error','loading','ready','backup-expiry'].includes(mode))return send(res,{},400);res.writeHead(302,{'set-cookie':`overviewMode=${mode}; SameSite=Strict; Path=/`,location:'/'});res.end();return;}
  if(url.pathname==='/api/v1/observation-targets')return send(res,{items:targets,nextCursor:null});
  if(/^\/api\/v1\/observation-targets\/[^/]+\/health\/files$/.test(url.pathname)){
@@ -47,4 +49,4 @@ createServer(async(req,res)=>{try{
  if(url.pathname.startsWith('/api/'))return send(res,{},404);
  const path=resolve(root,url.pathname==='/'?'index.html':url.pathname.slice(1));if(!path.startsWith(root+sep))return send(res,{},404);
  const body=await readFile(path);res.writeHead(200,{'content-type':{'.html':'text/html','.js':'text/javascript','.css':'text/css'}[extname(path)]??'application/octet-stream'});res.end(body);
-}catch{send(res,{},500);}}).listen(4185,'127.0.0.1',()=>console.log('Synthetic Overview QA at http://127.0.0.1:4185'));
+}catch{send(res,{},500);}}).listen(Number(process.env.SQLOBSERVER_OVERVIEW_FIXTURE_PORT??4185),'127.0.0.1',()=>console.log('Synthetic Overview QA (loopback only)'));

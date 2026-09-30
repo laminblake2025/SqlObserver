@@ -56,6 +56,10 @@ export function canManageAlertRules(access: MyAccess | undefined, targetId: stri
     && access.targetRoles.includes("TargetAdministrator");
 }
 
+export function canSaveIncident(access: MyAccess | undefined, targetId: string): boolean {
+  return canAcknowledgeAlert(access,targetId);
+}
+
 export function canManageBackupPolicies(access: MyAccess | undefined, targetId: string): boolean {
   return access?.active === true && access.targetId?.toLowerCase() === targetId.toLowerCase()
     && access.targetRoles.includes("TargetAdministrator");

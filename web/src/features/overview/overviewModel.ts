@@ -1,4 +1,5 @@
 import type { OverviewEvidence, OverviewResource, OverviewScope, OverviewValue, OverviewSnapshot } from './overviewTypes';
+import { canonicalUtcTimestamp, utcMicroseconds } from '../../utcTimestamp.ts';
 
 export function readOverviewScope(hash: string): OverviewScope {
   const params = new URLSearchParams(hash.split('?')[1]);
@@ -27,8 +28,14 @@ export function backupAssessmentHref(scope: OverviewScope, target: string, asses
 export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: string; toUtc: string} {
   const end = scope.range === 'custom' ? Date.parse(scope.to ?? '') : now;
   const start = scope.range === 'custom' ? Date.parse(scope.from ?? '') : end - ({'1h': 1, '6h': 6, '24h': 24, '7d': 168}[scope.range]) * 3600000;
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end || end - start > 31 * 86400000 || end > now + 60000) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
-  return {fromUtc:new Date(start).toISOString(), toUtc:new Date(end).toISOString()};
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(now)) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
+  const boundary=(input:string|undefined,milliseconds:number) => {
+    try { return { value: utcMicroseconds(input), text: canonicalUtcTimestamp(input!) }; }
+    catch { return { value: BigInt(Math.trunc(milliseconds))*1000n, text: new Date(milliseconds).toISOString() }; }
+  };
+  const from=boundary(scope.range==='custom'?scope.from:undefined,start),to=boundary(scope.range==='custom'?scope.to:undefined,end);
+  if (from.value>=to.value || to.value-from.value>31n*86400n*1000000n || to.value>BigInt(Math.trunc(now+60000))*1000n) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
+  return {fromUtc:from.text,toUtc:to.text};
 }
 export function customUtcWindow(from:string,to:string,now:number,maximumDays=31): {fromUtc:string;toUtc:string} {
   const parse=(value:string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value) ? Date.parse(`${value}Z`) : NaN;
