@@ -119,7 +119,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
   return (
     <section className="health-screen" aria-labelledby="health-heading">
       <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
-        canSaveIncident={canSaveIncident} targetRevision={targetRevision} selectionHash={selectionHash}
+        canSaveIncident={canSaveIncident} targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
         blockingRefresh={blockingRefresh}
         configurationCollectorState={snapshot?.instanceId.toLowerCase() === instanceId.toLowerCase()
           ? snapshot.collectors.find(item => item.collectorId === "engine.configurations")?.state : undefined} />

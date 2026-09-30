@@ -1,0 +1,82 @@
+import type { Baseline } from "../analytics/analyticsTypes";
+import type { AlertRuleAdminItem } from "../alerts/alertRuleAdminApi.ts";
+import type { OverviewSeries } from "./overviewTypes";
+
+export interface ChartBaselineBand {
+  readonly targetId: string; readonly metric: string; readonly dimension: string | null; readonly unit: string;
+  readonly fromUtc: string; readonly toUtc: string; readonly low: number; readonly high: number; readonly median: number;
+  readonly label: string;
+}
+export interface ChartThreshold {
+  readonly targetId: string; readonly metric: string; readonly unit: string; readonly value: number;
+  readonly label: string;
+}
+export interface ChartReferences { readonly bands: readonly ChartBaselineBand[]; readonly thresholds: readonly ChartThreshold[]; }
+
+const gib = 1073741824;
+const units: Readonly<Record<string, { unit: string; scale: number }>> = {
+  "engine.batch_requests_per_second": { unit: "batches/sec", scale: 1 },
+  "engine.user_connections": { unit: "connections", scale: 1 },
+  "engine.sql_scheduler_cpu_percent": { unit: "%", scale: 1 },
+  "engine.scheduler_runnable_tasks": { unit: "tasks", scale: 1 },
+  "engine.memory_grants_pending": { unit: "grants", scale: 1 },
+  "engine.process_physical_memory_bytes": { unit: "GiB", scale: gib },
+  "engine.os_available_memory_bytes": { unit: "GiB", scale: gib },
+  "host.memory.available_bytes": { unit: "GiB", scale: gib },
+};
+export function ruleThresholds(targetId: string, rules: readonly AlertRuleAdminItem[]): readonly ChartThreshold[] {
+  return rules.flatMap(rule => {
+    const conversion = rule.metricId ? units[rule.metricId] : undefined;
+    if (!rule.enabled || rule.kind !== "metric_threshold" || !conversion) return [];
+    return [{ targetId, metric: rule.metricId!, unit: conversion.unit, value: rule.threshold / conversion.scale,
+      label: `Current rule: ${rule.name} · ${rule.comparison.replaceAll("_", " ")} · revision ${rule.revision}` }];
+  });
+}
+
+// This is a source-history comparison, not proof that the baseline existed at Rewind time.
+export function baselineLookupWindow(fromUtc: string): { fromUtc: string; toUtc: string } {
+  const start = Date.parse(fromUtc);
+  if (!Number.isFinite(start)) throw new Error("Invalid baseline comparison window.");
+  // BaselineV1 uses the preceding 28 complete UTC days. Select that exact
+  // source window instead of mixing daily generations in the 200-row API.
+  const cutoff = Math.floor(start / 86400000) * 86400000;
+  return { fromUtc: new Date(cutoff - 28 * 86400000).toISOString(), toUtc: new Date(cutoff).toISOString() };
+}
+export function memoryBaselineBands(targetId: string, rows: readonly Baseline[], fromUtc: string, toUtc: string): readonly ChartBaselineBand[] {
+  const from = Date.parse(fromUtc), to = Date.parse(toUtc);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 31 * 86400000) throw new Error("Invalid chart window.");
+  // The old listing contract has no cursor. A full page may omit hours or dimensions.
+  if (rows.length >= 200) throw new Error("Baseline listing reached its limit. Narrow the comparison source window.");
+  const candidates = rows.filter(row => row.metricKey === "host.memory.available_bytes" && row.dimensions !== undefined
+    && Object.keys(row.dimensions).length === 0 && row.windowStartUtc && row.windowEndUtc
+    && Date.parse(row.windowEndUtc) <= from && Date.parse(row.windowEndUtc) > Date.parse(row.windowStartUtc)
+    && row.visibilityState === "complete" && row.sampleCount > 0 && row.completeDays > 0
+    && row.median !== null && row.p10 !== null && row.p90 !== null
+    && Number.isFinite(row.median) && Number.isFinite(row.p10) && Number.isFinite(row.p90)
+    && row.p10 <= row.median && row.median <= row.p90);
+  const latest = [...candidates].sort((a, b) => Date.parse(b.windowEndUtc!) - Date.parse(a.windowEndUtc!) || (b.generation ?? 0) - (a.generation ?? 0))[0];
+  if (!latest) return [];
+  const byHour = new Map<number, Baseline>();
+  for (const row of candidates.filter(row => row.windowStartUtc === latest.windowStartUtc && row.windowEndUtc === latest.windowEndUtc && row.generation === latest.generation)) {
+    if (byHour.has(row.hourOfWeek)) throw new Error("Baseline evidence repeats an hourly reference.");
+    byHour.set(row.hourOfWeek, row);
+  }
+  const bands: ChartBaselineBand[] = [];
+  for (let at = Math.floor(from / 3600000) * 3600000; at < to; at += 3600000) {
+    const date = new Date(at), row = byHour.get(date.getUTCDay() * 24 + date.getUTCHours());
+    if (!row) continue;
+    bands.push({ targetId, metric: "host.memory.available_bytes", dimension: null, unit: "GiB",
+      fromUtc: new Date(Math.max(from, at)).toISOString(), toUtc: new Date(Math.min(to, at + 3600000)).toISOString(),
+      low: row.p10! / gib, high: row.p90! / gib, median: row.median! / gib,
+      label: `Collector-host memory baseline · p10–p90 · UTC hour ${row.hourOfWeek} · ${row.sampleCount} samples · coverage ${Math.round(row.coverage * 100)}% · confidence ${Math.round(row.confidence * 100)}% · source ${row.windowStartUtc} to ${row.windowEndUtc} · generation ${row.generation}` });
+  }
+  return bands;
+}
+export function matchingReferences(series: readonly OverviewSeries[], references?: ChartReferences): ChartReferences {
+  const matches = (reference: ChartThreshold | ChartBaselineBand) => series.some(item => item.targetId.toLowerCase() === reference.targetId.toLowerCase()
+    && item.metric === reference.metric && item.unit === reference.unit
+    && (!("dimension" in reference) || reference.dimension === null || item.dimension === reference.dimension));
+  return { bands: (references?.bands ?? []).filter(reference => matches(reference) && Number.isFinite(reference.low) && Number.isFinite(reference.high)
+    && Number.isFinite(reference.median) && reference.low <= reference.median && reference.median <= reference.high),
+  thresholds: (references?.thresholds ?? []).filter(reference => matches(reference) && Number.isFinite(reference.value)) };
+}

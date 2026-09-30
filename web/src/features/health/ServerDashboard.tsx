@@ -15,8 +15,9 @@ import { IncidentWorkspace } from "../incidents/IncidentWorkspace.tsx";
 import { useAgentHistory } from "../operations/useAgentHistory.ts";
 import { healthCheckHref } from "../operations/agentHistoryModel.ts";
 import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx";
+import { useChartReferences } from "../overview/useChartReferences.ts";
 
-export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, canSaveIncident, targetRevision, selectionHash }: {
+export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, canSaveIncident, targetRevision, selectionHash, canReadRules }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly scope: OverviewScope;
@@ -26,6 +27,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   readonly canSaveIncident: boolean;
   readonly targetRevision: number;
   readonly selectionHash: string;
+  readonly canReadRules: boolean;
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
@@ -37,6 +39,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data) : [];
   const agentHistory = useAgentHistory(instanceId, targetRevision, data && evidence ? data : undefined, refresh);
+  const chartReferences = useChartReferences(instanceId, targetRevision, data && evidence ? data : undefined, canReadRules, refresh);
   const [optionEvents, setOptionEvents] = useState<DatabaseOptionChangeResult>();
   const [optionEventError, setOptionEventError] = useState(false);
   const [configurationEvents, setConfigurationEvents] = useState<ServerConfigurationChangeResult>();
@@ -167,6 +170,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       fromUtc={data!.fromUtc}
       toUtc={data!.toUtc}
       markers={markers}
+      references={chartReferences.references}
       crosshairUtc={crosshairUtc}
       onCrosshairChange={setCrosshairUtc}
       onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }}
@@ -231,6 +235,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
           <OverviewChart
             series={memorySeries(evidence)}
             previous={memorySeries(previous)}
+            references={chartReferences.references}
             fromUtc={data.fromUtc}
             toUtc={data.toUtc}
             markers={markers}
@@ -242,6 +247,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         </section>
       </div>
       <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={blockingRefresh} />
+      <p className="activity-evidence">{chartReferences.baselineStatus}</p>
+      <p className="activity-evidence">{chartReferences.ruleStatus}</p>
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       <p className="activity-evidence">{overviewEvidenceFooter(data, timeLabel)}</p>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}

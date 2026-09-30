@@ -5,11 +5,13 @@ import {resolve,extname,sep} from 'node:path';
 import {overviewBackupFixture} from './overview-backup-fixture.mjs';
 import {handleSavedIncidentFixture} from './saved-incident-fixture.mjs';
 import {handleAgentHistoryFixture} from './agent-history-fixture.mjs';
+import {handleChartReferenceFixture} from './chart-reference-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ if(await handleChartReferenceFixture(url,res,req,targets,send))return;
  if(await handleSavedIncidentFixture(url,res,req,targets))return;
  if(await handleAgentHistoryFixture(url,res,targets,send))return;
  if(url.pathname==='/__fixture') {const mode=url.searchParams.get('mode');if(!['empty','partial','error','loading','ready','backup-expiry'].includes(mode))return send(res,{},400);res.writeHead(302,{'set-cookie':`overviewMode=${mode}; SameSite=Strict; Path=/`,location:'/'});res.end();return;}

@@ -23,6 +23,16 @@ export const getIncidents = <T = Record<string, unknown>>(targetId: string, sign
 export const getEvidencePackets = <T = Record<string, unknown>>(targetId: string, signal: AbortSignal, options?: Parameters<typeof getAnalyticsSurface>[3]) => getAnalyticsSurface<T>(targetId, "evidence-packets", signal, options);
 export async function compareAnalytics(targetId: string, metricKey: string, windows: { leftFromUtc: string; leftToUtc: string; rightFromUtc: string; rightToUtc: string }, signal: AbortSignal): Promise<AnalyticsComparison> { const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/compare?${query({ metricKey, ...windows })}`, signal); return parseComparison(result, targetId); }
 export async function getBaselines(targetId: string, metricKey: string, signal: AbortSignal): Promise<readonly import("./analyticsTypes").Baseline[]> { const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/baselines?${query({ metricKey, limit: 200 })}`, signal); return parseBaselines(result, targetId); }
+export async function getBaselineWindow(targetId: string, metricKey: string, window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal): Promise<readonly import("./analyticsTypes").Baseline[]> {
+  const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/baselines?${query({ metricKey, ...window, limit: 200 })}`, signal);
+  const rows = parseBaselines(result, targetId);
+  const envelope = result as { metricKey: string; fromUtc: string; toUtc: string };
+  if (envelope.metricKey !== metricKey || Date.parse(envelope.fromUtc) !== Date.parse(window.fromUtc) || Date.parse(envelope.toUtc) !== Date.parse(window.toUtc)
+    || rows.some(row => row.metricKey !== metricKey || !row.windowStartUtc || !row.windowEndUtc
+      || Date.parse(row.windowStartUtc) < Date.parse(window.fromUtc) || Date.parse(row.windowEndUtc) > Date.parse(window.toUtc)))
+    throw new Error("Baseline evidence does not match the requested metric or window.");
+  return rows;
+}
 export async function getForecasts(targetId: string, metricKey: string, signal: AbortSignal, horizonDays = 30): Promise<readonly import("./analyticsTypes").Forecast[]> { const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/forecasts?${query({ metricKey, horizonDays })}`, signal); return parseForecasts(result, targetId); }
 export async function getRetentionPolicy(dataClass: string, signal: AbortSignal): Promise<RetentionPolicyResult> { const result = await readJson(`/api/v1/retention/policies/${encodeURIComponent(dataClass)}`, signal); return parseRetentionPolicy(result); }
 export async function getRetentionPreview(signal: AbortSignal, limit = 100, cursor?: string): Promise<RetentionPreview> { if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1024) throw new Error("Invalid retention preview limit."); if (cursor !== undefined && (!/^[A-Za-z0-9_-]{1,1024}$/.test(cursor))) throw new Error("Invalid retention preview cursor."); const result = await readJson(`/api/v1/retention/preview?${query({ limit, cursor })}`, signal); return parseRetentionPreview(result); }

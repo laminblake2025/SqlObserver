@@ -10,24 +10,28 @@ import { fileSizeGib, lifetimeAverageStallMilliseconds } from "./resourceFileMod
 import { DatabaseFileIoTrendPanel, type SelectedDatabaseFile } from "./DatabaseFileIoTrendPanel";
 import { BufferNodePlePanel } from "./BufferNodePlePanel";
 import { SqlVolumePanel } from "./SqlVolumePanel";
+import { useChartReferences } from "../overview/useChartReferences.ts";
 
 const memoryMetrics = new Set([
   "engine.process_physical_memory_bytes", "engine.os_available_memory_bytes",
   "host.memory.available_bytes",
 ]);
 
-export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, refresh, onSelectWindow }: {
+export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, refresh, onSelectWindow, targetRevision, canReadRules }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
   readonly scope: OverviewScope;
   readonly refresh: number;
+  readonly targetRevision: number;
+  readonly canReadRules: boolean;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }) {
   const { mode } = useTimeDisplay();
   const result = useOverviewAnalytics({ ...scope, target: instanceId }, refresh);
   const evidence = result.data?.evidence.find(item => item.targetId === instanceId);
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
+  const chartReferences = useChartReferences(instanceId, targetRevision, result.data && evidence ? result.data : undefined, canReadRules, refresh);
   const [files, setFiles] = useState<DatabaseFileHealthPage>();
   const [fileError, setFileError] = useState<string>();
   const [filesLoading, setFilesLoading] = useState(false);
@@ -88,6 +92,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     <OverviewChart series={evidence?.series.filter(item => item.metric === metric) ?? []}
       previous={previous?.series.filter(item => item.metric === metric)}
       fromUtc={result.data!.fromUtc} toUtc={result.data!.toUtc}
+      references={chartReferences.references}
       onSelectWindow={onSelectWindow} />
     <p className="activity-evidence">{note}</p>
   </section>;
@@ -117,6 +122,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
           "Queries waiting for execution memory grants at sample time.")}
         <section className="panel server-dashboard-chart"><h3>Memory pressure</h3>
           <OverviewChart series={memory(evidence)} previous={memory(previous)}
+            references={chartReferences.references}
             fromUtc={result.data.fromUtc} toUtc={result.data.toUtc} onSelectWindow={onSelectWindow} />
           <p className="activity-evidence">GiB. SQL process used, OS available via SQL, and collector-host available memory are separate gauges; the collector host may be a different machine.</p>
         </section>
@@ -124,6 +130,8 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       {evidence.gaps.length > 0 && <details className="panel"><summary>Collection gaps ({evidence.gaps.length})</summary>
         <ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
+      <p className="activity-evidence">{chartReferences.baselineStatus}</p>
+      <p className="activity-evidence">{chartReferences.ruleStatus}</p>
     </>}
     <BufferNodePlePanel instanceId={instanceId} scope={scope} refresh={refresh}
       onSelectWindow={onSelectWindow} />

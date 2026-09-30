@@ -322,7 +322,7 @@ export function App() {
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
-              {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh}
+              {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} canReadRules={canManageRules}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
                 onSelectQuery={(databaseId, queryFingerprint, planFingerprint, sourceKind) => {

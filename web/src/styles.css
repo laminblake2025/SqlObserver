@@ -458,6 +458,9 @@ figure { margin: 0; }
 .chart-gridline { stroke: var(--gridline); stroke-width: 1; }
 .chart-gridline-vertical { stroke-opacity: .78; }
 .chart-series, .chart-marker { vector-effect: non-scaling-stroke; }
+.chart-baseline-band rect { fill: var(--series-3); fill-opacity: .14; }
+.chart-baseline-band line { stroke: var(--series-3); stroke-opacity: .6; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-threshold line { stroke: var(--amber-border); stroke-width: 1.75; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; }
 .selected-row { background: var(--teal-soft); }
 
 /* Deadlock investigation */
