@@ -34,6 +34,7 @@ public sealed class AnalyticsDerivationWorker(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            bool completedBatch = false;
             try
             {
                 LeaseAcquisitionResult acquired = await leases.AcquireAsync(
@@ -61,8 +62,9 @@ public sealed class AnalyticsDerivationWorker(
                             throw new InvalidDataException("Derivation claim exceeded the concurrency bound.");
                         using var gate = new SemaphoreSlim(AnalyticsJobBounds.MaximumConcurrency,
                             AnalyticsJobBounds.MaximumConcurrency);
-                        await Task.WhenAll(jobs.Select(job => ProcessBoundedAsync(job, acquired.Lease.Identity,
+                        bool[] completed = await Task.WhenAll(jobs.Select(job => ProcessBoundedAsync(job, acquired.Lease.Identity,
                             cycleCancellation, gate))).ConfigureAwait(false);
+                        completedBatch = jobs.Count > 0 && completed.All(static succeeded => succeeded);
                     }
                     finally
                     {
@@ -76,15 +78,19 @@ public sealed class AnalyticsDerivationWorker(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception)
             {
+                completedBatch = false;
                 logger.LogWarning("Analytics derivation cycle failed; queued work remains fenced for retry.");
                 _ = exception;
             }
+            // Drain successful work continuously. Empty claims and retryable
+            // failures retain the idle/backoff delay and bounded concurrency.
+            if (completedBatch) continue;
             try { await Task.Delay(PollInterval, stoppingToken).ConfigureAwait(false); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 
-    private async Task ProcessBoundedAsync(AnalyticsDerivationJob job, WorkerLeaseIdentity lease,
+    private async Task<bool> ProcessBoundedAsync(AnalyticsDerivationJob job, WorkerLeaseIdentity lease,
         CancellationTokenSource cycleCancellation, SemaphoreSlim gate)
     {
         await gate.WaitAsync(cycleCancellation.Token).ConfigureAwait(false);
@@ -92,6 +98,7 @@ public sealed class AnalyticsDerivationWorker(
         TimeSpan jobDuration = maximumJobDuration is { } configured && configured > TimeSpan.Zero && configured <= AnalyticsJobBounds.MaximumDuration
             ? configured : AnalyticsJobBounds.MaximumDuration;
         budgetCancellation.CancelAfter(jobDuration);
+        bool succeeded = false;
         try
         {
             job.Validate();
@@ -118,6 +125,7 @@ public sealed class AnalyticsDerivationWorker(
                     throw new InvalidDataException("Unknown analytics derivation kind.");
             }
             await CompleteAsync(job, lease, AnalyticsDerivationCompletion.Succeeded, null).ConfigureAwait(false);
+            succeeded = true;
         }
         catch (OperationCanceledException) when (budgetCancellation.IsCancellationRequested)
         {
@@ -134,11 +142,23 @@ public sealed class AnalyticsDerivationWorker(
             logger.LogWarning("Analytics derivation job failed under its bounded contract."); _ = exception;
         }
         finally { gate.Release(); }
+        return succeeded;
     }
 
     private async Task DeriveRollupsAsync(AnalyticsDerivationJob job, WorkerLeaseIdentity lease, CancellationToken token)
     {
         RollupInterval interval = job.RollupInterval ?? throw new InvalidDataException("A rollup interval is required.");
+        if (job.SourceCatalogVersion == MetricCatalogV2.Version)
+        {
+            IReadOnlyList<SqlMetricPoint> sqlSource = await store.ReadSqlRollupInputsAsync(job, token).ConfigureAwait(false);
+            SqlMetricRollupResult sqlResult = SqlMetricRollupV2.Compute(sqlSource, job.MetricKey!, interval,
+                job.FromUtc, job.SourceCutoffUtc, job.SourceCadenceSeconds!.Value, job.Generation);
+            if (sqlResult.Statistics.BucketEndUtc != job.ToUtc) throw new InvalidDataException("SQL rollup job window is not one complete bucket.");
+            EnsureBounded(sqlResult);
+            await AssertLeaseAsync(lease, token).ConfigureAwait(false);
+            await analytics.StoreSqlRollupAsync(Request(job, lease), sqlResult, token).ConfigureAwait(false);
+            return;
+        }
         IReadOnlyList<MetricPoint> source = await store.ReadRollupInputsAsync(job, interval, token).ConfigureAwait(false);
         if (source.Count > AnalyticsJobBounds.MaximumRows) throw new InvalidDataException("Rollup input exceeded row bound.");
         IReadOnlyList<RollupResult> rollups = RollupV1.ComputeMany(source, interval, sourceCutoffUtc: job.SourceCutoffUtc);

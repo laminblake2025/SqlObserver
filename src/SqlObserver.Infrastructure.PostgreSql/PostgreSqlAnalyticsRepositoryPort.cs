@@ -39,7 +39,12 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
         int scheduled = Convert.ToInt32(value, CultureInfo.InvariantCulture);
         if (scheduled is < 0 or > AnalyticsJobBounds.MaximumRows)
             throw new InvalidDataException("PostgreSQL returned an out-of-bounds derivation schedule count.");
-        return scheduled;
+        command.CommandText = "SELECT control.schedule_sql_metric_rollup_jobs(@owner_execution_id,@fencing_token)";
+        object? sqlValue = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (sqlValue is null or DBNull) throw new InvalidDataException("PostgreSQL returned no SQL rollup schedule count.");
+        int total = checked(scheduled + Convert.ToInt32(sqlValue, CultureInfo.InvariantCulture));
+        if (total is < 0 or > AnalyticsJobBounds.MaximumRows) throw new InvalidDataException("SQL rollup scheduling exceeded its bound.");
+        return total;
     }
 
     public async ValueTask<IReadOnlyList<AnalyticsDerivationJob>> ClaimAsync(WorkerLeaseIdentity lease, int maximumJobs, CancellationToken cancellationToken)
@@ -48,7 +53,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
         if (maximumJobs is < 1 or > AnalyticsJobBounds.MaximumConcurrency)
             throw new ArgumentOutOfRangeException(nameof(maximumJobs));
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT job_id,instance_id,target_revision,job_kind,from_utc,to_utc,source_cutoff_utc,generation,metric_key,horizon_seconds,dimensions_hash,rollup_interval FROM control.claim_m10_derivation_jobs(@work_key,@owner_execution_id,@fencing_token,@limit)", connection) { CommandTimeout = 5 };
+        await using var command = new NpgsqlCommand("SELECT job_id,instance_id,target_revision,job_kind,from_utc,to_utc,source_cutoff_utc,generation,metric_key,horizon_seconds,dimensions_hash,rollup_interval,source_catalog_version,source_cadence_seconds FROM control.claim_m10_derivation_jobs_versioned(@work_key,@owner_execution_id,@fencing_token,@limit)", connection) { CommandTimeout = 5 };
         command.Parameters.AddWithValue("work_key", lease.Key.Value); command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value); command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value); command.Parameters.AddWithValue("limit", maximumJobs);
         var jobs = new List<AnalyticsDerivationJob>(maximumJobs);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -57,7 +62,11 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
             TimeSpan? horizon = reader.IsDBNull(9) ? null : TimeSpan.FromSeconds(reader.GetDouble(9));
             string? dimensionHash = reader.IsDBNull(10) ? null : Convert.ToHexString(reader.GetFieldValue<byte[]>(10)).ToLowerInvariant();
             RollupInterval? rollupInterval = reader.IsDBNull(11) ? null : reader.GetString(11) switch { "5m" => SqlObserver.Domain.Analytics.RollupInterval.FiveMinutes, "hour" => SqlObserver.Domain.Analytics.RollupInterval.Hour, "day" => SqlObserver.Domain.Analytics.RollupInterval.Day, _ => throw new InvalidDataException("PostgreSQL returned an unknown derivation rollup interval.") };
-            var job = new AnalyticsDerivationJob(reader.GetGuid(0), new MonitoredInstanceId(reader.GetGuid(1)), new ObservationTargetRevision(reader.GetInt64(2)), reader.GetString(3), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? ReadUtc(reader, 5) : ReadUtc(reader, 6), reader.IsDBNull(7) ? 1 : reader.GetInt64(7), reader.IsDBNull(8) ? null : reader.GetString(8), horizon, dimensionHash, rollupInterval);
+            var job = new AnalyticsDerivationJob(reader.GetGuid(0), new MonitoredInstanceId(reader.GetGuid(1)), new ObservationTargetRevision(reader.GetInt64(2)), reader.GetString(3), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? ReadUtc(reader, 5) : ReadUtc(reader, 6), reader.IsDBNull(7) ? 1 : reader.GetInt64(7), reader.IsDBNull(8) ? null : reader.GetString(8), horizon, dimensionHash, rollupInterval)
+            {
+                SourceCatalogVersion = reader.GetInt32(12),
+                SourceCadenceSeconds = reader.IsDBNull(13) ? null : reader.GetDouble(13),
+            };
             job.Validate(); jobs.Add(job);
         }
         return jobs;
@@ -78,6 +87,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
     public async ValueTask<IReadOnlyList<MetricPoint>> ReadRollupInputsAsync(AnalyticsDerivationJob job, RollupInterval interval, CancellationToken cancellationToken)
     {
         job.Validate();
+        if (job.SourceCatalogVersion != MetricCatalogV1.Version) throw new ArgumentException("Catalog-v1 inputs require a version-1 job.", nameof(job));
         const string sql = "SELECT observed_at,metric_key,metric_value,dimensions,reset,complete FROM reporting.read_m10_rollup_derivation_inputs(@instance_id,@target_revision,@from_utc,@to_utc,@metric_key,@limit,@snapshot_utc,@rollup_interval,@dimension_hash);";
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);

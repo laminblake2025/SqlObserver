@@ -9,7 +9,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class SqlMetricAnalyticsSourceTests(PostgreSql18Fixture fixture)
+public sealed partial class SqlMetricAnalyticsSourceTests(PostgreSql18Fixture fixture)
 {
     private static readonly RepositoryCallTimeout MigrationTimeout = new(TimeSpan.FromMinutes(2));
     private static readonly DateTimeOffset Day = new(DateTime.UtcNow.Date.AddDays(-1), TimeSpan.Zero);
