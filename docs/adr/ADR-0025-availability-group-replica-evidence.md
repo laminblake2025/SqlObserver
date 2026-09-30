@@ -244,6 +244,18 @@ bounded scroll regions with sticky headers. See
 the fixture and evidence. Native AG qualification remains required before
 changing collector activation or removing the version-1 view.
 
+Forward migration 0269 corrects the staged SQL Server 2019 permission contract:
+the AG catalog read also requires VIEW ANY DEFINITION. The updated manifest,
+bundle and private reconciliation function are pinned together. The migration
+refuses an activated gate or changed predecessor pins and preserves v1
+schedules and the append-only catalog trigger. PostgreSQL upgrade/rollout tests
+verify rejection, rollback and a successful inactive upgrade. The opt-in
+[native qualification test](../testing/availability-group-v2-lab.md) builds and
+its configuration tests pass, but has not run against a trusted primary/secondary
+pair. It uses production discovery/collection, enforces a non-admin Windows
+principal and validates paired identities, local versus remote visibility and
+source-time semantics. Ordinary validation sweeps exclude this lab-only test.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.
