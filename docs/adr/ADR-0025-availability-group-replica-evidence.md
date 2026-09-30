@@ -149,6 +149,22 @@ these boundaries, idempotent repeats and privilege separation. The rollout
 function and commit remain owner-only, with no production registry switch or
 collector grant; native AG qualification remains required before activation.
 
+Forward migration 0268 stages scoped server read functions for the v2 receipt
+header and independently paged replica/database-replica streams. A fixed
+repository completion cutoff selects a current-revision run within seven days;
+the cursor carries that cutoff, run, revision and the full stream key. Reads
+return at most 100 items plus one lookahead. A source timestamp is nullable when
+no retained rows carry it, rather than substituted with receipt time. The header
+distinguishes not-collected, no-data, byte-withheld, failed and retained evidence;
+secondary visibility stays degraded. If retention removes either stream, it
+reports the count mismatch and degraded coverage while allowing the surviving
+rows to be inspected. Existing v1 header implementations explicitly exclude
+v2 AG runs on both original and partitioned run routes. PostgreSQL fixtures
+exercise paging, fixed-cutoff stability, stale keys, NULL versus zero units,
+offset-free commit time, scope denial, empty/failure coverage and partial
+retention. The application/API/MCP/UI v2 read adapters and native AG qualification
+remain open; production read routes still use v1.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.

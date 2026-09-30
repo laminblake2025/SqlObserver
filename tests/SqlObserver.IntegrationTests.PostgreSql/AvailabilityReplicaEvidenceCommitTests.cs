@@ -15,7 +15,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class AvailabilityReplicaEvidenceCommitTests(PostgreSql18Fixture fixture)
+public sealed partial class AvailabilityReplicaEvidenceCommitTests(PostgreSql18Fixture fixture)
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
