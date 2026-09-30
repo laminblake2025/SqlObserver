@@ -1,5 +1,7 @@
 using Npgsql;
 using NpgsqlTypes;
+using System.Net;
+using System.Text.Json;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Auditing;
@@ -60,6 +62,7 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         Assert.Contains(mapped, item => item.SourceLastCommitLocal?.Kind == DateTimeKind.Unspecified);
         Assert.Contains(mapped, item => item.SourceLastCommitLocal is null);
         Assert.Equal(work.RepositoryTimeUtc, firstDatabases.Header.SourceObservedAtUtc);
+        await AssertV2HttpPagesAsync(database, target, cutoff, run.Value);
         var replicaKeys = new HashSet<string>(StringComparer.Ordinal);
         var databaseKeys = new HashSet<string>(StringComparer.Ordinal);
         byte[]? afterGroup = null, afterReplica = null, afterDatabase = null;
@@ -374,6 +377,60 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
     private static AvailabilityGroupEvidenceRequest EvidenceReadRequest(Guid target, DateTimeOffset cutoff,
         AvailabilityGroupEvidenceKind stream, int limit, AvailabilityGroupEvidenceCursor? cursor = null) =>
         new(new MonitoredInstanceId(target), cutoff, stream, limit, Timeout, cursor);
+
+    private static async Task AssertV2HttpPagesAsync(RepositoryTestDatabase database, Guid target, DateTimeOffset cutoff, Guid run)
+    {
+        // Keep production routes, query service, data source and PostgreSQL adapter;
+        // the existing fixture factory substitutes only the authentication scheme.
+        // A standalone production data source needs startup role configuration;
+        // copying the fixture data source's string loses its connection initializer.
+        string connectionString = new NpgsqlConnectionStringBuilder(database.ConnectionString)
+        {
+            Options = "-c role=sqlobserver_server",
+        }.ConnectionString;
+        using var host = new McpProductionPipelineFactory(connectionString, true);
+        using HttpClient client = host.CreateClient();
+        string at = Uri.EscapeDataString(cutoff.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'",
+            System.Globalization.CultureInfo.InvariantCulture));
+        foreach (string stream in new[] { "replicas", "databases" })
+        {
+            string route = $"/api/v2/observation-targets/{target:D}/availability-groups/{stream}?limit=1";
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            string? cursor = null;
+            int pages = 0;
+            bool unknown = false, zero = false, rawCommit = false;
+            do
+            {
+                using HttpResponseMessage response = await client.GetAsync(cursor is null ? route + "&atUtc=" + at :
+                    route + "&cursor=" + Uri.EscapeDataString(cursor));
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                JsonElement page = body.RootElement;
+                Assert.Equal(run, page.GetProperty("runId").GetGuid());
+                Assert.Equal(cutoff, page.GetProperty("atUtc").GetDateTimeOffset());
+                Assert.Equal("retained", page.GetProperty("evidenceStatus").GetString());
+                JsonElement item = Assert.Single(page.GetProperty("items").EnumerateArray());
+                Assert.True(seen.Add(item.GetProperty("replicaFingerprint").GetString()!));
+                if (stream == "databases")
+                {
+                    JsonElement queue = item.GetProperty("logSendQueueKb");
+                    unknown |= queue.ValueKind == JsonValueKind.Null;
+                    zero |= queue.ValueKind == JsonValueKind.Number && queue.GetInt64() == 0;
+                    JsonElement commit = item.GetProperty("sourceLastCommitLocal");
+                    if (commit.ValueKind == JsonValueKind.String)
+                    {
+                        rawCommit = true;
+                        Assert.Equal("2026-09-29T08:15:00.000001", commit.GetString());
+                    }
+                }
+                cursor = page.GetProperty("nextCursor").GetString();
+                Assert.Equal(cursor is not null, page.GetProperty("hasMore").GetBoolean());
+                Assert.InRange(++pages, 1, 2);
+            } while (cursor is not null);
+            Assert.Equal(2, pages); Assert.Equal(2, seen.Count);
+            if (stream == "databases") { Assert.True(unknown); Assert.True(zero); Assert.True(rawCommit); }
+        }
+    }
 
     private static AuthorizationContext EvidenceReadAuthorization(Guid target) => new(
         new ActorSecurityIdentifier("S-1-5-21-1-2-3-1001"), AuthorizationPrincipalState.Active,

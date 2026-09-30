@@ -176,9 +176,30 @@ offset-free commit time. Empty, failed, byte-withheld and partially retained
 receipts retain their distinct coverage. Focused unit tests cover authorization,
 request/page drift, cancellation and deadlines; the existing PostgreSQL fixtures
 exercise the typed service and adapter through both streams and all 201 replicas
-over three pages. Server composition registers these read ports without exposing
-an HTTP route or changing collector activation. Signed HTTP cursor encoding,
-versioned API/MCP/UI adapters and native AG qualification remain open.
+over three pages. These typed ports are composed into the Server for the
+versioned HTTP surface below.
+
+Versioned HTTP reads now expose
+`GET /api/v2/observation-targets/{instanceId}/availability-groups/replicas` and
+`GET /api/v2/observation-targets/{instanceId}/availability-groups/databases`.
+Both accept `limit` (1–100, default 50), optional `atUtc` (UTC ISO timestamp ending
+in `Z`, with at most six fractional digits), and optional `cursor`. The first
+request defaults to the current UTC cutoff; a continuation restores its signed
+cutoff when `atUtc` is omitted and rejects a different supplied cutoff. The
+compact cursor authenticates target, revision, run, cutoff and every identity
+key with a separate purpose for each stream, within the shared API signer's
+existing byte limits. Responses include `schemaVersion: 2`, nullable
+`sourceObservedAtUtc`, receipt `completedAtUtc`, coverage/accounting, and paged
+items. Database items include their replica key, queues in KB, rates in KB/s
+and `sourceLastCommitLocal` without an offset; null values remain explicit.
+Authenticated reads return `Cache-Control: no-store`. Expected failures use
+ProblemDetails with `code` and `correlationId`: invalid bounds/signatures are
+400, scope denial 403, stale run/revision 409, unverifiable repository evidence
+502, repository unavailability 503 and timeout 504. HTTP fixtures verify these
+bindings and shapes; a production-pipeline PostgreSQL fixture pages both real
+streams without gaps and preserves source-time and queue semantics. Version-1
+routes and collector activation remain unchanged. MCP/UI v2 adapters and native
+AG qualification remain open.
 
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
