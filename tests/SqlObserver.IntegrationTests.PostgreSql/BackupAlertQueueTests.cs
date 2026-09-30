@@ -134,7 +134,7 @@ public sealed partial class BackupEvidenceReadTests
         await using NpgsqlDataReader row = await privileges.ExecuteReaderAsync(); Assert.True(await row.ReadAsync());
         Assert.True(row.GetBoolean(0)); Assert.True(row.GetBoolean(1));
         Assert.False(row.GetBoolean(2)); Assert.False(row.GetBoolean(3)); Assert.False(row.GetBoolean(4)); Assert.False(row.GetBoolean(5));
-        Assert.All(await repository.ListRulesAsync(new(target),Timeout,CancellationToken.None),rule => Assert.False(AlertCatalog.IsApproved(rule)));
+        Assert.All(await repository.ListRulesAsync(new(target),Timeout,CancellationToken.None),rule => Assert.True(AlertCatalog.IsApproved(rule)));
     }
 
     [Fact]

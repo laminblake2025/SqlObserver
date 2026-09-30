@@ -1,9 +1,10 @@
 import { readJsonBounded } from "./alertRuntimeParser.ts";
+import { isAlertRuleKind, isBackupRuleKind, validBackupRuleSettings, type AlertRuleKind } from "./alertRuleSignals.ts";
 
 export interface AlertRuleAdminItem {
   readonly ruleId: string;
   readonly name: string;
-  readonly kind: "metric_threshold" | "collector_health";
+  readonly kind: AlertRuleKind;
   readonly metricId: string | null;
   readonly comparison: "greater_than" | "greater_than_or_equal" | "less_than" | "less_than_or_equal" | "equal";
   readonly threshold: number;
@@ -48,16 +49,20 @@ export function parseAlertRuleAdminPage(value: unknown, targetId: string): Alert
     const rule = value as Record<string, unknown>;
     if (typeof rule.ruleId !== "string" || !uuid.test(rule.ruleId) ||
         typeof rule.name !== "string" || rule.name.length === 0 || rule.name.length > 128 ||
-        rule.kind !== "metric_threshold" && rule.kind !== "collector_health" ||
+        !isAlertRuleKind(rule.kind) ||
         rule.kind === "metric_threshold" && (typeof rule.metricId !== "string" || rule.metricId.length === 0 || rule.metricId.length > 128) ||
-        rule.kind === "collector_health" && rule.metricId !== null ||
+        rule.kind !== "metric_threshold" && rule.metricId !== null ||
         !comparisons.has(rule.comparison as string) ||
         typeof rule.threshold !== "number" || !Number.isFinite(rule.threshold) ||
         typeof rule.hysteresis !== "number" || !Number.isFinite(rule.hysteresis) || rule.hysteresis < 0 ||
         !isInteger(rule.confirmationCount, 1, 100) || !isInteger(rule.confirmationSeconds, 0, 604800) ||
         !isInteger(rule.evaluationSeconds, 1, 3600) || !isInteger(rule.clearConfirmationCount, 1, 100) ||
         typeof rule.enabled !== "boolean" || !isInteger(rule.revision, 1, Number.MAX_SAFE_INTEGER) ||
-        !isUtc(rule.updatedAtUtc)) throw invalid();
+        !isUtc(rule.updatedAtUtc) || isBackupRuleKind(rule.kind) && !validBackupRuleSettings({
+          comparison: rule.comparison, threshold: rule.threshold, hysteresis: rule.hysteresis,
+          confirmationCount: rule.confirmationCount, clearConfirmationCount: rule.clearConfirmationCount,
+          confirmationSeconds: rule.confirmationSeconds, evaluationSeconds: rule.evaluationSeconds,
+        })) throw invalid();
     const key = rule.ruleId.toLowerCase();
     if (ids.has(key)) throw invalid();
     ids.add(key);

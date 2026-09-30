@@ -1,5 +1,53 @@
 # Staged backup v2 source checks
 
+## Backup rule catalog, API and administration activation
+
+Forward migration 0287 activates full-policy, log-policy and observed-fault rules
+through the production administrative repository. The catalog advances to contract
+version 3 with digest
+`b90f9f21d338c62239a82c4244a68537884f03fc6b2166e3c386b1dd1b55af15`.
+Its guarded migration requires the exact previous catalog/version and rolls back
+without replacing the administrative function if that binding has drifted.
+Deploy the matching Server/Collector binaries and migration together. Earlier
+catalog contracts remain valid only for exact recorded administrative retries;
+fresh commands must use the current digest. Applied migrations remain unchanged.
+
+Target Administrators can create, inspect, update and disable all three backup
+signals. Default templates fire and clear after two observations within five
+minutes, evaluating every 30 seconds. Administrators can name rules and adjust
+fire/clear confirmation, window and cadence. Counts always compare greater than
+zero, have no metric binding or hysteresis, and require a confirmation window that
+covers the configured observations at distinct intervals. SQL independently
+enforces the approved source/schema and timing contract. Updates cannot change a
+backup rule's signal identity; a different signal requires a new rule.
+
+Catalog/list/mutation HTTP paths preserve the explicit backup wire kinds.
+Frontend parsers enforce their count/timing contract; create/edit forms show the
+signal names, confirmation settings and evidence limitations. Backup limits are
+configured per database in Health checks. Unknown or incomplete evidence does not
+clear active alerts. Observed-fault absence cannot establish recovery, and the UI
+explains that disabling that rule closes its alert. These are observed metadata
+faults, not a backup restore verification signal.
+
+Focused checks pass: 28 evaluator/catalog/migration unit cases, 29 alert HTTP
+cases, nine frontend rule parser/action cases, and the frontend typecheck/build
+and asset verification. Native PostgreSQL cases cover production rule creation,
+immutable administrative retry, evaluation/outbox, update/disable, signal identity,
+forged source/metric/timing bindings and catalog-drift rollback. The existing
+clear-confirmation upgrade/reader, backup queue budget and metric evaluation/replay/
+delivery regressions also pass. The HTTP fixture removes Windows Event Log logging
+and isolates the new mutation cases in separate hosts; production logging and rate
+limits are unchanged. No notification transport was sent or test VM changed.
+
+```powershell
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupAlertCatalogTests|FullyQualifiedName~BackupAlertTransitionTests|FullyQualifiedName~M8AlertEvaluatorTests|FullyQualifiedName~MigrationPreambleTests'
+dotnet test tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj --no-restore --filter 'FullyQualifiedName~M8AlertEndpointsWafTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupCatalog|FullyQualifiedName~ClearConfirmationReadersRetainScopedCollectorOnlyPermissions|FullyQualifiedName~ClearConfirmationUpgradePreserves|FullyQualifiedName~BackupQueueHonors|FullyQualifiedName~RepositoryExecutesEvidenceQueueEvaluationReplayAndDeliveryLeaseLifecycle'
+# From web:
+node --experimental-strip-types --test tests/backup-alert-rule-admin.test.mjs tests/alert-rule-admin.test.mjs tests/alert-rule-admin-actions.test.mjs
+pnpm run build
+```
+
 ## Atomic backup state, replay and delivery outbox
 
 Forward migrations 0285 and 0286 complete the repository commit path for captured

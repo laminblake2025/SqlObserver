@@ -104,12 +104,12 @@ public sealed class BackupAlertTransitionTests
     }
 
     [Fact]
-    public void FaultAbsenceCannotBeUsedAsAZeroOrNewBackupRulesAsUnapprovedTemplates()
+    public void FaultAbsenceCannotBeUsedAsAZeroAndBackupRulesRequireValidConfirmationSettings()
     {
         AlertRuleDefinition rule = Rule(AlertRuleKind.BackupObservedFaults);
         Assert.Throws<ArgumentException>(() => AlertEvaluator.Evaluate(rule, Active(), Observe(rule, 0, 1)));
         foreach (AlertRuleKind kind in new[] { AlertRuleKind.BackupFullPolicy, AlertRuleKind.BackupLogPolicy, AlertRuleKind.BackupObservedFaults })
-            Assert.False(AlertCatalog.IsApproved(Rule(kind)));
+            Assert.True(AlertCatalog.IsApproved(Rule(kind)));
         Assert.Throws<ArgumentException>(() => new AlertRuleDefinition(RuleId, "backup.invalid", AlertRuleKind.BackupFullPolicy,
             null, AlertComparison.LessThan, 1, 0, 2, TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(15)));
         Assert.Throws<ArgumentException>(() => new AlertRuleDefinition(RuleId, "backup.invalid", AlertRuleKind.BackupFullPolicy,

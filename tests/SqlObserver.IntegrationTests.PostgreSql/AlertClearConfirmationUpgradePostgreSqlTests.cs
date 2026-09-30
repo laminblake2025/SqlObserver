@@ -216,10 +216,14 @@ public sealed partial class M8AlertingPostgreSqlIntegrationTests
         Assert.Equal("40001", (await Assert.ThrowsAsync<PostgresException>(() => EvaluateClearJsonAsync(collector, target.Value, lease, tampered))).SqlState);
         Assert.Equal(upgraded, await SnapshotReplayRowsAsync(database, target.Value, ruleId));
 
-        var changedRule = new AlertRuleDefinition(ruleId, rule.Name, rule.Kind, rule.MetricId, rule.Comparison,
-            rule.Threshold, rule.Hysteresis, rule.ConfirmationCount, rule.ConfirmationWindow, rule.EvaluationInterval, clearConfirmationCount: 2);
-        await server.UpsertRuleAsync(new AlertRuleWriteRequest(changedRule, Guid.NewGuid().ToString("D"),
-            Audit(target, AdministrativeAuditAction.UpdateAlertRule), Timeout(), 1), CancellationToken.None);
+        // This database intentionally stops at 0083. Use that historical catalog
+        // contract instead of the current product catalog carried by the adapter.
+        JsonObject historicalUpdate = JsonNode.Parse(legacyRule)!.AsObject();
+        historicalUpdate["Action"] = "UpdateAlertRule";
+        historicalUpdate["ExpectedRevision"] = 1;
+        historicalUpdate["ClearConfirmationCount"] = 2;
+        historicalUpdate["CatalogDigest"] = "fc53c14e0ad3d15364c0c02846cd93d3e020f25dc378b653ffc4c77a393bc0dd";
+        await WriteLegacyRuleAsync(serverSource, target.Value, historicalUpdate.ToJsonString(), Guid.NewGuid().ToString("D"));
         Assert.Equal("40001", (await Assert.ThrowsAsync<PostgresException>(() => EvaluateClearJsonAsync(collector, target.Value, lease, legacyDecision))).SqlState);
     }
 
@@ -252,7 +256,7 @@ public sealed partial class M8AlertingPostgreSqlIntegrationTests
     public async Task ClearConfirmationReadersRetainScopedCollectorOnlyPermissions()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
-        Assert.Equal("fc53c14e0ad3d15364c0c02846cd93d3e020f25dc378b653ffc4c77a393bc0dd", AlertCatalog.Digest);
+        Assert.Equal(AlertCatalog.Digest, await ClearScalarAsync(database, "SELECT catalog_digest FROM alerting.catalog_registry WHERE catalog_id='sqlobserver.m8.alerts';"));
         Assert.All(AlertCatalog.Entries, entry => Assert.Equal(2, entry.ClearConfirmationCount));
         await using var verify = database.DataSource.CreateCommand("""
             SELECT pg_get_userbyid(p.proowner)='sqlobserver_migrator',p.prosecdef,

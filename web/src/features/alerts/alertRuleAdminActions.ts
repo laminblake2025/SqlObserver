@@ -1,5 +1,6 @@
 import { readJsonBounded } from "./alertRuntimeParser.ts";
 import type { AlertRuleAdminItem } from "./alertRuleAdminApi";
+import { isAlertRuleKind, isBackupRuleKind, validBackupRuleSettings } from "./alertRuleSignals.ts";
 
 export interface RuleTemplate {
   readonly name: string;
@@ -37,13 +38,18 @@ export function parseRuleCatalog(value: unknown, targetId: string): readonly Rul
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("Alert rule catalog is invalid.");
     const item = entry as Record<string, unknown>;
     if (typeof item.name !== "string" || !namePattern.test(item.name) ||
-        item.kind !== "metric_threshold" && item.kind !== "collector_health" ||
+        !isAlertRuleKind(item.kind) ||
         item.kind === "metric_threshold" && (typeof item.metricId !== "string" || !namePattern.test(item.metricId)) ||
-        item.kind === "collector_health" && item.metricId !== null ||
+        item.kind !== "metric_threshold" && item.metricId !== null ||
         typeof item.unit !== "string" || !item.unit || !comparisons.has(item.comparison as string) ||
         !numberIn(item.threshold, 0, 1_000_000) || !numberIn(item.hysteresis, 0, 1_000_000) ||
         !integerIn(item.confirmationCount, 1, 100) || !integerIn(item.confirmationSeconds, 0, 604800) ||
-        !integerIn(item.evaluationSeconds, 1, 3600) || !integerIn(item.clearConfirmationCount, 1, 100))
+        !integerIn(item.evaluationSeconds, 1, 3600) || !integerIn(item.clearConfirmationCount, 1, 100) ||
+        isBackupRuleKind(item.kind) && !validBackupRuleSettings({
+          comparison: item.comparison, threshold: item.threshold, hysteresis: item.hysteresis,
+          confirmationCount: item.confirmationCount, clearConfirmationCount: item.clearConfirmationCount,
+          confirmationSeconds: item.confirmationSeconds, evaluationSeconds: item.evaluationSeconds,
+        }))
       throw new Error("Alert rule catalog is invalid.");
     return item as unknown as RuleTemplate;
   });
@@ -70,6 +76,10 @@ export function prepareRule(values: RuleValues, template: RuleTemplate): RuleVal
         values.hysteresis !== template.hysteresis || values.confirmationCount !== template.confirmationCount ||
         values.confirmationSeconds !== template.confirmationSeconds || values.evaluationSeconds !== template.evaluationSeconds)
       throw new Error("Collector health settings must match the approved template.");
+  } else if (isBackupRuleKind(values.kind)) {
+    if (!validBackupRuleSettings(values) || !integerIn(values.confirmationCount, 1, 100) ||
+        !integerIn(values.confirmationSeconds, 0, 604800) || !integerIn(values.evaluationSeconds, 15, 3600))
+      throw new Error("Backup rules count confirmed affected databases above zero. The confirmation window must cover the fire and clear observations.");
   } else if (values.comparison !== "greater_than" && values.comparison !== "greater_than_or_equal" ||
       !numberIn(values.threshold, 0, 1_000_000) || !numberIn(values.hysteresis, 0, values.threshold) ||
       !integerIn(values.confirmationCount, 1, 100) || !integerIn(values.confirmationSeconds, 0, 604800) ||

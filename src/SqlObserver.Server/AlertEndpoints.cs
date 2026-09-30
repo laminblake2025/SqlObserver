@@ -99,7 +99,7 @@ public static class AlertEndpoints
                 items = page.Items.Select(static rule => new
                 {
                     ruleId = rule.RuleId, rule.Name,
-                    kind = rule.Kind == AlertRuleKind.MetricThreshold ? "metric_threshold" : "collector_health",
+                    kind = AlertRuleKindWire.Format(rule.Kind),
                     rule.MetricId,
                     comparison = rule.Comparison switch
                     {
@@ -135,7 +135,7 @@ public static class AlertEndpoints
             items = AlertCatalog.Entries.Select(static entry => new
             {
                 name = entry.Name,
-                kind = entry.Kind == AlertRuleKind.MetricThreshold ? "metric_threshold" : "collector_health",
+                kind = AlertRuleKindWire.Format(entry.Kind),
                 metricId = entry.Metric,
                 unit = entry.Unit,
                 comparison = entry.Comparison switch
@@ -319,7 +319,7 @@ public static class AlertEndpoints
         bool create = action == AdministrativeAuditAction.CreateAlertRule;
         if (!AlertIdentifier.TryParseRfc4122(body.RuleId, out Guid ruleId) || !AlertIdentifier.TryParseRfc4122(body.OperationId, out Guid operationId) || create && body.ExpectedRevision is not null || !create && body.ExpectedRevision is null || !create && body.ClearConfirmationCount is null || body.ClearConfirmationCount is < 1 or > 100 || body.ConfirmationCount is < 1 or > 100 || body.EvaluationSeconds is < 1 or > 3600 || body.ConfirmationSeconds is < 0 or > 604800) return Results.BadRequest();
         var auth = resolver.Resolve(context.User); var target = new MonitoredInstanceId(instanceId);
-        try { var kind = body.Kind == "metric_threshold" ? AlertRuleKind.MetricThreshold : body.Kind == "collector_health" ? AlertRuleKind.CollectorHealth : throw new ArgumentException("Rule kind is not allowlisted.", nameof(body)); var comparison = body.Comparison switch { "greater_than" => AlertComparison.GreaterThan, "greater_than_or_equal" => AlertComparison.GreaterThanOrEqual, "less_than" => AlertComparison.LessThan, "less_than_or_equal" => AlertComparison.LessThanOrEqual, "equal" => AlertComparison.Equal, _ => throw new ArgumentException("Comparison is not allowlisted.", nameof(body)) }; var rule = new AlertRuleDefinition(ruleId, body.Name, kind, body.MetricId is null ? null : new MetricId(body.MetricId), comparison, body.Threshold, body.Hysteresis, body.ConfirmationCount, TimeSpan.FromSeconds(body.ConfirmationSeconds), TimeSpan.FromSeconds(body.EvaluationSeconds), body.Enabled, clearConfirmationCount: body.ClearConfirmationCount ?? 2); var correlation = ParseOptionalCorrelation(body.CorrelationId); var receipt = await service.UpsertRuleAsync(auth, new AlertRuleWriteRequest(rule, body.OperationId, Audit(auth, correlation, action, target), new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), body.ExpectedRevision, body.RequestDigest), cancellationToken); return Results.Ok(new { auditId = receipt.AuditId.Value, recordedAtUtc = receipt.RecordedAtUtc }); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); }
+        try { var kind = AlertRuleKindWire.Parse(body.Kind); var comparison = body.Comparison switch { "greater_than" => AlertComparison.GreaterThan, "greater_than_or_equal" => AlertComparison.GreaterThanOrEqual, "less_than" => AlertComparison.LessThan, "less_than_or_equal" => AlertComparison.LessThanOrEqual, "equal" => AlertComparison.Equal, _ => throw new ArgumentException("Comparison is not allowlisted.", nameof(body)) }; var rule = new AlertRuleDefinition(ruleId, body.Name, kind, body.MetricId is null ? null : new MetricId(body.MetricId), comparison, body.Threshold, body.Hysteresis, body.ConfirmationCount, TimeSpan.FromSeconds(body.ConfirmationSeconds), TimeSpan.FromSeconds(body.EvaluationSeconds), body.Enabled, clearConfirmationCount: body.ClearConfirmationCount ?? 2); var correlation = ParseOptionalCorrelation(body.CorrelationId); var receipt = await service.UpsertRuleAsync(auth, new AlertRuleWriteRequest(rule, body.OperationId, Audit(auth, correlation, action, target), new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), body.ExpectedRevision, body.RequestDigest), cancellationToken); return Results.Ok(new { auditId = receipt.AuditId.Value, recordedAtUtc = receipt.RecordedAtUtc }); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); }
     }
 
     private static Task<IResult> CreateMaintenanceAsync(HttpContext context, Guid instanceId, MaintenanceBody body, IAlertAdministrationService service, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken) => WriteMaintenanceAsync(context, instanceId, body, AdministrativeAuditAction.CreateMaintenanceWindow, service, resolver, cancellationToken);

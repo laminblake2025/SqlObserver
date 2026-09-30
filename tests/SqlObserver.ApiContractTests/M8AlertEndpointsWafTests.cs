@@ -113,6 +113,10 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.Equal(AlertCatalog.Entries.Count, document.RootElement.GetProperty("items").GetArrayLength());
         Assert.Contains(document.RootElement.GetProperty("items").EnumerateArray(),
             item => item.GetProperty("metricId").GetString() == "engine.user_connections");
+        foreach (AlertRuleKind kind in new[] { AlertRuleKind.BackupFullPolicy, AlertRuleKind.BackupLogPolicy, AlertRuleKind.BackupObservedFaults })
+            Assert.Contains(document.RootElement.GetProperty("items").EnumerateArray(),
+                item => item.GetProperty("kind").GetString() == AlertRuleKindWire.Format(kind) &&
+                    item.GetProperty("metricId").ValueKind == System.Text.Json.JsonValueKind.Null);
 
         using HttpClient viewer = CreateClient("viewer");
         using HttpResponseMessage forbidden = await viewer.GetAsync(path);
@@ -120,6 +124,41 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         using HttpClient anonymous = factory.CreateClient();
         using HttpResponseMessage unauthenticated = await anonymous.GetAsync(path);
         Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(AlertRuleKind.BackupFullPolicy)]
+    [InlineData(AlertRuleKind.BackupLogPolicy)]
+    [InlineData(AlertRuleKind.BackupObservedFaults)]
+    public async Task BackupRuleRoutesPreserveKindAcrossCreateListUpdateAndDisable(AlertRuleKind kind)
+    {
+        using var backupFactory = new M8AlertApiFactory();
+        using HttpClient admin = backupFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        admin.DefaultRequestHeaders.Add(M8AlertTestAuthenticationHandler.IdentityHeader, "admin");
+        string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules";
+        var body = System.Text.Json.JsonSerializer.SerializeToNode(new {
+            ruleId = Guid.NewGuid().ToString("D"), name = "backup.http", kind = AlertRuleKindWire.Format(kind), metricId = (string?)null,
+            comparison = "greater_than", threshold = 0, hysteresis = 0, confirmationCount = 2, clearConfirmationCount = 3,
+            confirmationSeconds = 300, evaluationSeconds = 30, enabled = true, operationId = Guid.NewGuid().ToString("D"),
+        })!.AsObject();
+        Assert.Equal(HttpStatusCode.OK,(await admin.PostAsJsonAsync(path,body)).StatusCode);
+        Assert.Equal(kind,backupFactory.Administration.LastRuleWriteRequest!.Rule.Kind);
+        backupFactory.RuleReads.Kind = kind;
+        try
+        {
+            using HttpResponseMessage listing = await admin.GetAsync(path);
+            using var json = System.Text.Json.JsonDocument.Parse(await listing.Content.ReadAsStringAsync());
+            Assert.Equal(AlertRuleKindWire.Format(kind),Assert.Single(json.RootElement.GetProperty("items").EnumerateArray()).GetProperty("kind").GetString());
+        }
+        finally { backupFactory.RuleReads.Kind = AlertRuleKind.MetricThreshold; }
+        string ruleId = body["ruleId"]!.GetValue<string>();
+        body["expectedRevision"] = 1; body["operationId"] = Guid.NewGuid().ToString("D");
+        Assert.Equal(HttpStatusCode.OK,(await admin.PutAsJsonAsync($"{path}/{ruleId}",body)).StatusCode);
+        Assert.Equal(3,backupFactory.Administration.LastRuleWriteRequest!.Rule.ClearConfirmationCount);
+        Assert.Equal(HttpStatusCode.OK,(await admin.PostAsJsonAsync($"{path}/{ruleId}/disable",body)).StatusCode);
+        Assert.False(backupFactory.Administration.LastRuleWriteRequest!.Rule.Enabled);
+        body["threshold"] = 1;
+        Assert.Equal(HttpStatusCode.BadRequest,(await admin.PostAsJsonAsync(path,body)).StatusCode);
     }
 
     [Fact]
@@ -430,6 +469,7 @@ public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("ContractTesting");
+        builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IAlertQueryService>();
@@ -457,6 +497,7 @@ public sealed class M8AlertApiFactory : WebApplicationFactory<Program>
 
 internal sealed class FakeAlertRuleRead : IAlertRuleReadPort
 {
+    internal AlertRuleKind Kind { get; set; } = AlertRuleKind.MetricThreshold;
     private static readonly DateTimeOffset Started = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
 
     public ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
@@ -467,8 +508,9 @@ internal sealed class FakeAlertRuleRead : IAlertRuleReadPort
             cursor is null ? Guid.Parse("11111111-1111-4111-8111-111111111111")
                 : Guid.Parse("22222222-2222-4222-8222-222222222222"),
             cursor is null ? "Enabled rule" : "Disabled rule",
-            AlertRuleKind.MetricThreshold, "engine.user_connections", AlertComparison.GreaterThan,
-            80, 5, 2, 30, 15, 2, cursor is null, 7, Started);
+            Kind, Kind == AlertRuleKind.MetricThreshold ? "engine.user_connections" : null, AlertComparison.GreaterThan,
+            Kind == AlertRuleKind.MetricThreshold ? 80 : 0, Kind == AlertRuleKind.MetricThreshold ? 5 : 0,
+            2, 300, 15, 2, cursor is null, 7, Started);
         return ValueTask.FromResult(new AlertRuleListPage(targetId, Started, [rule],
             cursor is null ? new AlertRuleListCursor(targetId, Started, rule.RuleId) : null));
     }
