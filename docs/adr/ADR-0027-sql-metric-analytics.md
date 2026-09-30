@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: proposed, 2026-09-30. Catalog definitions implemented; production activation pending.
+Status: proposed, 2026-09-30. Catalog definitions and repository source implemented; analytics worker activation pending.
 
 ## Context
 
@@ -66,15 +66,41 @@ For derived-rate rollups, weight valid values by elapsed seconds; direct gauges
 use sample weights. The current sample-weighted `RollupV1` must not silently
 process those rates as version 1 results.
 
+## Repository source implementation
+
+Migration 0292 extracts the common run-level calculation into the private
+`reporting.sql_core_metric_inputs` function. Both Overview workload readers
+use it, preserving their existing public routing, Viewer check and aggregation.
+The helper supports the legacy and partitioned run stores; each caller keeps
+its existing fleet rollout switch. It has no PUBLIC, server, collector or
+auditor execute grant.
+
+The collector-only `reporting.read_sql_metric_analytics_inputs` function
+returns run identity, UTC observation time, closed metric key, nullable value,
+nullable aggregation weight and completeness. Its bounds are one day,
+100,000 rows and 8 MiB of PostgreSQL row JSON, including completeness. It
+fails on row or byte overflow, so callers cannot mistake a limited read for
+complete input. The returned rows have a stable timestamp, run-ID and metric
+order. This function has no pagination contract: worker integration must use
+bounded windows and metric-scoped jobs, rather than silently discard rows.
+
+Null rate observations remain present and incomplete; a missing direct gauge
+also remains an incomplete observation for a run with other core inputs.
+The wrapper uses the existing M10 physical-storage route and the same target,
+revision and snapshot checks as the shared calculation. This source is not
+compatible with `MetricPoint` or `RollupV1`, which cannot retain nullable
+observations and elapsed weights together.
+
 ## Activation work
 
 The new definitions have no production callers. SQL baselines are not yet
 available through the API, MCP or dashboard. Activation requires the following
 coordinated changes:
 
-1. Add forward migrations for versioned catalog metadata and a bounded SQL
-   source adapter. Preserve version 1 reads and grants, forced row-level
-   security, target-revision fences and job snapshot cutoffs.
+1. Add forward migrations for versioned catalog metadata and connect the
+   repository source to a typed worker adapter. Preserve version 1 reads and
+   grants, forced row-level security, target-revision fences and job snapshot
+   cutoffs. Do not add SQL entries to the unversioned catalog used by v1 reads.
 2. Persist the selected catalog version in new jobs, results and replay
    identities. Resume existing version 1 jobs and cursors against version 1;
    reject attempts to resume a cursor under a different catalog.
@@ -95,10 +121,24 @@ sample-gap requirements, read-only definition/input collections and the
 independently pinned digest. They do not exercise SQL derivation or prove
 database activation.
 
-Use the SSH test VM's PostgreSQL for source-adapter behavior and persistence
-tests when that integration is implemented. Exercise restart, counter reset,
-missing inputs, scheduler-count change, two-minute boundary, unequal sampling
-intervals, snapshot cutoff, revision changes, RLS and page continuation without
-duplicates or gaps. The Windows SQL Server lab is needed to confirm actual
-collector inputs. Neither VM integration test has run for this catalog-only
-change.
+Nine PostgreSQL integration checks passed with no skips in an isolated
+PostgreSQL 18.4 container. Six source tests cover the 291-to-292 upgrade,
+equality of both Overview readers before and after extraction, legacy and
+partitioned source equality, sixteen independent delta cases, duplicate
+timestamps, missing gauge evidence, late source/completion cutoffs, failed
+and foreign runs, half-open windows, exact row and byte bounds, scope and
+revision refusal, private helper/table refusal and function ownership/grants.
+The other three checks exercise existing Overview startup-marker and M10
+shadow-reader behavior. The evidence is
+`artifacts/sql-metric-analytics-source/sql-metric-analytics-source.trx`.
+
+The separate PostgreSQL 18.4 fresh-install/idempotence check and migration
+preamble check also passed. Their evidence is under the same artifact
+directory in `sql-metric-source-fresh-install.trx` and
+`sql-metric-migration-preamble.trx`. No broad suite was run for this change.
+
+The SSH VM is reachable and its PostgreSQL 18 service is running, but this
+session has no configured PostgreSQL login for that VM. These checks ran
+against the isolated local container. The Windows SQL Server lab remains
+necessary to confirm actual collector inputs; that source validation and
+versioned worker/result persistence are not proven by these tests.
