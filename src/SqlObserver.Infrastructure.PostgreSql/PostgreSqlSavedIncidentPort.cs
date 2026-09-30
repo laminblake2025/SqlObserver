@@ -14,7 +14,7 @@ public sealed class PostgreSqlSavedIncidentPort(NpgsqlDataSource dataSource) : I
         RepositoryCallTimeout timeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        SavedIncident? result = await ExecuteAsync(request.TargetId, timeout, command =>
+        SavedIncident? result = await ExecuteAsync<SavedIncident>(request.TargetId, timeout, command =>
         {
             command.CommandText = """
                 SELECT control.save_incident(@target,@revision,@operation,@from,@to,@title,@notes,@actor,@correlation);
@@ -32,14 +32,25 @@ public sealed class PostgreSqlSavedIncidentPort(NpgsqlDataSource dataSource) : I
     }
 
     public ValueTask<SavedIncident?> ReadAsync(Guid targetId, Guid threadId, RepositoryCallTimeout timeout,
-        CancellationToken cancellationToken) => ExecuteAsync(targetId, timeout, command =>
+        CancellationToken cancellationToken) => ExecuteAsync<SavedIncident>(targetId, timeout, command =>
         {
             command.CommandText = "SELECT reporting.read_saved_incident(@target,@thread);";
             command.Parameters.AddWithValue("thread", threadId);
         }, cancellationToken);
 
-    private async ValueTask<SavedIncident?> ExecuteAsync(Guid targetId, RepositoryCallTimeout timeout,
-        Action<NpgsqlCommand> configure, CancellationToken cancellationToken)
+    public async ValueTask<SavedIncidentListPage> ListAsync(SavedIncidentListRequest request, RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken) => await ExecuteAsync<SavedIncidentListPage>(request.TargetId, timeout, command =>
+        {
+            command.CommandText = "SELECT reporting.list_saved_incidents(@target,@limit,@revision,@snapshot,@at,@thread);";
+            command.Parameters.AddWithValue("limit", request.Limit);
+            command.Parameters.AddWithValue("revision", NpgsqlTypes.NpgsqlDbType.Bigint, (object?)request.Cursor?.PublicationRevision ?? DBNull.Value);
+            command.Parameters.AddWithValue("snapshot", NpgsqlTypes.NpgsqlDbType.TimestampTz, (object?)request.Cursor?.SnapshotUtc ?? DBNull.Value);
+            command.Parameters.AddWithValue("at", NpgsqlTypes.NpgsqlDbType.TimestampTz, (object?)request.Cursor?.SavedAtUtc ?? DBNull.Value);
+            command.Parameters.AddWithValue("thread", NpgsqlTypes.NpgsqlDbType.Uuid, (object?)request.Cursor?.ThreadId ?? DBNull.Value);
+        }, cancellationToken).ConfigureAwait(false) ?? throw new InvalidDataException("The saved incident list returned no page.");
+
+    private async ValueTask<T?> ExecuteAsync<T>(Guid targetId, RepositoryCallTimeout timeout,
+        Action<NpgsqlCommand> configure, CancellationToken cancellationToken) where T : class
     {
         using var deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
         try
@@ -58,7 +69,7 @@ public sealed class PostgreSqlSavedIncidentPort(NpgsqlDataSource dataSource) : I
             command.Parameters.AddWithValue("target", targetId);
             configure(command);
             object? value = await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false);
-            SavedIncident? result = value is null or DBNull ? null : JsonSerializer.Deserialize<SavedIncident>((string)value, JsonOptions)
+            T? result = value is null or DBNull ? null : JsonSerializer.Deserialize<T>((string)value, JsonOptions)
                 ?? throw new InvalidDataException("The saved incident response is invalid.");
             await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
             return result;

@@ -99,6 +99,41 @@ export function incidentSelection(hash: string): string | null | undefined {
   return values.length === 0 ? undefined : values.length === 1 && validIncidentId(values[0]) ? values[0].toLowerCase() : null;
 }
 
-export function savedIncidentHref(saved: SavedIncident, scope: OverviewScope): string {
+export function savedIncidentHref(saved: Pick<SavedIncident,"targetId"|"threadId"|"fromUtc"|"toUtc">, scope: OverviewScope): string {
   return `${overviewHref({ ...scope, range: "custom", from: canonicalUtcTimestamp(saved.fromUtc), to: canonicalUtcTimestamp(saved.toUtc) },"health",saved.targetId)}&incident=${encodeURIComponent(saved.threadId)}`;
+}
+
+export interface SavedIncidentSummary extends IncidentWindow {
+  readonly targetId: string; readonly targetRevision: number; readonly threadId: string;
+  readonly savedAtUtc: string; readonly title: string; readonly evidenceCount: number; readonly evidenceTruncated: boolean;
+}
+export interface SavedIncidentPage {
+  readonly targetId: string; readonly snapshotUtc: string; readonly items: readonly SavedIncidentSummary[];
+  readonly hasMore: boolean; readonly nextCursor: string | null;
+}
+
+export function parseSavedIncidentPage(value: unknown, targetId: string, limit = 20, prior?: SavedIncidentPage): SavedIncidentPage {
+  const page=object(value,["targetId","snapshotUtc","items","hasMore","nextCursor"]);
+  if (!validIncidentId(page.targetId) || page.targetId.toLowerCase()!==targetId.toLowerCase()
+    || !Number.isInteger(limit) || limit<1 || limit>50 || !Array.isArray(page.items) || page.items.length>limit
+    || typeof page.hasMore!=="boolean" || page.hasMore && page.items.length!==limit
+    || (page.hasMore ? typeof page.nextCursor!=="string" || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(page.nextCursor) || page.nextCursor.length>512
+      : page.nextCursor!==null)) throw new Error("The saved investigation list could not be validated.");
+  const snapshot=incidentUtc(page.snapshotUtc);
+  if (prior && (snapshot!==incidentUtc(prior.snapshotUtc) || !prior.hasMore || prior.items.length===0 || page.nextCursor===prior.nextCursor))
+    throw new Error("The saved investigation list changed while paging.");
+  let previous=prior?.items.at(-1);
+  for (const input of page.items) {
+    const item=object(input,["targetId","targetRevision","threadId","fromUtc","toUtc","savedAtUtc","title","evidenceCount","evidenceTruncated"]);
+    const at=incidentUtc(item.savedAtUtc);
+    if (item.targetId!==page.targetId || !validIncidentId(item.threadId) || !Number.isSafeInteger(item.targetRevision) || (item.targetRevision as number)<1
+      || !validText(item.title,200,false) || item.title.trim().length===0 || !Number.isInteger(item.evidenceCount)
+      || (item.evidenceCount as number)<0 || (item.evidenceCount as number)>200 || typeof item.evidenceTruncated!=="boolean"
+      || at>snapshot || incidentUtc(item.toUtc)>at || previous && (at>incidentUtc(previous.savedAtUtc)
+        || at===incidentUtc(previous.savedAtUtc) && String(item.threadId).toLowerCase()>=previous.threadId.toLowerCase()))
+      throw new Error("The saved investigation summary is invalid or out of order.");
+    validateIncidentWindow({fromUtc:item.fromUtc as string,toUtc:item.toUtc as string});
+    previous=item as unknown as SavedIncidentSummary;
+  }
+  return page as unknown as SavedIncidentPage;
 }

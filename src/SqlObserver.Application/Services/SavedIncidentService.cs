@@ -53,6 +53,42 @@ public sealed class SavedIncidentService(ISavedIncidentRepositoryPort repository
         authorization.RequireAny(new MonitoredInstanceId(targetId), roles);
     }
 
+    public async ValueTask<SavedIncidentListPage> ListAsync(AuthorizationContext authorization,
+        SavedIncidentListRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        Require(authorization, request.TargetId, ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator);
+        if (request.Limit is < 1 or > 50 || request.Cursor is { } cursor
+            && (cursor.TargetId != request.TargetId || cursor.PublicationRevision < 1 || cursor.Limit != request.Limit
+                || cursor.ThreadId == Guid.Empty || !Utc(cursor.SnapshotUtc) || !Utc(cursor.SavedAtUtc)
+                || cursor.SavedAtUtc > cursor.SnapshotUtc || cursor.SnapshotUtc > DateTimeOffset.UtcNow))
+            throw new ArgumentException("The saved incident page limit or cursor is invalid.");
+        SavedIncidentListPage page = await repository.ListAsync(request, Timeout, cancellationToken).ConfigureAwait(false);
+        if (page.TargetId != request.TargetId || page.PublicationRevision < 0 || !Utc(page.SnapshotUtc)
+            || page.SnapshotUtc > DateTimeOffset.UtcNow || page.Items is null || page.Items.Count > request.Limit
+            || page.HasMore && page.Items.Count != request.Limit
+            || page.Items.Count > 0 && page.PublicationRevision == 0
+            || request.Cursor is { } prior && (page.PublicationRevision != prior.PublicationRevision || page.SnapshotUtc != prior.SnapshotUtc))
+            throw new InvalidDataException("The saved incident list exceeds its projection contract.");
+        var previous = request.Cursor;
+        foreach (SavedIncidentSummary item in page.Items)
+        {
+            if (item.TargetId != request.TargetId || item.TargetRevision < 1 || item.ThreadId == Guid.Empty
+                || !Utc(item.FromUtc) || !Utc(item.ToUtc) || !Utc(item.SavedAtUtc)
+                || item.ToUtc <= item.FromUtc || item.ToUtc - item.FromUtc > TimeSpan.FromDays(7)
+                || item.ToUtc > item.SavedAtUtc || item.SavedAtUtc > page.SnapshotUtc
+                || !ValidText(item.Title, 200, false) || string.IsNullOrWhiteSpace(item.Title)
+                || item.EvidenceCount is < 0 or > 200 || previous is not null
+                && (item.SavedAtUtc > previous.SavedAtUtc || item.SavedAtUtc == previous.SavedAtUtc
+                    && string.CompareOrdinal(item.ThreadId.ToString("N"), previous.ThreadId.ToString("N")) >= 0))
+                throw new InvalidDataException("The saved incident list is invalid or out of order.");
+            previous = new(request.TargetId, page.PublicationRevision, page.SnapshotUtc, item.SavedAtUtc, item.ThreadId, request.Limit);
+        }
+        return page;
+    }
+
+    private static bool Utc(DateTimeOffset value) => value.Offset == TimeSpan.Zero && value.Ticks % TimeSpan.TicksPerMicrosecond == 0;
+
     private static bool ValidText(string? value, int maximumBytes, bool allowNewlines) => value is not null
         && Encoding.UTF8.GetByteCount(value) <= maximumBytes
         && !value.Any(c => char.IsControl(c) && !(allowNewlines && c is '\r' or '\n' or '\t'));

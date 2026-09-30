@@ -6,8 +6,8 @@ import { pathToFileURL } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
-import { incidentUtc, prepareIncident, parseSavedIncident, verifySavedIncident, savedIncidentHref, incidentSelection } from "../src/features/incidents/incidentModel.ts";
-import { getSavedIncident, saveIncident, IncidentRequestError } from "../src/features/incidents/incidentApi.ts";
+import { incidentUtc, prepareIncident, parseSavedIncident, parseSavedIncidentPage, verifySavedIncident, savedIncidentHref, incidentSelection } from "../src/features/incidents/incidentModel.ts";
+import { getSavedIncident, listSavedIncidents, saveIncident, IncidentRequestError } from "../src/features/incidents/incidentApi.ts";
 import { canSaveIncident } from "../src/features/targets/meApi.ts";
 import { readOverviewScope, overviewWindow } from "../src/features/overview/overviewModel.ts";
 import { clearApiCache } from "../src/apiClient.ts";
@@ -129,10 +129,14 @@ async function compile(name,replacements={}) {
   return `data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`;
 }
 const viewUrl=await compile("SavedIncidentView"); const {SavedIncidentView}=await import(viewUrl);
+const listUrl=await compile("SavedIncidentList",{
+  "./incidentApi.ts":new URL("../src/features/incidents/incidentApi.ts",import.meta.url).href,
+  "./incidentModel.ts":new URL("../src/features/incidents/incidentModel.ts",import.meta.url).href,
+});
 const workspaceUrl=await compile("IncidentWorkspace",{
   "./incidentApi.ts":new URL("../src/features/incidents/incidentApi.ts",import.meta.url).href,
   "./incidentModel.ts":new URL("../src/features/incidents/incidentModel.ts",import.meta.url).href,
-  "./SavedIncidentView.tsx":viewUrl,"../overview/overviewModel.ts":new URL("../src/features/overview/overviewModel.ts",import.meta.url).href,
+  "./SavedIncidentView.tsx":viewUrl,"./SavedIncidentList.tsx":listUrl,"../overview/overviewModel.ts":new URL("../src/features/overview/overviewModel.ts",import.meta.url).href,
 });
 const {IncidentWorkspace}=await import(workspaceUrl);
 
@@ -149,6 +153,38 @@ test("rendered workspace gates save actions and handles invalid selection withou
   const render=extra=>renderToStaticMarkup(createElement(IncidentWorkspace,{targetId:target,targetRevision:7,window,scope,selectionHash:"#/health",formatTime:value=>value,canSave:true,...extra}));
   assert.match(render({}),/Open incident/); assert.doesNotMatch(render({}),/<button[^>]+disabled/);
   assert.match(render({window:undefined}),/<button[^>]+disabled/);
-  assert.doesNotMatch(render({canSave:false}),/<button/); assert.match(render({canSave:false}),/Operator or Target Administrator/);
+  assert.doesNotMatch(render({canSave:false}),/>Open incident</); assert.match(render({canSave:false}),/Operator or Target Administrator/);
+  assert.match(render({canSave:false}),/Saved investigations/);
   assert.match(render({selectionHash:"#/health?incident=bad"}),/incident link is invalid/);
+});
+
+const summary=(index=0)=>({targetId:target,targetRevision:7,threadId:`22222222-2222-4222-8222-${(100-index).toString(16).padStart(12,"0")}`,
+  ...window,savedAtUtc:"2026-09-29T14:00:00Z",title:`Investigation ${index}`,evidenceCount:0,evidenceTruncated:false});
+const summaryPage=()=>({targetId:target,snapshotUtc:"2026-09-29T15:00:00Z",items:Array.from({length:20},(_,index)=>summary(index)),hasMore:true,nextCursor:"payload.signature"});
+test("summary pages validate dense descending keys, target scope and bounded metadata",()=>{
+  const page=summaryPage(); assert.equal(parseSavedIncidentPage(page,target).items.length,20);
+  for(const change of [row=>row.targetId=thread,row=>row.items[0].targetId=thread,row=>row.items[0].notes="Unexpected secret",
+    row=>row.items[0].evidenceCount=201,row=>row.items.reverse(),row=>row.items[1]=row.items[0],row=>row.items.pop(),
+    row=>row.nextCursor=null,row=>row.nextCursor="x".repeat(513),row=>row.items[0].savedAtUtc="2026-09-29T16:00:00Z"]){
+    const invalid=summaryPage();change(invalid);assert.throws(()=>parseSavedIncidentPage(invalid,target));
+  }
+  const prior=parseSavedIncidentPage(page,target);
+  const next={...page,items:[summary(20)],hasMore:false,nextCursor:null};
+  assert.equal(parseSavedIncidentPage(next,target,20,prior).items.length,1);
+  assert.throws(()=>parseSavedIncidentPage({...next,snapshotUtc:"2026-09-29T15:00:00.000001Z"},target,20,prior));
+  assert.throws(()=>parseSavedIncidentPage({...next,items:[summary(19)]},target,20,prior));
+});
+
+test("summary API pages use no-store and preserve the first snapshot; stale cursors request refresh",async()=>{
+  const requests=[];
+  await withFetch(async(url,options)=>{
+    requests.push({url,options});return new Response(JSON.stringify(requests.length===1?summaryPage():{...summaryPage(),items:[summary(20)],hasMore:false,nextCursor:null}));
+  },async()=>{
+    const first=await listSavedIncidents(target,new AbortController().signal);
+    assert.equal((await listSavedIncidents(target,new AbortController().signal,first)).items[0].threadId,summary(20).threadId);
+    assert.match(requests[1].url,/cursor=payload.signature/);assert.equal(requests[1].options.cache,"no-store");
+  });
+  await withFetch(async()=>new Response(null,{status:409}),async()=>{
+    await assert.rejects(()=>listSavedIncidents(target,new AbortController().signal),error=>error instanceof IncidentRequestError&&!error.retryable&&/Refresh/.test(error.message));
+  });
 });

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 using System.Text.Json.Serialization;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Authorization;
@@ -18,7 +19,33 @@ public static class SavedIncidentEndpoints
         var group = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/incidents/saved").RequireAuthorization();
         group.MapPost("/", SaveAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapGet("/{threadId:guid}", ReadAsync);
+        group.MapGet("/", ListAsync);
         return endpoints;
+    }
+
+    private static async Task<IResult> ListAsync(HttpContext context, Guid instanceId, ISavedIncidentService service,
+        WindowsGroupRoleResolver roles, SavedIncidentListCursorCodec codec, string? limit = null, string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        ApiCorrelation.Begin(context); context.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            SavedIncidentListCursor? continuation = cursor is null ? null : codec.Decode(cursor);
+            int count = limit is null ? continuation?.Limit ?? 20
+                : int.TryParse(limit, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) ? parsed
+                : throw new ArgumentException("The page limit is invalid.");
+            SavedIncidentListPage page = await service.ListAsync(roles.Resolve(context.User), new(instanceId, count, continuation), cancellationToken).ConfigureAwait(false);
+            SavedIncidentSummary? last = page.HasMore ? page.Items[^1] : null;
+            string? next = last is null ? null : codec.Encode(new(instanceId, page.PublicationRevision, page.SnapshotUtc, last.SavedAtUtc, last.ThreadId, count));
+            return Results.Ok(new { page.TargetId, page.SnapshotUtc, page.Items, page.HasMore, nextCursor = next });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (SavedIncidentConflictException) { return Results.Conflict(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (InvalidDataException) { return Results.StatusCode(StatusCodes.Status502BadGateway); }
+        catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
     }
 
     private static async Task<IResult> SaveAsync(HttpContext context, Guid instanceId, ISavedIncidentService service,

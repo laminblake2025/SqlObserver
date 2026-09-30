@@ -1,7 +1,7 @@
 # Saved incident storage and API
 
 The plan's **Open incident** workflow now has storage, an API and a dashboard
-action. Saved-investigation browsing and report/export integration remain to
+action and saved-investigation browsing. Report/export integration remains to
 be implemented. Analytics-generated incidents continue to work.
 
 ## Contract
@@ -100,3 +100,48 @@ the Overview fixture. It is never imported by production code. For visual QA,
 run the existing `pnpm run fixture:overview` script after building; the default
 port remains 4185 and `SQLOBSERVER_OVERVIEW_FIXTURE_PORT` selects another loopback
 port. `/__incident_fixture?role=operator&mode=uncertain` selects the retry case.
+
+## Browsing saved investigations
+
+The dashboard's **Saved investigations** action is available to matching Viewer,
+Operator and TargetAdministrator readers. It loads summary metadata only, on
+demand, independently of the chart window. Summaries include the title, saved
+time, retained window, historical target revision, evidence count and truncation
+flag. Notes and evidence payloads are read only when an investigation is opened.
+Links restore the saved window and incident selection. Empty captures remain
+explicit when opened; a zero evidence count is not a health verdict.
+
+`GET /api/v1/observation-targets/{targetId}/incidents/saved` returns `targetId`,
+`snapshotUtc`, `items`, `hasMore` and `nextCursor`, with `Cache-Control: no-store`.
+The default page size is 20 and the maximum is 50. The newest save comes first,
+using `(savedAtUtc, threadId)` descending keyset order. Historical target
+revisions are included while access is checked against the current target scope.
+The list is deliberately separate from automatically correlated incidents,
+which do not have a user-saved title, notes or snapshot.
+
+Migration `0289_saved_incident_listing.sql` adds the supporting index and a
+private, forced-RLS publication fence, initialized with every target so empty
+lists are also protected. A new save advances that fence atomically in the same
+transaction. List reads lock it until the page transaction finishes.
+A continuation whose publication changed returns 409 and the UI offers Refresh;
+it never merges pages from different publications. Cursors use the shared API
+signer, bind the target, snapshot, publication, boundary and limit, and reject
+tampering or a changed page size. The existing API signing-key configuration
+also applies here. SQL functions remain migrator-owned and executable only by
+the server role; direct application-role table access is denied.
+
+Validation on 2026-09-30 passed four saved-incident application tests, the
+migration-preamble check, five real HTTP-pipeline tests, eight PostgreSQL 18.4
+tests and 13 incident frontend tests. The native cases include dense equal-time
+paging without duplicates or gaps, historical revisions, late-publication
+conflicts, a concurrent first save waiting on the empty-list fence, malformed
+direct SQL bounds, cross-target scope and role privileges.
+TypeScript checking, production build and asset-manifest verification passed.
+The earlier applied migration 0288 retains its bytes; the preamble check now
+recognizes its exact existing order while enforcing the standard order on 0289.
+
+A Viewer browser exercise on the synthetic loopback fixture verified two pages
+of 20 and five investigations, 25 distinct titles, an older investigation link,
+URL reload, retained notes/window and no save action. `mode=browse` seeds those
+25 synthetic snapshots. This fixture does not establish database behavior; the
+native PostgreSQL cases above do. Report/export integration remains pending.

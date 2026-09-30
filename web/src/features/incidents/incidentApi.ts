@@ -1,6 +1,7 @@
 import { apiFetch } from "../../apiClient.ts";
-import { parseSavedIncident, validIncidentId, verifySavedIncident } from "./incidentModel.ts";
+import { parseSavedIncident, parseSavedIncidentPage, validIncidentId, verifySavedIncident } from "./incidentModel.ts";
 import type { SavedIncident, SaveIncidentCommand } from "./incidentModel.ts";
+import type { SavedIncidentPage } from "./incidentModel.ts";
 
 export class IncidentRequestError extends Error {
   readonly retryable: boolean;
@@ -38,3 +39,19 @@ async function request(targetId: string, threadId: string | undefined, command: 
 
 export const saveIncident = (target: string, command: SaveIncidentCommand, signal: AbortSignal) => request(target,undefined,command,signal);
 export const getSavedIncident = (target: string, thread: string, signal: AbortSignal) => request(target,thread,undefined,signal);
+
+export async function listSavedIncidents(target: string, signal: AbortSignal, prior?: SavedIncidentPage): Promise<SavedIncidentPage> {
+  if (!validIncidentId(target) || prior && (prior.targetId.toLowerCase()!==target.toLowerCase() || !prior.hasMore || !prior.nextCursor))
+    throw new IncidentRequestError("Select a server and a valid saved investigation page.",false);
+  try {
+    const response=await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(target)}/incidents/saved?limit=20${prior ? `&cursor=${encodeURIComponent(prior.nextCursor!)}` : ""}`,{signal,cache:"no-store"});
+    if (!response.ok) throw new IncidentRequestError(response.status===409
+      ? "Saved investigations changed. Refresh the list to start again."
+      : response.status===403 ? "Viewer access to this server is required to browse saved investigations."
+      : "Saved investigations are temporarily unavailable.",response.status>=500 || response.status===429);
+    return parseSavedIncidentPage(await response.json(),target,20,prior);
+  } catch(error) {
+    if(signal.aborted || error instanceof IncidentRequestError) throw error;
+    throw new IncidentRequestError("The saved investigation list could not be loaded or validated.",true);
+  }
+}

@@ -39,6 +39,13 @@ public sealed class MigrationPreambleTests
                 "SET LOCAL statement_timeout = '5min';",
                 "SET LOCAL TIME ZONE 'UTC';",
             ];
+            // Applied 0288 sets the same boundaries before any object SQL, but
+            // orders its role last and spells the timezone as a setting. Keep
+            // those immutable bytes under an exact preamble check.
+            if (name == "0288_saved_incident_workspace.sql") expected = [
+                "SET LOCAL lock_timeout = '5s';", "SET LOCAL statement_timeout = '5min';",
+                "SET LOCAL TimeZone = 'UTC';", "SET LOCAL ROLE sqlobserver_migrator;",
+            ];
             Assert.True(preamble.SequenceEqual(expected, StringComparer.Ordinal),
                 $"{name} must begin with the migrator role, lock timeout, statement timeout, and UTC setting.");
         }

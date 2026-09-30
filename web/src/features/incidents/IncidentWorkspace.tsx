@@ -3,6 +3,7 @@ import { getSavedIncident, IncidentRequestError, saveIncident } from "./incident
 import { incidentSelection, prepareIncident, savedIncidentHref, validateIncidentWindow } from "./incidentModel.ts";
 import type { IncidentWindow, SaveIncidentCommand, SavedIncident } from "./incidentModel.ts";
 import { SavedIncidentView } from "./SavedIncidentView.tsx";
+import { SavedIncidentList } from "./SavedIncidentList.tsx";
 import { overviewHref } from "../overview/overviewModel.ts";
 import type { OverviewScope } from "../overview/overviewTypes.ts";
 
@@ -74,9 +75,12 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, s
       {readError?.id===selectedId && <button type="button" onClick={() => setReload(value => value+1)}>Retry loading</button>}
       <button type="button" onClick={close}>Close investigation</button></section>;
   }
-  if (!canSave) return <p className="evidence-footer">Operator or Target Administrator access unlocks saving an incident for this server.</p>;
-  if (!draft) return <div className="incident-actions"><button type="button" disabled={!window || targetRevision<1} onClick={open}>Open incident</button>
-    <small>Save the selected window, notes and existing analytics evidence.</small>{saveError && <p role="alert">{saveError.message}</p>}</div>;
+  if (!draft || !canSave) return <>
+    {canSave ? <div className="incident-actions"><button type="button" disabled={!window || targetRevision<1} onClick={open}>Open incident</button>
+      <small>Save the selected window, notes and existing analytics evidence.</small>{saveError && <p role="alert">{saveError.message}</p>}</div>
+      : <p className="evidence-footer">Operator or Target Administrator access unlocks saving an incident for this server.</p>}
+    <SavedIncidentList key={targetId} targetId={targetId} scope={scope} formatTime={formatTime}/>
+  </>;
   const locked=pending || command!==undefined;
   return <form className="panel incident-form" onSubmit={event => { event.preventDefault(); void submit(); }}>
     <h4>Open incident</h4><p>Save window: {formatTime(draft.window.fromUtc)} to {formatTime(draft.window.toUtc)}. This draft stays on this window as live charts refresh.</p>

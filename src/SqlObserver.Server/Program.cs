@@ -183,6 +183,7 @@ builder.Services.AddSingleton<ServerConfigurationChangeCursorCodec>();
 builder.Services.AddSingleton<ServerConfigurationSnapshotCursorCodec>();
 builder.Services.AddSingleton<AvailabilityGroupEvidenceCursorCodec>();
 builder.Services.AddSingleton<BackupEvidenceCursorCodec>();
+builder.Services.AddSingleton<SavedIncidentListCursorCodec>();
 builder.Services.AddSingleton<IBackupEvidencePort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupEvidence);
 builder.Services.AddSingleton<BackupAssessmentQueryService>();
 builder.Services.AddSingleton<IQueryStorePlanRegressionQueryService, QueryStorePlanRegressionQueryService>();

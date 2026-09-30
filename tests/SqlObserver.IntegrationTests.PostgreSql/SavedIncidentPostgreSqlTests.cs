@@ -143,10 +143,101 @@ public sealed class SavedIncidentPostgreSqlTests(PostgreSql18Fixture fixture)
         }
         catch { await database.DisposeAsync(); throw; }
     }
+    [Fact]
+    public async Task SummaryPagesRetainDenseOrderingHistoricalRevisionsAndRejectLatePublications()
+    {
+        await using RepositoryTestDatabase database = await Database(); SaveIncidentRequest request = Request(); await Target(database,request.TargetId);
+        await using NpgsqlDataSource server = database.CreateServerDataSource(); var repository = new PostgreSqlSavedIncidentPort(server);
+        var saved = new List<SavedIncident>();
+        for (int i=0;i<5;i++) saved.Add(await repository.SaveAsync(request with { OperationId=Guid.NewGuid(),Title="Investigation "+i },Actor,Guid.NewGuid(),Timeout,default));
+        // Dense timestamps exercise the UUID tie-breaker, not timestamp-only paging.
+        DateTimeOffset at = saved.Min(row => row.SavedAtUtc);
+        await Execute(database,"UPDATE analytics.saved_incident SET saved_at=@at WHERE instance_id=@target;",("at",at),("target",request.TargetId));
+        await Execute(database,"UPDATE control.observation_target SET revision=2 WHERE instance_id=@target;",("target",request.TargetId));
+        await repository.SaveAsync(request with { ExpectedTargetRevision=2,OperationId=Guid.NewGuid(),Title="New revision" },Actor,Guid.NewGuid(),Timeout,default);
+        SavedIncidentListPage first = await repository.ListAsync(new(request.TargetId,2),Timeout,default);
+        Assert.True(first.HasMore); Assert.Equal(2,first.Items.Count); Assert.Equal(2,first.Items[0].TargetRevision);
+        var found = new List<SavedIncidentSummary>(first.Items); var page = first;
+        while (page.HasMore)
+        {
+            SavedIncidentSummary last = page.Items[^1];
+            page = await repository.ListAsync(new(request.TargetId,2,new(request.TargetId,first.PublicationRevision,first.SnapshotUtc,last.SavedAtUtc,last.ThreadId,2)),Timeout,default);
+            Assert.Equal(first.SnapshotUtc,page.SnapshotUtc); found.AddRange(page.Items);
+        }
+        Assert.Equal(6,found.Count); Assert.Equal(6,found.Select(row=>row.ThreadId).Distinct().Count());
+        Assert.Equal(saved.Select(row=>row.ThreadId.ToString("N")).OrderDescending(StringComparer.Ordinal),found.Skip(1).Select(row=>row.ThreadId.ToString("N")));
+        Assert.All(found,row=>Assert.Equal(0,row.EvidenceCount));
+        SavedIncidentSummary boundary = first.Items[^1];
+        var cursor = new SavedIncidentListCursor(request.TargetId,first.PublicationRevision,first.SnapshotUtc,boundary.SavedAtUtc,boundary.ThreadId,2);
+        await repository.SaveAsync(request with { ExpectedTargetRevision=2,OperationId=Guid.NewGuid(),Title="Late publication" },Actor,Guid.NewGuid(),Timeout,default);
+        await Assert.ThrowsAsync<SavedIncidentConflictException>(()=>repository.ListAsync(new(request.TargetId,2,cursor),Timeout,default).AsTask());
+        Assert.Equal(2,(await repository.ListAsync(new(request.TargetId,2),Timeout,default)).Items.Count);
+        Assert.NotNull(await repository.ReadAsync(request.TargetId,saved[0].ThreadId,Timeout,default));
+    }
+
+    [Fact]
+    public async Task SummaryFunctionRejectsCrossScopeIncompleteBoundsAndDirectTableAccess()
+    {
+        await using RepositoryTestDatabase database = await Database(); SaveIncidentRequest request = Request(); await Target(database,request.TargetId);
+        await using NpgsqlDataSource server = database.CreateServerDataSource(); var repository = new PostgreSqlSavedIncidentPort(server);
+        Assert.Empty((await repository.ListAsync(new(request.TargetId,50),Timeout,default)).Items);
+        await using NpgsqlConnection connection = await server.OpenConnectionAsync(); await Scope(connection,Guid.NewGuid());
+        await using var command = new NpgsqlCommand("SELECT reporting.list_saved_incidents(@target,2,NULL,NULL,NULL,NULL);",connection);
+        command.Parameters.AddWithValue("target",request.TargetId);
+        Assert.Equal("42501",(await Assert.ThrowsAsync<PostgresException>(()=>command.ExecuteScalarAsync())).SqlState);
+        await Scope(connection,request.TargetId);
+        foreach (string args in new[] { "0,NULL,NULL,NULL,NULL", "51,NULL,NULL,NULL,NULL", "2,NULL,clock_timestamp(),NULL,NULL", "2,1,NULL,NULL,NULL" })
+        {
+            command.CommandText=$"SELECT reporting.list_saved_incidents(@target,{args});";
+            Assert.Equal("22023",(await Assert.ThrowsAsync<PostgresException>(()=>command.ExecuteScalarAsync())).SqlState);
+        }
+        Assert.Equal(0L,await Scalar(database,"""
+            SELECT count(*) FROM pg_proc p WHERE p.oid='reporting.list_saved_incidents(uuid,integer,bigint,timestamptz,timestamptz,uuid)'::regprocedure
+            AND (pg_get_userbyid(p.proowner)<>'sqlobserver_migrator' OR NOT p.prosecdef
+              OR has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE') OR has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE')
+              OR EXISTS(SELECT FROM aclexplode(p.proacl) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE'));
+            """));
+        command.CommandText="SELECT * FROM control.saved_incident_publication;";
+        Assert.Equal("42501",(await Assert.ThrowsAsync<PostgresException>(()=>command.ExecuteScalarAsync())).SqlState);
+    }
     private static SaveIncidentRequest Request()
     {
         DateTimeOffset to=DateTimeOffset.UtcNow.AddMinutes(-1); to=to.AddTicks(-(to.Ticks%TimeSpan.TicksPerMicrosecond));
         return new(Guid.NewGuid(),1,Guid.NewGuid(),to.AddHours(-1),to,"Saved investigation","Notes\nkept exactly");
+    }
+    [Fact]
+    public async Task EmptyListFenceSerializesTheFirstConcurrentSave()
+    {
+        await using RepositoryTestDatabase database=await Database(); SaveIncidentRequest request=Request(); await Target(database,request.TargetId);
+        await using NpgsqlDataSource server=database.CreateServerDataSource(); var repository=new PostgreSqlSavedIncidentPort(server);
+        await using NpgsqlConnection connection=await server.OpenConnectionAsync();
+        await using NpgsqlTransaction transaction=await connection.BeginTransactionAsync();
+        await Scope(connection,request.TargetId);
+        await using(var command=new NpgsqlCommand("SELECT reporting.list_saved_incidents(@target,20,NULL,NULL,NULL,NULL);",connection,transaction))
+        {
+            command.Parameters.AddWithValue("target",request.TargetId);
+            using var page=System.Text.Json.JsonDocument.Parse((string)(await command.ExecuteScalarAsync())!);
+            Assert.Equal(0,page.RootElement.GetProperty("publicationRevision").GetInt64());
+            Assert.Empty(page.RootElement.GetProperty("items").EnumerateArray());
+        }
+        Task<SavedIncident> save=repository.SaveAsync(request,Actor,Guid.NewGuid(),Timeout,default).AsTask();
+        bool waiting=false;
+        for(int attempt=0;attempt<100&&!waiting;attempt++)
+        {
+            await using var observe=database.DataSource.CreateCommand("""
+                SELECT EXISTS(SELECT FROM pg_stat_activity WHERE datname=current_database()
+                  AND wait_event_type='Lock' AND query LIKE '%control.save_incident(@target%');
+                """);
+            // Npgsql sends positional placeholders in the backend query text.
+            observe.CommandText=observe.CommandText.Replace("@target","$1",StringComparison.Ordinal);
+            waiting=(bool)(await observe.ExecuteScalarAsync())!;
+            if(!waiting)await Task.Delay(20);
+        }
+        Assert.True(waiting,"The first save should wait for the empty list's publication lock.");
+        Assert.False(save.IsCompleted);
+        await transaction.CommitAsync(); Assert.NotNull(await save);
+        SavedIncidentListPage refreshed=await repository.ListAsync(new(request.TargetId,20),Timeout,default);
+        Assert.Equal(1,refreshed.PublicationRevision); Assert.Single(refreshed.Items);
     }
     private static Task Target(RepositoryTestDatabase database,Guid target) => Execute(database,"""
         INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,

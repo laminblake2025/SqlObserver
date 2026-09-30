@@ -56,6 +56,28 @@ public sealed class SavedIncidentServiceTests
 
     private static SaveIncidentRequest Request() => new(Guid.NewGuid(),1,Guid.NewGuid(),
         new(2026,9,29,12,0,0,TimeSpan.Zero),new(2026,9,29,13,0,0,TimeSpan.Zero),"Blocking investigation","Initial observations");
+    [Fact]
+    public async Task ListingUsesMatchingReadGrantsAndRejectsCursorAndRepositoryDrift()
+    {
+        var repository = new Repository(); var service = new SavedIncidentService(repository); Guid target = Guid.NewGuid();
+        var request = new SavedIncidentListRequest(target, 2);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListAsync(
+            Auth((ApplicationRole.Viewer,Guid.NewGuid()),(ApplicationRole.Auditor,target)),request,default).AsTask());
+        Assert.Equal(0, repository.Calls);
+        var auth = Auth((ApplicationRole.Viewer,target));
+        var page = await service.ListAsync(auth,request,default); Assert.Empty(page.Items);
+        var cursor = new SavedIncidentListCursor(target,1,new(2026,9,29,14,0,0,TimeSpan.Zero),new(2026,9,29,13,0,0,TimeSpan.Zero),Guid.NewGuid(),2);
+        foreach (var invalid in new[] { request with { Limit=51 }, request with { Cursor=cursor with { TargetId=Guid.NewGuid() } },
+            request with { Cursor=cursor with { Limit=1 } }, request with { Cursor=cursor with { SnapshotUtc=cursor.SavedAtUtc.AddHours(-1) } } })
+            await Assert.ThrowsAsync<ArgumentException>(() => service.ListAsync(auth,invalid,default).AsTask());
+        repository.Page = page with { TargetId=Guid.NewGuid() };
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.ListAsync(auth,request,default).AsTask());
+        var item = new SavedIncidentSummary(target,1,Guid.NewGuid(),cursor.SavedAtUtc.AddHours(-1),cursor.SavedAtUtc, cursor.SavedAtUtc,"Saved",0,false);
+        repository.Page = page with { PublicationRevision=1,Items=[item,item] };
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.ListAsync(auth,request,default).AsTask());
+        repository.Page = page with { PublicationRevision=1,Items=[item],HasMore=true };
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.ListAsync(auth,request,default).AsTask());
+    }
     private static AuthorizationContext Auth(params (ApplicationRole Role,Guid Target)[] grants) => new(
         new ActorSecurityIdentifier("S-1-5-21-1001"),AuthorizationPrincipalState.Active,
         grants.Select(grant => new RoleAuthorizationGrant(grant.Role,
@@ -66,6 +88,9 @@ public sealed class SavedIncidentServiceTests
         public int Calls { get; private set; }
         public Func<SavedIncident,SavedIncident> Alter { get; set; } = value => value;
         private SavedIncident? current;
+        public SavedIncidentListPage? Page { get; set; }
+        public ValueTask<SavedIncidentListPage> ListAsync(SavedIncidentListRequest request,RepositoryCallTimeout timeout,CancellationToken cancellationToken)
+        { Calls++; return ValueTask.FromResult(Page ?? new(request.TargetId,0,new(2026,9,29,14,0,0,TimeSpan.Zero),[],false)); }
         public ValueTask<SavedIncident> SaveAsync(SaveIncidentRequest request,string actor,Guid correlation,
             RepositoryCallTimeout timeout,CancellationToken cancellationToken)
         {
