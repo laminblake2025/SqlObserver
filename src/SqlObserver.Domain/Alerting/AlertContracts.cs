@@ -6,7 +6,11 @@ using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Domain.Alerting;
 
-public enum AlertRuleKind { MetricThreshold = 1, CollectorHealth = 2 }
+public enum AlertRuleKind
+{
+    MetricThreshold = 1, CollectorHealth = 2,
+    BackupFullPolicy = 3, BackupLogPolicy = 4, BackupObservedFaults = 5,
+}
 public enum AlertComparison { GreaterThan = 1, GreaterThanOrEqual = 2, LessThan = 3, LessThanOrEqual = 4, Equal = 5 }
 public enum AlertState { Normal = 1, Pending = 2, Firing = 3, Acknowledged = 4, Resolved = 5 }
 public enum AlertEventKind { Fired = 1, Resolved = 2, Acknowledged = 3 }
@@ -45,12 +49,17 @@ public sealed class AlertRuleDefinition
             static c => DomainValidation.IsAsciiLetter(c) || DomainValidation.IsAsciiDigit(c) || c is '.' or '_' or '-', true);
         if (!Enum.IsDefined(kind) || !Enum.IsDefined(comparison)) throw new ArgumentOutOfRangeException(nameof(kind));
         if (kind == AlertRuleKind.MetricThreshold && metricId is null) throw new ArgumentException("Metric rules require a metric identifier.", nameof(metricId));
-        if (kind == AlertRuleKind.CollectorHealth && metricId is not null) throw new ArgumentException("Collector-health rules cannot carry a metric identifier.", nameof(metricId));
+        if (kind != AlertRuleKind.MetricThreshold && metricId is not null) throw new ArgumentException("Non-metric rules cannot carry a metric identifier.", nameof(metricId));
+        if (BackupAlertRuleContract.IsBackup(kind) && (comparison != AlertComparison.GreaterThan || threshold != 0 || hysteresis != 0))
+            throw new ArgumentException("Backup rules compare confirmed affected-database counts with zero.", nameof(threshold));
         if (!double.IsFinite(threshold) || !double.IsFinite(hysteresis) || hysteresis < 0) throw new ArgumentOutOfRangeException(nameof(threshold));
         if (confirmationCount is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(confirmationCount));
         if (clearConfirmationCount is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(clearConfirmationCount));
         if (confirmationWindow < TimeSpan.Zero || confirmationWindow > TimeSpan.FromDays(7)) throw new ArgumentOutOfRangeException(nameof(confirmationWindow));
         if (evaluationInterval < TimeSpan.FromSeconds(1) || evaluationInterval > TimeSpan.FromHours(1)) throw new ArgumentOutOfRangeException(nameof(evaluationInterval));
+        if (BackupAlertRuleContract.IsBackup(kind) && (evaluationInterval < TimeSpan.FromSeconds(15) ||
+            confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
+            throw new ArgumentException("Backup confirmation windows must cover their distinct evaluation intervals.", nameof(confirmationWindow));
         RuleId = ruleId; Kind = kind; MetricId = metricId; Comparison = comparison; Threshold = threshold; Hysteresis = hysteresis;
         ConfirmationCount = confirmationCount; ConfirmationWindow = confirmationWindow; EvaluationInterval = evaluationInterval; Enabled = enabled;
         ClearConfirmationCount = clearConfirmationCount;

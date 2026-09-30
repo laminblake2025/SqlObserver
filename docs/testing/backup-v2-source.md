@@ -1,5 +1,53 @@
 # Staged backup v2 source checks
 
+## Backup alert transitions and unknown evidence
+
+The domain now defines separate full-policy, log-policy and observed-fault alert
+kinds. Backup rules compare confirmed affected-database counts with zero, have
+no metric ID or numeric hysteresis, and use evaluation intervals of at least 15
+seconds. Their confirmation window must accommodate the requested fire and
+clear observations. `BackupAlertObservationFactory` accepts the validated leased
+aggregate and derives its signal itself; callers cannot supply an assessment.
+The observation binds the target revision, signal state/reason and exact source
+digest in its deterministic sample/operation identity. It also carries the run,
+collector version/schema and canonical evidence digest. Counts are integers
+between zero and 512. Fault absence remains unknown and cannot be submitted as a
+clearing zero without the missing metadata-completeness proof.
+
+Unknown backup evidence resets pending fire confirmation to Normal and clears
+both confirmation counters. Firing and acknowledged episodes remain active with
+their alert/episode IDs, fired time and acknowledgment intact. Resolved episodes
+remain resolved. Unknown observations update the latest evidence, never emit an
+event, and honor maintenance suppression. A later complete clearing observation
+starts confirmation again. Backup clears also restart after a gap exceeds the
+confirmation window; the existing metric/collector behavior across gaps is
+unchanged. Exact replay is read-only; divergent or forged canonical evidence,
+regressed/non-replay duplicate cutoffs and invalid provenance/counts are rejected.
+
+Forward migration 0281 adds the private deterministic
+`alerting.backup_unknown_transition` kernel. It independently checks closed
+production-wire objects, backup source/type/identity and canonical digest, then
+computes the fresh unknown transition. Only the migrator may execute it; it does
+not authorize evidence, change stored state, or enqueue delivery. The dispatcher
+must validate the exact claimed live context and handle immutable replay before
+calling this kernel. Backup kinds remain outside the approved catalog and HTTP
+rule-create allowlist, and the repository still rejects them as persisted rules.
+Opening rule administration requires the queued evidence and final commit checks
+to be implemented together, including the backup-specific clear-gap behavior.
+
+45 focused evaluator, transition and migration-preamble checks pass. Two native
+PostgreSQL 18.4 cases verify the exact production serializer against the SQL
+kernel across all 30 kind/state/maintenance combinations, reject ten malformed
+binding/digest/time cases and check private ownership/grants. No collector SQL
+or browser code changed, so SQL Server and web tests were not repeated. Full
+backup queue/catalog/admin/delivery integration and production activation remain
+open; these transition tests do not certify notifications.
+
+```powershell
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupAlertTransitionTests|FullyQualifiedName~M8AlertEvaluatorTests|FullyQualifiedName~AlertClearConfirmationTests|FullyQualifiedName~MigrationPreambleTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~UnknownBackupSqlTransition'
+```
+
 ## Fenced backup evidence for alert evaluation
 
 Forward migration 0280 adds the collector-only
