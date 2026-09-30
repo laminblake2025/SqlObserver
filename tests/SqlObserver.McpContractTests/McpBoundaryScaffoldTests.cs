@@ -24,11 +24,12 @@ public sealed class McpBoundaryScaffoldTests
             "compare_metric_windows", "get_wait_summary", "get_active_sessions", "get_active_requests", "get_blocking_chain",
             "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
             "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
-            "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events"
+            "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
+            "get_availability_replicas_v2", "get_availability_databases_v2"
         ];
 
         Assert.Equal(expected.OrderBy(static n => n), SqlObserver.Mcp.McpCatalog.Definitions.Select(static d => d.Name).OrderBy(static n => n));
-        Assert.Equal(27, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
+        Assert.Equal(29, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
     }
 
     [Fact]
@@ -102,6 +103,8 @@ public sealed class McpBoundaryScaffoldTests
             if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9a-f]{64}$") return JsonValue.Create(new string('a', 64))!;
             if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$")
                 return JsonValue.Create("2026-09-24T00:00:00")!;
+            if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}$")
+                return JsonValue.Create("2026-09-24T00:00:00.000001")!;
             if (schema.TryGetProperty("format", out format) && format.GetString() == "date-time") return JsonValue.Create("2026-09-24T00:00:00Z")!;
             if (schema.TryGetProperty("type", out JsonElement type))
             {

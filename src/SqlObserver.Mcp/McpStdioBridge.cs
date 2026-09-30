@@ -17,7 +17,7 @@ public static class McpStdioBridge
     // must fail closed until this reviewed value is changed as policy.
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-583DCA6CF1A4C471C7D219048A3C7EC121E967BE17B5B3047C069D2745B2AF51";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-BC732B54E1F29D34D014FA06D6C750BCBA4B29E93481A97EBEB7BC994266D675";
     public static async Task<int> RunAsync(string endpointText, string[] args, CancellationToken cancellationToken = default)
     {
         using var httpHandler = new HttpClientHandler { UseDefaultCredentials = true, AllowAutoRedirect = false, UseCookies = false, CheckCertificateRevocationList = true };

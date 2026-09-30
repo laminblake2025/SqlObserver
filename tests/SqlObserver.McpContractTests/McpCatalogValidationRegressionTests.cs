@@ -36,6 +36,8 @@ public sealed class McpCatalogValidationRegressionTests
 
     private static readonly (string Name, string Title, string Meaning, string Properties)[] Catalog =
     [
+        ("get_availability_replicas_v2", "Get AG replica evidence v2", "Complete describes observed coverage", "instanceId atUtc limit cursor"),
+        ("get_availability_databases_v2", "Get AG database-replica evidence v2", "offset-free SQL Server local timestamp", "instanceId atUtc limit cursor"),
         ("list_instances", "List monitored instances", "Call this first", "limit cursor"),
         ("list_metric_catalog", "List metric definitions", "supported metric definitions", ""),
         ("list_incidents", "List incident threads", "cursor_stale", "instanceId fromUtc toUtc limit cursor"),
@@ -100,7 +102,7 @@ public sealed class McpCatalogValidationRegressionTests
 
         Assert.Equal(protocol, client.NegotiatedProtocolVersion);
         Assert.Equal(Catalog.Select(x => x.Name).Order(StringComparer.Ordinal), tools.Select(x => x.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(27, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(29, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
         var titles = new HashSet<string>(StringComparer.Ordinal);
         foreach ((string name, string title, string meaning, string properties) in Catalog)
         {

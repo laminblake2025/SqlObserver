@@ -63,6 +63,7 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         Assert.Contains(mapped, item => item.SourceLastCommitLocal is null);
         Assert.Equal(work.RepositoryTimeUtc, firstDatabases.Header.SourceObservedAtUtc);
         await AssertV2HttpPagesAsync(database, target, cutoff, run.Value);
+        await AssertV2McpPagesAsync(database, target, cutoff, run.Value);
         var replicaKeys = new HashSet<string>(StringComparer.Ordinal);
         var databaseKeys = new HashSet<string>(StringComparer.Ordinal);
         byte[]? afterGroup = null, afterReplica = null, afterDatabase = null;

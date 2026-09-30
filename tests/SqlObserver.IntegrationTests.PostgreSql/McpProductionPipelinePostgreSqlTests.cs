@@ -333,7 +333,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
         }, http, ownsHttpClient: false);
         await using McpClient client = await McpClient.CreateAsync(transport);
         IList<McpClientTool> tools = await client.ListToolsAsync();
-        Assert.Equal(27, tools.Count);
+        Assert.Equal(29, tools.Count);
         McpClientTool tool = Assert.Single(tools, tool => tool.Name == "list_instances");
         JsonElement outputSchema = Assert.IsType<JsonElement>(tool.ProtocolTool.OutputSchema);
         await using NpgsqlConnection auditConnection = await database.DataSource.OpenConnectionAsync();

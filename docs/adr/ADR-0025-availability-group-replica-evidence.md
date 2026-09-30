@@ -198,8 +198,24 @@ ProblemDetails with `code` and `correlationId`: invalid bounds/signatures are
 502, repository unavailability 503 and timeout 504. HTTP fixtures verify these
 bindings and shapes; a production-pipeline PostgreSQL fixture pages both real
 streams without gaps and preserves source-time and queue semantics. Version-1
-routes and collector activation remain unchanged. MCP/UI v2 adapters and native
-AG qualification remain open.
+routes and collector activation remain unchanged.
+
+The MCP catalog now publishes `get_availability_replicas_v2` and
+`get_availability_databases_v2` as separate read-only tools. Each accepts
+`instanceId`, optional `atUtc`, `limit` (1–100) and a request-bound signed cursor.
+Continuations restore the original cutoff, run, revision and stream key; a stale
+run returns `cursor_stale` with restart guidance. Without a signing key, the
+first page preserves `hasMore` and omits the unavailable continuation. Explicit
+typed projections expose location, closed nullable fault-state tokens, KB/KB/s
+counters and raw local commit time. Required nullable receipt and row fields
+validate against closed JSON schemas; MCP state/coverage labels use camel case.
+The catalog digest, server identity, stdio identity check and release contract
+pins advance together for the 29-tool catalog. Focused boundaries verify mixed
+grants, nulls, empty/failure/retired receipts, cursor binding, stale runs and one
+audit per call. Official SDK PostgreSQL fixtures exercise both populated streams
+with and without signing, and retain all-tool schema and audit checks. The web
+evidence view and native AG qualification remain open; live release MCP
+certification still requires its configured Negotiate/HTTPS lab.
 
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention

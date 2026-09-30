@@ -70,6 +70,8 @@ internal static class McpWireMapper
         "get_backup_status" => value is BackupStatusSnapshot backups ? Operational(backups, backups.Items.Select(Backup), backups.NextCursor) : null,
         "get_job_failures" => value is SqlAgentFailureSnapshot jobs ? Operational(jobs, jobs.Items.Select(Job), jobs.NextCursor) : null,
         "get_availability_health" => value is AvailabilityGroupsSnapshot ag ? Availability(ag) : null,
+        McpAvailabilityGroupEvidence.ReplicasTool => value is AvailabilityGroupEvidencePage<AvailabilityReplicaEvidence> replicas ? McpAvailabilityGroupEvidence.Map(replicas, McpAvailabilityGroupEvidence.Replica) : null,
+        McpAvailabilityGroupEvidence.DatabasesTool => value is AvailabilityGroupEvidencePage<AvailabilityDatabaseReplicaEvidence> databases ? McpAvailabilityGroupEvidence.Map(databases, McpAvailabilityGroupEvidence.Database) : null,
         "get_incident_evidence" => value is IncidentEvidencePage incident ? Incident(incident) : null,
         "search_diagnostic_events" => value is DiagnosticEventSearchPage events ? Diagnostic(events) : null,
         _ => throw new ArgumentException($"No reviewed MCP wire mapper exists for {tool}.")

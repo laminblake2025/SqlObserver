@@ -35,6 +35,7 @@ public sealed class McpCallHandlerRouteTests
         Add<IAlertQueryService>(); Add<IActivityProjectionQueryService>(); Add<IDeadlockProjectionQueryService>();
         Add<IMetricSeriesQueryService>(); Add<IStorageForecastQueryService>(); Add<IDiagnosticEventQueryService>();
         Add<IIncidentListQueryService>(); Add<IIncidentEvidenceQueryService>(); Add<IAnalyticsQueryService>(); Add<IQueryPerformanceApiQueryService>(); Add<IOperationalHealthQueryService>();
+        Add<IAvailabilityGroupEvidenceQueryService>();
         using ServiceProvider provider = services.BuildServiceProvider();
         var handler = new McpCallHandler(provider);
         ClaimsPrincipal user = new(new ClaimsIdentity([
@@ -50,7 +51,7 @@ public sealed class McpCallHandlerRouteTests
             Assert.True(result.IsError != true, definition.Name + " " + string.Join(" ", result.Content.OfType<TextContentBlock>().Select(static x => x.Text)));
         }
 
-        Assert.Equal(27, ((RecordingAuditPort)provider.GetRequiredService<IMcpInvocationAuditPort>()).Records.Count);
+        Assert.Equal(29, ((RecordingAuditPort)provider.GetRequiredService<IMcpInvocationAuditPort>()).Records.Count);
         foreach (DefaultProxy proxy in proxies.Values)
             Assert.NotEmpty(proxy.Methods);
 

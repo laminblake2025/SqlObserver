@@ -40,8 +40,8 @@ public static class McpCatalog
     public const string DownlevelProtocolVersion = "2025-11-25";
     // Reviewed catalog approval point. Digest is re-derived below and must
     // agree, so changing the catalog cannot silently retain this identity.
-    public const string ApprovedCatalogDigest = "583DCA6CF1A4C471C7D219048A3C7EC121E967BE17B5B3047C069D2745B2AF51";
-    public const string ServerVersion = "m11-2.2.0+catalog-583DCA6CF1A4C471C7D219048A3C7EC121E967BE17B5B3047C069D2745B2AF51";
+    public const string ApprovedCatalogDigest = "BC732B54E1F29D34D014FA06D6C750BCBA4B29E93481A97EBEB7BC994266D675";
+    public const string ServerVersion = "m11-2.2.0+catalog-BC732B54E1F29D34D014FA06D6C750BCBA4B29E93481A97EBEB7BC994266D675";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {
@@ -50,7 +50,7 @@ public static class McpCatalog
         "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
         "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
         "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
-        "list_metric_catalog", "list_incidents"
+        "list_metric_catalog", "list_incidents", McpAvailabilityGroupEvidence.ReplicasTool, McpAvailabilityGroupEvidence.DatabasesTool
     }.Select(static name => new McpToolDefinition(name, McpCatalogDescriptions.Tool(name).Title, McpCatalogDescriptions.Tool(name).Description, SchemaFor(name))).ToArray();
 
     private static string SchemaFor(string name)
@@ -68,6 +68,7 @@ public static class McpCatalog
         if (name is not ("list_instances" or "list_metric_catalog")) Add("instanceId", "{\"type\":\"string\",\"format\":\"uuid\"}");
         bool window = McpCursorContinuation.HasPagedWindow(name);
         if (window) { Add("fromUtc", "{\"type\":\"string\",\"format\":\"date-time\"}"); Add("toUtc", "{\"type\":\"string\",\"format\":\"date-time\"}"); }
+        if (McpAvailabilityGroupEvidence.IsTool(name)) Add("atUtc", "{\"type\":\"string\",\"format\":\"date-time\",\"maxLength\":27}");
         // The combined AG view is a bounded summary. Replica/database child
         // streams have independent orderings, so one merged MCP cursor would
         // not be a truthful continuation contract.
@@ -144,6 +145,7 @@ public static class McpCatalog
                 ? new JsonObject { ["type"] = "array", ["items"] = McpOutputProjection.NestedObjectSchema(toolName, field) }
                 : field is "nextCursor" ? new JsonObject { ["type"] = "string", ["maxLength"] = McpCursorSigner.MaximumTokenLength }
                 : McpOutputProjection.SchemaForField(toolName, string.Empty, field);
+            if (McpAvailabilityGroupEvidence.IsTool(toolName) && field == "items") dataProperties[field]!["maxItems"] = 100;
         }
         JsonObject schema = new()
         {
@@ -316,6 +318,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
         catch (UnauthorizedAccessException) { outcome = McpInvocationOutcome.Denied; reason = McpInvocationAuditReason.AuthorizationDenied; result = McpResults.Error("forbidden", "The caller is not authorized for this projection."); }
         catch (McpInputValidationException exception) { outcome = McpInvocationOutcome.Invalid; reason = McpInvocationAuditReason.InvalidRequest; result = McpResults.Error("invalid_request", exception.Message); }
         catch (IncidentListChangedException) { outcome = McpInvocationOutcome.Invalid; reason = McpInvocationAuditReason.InvalidRequest; result = McpResults.Error("cursor_stale", "Incidents changed. Restart list_incidents without a cursor."); }
+        catch (AvailabilityGroupEvidenceCursorStaleException) { outcome = McpInvocationOutcome.Invalid; reason = McpInvocationAuditReason.InvalidRequest; result = McpResults.Error("cursor_stale", "AG snapshot changed. Restart the same tool without a cursor."); }
         catch (ArgumentException) { outcome = McpInvocationOutcome.Invalid; reason = McpInvocationAuditReason.InvalidRequest; result = McpResults.Error("invalid_request", "The request is invalid."); }
         catch (TimeoutException) { outcome = McpInvocationOutcome.Timeout; reason = McpInvocationAuditReason.Timeout; result = McpResults.Error("request_timed_out", "The request exceeded its execution limit."); }
         catch { outcome = McpInvocationOutcome.RepositoryFailure; reason = McpInvocationAuditReason.RepositoryFailure; result = McpResults.Error("request_failed", "The projection could not be completed."); }
@@ -429,6 +432,10 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
             "get_backup_status" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetBackupsAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<McpRawCursor>(JsonOptions).Value, timeout), token).ConfigureAwait(false),
             "get_job_failures" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetAgentFailuresAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, continuation?.Read<McpRawCursor>(JsonOptions).Value, timeout), token).ConfigureAwait(false),
             "get_availability_health" when id.HasValue => await _services.GetRequiredService<IOperationalHealthQueryService>().GetAvailabilityGroupsAsync(authorization, new OperationalHealthRequest(new MonitoredInstanceId(id.Value), from, to, limit, null, timeout), token).ConfigureAwait(false),
+            McpAvailabilityGroupEvidence.ReplicasTool when id.HasValue => await _services.GetRequiredService<IAvailabilityGroupEvidenceQueryService>().ReadReplicasAsync(authorization,
+                AvailabilityEvidenceRequest(name, id.Value, args, continuation, limit, timeout, to), token).ConfigureAwait(false),
+            McpAvailabilityGroupEvidence.DatabasesTool when id.HasValue => await _services.GetRequiredService<IAvailabilityGroupEvidenceQueryService>().ReadDatabasesAsync(authorization,
+                AvailabilityEvidenceRequest(name, id.Value, args, continuation, limit, timeout, to), token).ConfigureAwait(false),
             "get_wait_summary" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListWaitSummaryAsync(new ListServerWaitSummaryQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<ServerWaitSummaryCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
             "get_active_sessions" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListSessionsAsync(new ListActivitySessionsQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<ActivitySessionCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
             "get_active_requests" when id.HasValue => await _services.GetRequiredService<IActivityProjectionQueryService>().ListRequestsAsync(new ListActivityRequestsQuery(authorization, new MonitoredInstanceId(id.Value), limit, continuation?.Read<ActivityRequestCursor>(JsonOptions), timeout), token).ConfigureAwait(false),
@@ -453,6 +460,25 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
     {
         ObservationTargetPage page = await _services.GetRequiredService<IObservationTargetQueryService>().ListAsync(new ListObservationTargetsQuery(authorization, limit, cursor, false, timeout), token).ConfigureAwait(false);
         return page;
+    }
+
+    private static AvailabilityGroupEvidenceRequest AvailabilityEvidenceRequest(string tool, Guid target,
+        IDictionary<string, JsonElement> args, McpCursorContinuation? continuation, int limit,
+        RepositoryCallTimeout timeout, DateTimeOffset now)
+    {
+        AvailabilityGroupEvidenceCursor? cursor = continuation?.Read<AvailabilityGroupEvidenceCursor>(JsonOptions);
+        DateTimeOffset? requested = ReadUtc(args, "atUtc");
+        AvailabilityGroupEvidenceKind stream = tool == McpAvailabilityGroupEvidence.ReplicasTool
+            ? AvailabilityGroupEvidenceKind.Replicas : AvailabilityGroupEvidenceKind.Databases;
+        try
+        {
+            return new AvailabilityGroupEvidenceRequest(new MonitoredInstanceId(target),
+                requested ?? cursor?.AtUtc ?? now, stream, limit, timeout, cursor);
+        }
+        catch (ArgumentException) when (cursor is not null)
+        {
+            throw new McpInputValidationException(McpInputValidation.InvalidCursor);
+        }
     }
 
     private static Guid? ReadGuid(IDictionary<string, JsonElement> args, string name)

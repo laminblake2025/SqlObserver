@@ -142,6 +142,7 @@ internal static class McpOutputProjection
 
     public static void Project(string tool, JsonNode? node)
     {
+        if (McpAvailabilityGroupEvidence.IsTool(tool)) { McpAvailabilityGroupEvidence.Project(tool, node); return; }
         if (!ToolFields.TryGetValue(tool, out HashSet<string>? fields))
         {
             if (node is JsonObject unknown) foreach (string property in unknown.Select(x => x.Key).ToArray()) unknown.Remove(property);
@@ -151,10 +152,13 @@ internal static class McpOutputProjection
     }
 
     public static IReadOnlyCollection<string> RootFields(string tool) =>
+        McpAvailabilityGroupEvidence.IsTool(tool) ? McpAvailabilityGroupEvidence.RootFields :
         ToolFields.TryGetValue(tool, out HashSet<string>? fields) ? fields : Array.Empty<string>();
 
     public static IReadOnlyCollection<string> RequiredRootFields(string tool) => tool switch
     {
+        McpAvailabilityGroupEvidence.ReplicasTool or McpAvailabilityGroupEvidence.DatabasesTool =>
+            McpAvailabilityGroupEvidence.RootFields.Where(field => field != "nextCursor").ToArray(),
         "list_metric_catalog" => ["version", "checksum", "items"],
         "list_incidents" => ["targetId", "fromUtc", "toUtc", "items", "targetRevision", "snapshotUtc", "publicationRevision", "hasMore"],
         "list_instances" => ["targets", "hasMore"],
@@ -180,6 +184,7 @@ internal static class McpOutputProjection
 
     public static JsonObject NestedObjectSchema(string tool, string path)
     {
+        if (McpAvailabilityGroupEvidence.IsTool(tool) && path == "items") return McpAvailabilityGroupEvidence.ItemSchema(tool);
         if (tool == "get_availability_health" && path == "items")
             return new JsonObject { ["oneOf"] = new JsonArray(AvailabilityItemSchema("replica"), AvailabilityItemSchema("database")) };
         var properties = new JsonObject();
@@ -207,6 +212,7 @@ internal static class McpOutputProjection
 
     public static JsonObject SchemaForField(string tool, string path, string field)
     {
+        if (McpAvailabilityGroupEvidence.IsTool(tool)) return McpAvailabilityGroupEvidence.FieldSchema(path, field);
         if (tool == "list_incidents")
         {
             if (field is "publicationRevision" or "generationCount") return new JsonObject { ["type"] = "integer", ["minimum"] = 0 };
