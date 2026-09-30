@@ -85,6 +85,18 @@ database, NULL versus zero queue values, offset-free commit time, append-only
 history, restricted grants, and target-scoped reads. Native primary/secondary
 SQL behavior and the remaining delivery gates below are still unverified.
 
+The staged .NET parser reads the pinned 20-column shape sequentially and
+produces an immutable v2 snapshot. It re-keys SQL digests by identity class,
+target and target revision, retains NULL queue/rate values and offset-free
+commit time, and validates the configured replica/database relationship.
+Complete coverage is separate from health: observed faults remain faults,
+while secondary-only visibility and missing expected state fields carry
+explicit visibility loss. Row truncation retains a disclosed prefix; byte
+truncation withholds the prefix entirely. Response accounting conservatively
+includes the expanded snapshot envelope. Focused tests exercise these
+boundaries, cancellation and malformed input. The active v1 validator still
+rejects this v2 snapshot; no collector registration or writer is activated.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.
