@@ -61,6 +61,7 @@ public sealed class McpCatalogValidationRegressionTests
         ("get_file_io", "Get database file I/O counters", "cumulative total", "instanceId limit cursor"),
         ("get_storage_forecast", "Get stored metric forecasts", "does not compute a forecast", "instanceId limit cursor metricKey horizonDays volumeFingerprint"),
         ("get_backup_status", "Get backup observations", "opaque database fingerprint", "instanceId limit cursor"),
+        ("get_backup_assessments_v2", "Get backup policy assessments v2", "explicit policies", "instanceId atUtc limit cursor"),
         ("get_job_failures", "Get observed Agent failures", "first observed within a UTC window", "instanceId fromUtc toUtc limit cursor"),
         ("get_availability_health", "Get availability group health", "Replica and database rows have different fields", "instanceId"),
         ("get_incident_evidence", "Get incident evidence", "threadId returned by list_incidents", "instanceId limit cursor threadId"),
@@ -102,7 +103,7 @@ public sealed class McpCatalogValidationRegressionTests
 
         Assert.Equal(protocol, client.NegotiatedProtocolVersion);
         Assert.Equal(Catalog.Select(x => x.Name).Order(StringComparer.Ordinal), tools.Select(x => x.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(29, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(30, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
         var titles = new HashSet<string>(StringComparer.Ordinal);
         foreach ((string name, string title, string meaning, string properties) in Catalog)
         {
@@ -129,6 +130,7 @@ public sealed class McpCatalogValidationRegressionTests
             {
                 int expected = name switch
                 {
+                    "get_backup_assessments_v2" => 20,
                     "get_metric_series" or "compare_metric_windows" => 1000,
                     "search_deadlocks" or "get_incident_evidence" => 256,
                     "get_top_queries" or "get_query_history" or "get_storage_forecast" => 200,

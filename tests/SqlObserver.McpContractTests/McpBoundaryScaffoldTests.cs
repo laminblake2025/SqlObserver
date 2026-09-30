@@ -25,11 +25,11 @@ public sealed class McpBoundaryScaffoldTests
             "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
             "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
             "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
-            "get_availability_replicas_v2", "get_availability_databases_v2"
+            "get_availability_replicas_v2", "get_availability_databases_v2", "get_backup_assessments_v2"
         ];
 
         Assert.Equal(expected.OrderBy(static n => n), SqlObserver.Mcp.McpCatalog.Definitions.Select(static d => d.Name).OrderBy(static n => n));
-        Assert.Equal(29, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
+        Assert.Equal(30, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class McpBoundaryScaffoldTests
             if (schema.TryGetProperty("const", out JsonElement constant)) return JsonNode.Parse(constant.GetRawText())!;
             if (schema.TryGetProperty("enum", out JsonElement values)) return JsonNode.Parse(values.EnumerateArray().First().GetRawText())!;
             if (schema.TryGetProperty("format", out JsonElement format) && format.GetString() == "uuid") return JsonValue.Create("11111111-1111-4111-8111-111111111111")!;
-            if (schema.TryGetProperty("pattern", out JsonElement pattern) && pattern.GetString() == "^(0|[1-9][0-9]*)$") return JsonValue.Create("1")!;
+            if (schema.TryGetProperty("pattern", out JsonElement pattern) && pattern.GetString() is "^(0|[1-9][0-9]*)$" or "^(0|[1-9][0-9]{0,18})$") return JsonValue.Create("1")!;
             if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9a-f]{64}$") return JsonValue.Create(new string('a', 64))!;
             if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$")
                 return JsonValue.Create("2026-09-24T00:00:00")!;
@@ -115,7 +115,7 @@ public sealed class McpBoundaryScaffoldTests
                 {
                     "object" => BuildObject(schema),
                     "array" => new JsonArray(Build(schema.GetProperty("items"))),
-                    "integer" => JsonValue.Create(1)!,
+                    "integer" => JsonValue.Create(schema.TryGetProperty("minimum", out JsonElement minimum) ? Math.Max(1, minimum.GetInt64()) : 1)!,
                     "number" => JsonValue.Create(1.0)!,
                     "boolean" => JsonValue.Create(true)!,
                     "null" => JsonValue.Create((string?)null)!,

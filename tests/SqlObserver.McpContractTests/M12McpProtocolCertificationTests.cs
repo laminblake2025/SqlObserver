@@ -29,16 +29,16 @@ public sealed class M12McpProtocolCertificationTests
     private const string DeniedAttestationVariable = "SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION";
     private const string DeniedAttestationShaVariable = "SQLOBSERVER_RELEASE_MCP_DENIED_TARGET_ATTESTATION_SHA256";
     private const int MaximumChildOutputBytes = 64 * 1024;
-    // The reviewed 29-tool catalog includes input descriptions and output
+    // The reviewed 30-tool catalog includes input descriptions and output
     // schemas. Bound its two protocol frames separately from diagnostics.
     private const int MaximumStdioProtocolOutputBytes = 128 * 1024;
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
-    private const int ApprovedToolCount = 29;
-    private const string ApprovedCatalogDigest = "BC732B54E1F29D34D014FA06D6C750BCBA4B29E93481A97EBEB7BC994266D675";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-BC732B54E1F29D34D014FA06D6C750BCBA4B29E93481A97EBEB7BC994266D675";
-    private const string ApprovedContractSha256 = "9638dfede3525a7af1588fb4aa4467be7273201aea8e540340e4828d6b9625b6";
-    private const string ApprovedContractSchemaSha256 = "e2d8fab0d1ae1e0cf2ef8ca5e90960c175e70f82db6d968c88582e93c5de47e6";
+    private const int ApprovedToolCount = 30;
+    private const string ApprovedCatalogDigest = "45D3A5E64277D305DD375C17D114F515490EB3A94A76BEC51FABB8BEB6345CBF";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-45D3A5E64277D305DD375C17D114F515490EB3A94A76BEC51FABB8BEB6345CBF";
+    private const string ApprovedContractSha256 = "2b9fe79b43211f0a2ccd9be33cde6dc9b5c123ee2db384a9d8fa9aa6c919bb72";
+    private const string ApprovedContractSchemaSha256 = "0d3c725186b2e4edaafd0c2dae7bf665e024e8329397ed1674299c1f6cac0c87";
     private static readonly string[] ApprovedToolNames =
     [
         "list_instances", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
@@ -46,7 +46,7 @@ public sealed class M12McpProtocolCertificationTests
         "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
         "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
         "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
-        "list_metric_catalog", "list_incidents", "get_availability_replicas_v2", "get_availability_databases_v2"
+        "list_metric_catalog", "list_incidents", "get_availability_replicas_v2", "get_availability_databases_v2", "get_backup_assessments_v2"
     ];
     private static readonly string[] JsonRpcResponseProperties = ["jsonrpc", "id", "result", "error"];
     private static readonly string[] SafeResponseMediaTypes = ["application/json", "text/event-stream"];
@@ -54,6 +54,7 @@ public sealed class M12McpProtocolCertificationTests
     [Fact]
     public void CatalogDriftCannotRetainTheApprovedIdentity()
     {
+        AssertContractIntegrity();
         Assert.Equal(ApprovedCatalogDigest, McpCatalog.Digest, StringComparer.Ordinal);
         Assert.Equal(ApprovedServerVersion, McpCatalog.ServerVersion, StringComparer.Ordinal);
         Assert.Equal(ApprovedToolCount, ApprovedToolNames.Length);

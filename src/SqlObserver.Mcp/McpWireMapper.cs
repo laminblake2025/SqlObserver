@@ -68,6 +68,7 @@ internal static class McpWireMapper
         "get_tempdb_health" => value is TempDbSnapshot temp ? Operational(temp, temp.Files.Select(File), temp.NextCursor) : null,
         "get_storage_forecast" => value is StorageForecastPage f ? Forecast(f) : null,
         "get_backup_status" => value is BackupStatusSnapshot backups ? Operational(backups, backups.Items.Select(Backup), backups.NextCursor) : null,
+        McpBackupAssessments.Tool => value is BackupAssessmentPage assessments ? McpBackupAssessments.Map(assessments) : null,
         "get_job_failures" => value is SqlAgentFailureSnapshot jobs ? Operational(jobs, jobs.Items.Select(Job), jobs.NextCursor) : null,
         "get_availability_health" => value is AvailabilityGroupsSnapshot ag ? Availability(ag) : null,
         McpAvailabilityGroupEvidence.ReplicasTool => value is AvailabilityGroupEvidencePage<AvailabilityReplicaEvidence> replicas ? McpAvailabilityGroupEvidence.Map(replicas, McpAvailabilityGroupEvidence.Replica) : null,

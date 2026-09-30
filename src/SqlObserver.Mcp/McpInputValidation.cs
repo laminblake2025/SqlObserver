@@ -68,7 +68,7 @@ internal static class McpInputValidation
                 throw new McpInputValidationException("volumeFingerprint is only valid for host.volume.* metricKey.");
         }
         if (name == "compare_metric_windows") ValidateComparison(args);
-        if (McpAvailabilityGroupEvidence.IsTool(name) && args.TryGetValue("atUtc", out JsonElement at))
+        if ((McpAvailabilityGroupEvidence.IsTool(name) || name == McpBackupAssessments.Tool) && args.TryGetValue("atUtc", out JsonElement at))
         {
             DateTimeOffset value = ParseUtc(at.GetString()!, "atUtc");
             if (value.Ticks % TimeSpan.TicksPerMicrosecond != 0 || value < DateTimeOffset.MinValue.AddDays(7))

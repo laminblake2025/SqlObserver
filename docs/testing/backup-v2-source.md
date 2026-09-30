@@ -1,5 +1,48 @@
 # Staged backup v2 source checks
 
+## MCP backup policy assessments
+
+`get_backup_assessments_v2` exposes the same target-authorized, trust-aware
+assessment service as Health checks. It reads committed v2 evidence and explicit
+policy history, with an optional microsecond UTC `atUtc` cutoff. Each page contains
+up to 20 databases (also the default), separate full/log checks, selected backups,
+policy settings, observed faults and the five bounded raw sample slots. Sizes are
+decimal strings to preserve 64-bit values. Database and replica identities are
+opaque fingerprints; names, devices, paths and administrative ledger counts are
+excluded from the closed public objects.
+
+Signed continuation fixes the target revision, run, cutoff, policy history and
+qualification context. Originally omitted `atUtc` stays fixed on later pages.
+Changed arguments are invalid; superseded evidence or administrative context
+returns `cursor_stale` and requires restarting without a cursor. Without a signing
+key, the first page retains `hasMore` and omits continuation. No unsigned cursor is
+returned. Missing/failed/expired/withheld evidence remains explicit and carries
+no invented database verdicts. Revoked qualification preserves immutable recorded
+UTC samples but withholds their current age. Local-only AG evidence cannot certify
+other replicas or a recovery point. The legacy `get_backup_status` remains an
+observation tool.
+
+The reviewed discovery catalog now contains 30 tools. HTTP, stdio and the separate
+release protocol contract share the updated catalog digest and server version;
+contract/schema SHA-256 pins were advanced together. This does not certify a live
+Release environment or enable production v2 collection.
+
+210 unique focused MCP checks pass across the affected schema, routing, input,
+authorization, audit, HTTP discovery and stdio boundaries. The 18 new backup cases
+include all 512 databases paged without gaps, SDK-over-HTTP continuation with one
+audit per call, revoked timestamps with damage retained, nested field exclusion,
+and a full default page with all five sample slots and ten faults per database.
+The latter also checks escaped source-zone text and the combined text/structured
+response byte budget. Database and collector code did not change in this stage,
+so native PostgreSQL and SQL Server checks were not repeated. Backup alert rules,
+real historical/replica qualification and production activation remain open.
+
+```powershell
+dotnet test tests/SqlObserver.McpContractTests/SqlObserver.McpContractTests.csproj --no-restore --filter 'FullyQualifiedName~McpBackupAssessmentTests|FullyQualifiedName~McpBoundaryScaffoldTests|FullyQualifiedName~McpTypedWireMapperTests|FullyQualifiedName~McpNullableSchemaRegressionTests|FullyQualifiedName~McpAvailabilityGroupEvidenceTests|FullyQualifiedName~M12DeploymentSecurityMcpContractTests|FullyQualifiedName~McpProtocolHttpContractTests|FullyQualifiedName~McpCatalogValidationRegressionTests|FullyQualifiedName~CatalogDriftCannotRetainTheApprovedIdentity|FullyQualifiedName~McpStdioBridgeRegressionTests|FullyQualifiedName~McpCallHandlerRouteTests'
+```
+
+The sections below record the preceding source, persistence and UI stages.
+
 The `backups.status` v2 assets are embedded under `M9BackupV2Assets` and verified
 as an exact five-file SHA-256 bundle. The separate closed manifest schema v7
 pins source limits, conditional AG permissions and output version 2. The active

@@ -10,6 +10,7 @@ using SqlObserver.Application.Services;
 using SqlObserver.Audit;
 using SqlObserver.Domain.Auditing;
 using SqlObserver.Domain.Authorization;
+using SqlObserver.Domain.Backups;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Security;
 using SqlObserver.Mcp;
@@ -36,6 +37,9 @@ public sealed class McpCallHandlerRouteTests
         Add<IMetricSeriesQueryService>(); Add<IStorageForecastQueryService>(); Add<IDiagnosticEventQueryService>();
         Add<IIncidentListQueryService>(); Add<IIncidentEvidenceQueryService>(); Add<IAnalyticsQueryService>(); Add<IQueryPerformanceApiQueryService>(); Add<IOperationalHealthQueryService>();
         Add<IAvailabilityGroupEvidenceQueryService>();
+        var backup = new MissingBackupEvidencePort();
+        services.AddSingleton<IBackupEvidencePort>(backup);
+        services.AddSingleton<BackupAssessmentQueryService>();
         using ServiceProvider provider = services.BuildServiceProvider();
         var handler = new McpCallHandler(provider);
         ClaimsPrincipal user = new(new ClaimsIdentity([
@@ -51,7 +55,8 @@ public sealed class McpCallHandlerRouteTests
             Assert.True(result.IsError != true, definition.Name + " " + string.Join(" ", result.Content.OfType<TextContentBlock>().Select(static x => x.Text)));
         }
 
-        Assert.Equal(29, ((RecordingAuditPort)provider.GetRequiredService<IMcpInvocationAuditPort>()).Records.Count);
+        Assert.Equal(30, ((RecordingAuditPort)provider.GetRequiredService<IMcpInvocationAuditPort>()).Records.Count);
+        Assert.True(backup.Called);
         foreach (DefaultProxy proxy in proxies.Values)
             Assert.NotEmpty(proxy.Methods);
 
@@ -222,6 +227,18 @@ public sealed class McpCallHandlerRouteTests
         public ConcurrentBag<McpInvocationAuditRecord> Records { get; } = [];
         public ValueTask<McpInvocationAuditReceipt> AppendAsync(AppendMcpInvocationAuditRequest request, CancellationToken cancellationToken)
         { Records.Add(request.Record); return ValueTask.FromResult(new McpInvocationAuditReceipt(request.Record.InvocationId, DateTimeOffset.UnixEpoch)); }
+    }
+
+    private sealed class MissingBackupEvidencePort : IBackupEvidencePort
+    {
+        internal bool Called { get; private set; }
+        public ValueTask<BackupEvidencePage> ReadAsync(BackupEvidenceRequest request, CancellationToken cancellationToken)
+        {
+            Called = true;
+            var header = new BackupEvidenceHeader(request.TargetId, request.AtUtc, 1, null, null, null, null, null, null,
+                BackupFreshnessCoverage.NotCollected, BackupEvidenceStatus.NotCollected, 0, 0, 0, 0, false, 0, 0);
+            return ValueTask.FromResult(new BackupEvidencePage(header, [], null));
+        }
     }
 
     private abstract class DefaultProxy : DispatchProxy

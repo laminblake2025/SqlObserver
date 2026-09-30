@@ -142,6 +142,7 @@ internal static class McpOutputProjection
 
     public static void Project(string tool, JsonNode? node)
     {
+        if (tool == McpBackupAssessments.Tool) { McpBackupAssessments.Project(node); return; }
         if (McpAvailabilityGroupEvidence.IsTool(tool)) { McpAvailabilityGroupEvidence.Project(tool, node); return; }
         if (!ToolFields.TryGetValue(tool, out HashSet<string>? fields))
         {
@@ -152,11 +153,13 @@ internal static class McpOutputProjection
     }
 
     public static IReadOnlyCollection<string> RootFields(string tool) =>
+        tool == McpBackupAssessments.Tool ? McpBackupAssessments.RootFields :
         McpAvailabilityGroupEvidence.IsTool(tool) ? McpAvailabilityGroupEvidence.RootFields :
         ToolFields.TryGetValue(tool, out HashSet<string>? fields) ? fields : Array.Empty<string>();
 
     public static IReadOnlyCollection<string> RequiredRootFields(string tool) => tool switch
     {
+        McpBackupAssessments.Tool => McpBackupAssessments.RootFields.Where(field => field != "nextCursor").ToArray(),
         McpAvailabilityGroupEvidence.ReplicasTool or McpAvailabilityGroupEvidence.DatabasesTool =>
             McpAvailabilityGroupEvidence.RootFields.Where(field => field != "nextCursor").ToArray(),
         "list_metric_catalog" => ["version", "checksum", "items"],
@@ -184,6 +187,7 @@ internal static class McpOutputProjection
 
     public static JsonObject NestedObjectSchema(string tool, string path)
     {
+        if (tool == McpBackupAssessments.Tool && path == "items") return McpBackupAssessments.ItemSchema();
         if (McpAvailabilityGroupEvidence.IsTool(tool) && path == "items") return McpAvailabilityGroupEvidence.ItemSchema(tool);
         if (tool == "get_availability_health" && path == "items")
             return new JsonObject { ["oneOf"] = new JsonArray(AvailabilityItemSchema("replica"), AvailabilityItemSchema("database")) };
@@ -212,6 +216,7 @@ internal static class McpOutputProjection
 
     public static JsonObject SchemaForField(string tool, string path, string field)
     {
+        if (tool == McpBackupAssessments.Tool) return McpBackupAssessments.FieldSchema(field);
         if (McpAvailabilityGroupEvidence.IsTool(tool)) return McpAvailabilityGroupEvidence.FieldSchema(path, field);
         if (tool == "list_incidents")
         {
