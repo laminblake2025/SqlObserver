@@ -100,9 +100,15 @@ public sealed class M9OperationalHealthContractTests
 
         FieldInfo field = typeof(PostgreSqlCollectorRuntimeRepositoryPort).GetField("RequiredBundleDigests", BindingFlags.NonPublic | BindingFlags.Static)!;
         string[] runtime = (string[])field.GetValue(null)!;
-        Assert.Equal(16, runtime.Length);
+        FieldInfo idsField = typeof(PostgreSqlCollectorRuntimeRepositoryPort).GetField("RequiredCollectorIds", BindingFlags.NonPublic | BindingFlags.Static)!;
+        string[] ids = (string[])idsField.GetValue(null)!;
+        Assert.Equal(ids.Length, runtime.Length);
+        Assert.Equal("availability-groups.health", ids[12]);
         Assert.All(runtime.Skip(9).Take(4), digest => Assert.Equal(expected, digest));
         Assert.DoesNotContain(runtime.Skip(13), digest => digest == expected);
+        string stagedV2 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(
+            Path.Combine(root, "collectors/manifests/m9-ag-v2.assets.sha256")))).ToLowerInvariant();
+        Assert.DoesNotContain(stagedV2, runtime);
 
         // Forward bundle upgrades are exercised against real PostgreSQL;
         // the originally applied 0013 migration retains its original digest.

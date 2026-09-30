@@ -130,7 +130,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
 
         if (manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health" or "replication.health")
         {
-            ValidateOperationalHealthPayload(manifest.Id.Value, payload.OperationalHealth, request);
+            ValidateOperationalHealthPayload(manifest, payload.OperationalHealth, request, result);
         }
         else if (payload.OperationalHealth is not null)
         {
@@ -150,7 +150,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             (manifest.Id.Value is not ("availability-groups.health" or "replication.health") ||
              result.Outcome != CollectorRunOutcome.Partial ||
              result.Reason != CollectorRunReason.VisibilityIncomplete ||
-             payload.OperationalHealth?.Snapshot is not (AvailabilityGroupsSnapshot { State: OperationalObservationState.Degraded } or ReplicationHealthSnapshot { State: OperationalObservationState.Degraded })))
+             payload.OperationalHealth?.Snapshot is not (AvailabilityGroupsSnapshot { State: OperationalObservationState.Degraded } or AvailabilityGroupsV2Snapshot { State: OperationalObservationState.Degraded } or ReplicationHealthSnapshot { State: OperationalObservationState.Degraded })))
         {
             throw new InvalidDataException("VisibilityIncomplete is reserved for a degraded availability-groups observation.");
         }
@@ -188,15 +188,76 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         }
     }
 
-    private static void ValidateOperationalHealthPayload(string collectorId, OperationalHealthPayload? envelope, CollectorExecutionRequest request)
+    private static void ValidateOperationalHealthPayload(CollectorManifest manifest, OperationalHealthPayload? envelope,
+        CollectorExecutionRequest request, CollectorExecutionResult result)
     {
+        string collectorId = manifest.Id.Value;
+        if (collectorId == "availability-groups.health" && manifest.ManifestVersion.Value == 2 &&
+            manifest.OutputSchemaVersion.Value == 2)
+        {
+            ValidateAvailabilityGroupsV2(manifest, envelope, request, result);
+            return;
+        }
         if (envelope is null) return; // Unsupported/permission outcomes carry an empty payload.
         if (collectorId == "backups.status" && envelope.Snapshot is BackupStatusSnapshot backups && backups.TargetId == request.TargetId && backups.TargetRevision == request.TargetRevision && backups.Items.Count <= OperationalHealthBounds.BackupMaximumRows) return;
         if (collectorId == "sql-agent.failures" && envelope.Snapshot is SqlAgentFailureSnapshot agent && agent.TargetId == request.TargetId && agent.TargetRevision == request.TargetRevision && agent.Items.Count <= OperationalHealthBounds.AgentMaximumRows && agent.SourceRowsRead is >= 0 and <= OperationalHealthBounds.AgentScanRows) return;
         if (collectorId == "tempdb.health" && envelope.Snapshot is TempDbSnapshot tempdb && tempdb.TargetId == request.TargetId && tempdb.TargetRevision == request.TargetRevision && tempdb.Files.Count <= OperationalHealthBounds.TempDbMaximumFiles) return;
-        if (collectorId == "availability-groups.health" && envelope.Snapshot is AvailabilityGroupsSnapshot groups && groups.TargetId == request.TargetId && groups.TargetRevision == request.TargetRevision && groups.Replicas.Count + groups.Databases.Count <= OperationalHealthBounds.AvailabilityMaximumRows) return;
+        if (collectorId == "availability-groups.health" && manifest.ManifestVersion.Value == 1 && manifest.OutputSchemaVersion.Value == 1 && envelope.Snapshot is AvailabilityGroupsSnapshot groups && groups.TargetId == request.TargetId && groups.TargetRevision == request.TargetRevision && groups.Replicas.Count + groups.Databases.Count <= OperationalHealthBounds.AvailabilityMaximumRows) return;
         if (collectorId == "replication.health" && envelope.Snapshot is ReplicationHealthSnapshot replication && replication.TargetId == request.TargetId && replication.TargetRevision == request.TargetRevision && replication.Items.Count <= ReplicationBounds.MaximumRows && replication.SourceRowsRead is >= 0 and <= ReplicationBounds.MaximumRows + 1) return;
         throw new InvalidDataException("Operational-health output kind, target revision, or bounds are invalid.");
+    }
+
+    private static void ValidateAvailabilityGroupsV2(CollectorManifest manifest, OperationalHealthPayload? envelope,
+        CollectorExecutionRequest request, CollectorExecutionResult result)
+    {
+        if (manifest.OutputKind != CollectorOutputKind.AvailabilityGroupsHealth ||
+            result.Payload.HostMetricsContext is not null || result.Payload.QueryPerformanceStatuses.Count != 0 ||
+            result.Payload.QueryPerformanceTargetStatus is not null)
+            throw new InvalidDataException("AG v2 output cannot carry another collector's sidecars.");
+        if (result.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
+        {
+            if (envelope is not null || result.Accounting.SourceRowsRead != 0 ||
+                result.Accounting.OutputItemsProduced != 0 || result.Accounting.ResponseBytes != 0 ||
+                result.Accounting.OutputBytes != 0 ||
+                (result.Outcome == CollectorRunOutcome.OutputInvalid
+                    ? result.Loss.Kind != CollectorLossKind.OutputValidationFailure || result.Loss.MinimumLostItems < 1
+                    : result.Loss.HasLoss))
+                throw new InvalidDataException("A failed AG v2 run cannot publish evidence.");
+            return;
+        }
+        if (envelope?.Snapshot is not AvailabilityGroupsV2Snapshot groups ||
+            groups.TargetId != request.TargetId || groups.TargetRevision != request.TargetRevision ||
+            groups.RunId != request.RunId || result.Accounting.SourceRowsRead != groups.SourceRowsRead ||
+            envelope.ItemCount != groups.Replicas.Count + groups.Databases.Count ||
+            result.Accounting.OutputItemsProduced != envelope.ItemCount ||
+            envelope.EstimatedSizeBytes < groups.EstimatedSizeBytes ||
+            result.Accounting.OutputBytes < result.Payload.EstimatedSizeBytes ||
+            result.Accounting.ResponseBytes < result.Accounting.OutputBytes)
+            throw new InvalidDataException("AG v2 identity, coverage or accounting is invalid.");
+
+        bool validCoverage = groups.State switch
+        {
+            OperationalObservationState.Complete or OperationalObservationState.NoData =>
+                result.Outcome == CollectorRunOutcome.Succeeded && !result.Loss.HasLoss &&
+                result.Reason == CollectorRunReason.Completed,
+            OperationalObservationState.Degraded =>
+                result.Outcome == CollectorRunOutcome.Partial &&
+                result.Loss.Kind == CollectorLossKind.VisibilityIncomplete &&
+                result.Loss.MinimumLostItems == 1 && !result.Loss.CountIsExact &&
+                result.Loss.MinimumLostBytes == 0 && result.Reason == CollectorRunReason.VisibilityIncomplete,
+            OperationalObservationState.Partial =>
+                result.Outcome == CollectorRunOutcome.Partial && !result.Loss.CountIsExact &&
+                (result.Loss.Kind == CollectorLossKind.SourceRowLimit &&
+                    result.Reason == CollectorRunReason.SourceRowLimit &&
+                    groups.SourceRowsRead == manifest.Limits.MaxRows + 1 && envelope.ItemCount == manifest.Limits.MaxRows &&
+                    result.Loss.MinimumLostItems == 1 && result.Loss.MinimumLostBytes == 0 ||
+                 result.Loss.Kind == CollectorLossKind.ResponseByteLimit &&
+                    result.Reason == CollectorRunReason.ResponseByteLimit && envelope.ItemCount == 0 &&
+                    groups.SourceRowsRead > 0 && result.Loss.MinimumLostItems == groups.SourceRowsRead),
+            _ => false,
+        };
+        if (!validCoverage)
+            throw new InvalidDataException("AG v2 completeness and loss evidence are inconsistent.");
     }
 
     private static void ValidateQueryPerformanceBoundsAndStatuses(CollectorPayload payload, CollectorExecutionResult result)

@@ -124,6 +124,19 @@ both new classes. PostgreSQL fixtures verify these paths and that old v1
 operator policy revisions survive the upgrade. The v2 collector catalog and
 commit execution grant remain inactive; native AG qualification is still open.
 
+The staged v2 collector now executes the pinned source with a single bounded
+deadline, major-specific server-state grants and VIEW ANY DATABASE evidence.
+It uses the secret-backed identity key and microsecond-aligned UTC observation
+time, preserves the raw offset-free commit time, and reports row truncation,
+byte truncation and incomplete visibility separately. Malformed input becomes
+an output-invalid receipt without publishing a previously read prefix. The v2
+validator checks run identity, payload accounting, coverage and failure shape;
+the active v1 registration continues to reject v2 snapshots. Focused execution
+tests cover primary faults, secondary visibility, no-data scans, limits,
+permissions, cancellation, SQL error classification and mixed-version rejection.
+The production registry and catalog still select v1, and the v2 commit grant
+remains private pending the versioned rollout gate and native AG qualification.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.
