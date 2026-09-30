@@ -112,6 +112,18 @@ created partitions test this private boundary; they do not qualify production
 activation. Collector/server/auditor execution remains revoked until partition
 maintenance, retention and the versioned catalog gate are installed.
 
+Forward migration 0266 registers both v2 parents with independent 30-day
+retention policies and a three-partition floor. Catalog-lease-fenced maintenance
+creates only UTC yesterday/today/tomorrow partitions, verifies their exact
+bounds, owner, parent and registry identity, and keeps child grants private.
+The existing retention worker previews and retires these populated parents
+through recovery-attestation, reader, backfill and minimum-floor gates, followed
+by detached grace and a fenced audited drop. A policy pause during grace
+reattaches the evidence. Server and web policy/preview contracts recognize
+both new classes. PostgreSQL fixtures verify these paths and that old v1
+operator policy revisions survive the upgrade. The v2 collector catalog and
+commit execution grant remain inactive; native AG qualification is still open.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.

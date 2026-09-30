@@ -114,6 +114,7 @@ const retentionDataClasses = new Set([
   "m6_deadlocks", "m7_query_performance", "m8_alert_history", "m8_alert_delivery",
   "m9_backup_status", "m9_agent_history", "m9_agent_failures", "m9_agent_occurrences",
   "m9_tempdb", "m9_tempdb_files", "m9_ag_replicas", "m9_ag_databases",
+  "m9_ag_replica_evidence", "m9_ag_database_evidence",
   "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
   "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas",
   "collection_run_original_copy",

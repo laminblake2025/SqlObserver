@@ -82,7 +82,7 @@ test("active evidence policies can be updated through the bounded client", async
   try {
     const classes = ["raw_metric_samples", "diagnostic_events", "m9_backup_status",
       "m9_agent_history", "m9_agent_occurrences", "m9_ag_replicas", "m9_ag_databases",
-      "m9_tempdb"];
+      "m9_tempdb", "m9_ag_replica_evidence", "m9_ag_database_evidence"];
     for (const dataClass of classes) {
       const result = await updateRetentionPolicy(dataClass, {
         dataClass, enabled: true, retainFor: "30.00:00:00",
@@ -117,6 +117,23 @@ test("retention parser accepts Query Store group policies and registered partiti
     const policy = parseRetentionPolicy({ policy: { dataClass, enabled: true, retainFor: `${days}.00:00:00`, minimumPartitionsToKeep: 3 }, revision: 1, readAtUtc: "2026-09-28T01:00:00Z" });
     assert.equal(policy.policy.dataClass, dataClass);
     const preview = parseRetentionPreview({ entries: [{ dataClass, parentSchema: "events", parentTable, partitionName: `${parentTable}_p20260927`, rangeStartUtc: "2026-09-27T00:00:00Z", rangeEndUtc: "2026-09-28T00:00:00Z", eligible: false, reason: "within_retention_window" }], truncated: false, nextCursor: null, evaluatedAtUtc: "2026-09-28T01:00:00Z" });
+    assert.equal(preview.entries[0].parentTable, parentTable);
+  }
+});
+
+test("retention parser accepts AG replica evidence policies and registered partitions", () => {
+  for (const [dataClass, parentTable] of [
+    ["m9_ag_replica_evidence", "availability_replica_evidence"],
+    ["m9_ag_database_evidence", "availability_database_replica_evidence"],
+  ]) {
+    const policy = parseRetentionPolicy({ policy: { dataClass, enabled: true,
+      retainFor: "30.00:00:00", minimumPartitionsToKeep: 3 }, revision: 1,
+      readAtUtc: "2026-09-29T01:00:00Z" });
+    assert.equal(policy.policy.dataClass, dataClass);
+    const preview = parseRetentionPreview({ entries: [{ dataClass, parentSchema: "telemetry",
+      parentTable, partitionName: `${parentTable}_p20260928`, rangeStartUtc: "2026-09-28T00:00:00Z",
+      rangeEndUtc: "2026-09-29T00:00:00Z", eligible: false, reason: "within_retention_window" }],
+      truncated: false, nextCursor: null, evaluatedAtUtc: "2026-09-29T01:00:00Z" });
     assert.equal(preview.entries[0].parentTable, parentTable);
   }
 });

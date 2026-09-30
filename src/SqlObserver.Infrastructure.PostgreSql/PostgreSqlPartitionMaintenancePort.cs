@@ -60,7 +60,8 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
              + control.ensure_sql_volume_partitions(CURRENT_DATE)
              + control.ensure_query_store_group_partitions(CURRENT_DATE)
              + control.ensure_query_observation_v3_partitions(CURRENT_DATE)
-             + control.ensure_collection_run_v2_partitions(CURRENT_DATE);
+             + control.ensure_collection_run_v2_partitions(CURRENT_DATE)
+             + control.ensure_availability_evidence_partition_set(@owner_execution_id,@fencing_token);
         """;
     private const string PreviewM9DailySql = """
         SELECT
@@ -361,6 +362,8 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
             };
+            command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
             object? result = await command.ExecuteScalarAsync(timeoutScope.Token).ConfigureAwait(false);
             int checkedCount = result is int count && count >= 0
                 ? count
