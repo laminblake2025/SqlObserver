@@ -3,23 +3,422 @@
   "$id": "https://sqlobserver.invalid/schemas/m12-reports-contract.v1.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "contractId", "producerId", "definitionVersion", "reportKinds", "sections", "formats", "bounds", "encoding", "caseMappings", "assetPins"],
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "contractId",
+    "producerId",
+    "definitionVersion",
+    "reportKinds",
+    "sections",
+    "formats",
+    "bounds",
+    "encoding",
+    "caseMappings",
+    "assetPins"
+  ],
   "properties": {
-    "$schema": { "const": "m12-reports-contract.v1.schema.json" },
-    "schemaVersion": { "const": 1 },
-    "contractId": { "const": "m12-reports-exports" },
-    "producerId": { "const": "m12-reports-harness" },
-    "definitionVersion": { "const": 1 },
-    "reportKinds": { "type": "array", "prefixItems": [{"const":"instance-health"},{"const":"performance-window"},{"const":"incident-evidence"},{"const":"capacity-readiness"}], "minItems": 4, "maxItems": 4, "items": false },
-    "sections": { "type": "array", "prefixItems": [{"const":"health"},{"const":"performance"},{"const":"incidents"},{"const":"capacity"}], "minItems": 4, "maxItems": 4, "items": false },
-    "formats": { "type": "object", "additionalProperties": false, "required": ["html", "csv"], "properties": { "html": { "const": "inert-printable" }, "csv": { "const": "utf-8-per-section" } } },
-    "bounds": { "type": "object", "additionalProperties": false, "required": ["requestBytes", "pageRows", "htmlRows", "materializationRows", "responseBytes", "materializationBytes", "detailedWindowDays", "trendWindowDays", "repositoryTimeoutSeconds", "totalTimeoutSeconds", "actorConcurrency", "globalConcurrency", "retentionHours"], "properties": { "requestBytes": {"const":65536}, "pageRows": {"const":200}, "htmlRows": {"const":2000}, "materializationRows": {"const":10000}, "responseBytes": {"const":1048576}, "materializationBytes": {"const":8388608}, "detailedWindowDays": {"const":7}, "trendWindowDays": {"const":31}, "repositoryTimeoutSeconds": {"const":5}, "totalTimeoutSeconds": {"const":15}, "actorConcurrency": {"const":2}, "globalConcurrency": {"const":16}, "retentionHours": {"const":24} } },
-    "encoding": { "type": "object", "additionalProperties": false, "required": ["html", "csv", "formulaNeutralization", "formulaSentinels", "controlCharacterNormalization", "utf8Bom"], "properties": { "html": {"const":"html-encode-text-and-attributes"}, "csv": {"const":"rfc4180"}, "formulaNeutralization": {"const":true}, "formulaSentinels": {"const":["=","+","-","@"]}, "controlCharacterNormalization": {"const":true}, "utf8Bom": {"const":false} } },
-    "caseMappings": { "type":"array", "prefixItems": [
-      {"type":"object","additionalProperties":false,"required":["caseId","testName","facts"],"properties":{"caseId":{"const":"m12-reports-exports"},"testName":{"const":"LiveReleaseReportsExportsRepresentativeVolumeIsBounded"},"facts":{"type":"object","additionalProperties":false,"required":["reports","exports","reportKind"],"properties":{"reports":{"const":true},"exports":{"const":true},"reportKind":{"type":"null"}}}}},
-      {"type":"object","additionalProperties":false,"required":["caseId","testName","facts"],"properties":{"caseId":{"const":"m12-report-contract"},"testName":{"const":"LiveReleaseReportContractIsSnapshotScopedAndAudited"},"facts":{"type":"object","additionalProperties":false,"required":["reports","exports","reportKind"],"properties":{"reports":{"const":true},"exports":{"const":false},"reportKind":{"const":"report"}}}}},
-      {"type":"object","additionalProperties":false,"required":["caseId","testName","facts"],"properties":{"caseId":{"const":"m12-export-contract"},"testName":{"const":"LiveReleaseExportContractIsInertAndFormulaSafe"},"facts":{"type":"object","additionalProperties":false,"required":["reports","exports","reportKind"],"properties":{"reports":{"const":false},"exports":{"const":true},"reportKind":{"const":"export"}}}}}
-    ], "minItems":3,"maxItems":3,"items":false },
-    "assetPins": { "type":"object", "additionalProperties":false, "required":["database/migrations/0021_reports_exports.sql","database/migrations/0022_runtime_startup_repairs.sql","database/migrations/0023_report_expiry_lock_privilege.sql","database/migrations/0024_report_materialization_column_binding.sql", "database/migrations/0025_report_run_scoped_read.sql","database/migrations/checksums.sha256","src/SqlObserver.Reporting/ReportContracts.cs","src/SqlObserver.Reporting/ReportRendering.cs","src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs","src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs","tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs","tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj"], "properties": { "database/migrations/0021_reports_exports.sql":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "database/migrations/0022_runtime_startup_repairs.sql":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "database/migrations/0023_report_expiry_lock_privilege.sql":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "database/migrations/0024_report_materialization_column_binding.sql":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "database/migrations/checksums.sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "src/SqlObserver.Reporting/ReportContracts.cs":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "src/SqlObserver.Reporting/ReportRendering.cs":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs":{"type":"string","pattern":"^[0-9a-f]{64}$"}, "tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj":{"type":"string","pattern":"^[0-9a-f]{64}$"} } }
+    "$schema": {
+      "const": "m12-reports-contract.v1.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "contractId": {
+      "const": "m12-reports-exports"
+    },
+    "producerId": {
+      "const": "m12-reports-harness"
+    },
+    "definitionVersion": {
+      "const": 1
+    },
+    "reportKinds": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "instance-health"
+        },
+        {
+          "const": "performance-window"
+        },
+        {
+          "const": "incident-evidence"
+        },
+        {
+          "const": "capacity-readiness"
+        },
+        {
+          "const": "saved-investigation"
+        }
+      ],
+      "minItems": 5,
+      "maxItems": 5,
+      "items": false
+    },
+    "sections": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "health"
+        },
+        {
+          "const": "performance"
+        },
+        {
+          "const": "incidents"
+        },
+        {
+          "const": "capacity"
+        },
+        {
+          "const": "investigation"
+        },
+        {
+          "const": "saved-evidence"
+        }
+      ],
+      "minItems": 6,
+      "maxItems": 6,
+      "items": false
+    },
+    "formats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "html",
+        "csv"
+      ],
+      "properties": {
+        "html": {
+          "const": "inert-printable"
+        },
+        "csv": {
+          "const": "utf-8-per-section"
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestBytes",
+        "pageRows",
+        "htmlRows",
+        "materializationRows",
+        "responseBytes",
+        "materializationBytes",
+        "detailedWindowDays",
+        "trendWindowDays",
+        "repositoryTimeoutSeconds",
+        "totalTimeoutSeconds",
+        "actorConcurrency",
+        "globalConcurrency",
+        "retentionHours"
+      ],
+      "properties": {
+        "requestBytes": {
+          "const": 65536
+        },
+        "pageRows": {
+          "const": 200
+        },
+        "htmlRows": {
+          "const": 2000
+        },
+        "materializationRows": {
+          "const": 10000
+        },
+        "responseBytes": {
+          "const": 1048576
+        },
+        "materializationBytes": {
+          "const": 8388608
+        },
+        "detailedWindowDays": {
+          "const": 7
+        },
+        "trendWindowDays": {
+          "const": 31
+        },
+        "repositoryTimeoutSeconds": {
+          "const": 5
+        },
+        "totalTimeoutSeconds": {
+          "const": 15
+        },
+        "actorConcurrency": {
+          "const": 2
+        },
+        "globalConcurrency": {
+          "const": 16
+        },
+        "retentionHours": {
+          "const": 24
+        }
+      }
+    },
+    "encoding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "html",
+        "csv",
+        "formulaNeutralization",
+        "formulaSentinels",
+        "controlCharacterNormalization",
+        "utf8Bom",
+        "savedNotes",
+        "savedEvidence"
+      ],
+      "properties": {
+        "html": {
+          "const": "html-encode-text-and-attributes"
+        },
+        "csv": {
+          "const": "rfc4180"
+        },
+        "formulaNeutralization": {
+          "const": true
+        },
+        "formulaSentinels": {
+          "const": [
+            "=",
+            "+",
+            "-",
+            "@"
+          ]
+        },
+        "controlCharacterNormalization": {
+          "const": true
+        },
+        "utf8Bom": {
+          "const": false
+        },
+        "savedNotes": {
+          "const": "preserve-unicode-and-crlf-tab"
+        },
+        "savedEvidence": {
+          "const": "json-string-parts-ordered-by-packet-and-part"
+        }
+      }
+    },
+    "caseMappings": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "caseId",
+            "testName",
+            "facts"
+          ],
+          "properties": {
+            "caseId": {
+              "const": "m12-reports-exports"
+            },
+            "testName": {
+              "const": "LiveReleaseReportsExportsRepresentativeVolumeIsBounded"
+            },
+            "facts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "reports",
+                "exports",
+                "reportKind"
+              ],
+              "properties": {
+                "reports": {
+                  "const": true
+                },
+                "exports": {
+                  "const": true
+                },
+                "reportKind": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "caseId",
+            "testName",
+            "facts"
+          ],
+          "properties": {
+            "caseId": {
+              "const": "m12-report-contract"
+            },
+            "testName": {
+              "const": "LiveReleaseReportContractIsSnapshotScopedAndAudited"
+            },
+            "facts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "reports",
+                "exports",
+                "reportKind"
+              ],
+              "properties": {
+                "reports": {
+                  "const": true
+                },
+                "exports": {
+                  "const": false
+                },
+                "reportKind": {
+                  "const": "report"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "caseId",
+            "testName",
+            "facts"
+          ],
+          "properties": {
+            "caseId": {
+              "const": "m12-export-contract"
+            },
+            "testName": {
+              "const": "LiveReleaseExportContractIsInertAndFormulaSafe"
+            },
+            "facts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "reports",
+                "exports",
+                "reportKind"
+              ],
+              "properties": {
+                "reports": {
+                  "const": false
+                },
+                "exports": {
+                  "const": true
+                },
+                "reportKind": {
+                  "const": "export"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false
+    },
+    "assetPins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "database/migrations/0021_reports_exports.sql",
+        "database/migrations/0022_runtime_startup_repairs.sql",
+        "database/migrations/0023_report_expiry_lock_privilege.sql",
+        "database/migrations/0024_report_materialization_column_binding.sql",
+        "database/migrations/0025_report_run_scoped_read.sql",
+        "database/migrations/checksums.sha256",
+        "src/SqlObserver.Reporting/ReportContracts.cs",
+        "src/SqlObserver.Reporting/ReportRendering.cs",
+        "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs",
+        "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs",
+        "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs",
+        "tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj",
+        "database/migrations/0288_saved_incident_workspace.sql",
+        "database/migrations/0289_saved_incident_listing.sql",
+        "database/migrations/0290_saved_investigation_reports.sql",
+        "src/SqlObserver.Application/Ports/SavedIncidentPorts.cs",
+        "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlSavedIncidentPort.cs",
+        "database/migrations/0291_report_materialization_row_budget.sql"
+      ],
+      "properties": {
+        "database/migrations/0021_reports_exports.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0022_runtime_startup_repairs.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0023_report_expiry_lock_privilege.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0024_report_materialization_column_binding.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0025_report_run_scoped_read.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/checksums.sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "src/SqlObserver.Reporting/ReportContracts.cs": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "src/SqlObserver.Reporting/ReportRendering.cs": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0288_saved_incident_workspace.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0289_saved_incident_listing.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0290_saved_investigation_reports.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "src/SqlObserver.Application/Ports/SavedIncidentPorts.cs": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlSavedIncidentPort.cs": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "database/migrations/0291_report_materialization_row_budget.sql": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
   }
 }

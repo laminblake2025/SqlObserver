@@ -203,7 +203,39 @@ TypeScript, the production build and asset verification pass.
 
 A synthetic Viewer browser check simulated a post-commit 503, confirmed two
 identical report request bodies, and then displayed all three export links.
-That fixture checks UI behavior only. The release report certification contract
-and its source pins still cover the original four kinds and must be expanded
-and recertified for the saved-investigation kind; this is not a release-suite
-pass or a complete revamp claim.
+That fixture checks UI behavior only.
+
+The release report contract now pins all five kinds and six sections, including
+the saved-note and JSON-part encoding rules, durable snapshot dependencies and
+migrations 0288 through 0291. Each of the three existing certification cases
+independently proves saved-report replay, historical revision, current read
+roles, target isolation, accepted creation audit, both export audits, escaped
+HTML and complete CSV-to-JSON reconstruction after source partition retirement.
+The producer requires a boolean `savedInvestigation: true` fact and rejects
+missing, false, incorrectly typed or additional facts. Its source, contract and
+schema hashes remain fixed; external matrix cases remain pending.
+
+Running the native cases also exposed stale fixtures: an invalid collection
+byte count, a two-clock-read equality assertion, and an expectation of 401
+health metrics where the real projection is capped at 64. The volume case now
+checks first, intermediate and final 200-row pages in the performance series,
+including every ordinal and a hard 10,000-row cap from 10,003 source rows.
+
+Migration 0291 replaces six per-insert/per-batch table counts in the private
+window materializer with its existing next-ordinal counter. It retains the
+final row/byte assertions, fixed projections, snapshot, scope, audit and private
+helper privileges. The volume case previously exceeded the five-second
+repository budget and now passes with that budget unchanged. Applied migrations
+are unchanged.
+
+The producer's evidence validation is exercised directly for all three case
+shapes. This exposed malformed `return`/`throw` tokens in previously unexercised
+paths; their spacing is corrected without changing the execution gates. The
+eight affected native report checks and eight focused report producer/release
+gate checks pass. The unchanged isolated rebuild check was not rerun.
+
+These are local product-path and producer checks against disposable PostgreSQL
+18.4. They do not publish Release evidence or certify an external host. External
+certification still requires the approved Windows Server host, verified TLS
+multi-host PostgreSQL topology, clean commit and the unmodified producer gates;
+this is not a release-suite pass or a complete revamp claim.

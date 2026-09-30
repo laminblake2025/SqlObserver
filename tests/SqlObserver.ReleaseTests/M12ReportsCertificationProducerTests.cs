@@ -19,8 +19,11 @@ public sealed class M12ReportsCertificationProducerTests
         Assert.False(schema.RootElement.GetProperty("additionalProperties").GetBoolean());
         Assert.Equal(1, contract.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("m12-reports-exports", contract.RootElement.GetProperty("contractId").GetString());
-        Assert.Equal(4, contract.RootElement.GetProperty("reportKinds").GetArrayLength());
-        Assert.Equal(4, contract.RootElement.GetProperty("sections").GetArrayLength());
+        Assert.Equal(5, contract.RootElement.GetProperty("reportKinds").GetArrayLength());
+        Assert.Equal(6, contract.RootElement.GetProperty("sections").GetArrayLength());
+        Assert.Equal("saved-investigation", contract.RootElement.GetProperty("reportKinds")[4].GetString());
+        Assert.Equal("preserve-unicode-and-crlf-tab", contract.RootElement.GetProperty("encoding").GetProperty("savedNotes").GetString());
+        Assert.Equal("json-string-parts-ordered-by-packet-and-part", contract.RootElement.GetProperty("encoding").GetProperty("savedEvidence").GetString());
         Assert.Equal(200, contract.RootElement.GetProperty("bounds").GetProperty("pageRows").GetInt32());
         Assert.Equal(2_000, contract.RootElement.GetProperty("bounds").GetProperty("htmlRows").GetInt32());
         Assert.Equal(10_000, contract.RootElement.GetProperty("bounds").GetProperty("materializationRows").GetInt32());
@@ -43,16 +46,25 @@ public sealed class M12ReportsCertificationProducerTests
             ["database/migrations/0023_report_expiry_lock_privilege.sql"] = "1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0",
             ["database/migrations/0024_report_materialization_column_binding.sql"] = "8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6",
             ["database/migrations/0025_report_run_scoped_read.sql"] = "dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6",
-            ["database/migrations/checksums.sha256"] = "7025ef816520339b81294aaca3268325727bd0f7440a8b521207bf2d31c65f53",
-            ["src/SqlObserver.Reporting/ReportContracts.cs"] = "95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8",
-            ["src/SqlObserver.Reporting/ReportRendering.cs"] = "6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61",
-            ["src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs"] = "6dce0d1b5dc6bbd930367059153872e5df3eaa38aeeb31650b0fdb1afd73b8ee",
+            ["database/migrations/checksums.sha256"] = "5be1aee5f5b0aff086a569714cf6b14ad0632f041f65152ac3236269260f45da",
+            ["src/SqlObserver.Reporting/ReportContracts.cs"] = "f22cb37ebc9fba15fa01d1215e902a38b5e43f02c494585f06bcac0214b89dd0",
+            ["src/SqlObserver.Reporting/ReportRendering.cs"] = "08bba74ded22122a4a08f03dbfd6a254a7b786b352a3c3390a000a64552a824c",
+            ["src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs"] = "61e1b6a3f5b66a9583089572ee2ebfe2fb0e7fa08a50ff6c23450441561e7865",
             ["src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs"] = "9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74",
-            ["tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs"] = "5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22",
-            ["tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj"] = "2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e"
+            ["tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs"] = "6596309e5ff693b47c6952f8f3be12314c14e15bc601e588705b3ac990e64cdd",
+            ["tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj"] = "2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e",
+            ["database/migrations/0288_saved_incident_workspace.sql"] = "6e04b0c7d6ae18827b273a2742dce33369ef0c6d11d7e2a461a3a4814cd7b2e3",
+            ["database/migrations/0289_saved_incident_listing.sql"] = "91f8a79793e3ba7fa36199a676a46ce26664af0b3d9e531fc8ee792c021daf12",
+            ["database/migrations/0290_saved_investigation_reports.sql"] = "61fd92379f9a0e95bf8affabf43865b225913c8dd11bfffe73ff7289bf00012b",
+            ["src/SqlObserver.Application/Ports/SavedIncidentPorts.cs"] = "a7c7b6990802f04c3bf799693cd3c91ba39e95a2980cf9343fff3735fbf165c6",
+            ["src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlSavedIncidentPort.cs"] = "8a355aed69c8479eb3be51a5a541900d13c4104336f84c99809f8eaa1e17c87c",
+            ["database/migrations/0291_report_materialization_row_budget.sql"] = "599eed19372b3654a07561a63ad041455b55cdd1f1f821074c1ce22e3436a4c4",
         };
         JsonElement assets = contract.RootElement.GetProperty("assetPins");
         Assert.Equal(expectedAssets.Count, assets.EnumerateObject().Count());
+        JsonElement assetSchema = schema.RootElement.GetProperty("properties").GetProperty("assetPins");
+        Assert.Equal(expectedAssets.Keys, assetSchema.GetProperty("required").EnumerateArray().Select(static item => item.GetString()));
+        Assert.Equal(expectedAssets.Keys, assetSchema.GetProperty("properties").EnumerateObject().Select(static item => item.Name));
         foreach ((string relative, string expectedHash) in expectedAssets)
         {
             Assert.Equal(expectedHash, assets.GetProperty(relative).GetString());
@@ -60,6 +72,63 @@ public sealed class M12ReportsCertificationProducerTests
         }
         string expected = $"{Hash(contractPath)}  m12-reports-contract.v1.json\n{Hash(schemaPath)}  m12-reports-contract.v1.schema.json\n";
         Assert.Equal(expected, File.ReadAllText(pinPath));
+    }
+
+    [Fact]
+    public void ProducerRequiresSavedInvestigationEvidenceForEveryCase()
+    {
+        string root = FindRoot();
+        string script = Path.Combine(Path.GetTempPath(), $"sqlobserver-report-facts-{Guid.NewGuid():N}.ps1");
+        File.WriteAllText(script, """
+            param([string]$ProducerPath)
+            Set-StrictMode -Version Latest
+            $ErrorActionPreference='Stop'
+            $tokens=$null; $errors=$null
+            $ast=[Management.Automation.Language.Parser]::ParseFile($ProducerPath,[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { throw 'Producer parse failure' }
+            foreach ($name in @('Fail-M12','Assert-M12FactShape','Assert-LiveReportsResult')) {
+                $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$true)
+                if ($null-eq$function) { throw 'Missing producer function' }
+                . ([scriptblock]::Create($function.Extent.Text))
+            }
+            $cases=@(
+                @{Id='m12-reports-exports';Kind=$null;Reports=$true;Exports=$true;Facts=[ordered]@{reports=$true;exports=$true;reportKind=$null;definitions=5;sections=@('health','performance','incidents','capacity','investigation','saved-evidence');page200=$true;html2000=$true;export10000=$true;responseBytes=1048576;materializationBytes=8388608;testCount=1;savedInvestigation=$true;observedPostgreSqlVersion=18}},
+                @{Id='m12-report-contract';Kind='report';Reports=$true;Exports=$false;Facts=[ordered]@{reports=$true;exports=$false;reportKind='report';snapshotScoped=$true;audited=$true;idempotentReplay=$true;targetIsolation=$true;roles=$true;testCount=1;savedInvestigation=$true;observedPostgreSqlVersion=18}},
+                @{Id='m12-export-contract';Kind='export';Reports=$false;Exports=$true;Facts=[ordered]@{reports=$false;exports=$true;reportKind='export';inertHtml=$true;rfc4180=$true;formulaNeutralization=$true;formulaSentinels=4;testCount=1;savedInvestigation=$true;observedPostgreSqlVersion=18}}
+            )
+            foreach ($entry in $cases) {
+                $CaseId=$entry.Id
+                $case=[pscustomobject]@{Test='proof';ReportKind=$entry.Kind;Reports=$entry.Reports;Exports=$entry.Exports}
+                $result=[pscustomobject][ordered]@{schemaVersion=1;caseId=$CaseId;status='passed';testName='proof';testCount=1;facts=[pscustomobject]$entry.Facts}
+                [void](Assert-LiveReportsResult $result $case 1)
+                foreach ($mutation in @('missing','false','string','extra')) {
+                    $facts=[ordered]@{}; foreach ($key in $entry.Facts.Keys) { $facts[$key]=$entry.Facts[$key] }
+                    switch ($mutation) {
+                        'missing' { $facts.Remove('savedInvestigation') }
+                        'false' { $facts.savedInvestigation=$false }
+                        'string' { $facts.savedInvestigation='true' }
+                        'extra' { $facts.unexpected=$true }
+                    }
+                    $result.facts=[pscustomobject]$facts
+                    $rejected=$false
+                    try { [void](Assert-LiveReportsResult $result $case 1) } catch { $rejected=$true }
+                    if (-not$rejected) { throw "Producer accepted $mutation evidence" }
+                }
+            }
+            """);
+        try
+        {
+            string pwsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe");
+            if (!File.Exists(pwsh)) pwsh = "pwsh";
+            ProcessStartInfo start = new(pwsh) { WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-File", script, Path.Combine(root, "tools/run-m12-reports-certification.ps1") }) start.ArgumentList.Add(arg);
+            using Process process = Process.Start(start)!;
+            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            Assert.True(process.ExitCode == 0, output);
+            Assert.Equal(string.Empty, output.Trim());
+        }
+        finally { File.Delete(script); }
     }
 
     [Fact]
@@ -131,7 +200,7 @@ public sealed class M12ReportsCertificationProducerTests
     public void ProducerHasPendingOnlyCaseMapAndPublicationHardening()
     {
         string source = File.ReadAllText(Path.Combine(FindRoot(), "tools/run-m12-reports-certification.ps1"));
-        foreach (string marker in new[] { "m12-reports-exports", "m12-report-contract", "m12-export-contract", "m12-reports-harness", "reports-exports-evidence", "LiveReleaseReportsExportsRepresentativeVolumeIsBounded", "LiveReleaseReportContractIsSnapshotScopedAndAudited", "LiveReleaseExportContractIsInertAndFormulaSafe", "Reports=$true", "Exports=$true", "ReportKind='report'", "ReportKind='export'", "e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986", "1c2726afe570ff7a8db169afc6469196d3c27ad73d33b2f5702de5130b31d64d", "1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0", "1f456e5b0c33d5855edba70efa2f484e04347fd7c890e85a83e752303ed46759", "80defd27f366b29b46e48bba9d9a7eec2934a41a2aaf5ca38a79ab979e4354ad", "5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22", "2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e", "detailedWindowDays=7", "trendWindowDays=31", "VerifyFull", "Assert-ReportsConnection", "ConnectionOnly", "ContractOnly", "/t:Rebuild", "--output", "raw", "Assert-M12CleanTree", "Invoke-M12GitStatus", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_TERMINAL_PROMPT", "--no-optional-locks", "Assert-M12TrustedTree", "Read-M12LockedBytes", "FileShare]::None", "FileMode]::CreateNew", "Flush($true)", "ReadAsync", "M12SuspendedProcess", "KillOnClose", "ProcessIds", "Assert-M12NoDescendants", "Read-M12ReportsTrx", "XmlResolver", "DocumentType", "UnitTestResult", "Counters", "expectedCounters", "TestCount=$trxResult.TestCount", "testCount-ne$ExpectedTestCount", "executed=1", "passed=1", "notExecuted=0", "warning=0", "Assert-M12ObservedPidsExited", "$stableEmptySweeps", "Get-CimInstance Win32_Process", "Remove-M12RawArtifactsDirectory", "[IO.Directory]::Move($build,$verify)", "[IO.Directory]::Move($verify,$final)", "M12-REPORTS-PRODUCER-HOST" }) Assert.Contains(marker, source, StringComparison.Ordinal);
+        foreach (string marker in new[] { "m12-reports-exports", "m12-report-contract", "m12-export-contract", "m12-reports-harness", "reports-exports-evidence", "LiveReleaseReportsExportsRepresentativeVolumeIsBounded", "LiveReleaseReportContractIsSnapshotScopedAndAudited", "LiveReleaseExportContractIsInertAndFormulaSafe", "Reports=$true", "Exports=$true", "ReportKind='report'", "ReportKind='export'", "e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986", "1c2726afe570ff7a8db169afc6469196d3c27ad73d33b2f5702de5130b31d64d", "1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0", "d677a30c8fb07d3af322c6b2abbe0cef5cd70a1d92250860accf9af236ca8365", "cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266", "6596309e5ff693b47c6952f8f3be12314c14e15bc601e588705b3ac990e64cdd", "2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e", "detailedWindowDays=7", "trendWindowDays=31", "VerifyFull", "Assert-ReportsConnection", "ConnectionOnly", "ContractOnly", "/t:Rebuild", "--output", "raw", "Assert-M12CleanTree", "Invoke-M12GitStatus", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_TERMINAL_PROMPT", "--no-optional-locks", "Assert-M12TrustedTree", "Read-M12LockedBytes", "FileShare]::None", "FileMode]::CreateNew", "Flush($true)", "ReadAsync", "M12SuspendedProcess", "KillOnClose", "ProcessIds", "Assert-M12NoDescendants", "Read-M12ReportsTrx", "XmlResolver", "DocumentType", "UnitTestResult", "Counters", "expectedCounters", "TestCount=$trxResult.TestCount", "testCount-ne$ExpectedTestCount", "executed=1", "passed=1", "notExecuted=0", "warning=0", "Assert-M12ObservedPidsExited", "$stableEmptySweeps", "Get-CimInstance Win32_Process", "Remove-M12RawArtifactsDirectory", "[IO.Directory]::Move($build,$verify)", "[IO.Directory]::Move($verify,$final)", "M12-REPORTS-PRODUCER-HOST" }) Assert.Contains(marker, source, StringComparison.Ordinal);
         Assert.DoesNotContain("ReadToEndAsync", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WriteAllText", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Start-Process", source, StringComparison.OrdinalIgnoreCase);
@@ -139,8 +208,9 @@ public sealed class M12ReportsCertificationProducerTests
         Assert.DoesNotContain("Get-Command dotnet", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Diagnostics.Process.Start", source, StringComparison.Ordinal);
         Assert.DoesNotContain("--no-build", source, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"(?<!\w)(return|throw)(?=[\$\[])", source);
         string validator = File.ReadAllText(Path.Combine(FindRoot(), "tools/validate.ps1"));
-        Assert.Contains("f25c39faaac608937bf55cebd2ffe08e3dbc5677a301e61a61189f4021ff079d", validator, StringComparison.Ordinal);
+        Assert.Contains("f1950a4f8d4e83d5f450eeb0d28e902480976ddfca7c905d48c154925886764d", validator, StringComparison.Ordinal);
         Assert.Contains("var builder = new StringBuilder(\"\\\"\")", source, StringComparison.Ordinal);
         Assert.DoesNotContain("new StringBuilder(\"\\\\\\\"\")", source, StringComparison.Ordinal);
     }

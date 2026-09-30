@@ -4,8 +4,21 @@
   "contractId": "m12-reports-exports",
   "producerId": "m12-reports-harness",
   "definitionVersion": 1,
-  "reportKinds": ["instance-health", "performance-window", "incident-evidence", "capacity-readiness"],
-  "sections": ["health", "performance", "incidents", "capacity"],
+  "reportKinds": [
+    "instance-health",
+    "performance-window",
+    "incident-evidence",
+    "capacity-readiness",
+    "saved-investigation"
+  ],
+  "sections": [
+    "health",
+    "performance",
+    "incidents",
+    "capacity",
+    "investigation",
+    "saved-evidence"
+  ],
   "formats": {
     "html": "inert-printable",
     "csv": "utf-8-per-section"
@@ -29,14 +42,45 @@
     "html": "html-encode-text-and-attributes",
     "csv": "rfc4180",
     "formulaNeutralization": true,
-    "formulaSentinels": ["=", "+", "-", "@"],
+    "formulaSentinels": [
+      "=",
+      "+",
+      "-",
+      "@"
+    ],
     "controlCharacterNormalization": true,
-    "utf8Bom": false
+    "utf8Bom": false,
+    "savedNotes": "preserve-unicode-and-crlf-tab",
+    "savedEvidence": "json-string-parts-ordered-by-packet-and-part"
   },
   "caseMappings": [
-    { "caseId": "m12-reports-exports", "testName": "LiveReleaseReportsExportsRepresentativeVolumeIsBounded", "facts": { "reports": true, "exports": true, "reportKind": null } },
-    { "caseId": "m12-report-contract", "testName": "LiveReleaseReportContractIsSnapshotScopedAndAudited", "facts": { "reports": true, "exports": false, "reportKind": "report" } },
-    { "caseId": "m12-export-contract", "testName": "LiveReleaseExportContractIsInertAndFormulaSafe", "facts": { "reports": false, "exports": true, "reportKind": "export" } }
+    {
+      "caseId": "m12-reports-exports",
+      "testName": "LiveReleaseReportsExportsRepresentativeVolumeIsBounded",
+      "facts": {
+        "reports": true,
+        "exports": true,
+        "reportKind": null
+      }
+    },
+    {
+      "caseId": "m12-report-contract",
+      "testName": "LiveReleaseReportContractIsSnapshotScopedAndAudited",
+      "facts": {
+        "reports": true,
+        "exports": false,
+        "reportKind": "report"
+      }
+    },
+    {
+      "caseId": "m12-export-contract",
+      "testName": "LiveReleaseExportContractIsInertAndFormulaSafe",
+      "facts": {
+        "reports": false,
+        "exports": true,
+        "reportKind": "export"
+      }
+    }
   ],
   "assetPins": {
     "database/migrations/0021_reports_exports.sql": "e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986",
@@ -44,12 +88,18 @@
     "database/migrations/0023_report_expiry_lock_privilege.sql": "1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0",
     "database/migrations/0024_report_materialization_column_binding.sql": "8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6",
     "database/migrations/0025_report_run_scoped_read.sql": "dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6",
-    "database/migrations/checksums.sha256": "7025ef816520339b81294aaca3268325727bd0f7440a8b521207bf2d31c65f53",
-    "src/SqlObserver.Reporting/ReportContracts.cs": "95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8",
-    "src/SqlObserver.Reporting/ReportRendering.cs": "6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61",
-    "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs": "6dce0d1b5dc6bbd930367059153872e5df3eaa38aeeb31650b0fdb1afd73b8ee",
+    "database/migrations/checksums.sha256": "5be1aee5f5b0aff086a569714cf6b14ad0632f041f65152ac3236269260f45da",
+    "src/SqlObserver.Reporting/ReportContracts.cs": "f22cb37ebc9fba15fa01d1215e902a38b5e43f02c494585f06bcac0214b89dd0",
+    "src/SqlObserver.Reporting/ReportRendering.cs": "08bba74ded22122a4a08f03dbfd6a254a7b786b352a3c3390a000a64552a824c",
+    "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs": "61e1b6a3f5b66a9583089572ee2ebfe2fb0e7fa08a50ff6c23450441561e7865",
     "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs": "9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74",
-    "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs": "5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22",
-    "tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj": "2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e"
+    "tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs": "6596309e5ff693b47c6952f8f3be12314c14e15bc601e588705b3ac990e64cdd",
+    "tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj": "2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e",
+    "database/migrations/0288_saved_incident_workspace.sql": "6e04b0c7d6ae18827b273a2742dce33369ef0c6d11d7e2a461a3a4814cd7b2e3",
+    "database/migrations/0289_saved_incident_listing.sql": "91f8a79793e3ba7fa36199a676a46ce26664af0b3d9e531fc8ee792c021daf12",
+    "database/migrations/0290_saved_investigation_reports.sql": "61fd92379f9a0e95bf8affabf43865b225913c8dd11bfffe73ff7289bf00012b",
+    "src/SqlObserver.Application/Ports/SavedIncidentPorts.cs": "a7c7b6990802f04c3bf799693cd3c91ba39e95a2980cf9343fff3735fbf165c6",
+    "src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlSavedIncidentPort.cs": "8a355aed69c8479eb3be51a5a541900d13c4104336f84c99809f8eaa1e17c87c",
+    "database/migrations/0291_report_materialization_row_budget.sql": "599eed19372b3654a07561a63ad041455b55cdd1f1f821074c1ce22e3436a4c4"
   }
 }

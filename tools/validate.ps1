@@ -1885,30 +1885,36 @@ function Assert-RepositoryShape {
     $m12ReportsTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs'
     foreach ($m12ReportsPath in @($m12ReportsContractPath, $m12ReportsSchemaPath, $m12ReportsPinPath, $m12ReportsProducerPath, $m12ReportsTestPath)) { if (-not (Test-Path -LiteralPath $m12ReportsPath -PathType Leaf)) { throw 'M12 reports certification asset is missing.' } }
     $m12ReportsContractHash = (Get-FileHash -LiteralPath $m12ReportsContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ReportsSchemaHash = (Get-FileHash -LiteralPath $m12ReportsSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12ReportsContractHash -cne '1f456e5b0c33d5855edba70efa2f484e04347fd7c890e85a83e752303ed46759' -or $m12ReportsSchemaHash -cne '80defd27f366b29b46e48bba9d9a7eec2934a41a2aaf5ca38a79ab979e4354ad') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
+    if ($m12ReportsContractHash -cne 'd677a30c8fb07d3af322c6b2abbe0cef5cd70a1d92250860accf9af236ca8365' -or $m12ReportsSchemaHash -cne 'cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
     if ([IO.File]::ReadAllText($m12ReportsPinPath) -cne "$m12ReportsContractHash  m12-reports-contract.v1.json`n$m12ReportsSchemaHash  m12-reports-contract.v1.schema.json`n") { throw 'M12 reports contract pin is not exact LF-closed.' }
     $m12ReportsSchema = Get-Content -LiteralPath $m12ReportsSchemaPath -Raw | ConvertFrom-Json; $m12ReportsContract = Get-Content -LiteralPath $m12ReportsContractPath -Raw | ConvertFrom-Json
     if ($m12ReportsSchema.additionalProperties -ne $false -or $m12ReportsContract.'$schema' -cne 'm12-reports-contract.v1.schema.json' -or $m12ReportsContract.producerId -cne 'm12-reports-harness') { throw 'M12 reports contract/schema must be closed and self-identifying.' }
     $m12ReportsAssets = [ordered]@{
-        'database/migrations/0021_reports_exports.sql' = 'e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986'
-        'database/migrations/0022_runtime_startup_repairs.sql' = '1c2726afe570ff7a8db169afc6469196d3c27ad73d33b2f5702de5130b31d64d'
-        'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
-        'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
-        'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
-        'database/migrations/checksums.sha256' = '7025ef816520339b81294aaca3268325727bd0f7440a8b521207bf2d31c65f53'
-        'src/SqlObserver.Reporting/ReportContracts.cs' = '95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8'
-        'src/SqlObserver.Reporting/ReportRendering.cs' = '6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '6dce0d1b5dc6bbd930367059153872e5df3eaa38aeeb31650b0fdb1afd73b8ee'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs' = '9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs' = '5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e'
+    'database/migrations/0021_reports_exports.sql' = 'e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986'
+    'database/migrations/0022_runtime_startup_repairs.sql' = '1c2726afe570ff7a8db169afc6469196d3c27ad73d33b2f5702de5130b31d64d'
+    'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
+    'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
+    'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
+    'database/migrations/checksums.sha256' = '5be1aee5f5b0aff086a569714cf6b14ad0632f041f65152ac3236269260f45da'
+    'src/SqlObserver.Reporting/ReportContracts.cs' = 'f22cb37ebc9fba15fa01d1215e902a38b5e43f02c494585f06bcac0214b89dd0'
+    'src/SqlObserver.Reporting/ReportRendering.cs' = '08bba74ded22122a4a08f03dbfd6a254a7b786b352a3c3390a000a64552a824c'
+    'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '61e1b6a3f5b66a9583089572ee2ebfe2fb0e7fa08a50ff6c23450441561e7865'
+    'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs' = '9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74'
+    'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs' = '6596309e5ff693b47c6952f8f3be12314c14e15bc601e588705b3ac990e64cdd'
+    'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e'
+    'database/migrations/0288_saved_incident_workspace.sql' = '6e04b0c7d6ae18827b273a2742dce33369ef0c6d11d7e2a461a3a4814cd7b2e3'
+    'database/migrations/0289_saved_incident_listing.sql' = '91f8a79793e3ba7fa36199a676a46ce26664af0b3d9e531fc8ee792c021daf12'
+    'database/migrations/0290_saved_investigation_reports.sql' = '61fd92379f9a0e95bf8affabf43865b225913c8dd11bfffe73ff7289bf00012b'
+    'src/SqlObserver.Application/Ports/SavedIncidentPorts.cs' = 'a7c7b6990802f04c3bf799693cd3c91ba39e95a2980cf9343fff3735fbf165c6'
+    'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlSavedIncidentPort.cs' = '8a355aed69c8479eb3be51a5a541900d13c4104336f84c99809f8eaa1e17c87c'
+    'database/migrations/0291_report_materialization_row_budget.sql' = '599eed19372b3654a07561a63ad041455b55cdd1f1f821074c1ce22e3436a4c4'
     }
     if (((@($m12ReportsContract.assetPins.PSObject.Properties.Name) -join '|') -cne (@($m12ReportsAssets.Keys) -join '|'))) { throw 'M12 reports execution asset pin inventory is not exact.' }
     foreach ($m12ReportsAsset in $m12ReportsAssets.Keys) {
         if ($m12ReportsContract.assetPins.$m12ReportsAsset -cne $m12ReportsAssets[$m12ReportsAsset] -or (Get-FileHash -LiteralPath (Join-Path $repositoryRoot $m12ReportsAsset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12ReportsAssets[$m12ReportsAsset]) { throw "M12 reports asset pin mismatch: $m12ReportsAsset" }
     }
     $m12ReportsProducerText = Get-Content -LiteralPath $m12ReportsProducerPath -Raw; $m12ReportsTestText = Get-Content -LiteralPath $m12ReportsTestPath -Raw
-    if ((Get-FileHash -LiteralPath $m12ReportsProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'f25c39faaac608937bf55cebd2ffe08e3dbc5677a301e61a61189f4021ff079d') { throw 'M12 reports producer source does not match the approved external execution pin.' }
+    if ((Get-FileHash -LiteralPath $m12ReportsProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'f1950a4f8d4e83d5f450eeb0d28e902480976ddfca7c905d48c154925886764d') { throw 'M12 reports producer source does not match the approved external execution pin.' }
     foreach ($m12ReportsMarker in @('Assert-M12Contract', 'Assert-M12ContractValues', 'ContractOnly', 'ConnectionOnly', 'VerifyFull', 'Assert-ReportsConnection', 'Assert-M12CleanTree', 'Invoke-M12GitStatus', '/t:Rebuild', '--output', 'Remove-M12RawArtifactsDirectory', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_TERMINAL_PROMPT', '--no-optional-locks', 'detailedWindowDays=7', 'trendWindowDays=31', 'm12-reports-harness', 'reports-exports-evidence', 'LiveReleaseReportsExportsRepresentativeVolumeIsBounded', 'LiveReleaseReportContractIsSnapshotScopedAndAudited', 'LiveReleaseExportContractIsInertAndFormulaSafe', 'Read-M12LockedBytes', 'FileMode]::CreateNew', 'FileShare]::None', 'Assert-M12NoDescendants', 'Read-M12ReportsTrx', 'XmlResolver', 'DocumentType', 'Counters', 'expectedCounters', 'TestCount=$trxResult.TestCount', 'testCount-ne$ExpectedTestCount', 'notExecuted=0', 'warning=0', 'Assert-M12ObservedPidsExited', '[IO.Directory]::Move($build,$verify)', '[IO.Directory]::Move($verify,$final)')) { if (-not $m12ReportsProducerText.Contains($m12ReportsMarker, [StringComparison]::Ordinal)) { throw "M12 reports producer is missing invariant: $m12ReportsMarker" } }
     if ($m12ReportsTestText -notmatch '\[Trait\("Category",\s*"RequiresM12ReportsRelease"\)\]' -or $m12ReportsTestText -notmatch 'ReportRenderer\.RenderHtml' -or $m12ReportsTestText -notmatch 'formulaNeutralization') { throw 'M12 reports release tests must be explicit release-only product-path proofs.' }
     $m12ObservabilityContractPath = Join-Path $repositoryRoot 'release/certification/m12-observability-contract.v1.json'
