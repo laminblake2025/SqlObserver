@@ -59,6 +59,51 @@ validate lineage and all closed tokens, retain unknown identities without name
 fallback, preserve source accounting, and withhold invalid output. It must not
 pass local-only AG history as all-replica evidence to the freshness evaluator.
 
+## Typed parser and historical time resolution
+
+`SqlServerBackupV2Parser` now reads all 29 fields in ordinal order, checking
+the inventory/sample association, unique ordered slots, closed metadata tokens,
+matching recovery lineage and one shared source clock/lookback/zone context.
+Published fingerprints use the configured identity key, distinct identity
+classes, target and target revision. Ephemeral catalog IDs and unkeyed source
+digests do not leave this boundary. An unknown or duplicated database GUID
+retains an inventory entry with no policy fingerprint or freshness assessment
+input; it does not borrow another identity or fall back to a name.
+
+Incomplete inventory, offline state, unknown recovery model, unclassified
+backups and incomplete AG context retain partial coverage. A complete local
+secondary scan remains `AvailabilityGroupLocalOnly`, so the domain evaluator
+cannot issue an all-replica verdict from it. Missing metadata and known
+checksum/damage faults remain present in the recorded samples. Source UTC
+observation time and monitor UTC receipt time are separate fields.
+
+The parser reads at most one row beyond its configured row/database ceiling.
+On row, database or byte truncation it publishes no database prefix and records
+all read rows as a conservative lower bound on withheld evidence. Malformed
+input and cancellation return no snapshot. Output collections own their data.
+The byte allowance covers the envelope, expanded keyed identities, escaped
+zone text and derived assessment inputs. These limits are independent: a
+sample-rich scan can hit the conservative byte ceiling before the row ceiling.
+
+UTC finish resolution requires an explicit `BackupHistoricalZoneQualification`
+for the exact target/revision, with a version and a half-open UTC interval
+certifying historical zone configuration and rules. No production provider or
+audited qualification command is installed in this stage. The current SQL
+zone ID alone cannot create that qualification. A recorded start offset must
+agree with the qualified zone at start, both endpoints must be unambiguous and
+valid, and both UTC instants must lie inside the qualified interval. The
+resolver uses the finish's own offset across a clock transition; unknown,
+inconsistent or out-of-range values retain a closed reason and no UTC finish.
+It never substitutes the host zone, clamps calendar overflow or fabricates a
+receipt-time finish. See [.NET ambiguity handling](https://learn.microsoft.com/en-us/dotnet/api/system.timezoneinfo.isambiguoustime?view=net-10.0)
+and [UTC conversion behavior](https://learn.microsoft.com/en-us/dotnet/api/system.timezoneinfo.converttimetoutc?view=net-10.0).
+
+Typed parser results are currently a source-adapter boundary. Their immutable
+domain freshness inputs are exercised by the real evaluator, but there is no
+active collector payload or repository writer for v2 yet. Cross-replica identity
+pairing and qualified historical zone provisioning remain explicit integration
+work; this parser does not discover peers or merge histories.
+
 ## Time and metadata boundaries
 
 The source deliberately does not publish a converted finish UTC instant.
@@ -102,15 +147,26 @@ unresolved finish time, classified loss, local-only secondary context, incomplet
 AG identity, and database/row limits. Fixtures modify table variables only; the
 real source read does not issue backup, restore, grants or persistent DDL.
 
+The same four SQL checks now drive the typed parser through a sequential
+`SqlDataReader`, including the installed-major catalog read. Ninety-four
+focused unit checks pass across historical time resolution, typed parsing and
+the existing freshness assessment contracts. The initial resolver tests failed
+against the unresolved implementation before the conversion logic was added.
+Tests cover transition folds/gaps, crossing a transition, historical window
+boundaries, calendar overflow, keyed identity/revision isolation, malformed
+streams, nullable metadata, preserved faults, future source time and withheld
+limit prefixes. No full Local test profile was run for this change.
+
 The local run used Windows authentication and encrypted transport with the
 existing Local-only certificate bypass for its self-signed lab certificate.
 It does not qualify trusted production TLS, a non-admin monitoring principal,
 native SQL Server 2019/2025, or real AG preference and topology. These remain
-separate required lab checks. The production collector, parser, fenced writer,
+separate required lab checks. The production collector, fenced writer,
 retention, policy commands and assessment UI are not activated by these tests.
 
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2ManifestTests'
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --filter 'FullyQualifiedName~BackupHistoricalTimeResolverTests|FullyQualifiedName~BackupV2ParserTests|FullyQualifiedName~BackupFreshnessTests'
 # Use the existing explicit Local or Release SQL Server lab contract.
 dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter 'FullyQualifiedName~BackupV2SourceIntegrationTests'
 ```

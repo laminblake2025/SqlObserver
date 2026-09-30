@@ -150,8 +150,8 @@ preserved observed faults, identity/revision mismatches and collection ownership
 
 No production producer supplies this new evidence yet, and no policy API,
 database write, alert, MCP output or UI verdict is activated by this stage.
-The SQL v2 source and identity/lineage qualification are next, followed by the
-leased persistence and policy/read surfaces above. Native primary/secondary
+Collector payload integration, leased persistence, qualification provisioning
+and the policy/read surfaces are next. Native primary/secondary
 qualification and end-to-end policy/alert/UI behavior remain required for the
 feature to be complete. Synthetic arithmetic tests do not prove those gates.
 
@@ -168,5 +168,16 @@ source times remain explicit. The source does not normalize finish time from
 the start offset. Seven schema checks and four local SQL projection/catalog
 checks pass; they do not qualify real AG behavior or production activation.
 See [the source contract and lab limits](../testing/backup-v2-source.md). The
-typed parser, historical time resolution, fenced writer and all policy/read
-surfaces remain open.
+fenced writer and all policy/read surfaces remain open.
+
+The typed parser now validates the exact two-stream source, derives keyed
+target/revision/class-bound identities, preserves incomplete inventories and
+withholds all prefixes on limit loss. Its immutable domain inputs are exercised
+by the freshness evaluator. Historical finish resolution requires an explicit
+versioned target/revision qualification of zone rules and configuration for
+both endpoints; current source zone and recorded start offset alone remain
+insufficient. No production qualification provider or command exists yet.
+Ninety-four focused unit checks and four sequential native source/parser
+checks pass on 2026-09-30. Collector payload integration, fenced persistence,
+qualification provisioning and the policy/read/alert/UI surfaces still require
+implementation and qualification.
