@@ -1,8 +1,12 @@
 using Npgsql;
 using NpgsqlTypes;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
+using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
@@ -35,6 +39,27 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         Assert.Equal(work.RepositoryTimeUtc, header.Observed);
         Assert.Equal(4, header.OutputItems);
         Assert.Equal(4L, header.Retained);
+        var service = new AvailabilityGroupEvidenceQueryService(new PostgreSqlAvailabilityGroupEvidencePort(server));
+        AuthorizationContext authorization = EvidenceReadAuthorization(target);
+        var firstReplicas = await service.ReadReplicasAsync(authorization,
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 1), CancellationToken.None);
+        var secondReplicas = await service.ReadReplicasAsync(authorization,
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 1, firstReplicas.NextCursor), CancellationToken.None);
+        Assert.Single(firstReplicas.Items); Assert.Single(secondReplicas.Items); Assert.Null(secondReplicas.NextCursor);
+        Assert.NotEqual(firstReplicas.Items[0].Identity.ReplicaFingerprint, secondReplicas.Items[0].Identity.ReplicaFingerprint);
+        var firstDatabases = await service.ReadDatabasesAsync(authorization,
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Databases, 1), CancellationToken.None);
+        var secondDatabases = await service.ReadDatabasesAsync(authorization,
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Databases, 1, firstDatabases.NextCursor), CancellationToken.None);
+        AvailabilityDatabaseReplicaEvidence[] mapped = [.. firstDatabases.Items, .. secondDatabases.Items];
+        Assert.Equal(2, mapped.Length); Assert.Null(secondDatabases.NextCursor);
+        Assert.Equal(mapped[0].DatabaseFingerprint, mapped[1].DatabaseFingerprint);
+        Assert.NotEqual(mapped[0].Identity.ReplicaFingerprint, mapped[1].Identity.ReplicaFingerprint);
+        Assert.Contains(mapped, item => item.LogSendQueueKb is null);
+        Assert.Contains(mapped, item => item.LogSendQueueKb == 0);
+        Assert.Contains(mapped, item => item.SourceLastCommitLocal?.Kind == DateTimeKind.Unspecified);
+        Assert.Contains(mapped, item => item.SourceLastCommitLocal is null);
+        Assert.Equal(work.RepositoryTimeUtc, firstDatabases.Header.SourceObservedAtUtc);
         var replicaKeys = new HashSet<string>(StringComparer.Ordinal);
         var databaseKeys = new HashSet<string>(StringComparer.Ordinal);
         byte[]? afterGroup = null, afterReplica = null, afterDatabase = null;
@@ -79,6 +104,12 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         Assert.Equal(run.Value, (await ReadV2HeaderAsync(connection, target, cutoff)).Run);
         DateTimeOffset newerCutoff = await ReadClockAsync(database);
         Assert.Equal(newerRun.Value, (await ReadV2HeaderAsync(connection, target, newerCutoff)).Run);
+        Assert.Equal(run.Value, (await service.ReadReplicasAsync(authorization,
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 1, firstReplicas.NextCursor), CancellationToken.None)).Header.RunId);
+        var changedRun = firstReplicas.NextCursor! with { AtUtc = newerCutoff };
+        await Assert.ThrowsAsync<AvailabilityGroupEvidenceCursorStaleException>(async () =>
+            await service.ReadReplicasAsync(authorization,
+                EvidenceReadRequest(target, newerCutoff, AvailabilityGroupEvidenceKind.Replicas, 1, changedRun), CancellationToken.None));
         await using (var stale = V2PageCommand(connection, true, target, newerCutoff, header, afterGroup, afterReplica, afterDatabase))
             Assert.Equal("40001", (await Assert.ThrowsAsync<PostgresException>(async () =>
                 await stale.ExecuteNonQueryAsync())).SqlState);
@@ -147,6 +178,14 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         Assert.Equal((short)3, expired.State);
         Assert.Equal(2L, expired.Retained);
         Assert.Equal(4, expired.OutputItems);
+        var service = new AvailabilityGroupEvidenceQueryService(new PostgreSqlAvailabilityGroupEvidencePort(server));
+        var retainedPage = await service.ReadReplicasAsync(EvidenceReadAuthorization(target),
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 100), CancellationToken.None);
+        var expiredPage = await service.ReadDatabasesAsync(EvidenceReadAuthorization(target),
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Databases, 100), CancellationToken.None);
+        Assert.Equal(AvailabilityGroupEvidenceStatus.EvidenceNotRetained, retainedPage.Header.EvidenceStatus);
+        Assert.Equal(OperationalObservationState.Degraded, retainedPage.Header.State);
+        Assert.Equal(2, retainedPage.Items.Count); Assert.Empty(expiredPage.Items);
         await using (var retained = V2PageCommand(connection, false, target, cutoff, expired, null, null, null))
         {
             await using NpgsqlDataReader row = await retained.ExecuteReaderAsync();
@@ -166,6 +205,14 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         }
         Assert.False((await ReadV2HeaderAsync(connection, target, cutoff)).CollectorEnabled);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await new PostgreSqlAvailabilityGroupEvidencePort(collector).ReadReplicasAsync(
+                EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 1), CancellationToken.None));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await service.ReadReplicasAsync(EvidenceReadAuthorization(Guid.NewGuid()),
+                EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 1), CancellationToken.None));
+        Assert.False((await service.ReadReplicasAsync(EvidenceReadAuthorization(target),
+            EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 100), CancellationToken.None)).Header.CollectorEnabled);
         await using (var denied = collector.CreateCommand("SELECT count(*) FROM reporting.get_availability_groups_v2_header(@target,@at);"))
         {
             denied.Parameters.AddWithValue("target", target); denied.Parameters.AddWithValue("at", cutoff);
@@ -190,6 +237,11 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         await ScopeAsync(connection, target);
         V2ReadHeader missing = await ReadV2HeaderAsync(connection, target, await ReadClockAsync(database));
         Assert.Null(missing.Run); Assert.Null(missing.Observed); Assert.Equal("not_collected", missing.Status);
+        var service = new AvailabilityGroupEvidenceQueryService(new PostgreSqlAvailabilityGroupEvidencePort(server));
+        var notCollected = await service.ReadReplicasAsync(EvidenceReadAuthorization(target),
+            EvidenceReadRequest(target, await ReadClockAsync(database), AvailabilityGroupEvidenceKind.Replicas, 100), CancellationToken.None);
+        Assert.Equal(AvailabilityGroupEvidenceStatus.NotCollected, notCollected.Header.EvidenceStatus);
+        Assert.Null(notCollected.Header.SourceObservedAtUtc); Assert.Null(notCollected.Header.RunId);
         for (int kind = 0; kind < 4; kind++)
         {
             CollectorDueWorkItem work = await NextDueAsync(database, runtime, target);
@@ -219,6 +271,19 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
             Assert.Equal(run.Value, header.Run);
             Assert.Equal(kind switch { 0 => "no_data", 1 => "withheld_by_byte_limit", 2 => "collection_failed", _ => "retained" }, header.Status);
             Assert.Equal(kind switch { 0 => (short)6, 1 => (short)2, 2 => (short)5, _ => (short)3 }, header.State);
+            var replicaPage = await service.ReadReplicasAsync(EvidenceReadAuthorization(target),
+                EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 100), CancellationToken.None);
+            var databasePage = await service.ReadDatabasesAsync(EvidenceReadAuthorization(target),
+                EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Databases, 100), CancellationToken.None);
+            Assert.Equal((OperationalObservationState)header.State, replicaPage.Header.State);
+            Assert.Equal(header.Observed, databasePage.Header.SourceObservedAtUtc);
+            Assert.Equal(kind switch
+            {
+                0 => AvailabilityGroupEvidenceStatus.NoData, 1 => AvailabilityGroupEvidenceStatus.WithheldByByteLimit,
+                2 => AvailabilityGroupEvidenceStatus.CollectionFailed, _ => AvailabilityGroupEvidenceStatus.Retained,
+            }, replicaPage.Header.EvidenceStatus);
+            if (kind < 3) { Assert.Empty(replicaPage.Items); Assert.Empty(databasePage.Items); }
+            else Assert.All(replicaPage.Items, item => Assert.Equal(AvailabilityVisibilityScope.SecondaryLocalOnly, item.Identity.VisibilityScope));
             if (kind < 3)
             {
                 Assert.Null(header.Observed);
@@ -288,7 +353,32 @@ public sealed partial class AvailabilityReplicaEvidenceCommitTests
         Assert.Equal(201, seen.Count);
         Assert.Equal(replicas.Select(item => item.Identity.ReplicaFingerprint).Order(StringComparer.Ordinal),
             seen.Select(item => item.ToLowerInvariant()).Order(StringComparer.Ordinal));
+        var service = new AvailabilityGroupEvidenceQueryService(new PostgreSqlAvailabilityGroupEvidencePort(server));
+        AvailabilityGroupEvidenceCursor? continuation = null;
+        var mapped = new HashSet<string>(StringComparer.Ordinal);
+        int mappedPages = 0;
+        do
+        {
+            var page = await service.ReadReplicasAsync(EvidenceReadAuthorization(target),
+                EvidenceReadRequest(target, cutoff, AvailabilityGroupEvidenceKind.Replicas, 100, continuation), CancellationToken.None);
+            Assert.Equal(run.Value, page.Header.RunId);
+            Assert.InRange(page.Items.Count, 1, 100);
+            foreach (var item in page.Items) Assert.True(mapped.Add(item.Identity.ReplicaFingerprint));
+            continuation = page.NextCursor;
+            Assert.InRange(++mappedPages, 1, 3);
+        } while (continuation is not null);
+        Assert.Equal(3, mappedPages); Assert.Equal(201, mapped.Count);
+        Assert.Equal(replicas.Select(item => item.Identity.ReplicaFingerprint).Order(StringComparer.Ordinal), mapped.Order(StringComparer.Ordinal));
     }
+
+    private static AvailabilityGroupEvidenceRequest EvidenceReadRequest(Guid target, DateTimeOffset cutoff,
+        AvailabilityGroupEvidenceKind stream, int limit, AvailabilityGroupEvidenceCursor? cursor = null) =>
+        new(new MonitoredInstanceId(target), cutoff, stream, limit, Timeout, cursor);
+
+    private static AuthorizationContext EvidenceReadAuthorization(Guid target) => new(
+        new ActorSecurityIdentifier("S-1-5-21-1-2-3-1001"), AuthorizationPrincipalState.Active,
+        [new RoleAuthorizationGrant(ApplicationRole.Viewer,
+            TargetAuthorizationScope.ForTargets([new MonitoredInstanceId(target)]))]);
 
     private sealed record V2ReadHeader(Guid? Run, long Revision, DateTimeOffset? Observed,
         short State, string Status, int OutputItems, long Retained, bool CollectorEnabled);

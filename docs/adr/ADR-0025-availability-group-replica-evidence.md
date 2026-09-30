@@ -162,8 +162,23 @@ rows to be inspected. Existing v1 header implementations explicitly exclude
 v2 AG runs on both original and partitioned run routes. PostgreSQL fixtures
 exercise paging, fixed-cutoff stability, stale keys, NULL versus zero units,
 offset-free commit time, scope denial, empty/failure coverage and partial
-retention. The application/API/MCP/UI v2 read adapters and native AG qualification
-remain open; production read routes still use v1.
+retention. Production read routes still use v1.
+
+The application now exposes separate typed replica and database-replica pages,
+with target-scoped Viewer/Operator/TargetAdministrator authorization and a
+five-second maximum repository deadline. Continuations bind the target, fixed
+UTC cutoff, current revision, run and complete stream key; malformed bindings,
+duplicate/out-of-order rows and stale runs fail closed. The PostgreSQL adapter
+sets transaction-local target scope and reads the receipt and child page under
+one repeatable-read snapshot. It trims one lookahead row and builds continuation
+from the last returned item, preserving nullable state, queue/rate units and raw
+offset-free commit time. Empty, failed, byte-withheld and partially retained
+receipts retain their distinct coverage. Focused unit tests cover authorization,
+request/page drift, cancellation and deadlines; the existing PostgreSQL fixtures
+exercise the typed service and adapter through both streams and all 201 replicas
+over three pages. Server composition registers these read ports without exposing
+an HTTP route or changing collector activation. Signed HTTP cursor encoding,
+versioned API/MCP/UI adapters and native AG qualification remain open.
 
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention

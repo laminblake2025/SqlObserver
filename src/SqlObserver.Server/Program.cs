@@ -179,6 +179,9 @@ builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.Ge
 builder.Services.AddSingleton<IMaintenanceWindowReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceWindowReads);
 builder.Services.AddSingleton<IAlertDestinationReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertDestinationReads);
 builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OperationalHealth);
+builder.Services.AddSingleton<IAvailabilityGroupEvidenceRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().AvailabilityGroupEvidence);
+builder.Services.AddSingleton<IAvailabilityGroupEvidenceQueryService, AvailabilityGroupEvidenceQueryService>();
 // The Server retains read/query and administrative analytics ports for its
 // HTTP API; the derivation/backfill workers themselves are owned by Collector.
 builder.Services.AddSingleton<IAnalyticsRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
