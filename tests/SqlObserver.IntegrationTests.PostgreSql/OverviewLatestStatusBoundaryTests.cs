@@ -371,7 +371,7 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             new MetricSeriesQueryService(new PostgreSqlAnalyticsRepositoryPort(
                 server, new IdentityFingerprintKey(new byte[32]))),
             new PostgreSqlOverviewHistoryPort(server), port,
-            new PostgreSqlObservationTargetGroupingPort(server));
+            new PostgreSqlObservationTargetGroupingPort(server), new PostgreSqlBackupFleetCachePort(server));
         var authorization = new AuthorizationContext(
             new ActorSecurityIdentifier("S-1-5-21-100"), AuthorizationPrincipalState.Active,
             [ApplicationRole.Viewer], TargetAuthorizationScope.ForTargets([new MonitoredInstanceId(target)]));
@@ -683,12 +683,12 @@ public sealed class OverviewLatestStatusBoundaryTests(PostgreSql18Fixture fixtur
             CancellationToken.None)).Evidence);
         OverviewResource directBackupCount = Assert.Single(directBackup.Resources,
             resource => resource.Label == "Backup evidence");
-        OverviewResource cachedBackupCount = Assert.Single(latestBackup.Resources,
-            resource => resource.Label == "Backup evidence");
         Assert.Equal(1, directBackupCount.Value);
-        Assert.Equal(directBackupCount.Value, cachedBackupCount.Value);
+        Assert.Null(latestBackup.BackupSummary);
+        Assert.DoesNotContain(latestBackup.Resources, resource => resource.Label == "Backup evidence");
         Assert.Contains("Backup age unavailable: source timezone unknown", directBackup.Gaps);
-        Assert.Contains("Backup age unavailable: source timezone unknown", latestBackup.Gaps);
+        Assert.DoesNotContain("Backup age unavailable: source timezone unknown", latestBackup.Gaps);
+        Assert.Contains(latestBackup.Gaps, gap => gap.StartsWith("No current backup policy summary", StringComparison.Ordinal));
 
         await SeedAgRunAsync(database.DataSource, target, Guid.NewGuid(),
             DateTimeOffset.UtcNow, 3, 2, 1, false);

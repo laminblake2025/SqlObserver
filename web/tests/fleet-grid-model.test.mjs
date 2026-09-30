@@ -61,8 +61,8 @@ test('signal cells distinguish source evidence from health and hide stale numeri
   assert.equal(signals.memory.text, '4.3 GiB');
   assert.equal(signals.waits.tone, 'partial');
   assert.equal(signals.blocking.tone, 'unknown');
-  assert.equal(signals.backups.text, '0 records');
-  assert.match(signals.backups.detail, /does not establish RPO health/);
+  assert.equal(signals.backups.text, '—');
+  assert.match(signals.backups.detail, /No current backup policy summary/);
   assert.equal(signals.ha.tone, 'unknown');
   fleet.evidence[0].resources.find(item => item.label === 'SQL scheduler CPU · selected window').state = 'observed';
   assert.equal(fleetServerRows(fleet, '')[0].signals.cpu.text, '68.5 %');
@@ -78,8 +78,8 @@ test('backup and HA dots surface confirmed exceptions only with usable source ev
     ],
   })];
   const signals = fleetServerRows(fleet, '')[0].signals;
-  assert.equal(signals.backups.tone, 'attention');
-  assert.equal(signals.backups.text, 'Damaged · 3 records');
+  assert.equal(signals.backups.tone, 'unknown');
+  assert.equal(signals.backups.text, '—');
   assert.equal(signals.ha.tone, 'attention');
   assert.match(signals.ha.detail, /Availability replica disconnected/);
 

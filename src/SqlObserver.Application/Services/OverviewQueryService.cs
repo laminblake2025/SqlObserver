@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text.Json;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Alerting;
 using SqlObserver.Domain.Authorization;
@@ -15,7 +16,7 @@ public sealed class OverviewQueryService(
     IAlertQueryService alerts, IActivityProjectionQueryService activity, IDeadlockProjectionQueryService deadlocks,
     IOperationalHealthQueryService operations, IMetricSeriesQueryService metrics,
     IOverviewHistoryRepositoryPort history, IOverviewLatestStatusRepositoryPort latestStatus,
-    IObservationTargetGroupingPort grouping) : IOverviewQueryService
+    IObservationTargetGroupingPort grouping, IBackupFleetLatestRepositoryPort backupLatest) : IOverviewQueryService
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(5));
     private static readonly ApplicationRole[] ReadRoles =
@@ -65,6 +66,12 @@ public sealed class OverviewQueryService(
         evidenceDeadline.CancelAfter(TimeSpan.FromSeconds(20));
         var evidence = await Task.WhenAll(selected.Select(target =>
             ReadTargetAsync(query, target.Target, cutoff, concurrency, evidenceDeadline.Token, cancellationToken)));
+        DateTimeOffset responseAt = DateTimeOffset.UtcNow;
+        evidence = evidence.Select(item => item.BackupSummary is { } backup && backup.ValidUntilUtc <= responseAt
+            ? item with { BackupSummary = null,
+                Issues = item.Issues.Where(i => i.Title is not ("Backup faults observed" or "Backup policy checks failed")).ToArray(),
+                Gaps = item.Gaps.Append("Backup policy summary expired; refresh current evidence").Order(StringComparer.Ordinal).ToArray() }
+            : item).ToArray();
         return new(cutoff, query.FromUtc, query.ToUtc, query.TargetId,
             inventory.Select(x => {
                 Guid id = x.Target.TargetId.Value;
@@ -103,6 +110,26 @@ public sealed class OverviewQueryService(
         void Issue(string title, string detail, string destination, int priority, DateTimeOffset? at) => issues.Add(new(id.Value, target.DisplayName.Value, title, detail, destination, priority, at));
         void Resource(string label, double? value, string unit, string state, DateTimeOffset? at) => resources.Add(new(id.Value, target.DisplayName.Value, label, value, unit, state, at));
         OverviewLatestStatus? cached = null;
+        OverviewBackupSummary? backupSummary = null;
+        if (query.UseLatestStatus && target.Lifecycle == ObservationTargetLifecycle.Active)
+            QueueRead("Backup policy summary", async ct =>
+            {
+                BackupFleetSummary? candidate = await backupLatest.ReadAsync(id, target.Revision.Value, cutoff, Timeout, ct);
+                if (candidate is null)
+                {
+                    gaps.Add("No current backup policy summary; open Health checks to inspect collection and policy settings");
+                    return;
+                }
+                BackupFleetSummaryContract.Validate(candidate);
+                if (candidate.Context.TargetId != id || candidate.Context.TargetRevision != target.Revision.Value ||
+                    candidate.Context.AtUtc > cutoff || candidate.ValidUntilUtc <= cutoff || candidate.ValidUntilUtc <= DateTimeOffset.UtcNow)
+                    throw new InvalidDataException("Overview backup summary crossed its target, revision or freshness boundary.");
+                backupSummary = MapBackup(candidate);
+                if (candidate.ObservedFaultDatabases > 0)
+                    Issue("Backup faults observed", $"Backup damage or missing checksums observed in {candidate.ObservedFaultDatabases} databases; open Health checks for evidence", "operations", 0, candidate.Context.AtUtc);
+                if (candidate.Full.PolicyViolated + candidate.Log.PolicyViolated > 0)
+                    Issue("Backup policy checks failed", $"Full: {candidate.Full.PolicyViolated}; log: {candidate.Log.PolicyViolated}; open Health checks for affected databases", "operations", 1, candidate.Context.AtUtc);
+            });
         if (query.UseLatestStatus && target.Lifecycle == ObservationTargetLifecycle.Active)
         {
             bool readReturned = false;
@@ -126,10 +153,11 @@ public sealed class OverviewQueryService(
                 alertValue = cached.ActiveAlerts;
                 blockedValue = cached.BlockedSessions;
                 foreach (OverviewIssue issue in cached.Issues)
-                    issues.Add(issue with { Server = target.DisplayName.Value });
+                    if (issue.Title != "Damaged backup") issues.Add(issue with { Server = target.DisplayName.Value });
                 foreach (OverviewResource resource in cached.Resources)
-                    resources.Add(resource with { Server = target.DisplayName.Value });
-                foreach (string gap in cached.Gaps) gaps.Add(gap);
+                    if (resource.Label != "Backup evidence") resources.Add(resource with { Server = target.DisplayName.Value });
+                foreach (string gap in cached.Gaps)
+                    if (!gap.StartsWith("Backup ", StringComparison.Ordinal)) gaps.Add(gap);
             }
         }
         if (cached is null) await Read("Collection health", async ct =>
@@ -317,7 +345,7 @@ public sealed class OverviewQueryService(
             var temp = await operations.GetTempDbAsync(query.Authorization, request, ct);
             if (temp is not null) Resource("TempDB used", temp.TotalBytes > 0 && temp.UsedBytes.HasValue ? 100d * temp.UsedBytes.Value / temp.TotalBytes.Value : null, "%", temp.State.ToString().ToLowerInvariant(), temp.ObservedAtUtc);
         });
-        if (cached is null) QueueRead("Backups", async ct =>
+        if (cached is null && !query.UseLatestStatus) QueueRead("Backups", async ct =>
         {
             var backup = await operations.GetBackupsAsync(query.Authorization, request, ct);
             if (backup is not null)
@@ -354,7 +382,18 @@ public sealed class OverviewQueryService(
         return new(id.Value, target.DisplayName.Value,
             cached?.CollectionState ?? snapshot?.CoreCollector.State.ToString().ToLowerInvariant() ?? "unavailable",
             cached?.LastSuccessAtUtc ?? snapshot?.CoreCollector.LastSuccessAtUtc,
-            alertValue, blockedValue, deadlockValue, issues.OrderBy(x => x.Priority).ThenBy(x => x.ObservedAtUtc).Take(10).ToArray(), resources.OrderBy(x => x.Label, StringComparer.Ordinal).ToArray(), series.OrderBy(x => x.Metric, StringComparer.Ordinal).ThenBy(x => x.Dimension, StringComparer.Ordinal).ToArray(), gaps.Order(StringComparer.Ordinal).ToArray());
+            alertValue, blockedValue, deadlockValue, issues.OrderBy(x => x.Priority).ThenBy(x => x.ObservedAtUtc).Take(10).ToArray(), resources.OrderBy(x => x.Label, StringComparer.Ordinal).ToArray(), series.OrderBy(x => x.Metric, StringComparer.Ordinal).ThenBy(x => x.Dimension, StringComparer.Ordinal).ToArray(), gaps.Order(StringComparer.Ordinal).ToArray(), backupSummary);
+    }
+
+    private static OverviewBackupSummary MapBackup(BackupFleetSummary summary)
+    {
+        static string Name<T>(T value) where T : Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
+        static OverviewBackupChecks Checks(BackupFleetCheckCounts counts) => new(counts.WithinThreshold,
+            counts.PolicyViolated, counts.Indeterminate, counts.NotRequired, counts.Disabled,
+            counts.UnknownReasons.Select(r => new OverviewBackupUnknownReason(Name(r.Reason), r.Count)).ToArray());
+        return new(summary.Context.TargetId.Value, summary.Context.AtUtc, summary.ValidUntilUtc,
+            Name(summary.Status), Name(summary.Context.EvidenceStatus), Name(summary.Context.Coverage),
+            summary.Context.DatabaseCount, summary.Context.CollectorEnabled, Checks(summary.Full), Checks(summary.Log), summary.ObservedFaultDatabases);
     }
 
     private static DateTimeOffset Bucket(DateTimeOffset at, OverviewQuery query)

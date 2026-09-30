@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useBackupSummaryClock } from './useBackupSummaryClock';
 import { fleetServerRows, groupFleetServerRows, type FleetGrouping, type FleetSignal } from './fleetGridModel';
 import { FleetServerGroupingEditor } from './FleetServerGroupingEditor';
-import { overviewHref } from './overviewModel';
+import { backupAssessmentHref, overviewHref } from './overviewModel';
 import type { OverviewScope, OverviewSnapshot, OverviewTarget, OverviewValue } from './overviewTypes';
 
 export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime, onGroupingUpdated }: {
@@ -14,7 +15,8 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
 }) {
   const [groupBy, setGroupBy] = useState<FleetGrouping>('environment');
   const [editing, setEditing] = useState<OverviewTarget | null>(null);
-  const rows = fleetServerRows(snapshot, search);
+  const clock = useBackupSummaryClock(snapshot);
+  const rows = fleetServerRows(snapshot, search, clock);
   const groups = groupFleetServerRows(rows, groupBy);
   return <section className="panel overview-panel overview-servers">
     <div className="overview-panel-heading">
@@ -28,7 +30,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
     {editing && <FleetServerGroupingEditor key={`${editing.targetId}:${editing.groupingRevision}`} target={editing}
       onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onGroupingUpdated(); }} />}
     <div className="table-scroll"><table>
-      <caption>Current alerts and blocking; other signals show the latest available source evidence.</caption>
+      <caption>Current alerts, blocking, and backup policy checks; CPU and memory follow the selected window.</caption>
       <thead><tr><th scope="col">Server</th><th scope="col">Attention</th><th scope="col">SQL scheduler CPU</th><th scope="col">OS free via SQL</th><th scope="col">Waits</th><th scope="col">Blocking</th><th scope="col">Backups</th><th scope="col">HA</th><th scope="col">Last SQL core success</th></tr></thead>
       {groups.map(group => <tbody key={group.label ?? 'all'}>
         {group.label && <tr className="fleet-group-row"><th scope="rowgroup" colSpan={9}>{groupBy === 'tag' ? 'Tag' : 'Environment'}: {group.label} <small>· {group.rows.length} servers</small></th></tr>}
@@ -42,20 +44,21 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
         <SignalCell label="OS free via SQL" signal={row.signals.memory} />
         <SignalCell label="Waits" signal={row.signals.waits} />
         <SignalCell label="Blocking" signal={row.signals.blocking} />
-        <SignalCell label="Backups" signal={row.signals.backups} />
+        <SignalCell label="Backups" signal={row.signals.backups} href={backupAssessmentHref(scope, row.target.targetId, row.evidence?.backupSummary?.assessedAtUtc ?? null)} />
         <SignalCell label="HA" signal={row.signals.ha} />
         <td>{row.evidence?.lastObservedUtc ? formatTime(row.evidence.lastObservedUtc) : 'Unavailable'}</td>
       </tr>)}</tbody>)}
     </table></div>
     {rows.length === 0 && <p className="empty-state">No loaded servers match this search.</p>}
-    <p className="table-note">Dots show evidence state; red marks observed blocking, damaged backups, or disconnected replicas. SQL scheduler CPU excludes preemptive and hidden-scheduler work. CPU and memory have no threshold-based health verdict. Backup and HA counts do not establish RPO or replica health.</p>
+    <p className="table-note">Dots show evidence state; red marks observed blocking, failed backup checks, backup faults, or disconnected replicas. Backup checks use current evidence and explicit per-database policies; open a backup cell to inspect its assessment time. Unknown and disabled checks have no healthy verdict. SQL scheduler CPU excludes preemptive and hidden-scheduler work. CPU and memory have no threshold-based health verdict. Backup checks do not certify recovery points; HA counts do not establish replica health.</p>
   </section>;
 }
 
-function SignalCell({ label, signal }: { readonly label: string; readonly signal: FleetSignal }) {
-  return <td><span className={`fleet-signal fleet-signal-${signal.tone}`} title={signal.detail} aria-label={`${label}: ${signal.detail}`}>
+function SignalCell({ label, signal, href }: { readonly label: string; readonly signal: FleetSignal; readonly href?: string }) {
+  const content = <span className={`fleet-signal fleet-signal-${signal.tone}`} title={signal.detail} aria-label={`${label}: ${signal.detail}`}>
     <span className="fleet-signal-dot" aria-hidden="true" />{signal.text}
-  </span></td>;
+  </span>;
+  return <td>{href ? <a href={href}>{content}</a> : content}</td>;
 }
 
 function count(value: OverviewValue | undefined): string {

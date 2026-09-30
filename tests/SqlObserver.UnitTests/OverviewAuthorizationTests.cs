@@ -87,12 +87,14 @@ public sealed class OverviewAuthorizationTests
             CancellationToken.None));
         Assert.Empty(probe.ListCalls);
         Assert.Empty(probe.LatestTargets);
+        Assert.Empty(probe.BackupTargets);
 
         OverviewSnapshot allowed = await probe.Overview.ReadAsync(
             new(authorization, TargetA.TargetId.Value, At.AddHours(-1), At, true),
             CancellationToken.None);
         Assert.Equal(TargetA.TargetId.Value, Assert.Single(allowed.Evidence).TargetId);
         Assert.Equal([TargetA.TargetId], probe.LatestTargets);
+        Assert.Equal([TargetA.TargetId], probe.BackupTargets);
         Assert.DoesNotContain(probe.ProfileTargets, id => id == TargetB.TargetId);
     }
 
@@ -253,9 +255,14 @@ public sealed class OverviewAuthorizationTests
                         ids.ToDictionary(id => id, id => id == TargetA.TargetId.Value
                             ? new ObservationTargetGrouping(id, "production", ["critical"], 1)
                             : new ObservationTargetGrouping(id, null, [], 0)));
+                }), OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, arguments) =>
+                {
+                    BackupTargets.Add((MonitoredInstanceId)arguments![0]!);
+                    return ValueTask.FromResult<BackupFleetSummary?>(null);
                 }));
         }
 
+        public List<MonitoredInstanceId> BackupTargets { get; } = [];
         public IObservationTargetRepositoryPort TargetRepository { get; }
         public ObservationTargetStatusQueryService Status { get; }
         public OverviewQueryService Overview { get; }

@@ -1,5 +1,6 @@
 using System.Reflection;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Backups;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Alerting;
@@ -34,7 +35,7 @@ public sealed class OverviewQueryServiceTests
         IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null,
         IOperationalHealthQueryService? operationsService = null,
         IOverviewLatestStatusRepositoryPort? latestStatus = null,
-        IHealthProjectionQueryService? healthService = null)
+        IHealthProjectionQueryService? healthService = null, IBackupFleetLatestRepositoryPort? backupLatest = null)
     {
         var targets = OverviewStub.Create<IObservationTargetStatusQueryService>((_,args) =>
         {
@@ -50,7 +51,124 @@ public sealed class OverviewQueryServiceTests
                 var ids = (IReadOnlyList<Guid>)args![0]!;
                 return Task.FromResult<IReadOnlyDictionary<Guid, ObservationTargetGrouping>>(
                     ids.ToDictionary(id => id, id => new ObservationTargetGrouping(id, null, [], 0)));
-            }));
+            }), backupLatest ?? OverviewStub.Create<IBackupFleetLatestRepositoryPort>());
+    }
+
+    private static BackupFleetSummary BackupSummary(MonitoredInstanceId id)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow.AddSeconds(-1);
+        now = new(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
+        var header = new BackupEvidenceHeader(id, now, 1, Guid.NewGuid(), now, now, now,
+            "UTC", DateTime.SpecifyKind(now.Date.AddDays(-35), DateTimeKind.Unspecified), BackupFreshnessCoverage.Complete,
+            BackupEvidenceStatus.Retained, 2, 2, 2, 1, true, 1, 1);
+        return new(header, now.AddMinutes(2), BackupFleetStatus.WithinPolicy, new(1, 0, 0, 0, 0, []), new(0, 0, 0, 1, 0, []), 0);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task BackupCacheIsIndependentOfCoreCacheAndNeverFallsBackToDatabaseReads(bool selected)
+    {
+        var target = Target(1); var candidate = BackupSummary(target.Target.TargetId); int reads = 0, legacyReads = 0;
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, args) =>
+        {
+            Assert.Equal(target.Target.TargetId, args![0]); Assert.Equal(1L, args[1]);
+            Assert.True(candidate.Context.AtUtc <= (DateTimeOffset)args[2]!);
+            Assert.Equal(TimeSpan.FromSeconds(5), ((RepositoryCallTimeout)args[3]!).Value);
+            reads++; return ValueTask.FromResult<BackupFleetSummary?>(candidate);
+        });
+        var operations = OverviewStub.Create<IOperationalHealthQueryService>((method, _) =>
+        {
+            if (method!.Name == nameof(IOperationalHealthQueryService.GetBackupsAsync)) legacyReads++;
+            return Activator.CreateInstance(method!.ReturnType);
+        });
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], operationsService: operations, backupLatest: backups)
+            .ReadAsync(new(Auth(), selected ? target.Target.TargetId.Value : null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Equal(1, reads); Assert.Equal(0, legacyReads);
+        Assert.Equal("within_policy", evidence.BackupSummary!.Status);
+        Assert.Equal(1, evidence.BackupSummary.Full.WithinThreshold);
+        Assert.Equal(1, evidence.BackupSummary.Log.NotRequired);
+        Assert.DoesNotContain(evidence.Resources, r => r.Label == "Backup evidence");
+    }
+
+    [Theory]
+    [InlineData("missing")] [InlineData("foreign")] [InlineData("revision")]
+    [InlineData("future")] [InlineData("expired")] [InlineData("counts")] [InlineData("status")] [InlineData("failure")]
+    public async Task InvalidBackupCacheHasNoVerdictOrLegacyFallback(string problem)
+    {
+        var target = Target(1); var summary = BackupSummary(target.Target.TargetId);
+        summary = problem switch
+        {
+            "foreign" => summary with { Context = summary.Context with { TargetId = Target(2).Target.TargetId } },
+            "revision" => summary with { Context = summary.Context with { TargetRevision = 2 } },
+            "future" => summary with { Context = summary.Context with { AtUtc = summary.Context.AtUtc.AddMinutes(1) } },
+            "expired" => summary with { ValidUntilUtc = summary.Context.AtUtc },
+            "counts" => summary with { Full = summary.Full with { WithinThreshold = 0 } },
+            "status" => summary with { Status = BackupFleetStatus.PolicyViolated },
+            _ => summary,
+        };
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, _) => problem == "failure"
+            ? throw new IOException("private provider detail") : ValueTask.FromResult(problem == "missing" ? null : summary));
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Null(evidence.BackupSummary); Assert.Empty(evidence.Issues);
+        Assert.Contains(evidence.Gaps, gap => gap.StartsWith(problem == "missing" ? "No current backup policy summary" : "Backup policy summary unavailable", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task BackupFaultsSurviveUnknownAgeWithoutInventingAPolicyViolation()
+    {
+        var target = Target(1); var summary = BackupSummary(target.Target.TargetId);
+        summary = summary with { Status = BackupFleetStatus.Indeterminate, ObservedFaultDatabases = 1,
+            Full = new(0, 0, 1, 0, 0, [new(BackupFreshnessReason.TimestampQualificationUnavailable, 1)]) };
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, _) => ValueTask.FromResult<BackupFleetSummary?>(summary));
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Equal("indeterminate", evidence.BackupSummary!.Status);
+        Assert.Equal("timestamp_qualification_unavailable", Assert.Single(evidence.BackupSummary.Full.UnknownReasons).Reason);
+        Assert.Equal("Backup faults observed", Assert.Single(evidence.Issues).Title);
+        Assert.Equal(0, evidence.BackupSummary.Full.PolicyViolated);
+    }
+
+    [Fact]
+    public async Task BackupPoliciesCanFailAlongsideUnknownLogChecks()
+    {
+        var target = Target(1); var summary = BackupSummary(target.Target.TargetId);
+        summary = summary with { Status = BackupFleetStatus.PolicyViolated, Full = new(0, 1, 0, 0, 0, []),
+            Log = new(0, 0, 1, 0, 0, [new(BackupFreshnessReason.OtherReplicaEvidenceRequired, 1)]) };
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, _) => ValueTask.FromResult<BackupFleetSummary?>(summary));
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Equal("policy_violated", evidence.BackupSummary!.Status);
+        Assert.Equal(1, evidence.BackupSummary.Log.Indeterminate);
+        Assert.Equal("operations", Assert.Single(evidence.Issues).Destination);
+    }
+
+    [Fact]
+    public async Task FastTargetsCannotReturnExpiredBackupVerdictsAfterASlowerFleetTargetFinishes()
+    {
+        var first = Target(1); var second = Target(2); var summary = BackupSummary(first.Target.TargetId);
+        summary = summary with { ValidUntilUtc = summary.Context.AtUtc.AddSeconds(2) };
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, args) =>
+        {
+            if ((MonitoredInstanceId)args![0]! != first.Target.TargetId) return ValueTask.FromResult<BackupFleetSummary?>(null);
+            published.SetResult(); return ValueTask.FromResult<BackupFleetSummary?>(summary);
+        });
+        async Task<IReadOnlyList<OverviewSeries>> History(MonitoredInstanceId id)
+        {
+            if (id == second.Target.TargetId)
+            {
+                await published.Task;
+                TimeSpan remaining = summary.ValidUntilUtc - DateTimeOffset.UtcNow;
+                if (remaining > TimeSpan.Zero) await Task.Delay(remaining + TimeSpan.FromMilliseconds(30));
+            }
+            return [];
+        }
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, args) => History((MonitoredInstanceId)args![0]!));
+        OverviewSnapshot result = await Service([first, second], history: history, backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None);
+        Assert.All(result.Evidence, item => Assert.Null(item.BackupSummary));
+        Assert.Contains("Backup policy summary expired; refresh current evidence", result.Evidence.Single(item => item.TargetId == first.Target.TargetId.Value).Gaps);
     }
 
     [Theory]

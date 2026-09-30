@@ -2,12 +2,13 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
+import {overviewBackupFixture} from './overview-backup-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
- if(url.pathname==='/__fixture') {const mode=url.searchParams.get('mode');if(!['empty','partial','error','loading','ready'].includes(mode))return send(res,{},400);res.writeHead(302,{'set-cookie':`overviewMode=${mode}; SameSite=Strict; Path=/`,location:'/'});res.end();return;}
+ if(url.pathname==='/__fixture') {const mode=url.searchParams.get('mode');if(!['empty','partial','error','loading','ready','backup-expiry'].includes(mode))return send(res,{},400);res.writeHead(302,{'set-cookie':`overviewMode=${mode}; SameSite=Strict; Path=/`,location:'/'});res.end();return;}
  if(url.pathname==='/api/v1/observation-targets')return send(res,{items:targets,nextCursor:null});
  if(/^\/api\/v1\/observation-targets\/[^/]+\/health\/files$/.test(url.pathname)){
   const instanceId=url.pathname.split('/')[4];
@@ -22,12 +23,13 @@ createServer(async(req,res)=>{try{
   ]});
  }
  if(url.pathname==='/api/v1/overview'){
-  const mode=req.headers.cookie?.match(/overviewMode=(\w+)/)?.[1];
+  const mode=req.headers.cookie?.match(/overviewMode=([a-z-]+)/)?.[1] ?? process.env.SQLOBSERVER_OVERVIEW_FIXTURE_MODE;
   if(mode==='error')return send(res,{},503);
   if(mode==='loading')await new Promise(r=>setTimeout(r,2500));
   const targetId=url.searchParams.get('targetId');const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc');
   const from=Date.parse(fromUtc),to=Date.parse(toUtc),at=new Date(to-30000).toISOString();
   const selected=mode==='empty'?[]:targets.filter(t=>!targetId||t.instanceId===targetId);
+  const refreshedAtUtc=new Date().toISOString();
   const evidence=selected.map((t,index)=>{
    const i=targets.indexOf(t),gap=mode==='partial'&&index===0;
    const value=n=>({value:gap?null:n,state:gap?'unavailable':'current',observedAtUtc:gap?null:at});
@@ -35,9 +37,12 @@ createServer(async(req,res)=>{try{
    const metric=(key,unit,base,dimension=null)=>({targetId:t.instanceId,label:t.displayName,metric:key,unit,state:gap?'partial':'observed',dimension,points:gap?[]:Array.from({length:48},(_,j)=>({timeUtc:new Date(from+(to-from)*j/48).toISOString(),value:Math.max(0,base*(1+.25*Math.sin(j/5+i))+(i===1&&j>27&&j<34?base*.7:0)),samples:10}))});
    const resource=(label,n,unit)=>({targetId:t.instanceId,server:t.displayName,label,value:gap?null:n,unit,state:gap?'unavailable':'observed',observedAtUtc:gap?null:at});
    const databaseSeries=targetId?[metric('activity.user_sessions','sessions',14+i*4,'Orders'),metric('activity.user_sessions','sessions',8+i*3,'Reporting')]:[];
-   return {targetId:t.instanceId,displayName:t.displayName,collectionState:gap?'stale':'current',lastObservedUtc:at,activeAlerts:value(i===1?9:i===4?2:0),blockedSessions:value(i===1?12:0),deadlocks:{...value(i===1?3:0),state:gap?'unavailable':'observed'},issues,resources:[resource('Wait · LCK_M_X',i===1?18:2,'seconds since prior sample'),resource('host.cpu.percent',i===1?89:15+i*5,'%'),resource('SQL physical memory',8+i*2,'GiB'),resource('TempDB used',13+i*4,'%'),resource('Backup evidence',8,'records'),resource('SQL Agent failures',i===4?2:0,'observed events')],series:[metric('engine.batch_requests_per_second','batches/sec',100+i*60),metric('engine.user_connections','connections',30+i*12),...databaseSeries,metric('engine.sql_scheduler_cpu_percent','%',25+i*4),metric('engine.scheduler_runnable_tasks','tasks',2+i),metric('engine.memory_grants_pending','grants',1+i),metric('engine.process_physical_memory_bytes','GiB',8+i*2),metric('engine.os_available_memory_bytes','GiB',12+i),metric('host.cpu.percent','%',10+i*5),metric('host.memory.available_bytes','GiB',12+i),metric('blocking.sessions','blocked sessions',i===1?7:1),metric('deadlocks','events',i===1?2:0)],gaps:gap?['Synthetic collection timeout']:[]};
+   const backupSummary=gap?null:overviewBackupFixture(t.instanceId,refreshedAtUtc,i,mode==='backup-expiry');
+   if(backupSummary?.observedFaultDatabases)issues.push({targetId:t.instanceId,server:t.displayName,title:'Backup faults observed',detail:'Synthetic backup damage or missing checksums',destination:'operations',priority:0,observedAtUtc:refreshedAtUtc});
+   if(backupSummary?.status==='policy_violated')issues.push({targetId:t.instanceId,server:t.displayName,title:'Backup policy checks failed',detail:'Synthetic full check failed; log evidence unknown',destination:'operations',priority:1,observedAtUtc:refreshedAtUtc});
+   return {targetId:t.instanceId,displayName:t.displayName,backupSummary,collectionState:gap?'stale':'current',lastObservedUtc:at,activeAlerts:value(i===1?9:i===4?2:0),blockedSessions:value(i===1?12:0),deadlocks:{...value(i===1?3:0),state:gap?'unavailable':'observed'},issues,resources:[resource('Wait · LCK_M_X',i===1?18:2,'seconds since prior sample'),resource('host.cpu.percent',i===1?89:15+i*5,'%'),resource('SQL physical memory',8+i*2,'GiB'),resource('TempDB used',13+i*4,'%'),resource('Backup evidence',8,'records'),resource('SQL Agent failures',i===4?2:0,'observed events')],series:[metric('engine.batch_requests_per_second','batches/sec',100+i*60),metric('engine.user_connections','connections',30+i*12),...databaseSeries,metric('engine.sql_scheduler_cpu_percent','%',25+i*4),metric('engine.scheduler_runnable_tasks','tasks',2+i),metric('engine.memory_grants_pending','grants',1+i),metric('engine.process_physical_memory_bytes','GiB',8+i*2),metric('engine.os_available_memory_bytes','GiB',12+i),metric('host.cpu.percent','%',10+i*5),metric('host.memory.available_bytes','GiB',12+i),metric('blocking.sessions','blocked sessions',i===1?7:1),metric('deadlocks','events',i===1?2:0)],gaps:gap?['Synthetic collection timeout']:[]};
   });
-  return send(res,{refreshedAtUtc:new Date().toISOString(),fromUtc,toUtc,targetId,targets:(mode==='empty'?[]:targets).map((t,i)=>({targetId:t.instanceId,displayName:t.displayName,lifecycle:t.lifecycle,environment:i<5?'production':'staging',tags:i%2===0?['east','critical']:['west'],groupingRevision:1,canManageGrouping:false})),excludedTargets:0,evidence});
+  return send(res,{refreshedAtUtc,fromUtc,toUtc,targetId,targets:(mode==='empty'?[]:targets).map((t,i)=>({targetId:t.instanceId,displayName:t.displayName,lifecycle:t.lifecycle,environment:i<5?'production':'staging',tags:i%2===0?['east','critical']:['west'],groupingRevision:1,canManageGrouping:false})),excludedTargets:0,evidence});
  }
  if(url.pathname.startsWith('/api/'))return send(res,{},404);
  const path=resolve(root,url.pathname==='/'?'index.html':url.pathname.slice(1));if(!path.startsWith(root+sep))return send(res,{},404);

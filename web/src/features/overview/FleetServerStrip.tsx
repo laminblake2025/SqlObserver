@@ -1,4 +1,5 @@
 import { fleetServerRows } from './fleetGridModel';
+import { useBackupSummaryClock } from './useBackupSummaryClock';
 import { overviewHref } from './overviewModel';
 import type { OverviewScope, OverviewSnapshot } from './overviewTypes';
 
@@ -6,7 +7,8 @@ export function FleetServerStrip({ snapshot, scope }: {
   readonly snapshot: OverviewSnapshot;
   readonly scope: OverviewScope;
 }) {
-  const rows = fleetServerRows(snapshot, '');
+  const clock = useBackupSummaryClock(snapshot);
+  const rows = fleetServerRows(snapshot, '', clock);
   return <nav className="fleet-strip" aria-label="Loaded server status">
     <div className="fleet-strip-heading"><strong>Server status</strong><small>{rows.length} loaded · observed exceptions first</small></div>
     <ul className="fleet-strip-list">{rows.map(row => {

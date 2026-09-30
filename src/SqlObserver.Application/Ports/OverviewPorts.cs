@@ -13,9 +13,17 @@ public sealed record OverviewPoint(DateTimeOffset TimeUtc, double? Value, int Sa
 public sealed record OverviewSeries(Guid TargetId, string Label, string Metric, string Unit, string State, string? Dimension, IReadOnlyList<OverviewPoint> Points);
 public sealed record OverviewIssue(Guid TargetId, string Server, string Title, string Detail, string Destination, int Priority, DateTimeOffset? ObservedAtUtc);
 public sealed record OverviewResource(Guid TargetId, string Server, string Label, double? Value, string Unit, string State, DateTimeOffset? ObservedAtUtc);
+public sealed record OverviewBackupUnknownReason(string Reason, int Count);
+public sealed record OverviewBackupChecks(int WithinThreshold, int PolicyViolated, int Indeterminate,
+    int NotRequired, int Disabled, IReadOnlyList<OverviewBackupUnknownReason> UnknownReasons);
+/// <summary>Current policy checks, independent of the selected history window. No database identities or samples.</summary>
+public sealed record OverviewBackupSummary(Guid TargetId, DateTimeOffset AssessedAtUtc, DateTimeOffset ValidUntilUtc,
+    string Status, string EvidenceStatus, string Coverage, int DatabaseCount, bool CollectorEnabled,
+    OverviewBackupChecks Full, OverviewBackupChecks Log, int ObservedFaultDatabases);
 public sealed record OverviewTargetEvidence(Guid TargetId, string DisplayName, string CollectionState, DateTimeOffset? LastObservedUtc,
     OverviewValue ActiveAlerts, OverviewValue BlockedSessions, OverviewValue Deadlocks,
-    IReadOnlyList<OverviewIssue> Issues, IReadOnlyList<OverviewResource> Resources, IReadOnlyList<OverviewSeries> Series, IReadOnlyList<string> Gaps);
+    IReadOnlyList<OverviewIssue> Issues, IReadOnlyList<OverviewResource> Resources, IReadOnlyList<OverviewSeries> Series, IReadOnlyList<string> Gaps,
+    OverviewBackupSummary? BackupSummary = null);
 public sealed record OverviewSnapshot(DateTimeOffset RefreshedAtUtc, DateTimeOffset FromUtc, DateTimeOffset ToUtc, Guid? TargetId,
     IReadOnlyList<OverviewTarget> Targets, int ExcludedTargets, IReadOnlyList<OverviewTargetEvidence> Evidence);
 public interface IOverviewQueryService

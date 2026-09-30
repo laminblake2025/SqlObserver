@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -58,6 +59,31 @@ public sealed class OverviewHttpContractTests : IClassFixture<OverviewApiFactory
         Assert.Equal([false, true, true], capture.ReadModes);
     }
     [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task BackupSummaryWireHasSeparateChecksAndNoDatabaseOrLedgerIdentities(bool missing)
+    {
+        using var host = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IOverviewQueryService>();
+            services.AddSingleton<IOverviewQueryService>(new BackupOverviewHttpStub(missing));
+        }));
+        using var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.IdentityHeader, "viewer");
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/overview?fromUtc=2026-09-04T00:00:00Z&toUtc=2026-09-05T00:00:00Z&useLatestStatus=true");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode); Assert.True(response.Headers.CacheControl?.NoStore);
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement summary = body.RootElement.GetProperty("evidence")[0].GetProperty("backupSummary");
+        if (missing) { Assert.Equal(JsonValueKind.Null, summary.ValueKind); return; }
+        Assert.Equal("policy_violated", summary.GetProperty("status").GetString());
+        Assert.Equal("2026-09-30T12:00:00.000001Z", summary.GetProperty("assessedAtUtc").GetString());
+        Assert.Equal(1, summary.GetProperty("full").GetProperty("policyViolated").GetInt32());
+        Assert.Equal(1, summary.GetProperty("log").GetProperty("indeterminate").GetInt32());
+        Assert.Equal("other_replica_evidence_required", summary.GetProperty("log").GetProperty("unknownReasons")[0].GetProperty("reason").GetString());
+        Assert.Equal(11, summary.EnumerateObject().Count());
+        Assert.False(summary.TryGetProperty("context", out _)); Assert.False(summary.TryGetProperty("runId", out _));
+        Assert.False(summary.TryGetProperty("databaseFingerprint", out _));
+    }
+    [Theory]
     [InlineData("fromUtc=garbage&toUtc=2026-09-05T00:00:00Z")]
     [InlineData("targetId=not-a-guid&fromUtc=2026-09-04T00:00:00Z&toUtc=2026-09-05T00:00:00Z")]
     [InlineData("fromUtc=2026-09-04T00:00:00Z")]
@@ -82,6 +108,18 @@ public sealed class OverviewHttpContractTests : IClassFixture<OverviewApiFactory
             "/api/v1/overview?fromUtc=2026-09-04T00:00:00Z&toUtc=2026-09-05T00:00:00Z");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+}
+public sealed class BackupOverviewHttpStub(bool missing) : IOverviewQueryService
+{
+    public Task<OverviewSnapshot> ReadAsync(OverviewQuery query, CancellationToken cancellationToken)
+    {
+        Guid target = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        DateTimeOffset at = new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero).AddTicks(TimeSpan.TicksPerMicrosecond);
+        OverviewBackupSummary? summary = missing ? null : new(target, at, at.AddMinutes(2), "policy_violated", "retained", "complete", 1, true,
+            new(0, 1, 0, 0, 0, []), new(0, 0, 1, 0, 0, [new("other_replica_evidence_required", 1)]), 0);
+        return Task.FromResult(new OverviewSnapshot(at, query.FromUtc, query.ToUtc, query.TargetId, [], 0,
+            [new(target, "SQL", "current", at, new(null, "unavailable", null), new(null, "unavailable", null), new(null, "unavailable", null), [], [], [], [], summary)]));
     }
 }
 public sealed class OverviewApiFactory : WebApplicationFactory<Program>

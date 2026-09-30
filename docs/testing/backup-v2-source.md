@@ -696,16 +696,76 @@ reference them. A real overview worker with the repository ports publishes both
 core and backup rows. Schema/native checks use disposable local PostgreSQL 18.4;
 the SSH test VM remains available for later real SQL Server/deployment checks.
 
-The Server control plane exposes the cache reader for the next integration stage;
-the Overview API and fleet grid do not consume it yet. V2 SQL Server collection
-remains gated and its production registry is unchanged. Fleet UI mapping,
-alert/MCP integration, real historical/replica qualification and production
-activation remain open.
+The following integration stage connects this reader to the Overview API and
+fleet interface. V2 SQL Server collection remains gated and its production
+registry is unchanged. Alert/MCP integration, real historical/replica
+qualification and production activation remain open.
 
 ```powershell
 dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupFleetSummaryTests|FullyQualifiedName~BackupAssessmentQueryTests|FullyQualifiedName~OverviewBackupWorkerTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupEvidenceReadTests'
 dotnet test tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj --no-restore --filter 'FullyQualifiedName~BackupAssessmentHttpTests'
+```
+
+## Overview API and fleet backup checks
+
+The Server registers `IBackupFleetLatestRepositoryPort`. Latest-status Overview
+requests read one revision-bound aggregate per authorized active target, under
+the existing source timeout/concurrency budget. Backup and core caches are
+independent: a missing core projection does not prevent a valid backup summary,
+and a missing backup summary never triggers database evidence paging or a
+fallback to v1 backup counts. The older direct-read API mode remains available;
+the browser requests latest-status mode. Legacy backup counts, damaged-backup
+issues and backup age gaps from core projections are omitted in that mode.
+
+The nullable `backupSummary` wire value contains the assessment and half-open
+expiry, state/coverage, database count, separate full/log counts, closed unknown
+reason counts and observed-fault count. It has no database fingerprints, sample
+metadata or policy/qualification ledger identifiers. The application validates
+the aggregate and its target/revision/time binding before mapping. It checks
+expiry again after every fleet target finishes, so a slow target cannot leave an
+earlier target's expired verdict in the response. Failure and unknown evidence
+remain distinct from known policy violations and observed backup faults.
+
+The grid, pinned strip and operations summary display current policy checks.
+Unknown, absent, expired and fully disabled checks do not produce a healthy dot;
+enabled success beside disabled checks is explicitly partial. Known failures and
+faults stay visible alongside unknown checks. Full/log accounting and unknown
+causes appear in accessible descriptions. Grid and investigation links restore
+the exact assessment cutoff in Health checks, including microseconds, independent
+of the Overview history window. A browser expiry timer clears grid/strip verdicts
+even while Live is paused. These checks do not certify restore chains or recovery
+points. Other historical charts continue to follow the selected window.
+
+The mounted ten-server fixture revealed that the browser inherited activity's
+256 KiB response limit despite Overview publishing a 1 MiB limit. The Overview
+client now enforces that published 1 MiB bound and emits a safe Overview error for
+oversized or undecodable responses. Regression cases cover bodies above 256 KiB
+and rejection above 1 MiB. UTC parsing preserves microsecond backup boundaries
+while accommodating the Overview refresh timestamp's seventh .NET digit.
+
+Focused verification: 52 Overview composition/authorization unit cases, 8 affected
+HTTP cases, 2 native PostgreSQL cases and 41 frontend model/API cases pass across
+targeted runs; production typecheck/build and asset verification pass. The native
+fleet composer returns a healthy full/log aggregate with the database/sample
+parents temporarily renamed, proving no backup detail-page fallback. Existing
+core materializer behavior is checked with the updated cache-missing expectation.
+Mounted synthetic checks confirm failures beside unknowns, timestamp-unknown
+faults, disabled/missing policies, exact drill-down URLs and all ten fresh verdicts
+expiring in both grid and pinned strip while polling is paused. Synthetic checks
+exercise rendering and timing, not SQL Server historical qualification or restore
+certification. Schema/SQL Server collector code did not change in this stage.
+
+```powershell
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~OverviewQueryServiceTests|FullyQualifiedName~OverviewAuthorizationTests'
+dotnet test tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj --no-restore --filter 'FullyQualifiedName~OverviewHttpContractTests&FullyQualifiedName!~OverviewCanFinishAfter'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~CacheRoundTripsHealthyFullAndLogWithoutReadingDatabaseOrSampleParents|FullyQualifiedName~CoreMaterializerPublishesMissingEvidenceAndDefersFreshTargets'
+cd web
+node --experimental-strip-types --test tests/overview-backup-summary.test.mjs tests/fleet-grid-model.test.mjs tests/overview-api.test.mjs tests/overview-model.test.mjs
+pnpm run build
+# Optional loopback-only mounted check, with an eight-second synthetic expiry:
+$env:SQLOBSERVER_OVERVIEW_FIXTURE_MODE = 'backup-expiry'
+pnpm run fixture:overview
 ```
 
 ## Historical time qualification in Health checks

@@ -13,9 +13,16 @@ export function overviewHref(scope: OverviewScope, page = 'overview', target = s
   if (scope.compare) query.set('compare', '1');
   return `#/${page}?${query}`;
 }
-export function issueHref(scope: OverviewScope, target: string, destination: string, observedAtUtc: string | null): string {
+export function issueHref(scope: OverviewScope, target: string, destination: string, observedAtUtc: string | null, title?: string): string {
+  if (destination === 'operations' && (title === 'Backup faults observed' || title === 'Backup policy checks failed'))
+    return backupAssessmentHref(scope, target, observedAtUtc);
   const href = overviewHref(scope, destination, target);
   return destination === 'activity' && observedAtUtc ? `${href}&at=${encodeURIComponent(observedAtUtc)}` : href;
+}
+export function backupAssessmentHref(scope: OverviewScope, target: string, assessedAtUtc: string | null): string {
+  return overviewHref(assessedAtUtc ? {
+    ...scope, range: 'custom', from: new Date(Date.parse(assessedAtUtc) - 3600000).toISOString(), to: assessedAtUtc,
+  } : { ...scope, range: '1h', from: undefined, to: undefined }, 'operations', target);
 }
 export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: string; toUtc: string} {
   const end = scope.range === 'custom' ? Date.parse(scope.to ?? '') : now;

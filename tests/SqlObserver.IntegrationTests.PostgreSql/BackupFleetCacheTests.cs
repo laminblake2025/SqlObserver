@@ -3,8 +3,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using NpgsqlTypes;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
 using SqlObserver.Collector;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Authorization;
+using SqlObserver.Domain.Security;
 using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
@@ -92,6 +96,25 @@ public sealed partial class BackupEvidenceReadTests
         {
             Assert.Equal(BackupFleetStatus.WithinPolicy, Assert.IsType<BackupFleetSummary>(await reader.ReadAsync(new(target), 1,
                 await ClockAsync(database), Timeout, CancellationToken.None)).Status);
+            // The actual fleet composer must use the bounded aggregate even when the core cache is absent.
+            var overview = new OverviewQueryService(
+                new ObservationTargetStatusQueryService(new PostgreSqlObservationTargetPort(server), new PostgreSqlCapabilityProfilePort(server)),
+                new HealthProjectionQueryService(new PostgreSqlHealthProjectionPort(server)),
+                new AlertQueryService(new PostgreSqlAlertRepositoryPort(server)),
+                new ActivityProjectionQueryService(new PostgreSqlActivityProjectionPort(server)),
+                new DeadlockProjectionQueryService(new PostgreSqlDeadlockProjectionPort(server)),
+                new OperationalHealthQueryService(new PostgreSqlOperationalHealthProjectionPort(server)),
+                new MetricSeriesQueryService(new PostgreSqlAnalyticsRepositoryPort(server, new IdentityFingerprintKey(new byte[32]))),
+                new PostgreSqlOverviewHistoryPort(server), new PostgreSqlOverviewLatestStatusPort(server),
+                new PostgreSqlObservationTargetGroupingPort(server), reader);
+            var authorization = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-100"), AuthorizationPrincipalState.Active,
+                [ApplicationRole.Viewer], TargetAuthorizationScope.ForTargets([new(target)]));
+            DateTimeOffset end = await ClockAsync(database);
+            OverviewTargetEvidence evidence = Assert.Single((await overview.ReadAsync(new(authorization, null, end.AddHours(-1), end, true), CancellationToken.None)).Evidence);
+            Assert.Equal("within_policy", evidence.BackupSummary!.Status);
+            Assert.Equal(1, evidence.BackupSummary.Full.WithinThreshold); Assert.Equal(1, evidence.BackupSummary.Log.WithinThreshold);
+            Assert.DoesNotContain(evidence.Resources, resource => resource.Label == "Backup evidence");
+            Assert.DoesNotContain(evidence.Gaps, gap => gap == "Backup policy summary unavailable");
         }
         finally
         {
