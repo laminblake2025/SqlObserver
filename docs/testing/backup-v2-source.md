@@ -1,5 +1,58 @@
 # Staged backup v2 source checks
 
+## Durable backup evaluation queue and claim validation
+
+Forward migration 0283 connects backup evidence to the existing repository
+discovery, reconciliation and claim flow. Each queued full-policy, log-policy or
+observed-fault observation stores its captured aggregate, exact digest, repository
+cutoff, target revision and rule revision in `backup_evaluation_capture`. Missing
+aggregate evidence produces explicit unknown observations. The queue uses the
+repository's canonical observation builder; it accepts no caller-provided verdict.
+Backup rule storage now admits the three kinds with zero-count comparison,
+non-metric binding and confirmation-window constraints. The embedded catalog,
+HTTP create allowlist and SQL administrative catalog contract still deny their
+creation; native tests seed them through the trusted fixture owner. Product
+activation remains pending the final state/outbox integration.
+
+Target discovery orders eligible backup work with durable existing work. The
+production `PostgreSqlAlertRepositoryPort.ClaimDueEvaluationsAsync` retains its
+shared maximum of 100 claimed observations. Reconciliation schedules each backup
+rule at its configured interval and keeps at most one pending operation per rule.
+Target/rule locks and a partial unique index prevent duplicate concurrent captures.
+An expired claim with unchanged evidence is reclaimed with the same operation,
+sample and evidence digest; repeated polls do not count as new confirmation.
+
+Changed source payloads/digests, target revisions, rule revisions and expired
+capture cutoffs cancel available stale queue rows before creating new evidence.
+Source/cutoff changes preserve live claims for their fenced commit check; the
+existing rule-revision claim invalidation still applies. A target disabled between
+discovery and reconciliation retires available backup work without aborting the
+fleet's source transaction. The claim wrapper requires the exact alert coordinator
+lease and calls `assert_backup_evaluation_claim`, which verifies the stored capture,
+current rule, exact queue observation and unexpired owner/fence claim before holding
+the live-source guard through transaction completion. Private legacy discovery
+and claim helpers cannot be called directly by runtime roles.
+
+Completed/cancelled aggregate bodies are pruned in bounded coordinator batches;
+queue metadata retains interval/operation history. The capture table has forced
+RLS and no runtime table privileges. Migration 0284 builds the existing queue's
+target/rule/time lookup index concurrently through the nontransactional migration
+runner. No applied migration bytes changed.
+
+Five focused native PostgreSQL cases pass: four backup queue cases cover unknown
+capture/retry, policy/source/rule/target invalidation, global limits/cadence/pruning,
+private privileges and concurrent producers; the existing metric evaluation,
+replay and delivery lease lifecycle also passes. The migration-preamble check
+passes. Final state persistence must still process immutable replay before fresh
+claim validation, call the claim guard again in the state/outbox transaction and
+independently implement known backup transitions, including clear confirmation
+gaps. These queue tests do not certify backup notifications or enable rule creation.
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupQueue|FullyQualifiedName~RepositoryExecutesEvidenceQueueEvaluationReplayAndDeliveryLeaseLifecycle'
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~MigrationPreambleTests'
+```
+
 ## Repository-derived backup alert source bindings
 
 Forward migration 0282 adds an independent SQL derivation of the full-policy,
