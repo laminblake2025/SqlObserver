@@ -30,7 +30,7 @@ const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly 
   availability: ["ag-replicas", "ag-databases"],
 };
 
-export function OperationsPanel({ instanceId, refresh, scope }: { readonly instanceId: string; readonly refresh: number; readonly scope: OverviewScope }) {
+export function OperationsPanel({ instanceId, refresh, scope, canManageBackupPolicies = false }: { readonly instanceId: string; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean }) {
   const [cards, dispatch] = useReducer(operationsReducer, undefined, initialOperationsState);
   const [tab, setTab] = useState<OperationsTab>("backups");
   const controllers = useRef(new Map<OperationalKind, AbortController>());
@@ -98,7 +98,7 @@ export function OperationsPanel({ instanceId, refresh, scope }: { readonly insta
     {tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
       <details className="supporting-evidence"><summary>Earlier availability summary (latest v1 snapshot)</summary>
         <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>
-      </details></> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} />
+      </details></> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
         <details className="supporting-evidence"><summary>Earlier backup observations (latest v1 snapshot)</summary>
           <div className="operations-stack">{activeKinds.map(kind => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>
         </details></> : tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} />

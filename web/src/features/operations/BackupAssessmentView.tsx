@@ -1,10 +1,12 @@
 import { backupDuration, backupLabel, type BackupPage, type BackupCheck, type BackupDatabase } from "./backupAssessment.ts";
+import type { ReactNode } from "react";
 
 const labels = { within_threshold: "Within limit", policy_violated: "Policy violation", indeterminate: "Unknown", not_required: "Not required", disabled: "Disabled" };
 const tones = { within_threshold: "current", policy_violated: "critical", indeterminate: "unavailable", not_required: "neutral", disabled: "neutral" };
 
-export function BackupAssessmentView({ page, formatTime }: {
+export function BackupAssessmentView({ page, formatTime, renderPolicy }: {
   readonly page: BackupPage; readonly formatTime: (value: string | null | undefined) => string;
+  readonly renderPolicy?: (database: BackupDatabase) => ReactNode;
 }) {
   return <>
     <p className="table-note">Assessed {formatTime(page.atUtc)} · source observed {formatTime(page.sourceObservedAtUtc)} ·
@@ -19,7 +21,7 @@ export function BackupAssessmentView({ page, formatTime }: {
           <small>Inventory row {database.databaseOrdinal} · {backupLabel(database.recoveryModel)} recovery</small>
           {database.scope === "availability_group_local_only" && <small>AG: local history only · preference {database.localReplicaPreferred === null ? "unknown" : database.localReplicaPreferred ? "local replica preferred" : "another replica preferred"}</small>}</th>
         <td><CheckView check={database.full} /></td><td><CheckView check={database.log} /></td>
-        <td><DatabaseEvidence database={database} formatTime={formatTime} /></td>
+        <td><DatabaseEvidence database={database} formatTime={formatTime} policyEditor={renderPolicy?.(database)} /></td>
       </tr>)}</tbody>
     </table></div>}
     <p className="table-note">Within limit compares reported backup age with an explicit policy. Verify restore chains and media separately.
@@ -35,8 +37,9 @@ function CheckView({ check }: { readonly check: BackupCheck }) {
     {check.action && <p>{check.action}</p>}
   </div>;
 }
-function DatabaseEvidence({ database: d, formatTime }: {
+function DatabaseEvidence({ database: d, formatTime, policyEditor }: {
   readonly database: BackupDatabase; readonly formatTime: (value: string | null | undefined) => string;
+  readonly policyEditor?: ReactNode;
 }) {
   return <>
     {d.observedIssues.length > 0 && <ul aria-label={`Observed backup issues for inventory row ${d.databaseOrdinal}`}>
@@ -60,6 +63,7 @@ function DatabaseEvidence({ database: d, formatTime }: {
         <dt>Checksum / damage</dt><dd>{s.hasChecksum === null ? "Unknown" : s.hasChecksum ? "Present" : "Absent"} / {s.isDamaged === null ? "Unknown" : s.isDamaged ? "Damaged" : "Not marked damaged"}</dd>
       </dl>)}
       <p>Raw local clocks retain their recorded values. An inactive qualification cannot establish age from a recorded UTC finish.</p>
+      {policyEditor}
     </details>
   </>;
 }

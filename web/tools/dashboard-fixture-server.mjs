@@ -12,7 +12,7 @@ const registrationAttempts=[];
 createServer(async(req,res)=>{try {
  const url=new URL(req.url,'http://127.0.0.1');
  if(await handleAvailabilityFixture(url,res)) return;
- if(await handleBackupFixture(url,res)) return;
+ if(await handleBackupFixture(url,res,req)) return;
  if(url.pathname==='/api/v1/observation-targets' && req.method==='POST') {
    let body=''; for await (const chunk of req) { body+=chunk; if(body.length>16384)return json(res,{},413); }
    const request=JSON.parse(body); registrationAttempts.push(request.instanceId);
@@ -22,7 +22,13 @@ createServer(async(req,res)=>{try {
    return json(res,{...targets[0],...request,lifecycle:'pending_discovery',capabilityStatus:'pending'});
  }
  if(url.pathname==='/api/v1/observation-targets') { let scenario='populated';try{scenario=(await readFile(resolve(import.meta.dirname,'../.artifacts/dashboard-scenario.txt'),'utf8')).trim();}catch{} if(scenario==='error') return json(res,{},503);if(scenario==='loading') await new Promise(r=>setTimeout(r,4000));return json(res,{items:scenario==='empty'?[]:targets,nextCursor:null}); }
- if(url.pathname==='/api/v1/me') { const targetId=url.searchParams.get('targetId');return json(res,{active:true,grantedRoles:['Viewer','Operator'],allTargetRoles:['Viewer','Operator'],targetId,targetRoles:targetId?['Viewer','Operator']:[]}); }
+ if(url.pathname==='/api/v1/me') {
+   const targetId=url.searchParams.get('targetId'); let admin=false;
+   try { admin=(await readFile(resolve(import.meta.dirname,'../.artifacts/backup-access.txt'),'utf8')).trim()==='admin'; } catch {}
+   const roles=admin?['Viewer','Operator','TargetAdministrator']:['Viewer','Operator'];
+   return json(res,{active:true,grantedRoles:roles,allTargetRoles:['Viewer','Operator'],targetId,
+     targetRoles:targetId?(admin && targetId===targets[0].instanceId?roles:['Viewer','Operator']):[]});
+ }
  if(url.pathname==='/api/v1/alerts/active') return json(res,{snapshotUtc:timestamp,nextCursor:null,items:targets.slice(0,3).map((target,i)=>({targetId:target.instanceId,targetName:target.displayName,alertId:`22222222-2222-4222-8222-${String(i+1).padStart(12,'0')}`,ruleId:`33333333-3333-4333-8333-${String(i+1).padStart(12,'0')}`,ruleName:['CPU above threshold','Backup overdue','Collector unavailable'][i],state:i===1?'acknowledged':'firing',firstObservedUtc:'2026-09-05T01:20:00.000Z',firedUtc:'2026-09-05T01:25:00.000Z',acknowledgedUtc:i===1?'2026-09-05T01:30:00.000Z':null,value:i===1?null:87+i,reason:i===1?'No recent full backup':'Threshold exceeded',deliverySuppressed:false}))});
  const targetId=url.pathname.split('/')[4];
  if(url.pathname.startsWith('/api/v1/observation-targets/') && /\/(backups|sql-agent\/failures|tempdb(?:\/files)?|availability-groups\/(?:replicas|databases))$/.test(url.pathname)) return json(res,{targetId,targetRevision:1,runId:null,evidence:null,observedAtUtc:timestamp,state:'NoData',items:[],hasMore:false,nextCursor:null,truncated:false,visibilityScope:'PrimaryAllKnown'});

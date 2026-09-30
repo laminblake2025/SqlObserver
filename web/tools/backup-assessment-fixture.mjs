@@ -3,6 +3,7 @@ import { readFile, appendFile, mkdir } from 'node:fs/promises';
 const artifacts = new URL('../.artifacts/', import.meta.url);
 const runId = '22222222-2222-4222-8222-222222222222';
 const hash = n => n.toString(16).padStart(64, '0');
+const policies = new Map(), operations = new Map();
 export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
   const stamp = seconds => new Date(Date.parse(atUtc) - seconds * 1000).toISOString();
   const observed = stamp(scenario === 'stale_source' ? 7200 : 5);
@@ -18,11 +19,13 @@ export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
       timeState: kind === 'full' && unresolved ? 'qualification_missing' : 'resolved',
       qualificationRevision: kind === 'full' && unresolved ? null : 1, qualificationTrusted: !revoked && !(kind === 'full' && unresolved) });
     const full = sample('full', 3600), log = sample('log', index === 0 ? 960 : 60);
-    const policy = unknown || index === 1 ? null : { enabled: index !== 4, maximumFullAgeSeconds: fullLimit, maximumLogAgeSeconds: logLimit,
-      maximumObservationAgeSeconds: 300, fullRequirement: 'full_image', requireChecksums: false };
+    const saved = policies.get(`${targetId}:${hash(index + 1)}`);
+    const current = saved && Date.parse(atUtc) >= saved.at ? saved.policy : null;
+    const policy = current ?? (unknown || index === 1 ? null : { enabled: index !== 4, maximumFullAgeSeconds: fullLimit, maximumLogAgeSeconds: logLimit,
+      maximumObservationAgeSeconds: 300, fullRequirement: 'full_image', requireChecksums: false });
     const check = (s, max) => {
       const reason = unknown ? 'database_identity_unknown' : !policy ? 'policy_not_configured' : !policy.enabled ? 'policy_disabled'
-        : scenario === 'stale_source' ? 'stale_observation' : ag ? 'other_replica_evidence_required' : revoked ? 'timestamp_qualification_unavailable'
+        : scenario === 'stale_source' || 5 > policy.maximumObservationAgeSeconds ? 'stale_observation' : ag ? 'other_replica_evidence_required' : revoked ? 'timestamp_qualification_unavailable'
           : s.recordedFinishUtc === null ? 'finish_time_unknown' : null;
       if (reason) return { status: reason === 'policy_disabled' ? 'disabled' : 'indeterminate', reason, maximumAgeSeconds: policy ? max : null,
         observedAgeSeconds: null, selectedBackup: null, action: reason === 'policy_not_configured' ? 'Configure explicit full and log backup thresholds for this database identity.'
@@ -37,7 +40,10 @@ export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
       groupFingerprint: ag ? hash(700) : null, agDatabaseFingerprint: ag ? hash(701) : null, localReplicaFingerprint: ag ? hash(702) : null,
       recoveryModel: 'full', catalogDatabaseState: 'ONLINE', scope: ag ? 'availability_group_local_only' : 'standalone',
       localReplicaRole: ag ? 'PRIMARY' : null, localReplicaPreferred: ag ? true : null, unclassifiedBackupSeen: false,
-      coverage: unknown ? 'partial' : 'complete', policyRevision: policy ? 1 : null, policy, full: check(full, fullLimit), log: check(log, logLimit),
+      coverage: unknown ? 'partial' : 'complete', policyRevision: current?.policyRevision ?? (policy ? 1 : null),
+      policy: policy && { enabled: policy.enabled, maximumFullAgeSeconds: policy.maximumFullAgeSeconds, maximumLogAgeSeconds: policy.maximumLogAgeSeconds,
+        maximumObservationAgeSeconds: policy.maximumObservationAgeSeconds, fullRequirement: policy.fullRequirement, requireChecksums: policy.requireChecksums },
+      full: check(full, policy?.maximumFullAgeSeconds ?? fullLimit), log: check(log, policy?.maximumLogAgeSeconds ?? logLimit),
       observedIssues: ag || revoked ? [{ kind: 'full', copyOnly: false, reason: 'backup_damaged' }] : [], samples: unknown ? [] : [full, log] };
   });
   const page = { contractVersion: 2, targetId, atUtc, targetRevision: 1, runId, sourceObservedAtUtc: observed, completedAtUtc: stamp(1), receivedAtUtc: stamp(2),
@@ -53,7 +59,30 @@ export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
     receivedAtUtc: null, sourceRows: 151, outputItems: 151 };
   return page;
 }
-export async function handleBackupFixture(url, res) {
+export async function handleBackupFixture(url, res, req) {
+  const policyRoute = /^\/api\/v1\/observation-targets\/([^/]+)\/health\/backups\/databases\/([a-f0-9]{64})\/policy\/$/.exec(url.pathname);
+  if (policyRoute) {
+    const [, targetId, fingerprint] = policyRoute, key = `${targetId}:${fingerprint}`;
+    const send = (body, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); return true; };
+    const baseline = backupFixture(targetId, new Date().toISOString()).items.find(row => row.databaseFingerprint === fingerprint);
+    const existing = policies.get(key)?.policy ?? (baseline?.policy && { targetId, targetRevision: 1, databaseFingerprint: fingerprint,
+      policyRevision: baseline.policyRevision, ...baseline.policy });
+    if (req.method === 'GET') return existing ? send(existing) : send({}, 404);
+    if (req.method !== 'PUT') return send({}, 405);
+    let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16384) return send({}, 413); }
+    const command = JSON.parse(raw); await mkdir(artifacts, { recursive: true });
+    await appendFile(new URL('backup-policy-requests.ndjson', artifacts), JSON.stringify({ targetId, fingerprint, command }) + '\n');
+    const previous = operations.get(command.operationId);
+    if (previous) return previous.key === key && previous.body === raw ? send(previous.policy) : send({ code: 'backup_policy_conflict' }, 409);
+    let scenario = ''; try { scenario = (await readFile(new URL('backup-scenario.txt', artifacts), 'utf8')).trim(); } catch {}
+    if (scenario === 'policy_conflict' || command.expectedTargetRevision !== 1 || command.expectedPolicyRevision !== (existing?.policyRevision ?? 0))
+      return send({ code: 'backup_policy_conflict' }, 409);
+    if (scenario === 'policy_inventory') return send({ code: 'backup_inventory_unavailable' }, 409);
+    const { expectedTargetRevision, expectedPolicyRevision, operationId, ...settings } = command;
+    const policy = { targetId, targetRevision: expectedTargetRevision, databaseFingerprint: fingerprint, policyRevision: expectedPolicyRevision + 1, ...settings };
+    policies.set(key, { at: Date.now(), policy }); operations.set(operationId, { key, body: raw, policy });
+    return scenario === 'policy_uncertain' ? send({}, 503) : send(policy);
+  }
   const route = /^\/api\/v2\/observation-targets\/([^/]+)\/health\/backups$/.exec(url.pathname);
   if (!route) return false;
   await mkdir(artifacts, { recursive: true });

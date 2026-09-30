@@ -334,3 +334,15 @@ operational cases, two HTTP cases and the production frontend build pass;
 mounted synthetic checks exercise paging, stale recovery and live refresh.
 Policy/qualification administration UI, fleet/alert/MCP integration, native
 replica/TLS qualification and production activation remain open.
+
+Health checks now provides explicit current-policy editing for a known database
+identity in Live when `/me` grants TargetAdministrator on that exact target.
+Rewind and unknown identities remain read-only. The editor reads the current
+policy separately, supplies no new-policy defaults, and submits revision-fenced
+settings with an operation ID. An uncertain save preserves the submitted payload
+for exact retry; a conflict requires reloading current state. Verified success
+refreshes assessments without claiming production collection has been activated.
+Seven new client cases and 26 affected web cases pass. Mounted synthetic checks
+exercise creation, uncertain-save replay, conflicts and role/rewind restrictions.
+Historical qualification UI, fleet/alert/MCP integration, native replica/TLS
+qualification and production activation remain open.

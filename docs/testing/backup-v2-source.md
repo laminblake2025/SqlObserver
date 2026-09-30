@@ -511,6 +511,45 @@ evidence during live refresh. These checks do not qualify real SQL Server/AG
 collection. Policy/qualification administration UI, fleet/alert/MCP integration,
 native replica/TLS qualification and production v2 activation remain open.
 
+## Policy administration in Health checks
+
+An active TargetAdministrator grant on the exact selected target now exposes
+Configure backup policy inside a known database's evidence disclosure in Live.
+Read-only and out-of-scope grants do not expose it. Unknown database identities
+remain unconfigurable. Rewind is read-only and explains how to return to Live.
+
+Opening the editor loads the current policy independently of the displayed
+assessment cutoff. New policies have no suggested thresholds, status, full
+requirement or checksum choice. All settings are explicit; age limits use whole
+seconds, with the same storage bounds. Enabled Full/Bulk-logged recovery requires
+a log threshold. Existing policies can be disabled; the server still validates
+identity, recovery model, inventory freshness and target scope.
+
+Each save carries the target revision, current policy revision and a fresh
+operation ID. Submitted fields remain locked after an uncertain result, and
+Retry same policy save sends exactly that payload and operation ID. Definitive
+conflicts require Reload current policy before another edit. Successful responses
+must match the submitted settings and next policy revision before the UI reports
+success and refreshes assessment. Closing, switching identities or losing admin
+scope cancels the active client request; it does not claim that a server write
+was rolled back. Reopening reads current state.
+
+Seven focused model/API/role tests and the 26 affected backup/operational checks
+pass, along with frontend typecheck/build and asset verification. Mounted
+synthetic checks exercise blank creation, an uncertain committed save and exact
+retry, conflict reload, rewind restrictions and an admin grant scoped to another
+server. The fixture logged identical retry payloads and one resulting revision.
+No backend code changed in this stage, so the previously verified native/HTTP
+policy tests were not repeated. Historical zone qualification administration UI,
+fleet/alert/MCP integration, real replica/TLS qualification and production v2
+activation remain open.
+
+```powershell
+cd web
+node --experimental-strip-types --test tests/backup-policy.test.mjs tests/backup-assessment.test.mjs tests/operations-contract.test.mjs
+pnpm run build
+```
+
 ```powershell
 cd web
 node --experimental-strip-types --test tests/backup-assessment.test.mjs tests/operations-contract.test.mjs

@@ -26,7 +26,7 @@ import { ReportsPanel } from "./features/reports/ReportsPanel";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
 import { ServersPage } from "./features/targets/ServersPage";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
-import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canReadQueryText, canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
+import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { activityHistoryHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
@@ -334,7 +334,7 @@ export function App() {
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} scope={scope} refresh={slowRefresh} />}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>

@@ -4,9 +4,11 @@ import type { OverviewScope } from "../overview/overviewTypes";
 import { assertBackupPagePosition, assertBackupSnapshot, backupCutoff, type BackupPage } from "./backupAssessment.ts";
 import { BackupAssessmentError, getBackupAssessment } from "./backupAssessmentApi.ts";
 import { BackupAssessmentView } from "./BackupAssessmentView";
+import { BackupPolicyEditor } from "./BackupPolicyEditor";
 
-export function BackupAssessmentPanel({ instanceId, scope, refresh }: {
+export function BackupAssessmentPanel({ instanceId, scope, refresh, canManagePolicies = false }: {
   readonly instanceId: string; readonly scope: OverviewScope; readonly refresh: number;
+  readonly canManagePolicies?: boolean;
 }) {
   const [restart, setRestart] = useState(0);
   const selection = useMemo(() => {
@@ -17,12 +19,14 @@ export function BackupAssessmentPanel({ instanceId, scope, refresh }: {
     <h3>Backup freshness</h3><p>Full and log backup ages against explicit per-database limits, at the selected range's end.
       The range's start does not filter snapshot records. Pause Live to browse a fixed assessment.</p>
     {selection.error ? <p role="alert">{selection.error}</p> : <BackupSnapshot requestKey={`${instanceId}:${selection.atUtc}:${refresh}:${restart}`}
-      instanceId={instanceId} atUtc={selection.atUtc!} live={scope.range !== "custom"} onRestart={() => setRestart(value => value + 1)} />}
+      instanceId={instanceId} atUtc={selection.atUtc!} live={scope.range !== "custom"} canManagePolicies={canManagePolicies} onRestart={() => setRestart(value => value + 1)} />}
     <p className="table-note">A TargetAdministrator scoped to this server configures backup policies and verifies historical time-zone rules.</p>
+    {canManagePolicies && scope.range === "custom" && <p className="table-note">Return to Live to configure the current backup policy. Rewind policy evidence is read-only.</p>}
   </section>;
 }
-function BackupSnapshot({ instanceId, atUtc, requestKey, live, onRestart }: {
+function BackupSnapshot({ instanceId, atUtc, requestKey, live, canManagePolicies, onRestart }: {
   readonly instanceId: string; readonly atUtc: string; readonly requestKey: string; readonly live: boolean; readonly onRestart: () => void;
+  readonly canManagePolicies: boolean;
 }) {
   const formatTime = useTimeFormatter();
   const [storedPaging, setPaging] = useState<{ key: string; index: number; cursors: readonly (string | undefined)[] }>({ key: "", index: 0, cursors: [undefined] });
@@ -53,7 +57,10 @@ function BackupSnapshot({ instanceId, atUtc, requestKey, live, onRestart }: {
     {loading && <p role="status">{displayed ? "Updating backup assessments; the previous assessment remains displayed…" : "Loading backup assessments…"}</p>}
     {error && <p role="alert">{error.message}{error.restart ? <button type="button" onClick={onRestart}>Restart backup assessment</button>
       : error.retryable ? <button type="button" onClick={() => setRetry(value => value + 1)}>Retry backup assessment</button> : null}</p>}
-    {displayed && <BackupAssessmentView page={displayed} formatTime={formatTime} />}
+    {displayed && <BackupAssessmentView page={displayed} formatTime={formatTime} renderPolicy={live && canManagePolicies ? database =>
+      database.databaseFingerprint ? <BackupPolicyEditor key={`${instanceId}:${displayed.targetRevision}:${database.databaseFingerprint}`}
+        targetId={instanceId} targetRevision={displayed.targetRevision} fingerprint={database.databaseFingerprint}
+        recoveryModel={database.recoveryModel} onSaved={onRestart} /> : null : undefined} />}
     <nav className="pager" aria-label="Backup assessment pages">
       <button type="button" disabled={loading || paging.index === 0} onClick={() => setPaging({ ...paging, index: 0 })}>First backup page</button>{" "}
       <button type="button" disabled={loading || paging.index === 0} onClick={() => setPaging({ ...paging, index: paging.index - 1 })}>Previous backup page</button>{" "}

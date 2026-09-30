@@ -663,6 +663,11 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .backup-assessment dl { margin: 12px 0; }
 .backup-assessment dt { font-weight: 600; margin-top: 8px; }
 .backup-assessment dd { margin-left: 0; overflow-wrap: anywhere; }
+.backup-policy-editor form { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.backup-policy-editor fieldset { display: grid; gap: 10px; margin: 12px 0; padding: 10px; border: 1px solid var(--border); }
+.backup-policy-editor label { display: grid; gap: 4px; font-size: 12px; }
+.backup-policy-editor input, .backup-policy-editor select { min-width: 0; width: 100%; }
+.backup-policy-editor p { font-size: 12px; }
 .availability-evidence-table { width: max-content; min-width: 100%; table-layout: auto; }
 .availability-evidence-table td { vertical-align: top; white-space: nowrap; overflow-wrap: normal; }
 .availability-evidence-table th { position: sticky; top: 0; z-index: 1; white-space: nowrap; }
