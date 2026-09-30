@@ -346,3 +346,21 @@ Seven new client cases and 26 affected web cases pass. Mounted synthetic checks
 exercise creation, uncertain-save replay, conflicts and role/rewind restrictions.
 Historical qualification UI, fleet/alert/MCP integration, native replica/TLS
 qualification and production activation remain open.
+
+The Health checks administrative surface now supports historical qualification
+and append-only revocation in Live for the exact target's TargetAdministrator.
+It shows current qualification metadata separately from rewind evidence and
+requires an explicit retained .NET rules artifact, source zone ID, half-open
+microsecond UTC interval, evidence digest and fresh verification confirmation.
+Edits to attested fields clear confirmation; revocation has its own action and
+confirmation with null rule/window/evidence fields. No source or browser zone
+automatically becomes a certificate.
+
+Commands check both UTF-8 rule size and the complete bounded JSON envelope,
+retain one operation for uncertain-result retry and require reload on revision
+conflict. Verified acknowledgments refresh metadata and assessment without
+reinterpreting old samples. Ten new frontend cases and 19 affected cases pass;
+the production build and mounted synthetic command/replay/revocation checks
+pass. Native replica/TLS qualification, fleet/alert/MCP integration and production
+activation remain open. This UI does not attest operator-supplied historical
+configuration or complete the full revamp plan.

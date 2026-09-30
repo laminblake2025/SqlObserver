@@ -5,6 +5,7 @@ import { assertBackupPagePosition, assertBackupSnapshot, backupCutoff, type Back
 import { BackupAssessmentError, getBackupAssessment } from "./backupAssessmentApi.ts";
 import { BackupAssessmentView } from "./BackupAssessmentView";
 import { BackupPolicyEditor } from "./BackupPolicyEditor";
+import { BackupQualificationPanel } from "./BackupQualificationPanel";
 
 export function BackupAssessmentPanel({ instanceId, scope, refresh, canManagePolicies = false }: {
   readonly instanceId: string; readonly scope: OverviewScope; readonly refresh: number;
@@ -21,7 +22,7 @@ export function BackupAssessmentPanel({ instanceId, scope, refresh, canManagePol
     {selection.error ? <p role="alert">{selection.error}</p> : <BackupSnapshot requestKey={`${instanceId}:${selection.atUtc}:${refresh}:${restart}`}
       instanceId={instanceId} atUtc={selection.atUtc!} live={scope.range !== "custom"} canManagePolicies={canManagePolicies} onRestart={() => setRestart(value => value + 1)} />}
     <p className="table-note">A TargetAdministrator scoped to this server configures backup policies and verifies historical time-zone rules.</p>
-    {canManagePolicies && scope.range === "custom" && <p className="table-note">Return to Live to configure the current backup policy. Rewind policy evidence is read-only.</p>}
+    {canManagePolicies && scope.range === "custom" && <p className="table-note">Return to Live to configure current backup policies and historical time rules. Rewind evidence is read-only.</p>}
   </section>;
 }
 function BackupSnapshot({ instanceId, atUtc, requestKey, live, canManagePolicies, onRestart }: {
@@ -57,6 +58,8 @@ function BackupSnapshot({ instanceId, atUtc, requestKey, live, canManagePolicies
     {loading && <p role="status">{displayed ? "Updating backup assessments; the previous assessment remains displayed…" : "Loading backup assessments…"}</p>}
     {error && <p role="alert">{error.message}{error.restart ? <button type="button" onClick={onRestart}>Restart backup assessment</button>
       : error.retryable ? <button type="button" onClick={() => setRetry(value => value + 1)}>Retry backup assessment</button> : null}</p>}
+    {displayed && live && canManagePolicies && <BackupQualificationPanel key={`${instanceId}:${displayed.targetRevision}`} targetId={instanceId}
+      targetRevision={displayed.targetRevision} onChanged={onRestart} />}
     {displayed && <BackupAssessmentView page={displayed} formatTime={formatTime} renderPolicy={live && canManagePolicies ? database =>
       database.databaseFingerprint ? <BackupPolicyEditor key={`${instanceId}:${displayed.targetRevision}:${database.databaseFingerprint}`}
         targetId={instanceId} targetRevision={displayed.targetRevision} fingerprint={database.databaseFingerprint}

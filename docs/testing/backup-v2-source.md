@@ -550,6 +550,53 @@ node --experimental-strip-types --test tests/backup-policy.test.mjs tests/backup
 pnpm run build
 ```
 
+## Historical time qualification in Health checks
+
+Manage historical time rules is now available in Live to a TargetAdministrator
+on the exact selected target. The current target revision comes from the bounded
+assessment header, including when no v2 receipt exists. Reads are administrative
+and use the qualification endpoint, independently of historical assessment
+evidence. Rewind and out-of-scope grants expose no command controls.
+
+The editor distinguishes absent, active and revoked qualification and shows the
+command revision, qualified source zone ID, exact half-open UTC interval, and
+historical evidence/rules digests. A new command starts with no selected action
+or inferred rules. Qualification requires a retained .NET TimeZoneInfo serialized
+rules artifact, explicit SQL source zone ID, microsecond UTC bounds ending in Z,
+and a lowercase SHA-256 digest of verified historical configuration evidence.
+The administrator must confirm verification for the entire interval. Editing
+the zone, bounds, rules or evidence digest clears that confirmation. The browser
+does not synthesize rules from its own time zone or a current source zone ID;
+only the .NET server parses and validates the serialized artifact.
+
+The rules field is bounded to 65536 UTF-8 bytes; the complete JSON command must
+also fit the existing 65536-byte request limit, including escaping/envelope.
+Revocation requires a separate explicit confirmation and omits all rule/window/
+evidence fields. Target and qualification revisions fence every command. An
+uncertain result locks the submitted fields and retries the identical operation
+ID/payload. A conflict requires a current-state reload. Verified acknowledgments
+refresh current administrative metadata and the assessment, clear old draft
+confirmations, and explain that new collection is needed to use active rules.
+Replacement/revocation cannot turn old recorded UTC values into current ages.
+
+Ten focused model/API/rendered-view cases pass, together with the 19 affected
+backup-policy/assessment cases. Frontend typecheck, production build and asset
+verification pass. Mounted loopback synthetic checks exercise missing and stale
+confirmation, precise UTC metadata, an uncertain committed command and exact
+replay, explicit revocation, unknown old sample ages, and role/rewind restrictions.
+Raw fixture logs confirm identical retry payloads, retained six-digit bounds and
+null rule/evidence fields on revocation. The fixture does not validate real .NET
+artifacts or attest SQL Server historical configuration. No backend changed,
+so the existing native qualification and HTTP checks were not repeated. Native
+replica/TLS qualification, fleet/alert/MCP integration and production activation
+remain open.
+
+```powershell
+cd web
+node --experimental-strip-types --test tests/backup-qualification.test.mjs tests/backup-policy.test.mjs tests/backup-assessment.test.mjs
+pnpm run build
+```
+
 ```powershell
 cd web
 node --experimental-strip-types --test tests/backup-assessment.test.mjs tests/operations-contract.test.mjs

@@ -1,9 +1,13 @@
 // Synthetic loopback evidence only. Never imported by production code.
 import { readFile, appendFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 const artifacts = new URL('../.artifacts/', import.meta.url);
 const runId = '22222222-2222-4222-8222-222222222222';
 const hash = n => n.toString(16).padStart(64, '0');
 const policies = new Map(), operations = new Map();
+const zoneCommands = new Map(), zoneOperations = new Map();
+const initialZone = targetId => ({ targetId, targetRevision: 1, qualificationRevision: 1, enabled: true, sourceZoneId: 'UTC',
+  fromUtc: '2020-01-01T00:00:00Z', toUtc: '2030-01-01T00:00:00Z', evidenceSha256: 'a'.repeat(64), rulesSha256: 'b'.repeat(64) });
 export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
   const stamp = seconds => new Date(Date.parse(atUtc) - seconds * 1000).toISOString();
   const observed = stamp(scenario === 'stale_source' ? 7200 : 5);
@@ -11,10 +15,11 @@ export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
     hasChecksum: s.hasChecksum, isDamaged: s.isDamaged, metadataComplete: s.metadataComplete });
   const fullLimit = 86400, logLimit = 900;
   const items = Array.from({ length: 51 }, (_, index) => {
-    const unknown = index === 50, ag = index === 2, revoked = index === 3, unresolved = index === 5;
+    const zone = (zoneCommands.get(targetId) ?? []).filter(command => command.at <= Date.parse(atUtc)).at(-1)?.snapshot ?? initialZone(targetId);
+    const unknown = index === 50, ag = index === 2, damaged = index === 3, revoked = damaged || !zone.enabled || zone.qualificationRevision !== 1, unresolved = index === 5;
     const sample = (kind, age) => ({ kind, copyOnly: false, recordedFinishUtc: kind === 'full' && unresolved ? null : stamp(age),
       sourceLocalFinish: stamp(age).replace('Z', ''), sourceLocalStart: stamp(age + 60).replace('Z', ''),
-      recordedStartOffsetMinutes: 0, sizeBytes: '9223372036854775807', hasChecksum: true, isDamaged: kind === 'full' && (ag || revoked),
+      recordedStartOffsetMinutes: 0, sizeBytes: '9223372036854775807', hasChecksum: true, isDamaged: kind === 'full' && (ag || damaged),
       metadataComplete: true, firstRecoveryForkFingerprint: hash(900), lastRecoveryForkFingerprint: hash(900),
       timeState: kind === 'full' && unresolved ? 'qualification_missing' : 'resolved',
       qualificationRevision: kind === 'full' && unresolved ? null : 1, qualificationTrusted: !revoked && !(kind === 'full' && unresolved) });
@@ -44,7 +49,7 @@ export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
       policy: policy && { enabled: policy.enabled, maximumFullAgeSeconds: policy.maximumFullAgeSeconds, maximumLogAgeSeconds: policy.maximumLogAgeSeconds,
         maximumObservationAgeSeconds: policy.maximumObservationAgeSeconds, fullRequirement: policy.fullRequirement, requireChecksums: policy.requireChecksums },
       full: check(full, policy?.maximumFullAgeSeconds ?? fullLimit), log: check(log, policy?.maximumLogAgeSeconds ?? logLimit),
-      observedIssues: ag || revoked ? [{ kind: 'full', copyOnly: false, reason: 'backup_damaged' }] : [], samples: unknown ? [] : [full, log] };
+      observedIssues: ag || damaged ? [{ kind: 'full', copyOnly: false, reason: 'backup_damaged' }] : [], samples: unknown ? [] : [full, log] };
   });
   const page = { contractVersion: 2, targetId, atUtc, targetRevision: 1, runId, sourceObservedAtUtc: observed, completedAtUtc: stamp(1), receivedAtUtc: stamp(2),
     sourceZoneId: 'UTC', historyLowerBoundLocal: stamp(35 * 86400).replace('Z', ''), coverage: 'partial', evidenceStatus: 'retained',
@@ -60,6 +65,28 @@ export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
   return page;
 }
 export async function handleBackupFixture(url, res, req) {
+  const zoneRoute = /^\/api\/v1\/observation-targets\/([^/]+)\/health\/backup-zone-qualification\/$/.exec(url.pathname);
+  if (zoneRoute) {
+    const targetId = zoneRoute[1], history = zoneCommands.get(targetId) ?? [], current = history.at(-1)?.snapshot ?? initialZone(targetId);
+    const send = (body, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); return true; };
+    if (req.method === 'GET') return send(current);
+    if (req.method !== 'PUT') return send({}, 405);
+    let raw = ''; for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 65536) return send({}, 413); }
+    const command = JSON.parse(raw); await mkdir(artifacts, { recursive: true });
+    await appendFile(new URL('backup-zone-requests.ndjson', artifacts), JSON.stringify({ targetId, command }) + '\n');
+    const prior = zoneOperations.get(command.operationId);
+    if (prior) return prior.targetId === targetId && prior.body === raw ? send(prior.ack) : send({}, 409);
+    let scenario = ''; try { scenario = (await readFile(new URL('backup-scenario.txt', artifacts), 'utf8')).trim(); } catch {}
+    if (scenario === 'qualification_invalid') return send({}, 400);
+    if (scenario === 'qualification_conflict' || command.expectedTargetRevision !== 1 || command.expectedQualificationRevision !== current.qualificationRevision)
+      return send({ code: 'backup_zone_qualification_conflict' }, 409);
+    const ack = { targetId, targetRevision: 1, qualificationRevision: current.qualificationRevision + 1, enabled: command.enabled };
+    const snapshot = { ...ack, sourceZoneId: command.enabled ? command.sourceZoneId : null, fromUtc: command.enabled ? command.fromUtc : null,
+      toUtc: command.enabled ? command.toUtc : null, evidenceSha256: command.enabled ? command.evidenceSha256 : null,
+      rulesSha256: command.enabled ? createHash('sha256').update(command.serializedZoneRules).digest('hex') : null };
+    zoneCommands.set(targetId, [...history, { at: Date.now(), snapshot }]); zoneOperations.set(command.operationId, { targetId, body: raw, ack });
+    return scenario === 'qualification_uncertain' ? send({}, 503) : send(ack);
+  }
   const policyRoute = /^\/api\/v1\/observation-targets\/([^/]+)\/health\/backups\/databases\/([a-f0-9]{64})\/policy\/$/.exec(url.pathname);
   if (policyRoute) {
     const [, targetId, fingerprint] = policyRoute, key = `${targetId}:${fingerprint}`;
