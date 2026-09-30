@@ -17,6 +17,7 @@ public enum BackupFreshnessReason
     OtherReplicaEvidenceRequired = 12, RecoveryModelUnknown = 13, LogThresholdNotConfigured = 14,
     FinishTimeUnknown = 15, BackupMetadataUnknown = 16, BackupDamaged = 17,
     ChecksumMissing = 18, ChecksumUnknown = 19, SimpleRecovery = 20, PolicyDisabled = 21,
+    PolicyNotConfigured = 22, DatabaseIdentityUnknown = 23, TimestampQualificationUnavailable = 24,
 }
 
 /// <summary>Explicit policy for a current target/database identity. No shipped RPO is assumed.</summary>

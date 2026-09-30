@@ -3,7 +3,8 @@
 The `backups.status` v2 assets are embedded under `M9BackupV2Assets` and verified
 as an exact five-file SHA-256 bundle. The separate closed manifest schema v7
 pins source limits, conditional AG permissions and output version 2. The active
-M9 registry, v1 bundle, schedules and database contracts still select v1.
+M9 registry and production schedules still select v1. V2 catalog activation,
+writer grants and native qualification remain separate rollout gates.
 
 The SQL source emits one inventory row and up to five latest classified backup
 slots per visible database except TempDB. Inventory remains when history is
@@ -408,7 +409,76 @@ regression failed for the missing policy read function before implementation.
 No full Local profile was run. Policy configuration does not activate v2
 collection, expose assessment verdicts, or complete the alert/UI/replica path.
 
+## Assessment and evidence reads
+
+Migration 0277 and
+`GET /api/v2/observation-targets/{instanceId}/health/backups` expose the staged
+v2 assessment independently of the existing v1 observations. Parameters:
+
+- `atUtc`: optional UTC instant ending in `Z`, with at most six fractional
+  digits, no future value. Defaults to current UTC on the first page and the
+  signed cursor's original cutoff on continuation.
+- `limit`: 1–100 databases, default 50. Each has at most five backup slots.
+- `targetRevision`: optional positive revision, default current target revision
+  on the first page. Supply an older revision explicitly for retained history;
+  a continuation restores its signed revision.
+- `cursor`: opaque shared-signer continuation, bound to the complete assessment
+  context. A changed/expired context returns 409 `cursor_stale`; restart paging.
+
+Viewer, Operator or TargetAdministrator must be scoped to this target. Direct
+tables and collector access to these reporting functions remain private. Each
+page's header, samples and policy read share one repeatable-read transaction.
+The receipt lookup is bounded to run starts within seven days before the cutoff.
+If no receipt remains in that window, `not_collected` describes this bounded
+read, not proof that collection never occurred. A retained receipt whose graph
+has expired produces `evidence_not_retained`. The latest failed or withheld run
+does not reuse a prior success. Rejected output counts remain visible on failed
+receipts without publishing rejected database/sample rows.
+
+Database ordinals preserve unknown identities through pagination. Known
+identities without policy report `policy_not_configured`; unknown identities
+report `database_identity_unknown`. Neither has an invented RPO, policy revision
+or observed age. Full/log checks carry independent status, reason, limits,
+nullable age and selected evidence. Policy settings, source coverage, collector
+state and known observed issues are also returned. Local AG coverage stays
+indeterminate even when the observer is preferred.
+
+Each sample exposes `recordedFinishUtc`, raw local start/finish, recorded start
+offset, time state and qualification revision. `qualificationTrusted` means the
+immutable referenced qualification was active at this cutoff; it does not turn
+an unresolved time state into a resolved one. Revoked/replaced qualified times
+remain visible as recorded evidence but cannot produce a current age/verdict.
+Consumers must use the check's selected evidence, never recompute age from a
+sample's recorded UTC without its qualification and coverage context. Rewind
+before revocation uses the earlier command. Known damage and missing required
+checksums remain observed issues independently of the overall verdict.
+
+Signed cursors include policy-history count and qualification-command revision.
+These detect late commits recorded before the first page's cutoff, including
+edits to a database on a later page. No policy or qualification update can
+silently alter that continuation. Cursor payloads remain below the shared
+signer's limits. Responses are bounded to 1 MiB, use `no-store`, and return
+ProblemDetails with code/correlation identity on failures.
+
+Focused native PostgreSQL tests use real fenced v2 commits. They exercise paging
+without duplicates/gaps, unknown identities, as-of policy and qualification
+history, revocation, disabled policies, collection and output-validation
+failures, source limits, expired graphs, target revision changes, source clock
+skew/staleness, local AG preference and a policy transaction committed between
+pages. Application tests cover mixed-role scope, observed faults under revoked
+qualification and malformed repository contracts. HTTP tests use the real
+pipeline for authentication, signed bindings, cutoff restoration, nullable
+evidence, explicit action messages and stale-cursor errors. The initial native
+regression reached PostgreSQL and failed `42883` before the reporting function
+existed. No full Local suite or production/native-replica qualification is
+claimed. Eight native PostgreSQL cases, six application cases and two HTTP
+cases pass for this stage. Fleet/Health checks, alerts, MCP, UI and production
+activation remain pending.
+
 ```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupEvidenceReadTests'
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --filter 'FullyQualifiedName~BackupAssessmentQueryTests'
+dotnet test tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj --filter 'FullyQualifiedName~BackupAssessmentHttpTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2ManifestTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2PersistenceTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2RolloutTests'

@@ -41,6 +41,9 @@ public sealed class BackupV2DatabaseRead
     }
 
     public string? DatabaseFingerprint { get; }
+    public MonitoredInstanceId TargetId => run.Target;
+    public ObservationTargetRevision TargetRevision => run.Revision;
+    public CollectorRunId RunId => run.RunId;
     public string? FamilyFingerprint { get; }
     public string? RecoveryForkFingerprint { get; }
     public string? GroupFingerprint { get; }

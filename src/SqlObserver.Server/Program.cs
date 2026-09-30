@@ -181,6 +181,9 @@ builder.Services.AddSingleton<ApiCursorSigner>(static services =>
 builder.Services.AddSingleton<ServerConfigurationChangeCursorCodec>();
 builder.Services.AddSingleton<ServerConfigurationSnapshotCursorCodec>();
 builder.Services.AddSingleton<AvailabilityGroupEvidenceCursorCodec>();
+builder.Services.AddSingleton<BackupEvidenceCursorCodec>();
+builder.Services.AddSingleton<IBackupEvidencePort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupEvidence);
+builder.Services.AddSingleton<BackupAssessmentQueryService>();
 builder.Services.AddSingleton<IQueryStorePlanRegressionQueryService, QueryStorePlanRegressionQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertRuleReads);
@@ -252,6 +255,7 @@ app.MapTargetQueryPerformanceApiEndpoints();
 app.MapAlertEndpoints();
 app.MapOperationalHealthEndpoints();
 app.MapAvailabilityGroupEvidenceEndpoints();
+app.MapBackupAssessmentEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapReportEndpoints();
 app.MapSqlObserverMcp().RequireAuthorization();

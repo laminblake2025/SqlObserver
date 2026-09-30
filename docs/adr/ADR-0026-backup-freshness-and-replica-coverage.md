@@ -281,3 +281,39 @@ policy read function existed. Assessment/evidence paging, Health checks and
 fleet integration, alert/MCP/UI surfaces, native replica qualification and
 production activation remain open; persisted policy alone is not a freshness
 verdict or proof of restore/RPO compliance.
+
+The assessment stage now adds migration 0277 and a versioned read-only HTTP
+surface. It reads the latest completed backup v2 receipt in the seven days
+before an explicit monitor cutoff, without falling back from failed, empty,
+truncated or expired evidence to an older success. A repeatable-read repository
+transaction combines the receipt, retained inventory/sample graph, policy
+history and historical qualification commands. Unknown database identities keep
+their ordinal and remain unconfigurable. Missing policy has a distinct
+indeterminate reason and supplies no assumed limits.
+
+Signed continuations bind the target, target revision, cutoff, run, database
+ordinal and append-only policy/qualification context. A transaction committed
+between pages with an earlier recorded timestamp invalidates the continuation
+instead of silently changing its assessment. Revision changes do not transfer
+policy; an explicit historical target revision can read its retained evidence.
+Expired evidence invalidates continuations and stays distinguishable from
+never-collected data while its completion receipt remains retained.
+
+Recorded finish UTC and raw local times retain their immutable provenance.
+Assessment uses a resolved finish only while its qualification was active at
+the requested cutoff. A later revocation/replacement withholds age and gives an
+actionable indeterminate reason; rewind before that command preserves the prior
+verdict. Known damage and missing required checksums remain observed issues.
+Source clock skew, stale observations and preferred local AG replicas remain
+indeterminate rather than gaining fabricated freshness or all-replica coverage.
+
+The endpoint requires a read role on the exact target, canonical UTC input,
+bounded pages and response bytes, and uses the shared signer and ProblemDetails.
+This read stage does not activate production v2 collection. Health checks/fleet,
+alert/MCP/UI integration and native replica/TLS qualification remain open.
+
+Eight native PostgreSQL cases, six application cases and two HTTP cases pass
+for this stage. The Server build succeeds with no warnings or errors. The
+native policy commit race is exercised with a real uncommitted transaction,
+not a simulated sequence of already committed rows. No broad Local suite or
+production collector activation is claimed.
