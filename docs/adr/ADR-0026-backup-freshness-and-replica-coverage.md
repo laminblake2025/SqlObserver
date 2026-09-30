@@ -150,7 +150,7 @@ preserved observed faults, identity/revision mismatches and collection ownership
 
 No production producer supplies this new evidence yet, and no policy API,
 database write, alert, MCP output or UI verdict is activated by this stage.
-Collector payload integration, leased persistence, qualification provisioning
+Leased persistence, qualification provisioning
 and the policy/read surfaces are next. Native primary/secondary
 qualification and end-to-end policy/alert/UI behavior remain required for the
 feature to be complete. Synthetic arithmetic tests do not prove those gates.
@@ -178,6 +178,18 @@ versioned target/revision qualification of zone rules and configuration for
 both endpoints; current source zone and recorded start offset alone remain
 insufficient. No production qualification provider or command exists yet.
 Ninety-four focused unit checks and four sequential native source/parser
-checks pass on 2026-09-30. Collector payload integration, fenced persistence,
+checks pass on 2026-09-30. Fenced persistence,
 qualification provisioning and the policy/read/alert/UI surfaces still require
 implementation and qualification.
+
+The evidence and qualification models are now domain contracts with constructor
+validation for target/revision/run, lineage, source context and accounting.
+An application qualification port and staged v2 collector now publish the
+operational-health payload under the shared five-second deadline. The shared
+validator checks the v2 payload, accounting and coverage and rejects v1/v2
+mixing. Its visibility marker is limited to explicitly incomplete supported
+health observations. The active registry and repository still select v1;
+fenced v2 writes and rollout gates remain required before activation.
+This stage passes 171 targeted unit checks and four local sequential SQL
+source/parser checks; it does not qualify production collector transport,
+monitoring permissions or real AG topology.

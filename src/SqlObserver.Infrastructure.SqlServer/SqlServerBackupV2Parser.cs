@@ -8,6 +8,8 @@ using SqlObserver.Domain.Security;
 namespace SqlObserver.Infrastructure.SqlServer;
 
 /// <summary>Sequential parsing of the pinned inventory/five-slot source, outside the active v1 runtime.</summary>
+public sealed record BackupV2ParseResult(BackupV2ReadSnapshot Snapshot, int ResponseBytes, CollectorLossEvidence Loss);
+
 public static class SqlServerBackupV2Parser
 {
     public const int MaximumRows = 3072;
@@ -31,7 +33,7 @@ public static class SqlServerBackupV2Parser
             throw new ArgumentException("Historical zone qualification belongs to a different target/revision.", nameof(qualification));
         if (reader.FieldCount != 29) throw new InvalidDataException("Backup v2 source requires exactly 29 fields.");
 
-        var run = new CollectorExecutionRequestIdentity(request.TargetId, request.TargetRevision, request.RunId);
+        var run = new BackupV2RunIdentity(request.TargetId, request.TargetRevision, request.RunId);
         var databases = new List<BackupV2DatabaseRead>();
         var samples = new List<BackupV2SampleRead>();
         var identities = new HashSet<string>(StringComparer.Ordinal);

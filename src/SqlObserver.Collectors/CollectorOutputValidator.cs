@@ -1,4 +1,5 @@
 using SqlObserver.Collector.Abstractions;
+using SqlObserver.Domain.Backups;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Telemetry;
 using System.Text;
@@ -38,6 +39,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
 
         int sourceRowBound = manifest.Id.Value == "sql-agent.failures"
             ? OperationalHealthBounds.AgentScanRows
+            : manifest.Id.Value == "backups.status" && manifest.ManifestVersion.Value == 2
+                ? BackupV2ReadSnapshot.MaximumRows + 1
             : manifest.Id.Value == "availability-groups.health"
             ? OperationalHealthBounds.AvailabilityMaximumRows + 1
             : manifest.Id.Value == "replication.health"
@@ -147,12 +150,12 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         // is an explicit no-row-loss marker for a degraded observation, not a
         // generic way for another collector to manufacture Partial output.
         if (result.Loss.Kind == CollectorLossKind.VisibilityIncomplete &&
-            (manifest.Id.Value is not ("availability-groups.health" or "replication.health") ||
+            (manifest.Id.Value is not ("availability-groups.health" or "replication.health" or "backups.status") ||
              result.Outcome != CollectorRunOutcome.Partial ||
              result.Reason != CollectorRunReason.VisibilityIncomplete ||
-             payload.OperationalHealth?.Snapshot is not (AvailabilityGroupsSnapshot { State: OperationalObservationState.Degraded } or AvailabilityGroupsV2Snapshot { State: OperationalObservationState.Degraded } or ReplicationHealthSnapshot { State: OperationalObservationState.Degraded })))
+             payload.OperationalHealth?.Snapshot is not (AvailabilityGroupsSnapshot { State: OperationalObservationState.Degraded } or AvailabilityGroupsV2Snapshot { State: OperationalObservationState.Degraded } or ReplicationHealthSnapshot { State: OperationalObservationState.Degraded } or BackupV2ReadSnapshot { Coverage: BackupFreshnessCoverage.Partial })))
         {
-            throw new InvalidDataException("VisibilityIncomplete is reserved for a degraded availability-groups observation.");
+            throw new InvalidDataException("VisibilityIncomplete requires an explicitly incomplete supported health observation.");
         }
 
         if (manifest.Id.Value == "queries.performance")
@@ -192,6 +195,11 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         CollectorExecutionRequest request, CollectorExecutionResult result)
     {
         string collectorId = manifest.Id.Value;
+        if (collectorId == "backups.status" && manifest.ManifestVersion.Value == 2 && manifest.OutputSchemaVersion.Value == 2)
+        {
+            ValidateBackupsV2(manifest, envelope, request, result);
+            return;
+        }
         if (collectorId == "availability-groups.health" && manifest.ManifestVersion.Value == 2 &&
             manifest.OutputSchemaVersion.Value == 2)
         {
@@ -199,12 +207,53 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             return;
         }
         if (envelope is null) return; // Unsupported/permission outcomes carry an empty payload.
-        if (collectorId == "backups.status" && envelope.Snapshot is BackupStatusSnapshot backups && backups.TargetId == request.TargetId && backups.TargetRevision == request.TargetRevision && backups.Items.Count <= OperationalHealthBounds.BackupMaximumRows) return;
+        if (collectorId == "backups.status" && manifest.ManifestVersion.Value == 1 && manifest.OutputSchemaVersion.Value == 1 &&
+            envelope.Snapshot is BackupStatusSnapshot backups && backups.TargetId == request.TargetId &&
+            backups.TargetRevision == request.TargetRevision && backups.Items.Count <= OperationalHealthBounds.BackupMaximumRows) return;
         if (collectorId == "sql-agent.failures" && envelope.Snapshot is SqlAgentFailureSnapshot agent && agent.TargetId == request.TargetId && agent.TargetRevision == request.TargetRevision && agent.Items.Count <= OperationalHealthBounds.AgentMaximumRows && agent.SourceRowsRead is >= 0 and <= OperationalHealthBounds.AgentScanRows) return;
         if (collectorId == "tempdb.health" && envelope.Snapshot is TempDbSnapshot tempdb && tempdb.TargetId == request.TargetId && tempdb.TargetRevision == request.TargetRevision && tempdb.Files.Count <= OperationalHealthBounds.TempDbMaximumFiles) return;
         if (collectorId == "availability-groups.health" && manifest.ManifestVersion.Value == 1 && manifest.OutputSchemaVersion.Value == 1 && envelope.Snapshot is AvailabilityGroupsSnapshot groups && groups.TargetId == request.TargetId && groups.TargetRevision == request.TargetRevision && groups.Replicas.Count + groups.Databases.Count <= OperationalHealthBounds.AvailabilityMaximumRows) return;
         if (collectorId == "replication.health" && envelope.Snapshot is ReplicationHealthSnapshot replication && replication.TargetId == request.TargetId && replication.TargetRevision == request.TargetRevision && replication.Items.Count <= ReplicationBounds.MaximumRows && replication.SourceRowsRead is >= 0 and <= ReplicationBounds.MaximumRows + 1) return;
         throw new InvalidDataException("Operational-health output kind, target revision, or bounds are invalid.");
+    }
+
+    private static void ValidateBackupsV2(CollectorManifest manifest, OperationalHealthPayload? envelope,
+        CollectorExecutionRequest request, CollectorExecutionResult result)
+    {
+        if (manifest.OutputKind != CollectorOutputKind.BackupsStatus || result.Payload.HostMetricsContext is not null ||
+            result.Payload.QueryPerformanceStatuses.Count != 0 || result.Payload.QueryPerformanceTargetStatus is not null)
+            throw new InvalidDataException("Backup v2 output cannot carry another collector's sidecars.");
+        if (result.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
+        {
+            if (envelope is not null || result.Accounting.SourceRowsRead != 0 || result.Accounting.OutputItemsProduced != 0 ||
+                result.Accounting.ResponseBytes != 0 || result.Accounting.OutputBytes != 0 ||
+                (result.Outcome == CollectorRunOutcome.OutputInvalid
+                    ? result.Loss.Kind != CollectorLossKind.OutputValidationFailure || result.Loss.MinimumLostItems < 1
+                    : result.Loss.HasLoss))
+                throw new InvalidDataException("A failed backup v2 run cannot publish evidence.");
+            return;
+        }
+        if (envelope?.Snapshot is not BackupV2ReadSnapshot snapshot || snapshot.TargetId != request.TargetId ||
+            snapshot.TargetRevision != request.TargetRevision || snapshot.RunId != request.RunId ||
+            result.Accounting.SourceRowsRead != snapshot.SourceRowsRead || envelope.ItemCount != snapshot.ItemCount ||
+            result.Accounting.OutputItemsProduced != snapshot.ItemCount || envelope.EstimatedSizeBytes != snapshot.EstimatedSizeBytes ||
+            result.Accounting.OutputBytes < result.Payload.EstimatedSizeBytes || result.Accounting.ResponseBytes < result.Accounting.OutputBytes)
+            throw new InvalidDataException("Backup v2 identity, source accounting or output accounting is invalid.");
+        bool valid = snapshot.Coverage switch
+        {
+            BackupFreshnessCoverage.Complete => result.Outcome == CollectorRunOutcome.Succeeded && !result.Loss.HasLoss &&
+                result.Reason == CollectorRunReason.Completed,
+            BackupFreshnessCoverage.Partial => result.Outcome == CollectorRunOutcome.Partial &&
+                result.Reason == CollectorRunReason.VisibilityIncomplete && result.Loss.Kind == CollectorLossKind.VisibilityIncomplete &&
+                result.Loss.MinimumLostItems == 1 && !result.Loss.CountIsExact && result.Loss.MinimumLostBytes == 0,
+            BackupFreshnessCoverage.Truncated => result.Outcome == CollectorRunOutcome.Partial && snapshot.ItemCount == 0 &&
+                snapshot.SourceRowsRead > 0 && result.Loss.MinimumLostItems == snapshot.SourceRowsRead && !result.Loss.CountIsExact &&
+                result.Loss.MinimumLostBytes == 0 &&
+                (result.Reason == CollectorRunReason.SourceRowLimit && result.Loss.Kind == CollectorLossKind.SourceRowLimit ||
+                 result.Reason == CollectorRunReason.ResponseByteLimit && result.Loss.Kind == CollectorLossKind.ResponseByteLimit),
+            _ => false,
+        };
+        if (!valid) throw new InvalidDataException("Backup v2 completeness and disclosed loss are inconsistent.");
     }
 
     private static void ValidateAvailabilityGroupsV2(CollectorManifest manifest, OperationalHealthPayload? envelope,

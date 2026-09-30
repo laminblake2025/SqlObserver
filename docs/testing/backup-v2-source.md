@@ -98,11 +98,38 @@ It never substitutes the host zone, clamps calendar overflow or fabricates a
 receipt-time finish. See [.NET ambiguity handling](https://learn.microsoft.com/en-us/dotnet/api/system.timezoneinfo.isambiguoustime?view=net-10.0)
 and [UTC conversion behavior](https://learn.microsoft.com/en-us/dotnet/api/system.timezoneinfo.converttimetoutc?view=net-10.0).
 
-Typed parser results are currently a source-adapter boundary. Their immutable
-domain freshness inputs are exercised by the real evaluator, but there is no
-active collector payload or repository writer for v2 yet. Cross-replica identity
-pairing and qualified historical zone provisioning remain explicit integration
-work; this parser does not discover peers or merge histories.
+Typed evidence and historical qualification models now live in the domain.
+Their constructors enforce closed metadata, lineage, unique slots, source
+accounting and the exact target/revision/run, including unknown-identity rows.
+The SQL adapter retains only the parser result and conversion logic. An
+application port supplies explicit historical qualifications without coupling
+the repository or validator to the SQL adapter.
+
+## Collector payload stage
+
+`SqlServerBackupsV2Collector` now produces a version-2 operational-health payload
+validated by the shared `CollectorOutputValidator`. Required capabilities,
+transport, privilege, major/platform/edition and exact permission scopes are
+checked before either the qualification port or the SQL source is called.
+SQL Server 2019 additionally requires the AG metadata grant when the profile
+observes AG support; the source's 51006 guard remains authoritative if topology
+and capability evidence differ. Missing source bounds are invalid output, not
+permission failures. Failed runs publish no source prefix.
+
+One linked deadline covers qualification lookup, connection, query and parsing.
+The production command supplies typed row and database lookahead parameters,
+uses a sequential reader, and captures receipt UTC when the reader opens. The
+default qualification port returns no qualification. It never invents rules
+from the current zone ID. External cancellation propagates; deadline exhaustion
+has its own outcome. Version-1 and version-2 payloads cannot cross validators.
+
+The active registry still selects v1. Version-2 fenced persistence, retention,
+schedule/compatible-worker rollout gates, qualified zone provisioning, policy
+commands and assessment reads remain pending. The existing repository rejects
+this new payload until its versioned writer is implemented. No production
+activation or native collector qualification is claimed here. Cross-replica
+pairing remains explicit work; this collector does not discover peers or merge
+histories.
 
 ## Time and metadata boundaries
 
@@ -156,6 +183,13 @@ Tests cover transition folds/gaps, crossing a transition, historical window
 boundaries, calendar overflow, keyed identity/revision isolation, malformed
 streams, nullable metadata, preserved faults, future source time and withheld
 limit prefixes. No full Local test profile was run for this change.
+
+The collector/domain/validator stage passes 171 targeted unit checks, including
+the backup suites and related AG, replication and legacy operational-health
+checks affected by the shared validator. Four local native source/parser checks
+also pass after domain promotion. The production command and failure paths are
+tested through injected ports; trusted TLS, non-admin execution and real AG
+behavior still require the separate native qualification above.
 
 The local run used Windows authentication and encrypted transport with the
 existing Local-only certificate bypass for its self-signed lab certificate.

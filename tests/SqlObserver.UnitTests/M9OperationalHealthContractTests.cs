@@ -285,10 +285,17 @@ public sealed class M9OperationalHealthContractTests
     }
 
     [Fact]
-    public void VisibilityIncompleteIsReservedForDegradedAvailabilityGroups()
+    public void LegacyBackupsCannotManufacturePartialOutputWithTheVisibilityMarker()
     {
-        string validator = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Collectors/CollectorOutputValidator.cs")));
-        Assert.Contains("VisibilityIncomplete is reserved for a degraded availability-groups observation", validator, StringComparison.Ordinal);
-        Assert.Contains("OperationalObservationState.Degraded", validator, StringComparison.Ordinal);
+        var request = M4TestData.CreateExecutionRequest();
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var snapshot = new BackupStatusSnapshot(request.TargetId, request.TargetRevision, request.RunId,
+            M4TestData.RepositoryTime, OperationalObservationState.Partial, [], 0, false);
+        var payload = new CollectorPayload(operationalHealth: new OperationalHealthPayload(snapshot, 0, 256));
+        var result = new CollectorExecutionResult(request.TargetId, request.TargetRevision, collector.Manifest.Id, 1, 1,
+            CollectorRunOutcome.Partial, CollectorRunReason.VisibilityIncomplete, payload, new CollectorRunAccounting(0, 0, 256, 256),
+            new CollectorLossEvidence(CollectorLossKind.VisibilityIncomplete, 1, false));
+        Assert.Throws<InvalidDataException>(() => new SqlObserver.Collectors.CollectorOutputValidator(M9Manifest.OutputContract(2048))
+            .Validate(collector.Manifest, request, result));
     }
 }

@@ -1,3 +1,4 @@
+using SqlObserver.Domain.Backups;
 using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.UnitTests;
