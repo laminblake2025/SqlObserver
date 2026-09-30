@@ -550,6 +550,53 @@ node --experimental-strip-types --test tests/backup-policy.test.mjs tests/backup
 pnpm run build
 ```
 
+## Fleet backup summary foundation
+
+The application now has a bounded `BackupFleetSummaryBuilder` for later latest-status
+materialization. It accepts complete raw evidence pages and shares the trust-aware
+assessor used by Health checks. It does not accept supplied verdicts or read SQL
+Server. Up to six 100-database pages cover the existing 512-database bound.
+Every page must carry the same receipt, cutoff, target revision, policy-history
+count, qualification command and source context, with contiguous ordinals and
+an exact final continuation. Canonical snapshot validation checks graph accounting,
+source provenance and duplicate known identities across pages. Missing pages,
+extra pages, mixed contexts and retained prefixes fail without a summary.
+
+Full and log checks have independent counts for within-threshold, violated,
+indeterminate, not-required and disabled states. Unknown reasons are counted per
+check. A confirmed violation remains visible alongside unknown checks; failed,
+missing, expired or withheld graphs never become a healthy zero. Missing policies,
+unknown database identities and local-only AG evidence remain indeterminate.
+Observed damaged backups survive missing policies or revoked timestamps without
+inventing policy violations. Fault counts count databases once, including when
+the assessor finds several faults. Disabled policies are explicit, and disabled
+collection prevents an overall within-policy result. Within-policy can include
+explicitly disabled checks and Simple recovery's not-required log checks; the
+individual counts remain available to the eventual UI.
+
+The aggregate retains its assessment context and a half-open validity deadline.
+It expires no later than two minutes after assessment, or earlier when a source
+observation or selected full/log backup crosses an inclusive age threshold.
+Threshold equality remains valid until the next PostgreSQL microsecond. A future
+source timestamp expires its unknown verdict when that timestamp is reached.
+Time arithmetic saturates at the last representable UTC microsecond.
+
+This stage does not publish or expose the summary in the fleet grid. Collector-only
+leased evidence reads, fenced atomic publication, reader invalidation on receipt,
+target/policy/qualification changes or expiry, and fleet UI mapping remain required.
+Fleet requests must not walk database pages. The existing legacy backup record
+count is not an RPO verdict. Production v2 activation and alert/MCP integration
+remain open.
+
+Focused summary, existing assessment and domain freshness cases pass, as do both
+existing backup assessment HTTP cases. No database, collector registration or web
+code changed, so native repository and browser tests were not repeated.
+
+```powershell
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupFleetSummaryTests|FullyQualifiedName~BackupAssessmentQueryTests|FullyQualifiedName~BackupFreshnessTests'
+dotnet test tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj --no-restore --filter 'FullyQualifiedName~BackupAssessmentHttpTests'
+```
+
 ## Historical time qualification in Health checks
 
 Manage historical time rules is now available in Live to a TargetAdministrator

@@ -1,7 +1,6 @@
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Backups;
-using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Application.Services;
@@ -25,10 +24,10 @@ public sealed class BackupAssessmentQueryService(IBackupEvidencePort repository)
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         { throw new TimeoutException("The backup evidence deadline expired.", exception); }
         Validate(page, request);
-        return new(page.Header, Array.AsReadOnly(page.Items.Select(item => Assess(item, request.AtUtc)).ToArray()), page.NextCursor);
+        return new(page.Header, Array.AsReadOnly(page.Items.Select(item => BackupEvidenceAssessment.Assess(item, request.AtUtc)).ToArray()), page.NextCursor);
     }
 
-    private static void Validate(BackupEvidencePage page, BackupEvidenceRequest request)
+    internal static void Validate(BackupEvidencePage page, BackupEvidenceRequest request)
     {
         BackupEvidenceHeader h = page.Header;
         if (h is null || page.Items is null || h.TargetId != request.TargetId || h.AtUtc != request.AtUtc || h.TargetRevision <= 0 ||
@@ -84,32 +83,6 @@ public sealed class BackupAssessmentQueryService(IBackupEvidencePort repository)
             h.PolicyHistoryCount, h.QualificationCommandRevision))) throw Invalid();
     }
 
-    private static BackupDatabaseAssessment Assess(BackupDatabaseEvidence item, DateTimeOffset atUtc)
-    {
-        BackupFreshnessPolicy? policy = item.Policy;
-        BackupFreshnessEvidence? original = item.Evidence.FreshnessEvidence;
-        if (policy is null || original is null)
-        {
-            var check = new BackupFreshnessCheck(BackupFreshnessStatus.Indeterminate, original is null
-                ? BackupFreshnessReason.DatabaseIdentityUnknown : BackupFreshnessReason.PolicyNotConfigured, null, null, null);
-            var damage = item.Evidence.Samples.Where(s => s.Freshness.IsDamaged == true)
-                .Select(s => new BackupFreshnessIssue(s.Freshness.Kind, s.Freshness.CopyOnly, BackupFreshnessReason.BackupDamaged)).ToArray();
-            return new(item, null, check, check, Array.AsReadOnly(damage));
-        }
-        BackupFreshnessSample[] safe = original.Samples.Select((sample, index) => sample.FinishUtc.HasValue && !item.QualificationTrusted[index]
-            ? new BackupFreshnessSample(sample.Kind, sample.CopyOnly, null, sample.SourceLocalFinish,
-                sample.HasChecksum, sample.IsDamaged, sample.MetadataComplete) : sample).ToArray();
-        var evidence = new BackupFreshnessEvidence(original.TargetId, original.TargetRevision, original.DatabaseFingerprint,
-            original.RunId, original.ObservedAtUtc, original.RecoveryModel, original.Scope, original.Coverage, original.LocalReplicaPreferred, safe);
-        BackupFreshnessAssessment assessed = BackupFreshnessEvaluator.Assess(policy, evidence, atUtc);
-        BackupFreshnessCheck RestoreReason(BackupFreshnessCheck check, BackupKind kind) =>
-            check.Reason == BackupFreshnessReason.FinishTimeUnknown && item.Evidence.Samples.Where((s, i) =>
-                s.Freshness.Kind == kind && (kind == BackupKind.Full && policy.FullRequirement == FullBackupRequirement.FullImage || !s.Freshness.CopyOnly) &&
-                s.Freshness.FinishUtc.HasValue && !item.QualificationTrusted[i]).Any()
-                ? check with { Reason = BackupFreshnessReason.TimestampQualificationUnavailable } : check;
-        return new(item, assessed.PolicyRevision, RestoreReason(assessed.Full, BackupKind.Full),
-            RestoreReason(assessed.Log, BackupKind.Log), assessed.ObservedIssues);
-    }
     private static bool Utc(DateTimeOffset? value) => value is null || value.Value.Offset == TimeSpan.Zero && value.Value.Ticks % TimeSpan.TicksPerMicrosecond == 0;
     private static InvalidDataException Invalid() => new("The backup assessment repository contract is invalid.");
 }
