@@ -4,6 +4,7 @@
     <AssemblyName>SqlObserver.IntegrationTests.SqlServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Fixtures/backup-v2-source.sql"><LogicalName>SqlObserver.IntegrationTests.SqlServer.Fixtures.backup-v2-source.sql</LogicalName></EmbeddedResource>
     <ProjectReference Include="../../src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Collectors/SqlObserver.Collectors.csproj" />
   </ItemGroup>

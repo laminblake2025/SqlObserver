@@ -39,6 +39,12 @@
     <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver15-windows.v3.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.sqlserver15-windows.v3.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver16-windows.v3.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.sqlserver16-windows.v3.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver17-windows.v3.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.sqlserver17-windows.v3.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m9-backups-v2.assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.m9-backups-v2.assets.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v7.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.collector-manifest.v7.schema.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/backups.status.v2.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.v2.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver15-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.sqlserver15-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver16-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.sqlserver16-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver17-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.sqlserver17-windows.v2.sql</LogicalName></EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../collectors/manifests/m10-replication.assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.M10ReplicationAssets.m10-replication.assets.sha256</LogicalName></EmbeddedResource>

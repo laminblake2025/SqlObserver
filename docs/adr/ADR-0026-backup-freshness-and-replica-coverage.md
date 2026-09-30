@@ -159,3 +159,14 @@ The 38 focused assessment/contract tests pass on 2026-09-30. The .NET build
 performed for that selection succeeds with warnings treated as errors. No
 native SQL Server, PostgreSQL, web or fleet qualification is claimed for this
 domain-only stage.
+
+The next stage now embeds checksum-pinned SQL15/16/17 backup v2 source and a
+closed manifest/schema. It retains a bounded inventory stream and five backup
+slots, matching local GUID/family/recovery-fork identity without using display
+names. Duplicate GUIDs, unknown copy markers, incomplete AG identity and raw
+source times remain explicit. The source does not normalize finish time from
+the start offset. Seven schema checks and four local SQL projection/catalog
+checks pass; they do not qualify real AG behavior or production activation.
+See [the source contract and lab limits](../testing/backup-v2-source.md). The
+typed parser, historical time resolution, fenced writer and all policy/read
+surfaces remain open.

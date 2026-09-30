@@ -1025,12 +1025,30 @@ function Assert-RepositoryShape {
         'replication.health.sqlserver16-windows.v1.sql',
         'replication.health.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $stagedCollectorSqlNames = @(
+        'database.inventory.sqlserver15-windows.v2.sql',
+        'database.inventory.sqlserver16-windows.v2.sql',
+        'database.inventory.sqlserver17-windows.v2.sql',
+        'availability-groups.health.sqlserver15-windows.v2.sql',
+        'availability-groups.health.sqlserver16-windows.v2.sql',
+        'availability-groups.health.sqlserver17-windows.v2.sql',
+        'backups.status.sqlserver15-windows.v2.sql',
+        'backups.status.sqlserver16-windows.v2.sql',
+        'backups.status.sqlserver17-windows.v2.sql'
+    ) | Sort-Object
+    $additionalCollectorSqlNames = @(
+        'engine.buffer-node-ple.sqlserver15-17-windows.v1.sql',
+        'engine.configurations.sqlserver15-windows.v1.sql',
+        'engine.configurations.sqlserver16-windows.v1.sql',
+        'engine.configurations.sqlserver17-windows.v1.sql',
+        'storage.volume.sqlserver15-17-windows.v1.sql'
+    ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $contentM7CollectorSqlNames + $waitM7CollectorSqlNames + $expectedM9CollectorSqlNames + $expectedM10CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $contentM7CollectorSqlNames + $waitM7CollectorSqlNames + $expectedM9CollectorSqlNames + $expectedM10CollectorSqlNames + $stagedCollectorSqlNames + $additionalCollectorSqlNames
         'activity.live.v1.sql'
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
-        throw 'Collector SQL must contain exactly the reviewed M3/M4/M5/M6/M7/M9/M10 assets.'
+        throw 'Collector SQL must contain exactly the reviewed active and staged assets.'
     }
 
     foreach ($collectorSqlFile in $collectorSqlFiles) {
@@ -1043,10 +1061,21 @@ function Assert-RepositoryShape {
         }
 
         $collectorSql = Get-Content -LiteralPath $collectorSqlFile.FullName -Raw
+        # A fixed THROW message is not a SQL command (for example, "backup status").
+        # Exclude only whole-line THROW statements, keeping every other token visible.
+        # Unsupported interfaces are still rejected on the full source.
+        $collectorSqlStatements = [regex]::Replace($collectorSql,
+            "(?im)^\s*THROW\s+\d+\s*,\s*'(?:[^'\r\n]|'')*'\s*,\s*\d+\s*;\s*$", 'THROW;')
         if ($collectorSql -notmatch '(?i)\bSET\s+NOCOUNT\s+ON\s*;' -or
-            $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b' -or
+            $collectorSqlStatements -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b' -or
             $collectorSql -match '(?i)\b(xp_|sp_OA|sp_executesql|OPENROWSET|OPENDATASOURCE)') {
             throw "Collector SQL must remain fixed, bounded, read-only, and supported: $($collectorSqlFile.Name)"
+        }
+
+        if ($collectorSqlFile.Name -in $stagedCollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*\(\s*@maximum_rows\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b')) {
+            throw "Staged collector SQL must remain row-bounded and deterministic: $($collectorSqlFile.Name)"
         }
 
         if ($collectorSqlFile.Name -in $expectedM3CollectorSqlNames -and
@@ -1117,7 +1146,7 @@ function Assert-RepositoryShape {
             $collectorSqlFile.Name -notlike 'capability.connection.*.v2.sql' -and
             ($collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*(?:\(\s*@(?:maximum_rows|scan_rows)\s*\)|\(\s*1\s*\))' -or
              $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
-             $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b')) {
+             $collectorSqlStatements -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b')) {
             throw "M9 collector SQL must remain bounded, ordered, and passive: $($collectorSqlFile.Name)"
         }
         if ($collectorSqlFile.Name -in $expectedM10ReplicationSqlNames -and
@@ -1139,8 +1168,8 @@ function Assert-RepositoryShape {
             throw "Availability-group assets must source state descriptions from the DMF for local/remote semantics: $($collectorSqlFile.Name)"
         }
         if ($collectorSqlFile.Name -like 'sql-agent.failures.*' -and
-            $collectorSql -match '(?i)SELECT[\s\S]*\b(run_date|run_time)\b') {
-            throw "SQL Agent source-local timestamps must not be emitted: $($collectorSqlFile.Name)"
+            $collectorSql -notmatch '(?i)\bh\.run_date\s*,\s*h\.run_time\b') {
+            throw "SQL Agent assets must retain source-local date/time evidence for the typed parser: $($collectorSqlFile.Name)"
         }
     }
 
