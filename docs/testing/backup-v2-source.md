@@ -1,5 +1,43 @@
 # Staged backup v2 source checks
 
+## Atomic backup state, replay and delivery outbox
+
+Forward migrations 0285 and 0286 complete the repository commit path for captured
+backup observations. PostgreSQL independently derives known transitions, including
+fire/clear confirmation, confirmation gaps, acknowledged episodes and maintenance
+suppression; unknown evidence uses the existing episode-preserving transition.
+The commit compares the complete application decision with the repository result.
+Only the derived state is written. State, history, immutable replay, approved
+destination outbox events and queue completion share one transaction.
+
+Fresh commits recheck the exact coordinator lease, unexpired claim, current rule
+revision and captured live source. Maintenance/destination administration shares
+the target advisory fence, followed by target-before-rule/queue/state locking.
+Exact immutable replays are checked before capture/source lookup and make no
+backup writes, even after aggregate changes or removal of the completed capture.
+Divergent results are rejected. Successful commits delete their own captured
+aggregate; cancelled captures remain subject to bounded discovery cleanup.
+Mixed metric and backup batches retain the existing metric backend and roll back
+both paths together on any invalid result.
+
+Six focused native PostgreSQL cases pass: five backup commit cases and the
+existing metric evaluation/replay/delivery lease lifecycle. The transition case
+compares 200 combinations with the production evaluator. Repository cases cover
+firing, resolution, unknown episode preservation, immutable replay after source
+changes, concurrent retries, full rollback, mixed metric/backup rollback and
+capture cleanup. Fired/resolved events can be claimed through the production
+delivery repository with the existing payload contract and pinned destination
+approval; no notification transport was sent. The migration-preamble check passes.
+
+Backup rule creation remains closed in the embedded catalog, HTTP allowlist and
+SQL administrative contract. Catalog/API/UI activation and its contract checks
+are the next stage; these tests do not enable product rule creation.
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupCommit|FullyQualifiedName~RepositoryExecutesEvidenceQueueEvaluationReplayAndDeliveryLeaseLifecycle'
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~MigrationPreambleTests'
+```
+
 ## Durable backup evaluation queue and claim validation
 
 Forward migration 0283 connects backup evidence to the existing repository

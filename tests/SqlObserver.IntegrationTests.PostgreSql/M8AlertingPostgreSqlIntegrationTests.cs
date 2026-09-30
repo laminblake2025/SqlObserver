@@ -1570,7 +1570,7 @@ public sealed partial class M8AlertingPostgreSqlIntegrationTests
         return (batch, state);
     }
 
-    private static async Task SeedEvaluationQueueAsync(RepositoryTestDatabase database, AlertObservation observation)
+    internal static async Task SeedEvaluationQueueAsync(RepositoryTestDatabase database, AlertObservation observation)
     {
         var observations = new[]
         {
