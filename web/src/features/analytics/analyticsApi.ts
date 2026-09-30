@@ -48,7 +48,7 @@ const mutableRetentionDataClasses = new Set([
   "m9_ag_replica_evidence", "m9_ag_database_evidence",
   "m9_backup_evidence",
   "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
-  "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas",
+  "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas", "sql_metric_baselines",
 ]);
 const policyRetentionDataClasses = new Set([
   ...mutableRetentionDataClasses, "m7_query_performance", "collection_run_original_copy",

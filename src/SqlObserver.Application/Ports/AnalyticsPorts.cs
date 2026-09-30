@@ -40,6 +40,8 @@ public interface IAnalyticsRepositoryPort
     ValueTask StoreSqlRollupAsync(AnalyticsJobRequest request, SqlMetricRollupResult rollup, CancellationToken cancellationToken)
         => throw new NotSupportedException("Catalog-v2 SQL rollup persistence is not supported by this adapter.");
     ValueTask StoreBaselineAsync(AnalyticsJobRequest request, IReadOnlyList<BaselineResult> baselines, CancellationToken cancellationToken);
+    ValueTask StoreSqlBaselinesAsync(AnalyticsJobRequest request, IReadOnlyList<SqlMetricBaselineResult> baselines, CancellationToken cancellationToken)
+        => throw new NotSupportedException("Catalog-v2 SQL baseline persistence is not supported by this adapter.");
     ValueTask StoreForecastAsync(AnalyticsJobRequest request, ForecastResult forecast, CancellationToken cancellationToken);
     ValueTask StoreEvidenceAsync(AnalyticsJobRequest request, EvidencePacket packet, CancellationToken cancellationToken);
     ValueTask StoreIncidentAsync(AnalyticsJobRequest request, IncidentThread thread, CancellationToken cancellationToken);
@@ -74,9 +76,11 @@ public sealed record AnalyticsDerivationJob(
             JobKind == "rollup" && RollupInterval is null ||
             ForecastHorizon is { } horizon && (horizon <= TimeSpan.Zero || horizon > TimeSpan.FromDays(90)) ||
             SourceCatalogVersion is not (1 or 2) || SourceCatalogVersion == 2 &&
-            (JobKind != "rollup" || MetricKey is null || !MetricCatalogV2.TryGet(MetricKey, out AnalyticsMetricDefinition? definition) ||
-             definition!.Source != AnalyticsMetricSource.SqlEngine || SourceCadenceSeconds is not { } cadence ||
-             !double.IsFinite(cadence) || cadence is < 1 or > 86400 || ToUtc - FromUtc > TimeSpan.FromDays(1)))
+            (JobKind is not ("rollup" or "baseline") || MetricKey is null || !MetricCatalogV2.TryGet(MetricKey, out AnalyticsMetricDefinition? definition) ||
+             definition!.Source != AnalyticsMetricSource.SqlEngine || DimensionsSha256 != CanonicalDimensions.Sha256(null) ||
+             JobKind == "rollup" && (SourceCadenceSeconds is not { } cadence || !double.IsFinite(cadence) || cadence is < 1 or > 86400 || ToUtc - FromUtc > TimeSpan.FromDays(1)) ||
+             JobKind == "baseline" && (SourceCadenceSeconds is not null || RollupInterval is not null ||
+                 ToUtc.TimeOfDay != TimeSpan.Zero || ToUtc - FromUtc != TimeSpan.FromDays(28))))
             throw new ArgumentException("Analytics derivation job is outside its bounded contract.", nameof(JobId));
     }
 }
@@ -117,6 +121,8 @@ public interface IAnalyticsDerivationStore
     ValueTask<IReadOnlyList<SqlMetricPoint>> ReadSqlRollupInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken)
         => throw new NotSupportedException("Catalog-v2 SQL source inputs are not supported by this adapter.");
     ValueTask<IReadOnlyList<RollupResult>> ReadBaselineInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken);
+    ValueTask<IReadOnlyList<SqlMetricRollupResult>> ReadSqlBaselineInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken)
+        => throw new NotSupportedException("Catalog-v2 SQL baseline inputs are not supported by this adapter.");
     ValueTask<AnalyticsForecastInput> ReadForecastInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken);
     ValueTask<IReadOnlyList<AnalyticsEvidenceInput>> ReadEvidenceInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken);
     ValueTask<IReadOnlyList<EvidencePacket>> ReadIncidentInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken);

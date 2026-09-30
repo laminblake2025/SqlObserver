@@ -120,7 +120,7 @@ const retentionDataClasses = new Set([
   "m9_ag_replica_evidence", "m9_ag_database_evidence",
   "m9_backup_evidence",
   "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
-  "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas",
+  "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas", "sql_metric_baselines",
   "collection_run_original_copy",
 ]);
 const retentionBlockReasons = new Set(["disabled", "duration_unconfigured", "recovery_attestation_missing", "reader_lease_active", "backfill_incomplete", "dependency_pending", "minimum_partition_floor", "utc_floor", "registry_missing", "lease_missing", "retention_disabled", "partition_not_attached", "within_retention_window", "grace_in_progress", "retention_failed"]);

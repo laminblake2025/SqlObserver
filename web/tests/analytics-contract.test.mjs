@@ -82,7 +82,7 @@ test("active evidence policies can be updated through the bounded client", async
   try {
     const classes = ["raw_metric_samples", "diagnostic_events", "m9_backup_status",
       "m9_agent_history", "m9_agent_occurrences", "m9_ag_replicas", "m9_ag_databases",
-      "m9_tempdb", "m9_ag_replica_evidence", "m9_ag_database_evidence", "m9_backup_evidence"];
+      "m9_tempdb", "m9_ag_replica_evidence", "m9_ag_database_evidence", "m9_backup_evidence", "sql_metric_baselines"];
     for (const dataClass of classes) {
       const result = await updateRetentionPolicy(dataClass, {
         dataClass, enabled: true, retainFor: "30.00:00:00",

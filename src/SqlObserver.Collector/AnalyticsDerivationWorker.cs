@@ -172,6 +172,16 @@ public sealed class AnalyticsDerivationWorker(
 
     private async Task DeriveBaselineAsync(AnalyticsDerivationJob job, WorkerLeaseIdentity lease, CancellationToken token)
     {
+        if (job.SourceCatalogVersion == MetricCatalogV2.Version)
+        {
+            IReadOnlyList<SqlMetricRollupResult> sqlInput = await store.ReadSqlBaselineInputsAsync(job, token).ConfigureAwait(false);
+            IReadOnlyList<SqlMetricBaselineResult> sqlResult = SqlMetricBaselineV2.Compute(sqlInput, job.MetricKey!,
+                job.ToUtc, job.SourceCutoffUtc, job.Generation);
+            EnsureBounded(sqlResult);
+            await AssertLeaseAsync(lease, token).ConfigureAwait(false);
+            await analytics.StoreSqlBaselinesAsync(Request(job, lease), sqlResult, token).ConfigureAwait(false);
+            return;
+        }
         IReadOnlyList<RollupResult> input = await store.ReadBaselineInputsAsync(job, token).ConfigureAwait(false);
         IReadOnlyList<BaselineResult> result = BaselineV1.Compute(input, job.SourceCutoffUtc)
             .Select(row => row with { Generation = job.Generation }).ToArray();

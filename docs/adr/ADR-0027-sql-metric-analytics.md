@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: proposed, 2026-09-30. Catalog definitions, repository source and SQL rollup worker implemented; baseline and API activation pending.
+Status: proposed, 2026-09-30. Catalog definitions, source, SQL rollup and baseline workers implemented; API activation pending.
 
 ## Context
 
@@ -129,18 +129,54 @@ rollup key does not include catalog version. This activation uses SQL keys
 absent from version 1; activating overlapping host or replication keys under
 another catalog requires an explicit identity design first.
 
+## SQL baseline worker implementation
+
+Migration 0294 adds collector-only baseline input and persistence functions and
+daily SQL baseline scheduling. New jobs capture the exact target revision,
+28-day UTC window, catalog version, source cutoff and generation. Scheduling
+waits until a matching SQL hourly rollup exists for the previous complete day's
+last hour, including an explicit unavailable rollup. It inserts at most 896
+missing jobs per call and preserves the initial snapshot on repeat calls.
+
+The typed input reader accepts only matching version 2/checksum/algorithm,
+generation, empty dimensions and hourly interval. Both source cutoff and
+computation time must precede the baseline job snapshot. Its hard bounds are
+672 rows and 8 MiB; it does not page or silently truncate. The computation
+rejects duplicate, misaligned, foreign-generation or future hourly inputs.
+It preserves the existing median, MAD and percentile method over 28 complete
+UTC days with at least 80% sample coverage for every hour of an included day.
+Hourly means already include elapsed weights for SQL rates. All 168
+hour-of-week rows are emitted: missing hours carry null statistics and an
+unavailable state, while incomplete history remains partial with explicit
+coverage and confidence. Confidence retains the existing v1 formula.
+
+The pinned version 1 baseline table references its ten-entry catalog, so SQL
+results use `analytics.sql_metric_baseline` instead of changing that catalog or
+weakening its foreign key. Results retain catalog checksum, baseline and source
+algorithm identities, generation and snapshot cutoff. This table has forced
+row-level security, no direct runtime-role grants, append-only history and UTC
+daily partitions registered at persistence. Partition bounds, ownership and
+registry identity are verified. The new `sql_metric_baselines` retention policy
+defaults to 90 days and participates in the existing scheduled retention
+workflow and administrator policy controls. Actual detach/drop under recovery
+attestation has not been exercised for this new parent in these checks.
+
+The fenced writer persists all hours atomically, validates their identities and
+statistics, and accepts identical replay after lease replacement. Divergent
+content, duplicate hours and expired leases are refused. The legacy baseline
+writer now accepts only version 1 jobs; existing version 1 results and grants
+remain intact. Apply migration 0294 before deploying this worker version.
+
 ## Remaining activation work
 
 SQL baselines are not yet available through the API, MCP or dashboard.
 
-1. Add version-aware baseline input reads, computation, persistence and jobs.
-   Scope baseline inputs to matching catalog and algorithm versions, metric,
-   dimensions, target revision, generation and snapshot cutoff. Existing
-   unversioned reads must not erase the new rollup identity.
-2. Update application validation and catalog discovery, then MCP schemas and
+1. Add version-aware application/API reads and catalog discovery, then MCP schemas and
    their approved digest, using an explicit active version. Resume existing
    jobs and cursors under their original catalog, refusing version changes.
-3. Bind UI references to matching keys and units after baseline activation.
+2. Bind UI references to matching keys and units after read API activation.
+3. Validate the SQL baseline parent's retention lifecycle with real recovery
+   attestation, and benchmark fleet derivation and history coverage.
 
 ## Validation
 
@@ -182,6 +218,24 @@ Three additional PostgreSQL checks passed for fresh-install idempotence, the
 292-to-293 upgrade with function ownership/privileges, and the existing version
 1 rollup writer's dimension-scoped replay. Their evidence is
 `artifacts/sql-metric-rollup-worker/sql-rollup-upgrade-compatibility.trx`.
+
+SQL baseline validation passed nine focused unit checks and eight PostgreSQL
+18.4 integration checks with no skips. They cover all 168 hours, full and partial
+history, weighted input statistics, unavailable hours, duplicate/identity/window
+refusal, snapshot/generation filtering, the actual baseline worker, atomic
+persistence and lease replacement replay, upgrade and privilege separation,
+registered retention defaults, v1 baseline compatibility, the adjacent SQL
+rollup worker and fresh-install idempotence. Evidence is
+`artifacts/sql-metric-baseline-worker/sql-baseline-unit.trx` and
+`sql-baseline-worker.trx` in the same directory. The focused web analytics
+contract checks also passed nine cases, including the new retention policy
+class in the bounded update client. SQL baseline reads remain internal to the
+worker; these checks do not prove API, MCP or dashboard activation.
+
+The strengthened catalog/snapshot check also passed separately after seeding
+version 1 rows with an otherwise matching SQL key and window. The reader
+excluded them. Evidence is `sql-baseline-catalog-snapshot.trx` in the same
+artifact directory.
 
 The SSH VM is reachable and its PostgreSQL 18 service is running, but this
 session has no configured PostgreSQL login for that VM. These checks ran

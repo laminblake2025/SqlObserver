@@ -43,6 +43,10 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
         object? sqlValue = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         if (sqlValue is null or DBNull) throw new InvalidDataException("PostgreSQL returned no SQL rollup schedule count.");
         int total = checked(scheduled + Convert.ToInt32(sqlValue, CultureInfo.InvariantCulture));
+        command.CommandText = "SELECT control.schedule_sql_metric_baseline_jobs(@owner_execution_id,@fencing_token)";
+        object? baselineValue = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (baselineValue is null or DBNull) throw new InvalidDataException("PostgreSQL returned no SQL baseline schedule count.");
+        total = checked(total + Convert.ToInt32(baselineValue, CultureInfo.InvariantCulture));
         if (total is < 0 or > AnalyticsJobBounds.MaximumRows) throw new InvalidDataException("SQL rollup scheduling exceeded its bound.");
         return total;
     }
@@ -81,6 +85,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
     public ValueTask<IReadOnlyList<RollupResult>> ReadBaselineInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken)
     {
         job.Validate();
+        if (job.SourceCatalogVersion != MetricCatalogV1.Version) throw new ArgumentException("Catalog-v1 baseline inputs require a version-1 job.", nameof(job));
         return ReadRollupsAsync(new AnalyticsQueryRequest(job.TargetId, job.MetricKey ?? "host.cpu.percent", job.FromUtc, job.ToUtc, AnalyticsJobBounds.MaximumRows, FiveSecondTimeout, job.TargetRevision, job.SourceCutoffUtc, job.DimensionsSha256), RollupInterval.Hour, cancellationToken);
     }
 
