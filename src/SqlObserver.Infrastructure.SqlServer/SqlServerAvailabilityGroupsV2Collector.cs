@@ -117,6 +117,8 @@ public sealed class SqlServerAvailabilityGroupsV2Collector : ISqlServerCollector
             PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(15, 15)),
          new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-performance-state"),
             PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(16, 17)),
+         new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-any-definition"),
+            PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(15, 15)),
          new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-any-database"),
             PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(15, 17))],
         new SqlServerMajorVersionRange(15, 17), [SqlServerPlatform.Windows],

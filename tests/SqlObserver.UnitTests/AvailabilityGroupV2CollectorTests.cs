@@ -126,6 +126,20 @@ public sealed class AvailabilityGroupV2CollectorTests
         }
     }
 
+    [Fact]
+    public async Task SqlServer2019RequiresAgMetadataVisibilityBeforeReadingSql()
+    {
+        var source = new FixtureSource([]);
+        var collector = Collector(source);
+        var request = Request(15, omittedPermission: "server.view-any-definition");
+        CollectorExecutionResult result = await collector.CollectAsync(request, CancellationToken.None);
+        Validator.Validate(collector.Manifest, request, result);
+        Assert.Equal(CollectorRunOutcome.PermissionDenied, result.Outcome);
+        Assert.Equal(CollectorRunReason.RequiredPermissionMissing, result.Reason);
+        Assert.Equal(0, source.Calls);
+        Assert.Null(result.Payload.OperationalHealth);
+    }
+
     [Theory]
     [InlineData(14, SqlServerPlatform.Windows, SqlServerEngineEdition.Enterprise, true)]
     [InlineData(16, SqlServerPlatform.Linux, SqlServerEngineEdition.Enterprise, true)]
@@ -307,7 +321,8 @@ public sealed class AvailabilityGroupV2CollectorTests
             [new CapabilityEvidence(new CapabilityId("feature.availability-groups"),
                 feature ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
                 feature ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled)],
-            new[] { permission, "server.view-any-database" }.Where(item => item != omittedPermission)
+            new[] { permission, "server.view-any-database" }.Concat(major == 15 ? ["server.view-any-definition"] : Array.Empty<string>())
+                .Where(item => item != omittedPermission)
                 .Select(item => new PermissionEvidence(new SqlServerPermissionId(item), PermissionEvidenceScope.Server,
                     PermissionEvidenceOutcome.Granted)).ToArray(),
             template.DiscoveryDuration, template.EvidenceBytes, template.CheckedAtUtc, template.ValidUntilUtc);

@@ -129,6 +129,7 @@
               "server.view-state",
               "server.view-performance-state",
               "server.view-any-database",
+              "server.view-any-definition",
               "msdb.backupset.select",
               "msdb.sysjobhistory.select"
             ]

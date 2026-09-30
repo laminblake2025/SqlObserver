@@ -1,10 +1,13 @@
 using Npgsql;
+using System.Security.Cryptography;
+using System.Text;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
@@ -13,6 +16,88 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class AvailabilityGroupV2RolloutTests(PostgreSql18Fixture fixture)
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PermissionContractUpgradeRejectsActivationOrDriftAndPreservesV1(bool activated)
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        var migrationTimeout = new RepositoryCallTimeout(TimeSpan.FromMinutes(2));
+        MigrationBatchResult baseline = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(268, migrationTimeout), CancellationToken.None);
+        Assert.False(baseline.HasFailures);
+        Assert.Equal(268, baseline.Results.Count);
+        Guid target = await SeedAsync(database);
+        long revision = await ScheduleRevisionAsync(database, target);
+        await using (var block = database.DataSource.CreateCommand(activated ? """
+            UPDATE control.availability_groups_v2_activation SET active=true,activated_at=clock_timestamp() WHERE singleton;
+            """ : """
+            BEGIN;
+            ALTER TABLE control.collector_contract DISABLE TRIGGER collector_contract_append_only;
+            UPDATE control.collector_contract SET manifest_sha256=decode(repeat('00',32),'hex')
+             WHERE collector_id='availability-groups.health' AND collector_version=2;
+            ALTER TABLE control.collector_contract ENABLE TRIGGER collector_contract_append_only;
+            COMMIT;
+            """))
+            await block.ExecuteNonQueryAsync();
+        MigrationBatchResult rejected = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(1, migrationTimeout), CancellationToken.None);
+        Assert.True(rejected.HasFailures);
+        Assert.Equal(269, Assert.Single(rejected.Results).Migration.Number.Value);
+        Assert.Equal(revision, await ScheduleRevisionAsync(database, target));
+        await AssertAppendOnlyAsync(database);
+        await using (var repair = database.DataSource.CreateCommand("""
+            BEGIN;
+            UPDATE control.availability_groups_v2_activation SET active=false,activated_at=NULL WHERE singleton;
+            ALTER TABLE control.collector_contract DISABLE TRIGGER collector_contract_append_only;
+            UPDATE control.collector_contract
+             SET manifest_sha256=decode('07e2282bb37ad54e173b34f65e0bdd29aa4ca6e9e8b1a956a33a5a41720d2c17','hex')
+             WHERE collector_id='availability-groups.health' AND collector_version=2;
+            ALTER TABLE control.collector_contract ENABLE TRIGGER collector_contract_append_only;
+            COMMIT;
+            """))
+            await repair.ExecuteNonQueryAsync();
+        MigrationBatchResult upgrade = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(1, migrationTimeout), CancellationToken.None);
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(269, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(revision, await ScheduleRevisionAsync(database, target));
+        await AssertAppendOnlyAsync(database);
+        await using var command = database.DataSource.CreateCommand("""
+            SELECT manifest_sha256,asset_bundle_sha256,
+             (SELECT active FROM control.availability_groups_v2_activation WHERE singleton),
+             (SELECT collector_version FROM control.collector_schedule
+               WHERE instance_id=@target AND collector_id='availability-groups.health'),
+             (SELECT count(*) FROM control.availability_groups_v2_worker_capability)
+            FROM control.collector_contract WHERE collector_id='availability-groups.health' AND collector_version=2;
+            """);
+        command.Parameters.AddWithValue("target", target);
+        await using NpgsqlDataReader row = await command.ExecuteReaderAsync();
+        Assert.True(await row.ReadAsync());
+        var assets = SqlServerAvailabilityGroupV2AssetCatalog.LoadEmbedded();
+        Assert.Equal(SHA256.HashData(Encoding.UTF8.GetBytes(assets.Manifest)), row.GetFieldValue<byte[]>(0));
+        using Stream bundle = typeof(SqlServerAvailabilityGroupV2AssetCatalog).Assembly.GetManifestResourceStream(
+            "SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.m9-ag-v2.assets.sha256")!;
+        Assert.Equal(SHA256.HashData(bundle), row.GetFieldValue<byte[]>(1));
+        Assert.False(row.GetBoolean(2)); Assert.Equal(1, row.GetInt32(3)); Assert.Equal(0L, row.GetInt64(4));
+    }
+
+    private static async Task AssertAppendOnlyAsync(RepositoryTestDatabase database)
+    {
+        await using var command = database.DataSource.CreateCommand("""
+            SELECT tgenabled='O' FROM pg_trigger
+             WHERE tgrelid='control.collector_contract'::regclass AND tgname='collector_contract_append_only';
+            """);
+        Assert.Equal(true, await command.ExecuteScalarAsync());
+        await using var mutate = database.DataSource.CreateCommand("""
+            UPDATE control.collector_contract SET manifest_sha256=manifest_sha256
+             WHERE collector_id='availability-groups.health' AND collector_version=2;
+            """);
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(async () =>
+            await mutate.ExecuteNonQueryAsync())).SqlState);
+    }
 
     [Fact]
     public async Task PrivateRolloutRequiresExactCatalogLeaseRetentionAndDrainedV1Runs()
@@ -188,7 +273,7 @@ public sealed class AvailabilityGroupV2RolloutTests(PostgreSql18Fixture fixture)
              created_at,updated_at,discovery_requested_at)
             VALUES(@target,@key,'AG rollout','sql01',1433,interval '5 seconds',
               'windows_integrated_service_identity','mandatory_validated','active',1,
-              clock_timestamp(),clock_timestamp(),clock_timestamp());
+              statement_timestamp(),statement_timestamp(),statement_timestamp());
             UPDATE control.collector_schedule
              SET enabled=(collector_id IN ('engine.core','availability-groups.health')),
               next_due_at=CASE WHEN collector_id='availability-groups.health' THEN clock_timestamp()

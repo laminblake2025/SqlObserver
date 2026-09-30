@@ -32,6 +32,7 @@
   "requiredPermissionsByMajor": {
     "15": [
       "server.view-state",
+      "server.view-any-definition",
       "server.view-any-database"
     ],
     "16": [

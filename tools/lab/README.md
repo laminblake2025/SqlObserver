@@ -111,6 +111,10 @@ Allow at least one five-minute collection interval after a run. Validate Health,
 
 ## Real transactional replication
 
+For a separate trusted primary/secondary AG pair, see
+[the read-only AG v2 qualification runbook](../../docs/testing/availability-group-v2-lab.md).
+The single-instance fixtures here cannot provide that evidence.
+
 Install the SQL Server Replication feature from the VM's existing `C:\SQL2025\StdDev_ENU` media if absent, then restart SQLSERVERAGENT to load its replication subsystems. Run `setup-replication.ps1` as the lab administrator. It creates SqlObserverLabPublisher, SqlObserverLabSubscriber and SqlObserverLabDistribution, one OrderEvents article and a continuous push subscription on the same SQL instance. SQL Agent's service identity runs the replication jobs; the observer login receives only the explicit monitoring reads. The snapshot-directory ACL applies only to the replication job identity.
 
 The application needs an explicit distribution database binding for the target's current revision and a capability refresh after permissions change. Host and replication bindings do not automatically carry across target revisions. Migration 0036 preserves historical revision identities so existing evidence no longer blocks rediscovery.
