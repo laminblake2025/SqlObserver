@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { handleAvailabilityFixture } from './availability-evidence-fixture.mjs';
+import { handleBackupFixture } from './backup-assessment-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const timestamp='2026-09-05T02:00:00.000Z';
 const targets=Array.from({length:6},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,instanceKey:`synthetic-${i+1}`,displayName:`SYNTHETIC · SQL ${['Production','Analytics','Reporting','Recovery','Test','Development'][i]}`,host:`synthetic-${i+1}.invalid`,namedInstance:null,tcpPort:1433,lifecycle:'active',capabilityStatus:i===3?'unreachable':i===2?'degraded':'supported',capabilityReasons:i===3?['synthetic_visibility_gap']:[],configurationRevision:1,authenticationMode:'windows_integrated_service_identity',encryptionMode:'mandatory_validated',discoveryRequestedAtUtc:timestamp,lastDiscoveryAtUtc:timestamp}));
@@ -11,6 +12,7 @@ const registrationAttempts=[];
 createServer(async(req,res)=>{try {
  const url=new URL(req.url,'http://127.0.0.1');
  if(await handleAvailabilityFixture(url,res)) return;
+ if(await handleBackupFixture(url,res)) return;
  if(url.pathname==='/api/v1/observation-targets' && req.method==='POST') {
    let body=''; for await (const chunk of req) { body+=chunk; if(body.length>16384)return json(res,{},413); }
    const request=JSON.parse(body); registrationAttempts.push(request.instanceId);
@@ -36,4 +38,4 @@ createServer(async(req,res)=>{try {
  if(url.pathname.startsWith('/api/')) return json(res,{},404);
  const path=resolve(root,url.pathname==='/'?'index.html':url.pathname.slice(1));if(!path.startsWith(root+sep))return json(res,{},404);
  const body=await readFile(path);res.writeHead(200,{'content-type':{'.html':'text/html','.js':'text/javascript','.css':'text/css'}[extname(path)]??'application/octet-stream'});res.end(body);
-}catch{json(res,{},500);}}).listen(4174,'127.0.0.1',()=>console.log('Synthetic dashboard fixture: http://127.0.0.1:4174 (no live API access)'));
+}catch{json(res,{},500);}}).listen(Number(process.env.SQLOBSERVER_FIXTURE_PORT ?? 4174),'127.0.0.1',()=>console.log('Synthetic dashboard fixture ready (no live API access)'));

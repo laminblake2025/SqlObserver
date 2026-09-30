@@ -317,3 +317,20 @@ for this stage. The Server build succeeds with no warnings or errors. The
 native policy commit race is exercised with a real uncommitted transaction,
 not a simulated sequence of already committed rows. No broad Local suite or
 production collector activation is claimed.
+
+The Health checks Backups view now consumes these assessments using the global
+range's end as its cutoff, preserving microsecond rewind URLs and the workspace
+local/UTC display. Independent full/log verdicts show explicit limits; missing
+policy, inactive qualification and local-only AG coverage remain unknown.
+Disclosures retain policy/qualification provenance and raw clocks. Sample byte
+counts are decimal strings so browser reads preserve signed 64-bit values.
+
+Bounded client reads validate selected evidence and contiguous database pages,
+bind continuations to one assessment, cancel superseded requests and recover from
+stale cursors by restarting. Shared live refresh preserves open evidence and
+labels the previous assessment while an update is pending. Legacy v1 snapshots
+remain in a separate disclosure. Twelve new web cases, fourteen affected
+operational cases, two HTTP cases and the production frontend build pass;
+mounted synthetic checks exercise paging, stale recovery and live refresh.
+Policy/qualification administration UI, fleet/alert/MCP integration, native
+replica/TLS qualification and production activation remain open.

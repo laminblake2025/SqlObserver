@@ -40,7 +40,7 @@ public sealed class BackupAssessmentHttpTests(TargetHealthApiFactory factory) : 
         Assert.Contains("historical source-zone", database.GetProperty("full").GetProperty("action").GetString(), StringComparison.Ordinal);
         Assert.False(database.GetProperty("samples")[0].GetProperty("qualificationTrusted").GetBoolean());
         Assert.EndsWith("Z", database.GetProperty("samples")[0].GetProperty("recordedFinishUtc").GetString(), StringComparison.Ordinal);
-        Assert.Equal(long.MaxValue, database.GetProperty("samples")[0].GetProperty("sizeBytes").GetInt64());
+        Assert.Equal("9223372036854775807", database.GetProperty("samples")[0].GetProperty("sizeBytes").GetString());
         Assert.Equal(2, database.GetProperty("observedIssues").GetArrayLength()); Assert.False(two.GetProperty("hasMore").GetBoolean());
     }
 

@@ -453,6 +453,10 @@ sample's recorded UTC without its qualification and coverage context. Rewind
 before revocation uses the earlier command. Known damage and missing required
 checksums remain observed issues independently of the overall verdict.
 
+Sample `sizeBytes` is a canonical non-negative decimal string or null, bounded
+by signed 64-bit storage. JSON numbers are not used for this field because a
+JavaScript client would lose precision for large recorded sizes.
+
 Signed cursors include policy-history count and qualification-command revision.
 These detect late commits recorded before the first page's cutoff, including
 edits to a database on a later page. No policy or qualification update can
@@ -472,8 +476,46 @@ evidence, explicit action messages and stale-cursor errors. The initial native
 regression reached PostgreSQL and failed `42883` before the reporting function
 existed. No full Local suite or production/native-replica qualification is
 claimed. Eight native PostgreSQL cases, six application cases and two HTTP
-cases pass for this stage. Fleet/Health checks, alerts, MCP, UI and production
-activation remain pending.
+cases pass for this read stage. Fleet, alerts, MCP and production activation
+remain pending.
+
+## Health checks view
+
+The Backups category now reads this assessment with the global time context.
+The end of the range is its monitor cutoff; the start does not filter snapshot
+records. Custom URLs preserve all six fractional digits across pages. Live
+refresh uses the shared refresh signal, cancels superseded requests and retains
+the previous labeled assessment while updating the same page. An open evidence
+disclosure survives that refresh. Changing target or rewind context clears the
+previous assessment. Local/UTC display uses the workspace toggle; raw SQL Server
+local times keep their own label and recorded values.
+
+Full and log verdicts, explicit limits and observed issues appear separately.
+Absent policy, unresolved/revoked timestamps and preferred local-only AG evidence
+remain unknown. Evidence disclosures show policy revision, qualification trust,
+raw clocks, checksums, damage and exact byte counts. Earlier v1 observations are
+available in a separate disclosure. No v1 row is used to invent a v2 verdict.
+
+Client reads stream at most 1 MiB, validate closed contracts and selected
+evidence, and page 50 databases at a time. Continuations must preserve the
+receipt, target revision and exact cutoff, with contiguous inventory ordinals.
+Stale or unverifiable evidence clears the verdicts and offers a restart;
+temporary failures offer a retry without reflecting server error text.
+
+Twelve focused web checks cover cutoff precision, unknown states, unsafe sizes,
+false-green rejection, page binding, bounded fetch and the rendered production
+view. Fourteen affected operational checks and the two HTTP cases pass. The
+frontend typecheck, production build and asset verification pass. Mounted
+loopback synthetic checks cover rewind paging, stale-cursor recovery and open
+evidence during live refresh. These checks do not qualify real SQL Server/AG
+collection. Policy/qualification administration UI, fleet/alert/MCP integration,
+native replica/TLS qualification and production v2 activation remain open.
+
+```powershell
+cd web
+node --experimental-strip-types --test tests/backup-assessment.test.mjs tests/operations-contract.test.mjs
+pnpm run build
+```
 
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupEvidenceReadTests'

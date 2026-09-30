@@ -652,6 +652,17 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .availability-evidence-facts dt { color: var(--muted); font-size: .8rem; }
 .availability-evidence-facts dd { margin: 4px 0 0; }
 .availability-evidence-scroll { max-height: 28rem; overflow: auto; }
+.backup-assessment { min-width: 0; }
+.backup-assessment > .panel { padding: 19px; }
+.backup-assessment th, .backup-assessment td { vertical-align: top; }
+.backup-assessment th small { display: block; margin-top: 6px; font-weight: normal; color: var(--muted); }
+.backup-assessment td { min-width: 220px; max-width: 330px; white-space: normal; }
+.backup-check { display: grid; gap: 7px; }
+.backup-check strong { display: flex; align-items: center; gap: 7px; }
+.backup-check p { margin: 0; font-size: 12px; }
+.backup-assessment dl { margin: 12px 0; }
+.backup-assessment dt { font-weight: 600; margin-top: 8px; }
+.backup-assessment dd { margin-left: 0; overflow-wrap: anywhere; }
 .availability-evidence-table { width: max-content; min-width: 100%; table-layout: auto; }
 .availability-evidence-table td { vertical-align: top; white-space: nowrap; overflow-wrap: normal; }
 .availability-evidence-table th { position: sticky; top: 0; z-index: 1; white-space: nowrap; }

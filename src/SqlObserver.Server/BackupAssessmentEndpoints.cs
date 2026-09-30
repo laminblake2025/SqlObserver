@@ -94,7 +94,8 @@ public static class BackupAssessmentEndpoints
             samples = e.Samples.Select((s, i) => new
             {
                 s.Freshness.Kind, s.Freshness.CopyOnly, recordedFinishUtc = s.Freshness.FinishUtc,
-                s.Freshness.SourceLocalFinish, s.SourceLocalStart, s.RecordedStartOffsetMinutes, s.SizeBytes,
+                s.Freshness.SourceLocalFinish, s.SourceLocalStart, s.RecordedStartOffsetMinutes,
+                sizeBytes = s.SizeBytes?.ToString(CultureInfo.InvariantCulture),
                 s.Freshness.HasChecksum, s.Freshness.IsDamaged, s.Freshness.MetadataComplete,
                 s.FirstRecoveryForkFingerprint, s.LastRecoveryForkFingerprint,
                 timeState = s.TimeResolution.State, s.TimeResolution.QualificationRevision,
