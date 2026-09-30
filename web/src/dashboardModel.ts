@@ -1,4 +1,5 @@
 import type { OverviewScope } from './features/overview/overviewTypes';
+import { healthCheckTab, type HealthCheckTab } from './features/operations/agentHistoryModel.ts';
 
 export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', maintenance: 'Maintenance windows', destinations: 'Destinations', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
 export type Destination = keyof typeof destinations;
@@ -12,6 +13,7 @@ export interface DashboardRoute {
   readonly queryFingerprint?: string;
   readonly planFingerprint?: string;
   readonly querySource?: 'query_store' | 'plan_cache';
+  readonly healthCheck?: HealthCheckTab;
 }
 const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/;
 const guid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -19,6 +21,8 @@ export function readRoute(hash: string): DashboardRoute {
   const [path, query] = hash.replace(/^#\/?/, '').split('?');
   const page = Object.hasOwn(destinations, path ?? '') ? path as Destination : 'overview';
   const params = new URLSearchParams(query);
+  const check = healthCheckTab(params.get('check'));
+  if (page === 'operations' && check) return { page, target: params.get('target') ?? '', healthCheck: check };
   const databaseId = params.get('databaseId');
   if (page === 'health' && databaseId !== null && /^[1-9]\d{0,4}$/.test(databaseId) && Number(databaseId) <= 32767) {
     return { page, target: params.get('target') ?? '', databaseId: Number(databaseId) };

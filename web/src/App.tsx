@@ -18,6 +18,7 @@ import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
 import { TargetHealthPanel } from "./features/health/TargetHealthPanel";
 import { OverviewPage } from "./features/overview/OverviewPage";
 import { overviewHref, readOverviewScope } from "./features/overview/overviewModel";
+import { healthCheckHref } from "./features/operations/agentHistoryModel.ts";
 import { OperationsPanel } from "./features/operations/OperationsPanel";
 import { TargetQueryPerformancePanel } from "./features/queries/TargetQueryPerformancePanel";
 import { TargetResourcesPanel } from "./features/resources/TargetResourcesPanel";
@@ -183,6 +184,8 @@ export function App() {
       : selectedRoute.page === "queries" && selectedRoute.databaseId !== undefined && selectedRoute.queryFingerprint !== undefined
         ? queryJumpHref(selectedScope, selectedRoute.target, selectedRoute.databaseId,
             selectedRoute.queryFingerprint, selectedRoute.planFingerprint, selectedRoute.querySource)
+      : selectedRoute.page === "operations" && selectedRoute.healthCheck
+        ? healthCheckHref(selectedScope, selectedRoute.target, selectedRoute.healthCheck)
       : overviewHref(selectedScope, selectedRoute.page, selectedRoute.target);
   };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
@@ -195,7 +198,8 @@ export function App() {
   );
   const currentNavigation = route.page === "health" ? "servers" :
     route.page === "rules" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
-  const routeHref = (page: Destination, target = route.target) => overviewHref(scope, page, target);
+  const routeHref = (page: Destination, target = route.target) => page === "operations" && route.healthCheck
+    ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target);
   const closeTarget = () => {
     location.hash = route.page === "alerts" ? routeHref("alerts", "") :
       route.page === "rules" || route.page === "maintenance" || route.page === "destinations"
@@ -334,7 +338,7 @@ export function App() {
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>

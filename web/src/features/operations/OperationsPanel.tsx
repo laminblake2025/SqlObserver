@@ -10,8 +10,10 @@ import type { OperationalKind, OperationalPage } from "./operationsTypes";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { AvailabilityEvidencePanel } from "./AvailabilityEvidencePanel";
 import { BackupAssessmentPanel } from "./BackupAssessmentPanel";
+import { AgentFailureHistoryPanel } from "./AgentFailureHistoryPanel";
+import { healthCheckHref, type HealthCheckTab } from "./agentHistoryModel.ts";
 
-type OperationsTab = "backups" | "agent" | "tempdb" | "availability" | "replication";
+type OperationsTab = HealthCheckTab;
 
 // Existing projection labels remain visible within the grouped tabs: Backups, SQL Agent failures, TempDB summary, TempDB files, Availability Group replicas, and Availability Group databases.
 
@@ -30,9 +32,10 @@ const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly 
   availability: ["ag-replicas", "ag-databases"],
 };
 
-export function OperationsPanel({ instanceId, refresh, scope, canManageBackupPolicies = false }: { readonly instanceId: string; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean }) {
+export function OperationsPanel({ instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false }: { readonly instanceId: string; readonly targetRevision: number; readonly initialTab?: OperationsTab; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean }) {
   const [cards, dispatch] = useReducer(operationsReducer, undefined, initialOperationsState);
-  const [tab, setTab] = useState<OperationsTab>("backups");
+  const [tab, setTab] = useState<OperationsTab>(initialTab);
+  useEffect(() => { setTab(initialTab); }, [instanceId, initialTab]);
   const controllers = useRef(new Map<OperationalKind, AbortController>());
 
   useEffect(() => {
@@ -55,7 +58,7 @@ export function OperationsPanel({ instanceId, refresh, scope, canManageBackupPol
         }
       }
     };
-    operationKinds.forEach((kind) => { void load(kind); });
+    operationKinds.filter(kind => kind !== "agent").forEach((kind) => { void load(kind); });
     return () => {
       disposed = true;
       controllers.current.forEach((controller) => controller.abort());
@@ -93,9 +96,10 @@ export function OperationsPanel({ instanceId, refresh, scope, canManageBackupPol
   const activeKinds = tab === "replication" ? [] : tabKinds[tab];
   return <section className="operations-screen" aria-label="Health checks">
     <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB pressure, availability, and replication from collected evidence.</p></div></div>
-    <Tabs label="Health check categories" tabs={tabs} value={tab} onChange={(value) => setTab(value as OperationsTab)} />
-    {scope.range === "custom" && <p className="table-note">Rewind applies to backup assessments and per-replica AG evidence. Other operational cards show their latest source snapshots.</p>}
-    {tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
+    <Tabs label="Health check categories" tabs={tabs} value={tab} onChange={(value) => { setTab(value as OperationsTab); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
+    {scope.range === "custom" && <p className="table-note">Rewind applies to backup assessments, per-replica AG evidence and SQL Agent first-observed history. Other operational cards show their latest source snapshots.</p>}
+    {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
+      : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
       <details className="supporting-evidence"><summary>Earlier availability summary (latest v1 snapshot)</summary>
         <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>
       </details></> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />

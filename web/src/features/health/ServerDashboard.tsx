@@ -12,6 +12,9 @@ import type { DatabaseOptionChangeResult, ServerConfigurationChangeResult, Targe
 import { getDeadlocks } from "../deadlocks/deadlockApi";
 import type { DeadlockPage } from "../deadlocks/deadlockTypes";
 import { IncidentWorkspace } from "../incidents/IncidentWorkspace.tsx";
+import { useAgentHistory } from "../operations/useAgentHistory.ts";
+import { healthCheckHref } from "../operations/agentHistoryModel.ts";
+import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, canSaveIncident, targetRevision, selectionHash }: {
   readonly instanceId: string;
@@ -33,6 +36,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data) : [];
+  const agentHistory = useAgentHistory(instanceId, targetRevision, data && evidence ? data : undefined, refresh);
   const [optionEvents, setOptionEvents] = useState<DatabaseOptionChangeResult>();
   const [optionEventError, setOptionEventError] = useState(false);
   const [configurationEvents, setConfigurationEvents] = useState<ServerConfigurationChangeResult>();
@@ -134,7 +138,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     }
   }
   const markers = [
-    ...issues.filter(issue => issue.observedAtUtc).map(issue => ({ timeUtc: issue.observedAtUtc!, label: issue.title })),
+    ...(agentHistory.page?.markers ?? []),
+    ...issues.filter(issue => issue.observedAtUtc && issue.title !== "SQL Agent failures").map(issue => ({ timeUtc: issue.observedAtUtc!, label: issue.title })),
     ...(selectedDeadlocks
       ? selectedDeadlocks.items
         .map(item => ({ timeUtc: item.occurredAtUtc,
@@ -189,6 +194,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       {configurationEventError && <p role="status">Server configuration change markers are unavailable for this window.</p>}
       {configurationEvents?.coverage === "never_collected" && configurationCollectorState !== "disabled" && <p role="status">No server configuration change evidence has been published yet.</p>}
       {deadlockEventError && <p role="status">Deadlock event markers are unavailable for this window.</p>}
+      {agentHistory.loading && <p role="status">Loading SQL Agent first-observed markers…</p>}
+      {agentHistory.error && <p role="status">SQL Agent markers are unavailable: {agentHistory.error}</p>}
+      {agentHistory.page?.hasMore && <p role="status">SQL Agent markers use the first 50 history rows. Open SQL Agent history to browse further.</p>}
       {selectedDeadlocks?.nextCursor && <p role="status">The timeline shows the latest 25 deadlocks. Open Deadlocks to browse the rest.</p>}
       {groupedChanges.size > 20 && <p role="status">The timeline shows the latest 20 database option change groups. Use a shorter window to see more.</p>}
       {(groupedConfigurations.size > 20 || configurationEvents?.nextCursor) && <p role="status">The timeline shows the latest 20 server configuration change groups. Use a shorter window to see more.</p>}
@@ -200,9 +208,14 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <section className="panel server-dashboard-investigate" aria-labelledby="server-investigate-heading">
         <p className="eyebrow">Investigate first</p><h4 id="server-investigate-heading">What needs attention</h4>
         {issues.length ? <ol>{issues.map((issue, index) => <li key={`${issue.destination}:${issue.observedAtUtc ?? "current"}:${index}`}>
-          <a href={issueHref(selectedScope, instanceId, issue.destination, issue.observedAtUtc)}><strong>{issue.title}</strong><span>{issue.detail}</span><small>{issue.observedAtUtc ? timeLabel(issue.observedAtUtc) : "Observation time unavailable"} · Open evidence →</small></a>
+          <a href={issueHref(selectedScope, instanceId, issue.destination, issue.observedAtUtc, issue.title)}><strong>{issue.title}</strong><span>{issue.detail}</span><small>{issue.observedAtUtc ? timeLabel(issue.observedAtUtc) : "Observation time unavailable"} · Open evidence →</small></a>
         </li>)}</ol> : <p className="empty-state">No ranked exceptions in the available evidence. Check collection gaps before treating this as all clear.</p>}
       </section>
+      {agentHistory.page && <section className="panel" aria-label="SQL Agent first-observed evidence">
+        <h4>SQL Agent failures first observed in this window</h4>
+        <AgentFailureEvidence page={agentHistory.page} compact />
+        <a href={healthCheckHref({ ...selectedScope, range: "custom", from: data.fromUtc, to: data.toUtc }, instanceId, "agent")}>Open SQL Agent history for this window →</a>
+      </section>}
       <div className="server-dashboard-charts">
         {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}

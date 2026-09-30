@@ -18,6 +18,7 @@ export function issueHref(scope: OverviewScope, target: string, destination: str
   if (destination === 'operations' && (title === 'Backup faults observed' || title === 'Backup policy checks failed'))
     return backupAssessmentHref(scope, target, observedAtUtc);
   const href = overviewHref(scope, destination, target);
+  if (destination === 'operations' && title === 'SQL Agent failures') return `${href}&check=agent`;
   return destination === 'activity' && observedAtUtc ? `${href}&at=${encodeURIComponent(observedAtUtc)}` : href;
 }
 export function backupAssessmentHref(scope: OverviewScope, target: string, assessedAtUtc: string | null): string {
@@ -87,5 +88,5 @@ export function overviewResourceObservationText(resource: OverviewResource, refr
 }
 
 export function overviewEvidenceFooter(snapshot: Pick<OverviewSnapshot, 'fromUtc' | 'toUtc' | 'refreshedAtUtc'>, formatTime: (value: string) => string = value => value): string {
-  return `Current cards, waits, and operations use latest source snapshots. Host, storage, and replication metric rows show the latest observation inside the selected window (${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}); observation age is measured against refresh time ${formatTime(snapshot.refreshedAtUtc)}. Historical charts use ${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}. Independent collectors can have different coverage.`;
+  return `Current cards and waits use latest source snapshots. SQL Agent history uses first observation inside the selected window; other operational panels state their own coverage. Host, storage, and replication metric rows show the latest observation inside the selected window (${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}); observation age is measured against refresh time ${formatTime(snapshot.refreshedAtUtc)}. Historical charts use ${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}. Independent collectors can have different coverage.`;
 }
