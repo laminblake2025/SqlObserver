@@ -1,4 +1,5 @@
 using SqlObserver.Domain.Backups;
+using SqlObserver.Domain.Coordination;
 
 namespace SqlObserver.Application.Ports;
 
@@ -20,3 +21,10 @@ public sealed record BackupFleetCheckCounts(int WithinThreshold, int PolicyViola
 /// </summary>
 public sealed record BackupFleetSummary(BackupEvidenceHeader Context, DateTimeOffset ValidUntilUtc,
     BackupFleetStatus Status, BackupFleetCheckCounts Full, BackupFleetCheckCounts Log, int ObservedFaultDatabases);
+
+/// <summary>Reads and assesses one current target from committed evidence under the dedicated overview worker lease.</summary>
+public interface IBackupFleetSummaryPort
+{
+    ValueTask<BackupFleetSummary> ReadAsync(OverviewRefreshTarget target, WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}

@@ -19,6 +19,141 @@ public sealed class BackupEvidenceReadTests(PostgreSql18Fixture fixture)
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
     private const string Fingerprint = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
     private static readonly int[] Ordinals = [1, 2, 3];
+
+    [Fact]
+    public async Task CollectorSummaryUsesTheSamePolicyTrustAndLatestFailureSemantics()
+    {
+        await using RepositoryTestDatabase database = await PrepareAsync(); Guid target = await SeedAsync(database);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>((await leases.AcquireAsync(new(new("overview/latest-status"),
+            new(Guid.NewGuid()), new(TimeSpan.FromMinutes(2)), Timeout), CancellationToken.None)).Lease).Identity;
+        var port = new PostgreSqlBackupFleetSummaryPort(collector);
+        BackupFleetSummary missing = await port.ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None);
+        Assert.Equal(BackupEvidenceStatus.NotCollected, missing.Context.EvidenceStatus);
+        Assert.Equal(BackupFleetStatus.Indeterminate, missing.Status); Assert.Equal(0, missing.Full.Total);
+        await CollectAsync(database, target);
+        await SetPolicyAsync(server, target);
+        BackupFleetSummary assessed = await port.ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None);
+        Assert.Equal(BackupFleetStatus.Indeterminate, assessed.Status); Assert.Equal(3, assessed.Full.Total);
+        Assert.Equal(1, assessed.Full.WithinThreshold); Assert.Equal(2, assessed.Full.Indeterminate);
+        Assert.Equal(3, assessed.Log.Indeterminate);
+        Assert.Contains(assessed.Full.UnknownReasons, r => r.Reason == BackupFreshnessReason.DatabaseIdentityUnknown && r.Count == 1);
+        Assert.Equal(assessed.Context.AtUtc.AddMinutes(2), assessed.ValidUntilUtc);
+        Assert.True(assessed.Context.CollectorEnabled);
+        await using (var revoke = server.CreateCommand("""
+            SELECT * FROM control.set_backup_zone_qualification(@target,1,1,gen_random_uuid(),NULL,NULL,NULL,NULL,NULL,
+              'S-1-5-21-1-2-3-1001',gen_random_uuid());
+            """)) { revoke.Parameters.AddWithValue("target", target); await revoke.ExecuteNonQueryAsync(); }
+        BackupFleetSummary revoked = await port.ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None);
+        Assert.Equal(2, revoked.Context.QualificationCommandRevision);
+        Assert.Equal(0, revoked.Full.WithinThreshold);
+        Assert.Contains(revoked.Full.UnknownReasons, r => r.Reason == BackupFreshnessReason.TimestampQualificationUnavailable && r.Count == 1);
+        await using (var retire = database.DataSource.CreateCommand("TRUNCATE telemetry.backup_v2_sample;"))
+            await retire.ExecuteNonQueryAsync();
+        BackupFleetSummary incomplete = await port.ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None);
+        Assert.Equal(BackupEvidenceStatus.EvidenceNotRetained, incomplete.Context.EvidenceStatus);
+        Assert.Equal(3, incomplete.Context.DatabaseCount); Assert.Equal(3, incomplete.Context.RetainedItems);
+        Assert.Equal(0, incomplete.Full.Total); Assert.Equal(BackupFleetStatus.Indeterminate, incomplete.Status);
+        await CollectAsync(database, target, failed: true);
+        BackupFleetSummary failed = await port.ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None);
+        Assert.Equal(BackupEvidenceStatus.CollectionFailed, failed.Context.EvidenceStatus);
+        Assert.NotEqual(assessed.Context.RunId, failed.Context.RunId);
+        Assert.Equal(0, failed.Full.Total); Assert.Equal(BackupFleetStatus.Indeterminate, failed.Status);
+        await leases.ReleaseAsync(new(lease, Timeout), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task CollectorSummaryReadsAllSixPagesFor512Databases()
+    {
+        await using RepositoryTestDatabase database = await PrepareAsync(); Guid target = await SeedAsync(database);
+        await CollectAsync(database, target, databaseCount: 512);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        await SetPolicyAsync(server, target);
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>((await leases.AcquireAsync(new(new("overview/latest-status"),
+            new(Guid.NewGuid()), new(TimeSpan.FromMinutes(2)), Timeout), CancellationToken.None)).Lease).Identity;
+        var result = await new PostgreSqlBackupFleetSummaryPort(collector).ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None);
+        Assert.Equal(512, result.Context.DatabaseCount); Assert.Equal(1024, result.Context.RetainedItems);
+        Assert.Equal(512, result.Full.Total); Assert.Equal(512, result.Log.Total);
+        Assert.Equal(1, result.Full.WithinThreshold); Assert.Equal(511, result.Full.Indeterminate);
+        Assert.Contains(result.Full.UnknownReasons, r => r.Reason == BackupFreshnessReason.PolicyNotConfigured && r.Count == 511);
+        await leases.ReleaseAsync(new(lease, Timeout), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task LeasedWrappersRequireExactScopeCurrentRevisionAndUnexpiredFenceWithoutBroadeningDetailPrivileges()
+    {
+        await using RepositoryTestDatabase database = await PrepareAsync(); Guid target = await SeedAsync(database);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var leases = new PostgreSqlWorkerLeasePort(collector);
+        WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>((await leases.AcquireAsync(new(new("overview/latest-status"),
+            new(Guid.NewGuid()), new(TimeSpan.FromMinutes(2)), Timeout), CancellationToken.None)).Lease).Identity;
+        foreach (string scopeValue in new[] { "", "*", Guid.NewGuid().ToString("D") })
+            Assert.Equal("42501", (await Assert.ThrowsAsync<PostgresException>(() => ReadLeasedHeaderAsync(collector, target, 1, lease, scopeValue))).SqlState);
+        Assert.Equal("42501", (await Assert.ThrowsAsync<PostgresException>(() => ReadLeasedHeaderAsync(collector, target, 2, lease, target.ToString("D")))).SqlState);
+        await using (var privileges = database.DataSource.CreateCommand("""
+            SELECT p.proname,pg_get_userbyid(p.proowner),p.prosecdef,
+              has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE'),
+              has_function_privilege('sqlobserver_server',p.oid,'EXECUTE'),
+              has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE'),
+              EXISTS(SELECT 1 FROM aclexplode(p.proacl) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE')
+            FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='reporting'
+             AND p.proname IN ('read_overview_backup_header','read_overview_backup_databases','assert_overview_backup_read_target',
+              'get_backups_v2_header','list_backups_v2_databases') ORDER BY p.proname;
+            """))
+        {
+            await using NpgsqlDataReader row = await privileges.ExecuteReaderAsync(); int count = 0;
+            while (await row.ReadAsync())
+            {
+                count++; string name = row.GetString(0); bool wrapper = name.StartsWith("read_overview_", StringComparison.Ordinal);
+                Assert.Equal("sqlobserver_migrator", row.GetString(1)); Assert.True(row.GetBoolean(2));
+                Assert.Equal(wrapper, row.GetBoolean(3));
+                Assert.Equal(name is "get_backups_v2_header" or "list_backups_v2_databases", row.GetBoolean(4));
+                Assert.False(row.GetBoolean(5)); Assert.False(row.GetBoolean(6));
+            }
+            Assert.Equal(5, count);
+        }
+        await using (var oldCutoff = collector.CreateCommand("""
+            SELECT set_config('sqlobserver.target_scope',@scope,false);
+            SELECT * FROM reporting.read_overview_backup_databases(@target,1,clock_timestamp()-interval '1 day',gen_random_uuid(),@owner,@fencing,0);
+            """))
+        {
+            oldCutoff.Parameters.AddWithValue("scope", target.ToString("D")); oldCutoff.Parameters.AddWithValue("target", target);
+            oldCutoff.Parameters.AddWithValue("owner", lease.Owner.Value); oldCutoff.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
+            Assert.Equal("22023", (await Assert.ThrowsAsync<PostgresException>(async () => await oldCutoff.ExecuteNonQueryAsync())).SqlState);
+        }
+        // Disposable clock injection keeps the lease's acquired/renewed/expiry ordering valid.
+        await using (var expire = database.DataSource.CreateCommand("""
+            UPDATE control.worker_lease SET acquired_at=statement_timestamp()-interval '3 minutes',
+              renewed_at=statement_timestamp()-interval '2 minutes',expires_at=statement_timestamp()-interval '1 minute'
+            WHERE work_key='overview/latest-status';
+            """))
+            await expire.ExecuteNonQueryAsync();
+        var port = new PostgreSqlBackupFleetSummaryPort(collector);
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(async () => await port.ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None))).SqlState);
+        WorkerLeaseIdentity replacement = Assert.IsType<WorkerLease>((await leases.AcquireAsync(new(new("overview/latest-status"),
+            new(Guid.NewGuid()), new(TimeSpan.FromMinutes(2)), Timeout), CancellationToken.None)).Lease).Identity;
+        Assert.True(replacement.FencingToken.Value > lease.FencingToken.Value);
+        Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(async () => await port.ReadAsync(new(new(target), 1), lease, Timeout, CancellationToken.None))).SqlState);
+        Assert.Equal(BackupEvidenceStatus.NotCollected, (await port.ReadAsync(new(new(target), 1), replacement, Timeout, CancellationToken.None)).Context.EvidenceStatus);
+        await leases.ReleaseAsync(new(replacement, Timeout), CancellationToken.None);
+    }
+
+    private static async Task ReadLeasedHeaderAsync(NpgsqlDataSource source, Guid target, long revision, WorkerLeaseIdentity lease, string scopeValue)
+    {
+        await using NpgsqlConnection connection = await source.OpenConnectionAsync();
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT set_config('sqlobserver.target_scope',@scope,true);
+            SELECT * FROM reporting.read_overview_backup_header(@target,@revision,@owner,@fencing);
+            """, connection, transaction);
+        command.Parameters.AddWithValue("scope", scopeValue); command.Parameters.AddWithValue("target", target);
+        command.Parameters.AddWithValue("revision", revision); command.Parameters.AddWithValue("owner", lease.Owner.Value);
+        command.Parameters.AddWithValue("fencing", lease.FencingToken.Value); await command.ExecuteNonQueryAsync();
+    }
     [Fact]
     public async Task MissingCollectionIsExplicitAndReadsRequireAnExactTargetClaim()
     {
@@ -210,7 +345,7 @@ public sealed class BackupEvidenceReadTests(PostgreSql18Fixture fixture)
         seed.Parameters.AddWithValue("rules", TimeZoneInfo.Utc.ToSerializedString()); await seed.ExecuteNonQueryAsync(); return target;
     }
     private static async Task CollectAsync(RepositoryTestDatabase database, Guid target, bool failed = false, bool truncated = false,
-        bool outputInvalid = false, int sourceCase = 0)
+        bool outputInvalid = false, int sourceCase = 0, int databaseCount = 0)
     {
         await using (var due = database.DataSource.CreateCommand("UPDATE control.collector_schedule SET next_due_at=clock_timestamp() WHERE instance_id=@target AND collector_id='backups.status';"))
         { due.Parameters.AddWithValue("target", target); await due.ExecuteNonQueryAsync(); }
@@ -233,15 +368,20 @@ public sealed class BackupEvidenceReadTests(PostgreSql18Fixture fixture)
         BackupV2DatabaseRead[] databases = [new(context, [sample], identity, BackupFreshnessCoverage.Complete),
             new(context with { Database = new string('e', 64) }, [sample], identity, BackupFreshnessCoverage.Complete),
             new(context with { Database = null, IdentityKnown = false }, [], identity, BackupFreshnessCoverage.Partial)];
+        if (databaseCount > 0)
+            databases = Enumerable.Range(1, databaseCount).Select(i => new BackupV2DatabaseRead(context with
+                { Database = i == 1 ? Fingerprint : i.ToString("x64", System.Globalization.CultureInfo.InvariantCulture) },
+                [sample], identity, BackupFreshnessCoverage.Complete)).ToArray();
+        BackupFreshnessCoverage coverage = databaseCount > 0 ? BackupFreshnessCoverage.Complete : BackupFreshnessCoverage.Partial;
         var snapshot = new BackupV2ReadSnapshot(identity, now, observed, "UTC", context.HistoryLowerBoundLocal,
-            truncated ? [] : databases, truncated ? 3073 : 5, truncated ? BackupFreshnessCoverage.Truncated : BackupFreshnessCoverage.Partial);
+            truncated ? [] : databases, truncated ? 3073 : databases.Sum(d => 1 + d.Samples.Count), truncated ? BackupFreshnessCoverage.Truncated : coverage);
         CollectorPayload payload = failed ? CollectorPayload.Empty : new(operationalHealth: new(snapshot, snapshot.ItemCount, snapshot.EstimatedSizeBytes));
         var loss = outputInvalid ? new(CollectorLossKind.OutputValidationFailure, 3, false, 8192) : failed ? CollectorLossEvidence.None :
-            truncated ? new(CollectorLossKind.SourceRowLimit, 3073, false) : new CollectorLossEvidence(CollectorLossKind.VisibilityIncomplete, 1, false);
+            truncated ? new(CollectorLossKind.SourceRowLimit, 3073, false) : databaseCount > 0 ? CollectorLossEvidence.None : new CollectorLossEvidence(CollectorLossKind.VisibilityIncomplete, 1, false);
         var summary = new CollectorRunSummary(run, work.TargetId, work.TargetRevision, work.CollectorId, 2, 2,
-            outputInvalid ? CollectorRunOutcome.OutputInvalid : failed ? CollectorRunOutcome.PermissionDenied : CollectorRunOutcome.Partial,
+            outputInvalid ? CollectorRunOutcome.OutputInvalid : failed ? CollectorRunOutcome.PermissionDenied : databaseCount > 0 ? CollectorRunOutcome.Succeeded : CollectorRunOutcome.Partial,
             outputInvalid ? CollectorRunReason.OutputValidationFailed : failed ? CollectorRunReason.RequiredPermissionMissing :
-                truncated ? CollectorRunReason.SourceRowLimit : CollectorRunReason.VisibilityIncomplete,
+                truncated ? CollectorRunReason.SourceRowLimit : databaseCount > 0 ? CollectorRunReason.Completed : CollectorRunReason.VisibilityIncomplete,
             TimeSpan.FromMilliseconds(5), 1, outputInvalid ? new(3, 3, 8192, 8192) :
                 new(failed ? 0 : snapshot.SourceRowsRead, payload.ItemCount, payload.EstimatedSizeBytes, payload.EstimatedSizeBytes), loss);
         await runtime.CommitRunAsync(new(work, summary, payload, CollectorCircuitSnapshot.Closed(now), lease, Timeout), CancellationToken.None);

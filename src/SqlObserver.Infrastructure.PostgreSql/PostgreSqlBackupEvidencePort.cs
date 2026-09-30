@@ -5,6 +5,7 @@ using NpgsqlTypes;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Backups;
 using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
@@ -31,10 +32,7 @@ public sealed class PostgreSqlBackupEvidencePort(NpgsqlDataSource dataSource) : 
                 command.Parameters.Add("revision", NpgsqlDbType.Bigint).Value = (object?)request.TargetRevision ?? DBNull.Value;
                 await using NpgsqlDataReader row = await command.ExecuteReaderAsync(timeout.Token).ConfigureAwait(false);
                 if (!await row.ReadAsync(timeout.Token).ConfigureAwait(false)) throw Invalid();
-                header = new(request.TargetId, request.AtUtc, row.GetInt64(1), Nullable<Guid>(row, 0), Utc(row, 2), Utc(row, 3),
-                    Utc(row, 4), Text(row, 5), Nullable<DateTime>(row, 6), (BackupFreshnessCoverage)row.GetInt16(7),
-                    Status(row.GetString(8)), row.GetInt32(9), row.GetInt32(10), row.GetInt64(11), row.GetInt32(12), row.GetBoolean(13),
-                    row.GetInt64(14), row.GetInt64(15));
+                header = ReadHeader(row, request.TargetId, request.AtUtc);
                 if (await row.ReadAsync(timeout.Token).ConfigureAwait(false)) throw Invalid();
             }
             if (request.Cursor is { } cursor && (header.RunId != cursor.RunId || header.TargetRevision != cursor.TargetRevision ||
@@ -77,7 +75,14 @@ public sealed class PostgreSqlBackupEvidencePort(NpgsqlDataSource dataSource) : 
         command.CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout);
         command.Parameters.AddWithValue("target", request.TargetId.Value); command.Parameters.AddWithValue("at", request.AtUtc);
     }
-    private static BackupDatabaseEvidence ReadDatabase(NpgsqlDataReader row, BackupEvidenceHeader header)
+    internal static BackupEvidenceHeader ReadHeader(NpgsqlDataReader row, MonitoredInstanceId target,
+        DateTimeOffset atUtc, int offset = 0) =>
+        new(target, atUtc, row.GetInt64(offset + 1), Nullable<Guid>(row, offset), Utc(row, offset + 2), Utc(row, offset + 3),
+            Utc(row, offset + 4), Text(row, offset + 5), Nullable<DateTime>(row, offset + 6), (BackupFreshnessCoverage)row.GetInt16(offset + 7),
+            Status(row.GetString(offset + 8)), row.GetInt32(offset + 9), row.GetInt32(offset + 10), row.GetInt64(offset + 11),
+            row.GetInt32(offset + 12), row.GetBoolean(offset + 13), row.GetInt64(offset + 14), row.GetInt64(offset + 15));
+
+    internal static BackupDatabaseEvidence ReadDatabase(NpgsqlDataReader row, BackupEvidenceHeader header)
     {
         if (!header.SourceObservedAtUtc.HasValue || !header.HistoryLowerBoundLocal.HasValue) throw Invalid();
         var identity = new BackupV2RunIdentity(header.TargetId, new(header.TargetRevision), new(header.RunId!.Value));

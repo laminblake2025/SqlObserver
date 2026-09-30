@@ -113,6 +113,22 @@ public sealed class BackupFleetSummaryTests
     }
 
     [Fact]
+    public void AReceiptWithPartiallyRetiredEvidenceRemainsExplicitlyUnavailable()
+    {
+        BackupEvidenceHeader header = Pages(Database(1))[0].Header with
+        {
+            EvidenceStatus = BackupEvidenceStatus.EvidenceNotRetained,
+            Coverage = BackupFreshnessCoverage.Failed, RetainedItems = 1,
+        };
+        var result = BackupFleetSummaryBuilder.Build([new(header, [], null)]);
+        Assert.Equal(BackupFleetStatus.Indeterminate, result.Status);
+        Assert.Equal(1, result.Context.DatabaseCount);
+        Assert.Equal(1, result.Context.RetainedItems);
+        Assert.Equal(0, result.Full.Total);
+        Assert.Equal(0, result.Log.Total);
+    }
+
+    [Fact]
     public void ExpiryTracksInclusiveBackupAndObservationThresholdsAtMicrosecondPrecision()
     {
         var ageBoundary = BackupFleetSummaryBuilder.Build(Pages(Database(1, finish: At.AddDays(-1))));

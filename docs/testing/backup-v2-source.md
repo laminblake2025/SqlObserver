@@ -581,8 +581,8 @@ Threshold equality remains valid until the next PostgreSQL microsecond. A future
 source timestamp expires its unknown verdict when that timestamp is reached.
 Time arithmetic saturates at the last representable UTC microsecond.
 
-This stage does not publish or expose the summary in the fleet grid. Collector-only
-leased evidence reads, fenced atomic publication, reader invalidation on receipt,
+This foundation does not publish or expose the summary in the fleet grid. The
+collector-only leased reads are described below. Fenced atomic publication, reader invalidation on receipt,
 target/policy/qualification changes or expiry, and fleet UI mapping remain required.
 Fleet requests must not walk database pages. The existing legacy backup record
 count is not an RPO verdict. Production v2 activation and alert/MCP integration
@@ -595,6 +595,52 @@ code changed, so native repository and browser tests were not repeated.
 ```powershell
 dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupFleetSummaryTests|FullyQualifiedName~BackupAssessmentQueryTests|FullyQualifiedName~BackupFreshnessTests'
 dotnet test tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj --no-restore --filter 'FullyQualifiedName~BackupAssessmentHttpTests'
+```
+
+## Leased collector reads for fleet backup materialization
+
+Migration 0278 adds collector-only header/page wrappers around the existing
+Server detail readers. The original detail functions remain unavailable to the
+Collector, Auditor and PUBLIC. The wrappers require an exact target-scope claim,
+the active current target revision and the dedicated `overview/latest-status`
+worker fence. They use a private assertion helper owned by the migrator; the
+helper itself has no runtime-role execution grant. Catalog checks verify owners,
+security-definer boundaries and execution grants, including the absence of PUBLIC
+EXECUTE.
+
+`PostgreSqlBackupFleetSummaryPort` captures one repository UTC cutoff and walks
+the complete graph in one repeatable-read transaction. Page reads have a fixed
+100-database limit plus one look-ahead row, a six-page bound, and reject arbitrary
+historical/future cutoffs. The overall operation caps the caller's deadline at
+five seconds; the SQL page cutoff must be within ten seconds of repository time.
+Every wrapper asserts the locked lease before and after reading, and the port
+reasserts expiry before commit. Lease failures and inconsistent graphs propagate
+without publishing a summary. The existing Server reader and new Collector port
+share the same typed header/database decoder.
+
+Unavailable receipts can retain declared database counts after part of their
+graph is retired. The builder preserves that receipt context with indeterminate
+status and no per-database verdicts; only retained graphs must supply every
+declared database. A new unit case and native sample-retirement case cover this.
+
+Thirty focused summary cases and eleven native backup-evidence cases pass across
+targeted runs. Native coverage includes policy/qualification history, latest
+failure with no fallback, unavailable partial graphs, 512 databases over six
+pages, exact claims/revisions, expired and replaced fences, and catalog privileges.
+The disposable PostgreSQL fixture required local Docker pipe access outside the
+sandbox. An expiry-injection setup was corrected to preserve the lease table's
+timestamp-order constraint. Existing successful cases were not repeated after
+that fixture-only repair.
+
+This port is not yet registered in the production worker. Atomic fenced summary
+publication, latest-context/expiry invalidation on fleet reads and grid mapping
+are the next integration steps. The evidence wrappers do not activate the v2 SQL
+Server collector or change the production registry, and fleet HTTP requests do
+not call them.
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupEvidenceReadTests'
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupFleetSummaryTests'
 ```
 
 ## Historical time qualification in Health checks

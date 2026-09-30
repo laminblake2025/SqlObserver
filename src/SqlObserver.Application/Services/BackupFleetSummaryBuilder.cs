@@ -27,7 +27,7 @@ public static class BackupFleetSummaryBuilder
             databases.AddRange(page.Items);
             cursor = page.NextCursor;
         }
-        if (cursor is not null || databases.Count != header.DatabaseCount) throw Invalid();
+        if (cursor is not null || header.EvidenceStatus == BackupEvidenceStatus.Retained && databases.Count != header.DatabaseCount) throw Invalid();
         if (header.EvidenceStatus == BackupEvidenceStatus.Retained)
         {
             // Reuse the canonical graph accounting and provenance checks, including cross-page identities
