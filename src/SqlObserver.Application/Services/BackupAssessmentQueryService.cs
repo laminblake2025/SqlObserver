@@ -30,34 +30,11 @@ public sealed class BackupAssessmentQueryService(IBackupEvidencePort repository)
     internal static void Validate(BackupEvidencePage page, BackupEvidenceRequest request)
     {
         BackupEvidenceHeader h = page.Header;
-        if (h is null || page.Items is null || h.TargetId != request.TargetId || h.AtUtc != request.AtUtc || h.TargetRevision <= 0 ||
-            request.TargetRevision.HasValue && h.TargetRevision != request.TargetRevision || h.RunId == Guid.Empty ||
-            !Enum.IsDefined(h.Coverage) || !Enum.IsDefined(h.EvidenceStatus) || !Utc(h.SourceObservedAtUtc) ||
-            !Utc(h.CompletedAtUtc) || !Utc(h.ReceivedAtUtc) || h.CompletedAtUtc > request.AtUtc || h.ReceivedAtUtc > request.AtUtc ||
-            (h.RunId is null) != (h.CompletedAtUtc is null) || h.SourceRows is < 0 or > 3073 || h.OutputItems is < 0 or > 3072 ||
-            h.OutputItems > h.SourceRows || h.RetainedItems < 0 || h.RetainedItems > h.OutputItems || h.DatabaseCount is < 0 or > 512 ||
-            h.DatabaseCount > h.OutputItems || page.Items.Count > request.Limit || h.PolicyHistoryCount < 0 || h.QualificationCommandRevision < 0)
-            throw Invalid();
+        ValidateHeader(h, request);
+        if (page.Items is null || page.Items.Count > request.Limit) throw Invalid();
         if (request.Cursor is { } cursor && (h.RunId != cursor.RunId || h.TargetRevision != cursor.TargetRevision ||
             h.EvidenceStatus != BackupEvidenceStatus.Retained || h.PolicyHistoryCount != cursor.PolicyHistoryCount ||
             h.QualificationCommandRevision != cursor.QualificationCommandRevision)) throw new BackupEvidenceCursorStaleException();
-        bool valid = h.EvidenceStatus switch
-        {
-            BackupEvidenceStatus.NotCollected => h.RunId is null && h.Coverage == BackupFreshnessCoverage.NotCollected && h.OutputItems == 0 && h.SourceRows == 0 &&
-                h.ReceivedAtUtc is null && h.SourceObservedAtUtc is null && h.DatabaseCount == 0 && h.RetainedItems == 0,
-            BackupEvidenceStatus.CollectionFailed => h.RunId is not null && h.Coverage is BackupFreshnessCoverage.Failed or BackupFreshnessCoverage.PermissionDenied or BackupFreshnessCoverage.Unsupported &&
-                h.DatabaseCount == 0 && h.RetainedItems == 0 && h.SourceObservedAtUtc is null,
-            BackupEvidenceStatus.EvidenceNotRetained => h.RunId is not null && h.Coverage == BackupFreshnessCoverage.Failed,
-            BackupEvidenceStatus.WithheldByLimit => h.RunId is not null && h.Coverage == BackupFreshnessCoverage.Truncated && h.OutputItems == 0 && h.SourceRows > 0 &&
-                h.DatabaseCount == 0 && h.RetainedItems == 0,
-            BackupEvidenceStatus.NoData => h.RunId is not null && h.Coverage == BackupFreshnessCoverage.Partial && h.OutputItems == 0 && h.SourceRows == 0 &&
-                h.SourceObservedAtUtc is null && h.DatabaseCount == 0 && h.RetainedItems == 0,
-            BackupEvidenceStatus.Retained => h.RunId is not null && h.Coverage is BackupFreshnessCoverage.Complete or BackupFreshnessCoverage.Partial &&
-                h.ReceivedAtUtc.HasValue && h.SourceObservedAtUtc.HasValue && h.HistoryLowerBoundLocal.HasValue &&
-                h.RetainedItems == h.OutputItems && h.OutputItems == h.SourceRows && h.DatabaseCount > 0,
-            _ => false,
-        };
-        if (!valid) throw Invalid();
         if (h.EvidenceStatus != BackupEvidenceStatus.Retained)
         {
             if (page.Items.Count != 0 || page.NextCursor is not null) throw Invalid();
@@ -81,6 +58,37 @@ public sealed class BackupAssessmentQueryService(IBackupEvidencePort repository)
         if ((after < h.DatabaseCount) != (page.NextCursor is not null)) throw Invalid();
         if (page.NextCursor is { } next && (next != new BackupEvidenceCursor(h.TargetId, h.AtUtc, h.TargetRevision, h.RunId!.Value, after,
             h.PolicyHistoryCount, h.QualificationCommandRevision))) throw Invalid();
+    }
+
+    internal static void ValidateHeader(BackupEvidenceHeader h, BackupEvidenceRequest request)
+    {
+        if (h is null || h.TargetId != request.TargetId || h.AtUtc != request.AtUtc || h.TargetRevision <= 0 ||
+            request.TargetRevision.HasValue && h.TargetRevision != request.TargetRevision || h.RunId == Guid.Empty ||
+            !Enum.IsDefined(h.Coverage) || !Enum.IsDefined(h.EvidenceStatus) || !Utc(h.SourceObservedAtUtc) ||
+            !Utc(h.CompletedAtUtc) || !Utc(h.ReceivedAtUtc) || h.CompletedAtUtc > request.AtUtc || h.ReceivedAtUtc > request.AtUtc ||
+            (h.RunId is null) != (h.CompletedAtUtc is null) || h.SourceRows is < 0 or > 3073 || h.OutputItems is < 0 or > 3072 ||
+            h.OutputItems > h.SourceRows || h.RetainedItems < 0 || h.RetainedItems > h.OutputItems || h.DatabaseCount is < 0 or > 512 ||
+            h.DatabaseCount > h.OutputItems || h.PolicyHistoryCount < 0 || h.QualificationCommandRevision < 0 ||
+            h.SourceZoneId is not null && (h.SourceZoneId.Length is < 1 or > 128 || h.SourceZoneId.Any(char.IsControl)) ||
+            h.HistoryLowerBoundLocal is { } lower && (lower.Kind != DateTimeKind.Unspecified || lower.Year < 1753 || lower.Ticks % TimeSpan.TicksPerMicrosecond != 0))
+            throw Invalid();
+        bool valid = h.EvidenceStatus switch
+        {
+            BackupEvidenceStatus.NotCollected => h.RunId is null && h.Coverage == BackupFreshnessCoverage.NotCollected && h.OutputItems == 0 && h.SourceRows == 0 &&
+                h.ReceivedAtUtc is null && h.SourceObservedAtUtc is null && h.DatabaseCount == 0 && h.RetainedItems == 0,
+            BackupEvidenceStatus.CollectionFailed => h.RunId is not null && h.Coverage is BackupFreshnessCoverage.Failed or BackupFreshnessCoverage.PermissionDenied or BackupFreshnessCoverage.Unsupported &&
+                h.DatabaseCount == 0 && h.RetainedItems == 0 && h.SourceObservedAtUtc is null,
+            BackupEvidenceStatus.EvidenceNotRetained => h.RunId is not null && h.Coverage == BackupFreshnessCoverage.Failed,
+            BackupEvidenceStatus.WithheldByLimit => h.RunId is not null && h.Coverage == BackupFreshnessCoverage.Truncated && h.OutputItems == 0 && h.SourceRows > 0 &&
+                h.DatabaseCount == 0 && h.RetainedItems == 0,
+            BackupEvidenceStatus.NoData => h.RunId is not null && h.Coverage == BackupFreshnessCoverage.Partial && h.OutputItems == 0 && h.SourceRows == 0 &&
+                h.SourceObservedAtUtc is null && h.DatabaseCount == 0 && h.RetainedItems == 0,
+            BackupEvidenceStatus.Retained => h.RunId is not null && h.Coverage is BackupFreshnessCoverage.Complete or BackupFreshnessCoverage.Partial &&
+                h.ReceivedAtUtc.HasValue && h.SourceObservedAtUtc.HasValue && h.HistoryLowerBoundLocal.HasValue &&
+                h.RetainedItems == h.OutputItems && h.OutputItems == h.SourceRows && h.DatabaseCount > 0,
+            _ => false,
+        };
+        if (!valid) throw Invalid();
     }
 
     private static bool Utc(DateTimeOffset? value) => value is null || value.Value.Offset == TimeSpan.Zero && value.Value.Ticks % TimeSpan.TicksPerMicrosecond == 0;

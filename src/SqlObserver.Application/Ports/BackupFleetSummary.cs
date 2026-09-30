@@ -1,5 +1,6 @@
 using SqlObserver.Domain.Backups;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Application.Ports;
 
@@ -26,5 +27,18 @@ public sealed record BackupFleetSummary(BackupEvidenceHeader Context, DateTimeOf
 public interface IBackupFleetSummaryPort
 {
     ValueTask<BackupFleetSummary> ReadAsync(OverviewRefreshTarget target, WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+public interface IBackupFleetCachePort
+{
+    ValueTask<bool> PublishAsync(BackupFleetSummary summary, WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+/// <summary>Reads only a currently valid target-bound aggregate; never walks database evidence pages.</summary>
+public interface IBackupFleetLatestRepositoryPort
+{
+    ValueTask<BackupFleetSummary?> ReadAsync(MonitoredInstanceId targetId, long targetRevision, DateTimeOffset cutoffUtc,
         RepositoryCallTimeout timeout, CancellationToken cancellationToken);
 }

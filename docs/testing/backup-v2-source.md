@@ -632,15 +632,80 @@ sandbox. An expiry-injection setup was corrected to preserve the lease table's
 timestamp-order constraint. Existing successful cases were not repeated after
 that fixture-only repair.
 
-This port is not yet registered in the production worker. Atomic fenced summary
-publication, latest-context/expiry invalidation on fleet reads and grid mapping
-are the next integration steps. The evidence wrappers do not activate the v2 SQL
+The initial leased-read stage did not register this port in the production worker.
+The following cache stage adds that registration and publication; API/grid mapping
+remains open. The evidence wrappers do not activate the v2 SQL
 Server collector or change the production registry, and fleet HTTP requests do
 not call them.
 
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupEvidenceReadTests'
 dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupFleetSummaryTests'
+```
+
+## Fenced backup cache and production materialization
+
+Migration 0279 adds a private, forced-RLS `reporting.overview_backup_latest` table,
+with one revision-bound aggregate per target. The Collector has only a fenced
+publication function; the Server has only an exact-scope read function. Helpers
+have no runtime-role execution grants. A policy-context index supports version
+checks. Catalog tests verify owners, security-definer functions, RLS, table
+privileges and the absence of PUBLIC/Auditor execution access.
+
+Publication validates the closed, bounded envelope, full/log counts and unknown
+reason accounting, and the overall state. It re-reads the original fixed-cutoff
+header and rejects changed context. Target and backup schedule row locks serialize
+that verification with administrative commands and canonical collection commits.
+The dedicated overview lease is asserted before and after the atomic cache write.
+Target/revision/assessment ordering prevents older or repeated snapshots replacing
+newer ones. Expired or superseded snapshots produce no new cache row.
+
+Reads check the half-open validity deadline and current target revision, v2
+schedule enablement, latest receipt and retained scan receipt, policy-history count
+and qualification command. A policy or qualification commit invalidates the cached
+verdict immediately, including a late commit whose recorded time precedes the
+assessment. Failed/new receipts and canonical graph retirement invalidate prior
+results without falling back to earlier success. These checks use indexed receipt
+and administration metadata, never backup database or sample pages. They rely on
+the canonical graph's existing immutability and atomic grouped-retention contract.
+The fleet-time reader cannot detect privileged manual alteration of individual
+database/sample rows while preserving a scan receipt; runtime roles cannot make
+those changes. The materializer validates the complete retained graph before
+publication, which rechecks its fixed-cutoff header and current context.
+
+The cache codec enforces required keys, closed shapes, duplicate-key rejection,
+bounded JSON, UTC/microsecond context, exact target/revision and count/reason
+invariants. Decoded reason collections are owned/read-only. Shared header
+validation now also rejects invalid source zone IDs and offset-bearing historical
+local bounds. Aggregate checks describe observations under explicit policies;
+they do not certify restore chains or business recovery points.
+
+The production `OverviewLatestStatusWorker` now materializes this backup cache
+under its existing dedicated lease, independently of core source failures. A
+backup failure cannot stop later targets; a lost renewal stops remaining work.
+Core and backup projections publish as independent source transactions, each
+with its own evidence context. The existing due cycle schedules later retries;
+an invalid cache is unavailable until a valid replacement is published.
+
+Fifty-two focused unit cases, twenty-two native backup-evidence/cache cases and
+both backup assessment HTTP cases pass across targeted runs. Native coverage
+includes full/log healthy round trips, context invalidation, late administration,
+expiry, lost fences, malformed payloads, private privileges and all six evidence
+pages. Renaming intact database/sample parents proves the cache read does not
+reference them. A real overview worker with the repository ports publishes both
+core and backup rows. Schema/native checks use disposable local PostgreSQL 18.4;
+the SSH test VM remains available for later real SQL Server/deployment checks.
+
+The Server control plane exposes the cache reader for the next integration stage;
+the Overview API and fleet grid do not consume it yet. V2 SQL Server collection
+remains gated and its production registry is unchanged. Fleet UI mapping,
+alert/MCP integration, real historical/replica qualification and production
+activation remain open.
+
+```powershell
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupFleetSummaryTests|FullyQualifiedName~BackupAssessmentQueryTests|FullyQualifiedName~OverviewBackupWorkerTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupEvidenceReadTests'
+dotnet test tests/SqlObserver.ApiContractTests/SqlObserver.ApiContractTests.csproj --no-restore --filter 'FullyQualifiedName~BackupAssessmentHttpTests'
 ```
 
 ## Historical time qualification in Health checks

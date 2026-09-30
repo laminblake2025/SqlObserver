@@ -211,6 +211,37 @@ public sealed class BackupFleetSummaryTests
         Assert.Throws<NotSupportedException>(() => reasons[0] = new(BackupFreshnessReason.RecentBackup, 99));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void PersistedAggregateContractRejectsInvalidCountsReasonsContextAndExpiry(int defect)
+    {
+        BackupFleetSummary source = BackupFleetSummaryBuilder.Build(Pages(Database(1, configured: false)));
+        BackupFleetSummaryContract.Validate(source);
+        BackupFleetSummary invalid = defect switch
+        {
+            0 => source with { Full = source.Full with { WithinThreshold = -1 } },
+            1 => source with { Full = source.Full with { UnknownReasons = [] } },
+            2 => source with { Status = BackupFleetStatus.WithinPolicy },
+            3 => source with { ValidUntilUtc = At.AddMinutes(2).AddTicks(TimeSpan.TicksPerMicrosecond) },
+            4 => source with { Context = source.Context with { TargetRevision = 0 } },
+            5 => source with { ObservedFaultDatabases = 2 },
+            6 => source with { Full = source.Full with { UnknownReasons = [new(BackupFreshnessReason.PolicyNotConfigured, 1), new(BackupFreshnessReason.PolicyNotConfigured, 1)] } },
+            7 => source with { Full = source.Full with { UnknownReasons = [new(BackupFreshnessReason.RecentBackup, 1)] } },
+            8 => source with { Context = source.Context with { SourceZoneId = "invalid\nzone" } },
+            _ => source with { Context = source.Context with { HistoryLowerBoundLocal = DateTime.SpecifyKind(At.DateTime, DateTimeKind.Utc) } },
+        };
+        Assert.Throws<InvalidDataException>(() => BackupFleetSummaryContract.Validate(invalid));
+    }
+
     private static BackupDatabaseEvidence Database(int ordinal, bool configured = true, bool trusted = true,
         bool damaged = false, bool enabled = true, BackupRecoveryModel recovery = BackupRecoveryModel.Simple,
         DateTimeOffset? finish = null, DateTimeOffset? observed = null, TimeSpan? logAge = null, bool localReplica = false)

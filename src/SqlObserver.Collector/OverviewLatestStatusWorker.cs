@@ -9,6 +9,8 @@ namespace SqlObserver.Collector;
 /// <summary>Publishes bounded current Overview evidence from committed repository data.</summary>
 public sealed class OverviewLatestStatusWorker(
     IOverviewLatestMaterializationPort materializer,
+    IBackupFleetSummaryPort backupSummaries,
+    IBackupFleetCachePort backupCache,
     IWorkerLeasePort leases,
     WorkerExecutionId executionId,
     ILogger<OverviewLatestStatusWorker> logger) : BackgroundService
@@ -46,6 +48,17 @@ public sealed class OverviewLatestStatusWorker(
                             {
                                 logger.LogWarning(exception,
                                     "Overview latest-status refresh failed for target {TargetId}; remaining targets continue.",
+                                    target.TargetId.Value);
+                            }
+                            try
+                            {
+                                BackupFleetSummary summary = await backupSummaries.ReadAsync(target, lease, Timeout, stoppingToken).ConfigureAwait(false);
+                                await backupCache.PublishAsync(summary, lease, Timeout, stoppingToken).ConfigureAwait(false);
+                            }
+                            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                            {
+                                logger.LogWarning(exception,
+                                    "Overview backup summary refresh failed for target {TargetId}; remaining sources and targets continue.",
                                     target.TargetId.Value);
                             }
                             LeaseRenewalResult renewed = await leases.RenewAsync(

@@ -33,6 +33,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
         BackupFreshnessPolicies = new PostgreSqlBackupFreshnessPolicyPort(dataSource);
         BackupEvidence = new PostgreSqlBackupEvidencePort(dataSource);
+        BackupFleetLatest = new PostgreSqlBackupFleetCachePort(dataSource);
         SqlVolumeReads = new PostgreSqlSqlVolumeReadPort(dataSource);
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
@@ -87,6 +88,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IBackupZoneQualificationAdministrationPort BackupZoneQualifications { get; }
     public IBackupFreshnessPolicyPort BackupFreshnessPolicies { get; }
     public IBackupEvidencePort BackupEvidence { get; }
+    public IBackupFleetLatestRepositoryPort BackupFleetLatest { get; }
     public ISqlVolumeReadRepositoryPort SqlVolumeReads { get; }
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }

@@ -27,6 +27,8 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         SensitivePayloads = new PostgreSqlSensitivePayloadPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         OverviewLatestMaterialization = new PostgreSqlOverviewLatestMaterializationPort(dataSource);
+        BackupFleetSummary = new PostgreSqlBackupFleetSummaryPort(dataSource);
+        BackupFleetCache = new PostgreSqlBackupFleetCachePort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
@@ -48,6 +50,8 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     public ILiveActivityRepository LiveActivity { get; }
     public IWorkerLeasePort WorkerLeases { get; }
     public IOverviewLatestMaterializationPort OverviewLatestMaterialization { get; }
+    public IBackupFleetSummaryPort BackupFleetSummary { get; }
+    public IBackupFleetCachePort BackupFleetCache { get; }
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
     public IReplicationDistributionBindingResolver ReplicationDistributionBindings { get; }
     public IAlertRepositoryPort Alerts { get; }

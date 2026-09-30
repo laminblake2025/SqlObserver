@@ -74,6 +74,10 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().WorkerLeases);
         services.AddSingleton<IOverviewLatestMaterializationPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().OverviewLatestMaterialization);
+        services.AddSingleton<IBackupFleetSummaryPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupFleetSummary);
+        services.AddSingleton<IBackupFleetCachePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupFleetCache);
         services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().PartitionMaintenance);
         services.AddSingleton<ICapabilityProfileRepositoryPort>(static provider =>

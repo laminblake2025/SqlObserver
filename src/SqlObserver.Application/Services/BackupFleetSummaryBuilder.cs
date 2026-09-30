@@ -56,13 +56,7 @@ public static class BackupFleetSummaryBuilder
             ExpireCheck(assessment.Full); ExpireCheck(assessment.Log);
         }
         BackupFleetCheckCounts fullCounts = full.Freeze(), logCounts = log.Freeze();
-        BackupFleetStatus status = header.EvidenceStatus != BackupEvidenceStatus.Retained ? BackupFleetStatus.Indeterminate
-            : fullCounts.PolicyViolated + logCounts.PolicyViolated > 0 ? BackupFleetStatus.PolicyViolated
-            : !header.CollectorEnabled || header.Coverage != BackupFreshnessCoverage.Complete || fullCounts.Indeterminate + logCounts.Indeterminate > 0
-                ? BackupFleetStatus.Indeterminate
-            : fullCounts.Disabled + logCounts.Disabled == header.DatabaseCount * 2 ? BackupFleetStatus.Disabled
-            : fullCounts.WithinThreshold + logCounts.WithinThreshold > 0 ? BackupFleetStatus.WithinPolicy
-            : BackupFleetStatus.Indeterminate;
+        BackupFleetStatus status = BackupFleetSummaryContract.Status(header, fullCounts, logCounts);
         return new(header, validUntil, status, fullCounts, logCounts, faults);
 
         void Earlier(DateTimeOffset candidate)

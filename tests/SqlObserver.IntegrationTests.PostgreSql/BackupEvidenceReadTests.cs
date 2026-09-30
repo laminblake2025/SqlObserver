@@ -14,7 +14,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class BackupEvidenceReadTests(PostgreSql18Fixture fixture)
+public sealed partial class BackupEvidenceReadTests(PostgreSql18Fixture fixture)
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
     private const string Fingerprint = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
@@ -345,7 +345,7 @@ public sealed class BackupEvidenceReadTests(PostgreSql18Fixture fixture)
         seed.Parameters.AddWithValue("rules", TimeZoneInfo.Utc.ToSerializedString()); await seed.ExecuteNonQueryAsync(); return target;
     }
     private static async Task CollectAsync(RepositoryTestDatabase database, Guid target, bool failed = false, bool truncated = false,
-        bool outputInvalid = false, int sourceCase = 0, int databaseCount = 0)
+        bool outputInvalid = false, int sourceCase = 0, int databaseCount = 0, bool withLog = false)
     {
         await using (var due = database.DataSource.CreateCommand("UPDATE control.collector_schedule SET next_due_at=clock_timestamp() WHERE instance_id=@target AND collector_id='backups.status';"))
         { due.Parameters.AddWithValue("target", target); await due.ExecuteNonQueryAsync(); }
@@ -363,15 +363,17 @@ public sealed class BackupEvidenceReadTests(PostgreSql18Fixture fixture)
             ag ? new string('b', 64) : null, ag ? new string('c', 64) : null, ag ? new string('d', 64) : null, true,
             BackupRecoveryModel.Full, "ONLINE", ag ? BackupFreshnessScope.AvailabilityGroupLocalOnly : BackupFreshnessScope.Standalone,
             ag ? "PRIMARY" : null, ag ? true : null, observed, "UTC", now.DateTime.AddDays(-35), false);
-        var sample = new BackupV2SampleRead(new(BackupKind.Full, false, now.AddMinutes(-1), now.DateTime.AddMinutes(-1), true, false, true),
+        BackupV2SampleRead Sample(BackupKind kind) => new(new(kind, false, now.AddMinutes(-1), now.DateTime.AddMinutes(-1), true, false, true),
             now.DateTime.AddMinutes(-2), 0, 1000, context.Fork, context.Fork!, new(BackupFinishTimeState.Resolved, now.AddMinutes(-1), 1));
+        BackupV2SampleRead sample = Sample(BackupKind.Full);
+        BackupV2SampleRead[] samples = withLog ? [sample, Sample(BackupKind.Log)] : [sample];
         BackupV2DatabaseRead[] databases = [new(context, [sample], identity, BackupFreshnessCoverage.Complete),
             new(context with { Database = new string('e', 64) }, [sample], identity, BackupFreshnessCoverage.Complete),
             new(context with { Database = null, IdentityKnown = false }, [], identity, BackupFreshnessCoverage.Partial)];
         if (databaseCount > 0)
             databases = Enumerable.Range(1, databaseCount).Select(i => new BackupV2DatabaseRead(context with
                 { Database = i == 1 ? Fingerprint : i.ToString("x64", System.Globalization.CultureInfo.InvariantCulture) },
-                [sample], identity, BackupFreshnessCoverage.Complete)).ToArray();
+                samples, identity, BackupFreshnessCoverage.Complete)).ToArray();
         BackupFreshnessCoverage coverage = databaseCount > 0 ? BackupFreshnessCoverage.Complete : BackupFreshnessCoverage.Partial;
         var snapshot = new BackupV2ReadSnapshot(identity, now, observed, "UTC", context.HistoryLowerBoundLocal,
             truncated ? [] : databases, truncated ? 3073 : databases.Sum(d => 1 + d.Samples.Count), truncated ? BackupFreshnessCoverage.Truncated : coverage);
