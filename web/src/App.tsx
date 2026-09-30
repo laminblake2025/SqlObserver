@@ -69,7 +69,7 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
-  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" ||
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" || route.page === "operations" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
@@ -334,7 +334,7 @@ export function App() {
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} refresh={slowRefresh} />}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} scope={scope} refresh={slowRefresh} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>

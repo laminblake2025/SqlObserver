@@ -7,6 +7,8 @@ import { getOperationalPage, OperationalApiError } from "./operationsApi";
 import { initialOperationsState, operationKinds, operationsReducer } from "./operationsState";
 import { buildOperationsRenderModel, type OperationsRenderCard } from "./operationsRenderModel";
 import type { OperationalKind, OperationalPage } from "./operationsTypes";
+import type { OverviewScope } from "../overview/overviewTypes";
+import { AvailabilityEvidencePanel } from "./AvailabilityEvidencePanel";
 
 type OperationsTab = "backups" | "agent" | "tempdb" | "availability" | "replication";
 
@@ -27,7 +29,7 @@ const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly 
   availability: ["ag-replicas", "ag-databases"],
 };
 
-export function OperationsPanel({ instanceId, refresh }: { readonly instanceId: string; readonly refresh: number }) {
+export function OperationsPanel({ instanceId, refresh, scope }: { readonly instanceId: string; readonly refresh: number; readonly scope: OverviewScope }) {
   const [cards, dispatch] = useReducer(operationsReducer, undefined, initialOperationsState);
   const [tab, setTab] = useState<OperationsTab>("backups");
   const controllers = useRef(new Map<OperationalKind, AbortController>());
@@ -91,7 +93,12 @@ export function OperationsPanel({ instanceId, refresh }: { readonly instanceId: 
   return <section className="operations-screen" aria-label="Operational health">
     <div className="screen-intro"><div><p className="eyebrow">Operations · target-scoped projections</p><h2>Operational health</h2><p>Daily checks for recovery, jobs, TempDB, availability, and replication visibility. Each category retains its own loading, failure, retry, cancellation, and paging state.</p></div></div>
     <Tabs label="Operational health categories" tabs={tabs} value={tab} onChange={(value) => setTab(value as OperationsTab)} />
-    {tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} /> : <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>}
+    {scope.range === "custom" && <p className="table-note">Rewind applies to the per-replica AG evidence view. Other operational cards show their latest source snapshots.</p>}
+    {tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
+      <details className="supporting-evidence"><summary>Earlier availability summary (latest v1 snapshot)</summary>
+        <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>
+      </details></> : tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} />
+        : <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>}
   </section>;
 }
 

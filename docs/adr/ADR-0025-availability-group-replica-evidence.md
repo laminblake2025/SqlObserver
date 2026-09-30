@@ -213,9 +213,29 @@ The catalog digest, server identity, stdio identity check and release contract
 pins advance together for the 29-tool catalog. Focused boundaries verify mixed
 grants, nulls, empty/failure/retired receipts, cursor binding, stale runs and one
 audit per call. Official SDK PostgreSQL fixtures exercise both populated streams
-with and without signing, and retain all-tool schema and audit checks. The web
-evidence view and native AG qualification remain open; live release MCP
-certification still requires its configured Negotiate/HTTPS lab.
+with and without signing, and retain all-tool schema and audit checks. Native
+AG qualification and live release MCP certification still require their
+configured SQL Server AG and Negotiate/HTTPS labs.
+
+The availability tab now offers two version-2 evidence tables, with the older
+latest version-1 summary in a separate disclosure. Both streams use the global
+range's end as their publication cutoff and retain it while paging; the range's
+start does not filter snapshot rows. Live refresh and a server/window change
+reset both streams, while Rewind fixes the cutoff. Each stream has independent
+previous/next pages and retry state; changed run/revision prompts a coordinated
+restart, and mismatched stream headers explicitly warn against correlation.
+Requests abort on navigation or unmount. Coverage, nullable source observation,
+completion receipt and accounting across both streams remain visible. Secondary
+and resolving visibility is labelled local-only; remote primary state is labelled
+last-reported. Nullable fault state and counters render as unknown, zero remains
+zero, and KB/KB/s units and offset-free source commit timestamps are explicit.
+No RPO is derived from raw local time. Closed bounded parsers check identities,
+microsecond cutoffs, tokens, page ordering and JSON integers safe for the browser;
+unsafe integers make the page unverifiable rather than displaying rounded values.
+Production client and rendered React fixtures verify these contracts and status
+guidance. The production web build, asset manifest and existing operations/time
+checks pass. Browser interaction and native AG qualification remain follow-up
+validation before changing collector activation or removing the version-1 view.
 
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention

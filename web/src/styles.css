@@ -645,3 +645,12 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+.availability-evidence { display: grid; gap: 12px; }
+.availability-evidence-facts { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 12px 0; }
+.availability-evidence-facts dt { color: var(--muted); font-size: .8rem; }
+.availability-evidence-facts dd { margin: 4px 0 0; }
+.availability-evidence-table td { vertical-align: top; }
+.availability-identity { min-width: 6rem; }
+.availability-identity code { display: block; max-width: 14rem; overflow-wrap: anywhere; margin-top: 6px; }
+.availability-evidence-note { color: var(--muted); font-size: .85rem; line-height: 1.5; }
