@@ -253,7 +253,8 @@ public sealed class BackupV2PersistenceTests(PostgreSql18Fixture fixture)
               maximum_rows,maximum_response_bytes,estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval)
             SELECT collector_id,2,execution_order,7,2,manifest_sha256,asset_bundle_sha256,default_interval,minimum_interval,
               execution_timeout,3072,4194304,estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval
-            FROM control.collector_contract WHERE collector_id='backups.status' AND collector_version=1;
+            FROM control.collector_contract WHERE collector_id='backups.status' AND collector_version=1
+            ON CONFLICT(collector_id,collector_version) DO NOTHING;
             INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
               authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
             VALUES(@target,@key,'Backup v2 commit','sql01',1433,interval '5 seconds',

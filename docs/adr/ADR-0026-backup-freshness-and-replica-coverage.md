@@ -227,5 +227,17 @@ split this graph; global policy mutation and the scheduled route remain usable.
 
 Two focused native PostgreSQL retention checks and seven related AG/TempDB
 regressions pass, as do nine affected analytics web contracts and typecheck.
-Compatible-worker/catalog activation, qualification provisioning, policy/read
-surfaces, alerts/UI and native AG/TLS qualification remain open.
+The rollout stage now installs the exact pinned backup v2 catalog and private
+activation wrapper in migration 0274. Activation is catalog-lease fenced,
+requires enabled grouped retention/current partitions and drained v1 runs,
+and atomically advances schedule revisions. Target changes preserve the
+activated version. Only workers reconciled against the pinned v2 catalog in
+the last five minutes can claim v2 work; future registrations, old workers and
+stale schedule revisions are rejected. The wrapper supports combined AG v2
+activation and shares the target trigger lock order.
+
+Five focused native PostgreSQL rollout cases and nine related backup
+persistence, AG rollout and inventory claim regressions pass. The active production
+registry remains on v1 and application EXECUTE stays revoked. Qualification
+provisioning, policy/read surfaces, alerts/UI, production activation and native
+AG/TLS qualification remain open.

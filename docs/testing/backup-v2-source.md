@@ -125,9 +125,9 @@ has its own outcome. Version-1 and version-2 payloads cannot cross validators.
 
 The active registry still selects v1. The repository now dispatches v2 payloads
 to a private fenced writer; production collector execution remains ungranted.
-Retention is registered and maintained as a three-table group. Schedule and
-compatible-worker rollout gates, qualified zone provisioning, policy commands
-and assessment reads remain pending. No production
+Retention is registered and maintained as a three-table group. Private catalog
+activation and compatible-worker claim gates are installed. Qualified zone
+provisioning, policy commands and assessment reads remain pending. No production
 activation or native collector qualification is claimed here. Cross-replica
 pairing remains explicit work; this collector does not discover peers or merge
 histories.
@@ -255,9 +255,31 @@ authorized policy mutation. The nine affected analytics client/parser checks
 and web typecheck pass. These are focused checks; no full Local profile or
 production collector activation is claimed.
 
+Forward migration 0274 installs the exact pinned v2 catalog without activating
+it. Its private reconciliation entry point requires the catalog lease, enabled
+grouped retention and current partitions, and rejects activation until v1 runs
+drain. The transition increments schedule revisions, preserves interval/enabled
+settings, and keeps new or revised targets on v2 after activation. Catalog and
+target triggers share the AG, backup, inventory lock order. The wrapper also
+supports a combined AG v2 catalog.
+
+Only an owner registered by that exact reconciliation can claim backup v2 work;
+registration expires after five minutes and future timestamps are rejected.
+Legacy catalogs cannot downgrade activated schedules, and pre-transition work
+cannot begin under an old schedule revision. The production registry still
+selects v1 and application EXECUTE on the v2 catalog/writer remains revoked.
+Fixture activation does not qualify a deployed collector.
+
+Five focused PostgreSQL 18.4 rollout cases pass, covering activation rollback,
+private grants, catalog pins, lease and retention prerequisites, combined AG v2,
+AG-only routing, operator interval/enabled settings, idempotence, target
+revisions, stale work and old/expired/future workers. Nine related backup
+persistence, AG rollout and inventory claim regressions also pass.
+
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2ManifestTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2PersistenceTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2RolloutTests'
 dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --filter 'FullyQualifiedName~BackupHistoricalTimeResolverTests|FullyQualifiedName~BackupV2ParserTests|FullyQualifiedName~BackupFreshnessTests'
 # Use the existing explicit Local or Release SQL Server lab contract.
 dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter 'FullyQualifiedName~BackupV2SourceIntegrationTests'
