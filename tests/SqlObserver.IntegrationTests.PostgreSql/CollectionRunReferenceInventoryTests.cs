@@ -448,6 +448,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             events.query_plan_access_audit.collection_run_id
             events.query_store_group_delta.run_id
             events.query_text_access_audit.collection_run_id
+            events.server_configuration_change.run_id
             system.query_run_retention_blocked.run_id
             system.query_run_retention_scan_cursor.run_id
             system.query_run_retirement.run_id
@@ -455,10 +456,12 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.activity_request_snapshot_v2.collection_run_id
             telemetry.activity_session_snapshot.collection_run_id
             telemetry.activity_session_snapshot_v2.collection_run_id
+            telemetry.availability_database_replica_evidence.run_id
             telemetry.availability_group_database_snapshot.run_id
             telemetry.availability_group_database_snapshot_v2.run_id
             telemetry.availability_group_replica_snapshot.run_id
             telemetry.availability_group_replica_snapshot_v2.run_id
+            telemetry.availability_replica_evidence.run_id
             telemetry.backup_status_snapshot.run_id
             telemetry.backup_status_snapshot_v2.run_id
             telemetry.collection_run.run_id
@@ -474,6 +477,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.m9_commit_replay.run_id
             telemetry.raw_metric_sample.collection_run_id
             telemetry.replication_snapshot_v2.run_id
+            telemetry.server_configuration_snapshot.run_id
             telemetry.server_wait_snapshot.collection_run_id
             telemetry.server_wait_snapshot_v2.collection_run_id
             telemetry.sql_agent_failure.run_id

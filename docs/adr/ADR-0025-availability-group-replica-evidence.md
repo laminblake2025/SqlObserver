@@ -72,6 +72,19 @@ is a UTC instant or an exact RPO.
 
 ## Delivery and verification
 
+The staged source now carries an observing-replica fingerprint and a nullable
+local/remote flag alongside the visibility scope. Forward migration 0264 stages
+`telemetry.availability_replica_evidence` and
+`telemetry.availability_database_replica_evidence` as private partitioned
+parents. The latter preserves the full group/replica/database identity. No
+partitions, retention route, writer, or schedules are activated by this
+foundation; those gates must be installed together before collection starts.
+
+The PostgreSQL 18 foundation fixture verifies distinct per-replica rows for one
+database, NULL versus zero queue values, offset-free commit time, append-only
+history, restricted grants, and target-scoped reads. Native primary/secondary
+SQL behavior and the remaining delivery gates below are still unverified.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.
