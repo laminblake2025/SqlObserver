@@ -1,5 +1,50 @@
 # Staged backup v2 source checks
 
+## Fenced backup evidence for alert evaluation
+
+Forward migration 0280 adds the collector-only
+`alerting.read_backup_fleet_evidence` function. It requires the exact active
+`alerts/evaluation/reconcile` worker lease, owner and fence, the requested target
+scope, and the current active target revision. It reads one valid cached backup
+aggregate with repository time and a SHA-256 digest of its exact JSONB text.
+Missing, expired or superseded cache returns an explicit null aggregate. It
+reuses the receipt/policy/qualification/schedule context verifier and never reads
+backup database or sample pages. The five-second repository port decodes the
+closed aggregate, verifies its digest and time/target bindings, and is registered
+on the restricted collector data plane.
+
+`BackupAlertSignalProjection` derives separate full-policy, log-policy and
+observed-fault signals. Known policy violations and observed faults survive
+unknown neighbouring checks. Clearing full/log zeroes require complete source
+coverage, enabled collection and no unknown or disabled checks in that stream.
+All Simple-recovery log checks are explicitly not required. Missing evidence,
+revoked timestamps, disabled collection/policies and incomplete checks never
+become clearing zeroes. The existing aggregate cannot prove metadata completeness
+for every unselected differential/copy-only sample: zero observed faults remains
+unknown even when full/log policy checks are healthy. Fault clearance needs a
+future explicit completeness proof, rather than inferring one from an empty count.
+
+This is the evidence boundary for the next alert integration stage. It does not
+yet add backup kinds to the approved rule catalog, enqueue backup observations,
+alter alert episodes or send notifications. Queue insertion and final commit
+must revalidate the exact live digest/context; unknown observations must reset
+confirmation progress while preserving an existing firing/acknowledged episode.
+Rule administration, replay, clearing confirmation and delivery must then be
+verified through the existing transactional pipeline before production activation.
+
+54 focused unit/preamble/aggregate cases and two native PostgreSQL 18.4 cases
+pass. Native checks cover a healthy aggregate with database/sample parents
+unavailable, missing cache, wrong scope/revision/lease/owner/fence, expired leases,
+function ownership and private grants, a known full-policy violation, independent
+healthy log checks, policy/qualification/schedule/new-receipt invalidation,
+disabled collection and half-open expiry. SQL Server collection and browser code
+did not change, so their tests were not repeated.
+
+```powershell
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~BackupAlertSignalTests|FullyQualifiedName~BackupFleetSummaryTests|FullyQualifiedName~MigrationPreambleTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~AlertLeaseReadsCurrentAggregateAndRejectsWrongScopesOwnersAndExpiredLeases|FullyQualifiedName~AlertEvidenceInvalidatesOnPolicyQualificationScheduleReceiptAndExpiryChanges'
+```
+
 ## MCP backup policy assessments
 
 `get_backup_assessments_v2` exposes the same target-authorized, trust-aware

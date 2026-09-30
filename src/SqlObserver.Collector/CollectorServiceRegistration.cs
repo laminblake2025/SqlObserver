@@ -78,6 +78,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupFleetSummary);
         services.AddSingleton<IBackupFleetCachePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupFleetCache);
+        services.AddSingleton<IBackupAlertEvidencePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupAlertEvidence);
         services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().PartitionMaintenance);
         services.AddSingleton<ICapabilityProfileRepositoryPort>(static provider =>
