@@ -272,12 +272,25 @@ public sealed class BackupV2CollectorTests
             original.ConnectionPolicy, profile, original.Attempt, new(timeout ?? TimeSpan.FromSeconds(1)));
     }
     private sealed class Clock : TimeProvider { public override DateTimeOffset GetUtcNow() => M4TestData.RepositoryTime.AddTicks(7); }
+    [Fact]
+    public async Task QualificationProviderDeadlineIsReportedBeforeTheTargetQueryStarts()
+    {
+        var source = new Source([Header()]);
+        var collector = Collector(source, new QualificationPort { Failure = new TimeoutException("provider deadline") });
+        var request = Request();
+        var result = await collector.CollectAsync(request, CancellationToken.None);
+        Validator.Validate(collector.Manifest, request, result);
+        Assert.Equal(CollectorRunOutcome.TimedOut, result.Outcome);
+        Assert.Equal(CollectorRunReason.DeadlineExceeded, result.Reason);
+        Assert.Equal(0, source.Calls);
+    }
+
     private sealed class QualificationPort : IBackupHistoricalZoneQualificationPort
     {
         public int Calls; public MonitoredInstanceId? Target; public ObservationTargetRevision? Revision; public CancellationToken Token;
-        public bool Wait; public BackupHistoricalZoneQualification? Value;
+        public bool Wait; public BackupHistoricalZoneQualification? Value; public Exception? Failure;
         public async ValueTask<BackupHistoricalZoneQualification?> GetAsync(MonitoredInstanceId target, ObservationTargetRevision revision, CancellationToken token)
-        { Calls++; Target = target; Revision = revision; Token = token; if (Wait) await Task.Delay(Timeout.InfiniteTimeSpan, token); return Value; }
+        { Calls++; Target = target; Revision = revision; Token = token; if (Failure is not null) throw Failure; if (Wait) await Task.Delay(Timeout.InfiniteTimeSpan, token); return Value; }
     }
     private sealed class Source(object?[][] rows) : IBackupV2QuerySource
     {

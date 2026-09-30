@@ -119,15 +119,17 @@ permission failures. Failed runs publish no source prefix.
 One linked deadline covers qualification lookup, connection, query and parsing.
 The production command supplies typed row and database lookahead parameters,
 uses a sequential reader, and captures receipt UTC when the reader opens. The
-default qualification port returns no qualification. It never invents rules
-from the current zone ID. External cancellation propagates; deadline exhaustion
+collector qualification port reads the latest explicitly provisioned command
+for the exact active target/revision. Absence or revocation returns no
+qualification. It never invents rules from the current zone ID. External cancellation propagates; deadline exhaustion
 has its own outcome. Version-1 and version-2 payloads cannot cross validators.
 
 The active registry still selects v1. The repository now dispatches v2 payloads
 to a private fenced writer; production collector execution remains ungranted.
 Retention is registered and maintained as a three-table group. Private catalog
-activation and compatible-worker claim gates are installed. Qualified zone
-provisioning, policy commands and assessment reads remain pending. No production
+activation and compatible-worker claim gates are installed. Audited historical
+zone provisioning is available; backup policy commands and assessment reads
+remain pending. No production
 activation or native collector qualification is claimed here. Cross-replica
 pairing remains explicit work; this collector does not discover peers or merge
 histories.
@@ -215,8 +217,8 @@ zone and a half-open UTC window. The writer checks that reference, source-zone
 agreement, recorded-start conversion, endpoint window/order and plausible
 minute-aligned finish offset. It does not reinterpret Windows zone rules in
 PostgreSQL. Historical transition conversion remains the typed resolver's
-responsibility. An audited provisioning command and production provider are
-still required; fixture qualification is not a deployed historical certificate.
+responsibility. At that persistence stage provisioning was fixture-only; the
+audited command/provider described below now supplies explicit certificates.
 
 Four focused PostgreSQL 18.4 tests pass, including direct malformed JSON and
 qualification-boundary cases, discarded truncated prefixes, unknown identity,
@@ -276,10 +278,80 @@ AG-only routing, operator interval/enabled settings, idempotence, target
 revisions, stale work and old/expired/future workers. Nine related backup
 persistence, AG rollout and inventory claim regressions also pass.
 
+## Historical zone provisioning
+
+Migration 0275 adds an append-only command ledger and a narrow collector read
+function. Both the certificate and ledger remain private with forced RLS.
+The Server exposes GET/PUT
+`/api/v1/observation-targets/{instanceId}/health/backup-zone-qualification/`.
+Both require TargetAdministrator on that exact target. PUT is rate limited,
+accepts JSON only, and uses the shared origin/body limits. Denied administration
+is audited through the application boundary; successful commands and their
+certificate/audit receipt commit atomically. The ledger retains the receipt's
+ID/time without adding an FK that would prevent independent audit retention.
+
+GET takes `targetRevision` and returns the current `qualificationRevision`,
+enabled state, source zone, UTC window and evidence/rules digests. Zero means
+no explicit command for that active revision. Provision with these fields:
+
+```json
+{
+  "expectedTargetRevision": 1,
+  "expectedQualificationRevision": 0,
+  "operationId": "<new UUID>",
+  "enabled": true,
+  "historicalConfigurationConfirmed": true,
+  "serializedZoneRules": "<verified TimeZoneInfo.ToSerializedString() snapshot>",
+  "sourceZoneId": "<exact SQL source zone ID>",
+  "fromUtc": "2026-01-01T00:00:00Z",
+  "toUtc": "2027-01-01T00:00:00Z",
+  "evidenceSha256": "<64 lowercase hex characters>"
+}
+```
+
+The sample window is illustrative. The operator must verify historical target
+zone configuration throughout the requested half-open interval and preserve
+the evidence identified by its digest. A zone ID or the monitor's current
+rules alone is not that evidence. Serialized .NET rules are validated and
+bounded to 64 KiB before canonical storage; the entire JSON request also has
+the existing 64 KiB limit. The provider verifies their checksum and deserializes
+those stored rules without consulting the monitor's zone database. Owner-seeded
+certificates without a command are not implicitly trusted.
+
+Use the GET revision as the expected revision on edits, retaining the operation
+ID when retrying the same mutation. An identical latest operation replays
+without a second audit/certificate; changed, superseded or stale-target requests
+conflict. Concurrent edits have one winner. Revoke with `enabled: false`, the
+expected revisions and a new operation ID, omitting every qualification field.
+Revocation appends history instead of deleting certificates used by prior scans.
+The latest command is the single active qualification; backups outside its
+window remain indeterminate.
+
+Commands and new v2 commits serialize on a target qualification lock before
+their target/run/schedule locks. New samples cannot cite a revoked, replaced or
+unprovisioned qualification. A failed final write rolls back scan/inventory/
+sample evidence, receipt and schedule changes. Already completed identical
+receipts remain replayable, retaining their original immutable provenance.
+The staged v2 collector is composed with the real provider, while the active
+registry still uses v1. Provider timeout is a deadline outcome before target SQL.
+
+Focused checks cover real PostgreSQL command concurrency, atomic certificate/
+audit rollback, idempotence, revocation, revision/role isolation, private grants,
+immutable history, invalid serialization and a stored-rule DST transition.
+HTTP checks exercise explicit confirmation, malformed rules, JSON/origin
+requirements, administrator reads/revocation, conflict and out-of-scope grants.
+These checks do not prove the operator's historical evidence, real AG/TLS
+qualification or a complete backup policy/assessment/alert/UI path.
+Ten focused PostgreSQL 18.4 command/persistence checks, 34 affected collector/
+authorization unit checks and two HTTP cases pass. A separate composition
+check confirms the staged provider/collector and active v1 registry. No full
+Local profile was run for this stage.
+
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2ManifestTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2PersistenceTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2RolloutTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupZoneQualificationTests'
 dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --filter 'FullyQualifiedName~BackupHistoricalTimeResolverTests|FullyQualifiedName~BackupV2ParserTests|FullyQualifiedName~BackupFreshnessTests'
 # Use the existing explicit Local or Release SQL Server lab contract.
 dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter 'FullyQualifiedName~BackupV2SourceIntegrationTests'

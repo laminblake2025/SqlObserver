@@ -48,6 +48,8 @@ public sealed class BackupV2RolloutTests(PostgreSql18Fixture fixture)
         Assert.Equal(0L, row.GetInt64(8)); Assert.False(row.GetBoolean(9));
         await using ServiceProvider application = CreateApplication();
         Assert.Equal(1, application.GetRequiredService<CollectorRegistry>().CatalogEntries[9].Manifest.ManifestVersion.Value);
+        Assert.Equal(2, application.GetRequiredService<SqlServerBackupsV2Collector>().Manifest.ManifestVersion.Value);
+        Assert.IsType<PostgreSqlBackupZoneQualificationPort>(application.GetRequiredService<IBackupHistoricalZoneQualificationPort>());
     }
 
     [Theory]

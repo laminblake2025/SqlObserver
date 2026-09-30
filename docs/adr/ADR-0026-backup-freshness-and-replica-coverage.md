@@ -241,3 +241,25 @@ persistence, AG rollout and inventory claim regressions pass. The active product
 registry remains on v1 and application EXECUTE stays revoked. Qualification
 provisioning, policy/read surfaces, alerts/UI, production activation and native
 AG/TLS qualification remain open.
+
+The qualification stage now adds migration 0275, an audited TargetAdministrator
+GET/PUT surface, immutable provisioning/revocation commands and a real collector
+provider. Explicit serialized .NET historical rules, source-zone agreement,
+window and a digest of verified configuration evidence are required. The
+provider verifies the stored checksum/rules for the exact active target/revision
+and does not trust owner-seeded certificates without an explicit command.
+Concurrent edits use a revision check; identical latest-operation retries replay
+without duplicating evidence/audit, while changed or superseded operations
+conflict. Revocation retains prior certificates for immutable provenance.
+
+The v2 commit wrapper and commands share a target qualification lock before
+their other locks. New samples reject replaced/revoked/unprovisioned rules;
+completed identical receipts stay replayable. The staged collector now resolves
+the real provider and maps its deadline failures correctly. The production
+registry stays on v1 and v2 catalog/writer EXECUTE remains private. Backup
+policy/read surfaces, alerts/UI, production activation and native AG/TLS
+qualification still require delivery. HTTP, application and native repository
+checks do not attest the operator's historical configuration evidence.
+This stage passes ten native PostgreSQL command/persistence checks, 34 affected
+unit checks, two HTTP cases and the staged collector composition check. The
+production backup assessment and native replica qualification remain open.

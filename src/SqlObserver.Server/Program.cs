@@ -154,6 +154,9 @@ builder.Services.AddSingleton<IDatabaseOptionChangeQueryService, DatabaseOptionC
 builder.Services.AddSingleton<IServerConfigurationChangeQueryService, ServerConfigurationChangeQueryService>();
 builder.Services.AddSingleton<IServerConfigurationSnapshotQueryService, ServerConfigurationSnapshotQueryService>();
 builder.Services.AddSingleton<IConfigurationCollectionAdministrationService, ConfigurationCollectionAdministrationService>();
+builder.Services.AddSingleton<IBackupZoneQualificationAdministrationPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupZoneQualifications);
+builder.Services.AddSingleton<BackupZoneQualificationAdministrationService>();
 builder.Services.AddSingleton<ApiCursorSigner>(static services =>
 {
     string? encoded = services.GetRequiredService<IConfiguration>()["SqlObserver:Api:CursorSigningKey"];
@@ -232,6 +235,7 @@ app.UseMiddleware<RequestBodyLimitMiddleware>();
 app.MapSqlObserverServiceStatusEndpoints(includeRootDescriptor: webInterface is null);
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
+app.MapBackupZoneQualificationEndpoints();
 app.MapSqlVolumeEndpoints();
 app.MapDatabaseFileIoTrendEndpoints();
 app.MapBufferNodePleWindowEndpoints();

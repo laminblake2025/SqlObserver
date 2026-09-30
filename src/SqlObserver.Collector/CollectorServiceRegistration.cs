@@ -80,6 +80,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().CapabilityProfiles);
         services.AddSingleton<ICollectorRuntimeRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Runtime);
+        services.AddSingleton<IBackupHistoricalZoneQualificationPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupZoneQualifications);
         services.AddSingleton<IQueryStoreGroupWindowPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().QueryStoreGroupWindows);
         services.AddSingleton<IAlertRepositoryPort>(static provider =>
@@ -148,6 +150,12 @@ public static class CollectorServiceRegistration
         services.AddSingleton<SqlServerBufferNodePleCollector>();
         services.AddSingleton(static _ => SqlServerConfigurationAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerConfigurationsCollector>();
+        // Available for the staged v2 path; the production registry still selects backup v1.
+        services.AddSingleton(static _ => SqlServerBackupV2AssetCatalog.LoadEmbedded());
+        services.AddSingleton(static provider => new SqlServerBackupsV2Collector(
+            provider.GetRequiredService<SqlServerBackupV2AssetCatalog>(),
+            provider.GetRequiredService<IdentityFingerprintKey>(),
+            provider.GetRequiredService<IBackupHistoricalZoneQualificationPort>()));
         services.AddSingleton(static _ => SqlServerQueryStoreGroupAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerQueryStoreGroupCollector>();
         services.AddSingleton(static _ => HostMetricsAssetCatalog.LoadEmbedded());

@@ -91,6 +91,7 @@ public sealed class SqlServerBackupsV2Collector : ISqlServerCollector
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
+        catch (TimeoutException) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
         catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(exception.Number))
         { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
         catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(exception.Number) || exception.Number == 51006)

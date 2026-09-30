@@ -22,6 +22,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
         _fingerprintKey = fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey));
         Runtime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
+        BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
         QueryStoreGroupWindows = new PostgreSqlQueryStoreGroupWindowPort(dataSource);
         SensitivePayloads = new PostgreSqlSensitivePayloadPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
@@ -41,6 +42,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     }
 
     public ICollectorRuntimeRepositoryPort Runtime { get; }
+    public IBackupHistoricalZoneQualificationPort BackupZoneQualifications { get; }
     public IQueryStoreGroupWindowPort QueryStoreGroupWindows { get; }
     public ISensitivePayloadPort SensitivePayloads { get; }
     public ILiveActivityRepository LiveActivity { get; }

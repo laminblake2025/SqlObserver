@@ -66,6 +66,42 @@ public sealed class BackupV2PersistenceTests(PostgreSql18Fixture fixture)
         Assert.Equal(CollectorRunCommitStatus.LeaseLost, (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RevokedOrReplacedQualificationRejectsNewSamplesButPreservesCompletedReplay(bool replace)
+    {
+        await using RepositoryTestDatabase database = await PrepareAsync();
+        Guid target = await SeedAsync(database);
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(database.DataSource);
+        CollectorDueWorkItem work = await DueAsync(runtime, target);
+        WorkerLeaseIdentity lease = await LeaseAsync(database, target);
+        CollectorRunId run = await BeginAsync(runtime, work, lease);
+        CommitCollectorRunRequest completed = Evidence(work, run, lease, qualified: true);
+        await runtime.CommitRunAsync(completed, CancellationToken.None);
+        work = await NextDueAsync(database, runtime, target); run = await BeginAsync(runtime, work, lease);
+        CommitCollectorRunRequest inFlight = Evidence(work, run, lease, qualified: true);
+        await using (var change = database.DataSource.CreateCommand("""
+            SELECT * FROM control.set_backup_zone_qualification(@target,1,1,gen_random_uuid(),
+              CASE WHEN @replace THEN 'UTC' ELSE NULL END,CASE WHEN @replace THEN @rules ELSE NULL END,
+              CASE WHEN @replace THEN clock_timestamp()-interval '40 days' ELSE NULL END,
+              CASE WHEN @replace THEN clock_timestamp()+interval '1 day' ELSE NULL END,
+              CASE WHEN @replace THEN decode(repeat('bb',32),'hex') ELSE NULL END,
+              'S-1-5-21-1-2-3-1001',gen_random_uuid());
+            """))
+        {
+            change.Parameters.AddWithValue("target", target); change.Parameters.AddWithValue("replace", replace);
+            change.Parameters.AddWithValue("rules", TimeZoneInfo.Utc.ToSerializedString()); await change.ExecuteNonQueryAsync();
+        }
+        Assert.Equal(CollectorRunCommitStatus.Replayed, (await runtime.CommitRunAsync(completed, CancellationToken.None)).Status);
+        Assert.Equal("22023", (await Assert.ThrowsAsync<PostgresException>(async () =>
+            await runtime.CommitRunAsync(inFlight, CancellationToken.None))).SqlState);
+        Assert.Equal((1L, 1L, 1L, 1L, 0L), await CountsAsync(database, target));
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await runtime.CommitRunAsync(Evidence(work, run, lease), CancellationToken.None)).Status);
+        Assert.Equal((2L, 2L, 2L, 2L, 0L), await CountsAsync(database, target));
+    }
+
     [Fact]
     public async Task PartialUnknownIdentityTruncationAndFailureReceiptsNeverFabricateBackupEvidence()
     {
@@ -266,9 +302,9 @@ public sealed class BackupV2PersistenceTests(PostgreSql18Fixture fixture)
               last_succeeded_at=CASE WHEN collector_id='engine.core' THEN clock_timestamp() ELSE last_succeeded_at END
             WHERE instance_id=@target;
             SET ROLE sqlobserver_migrator;
-            INSERT INTO control.backup_historical_zone_qualification(instance_id,target_revision,qualification_revision,
-              source_zone_id,serialized_zone_rules,rules_sha256,qualified_from,qualified_to)
-            VALUES(@target,1,1,'UTC',@rules,sha256(convert_to(@rules,'UTF8')),clock_timestamp()-interval '40 days',clock_timestamp()+interval '1 day');
+            SELECT * FROM control.set_backup_zone_qualification(@target,1,0,gen_random_uuid(),
+              'UTC',@rules,clock_timestamp()-interval '40 days',clock_timestamp()+interval '1 day',
+              decode(repeat('aa',32),'hex'),'S-1-5-21-1-2-3-1001',gen_random_uuid());
             DO $partitions$ BEGIN
               EXECUTE format('CREATE TABLE telemetry.backup_scan_test PARTITION OF telemetry.backup_v2_scan FOR VALUES FROM (%L) TO (%L)',current_date::timestamptz,(current_date+1)::timestamptz);
               EXECUTE format('CREATE TABLE telemetry.backup_database_test PARTITION OF telemetry.backup_v2_database FOR VALUES FROM (%L) TO (%L)',current_date::timestamptz,(current_date+1)::timestamptz);
