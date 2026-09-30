@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export type SqlVolumeEvidenceState = "current" | "stale" | "partial" | "superseded" | "unavailable";
 
 export interface SqlVolumeItem {
@@ -33,7 +34,7 @@ export async function getSqlVolumePage(instanceId: string, signal: AbortSignal,
   if (cursor !== undefined) parameters.set("cursor", cursor);
   let response: Response;
   try {
-    response = await fetch(
+    response = await apiFetch(
       `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/resources/volumes?${parameters}`,
       { credentials: "same-origin", headers: { Accept: "application/json" }, signal },
     );

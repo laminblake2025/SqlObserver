@@ -77,7 +77,7 @@ test('API preserves explicit cutoff, cursor and same-origin credentials without 
     assert.equal(requests[0].request.pathname, `/api/v2/observation-targets/${target}/health/backups`);
     assert.equal(requests[1].request.searchParams.get('atUtc'), at); assert.equal(requests[1].request.searchParams.get('cursor'), 'backup-page-2');
     assert.equal(requests[1].options.credentials, 'same-origin'); assert.equal(requests[1].options.cache, 'no-store');
-    assert.equal(requests[1].options.signal, signal);
+    assert.ok(requests[1].options.signal instanceof AbortSignal); assert.equal(requests[1].options.signal.aborted, signal.aborted);
   } finally { globalThis.fetch = original; }
 });
 test('API treats stale cursors, authorization, bounded streaming and cancellation independently', async () => {

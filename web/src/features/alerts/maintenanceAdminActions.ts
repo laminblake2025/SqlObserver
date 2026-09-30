@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export interface NewMaintenanceWindow {
   readonly startsAtUtc: string;
   readonly endsAtUtc: string;
@@ -69,7 +70,7 @@ function mutationError(response: Response): Error {
 
 export async function createMaintenanceWindow(targetId: string, window: NewMaintenanceWindow,
     attempt: { windowId: string; operationId: string }, signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/maintenance`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/maintenance`, {
     method: "POST", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ ...window, windowId: attempt.windowId, operationId: attempt.operationId }), signal,
@@ -79,7 +80,7 @@ export async function createMaintenanceWindow(targetId: string, window: NewMaint
 
 export async function cancelMaintenanceWindow(targetId: string, windowId: string, revision: number,
     operationId: string, signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/maintenance/${encodeURIComponent(windowId)}/cancel`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/maintenance/${encodeURIComponent(windowId)}/cancel`, {
     method: "POST", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ operationId, expectedRevision: revision }), signal,

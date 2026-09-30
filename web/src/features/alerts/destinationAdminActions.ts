@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import type { DestinationAdminItem } from "./alertAdminListsApi";
 
 export interface DestinationValues {
@@ -63,7 +64,7 @@ function mutationError(response: Response): Error {
 
 export async function createDestination(targetId: string, values: DestinationValues,
     attempt: { destinationId: string; operationId: string }, signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/destinations`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/destinations`, {
     method: "POST", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ ...values, ...attempt }), signal,
@@ -74,7 +75,7 @@ export async function createDestination(targetId: string, values: DestinationVal
 export async function changeDestination(targetId: string, destination: DestinationAdminItem,
     action: DestinationAction, values: DestinationValues, operationId: string, signal: AbortSignal): Promise<void> {
   const path = `/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/destinations/${encodeURIComponent(destination.destinationId)}`;
-  const response = await fetch(action === "update" ? path : `${path}/${action}`, {
+  const response = await apiFetch(action === "update" ? path : `${path}/${action}`, {
     method: action === "update" ? "PUT" : "POST", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ ...values, enabled: action === "disable" ? false : values.enabled,

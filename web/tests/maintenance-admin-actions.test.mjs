@@ -49,7 +49,7 @@ test("maintenance mutation requests carry stable identities and expected revisio
     assert.match(requests[0].url, new RegExp(`/observation-targets/${target}/alerts/maintenance$`));
     assert.deepEqual(requests[0].body, { ...window, ...attempt });
     assert.equal(requests[0].options.credentials, "same-origin");
-    assert.equal(requests[0].options.headers["Content-Type"], "application/json");
+    assert.equal(new Headers(requests[0].options.headers).get("content-type"), "application/json");
     assert.match(requests[1].url, /\/maintenance\/22222222-2222-4222-8222-222222222222\/cancel$/);
     assert.deepEqual(requests[1].body, { operationId: attempt.operationId, expectedRevision: 3 });
     globalThis.fetch = async () => new Response(null, { status: 409 });

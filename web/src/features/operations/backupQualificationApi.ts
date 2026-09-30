@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readBoundedBody } from "./operationsParser.mjs";
 import { parseBackupQualification, type BackupQualification, type QualificationCommand } from "./backupQualification.ts";
 
@@ -11,7 +12,7 @@ function path(targetId: string): string {
   return `/api/v1/observation-targets/${targetId}/health/backup-zone-qualification/`;
 }
 async function request(url: string, signal: AbortSignal, command?: QualificationCommand): Promise<Response> {
-  try { return await fetch(url, { method: command ? "PUT" : "GET", credentials: "same-origin", cache: "no-store", signal,
+  try { return await apiFetch(url, { method: command ? "PUT" : "GET", credentials: "same-origin", cache: "no-store", signal,
     headers: command ? { Accept: "application/json", "Content-Type": "application/json" } : { Accept: "application/json" },
     ...(command ? { body: JSON.stringify(command) } : {}) }); }
   catch (error) { if (signal.aborted) throw error; throw new BackupQualificationError(command ? uncertain : "Current qualification is temporarily unavailable. Reload it.", true); }

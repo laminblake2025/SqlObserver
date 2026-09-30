@@ -55,7 +55,7 @@ test('uncertain saves can retry the identical operation and verify exact returne
     await assert.rejects(() => saveBackupPolicy(target, hash, body, signal), e => e instanceof BackupPolicyError && e.retryable);
     assert.equal((await saveBackupPolicy(target, hash, body, signal)).policyRevision, 5);
     assert.equal(requests[0].options.body, requests[1].options.body);
-    assert.equal(requests[1].options.method, 'PUT'); assert.equal(requests[1].options.headers['Content-Type'], 'application/json');
+    assert.equal(requests[1].options.method, 'PUT'); assert.equal(new Headers(requests[1].options.headers).get("content-type"), 'application/json');
     for (const change of [{ policyRevision: 4 }, { maximumFullAgeSeconds: 7200 }, { targetRevision: 4 }]) {
       globalThis.fetch = async () => new Response(JSON.stringify({ ...policy, policyRevision: 5, ...change }));
       await assert.rejects(() => saveBackupPolicy(target, hash, body, signal), e => e.retryable && /could not be verified/.test(e.message));

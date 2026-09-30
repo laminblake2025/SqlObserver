@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export const MAX_RESPONSE_BYTES = 1024 * 1024;
 export const MAX_PAGE_SIZE = 200;
 export const maximumResponseBytes = MAX_RESPONSE_BYTES;
@@ -125,4 +126,4 @@ export const readBoundedResponse = readBoundedJson;
 export const parsePage = parseOperationalPage;
 export class OperationalRequestError extends Error {}
 export function safeStatusMessage(status) { if (status === 403) return "You are not authorized to view this target."; if (status === 404) return "No operational-health evidence is available."; if (status === 409) return "Operational-health evidence changed; reload the target."; if (status === 504) return "Operational-health execution exceeded its time limit."; return "Operational health is temporarily unavailable."; }
-export async function getPage(url, kind, expectedTargetId, signal) { let response; try { response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }); } catch (error) { if (signal?.aborted) throw error; throw new OperationalRequestError("Operational health is temporarily unavailable."); } if (!response.ok) throw new OperationalRequestError(safeStatusMessage(response.status)); return parseOperationalPage(JSON.parse(await readBoundedBody(response, signal)), kind, expectedTargetId); }
+export async function getPage(url, kind, expectedTargetId, signal) { let response; try { response = await apiFetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }); } catch (error) { if (signal?.aborted) throw error; throw new OperationalRequestError("Operational health is temporarily unavailable."); } if (!response.ok) throw new OperationalRequestError(safeStatusMessage(response.status)); return parseOperationalPage(JSON.parse(await readBoundedBody(response, signal)), kind, expectedTargetId); }

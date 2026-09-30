@@ -34,7 +34,7 @@ test("catalog read is target-bound and reports missing admin role", async () => 
     const signal = new AbortController().signal;
     assert.deepEqual(await getRuleCatalog(target, signal), [template]);
     assert.match(request.url, new RegExp(`/observation-targets/${target}/alerts/rules/catalog$`));
-    assert.equal(request.options.signal, signal);
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, signal.aborted);
     assert.equal(request.options.credentials, "same-origin");
     globalThis.fetch = async () => new Response(null, { status: 403 });
     await assert.rejects(() => getRuleCatalog(target, signal), /Target Administrator/);

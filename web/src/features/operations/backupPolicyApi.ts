@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readBoundedBody } from "./operationsParser.mjs";
 import { parseCurrentBackupPolicy, type BackupPolicyCommand, type CurrentBackupPolicy } from "./backupPolicy.ts";
 
@@ -11,7 +12,7 @@ function path(targetId: string, fingerprint: string): string {
   return `/api/v1/observation-targets/${targetId}/health/backups/databases/${fingerprint}/policy/`;
 }
 async function request(url: string, signal: AbortSignal, command?: BackupPolicyCommand): Promise<Response> {
-  try { return await fetch(url, { method: command ? "PUT" : "GET", credentials: "same-origin", cache: "no-store", signal,
+  try { return await apiFetch(url, { method: command ? "PUT" : "GET", credentials: "same-origin", cache: "no-store", signal,
     headers: command ? { Accept: "application/json", "Content-Type": "application/json" } : { Accept: "application/json" },
     ...(command ? { body: JSON.stringify(command) } : {}) }); }
   catch (error) { if (signal.aborted) throw error;

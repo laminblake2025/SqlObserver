@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readBoundedBody } from "./operationsParser.mjs";
 import { parseAvailabilityPage, type AvailabilityPage, type AvailabilityStream } from "./availabilityEvidence.ts";
 
@@ -18,7 +19,7 @@ export async function getAvailabilityEvidence(targetId: string, stream: Availabi
   if (cursor !== undefined) query.set("cursor", cursor);
   let response: Response;
   try {
-    response = await fetch(`/api/v2/observation-targets/${encodeURIComponent(targetId)}/availability-groups/${stream}?${query}`,
+    response = await apiFetch(`/api/v2/observation-targets/${encodeURIComponent(targetId)}/availability-groups/${stream}?${query}`,
       { credentials: "same-origin", headers: { Accept: "application/json" }, cache: "no-store", signal });
   } catch (error) {
     if (signal.aborted) throw error;

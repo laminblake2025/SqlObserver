@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export type ReportKind = "instance-health" | "performance-window" | "incident-evidence" | "capacity-readiness";
 export interface ReportRun { readonly runId: string; readonly targetId: string; readonly reportKind?: ReportKind; readonly kind?: string; readonly snapshotUtc: string; readonly expiresAtUtc: string; readonly state: string; }
 
@@ -20,7 +21,7 @@ export function validateReportWindow(reportKind: ReportKind, fromUtc?: string, t
 
 export async function createReport(targetId: string, reportKind: ReportKind, signal: AbortSignal, fromUtc?: string, toUtc?: string): Promise<ReportRun> {
   validateReportWindow(reportKind, fromUtc, toUtc);
-  const response = await fetch(`/api/v1/observation-targets/${targetId}/reports`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reportKind, operationId: globalThis.crypto.randomUUID(), ...(fromUtc === undefined ? {} : { fromUtc, toUtc }) }), signal });
+  const response = await apiFetch(`/api/v1/observation-targets/${targetId}/reports`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reportKind, operationId: globalThis.crypto.randomUUID(), ...(fromUtc === undefined ? {} : { fromUtc, toUtc }) }), signal });
   if (!response.ok) throw new Error(response.status === 403 ? "Report access is not authorized." : "The report could not be created.");
   return (await response.json()) as ReportRun;
 }

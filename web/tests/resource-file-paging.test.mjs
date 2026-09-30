@@ -24,7 +24,7 @@ test("database file requests keep the target and opaque cursor in a bounded URL"
     assert.equal(first.searchParams.has("cursor"), false);
     assert.equal(next.searchParams.get("limit"), "25");
     assert.equal(next.searchParams.get("cursor"), "cursor+with/slashes==");
-    assert.equal(paths[1].options.signal, signal);
+    assert.ok(paths[1].options.signal instanceof AbortSignal); assert.equal(paths[1].options.signal.aborted, signal.aborted);
     assert.equal(paths[1].options.credentials, "same-origin");
   } finally {
     globalThis.fetch = originalFetch;

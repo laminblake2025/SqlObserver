@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export interface BufferNodePleNode {
   readonly nodeId: number;
   readonly sampleCount: number;
@@ -90,7 +91,7 @@ export async function getBufferNodePleWindow(targetId: string, fromUtc: string,
   toUtc: string, nodeId: number | null, signal: AbortSignal): Promise<BufferNodePleWindow> {
   const parameters = new URLSearchParams({ fromUtc, toUtc });
   if (nodeId !== null) parameters.set("nodeId", String(nodeId));
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/v1/observation-targets/${encodeURIComponent(targetId)}/resources/buffer-nodes/ple?${parameters}`,
     { credentials: "same-origin", headers: { Accept: "application/json" }, signal },
   );

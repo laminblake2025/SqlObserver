@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readJsonBounded } from "./alertRuntimeParser.ts";
 
 export interface AdminListPage<T> {
@@ -88,7 +89,7 @@ async function getPage<T>(targetId: string, resource: "maintenance" | "destinati
     throw new Error("Invalid administration page request.");
   const query = new URLSearchParams({ limit: "100" });
   if (cursor) query.set("cursor", cursor);
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/${resource}?${query}`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/${resource}?${query}`, {
     credentials: "same-origin", headers: { Accept: "application/json" }, signal,
   });
   if (!response.ok) throw new Error(response.status === 403

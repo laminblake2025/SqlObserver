@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import type {
   DatabaseFileHealthPage,
   DatabaseHealthPage,
@@ -37,7 +38,7 @@ export async function getServerConfigurationSnapshot(instanceId: string,
 export async function setServerConfigurationCollection(instanceId: string,
   expectedTargetRevision: number, expectedEnabled: boolean, enabled: boolean,
   signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-collection`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-collection`, {
     method: "PUT", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ expectedTargetRevision, expectedEnabled, enabled }), signal,
@@ -118,7 +119,7 @@ export async function getTargetHealthEvidence(
 async function getJson<T>(path: string, signal: AbortSignal): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await apiFetch(path, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
       signal,

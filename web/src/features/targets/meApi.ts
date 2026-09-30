@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export type ApplicationRole =
   | "Viewer" | "Operator" | "TargetAdministrator" | "SecurityAdministrator"
   | "Auditor" | "CollectorService" | "QueryTextReader";
@@ -74,7 +75,7 @@ export function canReadQueryText(access: MyAccess | undefined, targetId: string)
 export async function getMyAccess(targetId: string | null, signal: AbortSignal): Promise<MyAccess> {
   if (targetId !== null && !guid.test(targetId)) throw new Error("Access information is unavailable.");
   const query = targetId === null ? "" : `?targetId=${encodeURIComponent(targetId)}`;
-  const response = await fetch(`/api/v1/me${query}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal });
+  const response = await apiFetch(`/api/v1/me${query}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal });
   if (!response.ok) throw new Error("Access information is unavailable.");
   return parseMyAccess(await response.json(), targetId);
 }

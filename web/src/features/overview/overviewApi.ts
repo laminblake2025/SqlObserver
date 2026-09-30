@@ -1,10 +1,11 @@
+import { apiFetch } from "../../apiClient.ts";
 import type { OverviewSnapshot, OverviewPoint } from './overviewTypes';
 import { readBoundedBody } from '../activity/activityParser.mjs';
 import { parseOverviewBackupSummary } from './overviewBackupSummary.ts';
 
 export async function getOverview(target: string, window: {fromUtc: string; toUtc: string}, signal: AbortSignal): Promise<OverviewSnapshot> {
   const params = new URLSearchParams({...window,useLatestStatus:'true'}); if (target) params.set('targetId',target);
-  const response = await fetch(`/api/v1/overview?${params}`, {credentials:'same-origin', headers:{Accept:'application/json'},signal});
+  const response = await apiFetch(`/api/v1/overview?${params}`, {credentials:'same-origin', headers:{Accept:'application/json'},signal});
   if (!response.ok) throw new Error(response.status === 403 ? 'This server selection is unavailable or outside your access.' : response.status === 400 ? 'The selected time range is invalid.' : response.status === 504 ? 'Overview took too long to load. Try a shorter time range or a single server.' : 'Overview evidence is temporarily unavailable.');
   let value: OverviewSnapshot;
   try { value = JSON.parse(await readBoundedBody(response, signal, 1_048_576)) as OverviewSnapshot; }

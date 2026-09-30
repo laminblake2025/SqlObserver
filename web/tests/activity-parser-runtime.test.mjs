@@ -59,13 +59,13 @@ test("production HTTP reader enforces headers, streamed bytes, null bodies, and 
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = async () => streamResponse(JSON.stringify(envelope([])));
-    assert.equal((await getPage("/activity", parseSession, target, new AbortController().signal)).instanceId, target);
+    assert.equal((await getPage("/api/v1/activity", parseSession, target, new AbortController().signal)).instanceId, target);
     globalThis.fetch = async () => streamResponse("{}", { "content-length": String(maximumResponseBytes + 1) });
-    await assert.rejects(() => getPage("/activity", parseSession, target, new AbortController().signal));
+    await assert.rejects(() => getPage("/api/v1/activity", parseSession, target, new AbortController().signal));
     globalThis.fetch = async () => new Response(null, { status: 200 });
-    await assert.rejects(() => getPage("/activity", parseSession, target, new AbortController().signal));
+    await assert.rejects(() => getPage("/api/v1/activity", parseSession, target, new AbortController().signal));
     globalThis.fetch = async () => streamResponse("x".repeat(maximumResponseBytes + 1));
-    await assert.rejects(() => getPage("/activity", parseSession, target, new AbortController().signal));
+    await assert.rejects(() => getPage("/api/v1/activity", parseSession, target, new AbortController().signal));
   } finally { globalThis.fetch = originalFetch; }
   assert.match(safeStatusMessage(403), /not authorized/u);
   assert.match(safeStatusMessage(504), /execution limit/u);

@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { ActivityRequestError, readBoundedBody, safeStatusMessage } from "./activityParser.mjs";
 
 const categories = ["Lock", "I/O", "CPU/signal", "Memory", "Parallelism", "Log", "Other"];
@@ -67,7 +68,7 @@ export async function getServerWaitTrend(instanceId, window, signal) {
   const params = new URLSearchParams({ fromUtc: window.fromUtc, toUtc: window.toUtc });
   let response;
   try {
-    response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/waits/trend?${params}`,
+    response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/waits/trend?${params}`,
       { credentials: "same-origin", headers: { Accept: "application/json" }, cache: "no-store", signal });
   } catch (error) {
     if (signal.aborted) throw error;

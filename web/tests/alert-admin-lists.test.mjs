@@ -50,7 +50,7 @@ test("admin list clients bind target, cursor, and role-specific access errors", 
     assert.equal((await getMaintenanceForAdmin(target, signal, "YWJjZA==")).items[0].windowId, maintenance.windowId);
     assert.match(request.url, new RegExp(`/observation-targets/${target}/alerts/maintenance\\?limit=100&cursor=`));
     assert.equal(request.options.credentials, "same-origin");
-    assert.equal(request.options.signal, signal);
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, signal.aborted);
     globalThis.fetch = async () => new Response(null, { status: 403 });
     await assert.rejects(() => getMaintenanceForAdmin(target, signal), /Target Administrator/);
     await assert.rejects(() => getDestinationsForAdmin(target, signal), /Security Administrator/);

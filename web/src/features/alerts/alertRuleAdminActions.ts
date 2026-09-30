@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readJsonBounded } from "./alertRuntimeParser.ts";
 import type { AlertRuleAdminItem } from "./alertRuleAdminApi";
 import { isAlertRuleKind, isBackupRuleKind, validBackupRuleSettings } from "./alertRuleSignals.ts";
@@ -57,7 +58,7 @@ export function parseRuleCatalog(value: unknown, targetId: string): readonly Rul
 
 export async function getRuleCatalog(targetId: string, signal: AbortSignal): Promise<readonly RuleTemplate[]> {
   if (!uuid.test(targetId)) throw new Error("Invalid server identifier.");
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules/catalog`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules/catalog`, {
     credentials: "same-origin", headers: { Accept: "application/json" }, signal,
   });
   if (!response.ok) throw new Error(response.status === 403
@@ -135,7 +136,7 @@ function mutationError(response: Response): Error {
 
 export async function createRule(targetId: string, rule: RuleValues,
     attempt: { ruleId: string; operationId: string }, signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules`, {
     method: "POST", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ ...rule, ...attempt }), signal,
@@ -145,7 +146,7 @@ export async function createRule(targetId: string, rule: RuleValues,
 
 export async function updateRule(targetId: string, ruleId: string, revision: number,
     rule: RuleValues, operationId: string, signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules/${encodeURIComponent(ruleId)}`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules/${encodeURIComponent(ruleId)}`, {
     method: "PUT", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ ...rule, ruleId, operationId, expectedRevision: revision }), signal,
@@ -155,7 +156,7 @@ export async function updateRule(targetId: string, ruleId: string, revision: num
 
 export async function disableRule(targetId: string, rule: AlertRuleAdminItem,
     operationId: string, signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules/${encodeURIComponent(rule.ruleId)}/disable`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules/${encodeURIComponent(rule.ruleId)}/disable`, {
     method: "POST", credentials: "same-origin",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ ...rule, operationId, expectedRevision: rule.revision, enabled: false }), signal,

@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readBoundedBody } from "./operationsParser.mjs";
 import { parseBackupPage, type BackupPage } from "./backupAssessment.ts";
 
@@ -13,7 +14,7 @@ export async function getBackupAssessment(targetId: string, atUtc: string, signa
   if (cursor !== undefined) query.set("cursor", cursor);
   let response: Response;
   try {
-    response = await fetch(`/api/v2/observation-targets/${encodeURIComponent(targetId)}/health/backups?${query}`,
+    response = await apiFetch(`/api/v2/observation-targets/${encodeURIComponent(targetId)}/health/backups?${query}`,
       { credentials: "same-origin", headers: { Accept: "application/json" }, cache: "no-store", signal });
   } catch (error) {
     if (signal.aborted) throw error;

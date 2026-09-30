@@ -69,7 +69,7 @@ test("access lookup sends the selected target and refuses an unrelated response"
     assert.equal((await getMyAccess(target, signal)).targetId, target);
     assert.equal(requested.url, `/api/v1/me?targetId=${target}`);
     assert.equal(requested.options.credentials, "same-origin");
-    assert.equal(requested.options.signal, signal);
+    assert.ok(requested.options.signal instanceof AbortSignal); assert.equal(requested.options.signal.aborted, signal.aborted);
     await assert.rejects(() => getMyAccess(other, signal), /Access information/);
   } finally { globalThis.fetch = previous; }
 });

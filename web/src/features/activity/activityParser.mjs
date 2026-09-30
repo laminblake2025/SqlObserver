@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export const pageLimit = 25;
 export const maximumResponseBytes = 256 * 1024;
 
@@ -5,7 +6,7 @@ export class ActivityRequestError extends Error {}
 
 export async function getPage(url, parseItem, expectedInstanceId, signal, maximumItems = pageLimit) {
   let response;
-  try { response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }); }
+  try { response = await apiFetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }); }
   catch (error) { if (signal.aborted) throw error; throw new ActivityRequestError("Activity evidence is temporarily unavailable."); }
   if (!response.ok) throw new ActivityRequestError(safeStatusMessage(response.status));
   const declaredLength = response.headers.get("content-length");

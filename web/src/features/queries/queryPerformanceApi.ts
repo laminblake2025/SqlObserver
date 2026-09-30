@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readBoundedBody } from "../activity/activityParser.mjs";
 import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
 
@@ -20,7 +21,7 @@ const canonicalInstant = (value: string): string => value.replace(/(?:\.(\d{1,7}
 const metric = (value: unknown): value is number | null | undefined => value === undefined || value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
 async function readJson(url: string, expectedTargetId: string, signal?: AbortSignal, maxBytes = maximumResponseBytes, sensitive = false): Promise<unknown> {
-  const response = await fetch(url, { signal, cache: sensitive ? "no-store" : "default", headers: { Accept: "application/json" } });
+  const response = await apiFetch(url, { signal, cache: sensitive ? "no-store" : "default", headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(response.status === 404 ? "Query performance evidence is unavailable." : "Query performance request failed.");
   if (!/^application\/json(?:;|$)/iu.test(response.headers.get("content-type") ?? "")) throw new Error("Query performance response content type was invalid.");
   const length = Number(response.headers.get("content-length") ?? "0");

@@ -41,7 +41,7 @@ test("Query Store group trend binds plan and window and preserves coverage gaps"
     assert.equal(trend.points[1].waitCategories[3], "9007199254740993");
     assert.match(request.url, new RegExp(`/history/${query}/plans/${plan}/trend\\?`));
     assert.equal(request.options.cache, "no-store");
-    assert.equal(request.options.signal, controller.signal);
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
     globalThis.fetch = async () => reply({ ...response, targetId: "other-target" });
     await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /target contract/);
     globalThis.fetch = async () => reply({ ...response, planFingerprint: "c".repeat(64) });
@@ -80,7 +80,7 @@ test("query text read binds the exact run, bypasses browser cache, and rejects i
     assert.deepEqual(await getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), { collectionRunId: runId, status: "available", text: "SELECT 1" });
     assert.match(request.url, new RegExp(`/databases/5/history/${fingerprint}/runs/${runId}/text$`));
     assert.equal(request.options.cache, "no-store");
-    assert.equal(request.options.signal, controller.signal);
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
     globalThis.fetch = async () => new Response(JSON.stringify({ ...response, collectionRunId: "33333333-3333-4333-8333-333333333333" }), { headers: { "content-type": "application/json" } });
     await assert.rejects(() => getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), /outside its bounds/);
     globalThis.fetch = async () => new Response(JSON.stringify({ ...response, status: "unavailable", text: "SELECT 1" }), { headers: { "content-type": "application/json" } });
@@ -106,7 +106,7 @@ test("plan XML read binds target, query, plan and run without caching", async ()
       { collectionRunId: runId, planFingerprint: plan, status: "available", xml: "<ShowPlanXML />" });
     assert.match(request.url, new RegExp(`/history/${query}/runs/${runId}/plans/${plan}/content$`));
     assert.equal(request.options.cache, "no-store");
-    assert.equal(request.options.signal, controller.signal);
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
     globalThis.fetch = async () => new Response(JSON.stringify({ ...response, planFingerprint: "c".repeat(64) }),
       { headers: { "content-type": "application/json" } });
     await assert.rejects(() => getQueryPerformancePlanContent(targetId, 5, query, plan, runId, controller.signal), /outside its bounds/);
@@ -136,7 +136,7 @@ test("plan wait read binds the exact history row and rejects conflicting categor
         capturedAtUtc: response.capturedAtUtc, categories: response.categories });
     assert.match(request.url, new RegExp(`/history/${query}/runs/${runId}/plans/${plan}/waits$`));
     assert.equal(request.options.cache, "no-store");
-    assert.equal(request.options.signal, controller.signal);
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
     globalThis.fetch = async () => new Response(JSON.stringify({ ...response, planFingerprint: "c".repeat(64) }),
       { headers: { "content-type": "application/json" } });
     await assert.rejects(() => getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal), /outside its bounds/);

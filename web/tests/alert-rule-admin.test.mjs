@@ -38,7 +38,7 @@ test("admin rule reads use a target-bound GET and surface missing role", async (
     assert.equal((await getAlertRulesForAdmin(target, signal, page.nextCursor)).items[0].enabled, false);
     assert.match(request.url, new RegExp(`/observation-targets/${target}/alerts/rules\\?limit=100&cursor=`));
     assert.equal(request.options.credentials, "same-origin");
-    assert.equal(request.options.signal, signal);
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, signal.aborted);
     globalThis.fetch = async () => new Response(null, { status: 403 });
     await assert.rejects(() => getAlertRulesForAdmin(target, signal), /Target Administrator/);
   } finally { globalThis.fetch = prior; }

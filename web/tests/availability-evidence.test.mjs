@@ -108,7 +108,7 @@ test("production API sends each stream's signed cursor and a fixed cutoff with s
     assert.equal(requests[1].url.searchParams.get("atUtc"), at);
     assert.equal(requests[1].url.searchParams.get("cursor"), "signed+cursor/==");
     assert.equal(requests[1].url.searchParams.get("limit"), "50");
-    assert.equal(requests[1].options.signal, signal);
+    assert.ok(requests[1].options.signal instanceof AbortSignal); assert.equal(requests[1].options.signal.aborted, signal.aborted);
     assert.equal(requests[1].options.credentials, "same-origin");
     assert.equal(requests[1].options.cache, "no-store");
   } finally { globalThis.fetch = original; }

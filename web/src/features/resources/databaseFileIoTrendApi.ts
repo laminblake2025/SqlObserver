@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 export interface DatabaseFileIoTrendPoint {
   readonly bucketStartUtc: string;
   readonly sourceRows: number;
@@ -27,7 +28,7 @@ export interface DatabaseFileIoTrend {
 export async function getDatabaseFileIoTrend(instanceId: string, databaseId: number,
   fileId: number, fromUtc: string, toUtc: string, signal: AbortSignal): Promise<DatabaseFileIoTrend> {
   const parameters = new URLSearchParams({ fromUtc, toUtc });
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/resources/files/${databaseId}/${fileId}/trend?${parameters}`,
     { credentials: "same-origin", headers: { Accept: "application/json" }, signal },
   );

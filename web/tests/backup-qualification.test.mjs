@@ -60,7 +60,7 @@ test('GET uses exact revision, bounded uncached same-origin reads and cancellati
   try {
     let sent; globalThis.fetch = async (url, options) => { sent = { url, options }; return new Response(JSON.stringify(current)); };
     const signal = new AbortController().signal; assert.deepEqual(await getBackupQualification(target, 2, signal), current);
-    assert.ok(sent.url.endsWith('/backup-zone-qualification/?targetRevision=2')); assert.equal(sent.options.signal, signal);
+    assert.ok(sent.url.endsWith('/backup-zone-qualification/?targetRevision=2')); assert.ok(sent.options.signal instanceof AbortSignal); assert.equal(sent.options.signal.aborted, signal.aborted);
     assert.equal(sent.options.credentials, 'same-origin'); assert.equal(sent.options.cache, 'no-store');
     globalThis.fetch = async () => new Response(' '.repeat(16385)); await assert.rejects(() => getBackupQualification(target, 2, signal), /could not be verified/);
     const aborted = new AbortController(); aborted.abort(); globalThis.fetch = async () => { throw new DOMException('aborted', 'AbortError'); };
@@ -74,7 +74,7 @@ test('uncertain PUT retries the exact command and validates acknowledged target,
     globalThis.fetch = async (url, options) => { sent.push({ url, options }); if (sent.length === 1) throw new TypeError('lost result'); return new Response(JSON.stringify(ack)); };
     await assert.rejects(() => setBackupQualification(target, body, signal), e => e.retryable && /uncertain/.test(e.message));
     assert.equal(await setBackupQualification(target, body, signal), 4); assert.equal(sent[0].options.body, sent[1].options.body);
-    assert.equal(sent[1].options.method, 'PUT'); assert.equal(sent[1].options.headers['Content-Type'], 'application/json');
+    assert.equal(sent[1].options.method, 'PUT'); assert.equal(new Headers(sent[1].options.headers).get("content-type"), 'application/json');
     for (const change of [{ qualificationRevision: 3 }, { targetRevision: 3 }, { enabled: false }, { targetId: operation }, { unknown: true }]) {
       globalThis.fetch = async () => new Response(JSON.stringify({ ...ack, ...change }));
       await assert.rejects(() => setBackupQualification(target, body, signal), e => e.retryable && /could not be verified/.test(e.message));

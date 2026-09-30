@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readJsonBounded } from "./alertRuntimeParser.ts";
 import { isAlertRuleKind, isBackupRuleKind, validBackupRuleSettings, type AlertRuleKind } from "./alertRuleSignals.ts";
 
@@ -77,7 +78,7 @@ export async function getAlertRulesForAdmin(targetId: string, signal: AbortSigna
     throw new Error("Invalid alert rule page request.");
   const query = new URLSearchParams({ limit: "100" });
   if (cursor) query.set("cursor", cursor);
-  const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules?${query}`, {
+  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(targetId)}/alerts/rules?${query}`, {
     credentials: "same-origin", headers: { Accept: "application/json" }, signal,
   });
   if (!response.ok) throw new Error(response.status === 403
