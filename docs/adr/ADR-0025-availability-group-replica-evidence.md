@@ -137,6 +137,18 @@ permissions, cancellation, SQL error classification and mixed-version rejection.
 The production registry and catalog still select v1, and the v2 commit grant
 remains private pending the versioned rollout gate and native AG qualification.
 
+Forward migration 0267 stages the exact v2 catalog row and a private rollout
+function. Under the catalog lease it verifies enabled retention, creates and
+checks the six current UTC partitions, locks the activation gate and schedules,
+and refuses to switch while any v1 run remains active. A failed cutover rolls
+back partitions, schedule changes and worker registration together. Successful
+reconciliation registers the worker for five minutes; old or expired workers
+cannot claim AG v2 work. Target creation and revision changes share the
+activation lock and follow the selected version. PostgreSQL fixtures verify
+these boundaries, idempotent repeats and privilege separation. The rollout
+function and commit remain owner-only, with no production registry switch or
+collector grant; native AG qualification remains required before activation.
+
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
    dependencies in PostgreSQL 18.

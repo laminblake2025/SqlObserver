@@ -2059,7 +2059,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                 SET ROLE sqlobserver_migrator;
                 WITH catalog AS MATERIALIZED (
                     SELECT * FROM control.collector_contract
-                    WHERE collector_id <> 'database.inventory' OR collector_version=2)
+                    WHERE collector_version=CASE WHEN collector_id='database.inventory' THEN 2 ELSE 1 END)
                 SELECT * FROM control.reconcile_collector_catalog_m15(
                     ARRAY(SELECT collector_id FROM catalog ORDER BY execution_order),
                     ARRAY(SELECT collector_version FROM catalog ORDER BY execution_order),

@@ -324,8 +324,8 @@ public sealed class AvailabilityReplicaEvidenceCommitTests(PostgreSql18Fixture f
     {
         Guid target = Guid.NewGuid();
         await using var seed = database.DataSource.CreateCommand("""
-            -- A fixture-only v2 contract and manually created partitions qualify
-            -- the private commit; these are not production activation evidence.
+            -- Use the staged v2 contract when present, with fixture-only scheduling
+            -- and partitions. This does not qualify production activation.
             INSERT INTO control.collector_contract
              (collector_id,collector_version,execution_order,manifest_schema_version,
               output_schema_version,manifest_sha256,asset_bundle_sha256,default_interval,
@@ -334,7 +334,8 @@ public sealed class AvailabilityReplicaEvidenceCommitTests(PostgreSql18Fixture f
             SELECT collector_id,2,execution_order,6,2,manifest_sha256,asset_bundle_sha256,
               default_interval,minimum_interval,execution_timeout,2048,2097152,
               estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval
-            FROM control.collector_contract WHERE collector_id='availability-groups.health' AND collector_version=1;
+            FROM control.collector_contract WHERE collector_id='availability-groups.health' AND collector_version=1
+            ON CONFLICT(collector_id,collector_version) DO NOTHING;
             INSERT INTO control.observation_target
              (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
               authentication_mode,transport_security_mode,lifecycle_state,revision,
@@ -342,8 +343,11 @@ public sealed class AvailabilityReplicaEvidenceCommitTests(PostgreSql18Fixture f
             VALUES (@target,@key,'AG v2 commit','sql01',1433,interval '5 seconds',
               'windows_integrated_service_identity','mandatory_validated','active',1,
               statement_timestamp(),statement_timestamp(),statement_timestamp());
-            UPDATE control.collector_schedule SET enabled=(collector_id='availability-groups.health'),
-              collector_version=CASE WHEN collector_id='availability-groups.health' THEN 2 ELSE collector_version END
+            UPDATE control.collector_schedule SET enabled=(collector_id IN ('engine.core','availability-groups.health')),
+              collector_version=CASE WHEN collector_id='availability-groups.health' THEN 2 ELSE collector_version END,
+              next_due_at=CASE WHEN collector_id='engine.core' THEN clock_timestamp()+interval '1 day' ELSE next_due_at END,
+              last_outcome=CASE WHEN collector_id='engine.core' THEN 'succeeded' ELSE last_outcome END,
+              last_succeeded_at=CASE WHEN collector_id='engine.core' THEN clock_timestamp() ELSE last_succeeded_at END
             WHERE instance_id=@target;
             SET ROLE sqlobserver_migrator;
             DO $partitions$ BEGIN
