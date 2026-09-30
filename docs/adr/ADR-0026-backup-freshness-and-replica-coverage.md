@@ -263,3 +263,21 @@ checks do not attest the operator's historical configuration evidence.
 This stage passes ten native PostgreSQL command/persistence checks, 34 affected
 unit checks, two HTTP cases and the staged collector composition check. The
 production backup assessment and native replica qualification remain open.
+
+The policy stage now adds migration 0276 and a target-scoped GET/PUT policy
+surface. Each immutable revision carries explicit full/log/observation limits,
+full-image versus differential-base choice and checksum requirement. No RPO
+policy is seeded. Creation/enabling requires a known current v2 database
+identity and bounded recent source/receipt evidence; Full/Bulk-logged recovery
+requires an explicit log limit. Existing policies can be disabled when evidence
+is stale. Target and policy revisions plus an operation identity fence writes,
+which are atomic with their audit receipt. Exact latest retries replay, changed
+or superseded operations conflict, and old identities do not transfer policy.
+
+Reads use an explicit UTC cutoff and preserve policy history for prior target
+revisions. Four focused native PostgreSQL cases, one mixed-grant application
+case and two HTTP cases pass. The first native regression failed before the
+policy read function existed. Assessment/evidence paging, Health checks and
+fleet integration, alert/MCP/UI surfaces, native replica qualification and
+production activation remain open; persisted policy alone is not a freshness
+verdict or proof of restore/RPO compliance.

@@ -31,6 +31,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         ConfigurationCollectionAdministration =
             new PostgreSqlConfigurationCollectionAdministrationPort(dataSource);
         BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
+        BackupFreshnessPolicies = new PostgreSqlBackupFreshnessPolicyPort(dataSource);
         SqlVolumeReads = new PostgreSqlSqlVolumeReadPort(dataSource);
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
@@ -83,6 +84,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IServerConfigurationSnapshotRepositoryPort ServerConfigurationSnapshots { get; }
     public IConfigurationCollectionAdministrationPort ConfigurationCollectionAdministration { get; }
     public IBackupZoneQualificationAdministrationPort BackupZoneQualifications { get; }
+    public IBackupFreshnessPolicyPort BackupFreshnessPolicies { get; }
     public ISqlVolumeReadRepositoryPort SqlVolumeReads { get; }
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }

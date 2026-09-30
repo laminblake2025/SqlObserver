@@ -128,8 +128,8 @@ The active registry still selects v1. The repository now dispatches v2 payloads
 to a private fenced writer; production collector execution remains ungranted.
 Retention is registered and maintained as a three-table group. Private catalog
 activation and compatible-worker claim gates are installed. Audited historical
-zone provisioning is available; backup policy commands and assessment reads
-remain pending. No production
+zone provisioning and explicit per-database policy commands are available;
+assessment reads remain pending. No production
 activation or native collector qualification is claimed here. Cross-replica
 pairing remains explicit work; this collector does not discover peers or merge
 histories.
@@ -347,11 +347,73 @@ authorization unit checks and two HTTP cases pass. A separate composition
 check confirms the staged provider/collector and active v1 registry. No full
 Local profile was run for this stage.
 
+## Explicit backup policies
+
+Migration 0276 persists append-only policy revisions keyed by target, target
+revision and the v2 database fingerprint. No rows or RPO values are seeded.
+The policy table has forced RLS and no direct application-role grants. Its
+Server-only mutation function writes policy and audit together, checks the
+target/policy revisions and operation ID, and retains the observed inventory
+run as provenance without an FK that would obstruct evidence retention.
+
+GET/PUT
+`/api/v1/observation-targets/{instanceId}/health/backups/databases/{databaseFingerprint}/policy/`
+exposes one policy. GET requires Viewer, Operator or TargetAdministrator on
+that exact target, takes `targetRevision` and optional `atUtc`, and returns the
+latest policy recorded by that cutoff. Its default is current UTC; future,
+non-UTC and non-microsecond-aligned cutoffs are invalid. Missing policy returns
+404, with no implicit threshold. Old target/database policies remain readable
+for history and cannot be silently assigned to a new identity/revision.
+
+PUT requires TargetAdministrator on the exact target, JSON and the existing
+origin/body/rate limits. A complete request is:
+
+```json
+{
+  "expectedTargetRevision": 1,
+  "expectedPolicyRevision": 0,
+  "operationId": "<new UUID, retained on identical retries>",
+  "enabled": true,
+  "maximumFullAgeSeconds": 86400,
+  "maximumLogAgeSeconds": 900,
+  "maximumObservationAgeSeconds": 300,
+  "fullRequirement": "full_image",
+  "requireChecksums": false
+}
+```
+
+Those thresholds are illustrative, not recommendations. Full/log limits must
+be 1–2,592,000 whole seconds and observation age 1–3,600 seconds. Full requirement
+is explicitly `full_image` (including copy-only full images) or
+`differential_base` (conventional full backups). Enabled Full/Bulk-logged
+databases require an explicit log limit. Simple recovery permits a null log
+limit. A later recovery-model change does not invent one; its assessment will
+remain indeterminate until the policy is updated.
+
+Creation and enabling require a known, complete database identity in the latest
+v2 scan, with monitor receipt and source observation within the last hour and
+no future source time. Partial/truncated/failed scans cannot silently fall back
+to older complete identity evidence. A database absent from the latest scan
+returns `database_not_observed`. An existing policy may still be disabled when
+inventory is unavailable or stale. Identical latest-operation retries replay;
+changed or superseded operations conflict, and concurrent revisions have one
+winner. Successful writes and rejected valid administration are audited.
+
+Four focused native PostgreSQL checks pass using real fenced v2 inventory
+commits. They cover explicit thresholds, null log values, immutable as-of
+history, audit atomicity/rollback, stale inventory, disablement, concurrency,
+private grants and database/target replacement. One mixed-grant authorization
+check and two real HTTP pipeline cases also pass. The first repository
+regression failed for the missing policy read function before implementation.
+No full Local profile was run. Policy configuration does not activate v2
+collection, expose assessment verdicts, or complete the alert/UI/replica path.
+
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2ManifestTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2PersistenceTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2RolloutTests'
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupZoneQualificationTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupFreshnessPolicyTests'
 dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --filter 'FullyQualifiedName~BackupHistoricalTimeResolverTests|FullyQualifiedName~BackupV2ParserTests|FullyQualifiedName~BackupFreshnessTests'
 # Use the existing explicit Local or Release SQL Server lab contract.
 dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter 'FullyQualifiedName~BackupV2SourceIntegrationTests'
