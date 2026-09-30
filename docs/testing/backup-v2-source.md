@@ -1,5 +1,53 @@
 # Staged backup v2 source checks
 
+## Repository-derived backup alert source bindings
+
+Forward migration 0282 adds an independent SQL derivation of the full-policy,
+log-policy and observed-fault signals. `read_backup_alert_capture` returns the
+leased aggregate, its exact JSONB SHA-256 digest and the three repository-derived
+signals. The production `PostgreSqlBackupAlertEvidencePort` now uses that read
+and rejects any difference from the application projection, including null
+versus zero, state, reason, count, order or schema. Reads remain bounded to five
+seconds and do not enumerate backup database/sample pages. Confirmed violations
+survive partial coverage; disabled, unavailable and incomplete evidence cannot
+become clearing zeros. Observed-fault absence remains unknown.
+
+The private `backup_alert_observation` helper produces the same deterministic
+sample/operation identity, captured cutoff, run binding, reason and canonical
+evidence digest as the production observation factory. The private
+`assert_backup_alert_observation` guard requires the exact target scope,
+current target revision and alert coordinator owner/fence. It checks that the
+capture is at most two minutes old, still matches the current valid aggregate
+and digest, and reproduces the complete observation. Sub-microsecond timestamps
+and added fields are rejected. A missing capture is invalidated when an
+aggregate becomes available. A refreshed aggregate supersedes the prior digest
+even when its policy verdict has not changed.
+
+The guard holds the target row for update until transaction completion. Cache
+publication takes a share lock on that same row, so both replacement and first
+publication wait until the guarded transaction finishes. Policy/qualification
+edits and target changes use the same target row. Future queue/commit dispatch
+must take target locks before rule/state locks, persist the captured payload,
+check the exact queue claim and rule revision, and process immutable replay
+before validating fresh evidence. The guard does not authorize a rule, persist
+state or enqueue a notification. Only the leased read wrapper is granted to the
+collector; the derivation/commit helpers remain private. The backup rule catalog,
+queue dispatch, transactional state persistence and delivery integration remain
+open, and the backup kinds are still unavailable for persisted rule creation.
+
+Native PostgreSQL checks cover 39 kind/context combinations using the real cache
+and alert wire serializers, forged values/identities/digests, malformed counts,
+changed policy, captured-time bounds, private grants and concurrent publication
+with and without an existing cache. The existing leased read and context
+invalidation regressions also exercise the new production read wrapper.
+All seven focused PostgreSQL cases and the migration-preamble check pass. No
+SQL Server collector or browser code changed, so those suites were not repeated.
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~BackupSqlSignalsAndCanonical|FullyQualifiedName~BackupCaptureGuard|FullyQualifiedName~BackupSqlSignalBoundary|FullyQualifiedName~AlertLeaseReadsCurrentAggregate|FullyQualifiedName~AlertEvidenceInvalidates'
+dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --no-restore --filter 'FullyQualifiedName~MigrationPreambleTests'
+```
+
 ## Backup alert transitions and unknown evidence
 
 The domain now defines separate full-policy, log-policy and observed-fault alert

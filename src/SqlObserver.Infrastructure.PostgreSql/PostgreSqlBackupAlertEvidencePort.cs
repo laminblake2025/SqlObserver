@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Npgsql;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
@@ -34,7 +35,7 @@ public sealed class PostgreSqlBackupAlertEvidencePort(NpgsqlDataSource dataSourc
                 await scope.ExecuteNonQueryAsync(deadline.Token).ConfigureAwait(false);
             }
             await using var command = new NpgsqlCommand(
-                "SELECT read_at,payload,source_digest FROM alerting.read_backup_fleet_evidence(@target,@revision,@owner,@fencing);",
+                "SELECT read_at,payload,source_digest,signals FROM alerting.read_backup_alert_capture(@target,@revision,@owner,@fencing);",
                 connection, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(bounded) };
             command.Parameters.AddWithValue("target", targetId.Value);
             command.Parameters.AddWithValue("revision", targetRevision);
@@ -51,7 +52,7 @@ public sealed class PostgreSqlBackupAlertEvidencePort(NpgsqlDataSource dataSourc
                     throw Invalid();
                 result = new(targetId, targetRevision, readAt,
                     payload is null ? null : PostgreSqlBackupFleetCacheCodec.Decode(payload, targetId, targetRevision), digest);
-                _ = BackupAlertSignalProjection.Build(result); // Validate the complete context, including null/digest binding.
+                ValidateSignals(row.GetString(3), BackupAlertSignalProjection.Build(result));
                 if (await row.ReadAsync(deadline.Token).ConfigureAwait(false)) throw Invalid();
             }
             await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
@@ -60,6 +61,31 @@ public sealed class PostgreSqlBackupAlertEvidencePort(NpgsqlDataSource dataSourc
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         { throw PostgreSqlRuntimeSupport.CreateTimeoutException("backup alert evidence read", exception); }
+    }
+
+    private static void ValidateSignals(string json, IReadOnlyList<BackupAlertSignal> expected)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(json, new() { MaxDepth = 4 });
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() != 3 || expected.Count != 3) throw Invalid();
+            for (int i = 0; i < expected.Count; i++)
+            {
+                JsonElement signal = root[i];
+                if (signal.ValueKind != JsonValueKind.Object) throw Invalid();
+                var keys = new HashSet<string>(StringComparer.Ordinal);
+                foreach (JsonProperty property in signal.EnumerateObject())
+                    if (property.Name is not ("kind" or "state" or "reason" or "affectedDatabases") || !keys.Add(property.Name)) throw Invalid();
+                if (keys.Count != 4 || signal.GetProperty("kind").GetInt32() != (int)expected[i].Kind ||
+                    signal.GetProperty("state").GetInt32() != (int)expected[i].State ||
+                    signal.GetProperty("reason").GetInt32() != (int)expected[i].Reason) throw Invalid();
+                JsonElement count = signal.GetProperty("affectedDatabases");
+                if ((count.ValueKind == JsonValueKind.Null ? (int?)null : count.GetInt32()) != expected[i].AffectedDatabases) throw Invalid();
+            }
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException or OverflowException)
+        { throw new InvalidDataException("Backup alert SQL signals differ from the captured aggregate.", exception); }
     }
 
     private static InvalidDataException Invalid() => new("Backup alert evidence returned an invalid envelope.");
