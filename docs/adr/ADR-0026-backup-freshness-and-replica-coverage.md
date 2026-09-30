@@ -188,8 +188,28 @@ An application qualification port and staged v2 collector now publish the
 operational-health payload under the shared five-second deadline. The shared
 validator checks the v2 payload, accounting and coverage and rejects v1/v2
 mixing. Its visibility marker is limited to explicitly incomplete supported
-health observations. The active registry and repository still select v1;
-fenced v2 writes and rollout gates remain required before activation.
+health observations. The active registry still selects v1; at this stage the
+repository also remains on v1. Rollout gates remain required before activation.
 This stage passes 171 targeted unit checks and four local sequential SQL
 source/parser checks; it does not qualify production collector transport,
 monitoring permissions or real AG topology.
+
+The next persistence stage now provides the private v2 writer and canonical
+repository mapper in forward migrations 0270/0271. A scan, database inventory,
+samples, completion receipt and schedule/circuit update commit atomically under
+the run and lease fences. Evidence parents use monitor receipt time for
+partition placement, retain source clock/time separately, enforce target RLS
+and reject history mutation. Unknown identities retain inventory without policy
+identity or samples. Truncation withholds every database/sample prefix; failed
+scans retain receipt and rejection accounting only. Canonical identical replay
+is accepted, while changed completion is rejected.
+
+Resolved times reference immutable target/revision-qualified serialized .NET
+rules and a UTC interval. PostgreSQL checks the reference, window, source-zone
+agreement and endpoint/order/offset bounds; the typed resolver performs the
+historical rule conversion. No audited provisioning command or production
+qualification provider exists yet. Four native PostgreSQL 18.4 persistence
+checks and two related existing commit regressions pass. Catalog scheduling and
+partitions in those tests are fixture-only; production EXECUTE remains revoked.
+Retention/partition maintenance, compatible-worker/catalog activation, policy
+and read surfaces, alerts/UI and native AG/TLS qualification remain open.

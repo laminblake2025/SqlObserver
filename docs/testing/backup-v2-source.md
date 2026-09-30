@@ -123,10 +123,10 @@ default qualification port returns no qualification. It never invents rules
 from the current zone ID. External cancellation propagates; deadline exhaustion
 has its own outcome. Version-1 and version-2 payloads cannot cross validators.
 
-The active registry still selects v1. Version-2 fenced persistence, retention,
-schedule/compatible-worker rollout gates, qualified zone provisioning, policy
-commands and assessment reads remain pending. The existing repository rejects
-this new payload until its versioned writer is implemented. No production
+The active registry still selects v1. The repository now dispatches v2 payloads
+to a private fenced writer; production collector execution remains ungranted.
+Retention, schedule/compatible-worker rollout gates, qualified zone provisioning,
+policy commands and assessment reads remain pending. No production
 activation or native collector qualification is claimed here. Cross-replica
 pairing remains explicit work; this collector does not discover peers or merge
 histories.
@@ -198,8 +198,36 @@ native SQL Server 2019/2025, or real AG preference and topology. These remain
 separate required lab checks. The production collector, fenced writer,
 retention, policy commands and assessment UI are not activated by these tests.
 
+The persistence stage adds forward migrations 0270/0271 and a canonical mapper.
+`backup_v2_scan`, `backup_v2_database` and `backup_v2_sample` are typed, append-only,
+forced-RLS parents partitioned by the monitor receipt clock. The target clock and
+offset-free source times remain separate evidence. Unknown database identity
+retains an ordinal inventory row without backup samples or a policy identity.
+All inventory/sample rows, the scan, completion receipt, visibility gap and
+schedule/circuit update commit together under the exact run, target revision,
+schedule revision and worker lease. Identical canonical completion replay is
+accepted after the schedule advances; changed completion is rejected.
+
+Resolved finish times reference an immutable target/revision qualification
+containing bounded serialized .NET zone rules, their checksum, expected source
+zone and a half-open UTC window. The writer checks that reference, source-zone
+agreement, recorded-start conversion, endpoint window/order and plausible
+minute-aligned finish offset. It does not reinterpret Windows zone rules in
+PostgreSQL. Historical transition conversion remains the typed resolver's
+responsibility. An audited provisioning command and production provider are
+still required; fixture qualification is not a deployed historical certificate.
+
+Four focused PostgreSQL 18.4 tests pass, including direct malformed JSON and
+qualification-boundary cases, discarded truncated prefixes, unknown identity,
+nullable metadata, rejected item/byte accounting, future target clocks, RLS,
+private grants, append-only protection, lease/schedule fences and rollback when
+the final sample partition is missing. Two related existing backup/AG commit
+regressions also pass. Fixture-only partitions and v2 catalog scheduling are
+explicit: these tests do not activate production v2 or qualify native AG/TLS.
+
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2ManifestTests'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2PersistenceTests'
 dotnet test tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj --filter 'FullyQualifiedName~BackupHistoricalTimeResolverTests|FullyQualifiedName~BackupV2ParserTests|FullyQualifiedName~BackupFreshnessTests'
 # Use the existing explicit Local or Release SQL Server lab contract.
 dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter 'FullyQualifiedName~BackupV2SourceIntegrationTests'

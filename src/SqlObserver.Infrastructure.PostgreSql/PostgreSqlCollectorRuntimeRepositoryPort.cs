@@ -5,6 +5,7 @@ using Npgsql;
 using NpgsqlTypes;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
+using SqlObserver.Domain.Backups;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
@@ -221,6 +222,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string CommitAgM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitAgV2Sql = CommitM9Sql
         .Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_v2_collection_run(", StringComparison.Ordinal)
+        .Replace("@completion_digest", "sha256(convert_to(CAST(@m9_payload AS jsonb)::text,'UTF8'))", StringComparison.Ordinal);
+    private static readonly string CommitBackupsV2Sql = CommitM9Sql
+        .Replace("control.commit_m9_collection_run(", "control.commit_backups_v2_collection_run(", StringComparison.Ordinal)
         .Replace("@completion_digest", "sha256(convert_to(CAST(@m9_payload AS jsonb)::text,'UTF8'))", StringComparison.Ordinal);
     private static readonly string CommitM10Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_m10_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
     private static readonly string CommitSqlVolumeSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_volume_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
@@ -746,7 +750,14 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             {
                 return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             }
-            string m9Sql = request.Work.CollectorId.Value switch { "backups.status" => CommitBackupsM9Sql, "sql-agent.failures" => CommitAgentM9Sql, "tempdb.health" => CommitTempDbM9Sql, "availability-groups.health" => request.Work.CollectorManifestVersion == 2 ? CommitAgV2Sql : CommitAgM9Sql, _ => CommitM9Sql };
+            string m9Sql = request.Work.CollectorId.Value switch
+            {
+                "backups.status" => request.Work.CollectorManifestVersion == 2 ? CommitBackupsV2Sql : CommitBackupsM9Sql,
+                "sql-agent.failures" => CommitAgentM9Sql,
+                "tempdb.health" => CommitTempDbM9Sql,
+                "availability-groups.health" => request.Work.CollectorManifestVersion == 2 ? CommitAgV2Sql : CommitAgM9Sql,
+                _ => CommitM9Sql,
+            };
             await using var command = new NpgsqlCommand(
                 queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : m9Collector ? m9Sql : request.Work.CollectorId.Value == "engine.core" ? CommitEngineCoreSql : databaseInventoryV2 ? CommitDatabaseInventoryV2Sql : CommitCoreSql,
                 connection)
@@ -1265,14 +1276,17 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddSummaryCommitParameters(command, request);
         CollectorRunSummary summary = request.Summary;
         bool availabilityV2 = request.Work.CollectorId.Value == "availability-groups.health" && request.Work.CollectorManifestVersion == 2;
-        object payload = availabilityV2
-            ? AvailabilityGroupV2PersistencePayload.Build(request, MapOutcome(summary.Outcome), MapReason(summary.Reason))
-            : BuildM9Payload(request.Payload.OperationalHealth?.Snapshot, request.Work.TargetId, request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Reason, summary.Accounting, summary.Loss);
+        bool backupsV2 = request.Work.CollectorId.Value == "backups.status" && request.Work.CollectorManifestVersion == 2;
+        object payload = backupsV2
+            ? BackupV2PersistencePayload.Build(request, MapOutcome(summary.Outcome), MapReason(summary.Reason))
+            : availabilityV2
+                ? AvailabilityGroupV2PersistencePayload.Build(request, MapOutcome(summary.Outcome), MapReason(summary.Reason))
+                : BuildM9Payload(request.Payload.OperationalHealth?.Snapshot, request.Work.TargetId, request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Reason, summary.Accounting, summary.Loss);
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(payload, M9JsonOptions);
-        int storageCap = request.Work.CollectorId.Value == "availability-groups.health" ? 2_097_152 : 1_048_576;
+        int storageCap = backupsV2 ? 4_194_304 : request.Work.CollectorId.Value == "availability-groups.health" ? 2_097_152 : 1_048_576;
         if (json.Length > storageCap) throw new InvalidDataException("M9 persistence payload exceeds the accepted response bound.");
         command.Parameters.AddWithValue("m9_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(json));
-        if (!availabilityV2)
+        if (!availabilityV2 && !backupsV2)
             command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, System.Security.Cryptography.SHA256.HashData(json));
     }
 
@@ -1818,10 +1832,16 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             return;
         }
         if (envelope is null) throw new InvalidDataException("M9 successful commits require a typed operational-health payload.");
-        if (envelope.EstimatedSizeBytes > (id == "availability-groups.health" ? 2_097_152 : id == "sql-agent.failures" ? 524_288 : id == "backups.status" ? 1_048_576 : 262_144)) throw new InvalidDataException("M9 payload exceeds its collector byte bound.");
+        if (envelope.EstimatedSizeBytes > (id == "availability-groups.health" ? 2_097_152 : id == "sql-agent.failures" ? 524_288 : id == "backups.status" ? (request.Work.CollectorManifestVersion == 2 ? 4_194_304 : 1_048_576) : 262_144)) throw new InvalidDataException("M9 payload exceeds its collector byte bound.");
         switch (id, envelope.Snapshot)
         {
-            case ("backups.status", BackupStatusSnapshot value) when value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Items.Count <= OperationalHealthBounds.BackupMaximumRows:
+            case ("backups.status", BackupStatusSnapshot value) when request.Work.CollectorManifestVersion == 1 && request.Work.OutputSchemaVersion == 1 && value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Items.Count <= OperationalHealthBounds.BackupMaximumRows:
+                break;
+            case ("backups.status", BackupV2ReadSnapshot value) when
+                request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2 &&
+                value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision &&
+                value.RunId == request.Summary.RunId && value.SourceRowsRead == request.Summary.Accounting.SourceRowsRead &&
+                value.ItemCount == envelope.ItemCount && value.EstimatedSizeBytes == envelope.EstimatedSizeBytes:
                 break;
             case ("sql-agent.failures", SqlAgentFailureSnapshot value) when value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Items.Count <= OperationalHealthBounds.AgentMaximumRows && value.SourceRowsRead is >= 0 and <= OperationalHealthBounds.AgentScanRows:
                 break;
