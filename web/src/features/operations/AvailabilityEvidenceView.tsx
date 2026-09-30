@@ -17,23 +17,24 @@ export function AvailabilityEvidenceView({ page, stream, formatTime }: {
       <div><dt>Capture loss</dt><dd>{page.lossKind.replaceAll("_", " ")}{page.truncated ? " · truncated" : ""}</dd></div>
     </dl>
     {!page.collectorEnabled && page.runId !== null && <p>Collection is currently disabled. These are previously published observations.</p>}
-    {page.items.length > 0 && <div className="table-scroll"><table className="availability-evidence-table">
+    {page.items.length > 0 && <div className="table-scroll availability-evidence-scroll" role="region"
+      aria-label={`${stream === "replicas" ? "Replica" : "Database replica"} evidence table`} tabIndex={0}><table className="availability-evidence-table">
       <caption>{stream === "replicas" ? "Configured AG replicas" : "AG database-replica evidence"} · {page.items.length} rows on this page</caption>
       <thead><tr><th scope="col">Group</th><th scope="col">Replica</th>
         {stream === "databases" && <th scope="col">Database</th>}
-        <th scope="col">Observer</th><th scope="col">Location</th><th scope="col">Visibility</th><th scope="col">State observed</th>
         {stream === "replicas" ? <><th scope="col">Role</th><th scope="col">Operational state</th><th scope="col">Connection</th></>
           : <><th scope="col">Synchronization</th><th scope="col">Synchronization health</th><th scope="col">Database state</th>
             <th scope="col">Suspended</th><th scope="col">Log send queue (KB)</th><th scope="col">Log send rate (KB/s)</th>
             <th scope="col">Redo queue (KB)</th><th scope="col">Redo rate (KB/s)</th><th scope="col">Last commit (server local)</th></>}
+        <th scope="col">Location</th><th scope="col">Visibility</th><th scope="col">State observed</th><th scope="col">Observer</th>
       </tr></thead>
       <tbody>{page.items.map(item => <tr key={identityKey(item)}>
         <td><Fingerprint value={item.groupFingerprint} /></td><td><Fingerprint value={item.replicaFingerprint} /></td>
         {stream === "databases" && <td><Fingerprint value={(item as AvailabilityDatabase).databaseFingerprint} /></td>}
-        <td><Fingerprint value={item.observerReplicaFingerprint} /></td>
+        {stream === "replicas" ? <ReplicaCells item={item as AvailabilityReplica} /> : <DatabaseCells item={item as AvailabilityDatabase} />}
         <td>{item.replicaIsLocal === null ? "Unknown" : item.replicaIsLocal ? "Local" : "Remote"}</td>
         <td>{availabilityVisibilityLabel(item.visibilityScope)}</td><td>{item.stateObserved ? "Yes" : "No"}</td>
-        {stream === "replicas" ? <ReplicaCells item={item as AvailabilityReplica} /> : <DatabaseCells item={item as AvailabilityDatabase} />}
+        <td><Fingerprint value={item.observerReplicaFingerprint} /></td>
       </tr>)}</tbody>
     </table></div>}
     {page.hasMore && !page.nextCursor && <p>More rows exist, but continuation is unavailable. Ask an administrator to configure cursor signing.</p>}

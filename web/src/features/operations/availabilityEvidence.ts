@@ -173,6 +173,6 @@ export function availabilityCoverageMessage(page: AvailabilityPage): string {
 }
 
 export function availabilityVisibilityLabel(value: AvailabilityVisibility): string {
-  return value === "PrimaryAllKnown" ? "Primary: all known replicas (remote state is last reported)"
+  return value === "PrimaryAllKnown" ? "Primary: all known replicas"
     : value === "SecondaryLocalOnly" ? "Secondary: local state only" : "Resolving: local state only";
 }

@@ -234,8 +234,15 @@ microsecond cutoffs, tokens, page ordering and JSON integers safe for the browse
 unsafe integers make the page unverifiable rather than displaying rounded values.
 Production client and rendered React fixtures verify these contracts and status
 guidance. The production web build, asset manifest and existing operations/time
-checks pass. Browser interaction and native AG qualification remain follow-up
-validation before changing collector activation or removing the version-1 view.
+checks pass. Synthetic browser interaction now verifies independent paging,
+fixed-cutoff previous pages, Rewind URL/reset, raw-local display, secondary and
+unavailable coverage, stale-cursor restart, revision mismatch and isolated retry.
+It exposed fragmented state labels and unbounded page height; the evidence tables
+now place fault columns first, preserve label width and provide keyboard-focusable
+bounded scroll regions with sticky headers. See
+[`availability-evidence-web.md`](../testing/availability-evidence-web.md) for
+the fixture and evidence. Native AG qualification remains required before
+changing collector activation or removing the version-1 view.
 
 1. Stage the version-2 tables and exact three-part identity with a forward
    migration. Prove forced RLS, append-only history, replay, and retention
