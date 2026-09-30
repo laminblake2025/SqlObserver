@@ -82,7 +82,7 @@ test("active evidence policies can be updated through the bounded client", async
   try {
     const classes = ["raw_metric_samples", "diagnostic_events", "m9_backup_status",
       "m9_agent_history", "m9_agent_occurrences", "m9_ag_replicas", "m9_ag_databases",
-      "m9_tempdb", "m9_ag_replica_evidence", "m9_ag_database_evidence"];
+      "m9_tempdb", "m9_ag_replica_evidence", "m9_ag_database_evidence", "m9_backup_evidence"];
     for (const dataClass of classes) {
       const result = await updateRetentionPolicy(dataClass, {
         dataClass, enabled: true, retainFor: "30.00:00:00",
@@ -121,10 +121,11 @@ test("retention parser accepts Query Store group policies and registered partiti
   }
 });
 
-test("retention parser accepts AG replica evidence policies and registered partitions", () => {
+test("retention parser accepts collector evidence policies and registered partitions", () => {
   for (const [dataClass, parentTable] of [
     ["m9_ag_replica_evidence", "availability_replica_evidence"],
     ["m9_ag_database_evidence", "availability_database_replica_evidence"],
+    ["m9_backup_evidence", "backup_v2_scan"],
   ]) {
     const policy = parseRetentionPolicy({ policy: { dataClass, enabled: true,
       retainFor: "30.00:00:00", minimumPartitionsToKeep: 3 }, revision: 1,

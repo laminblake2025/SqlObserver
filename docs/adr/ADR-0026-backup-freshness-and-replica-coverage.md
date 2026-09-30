@@ -213,3 +213,19 @@ checks and two related existing commit regressions pass. Catalog scheduling and
 partitions in those tests are fixture-only; production EXECUTE remains revoked.
 Retention/partition maintenance, compatible-worker/catalog activation, policy
 and read surfaces, alerts/UI and native AG/TLS qualification remain open.
+
+The retention stage now registers and maintains the three backup parents under
+one policy, initially 30 days with a floor of three partitions per parent.
+UTC D-1/D/D+1 creation is catalog-lease fenced and private. Existing v1 policy
+revisions are preserved. The scheduled worker keeps the entire FK-linked graph
+attached through a 24-hour grace period, cancels grace on policy revision
+changes, rechecks all dependency/reader/backfill/recovery holds, and atomically
+retires child partitions before their parents. It never drops repository
+constraints with CASCADE. Failure leaves every relation attached and records
+an immutable bounded retry. Generic and manual single-partition detach cannot
+split this graph; global policy mutation and the scheduled route remain usable.
+
+Two focused native PostgreSQL retention checks and seven related AG/TempDB
+regressions pass, as do nine affected analytics web contracts and typecheck.
+Compatible-worker/catalog activation, qualification provisioning, policy/read
+surfaces, alerts/UI and native AG/TLS qualification remain open.

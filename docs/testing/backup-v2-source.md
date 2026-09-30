@@ -125,8 +125,9 @@ has its own outcome. Version-1 and version-2 payloads cannot cross validators.
 
 The active registry still selects v1. The repository now dispatches v2 payloads
 to a private fenced writer; production collector execution remains ungranted.
-Retention, schedule/compatible-worker rollout gates, qualified zone provisioning,
-policy commands and assessment reads remain pending. No production
+Retention is registered and maintained as a three-table group. Schedule and
+compatible-worker rollout gates, qualified zone provisioning, policy commands
+and assessment reads remain pending. No production
 activation or native collector qualification is claimed here. Cross-replica
 pairing remains explicit work; this collector does not discover peers or merge
 histories.
@@ -224,6 +225,35 @@ private grants, append-only protection, lease/schedule fences and rollback when
 the final sample partition is missing. Two related existing backup/AG commit
 regressions also pass. Fixture-only partitions and v2 catalog scheduling are
 explicit: these tests do not activate production v2 or qualify native AG/TLS.
+
+Forward migrations 0272/0273 add one `m9_backup_evidence` retention policy for
+the scan, inventory and sample graph. Its default is 30 days with a floor of
+three partitions for every parent. Operator v1 backup policies remain unchanged.
+Catalog maintenance creates and registers only the current UTC D-1/D/D+1
+partitions for each parent, verifies their identity/bounds/owner, and revokes
+direct application-role access. The SQL wrapper checks the catalog lease
+before and after the operation.
+
+The scheduled retention worker starts a 24-hour attached grace period. All
+three tables stay readable during grace; a policy revision change cancels it.
+After grace, the worker checks the retention lease, every partition's physical
+and registry identity, floors, reader/backfill leases, time-scoped analytics
+dependencies, unreviewed inbound foreign keys and recovery attestation. It
+detaches/drops samples before inventory before the scan in one transaction;
+it never uses `CASCADE`. A blocked drop rolls back every preceding DDL action,
+records an immutable retry, and leaves the graph attached. The separate
+single-partition worker and manual detach endpoint cannot split this graph.
+Policy edits remain available through the global retention API; manual backup
+group retirement uses the scheduled route at this stage.
+
+Two native backup retention tests and seven existing AG/TempDB retention
+regressions pass on PostgreSQL 18.4. They exercise real linked rows, grace
+readability/cancellation, child reader/backfill holds, floors, missing recovery
+evidence, an unknown FK, a final-parent drop failure and subsequent retry,
+preserved FK constraints, private partition maintenance, stale leases and
+authorized policy mutation. The nine affected analytics client/parser checks
+and web typecheck pass. These are focused checks; no full Local profile or
+production collector activation is claimed.
 
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter 'FullyQualifiedName~BackupV2ManifestTests'

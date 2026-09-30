@@ -61,7 +61,8 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
              + control.ensure_query_store_group_partitions(CURRENT_DATE)
              + control.ensure_query_observation_v3_partitions(CURRENT_DATE)
              + control.ensure_collection_run_v2_partitions(CURRENT_DATE)
-             + control.ensure_availability_evidence_partition_set(@owner_execution_id,@fencing_token);
+             + control.ensure_availability_evidence_partition_set(@owner_execution_id,@fencing_token)
+             + control.ensure_backup_v2_evidence_partition_set(@owner_execution_id,@fencing_token);
         """;
     private const string PreviewM9DailySql = """
         SELECT

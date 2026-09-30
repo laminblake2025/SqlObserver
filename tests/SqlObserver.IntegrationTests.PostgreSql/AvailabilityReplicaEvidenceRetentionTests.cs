@@ -51,6 +51,10 @@ public sealed class AvailabilityReplicaEvidenceRetentionTests(PostgreSql18Fixtur
             Assert.Equal(2L, await defaults.ExecuteScalarAsync());
 
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        // Current maintenance includes later evidence families. Finish upgrade
+        // after proving migration 0266 preserves the operator's v1 policy.
+        Assert.False((await migrations.ApplyPendingAsync(new MigrationApplyRequest(
+            MigrationBatchResult.MaximumResults, migrationTimeout), CancellationToken.None)).HasFailures);
         WorkerLeaseIdentity catalog = await AcquireAsync(collector, "collector/catalog/reconcile");
         var maintenance = new PostgreSqlPartitionMaintenancePort(collector);
         Assert.True(await maintenance.EnsureM10PartitionSetAsync(catalog, Timeout, CancellationToken.None) >= 6);
