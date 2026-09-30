@@ -57,6 +57,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
         AvailabilityGroupEvidence = new PostgreSqlAvailabilityGroupEvidencePort(dataSource);
         Analytics = new PostgreSqlAnalyticsRepositoryPort(dataSource, fingerprintKey);
+        SavedIncidents = new PostgreSqlSavedIncidentPort(dataSource);
         AnalyticsDerivation = (IAnalyticsDerivationStore)Analytics;
         AnalyticsBackfill = new PostgreSqlAnalyticsBackfillStore(dataSource);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
@@ -115,6 +116,8 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IAvailabilityGroupEvidenceRepositoryPort AvailabilityGroupEvidence { get; }
 
     public IAnalyticsRepositoryPort Analytics { get; }
+
+    public ISavedIncidentRepositoryPort SavedIncidents { get; }
 
     // Narrow MCP read projections share the analytics data source but remain
     // separate application ports so the composition root cannot accidentally

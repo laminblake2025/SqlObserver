@@ -201,6 +201,8 @@ builder.Services.AddSingleton<IAnalyticsSurfaceRepositoryPort>(static services =
 builder.Services.AddSingleton<IRetentionRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Retention);
 builder.Services.AddSingleton<IRetentionPolicyRepositoryPort>(static services => (IRetentionPolicyRepositoryPort)services.GetRequiredService<PostgreSqlTargetControlPlane>().Analytics);
 builder.Services.AddSingleton<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddSingleton<ISavedIncidentRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().SavedIncidents);
+builder.Services.AddSingleton<ISavedIncidentService, SavedIncidentService>();
 builder.Services.AddSingleton<IRetentionService, RetentionService>();
 builder.Services.AddSingleton<IRetentionPolicyService, RetentionPolicyService>();
 builder.Services.AddSingleton<IOperationalHealthQueryService, OperationalHealthQueryService>();
@@ -258,6 +260,7 @@ app.MapOperationalHealthEndpoints();
 app.MapAvailabilityGroupEvidenceEndpoints();
 app.MapBackupAssessmentEndpoints();
 app.MapAnalyticsEndpoints();
+app.MapSavedIncidentEndpoints();
 app.MapReportEndpoints();
 app.MapSqlObserverMcp().RequireAuthorization();
 if (webInterface is not null)
