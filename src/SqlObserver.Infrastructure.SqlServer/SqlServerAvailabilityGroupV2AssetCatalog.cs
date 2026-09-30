@@ -8,7 +8,7 @@ namespace SqlObserver.Infrastructure.SqlServer;
 public sealed class SqlServerAvailabilityGroupV2AssetCatalog
 {
     private const string Prefix = "SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.";
-    private const string ExpectedBundleChecksum = "87e4da8ae3e720ed416dba2a76c27ed514d30a4d95be96716f13dd2bac5b5742";
+    private const string ExpectedBundleChecksum = "88b4d627a492dfd738f11e6b6f72016a802c5c279d6302a2b1f88c3283a313cf";
     private static readonly string[] Names =
     [
         "collector-manifest.v6.schema.json",

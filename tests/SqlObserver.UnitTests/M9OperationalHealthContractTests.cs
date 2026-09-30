@@ -28,6 +28,7 @@ public sealed class M9OperationalHealthContractTests
             string query = assets.GetQuery(int.Parse(major, CultureInfo.InvariantCulture));
             Assert.Contains("drs.replica_id = ar.replica_id", query, StringComparison.Ordinal);
             Assert.Contains("drs.group_database_id = adc.group_database_id", query, StringComparison.Ordinal);
+            Assert.Contains("observer_replica_fingerprint, replica_is_local", query, StringComparison.Ordinal);
             Assert.Contains("drs.last_commit_time", query, StringComparison.Ordinal);
             Assert.Contains("sys.availability_databases_cluster", query, StringComparison.Ordinal);
             Assert.DoesNotContain("drs.is_local=1", query, StringComparison.OrdinalIgnoreCase);
