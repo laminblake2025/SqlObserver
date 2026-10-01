@@ -24,7 +24,12 @@ to fire or clear. The canonical source, durable queue, independent transition,
 atomic persistence and normal worker are implemented. Target Administrators can
 create/edit/disable rules; unknown evidence preserves active episodes. Native,
 HTTP and browser checks cover administration and source/revision/lease boundaries.
-Live SQL Server deadlock collection through notification delivery remains pending.
+The SQL Server 2022 Express lab also qualifies real deadlock collection, stable
+identities on rescans, permission gaps and signed firing/recovery delivery after
+the actual five-minute window expires. Migration 0309 fixes false empty scans
+from the native XE timestamp predicate and advances the pinned SQL bundle;
+deploy it with the matching Collector build. Other SQL versions and deployment
+identity/network/certificate qualification remain separate.
 
 M8 adds repository-driven `metric_threshold` and `collector_health` rules. The evaluator is a deterministic state machine: confirmation protects against one-sample noise, hysteresis prevents flapping, and acknowledgement changes delivery state without changing evaluation. All timestamps are UTC and all transitions are fenced by the collector lease.
 
