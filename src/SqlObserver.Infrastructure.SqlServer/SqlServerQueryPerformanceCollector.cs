@@ -484,7 +484,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
         // The payload is monotonic in retained observations except for the
         // bounded status transition when a database loses its final row. Use a
         // binary search for the largest candidate, then recheck a small bounded
-        // neighborhood after status growth. This avoids the former O(nÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²)
+        // neighborhood after status growth. This avoids the former quadratic
         // reserialization loop while retaining exact final-size validation.
         int low = 0;
         int high = originalItems.Length;
@@ -984,7 +984,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
     }
     private static long? ReadLong(DbDataReader r, int i) => r.IsDBNull(i) ? null : r.GetInt64(i);
     private static DateTimeOffset ReadUtc(DbDataReader r, int i) => QueryPerformanceRowParser.ReadUtc(r.GetValue(i));
-    private static QueryStoreState ParseState(string value) => value.ToUpperInvariant() switch { "READ_WRITE" => QueryStoreState.ReadWrite, "READ_ONLY" => QueryStoreState.ReadOnly, "DISABLED" => QueryStoreState.Disabled, "PERMISSION_DENIED" => QueryStoreState.PermissionDenied, "TIMED_OUT" => QueryStoreState.TimedOut, "READ_FAILURE" or "FALLBACK" => QueryStoreState.ReadFailure, _ => QueryStoreState.Unsupported };
+    private static QueryStoreState ParseState(string value) => value.ToUpperInvariant() switch { "READ_WRITE" => QueryStoreState.ReadWrite, "READ_ONLY" => QueryStoreState.ReadOnly, "OFF" or "DISABLED" => QueryStoreState.Disabled, "PERMISSION_DENIED" => QueryStoreState.PermissionDenied, "TIMED_OUT" => QueryStoreState.TimedOut, "READ_FAILURE" or "FALLBACK" => QueryStoreState.ReadFailure, _ => QueryStoreState.Unsupported };
 }
 
 internal sealed record QueryPerformancePlanCacheParseResult(

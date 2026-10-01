@@ -544,3 +544,48 @@ canonical run-retention dependencies, production catalog rollout, SQL Server
 2019/2025 and fleet qualification remain open. The lab key qualifies capture
 behavior, not deployment key-store configuration. No production registration
 or runtime grant is activated here.
+
+
+### Native producer through the fenced execution path (2026-10-01)
+
+`NativeCombinedProducerCommitsBaselinesDeltasProtectedLinksReplayAndRollback`
+now drives two real SQL Server 2022 captures through native capability discovery,
+fenced capability recording, `CollectorExecutionEngine`, the output validator,
+protected-content writes and the private PostgreSQL v2 canonical commit port.
+Two disposable databases supply Query Store-enabled and Query Store-disabled
+workloads under an impersonated login with server/database performance-state
+permissions; the effective source identity is not sysadmin. The fixture uses
+its local lab connection policy and a disposable in-memory protection key.
+The v2 catalog is seeded only in the disposable PostgreSQL qualification database;
+its runtime grant remains absent and production registration is unchanged.
+
+This exposed a real source defect: SQL Server reports disabled Query Store as
+`OFF`, while the shared reader mapped only `DISABLED`. It then tried to construct
+a disabled database status with an unsupported source state, causing the whole
+capture to fail. The reader now maps both values to Disabled. The initial native
+round-trip artifacts fail at this boundary; the corrected fixture passes in
+`combined-native-fenced-roundtrip-metrics.trx`.
+
+The first capture persists the cache baseline as unavailable deltas, with all
+six delta counters NULL. Three further executions produce a comparable tuple;
+all six persisted microsecond/count differences equal the two native samples,
+and the execution delta is exactly three. Every persisted Query Store interval
+retains its six metric values. Outcome source rows, response bytes, selected
+items and normalized bytes match the engine result. Query Store remains disabled
+for the cache-only database, with no invented public interval rows. Protected
+text/plan links and wait-snapshot counts survive the commit; the protected-content
+reference replacement preserves the combined serialization measurement.
+
+Both captures replay exactly without changing the snapshot. A changed completion
+summary returns 40001. A nonexistent plan reference fails after source writes,
+and a trigger expiring the lease during outcome insertion returns LeaseLost with
+zero inserted items/bytes. Snapshot equality proves rollback of run, Query Store,
+cache, link, lease and schedule changes; removing the trigger allows the same
+native result to commit. Ciphertext remains a separate, earlier fenced write,
+consistent with the existing protected-content protocol.
+
+This qualifies the staged native producer-to-repository path on the local SQL
+Server 2022 and PostgreSQL fixtures. Canonical run-retention dependencies, public
+cache ranking/API, production catalog activation, SQL Server 2019/2025 and fleet
+qualification remain open. It does not qualify production TLS/key configuration,
+end-to-end HTTP/MCP projection, or the broader revamp as complete.
