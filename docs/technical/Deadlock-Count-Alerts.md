@@ -275,7 +275,7 @@ asset-boundary checks and the migration preamble check also passed, recorded in
 
 ## Incremental reader foundation (not active)
 
-The review's XE bookmark refactor now has two domain boundaries. They are staged;
+The review's XE bookmark refactor now has two domain boundaries and a pinned source reader. They are staged;
 the production Collector still uses the approved full-scan v1 source. No registry,
 schema, alert catalog or runtime switch has changed in this foundation step.
 
@@ -283,7 +283,7 @@ schema, alert catalog or runtime switch has changed in this foundation step.
 event types, ordered by numeric file generation and buffer offset. A position
 contains only generation, rollover index and offset; its identity binds the exact
 target/revision and a digest of the trusted XE source incarnation. It contains no
-provider path. A future reader reconstructs the paired initial file/offset from
+provider path. The staged reader reconstructs the paired initial file/offset from
 the current trusted target directory/prefix and these numeric tokens.
 
 SQL Server resumes after the entire buffer named by `initial_offset`, and multiple
@@ -297,6 +297,43 @@ ambiguous file generations require reset. A changed source epoch or target
 revision cannot reuse the old bookmark, and another target's bookmark is rejected.
 The metadata budget is 8,192 rows plus a truncation probe, separate from the
 existing 256-deadlock and byte/parse bounds.
+Small response budgets reduce that metadata cap so the header and probe also fit.
+A buffer larger than the bounded page cannot advance by itself; it remains
+catching up with no new bookmark, rather than silently skipping its unread tail.
+
+`XeFileSourceBundle` embeds checksum-approved SQL variants for majors 15, 16 and
+17 in `collectors/xe-file-reader/`. Its bundle digest is
+`4b00f8c40a3b0359fc1308b748e945f4df46ac0daae2b647f6c165478a951822`.
+It accepts numeric positions and an expected source digest, never a provider path.
+The source derives the directory/prefix from the existing bounded event-file
+target, validates filenames and offsets, and checks the source again after reading.
+A missing initial file (native error 25717) or changed source returns a reset.
+Missing or invalid source configuration cannot produce a complete empty read.
+
+The SQL first materializes at most 8,193 metadata rows without requesting XML.
+Filename validation runs against that bounded page. If the page contains deadlocks,
+a second native read requests only matching deadlock XML, with bounded rows,
+512-KiB individual XML and a 1-MiB logical response budget. Both reads use the same
+initial file/offset. Missing matches between those reads force reset. Unrelated
+event contents never enter the result. Duplicate position/time keys use bounded
+ordinals; a partial buffer still cannot advance. These writes use only connection
+local temporary tables; they do not modify XE, application tables or workloads.
+
+The source incarnation binds the trusted root, configuration caps, native session
+address, SQL startup tick and session creation time. The native lab exposed up to
+one datetime tick of jitter in `sys.dm_xe_sessions.create_time`. Warm reads retain
+the original digest only when its creation-time anchor matches within 10 ms and
+the other inputs are identical. Greater drift, a new address or a different boot
+tick resets the source. The native address stays inside the hash and SQL batch.
+See the [startup tick contract](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-os-sys-info-transact-sql)
+and [XE session metadata](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-xe-sessions-transact-sql).
+
+`XeFileSourceReader` validates the closed status and metadata result frames,
+accounts for UTF-8 XML, and maps only safe typed deadlock evidence. Row, deadlock
+and byte cutoffs preserve the previous complete buffer. Oversized, malformed or
+future evidence marks explicit loss. No consumer may persist progress after such
+loss without atomically preserving its coverage gap. Command timeout is 20 seconds;
+caller cancellation remains active throughout SQL and parsing.
 
 `DeadlockReadWindowCalculator` retains a bounded set of event IDs, occurrence times
 and truncation flags across incremental reads. Quiet reads preserve recent events;
@@ -318,8 +355,24 @@ fixture uses existing bounded `system_health` metadata and never changes XE or
 creates a workload. Evidence: `artifacts/deadlock-alerts/xe-bookmark-progress.trx`,
 `xe-bookmark-window.trx` and `xe-bookmark-native-buffer.trx`.
 
-Integration remains required before activation: a versioned bounded SQL reader,
-fenced checkpoint read, and an atomic canonical commit for progress, accepted
+Nineteen focused reader checks pass in `xe-source-boundaries-final.trx`. They cover
+quiet reads, duplicates, metadata/deadlock/UTF-8 byte cutoffs, server loss sentinels,
+malformed/oversized/future evidence, contradictory frames, unavailable sources,
+revision/epoch mismatches, small-response metadata reservations and embedded checksum approval. Native catch-up, quiet
+resume, missing-file reset, changed epoch and a two-row cutoff pass in
+`xe-source-native-stable-epoch.trx` on SQL Server 2022 Express 16.0.1000.6.
+The stronger reference comparison passes in `xe-source-native-reference.trx`:
+37 bounded pages preserve the same four unique deadlock event identities as the
+approved v1 full scan. It also covers native warm resume, changed source,
+rolled-away file and the two-row cutoff. The separate native small-response
+check is recorded in `xe-source-native-small-budget.trx`; it fits the header,
+metadata and probe into the configured 4-KiB logical response budget.
+Earlier failed native attempts remain recorded: they exposed the filename
+allowlist, cold-read expression cost, computed DMV predicate filtering and native
+creation-time jitter. This reader is not yet qualified on SQL Server 2019/2025.
+
+Integration remains required before activation: a fenced checkpoint read,
+and an atomic canonical commit for progress, accepted
 events, rolling history and coverage gaps. That commit must independently verify
 the source/target/schedule/run bindings, previous checkpoint and payload digest,
 reject lost worker fences, and leave latest state unchanged on an old exact

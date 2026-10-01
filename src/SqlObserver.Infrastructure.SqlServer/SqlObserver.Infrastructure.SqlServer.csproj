@@ -317,4 +317,10 @@
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.deadlocks.system-health.sqlserver17-windows.v1.sql</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.assets.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+  </ItemGroup>
 </Project>
