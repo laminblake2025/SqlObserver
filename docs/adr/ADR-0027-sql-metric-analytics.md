@@ -176,9 +176,9 @@ dashboard/Resources chart references and separate MCP tools. Existing jobs,
 cursors and host/replication reads retain their original catalog.
 
 Collector source validation on the SQL Server lab, a connected browser and
-production fleet throughput remain open. The legacy catalog-v1 scheduler still
-selects the first 128 targets before eliminating existing jobs; advancing that
-scheduler through the fleet remains separate work. The SQL baseline
+production fleet throughput remain open. Migration 0296 also corrects the
+legacy catalog-v1 scheduler's first-128-target starvation, as verified below.
+The SQL baseline
 retention lifecycle now has a real backup/restore check on isolated PostgreSQL;
 production recovery procedures and the Windows lab remain separately unverified.
 
@@ -413,3 +413,36 @@ assert that the entire analytics queue is empty. No source collector, browser,
 concurrent ingestion or production retention load is covered. Evidence is
 `artifacts/sql-baseline-fleet/sql-baseline-fleet-benchmark.trx`. CI excludes this
 benchmark from normal functional runs and offers it as a manual workflow input.
+
+## Legacy analytics scheduler fleet advancement
+
+Migration 0296 selects targets with missing current-window jobs before applying
+the existing 128-target limit. The daily and rollup selections advance
+independently; targets are also revisited when eligible forecast dimensions
+arrive after their baseline, evidence and correlation jobs were scheduled.
+Forecast discovery retains its sorted 256-dimension cap per target.
+
+The function preserves catalog-v1 deterministic job IDs, target revisions,
+UTC buckets and source windows, 30-day forecast horizons, and its original
+rollup-only return count. Existing queued, running, failed or completed jobs
+are not rewritten or duplicated. Worker leasing/fencing and collector-only
+execution remain required. No collector binding or lifecycle semantics change.
+This fixes scheduling coverage; it does not raise worker concurrency or prove
+production derivation capacity.
+
+A focused PostgreSQL regression first demonstrated the old second call
+returning zero instead of scheduling target 129. The upgrade check then
+started at migration 0295, scheduled the first 128 targets and retained a
+digest of their complete job contents, including a failed job. Applying 0296
+scheduled the final target without changing those existing rows. It verifies
+all 129 eligible targets, current revisions, disabled/retired exclusion,
+idempotent scheduling and migration replay, late dimensions for early/final
+targets, the dimension cap, forecast windows/horizons, stale-fence refusal
+and function ownership/grants.
+
+Five focused PostgreSQL 18.4 checks passed for this upgrade, existing claim
+and UTC bucket contracts, and the SQL rollup and baseline workers. Evidence
+is `artifacts/m10-fleet-scheduler/m10-fleet-upgrade.trx`; the pre-fix failure is
+in `m10-fleet-before.trx`. No broad suite or remote lab check was needed for
+this PostgreSQL scheduling change. The migration preamble check also passed;
+its result is `m10-fleet-preamble.trx` in the same directory.

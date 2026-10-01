@@ -793,6 +793,89 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     }
 
     [Fact]
+    public async Task M10DerivationSchedulerAdvancesPastCompletedTargetBatchesAndFindsLateForecastDimensions()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(295);
+        await ExecuteAsync(database, """
+            INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+              authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at,retired_at)
+            SELECT ('00000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,n::text,'Fleet scheduler target','sql01',1433,
+              interval '5 seconds','windows_integrated_service_identity','mandatory_validated',
+              CASE WHEN n=129 THEN 'pending_discovery' WHEN n=130 THEN 'disabled' WHEN n=131 THEN 'retired' ELSE 'active' END,
+              CASE WHEN n=129 THEN 2 ELSE 1 END,now(),now(),now(),CASE WHEN n=131 THEN now() END FROM generate_series(1,131) n;
+            """);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        Guid owner = Guid.NewGuid();
+        (long token, _) = await AcquireLeaseAsync(collector, "analytics/derivation", owner);
+        await using NpgsqlConnection connection = await collector.OpenConnectionAsync();
+        const string schedule = "SELECT control.schedule_m10_derivation_jobs(@owner,@token);";
+        Assert.Equal(3840, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        await using NpgsqlConnection inspection = await database.DataSource.OpenConnectionAsync();
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='failed',attempt=3 WHERE job_id=(SELECT min(job_id::text)::uuid FROM control.analytics_job);");
+        const string originalJobs = "SELECT md5(jsonb_agg(to_jsonb(j) ORDER BY j.job_id)::text) FROM control.analytics_job j WHERE instance_id<'00000000-0000-0000-0000-000000000129'::uuid;";
+        string originalDigest;
+        await using (var snapshot = new NpgsqlCommand(originalJobs, inspection))
+            originalDigest = (string)(await snapshot.ExecuteScalarAsync())!;
+        var migrator = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult upgrade = await migrator.ApplyPendingAsync(new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), default);
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(296, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(30, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        Assert.Equal(0, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        await using (var snapshot = new NpgsqlCommand(originalJobs, inspection))
+            Assert.Equal(originalDigest, await snapshot.ExecuteScalarAsync());
+        MigrationBatchResult repeatUpgrade = await migrator.ApplyPendingAsync(new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), default);
+        Assert.False(repeatUpgrade.HasFailures); Assert.Empty(repeatUpgrade.Results);
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT count(*)=129 AND bool_and(jobs=33 AND rollups=30 AND derivations=3 AND revision=current_revision) FROM (
+              SELECT j.instance_id,count(*) jobs,count(*) FILTER(WHERE job_kind='rollup') rollups,
+                count(*) FILTER(WHERE job_kind<>'rollup') derivations,min(target_revision) revision,max(t.revision) current_revision
+              FROM control.analytics_job j JOIN control.observation_target t USING(instance_id)
+              WHERE source_catalog_version=1 GROUP BY j.instance_id) counts;
+            """));
+        // Dimensions may become available after a target's non-forecast jobs exist.
+        // Both an early target and target 129 must be revisited, with the existing 256-dimension cap.
+        await ExecuteAsync(database, """
+            DO $$ DECLARE d timestamptz:=date_trunc('day',clock_timestamp())-interval '2 days'; BEGIN
+              EXECUTE format('CREATE TABLE IF NOT EXISTS analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                'metric_rollup_v2_p'||to_char(d,'YYYYMMDD'),d,d+interval '1 day');
+            END $$;
+            INSERT INTO analytics.metric_rollup_v2(bucket_start,instance_id,target_revision,rollup_interval,metric_key,aggregation,
+              dimension_hash,generation,sample_count,expected_count,value,visibility_state,source_cutoff_utc,dimensions)
+            SELECT date_trunc('day',clock_timestamp())-interval '2 days',t.instance_id,t.revision,'day','host.volume.free_bytes','avg',
+              sha256(convert_to(n::text,'UTF8')),1,288,288,1000,'complete',date_trunc('day',clock_timestamp())-interval '1 day',
+              jsonb_build_object('volume',n::text)
+            FROM control.observation_target t CROSS JOIN generate_series(1,257) n
+            WHERE t.instance_key='1' OR t.instance_key='129' AND n=1;
+            """);
+        Assert.Equal(0, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        Assert.Equal(257, await ScalarIntAsync(inspection, "SELECT count(*)::integer FROM control.analytics_job WHERE job_kind='forecast';"));
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT count(*)=2 AND min(jobs)=1 AND max(jobs)=256 FROM (
+              SELECT instance_id,count(*) jobs FROM control.analytics_job WHERE job_kind='forecast' GROUP BY instance_id) counts;
+            """));
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT bool_and(horizon_seconds=2592000 AND source_catalog_version=1 AND dimensions_hash IS NOT NULL
+              AND from_utc=date_trunc('day',clock_timestamp())-interval '29 days'
+              AND to_utc=date_trunc('day',clock_timestamp())-interval '1 day' AND source_cutoff_utc=to_utc)
+            FROM control.analytics_job WHERE job_kind='forecast';
+            """));
+        Assert.Equal(0, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        Assert.Equal(4514, await ScalarIntAsync(inspection, "SELECT count(*)::integer FROM control.analytics_job;"));
+        PostgresException stale = await Assert.ThrowsAsync<PostgresException>(() =>
+            ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token + 1)));
+        Assert.Equal("55000", stale.SqlState);
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT p.proowner='sqlobserver_migrator'::regrole AND p.prosecdef
+              AND has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE')
+              AND NOT EXISTS(SELECT 1 FROM aclexplode(p.proacl) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE')
+            FROM pg_proc p WHERE p.oid='control.schedule_m10_derivation_jobs(uuid,bigint)'::regprocedure;
+            """));
+    }
+
+    [Fact]
     public async Task M10DerivationSchedulerCreatesLiveRollupAndDerivationJobsForCanonicalClaimLane()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
@@ -1116,13 +1199,13 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         Assert.Equal(1000.0, Convert.ToDouble(await capacity.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync()
+    private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync(int maxMigrations = MigrationBatchResult.MaximumResults)
     {
         RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         try
         {
             MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+                new MigrationApplyRequest(maxMigrations, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;
         }
