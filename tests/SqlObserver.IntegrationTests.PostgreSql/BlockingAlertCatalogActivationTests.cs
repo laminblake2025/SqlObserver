@@ -144,7 +144,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
         Assert.Equal(0L, await BlockingQueueCountAsync(database, target,
             "SELECT count(*) FROM alerting.evaluation_queue WHERE instance_id=@target AND completed_at IS NULL;"));
         await using var binding = database.DataSource.CreateCommand("""
-            SELECT contract_version=4 AND catalog_digest=@digest FROM alerting.catalog_registry WHERE catalog_id='sqlobserver.m8.alerts';
+            SELECT contract_version=5 AND catalog_digest=@digest FROM alerting.catalog_registry WHERE catalog_id='sqlobserver.m8.alerts';
             """);
         binding.Parameters.AddWithValue("digest", AlertCatalog.Digest); Assert.Equal(true, await binding.ExecuteScalarAsync());
     }

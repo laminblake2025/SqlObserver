@@ -149,6 +149,9 @@ Migration 0302 upgrades the product catalog to contract 4, digest
 `2acfcab767941fa6a40dff240314662456ff9908d4422eb83afe8ede865b8f0b`,
 only when the previous contract/digest match exactly. The migration and matching
 application/catalog must deploy together. It does not create rules automatically.
+Migration 0308 subsequently adds deadlock count and advances the current catalog
+to contract 5; see [deadlock count alerts](Deadlock-Count-Alerts.md). The blocking
+signal's defaults and settings are unchanged.
 The new `blocking.duration` template uses `blocking_duration_v1`, seconds and the
 passive `blocking.current` schema 1 collector. Defaults are `>= 60` seconds,
 10 seconds of hysteresis, two fire and two clear observations within five minutes,

@@ -1,10 +1,10 @@
 export type AlertRuleKind = "metric_threshold" | "collector_health" |
-  "backup_full_policy_v2" | "backup_log_policy_v2" | "backup_observed_faults_v2" | "blocking_duration_v1";
+  "backup_full_policy_v2" | "backup_log_policy_v2" | "backup_observed_faults_v2" | "blocking_duration_v1" | "deadlock_count_v1";
 
 export function isAlertRuleKind(value: unknown): value is AlertRuleKind {
   return value === "metric_threshold" || value === "collector_health" ||
     value === "backup_full_policy_v2" || value === "backup_log_policy_v2" || value === "backup_observed_faults_v2" ||
-    value === "blocking_duration_v1";
+    value === "blocking_duration_v1" || value === "deadlock_count_v1";
 }
 
 export function isBackupRuleKind(value: unknown): boolean {
@@ -19,6 +19,7 @@ export function ruleSignalLabel(kind: AlertRuleKind, metricId: string | null): s
     case "backup_log_policy_v2": return "Log backup policy";
     case "backup_observed_faults_v2": return "Observed backup faults";
     case "blocking_duration_v1": return "Blocking duration";
+    case "deadlock_count_v1": return "Deadlock count";
   }
 }
 
@@ -28,6 +29,7 @@ export function ruleExplanation(kind: AlertRuleKind): string | undefined {
     case "backup_log_policy_v2": return "Alerts when databases exceed their configured log backup policy. Logs that are not required do not violate policy. Missing or unknown evidence keeps an active alert open.";
     case "backup_observed_faults_v2": return "Alerts on observed damaged or incomplete backup metadata. A sample with no observed faults cannot prove recovery, so the alert stays open until the rule is disabled.";
     case "blocking_duration_v1": return "Alerts on the longest current blocked wait in seconds. Distinct complete observations confirm firing and recovery. Missing, stale or incomplete evidence keeps an active alert open. A complete snapshot with no blocking can confirm recovery.";
+    case "deadlock_count_v1": return "Counts unique deadlocks in the five minutes ending at the latest complete collection. Distinct complete scans confirm firing and recovery. Missing, stale or incomplete evidence keeps an active alert open. A complete scan with zero recent deadlocks can confirm recovery.";
     default: return undefined;
   }
 }
@@ -48,6 +50,19 @@ export function validBlockingRuleSettings(rule: {
 }
 
 export function alertReasonSummary(reason: string | undefined, value?: number | null): string | undefined {
+  const deadlock = reason?.match(/^deadlock_count_v1\|target=[1-9][0-9]*\|reason=([^|]+)\|digest=[a-f0-9]{64}$/);
+  if (deadlock) {
+    switch (deadlock[1]) {
+      case "current": return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 256
+        ? `Deadlocks in the latest complete five-minute window: ${value.toLocaleString()}.` : "Complete deadlock evidence was observed.";
+      case "collector_disabled": return "Deadlock collection is disabled. Enable deadlock collection for this server to resume evidence. The alert remains open.";
+      case "source_unavailable": return "No deadlock evidence is available. Check collection status and SQL Server permissions. The alert remains open.";
+      case "source_stale": return "Deadlock evidence is stale. Check collector connectivity and scheduling. The alert remains open.";
+      case "source_incomplete": return "Deadlock collection failed or returned partial evidence. Check collection limits, status and permissions. The alert remains open.";
+      case "source_inconsistent": return "Deadlock evidence failed integrity checks. Check collector diagnostics. The alert remains open.";
+      default: return reason;
+    }
+  }
   const match = reason?.match(/^blocking_duration_v1\|target=[1-9][0-9]*\|reason=([^|]+)\|digest=[a-f0-9]{64}$/);
   if (!match) return reason;
   switch (match[1]) {
@@ -60,6 +75,13 @@ export function alertReasonSummary(reason: string | undefined, value?: number | 
     case "source_inconsistent": return "Blocking evidence failed integrity checks. Check collector diagnostics. The alert remains open.";
     default: return reason;
   }
+}
+
+export function validDeadlockRuleSettings(rule: Parameters<typeof validBlockingRuleSettings>[0]): boolean {
+  return validBlockingRuleSettings(rule) &&
+    typeof rule.threshold === "number" && Number.isSafeInteger(rule.threshold) && rule.threshold <= 256 &&
+    typeof rule.hysteresis === "number" && Number.isSafeInteger(rule.hysteresis) &&
+    typeof rule.evaluationSeconds === "number" && rule.evaluationSeconds >= 15;
 }
 
 export function validBackupRuleSettings(rule: {

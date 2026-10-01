@@ -38,7 +38,7 @@ public sealed class DeadlockAlertContractTests
             Assert.Equal("deadlocks.system-health", observation.SourceCollector);
         }
         Assert.Equal(rule.Kind, AlertRuleKindWire.Parse(AlertRuleKindWire.Format(rule.Kind)));
-        Assert.False(AlertCatalog.IsApproved(rule));
+        Assert.True(AlertCatalog.IsApproved(rule));
     }
 
     [Fact]

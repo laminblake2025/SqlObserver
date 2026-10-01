@@ -4,9 +4,9 @@ The revamp plan calls for deadlock alert coverage beyond engine counters.
 Forward migration 0303 implements its bounded repository source and adds it to
 the Collector data plane. Migration 0304 adds private durable capture and claiming;
 0305 and 0306 add independently verified transitions and atomic persistence;
-0307 connects them to normal runtime discovery, claiming and dispatch. Catalog
-activation and the administration UI are still required before a user can enable
-this signal.
+0307 connects them to normal runtime discovery, claiming and dispatch. Migration
+0308 activates the approved catalog, API and administration UI. Live SQL Server
+deadlock collection through notification delivery remains to be qualified.
 
 ## Signal and source
 
@@ -71,11 +71,12 @@ another fire or clear confirmation. Capture bodies are cleaned up separately.
 Known observations carry integer counts from zero through 256; unknown observations
 carry no count. Count policies require integer thresholds and hysteresis, evaluation
 intervals from 15 to 60 seconds, and a window that covers the requested confirmation
-intervals. The new kind and wire contract are not approved by the product catalog.
+intervals. Migration 0304 reserved the kind before catalog activation; migration
+0308 now approves it with independent native SQL validation.
 All four queue helpers remain migrator-only, with a forced-RLS private capture
 table. Migration 0304 initially gated public claiming/evaluation. Migration 0307
-activates both through the normal fenced pipeline; the product catalog still
-does not permit user creation of deadlock rules.
+activates both through the normal fenced pipeline. Migration 0308 permits
+Target Administrators to create deadlock rules through the approved catalog.
 
 Three native checks cover SQL/C# identity agreement, exact reclaim, consumed-source
 suppression, concurrent reconciliation, source and rule supersession, live-claim
@@ -115,8 +116,7 @@ between clear samples, recovery, re-fire, maintenance deferral and immutable rep
 They also reject forged state/event decisions and prove rollback after injected
 audit failure, lost worker ownership and expired queue claim. A successful retry
 consumes the original capture once. Transition and commit functions remain
-migrator-only; public runtime dispatch invokes them internally. The catalog is
-still unapproved for deadlock rules.
+migrator-only; public runtime dispatch invokes them internally.
 
 These are isolated PostgreSQL checks. Typed collector payloads and bootstrap-only
 rule/destination fixtures supply the test evidence; the seven scans do not come
@@ -155,6 +155,41 @@ Three queue checks and four existing blocking-runtime regressions also pass.
 Rules and approved destination rows remain isolated bootstrap fixtures. No live
 SQL Server deadlock workload or notification delivery is qualified by these checks.
 
+## Catalog, API and administration activation
+
+Migration 0308 upgrades contract 4 to contract 5 only when the previous catalog
+digest matches exactly. The new seven-rule catalog digest is
+`b1e551855cd7731c59e024c8f35ae1375944664cd26b1d0f5b3f6dc3cfe1d1c7`.
+Deploy the migration and matching Server/Collector binaries together. It does
+not create or enable rules automatically. Missing or changed prior bindings roll
+back the upgrade without replacing the administrative function.
+
+The `deadlocks.count` template uses `deadlock_count_v1`, the passive
+`deadlocks.system-health` schema 1 source, and count units. Defaults are `> 0`,
+zero hysteresis, two fire and two clear observations, a five-minute confirmation
+window and a 15-second evaluation interval. Custom comparison, integer threshold,
+hysteresis and timing stay within the same domain, native SQL and web bounds.
+Changing a rule's source kind or metric binding requires a new rule. Updates and
+disable operations remain revision-fenced, audited and idempotent.
+
+Target Administrators can select the template, inspect its five-minute window
+meaning, and create/edit/disable rules. The editor uses whole-count fields capped
+at 256, separate fire/clear counts and evaluation intervals from 15 to 60 seconds.
+Rule details and alert evidence summaries name the count and recovery actions;
+source digests are omitted from recognized summaries. Complete zero stays visible.
+The role boundary is unchanged.
+
+Thirteen focused native checks cover production rule administration, runtime
+evaluation, revision/retag/disable fencing, forged count/source/timing rejection,
+catalog upgrade rollback and existing backup/blocking administration. Seven unit
+checks verify the catalog digest, defaults, bounds and preamble. Six HTTP checks
+cover catalog authorization and source-kind preservation through create/list/
+update/disable. Nine web checks cover count validation, zero/unknown summaries and
+backup/blocking regression behavior. Two browser checks exercise deadlock and
+blocking forms, identical retry payloads, revisions and disable operations, with
+zero axe violations. The production web build and asset manifest verification
+pass. The rendered deadlock editor was inspected.
+
 ## Verification and remaining work
 
 Four native PostgreSQL checks use the full migration history and canonical
@@ -178,7 +213,7 @@ availability, backup, database inventory, configuration, capacity and metric
 migrations. This records current dependencies; it does not remove them or prove
 original-run retirement is ready.
 
-Remaining work is approved catalog and UI settings, and live SQL Server-to-notification
+Remaining work is live SQL Server-to-notification
 qualification. The current XE reader still rescans its bounded 33-day file
 window. Incremental bookmarking remains a separate collector refactor; its
 coverage contract must preserve the five-minute history before it can replace
@@ -213,3 +248,9 @@ fixture timestamps (`deadlock-alert-runtime-fleet-fixtures.trx`). Both pass afte
 correction in `deadlock-alert-runtime-fleet-corrected.trx`; together the runs verify
 11 unique native cases. Earlier failed files remain available. The new migration
 preamble check passes in `deadlock-alert-runtime-preamble.trx`.
+Catalog evidence is in `deadlock-alert-catalog-postgresql.trx` (13 native checks),
+`deadlock-alert-catalog-unit.trx` (seven checks) and `deadlock-alert-catalog-http.trx`
+(six checks). Browser results are in `artifacts/web-browser/results.json`; the
+inspected editor image is `artifacts/deadlock-alerts/deadlock-rule-editor.png`.
+Web behavior checks are `deadlock-alert-rule-admin.test.mjs`,
+`blocking-alert-rule-admin.test.mjs` and `backup-alert-rule-admin.test.mjs`.

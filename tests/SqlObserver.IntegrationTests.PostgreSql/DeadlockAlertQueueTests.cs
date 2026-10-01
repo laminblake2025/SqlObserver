@@ -109,14 +109,14 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
     }
 
     [Fact]
-    public async Task DeadlockQueueIsPrivateBoundedAndIndependentOfCatalogActivation()
+    public async Task DeadlockQueueRemainsPrivateBoundedUnderTheApprovedCatalog()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         var prepared = await PrepareCommitAsync(database, count: 0);
         await using NpgsqlDataSource collector = prepared.Collector;
         Assert.Equal(CollectorRunCommitStatus.Committed, (await prepared.Runtime.CommitRunAsync(prepared.Commit, CancellationToken.None)).Status);
         AlertRuleDefinition rule = await SeedDeadlockQueueRuleAsync(database, prepared.Target);
-        Assert.False(AlertCatalog.IsApproved(rule));
+        Assert.True(AlertCatalog.IsApproved(rule));
         WorkerLeaseIdentity lease = await DeadlockEvidenceLeaseAsync(prepared.Leases);
         int[] results = await Task.WhenAll(ReconcileDeadlockQueueAsync(database, prepared.Target, lease),
             ReconcileDeadlockQueueAsync(database, prepared.Target, lease));
@@ -147,7 +147,7 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
             Assert.True(row.GetBoolean(1));
             Assert.Equal("sqlobserver_migrator", row.GetString(2));
             Assert.True(row.GetBoolean(3));
-            Assert.Equal(4, row.GetInt32(4));
+            Assert.Equal(5, row.GetInt32(4));
             Assert.Equal(4L, row.GetInt64(5));
         }
         await using var denied = collector.CreateCommand("SELECT alerting.reconcile_deadlock_alert_evaluations(@target,@key,@owner,@fence,1);");

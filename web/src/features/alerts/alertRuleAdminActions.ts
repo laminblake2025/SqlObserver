@@ -1,7 +1,7 @@
 import { apiFetch } from "../../apiClient.ts";
 import { readJsonBounded } from "./alertRuntimeParser.ts";
 import type { AlertRuleAdminItem } from "./alertRuleAdminApi";
-import { isAlertRuleKind, isBackupRuleKind, validBlockingRuleSettings, validBackupRuleSettings } from "./alertRuleSignals.ts";
+import { isAlertRuleKind, isBackupRuleKind, validBlockingRuleSettings, validBackupRuleSettings, validDeadlockRuleSettings } from "./alertRuleSignals.ts";
 
 export interface RuleTemplate {
   readonly name: string;
@@ -47,6 +47,7 @@ export function parseRuleCatalog(value: unknown, targetId: string): readonly Rul
         !integerIn(item.confirmationCount, 1, 100) || !integerIn(item.confirmationSeconds, 0, 604800) ||
         !integerIn(item.evaluationSeconds, 1, 3600) || !integerIn(item.clearConfirmationCount, 1, 100) ||
         item.kind === "blocking_duration_v1" && (item.unit !== "seconds" || !validBlockingRuleSettings(item)) ||
+        item.kind === "deadlock_count_v1" && (item.unit !== "count" || !validDeadlockRuleSettings(item)) ||
         isBackupRuleKind(item.kind) && !validBackupRuleSettings({
           comparison: item.comparison, threshold: item.threshold, hysteresis: item.hysteresis,
           confirmationCount: item.confirmationCount, clearConfirmationCount: item.clearConfirmationCount,
@@ -81,6 +82,9 @@ export function prepareRule(values: RuleValues, template: RuleTemplate): RuleVal
   } else if (values.kind === "blocking_duration_v1") {
     if (!validBlockingRuleSettings(values))
       throw new Error("Blocking duration and hysteresis use seconds. Evaluate every 5–60 seconds and allow enough time for the fire and clear observations.");
+  } else if (values.kind === "deadlock_count_v1") {
+    if (!validDeadlockRuleSettings(values))
+      throw new Error("Deadlock threshold and hysteresis must be whole counts from 0 to 256. Evaluate every 15–60 seconds and allow enough time for the fire and clear observations.");
   } else if (isBackupRuleKind(values.kind)) {
     if (!validBackupRuleSettings(values) || !integerIn(values.confirmationCount, 1, 100) ||
         !integerIn(values.confirmationSeconds, 0, 604800) || !integerIn(values.evaluationSeconds, 15, 3600))

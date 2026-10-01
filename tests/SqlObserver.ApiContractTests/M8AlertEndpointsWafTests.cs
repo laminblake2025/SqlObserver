@@ -113,7 +113,7 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.Equal(AlertCatalog.Entries.Count, document.RootElement.GetProperty("items").GetArrayLength());
         Assert.Contains(document.RootElement.GetProperty("items").EnumerateArray(),
             item => item.GetProperty("metricId").GetString() == "engine.user_connections");
-        foreach (AlertRuleKind kind in new[] { AlertRuleKind.BackupFullPolicy, AlertRuleKind.BackupLogPolicy, AlertRuleKind.BackupObservedFaults, AlertRuleKind.BlockingDuration })
+        foreach (AlertRuleKind kind in new[] { AlertRuleKind.BackupFullPolicy, AlertRuleKind.BackupLogPolicy, AlertRuleKind.BackupObservedFaults, AlertRuleKind.BlockingDuration, AlertRuleKind.DeadlockCount })
             Assert.Contains(document.RootElement.GetProperty("items").EnumerateArray(),
                 item => item.GetProperty("kind").GetString() == AlertRuleKindWire.Format(kind) &&
                     item.GetProperty("metricId").ValueKind == System.Text.Json.JsonValueKind.Null);
@@ -131,6 +131,7 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
     [InlineData(AlertRuleKind.BackupLogPolicy)]
     [InlineData(AlertRuleKind.BackupObservedFaults)]
     [InlineData(AlertRuleKind.BlockingDuration)]
+    [InlineData(AlertRuleKind.DeadlockCount)]
     public async Task SourceBoundRuleRoutesPreserveKindAcrossCreateListUpdateAndDisable(AlertRuleKind kind)
     {
         using var backupFactory = new M8AlertApiFactory();
@@ -158,7 +159,7 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.Equal(3,backupFactory.Administration.LastRuleWriteRequest!.Rule.ClearConfirmationCount);
         Assert.Equal(HttpStatusCode.OK,(await admin.PostAsJsonAsync($"{path}/{ruleId}/disable",body)).StatusCode);
         Assert.False(backupFactory.Administration.LastRuleWriteRequest!.Rule.Enabled);
-        body["threshold"] = kind == AlertRuleKind.BlockingDuration ? 86401 : 1;
+        body["threshold"] = kind == AlertRuleKind.BlockingDuration ? 86401 : kind == AlertRuleKind.DeadlockCount ? 257 : 1;
         Assert.Equal(HttpStatusCode.BadRequest,(await admin.PostAsJsonAsync(path,body)).StatusCode);
     }
 
