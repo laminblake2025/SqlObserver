@@ -7,16 +7,19 @@ import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { useEffect, useRef, useState } from "react";
 import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend, getQueryStoreTopWaits, getQueryStorePlanRegressions } from "./queryPerformanceApi";
+import type { QueryView, QueryViewSelection } from "./queryViewModel";
 import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
 import { queryStoreWaitCategoryNames as waitCategoryNames } from "./queryStoreWaitCategories";
 
-export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, onSelectQuery, refresh, canReadText, initialQuerySelection }: {
+export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, onSelectQuery, refresh, canReadText, initialQuerySelection, viewSelection, onViewSelectionChange }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
   readonly timeWindow: QueryWindow;
   readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly onSelectQuery: (databaseId: number, queryFingerprint: string,
     planFingerprint?: string, sourceKind?: "query_store" | "plan_cache") => void;
+  readonly viewSelection: QueryViewSelection;
+  readonly onViewSelectionChange: (selection: QueryViewSelection) => void;
   readonly refresh: number;
   readonly canReadText: boolean;
   readonly initialQuerySelection?: { readonly databaseId: number; readonly queryFingerprint: string;
@@ -32,8 +35,10 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const waitRequest = useRef<AbortController | null>(null);
   const trendRequest = useRef<AbortController | null>(null);
   const activeQuery = useRef<{ readonly instanceId: string; readonly ranking: QueryPerformanceMetric; readonly fromUtc: string; readonly toUtc: string; readonly refresh: number } | undefined>(undefined);
-  const [ranking, setRanking] = useState<QueryPerformanceMetric>("cpu");
-  const [view, setView] = useState<"top" | "regressed" | "cache">("top");
+  const ranking = viewSelection.metric;
+  const setRanking = (metric: QueryPerformanceMetric) => onViewSelectionChange({ ...viewSelection, metric });
+  const view = viewSelection.view;
+  const setView = (next: QueryView) => onViewSelectionChange({ ...viewSelection, view: next });
   const [paging, setPaging] = useState(false);
   const [database, setDatabase] = useState("");
   // The live collector can legitimately fall back to plan cache when Query Store
@@ -232,8 +237,8 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     {message === undefined || view === "cache" ? null : <p className="status-message">{message}</p>}
     {status === undefined || view === "cache" ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></div>}
     <Tabs label="Query views" tabs={[{ value: "top", label: "Top queries" }, { value: "regressed", label: `Regressed${regressions?.items.length ? ` (${regressions.items.length})` : ""}` }, { value: "cache", label: "Cache interval deltas" }]}
-      value={view} onChange={value => setView(value as "top" | "regressed" | "cache")} />
-    {view === "cache" && <PlanCacheIntervalPanel instanceId={instanceId} timeWindow={timeWindow} refresh={refresh} databaseNames={databaseNames} />}
+      value={view} onChange={value => setView(value as QueryView)} />
+    {view === "cache" && <PlanCacheIntervalPanel instanceId={instanceId} timeWindow={timeWindow} refresh={refresh} databaseNames={databaseNames} metric={ranking} onMetricChange={setRanking} />}
     {view === "regressed" && <section className="panel" aria-label="Possible plan regressions">
       <h4>Possible plan regressions</h4>
       <p>Compare this window with the immediately preceding window of the same length. A lead appears when the dominant Query Store plan changes and comparable duration per execution is at least twice as high and 50 ms slower, with at least two groups and ten executions per plan. This is a correlation, not proof that the plan caused the slowdown.</p>

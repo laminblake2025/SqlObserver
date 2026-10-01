@@ -10,12 +10,12 @@ const metrics: readonly [QueryPerformanceMetric, string][] = [
 ];
 const decimalLabel = (value: string) => value.includes(".") ? value.replace(/0+$/u, "").replace(/\.$/u, "") : value;
 
-export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databaseNames }: {
+export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databaseNames, metric, onMetricChange }: {
   readonly instanceId: string; readonly timeWindow: QueryWindow; readonly refresh: number;
+  readonly metric: QueryPerformanceMetric; readonly onMetricChange: (metric: QueryPerformanceMetric) => void;
   readonly databaseNames: ReadonlyMap<number, string | undefined>;
 }) {
   const timeLabel = useTimeFormatter();
-  const [metric, setMetric] = useState<QueryPerformanceMetric>("cpu");
   const [state, setState] = useState<{ readonly key: string; readonly result?: PlanCacheIntervalRanking; readonly error?: string }>();
   const key = JSON.stringify([instanceId, timeWindow.fromUtc, timeWindow.toUtc, metric, refresh]);
   const current = state?.key === key ? state : undefined;
@@ -30,7 +30,7 @@ export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databa
   return <section className="panel" aria-label="Cache interval deltas">
     <h4>Cache interval deltas</h4>
     <p>Activity measured between qualified cache captures in the selected window. First samples, resets and comparisons crossing the window boundary contribute no total. Database recreations are ranked separately. Cache eviction and incomplete captures can hide activity.</p>
-    <label>Rank cache activity by <select value={metric} onChange={event => setMetric(event.target.value as QueryPerformanceMetric)}>
+    <label>Rank cache activity by <select value={metric} onChange={event => onMetricChange(event.target.value as QueryPerformanceMetric)}>
       {metrics.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
     </select></label>
     {!current ? <p role="status">Loading cache interval evidence…</p> : null}

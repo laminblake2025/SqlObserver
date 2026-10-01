@@ -676,3 +676,23 @@ catalog or grant ingestion, replace legacy cumulative API/MCP history, supply a
 cache history/content drill-down, or establish SQL Server 2019/2025/fleet proof.
 Those are remaining parts of the revamp, alongside canonical run cleanup and
 other requirements in the original review.
+
+
+### Shareable query views and rankings (2026-10-01)
+
+Queries now reads its selected Top, Regressed or Cache interval view and its
+ranking metric from the hash URL (`queryView`, `queryMetric`). The same metric
+selection drives the interval-cache and legacy ranking controls. Reload and
+browser history restore those controls. Rebuilding a URL for the global Rewind
+window, changing the selected server or selecting a Query Store query/plan
+preserves the view and metric; unrelated screens do not inherit query parameters.
+Unknown view/metric values fall back independently to Top/CPU, and default values
+are omitted from generated URLs.
+
+Three focused model tests cover every view/metric combination, preservation of
+server/window/query/plan fields and invalid/default values. The affected dashboard
+route tests also pass. Three focused Chromium cases now cover rendered ranking,
+server changes during pending evidence, and shared-URL reload/Rewind/Back behavior.
+TypeScript, the production build and web asset verification pass. No database or
+native-source rerun was needed for this frontend state change. Cache history,
+collector activation and the broader revamp requirements remain open.

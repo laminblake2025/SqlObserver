@@ -29,6 +29,8 @@ test('cache view preserves exact numbers, exposes coverage and follows the share
   await expect(panel.getByText('1 of 2 captures incomplete', { exact: false })).toBeVisible();
   await panel.getByRole('combobox', { name: 'Rank cache activity by' }).selectOption('duration');
   await expect(panel.getByRole('table', { name: 'Top 25 observed cache query plans by duration' })).toBeVisible();
+  await expect(page).toHaveURL(/queryView=cache/);
+  await expect(page).toHaveURL(/queryMetric=duration/);
   expect(requests.at(-1).searchParams.get('metric')).toBe('duration');
   for (const request of requests) {
     expect(request.pathname).toContain(first);
@@ -53,10 +55,40 @@ test('changing server during a pending cache read cannot display the previous se
   await started;
   await page.getByRole('combobox', { name: 'Target server' }).selectOption(second);
   await expect(page.getByRole('heading', { name: 'Queries for SYNTHETIC SQL 02' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Cache interval deltas' }).click();
+  await expect(page.getByRole('tab', { name: 'Cache interval deltas' })).toHaveAttribute('aria-selected', 'true');
   const panel = page.getByRole('region', { name: 'Cache interval deltas' });
   await expect(panel.getByRole('cell', { name: '2', exact: true })).toBeVisible();
   release();
   await expect(panel.getByText('9007199254740993.001', { exact: true })).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(second));
+});
+
+test('a shared cache URL restores view and metric across reload, Rewind edits and browser history', async ({ page }) => {
+  const requests = [];
+  await page.route('**/query-performance/cache/top?*', async route => {
+    const url = new URL(route.request().url()); requests.push(url);
+    await route.fulfill({ json: body(url) });
+  });
+  await page.goto(`${href(first)}&queryView=cache&queryMetric=logical_reads`);
+  const panel = page.getByRole('region', { name: 'Cache interval deltas' });
+  await expect(page.getByRole('tab', { name: 'Cache interval deltas' })).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByRole('combobox', { name: 'Rank cache activity by' })).toHaveValue('logical_reads');
+  await expect(panel.getByRole('table', { name: 'Top 25 observed cache query plans by logical reads' })).toBeVisible();
+  await page.reload();
+  await expect(panel.getByRole('combobox', { name: 'Rank cache activity by' })).toHaveValue('logical_reads');
+  await expect(panel.getByRole('table')).toBeVisible();
+  await page.getByRole('button', { name: 'Edit UTC range' }).click();
+  await page.getByLabel('From (UTC)', { exact: true }).fill('2026-09-28T08:00');
+  await page.getByLabel('To (UTC)', { exact: true }).fill('2026-09-28T20:00');
+  await page.getByRole('button', { name: 'Apply range' }).click();
+  await expect(panel.getByRole('table')).toBeVisible();
+  await expect.poll(() => Date.parse(requests.at(-1).searchParams.get('fromUtc'))).toBe(Date.parse('2026-09-28T08:00:00Z'));
+  expect(requests.at(-1).searchParams.get('metric')).toBe('logical_reads');
+  await expect(page).toHaveURL(/queryView=cache/);
+  await expect(page).toHaveURL(/queryMetric=logical_reads/);
+  await panel.getByRole('combobox', { name: 'Rank cache activity by' }).selectOption('writes');
+  await expect(panel.getByRole('table', { name: 'Top 25 observed cache query plans by writes' })).toBeVisible();
+  await page.goBack();
+  await expect(panel.getByRole('combobox', { name: 'Rank cache activity by' })).toHaveValue('logical_reads');
+  await expect(panel.getByRole('table', { name: 'Top 25 observed cache query plans by logical reads' })).toBeVisible();
 });

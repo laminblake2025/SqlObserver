@@ -20,6 +20,7 @@ import { OverviewPage } from "./features/overview/OverviewPage";
 import { overviewHref, readOverviewScope } from "./features/overview/overviewModel";
 import { healthCheckHref } from "./features/operations/agentHistoryModel.ts";
 import { OperationsPanel } from "./features/operations/OperationsPanel";
+import { queryViewHref, readQueryViewSelection } from "./features/queries/queryViewModel";
 import { TargetQueryPerformancePanel } from "./features/queries/TargetQueryPerformancePanel";
 import { TargetResourcesPanel } from "./features/resources/TargetResourcesPanel";
 import { queryPerformanceDefaultHref, resolveQueryWindow, type QueryWindowResult } from "./features/queries/queryWindowModel";
@@ -56,6 +57,7 @@ export function App() {
   const { mode: timeDisplayMode, setMode: setTimeDisplayMode } = useTimeDisplay();
   const [route, setRoute] = useState(() => readRoute(location.hash));
   const scope = readOverviewScope(location.hash);
+  const queryView = readQueryViewSelection(location.hash);
   const alertSelection = alertSelectionFromHash(location.hash);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [cursor, setCursor] = useState<string>();
@@ -179,7 +181,7 @@ export function App() {
   const changeTimeContext = (next: Partial<typeof scope>) => {
     const selectedScope = { ...scope, ...next };
     const selectedRoute = readRoute(location.hash);
-    location.hash = selectedRoute.page === "activity" && selectedRoute.activityAtUtc
+    const href = selectedRoute.page === "activity" && selectedRoute.activityAtUtc
       ? activityHistoryHref(selectedRoute.target, selectedRoute.activityAtUtc, selectedRoute.activityEventId, selectedScope)
       : selectedRoute.page === "queries" && selectedRoute.databaseId !== undefined && selectedRoute.queryFingerprint !== undefined
         ? queryJumpHref(selectedScope, selectedRoute.target, selectedRoute.databaseId,
@@ -187,6 +189,7 @@ export function App() {
       : selectedRoute.page === "operations" && selectedRoute.healthCheck
         ? healthCheckHref(selectedScope, selectedRoute.target, selectedRoute.healthCheck)
       : overviewHref(selectedScope, selectedRoute.page, selectedRoute.target);
+    location.hash = queryViewHref(href, readQueryViewSelection(location.hash));
   };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
   const canAddServer = canRegisterTarget(myAccess);
@@ -198,8 +201,9 @@ export function App() {
   );
   const currentNavigation = route.page === "health" ? "servers" :
     route.page === "rules" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
-  const routeHref = (page: Destination, target = route.target) => page === "operations" && route.healthCheck
-    ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target);
+  const routeHref = (page: Destination, target = route.target) => queryViewHref(
+    page === "operations" && route.healthCheck
+      ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target), queryView);
   const closeTarget = () => {
     location.hash = route.page === "alerts" ? routeHref("alerts", "") :
       route.page === "rules" || route.page === "maintenance" || route.page === "destinations"
@@ -324,10 +328,11 @@ export function App() {
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} canReadRules={canManageRules}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} viewSelection={queryView}
+                onViewSelectionChange={selection => { location.hash = queryViewHref(location.hash, selection); }} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
                 onSelectQuery={(databaseId, queryFingerprint, planFingerprint, sourceKind) => {
-                  const href = queryJumpHref(scope, props.instanceId, databaseId, queryFingerprint,
-                    planFingerprint, sourceKind);
+                  const href = queryViewHref(queryJumpHref(scope, props.instanceId, databaseId, queryFingerprint,
+                    planFingerprint, sourceKind), queryView);
                   window.history.replaceState(window.history.state, "", href);
                   setRoute(readRoute(href));
                 }}
