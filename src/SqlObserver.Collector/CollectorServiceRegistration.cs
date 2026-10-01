@@ -90,6 +90,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().CapabilityProfiles);
         services.AddSingleton<ICollectorRuntimeRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Runtime);
+        services.AddSingleton<IDeadlockReadRepositoryPort>(static provider =>
+            (IDeadlockReadRepositoryPort)provider.GetRequiredService<ICollectorRuntimeRepositoryPort>());
         services.AddSingleton<IBackupHistoricalZoneQualificationPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupZoneQualifications);
         services.AddSingleton<IQueryStoreGroupWindowPort>(static provider =>

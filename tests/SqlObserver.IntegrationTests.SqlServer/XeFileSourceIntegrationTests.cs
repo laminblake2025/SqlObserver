@@ -19,6 +19,8 @@ public sealed class XeFileSourceIntegrationTests(Xunit.Abstractions.ITestOutputH
         Assert.Equal(XeFileSourceState.Ready, page.State);
         Assert.Equal(XeFileReadStop.MetadataLimit, page.Stop);
         Assert.Equal(limits.MetadataRows + 1, page.Progress!.RowsRead);
+        Assert.Equal(page.Progress.RowsRead, page.Positions.Count);
+        Assert.True(page.ResponseBytes >= XeFileSourceReader.HeaderBytes + page.Positions.Count * XeFileSourceReader.MetadataBytes);
         Assert.InRange(page.ResponseBytes, 128, limits.ResponseBytes);
         Assert.InRange(XeFileSourceReader.HeaderBytes + page.Progress.RowsRead * XeFileSourceReader.MetadataBytes, 128, limits.ResponseBytes);
         Assert.False(page.ReachedEnd);

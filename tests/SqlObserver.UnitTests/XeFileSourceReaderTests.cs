@@ -167,8 +167,28 @@ public sealed class XeFileSourceReaderTests
         XeFileSourcePage page = await Read(rows, hasMore: true, limits: limits);
         Assert.Equal(XeFileReadStop.MetadataLimit, page.Stop);
         Assert.Equal(62, page.Progress!.RowsRead);
+        Assert.Equal(62, page.Positions.Count);
+        Assert.Equal(128 + 62 * 64, page.ResponseBytes);
+        Assert.Throws<NotSupportedException>(() => ((IList<XeFilePosition>)page.Positions)[0] = new(999, 0, 0));
         Assert.Equal(160, page.Progress.SafeBookmark!.Position.BufferOffset);
         Assert.InRange(XeFileSourceReader.HeaderBytes + rows.Length * XeFileSourceReader.MetadataBytes, 128, limits.ResponseBytes);
+        Assert.False(page.ReachedEnd);
+    }
+
+    [Fact]
+    public async Task XmlBudgetLeavesAnAccountedProbeAndDoesNotRetainAnUnaccountedPosition()
+    {
+        const int xmlBytes = 4096 - XeFileSourceReader.HeaderBytes - 2 * XeFileSourceReader.MetadataBytes;
+        string xml = Xml.Replace("<data>", "<ignored></ignored><data>", StringComparison.Ordinal);
+        xml = xml.Replace("<ignored>", "<ignored>" + new string('x', xmlBytes - System.Text.Encoding.UTF8.GetByteCount(xml)), StringComparison.Ordinal);
+        Assert.Equal(xmlBytes, System.Text.Encoding.UTF8.GetByteCount(xml));
+        XeFileSourcePage page = await Read([Row(100, xml), Row(200), Row(300)], limits: new(responseBytes: 4096));
+        Assert.Equal(XeFileReadStop.ResponseLimit, page.Stop);
+        Assert.Equal(4096, page.ResponseBytes);
+        Assert.Equal(2, page.Positions.Count);
+        Assert.Equal(2, page.Progress!.RowsRead);
+        Assert.Equal(100, page.Progress.SafeBookmark!.Position.BufferOffset);
+        Assert.Single(page.Deadlocks.Items);
         Assert.False(page.ReachedEnd);
     }
 

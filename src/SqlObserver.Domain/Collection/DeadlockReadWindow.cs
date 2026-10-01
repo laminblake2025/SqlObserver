@@ -42,6 +42,27 @@ public sealed class DeadlockReadWindow
     public IReadOnlyList<DeadlockWindowEvent> Events { get; }
     public DeadlockReadWindowReason Reason { get; }
     public int? DeadlockCount => Reason == DeadlockReadWindowReason.Current ? Events.Count : null;
+
+    public static DeadlockReadWindow Restore(XeReadIdentity source, DateTimeOffset readAtUtc, DateTimeOffset coveredFromUtc,
+        DateTimeOffset? gapThroughUtc, IReadOnlyList<DeadlockWindowEvent> events, DeadlockReadWindowReason reason)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(events);
+        if (!Enum.IsDefined(reason) || readAtUtc.Offset != TimeSpan.Zero || readAtUtc < DateTimeOffset.MinValue.AddMinutes(5)
+            || coveredFromUtc.Offset != TimeSpan.Zero || coveredFromUtc > readAtUtc
+            || gapThroughUtc is { } gap && (gap.Offset != TimeSpan.Zero || gap > readAtUtc)
+            || events.Count > DeadlockReadWindowCalculator.MaximumEvents
+            || events.Any(e => e is null || e.OccurredAtUtc < readAtUtc.AddMinutes(-5) || e.OccurredAtUtc > readAtUtc)
+            || events.Select(e => e.EventId).Distinct().Count() != events.Count)
+            throw new ArgumentException("Persisted deadlock window bounds are invalid.");
+        bool incomplete = coveredFromUtc > readAtUtc.AddMinutes(-5) || gapThroughUtc >= readAtUtc.AddMinutes(-5);
+        if (reason == DeadlockReadWindowReason.Current && (incomplete || events.Any(e => e.ParseTruncated))
+            || reason == DeadlockReadWindowReason.CoverageGap && !incomplete
+            || (reason is DeadlockReadWindowReason.SourceIncomplete or DeadlockReadWindowReason.WindowOverflow) && gapThroughUtc != readAtUtc
+            || reason == DeadlockReadWindowReason.WindowOverflow && events.Count != DeadlockReadWindowCalculator.MaximumEvents)
+            throw new ArgumentException("Persisted deadlock window coverage is contradictory.");
+        return new(source, readAtUtc, coveredFromUtc, gapThroughUtc, events, reason);
+    }
 }
 
 /// <summary>

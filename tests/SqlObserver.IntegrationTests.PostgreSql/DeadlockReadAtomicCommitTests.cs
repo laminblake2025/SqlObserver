@@ -110,7 +110,7 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
     }
 
     [Fact]
-    public async Task DeadlockAtomicReadCommitRollsBackEveryWriteAtFinalFenceAndStaysPrivate()
+    public async Task DeadlockAtomicReadCommitRollsBackEveryWriteAtFinalFenceAndKeepsItsHelpersPrivate()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         var legacy = await PrepareCommitAsync(database, count: 0);
@@ -152,7 +152,8 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
                 """, connection);
             await using NpgsqlDataReader row = await grants.ExecuteReaderAsync(); Assert.True(await row.ReadAsync());
             Assert.Equal("sqlobserver_migrator", row.GetString(0));
-            for (int column = 1; column <= 4; column++) Assert.False(row.GetBoolean(column));
+            Assert.True(row.GetBoolean(1));
+            for (int column = 2; column <= 4; column++) Assert.False(row.GetBoolean(column));
         }
         Assert.Equal(LeaseOwnershipStatus.Current, await prepared.Leases.AssertOwnershipAsync(new(prepared.Lease, Timeout), default));
         await ExecuteAsync(database, "DROP TRIGGER invalidate_deadlock_checkpoint_fence ON control.deadlock_read_checkpoint; DROP FUNCTION public.invalidate_deadlock_checkpoint_fence();");
@@ -274,7 +275,7 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
     }
 
     private static async Task<(string Status, int Inserted, int Persisted)> CommitReadAsync(RepositoryTestDatabase database,
-        CommitCollectorRunRequest request, JsonObject proof, long duration = 1)
+        CommitCollectorRunRequest request, JsonObject proof, long duration = 1, bool legacyBoundary = false)
     {
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
@@ -290,6 +291,9 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
                 @outcome,@reason,@duration,1,@rows,@count,@response,@output,'none',0,true,0,'closed',0,
                 @ats,@ids,@fingerprints,@participants,@relations,@truncated,@participantJson,@relationJson,@sizes,@proof) c;
             """, connection, transaction);
+        if (legacyBoundary)
+            command.CommandText = command.CommandText.Replace("control.commit_deadlock_read_collection_run(", "control.commit_deadlock_collection_run(", StringComparison.Ordinal)
+                .Replace("@sizes,@proof)", "@sizes)", StringComparison.Ordinal);
         DeadlockObservation[] items = request.Payload.Deadlocks.Items.ToArray();
         command.Parameters.AddWithValue("run", request.Summary.RunId.Value);
         command.Parameters.AddWithValue("outcome", request.Summary.Outcome == CollectorRunOutcome.PermissionDenied ? "permission_denied" : "succeeded");

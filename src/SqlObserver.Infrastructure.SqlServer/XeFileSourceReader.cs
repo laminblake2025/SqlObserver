@@ -27,7 +27,7 @@ internal sealed class XeFileReadLimits
 
 internal sealed record XeFileSourcePage(XeFileSourceState State, XeReadIdentity? Source,
     DateTimeOffset ReadAtUtc, DateTimeOffset? RetainedFromUtc, XeFileReadProgress? Progress,
-    DeadlockObservationBatch Deadlocks, int ResponseBytes, int RejectedDeadlocks, bool TimingGap, XeFileReadStop Stop)
+    IReadOnlyList<XeFilePosition> Positions, DeadlockObservationBatch Deadlocks, int ResponseBytes, int RejectedDeadlocks, bool TimingGap, XeFileReadStop Stop)
 {
     internal bool ReachedEnd => State == XeFileSourceState.Ready && Progress?.Kind == XeFileReadProgressKind.CaughtUp;
     internal bool SourceLoss => RejectedDeadlocks > 0 || TimingGap;
@@ -69,7 +69,7 @@ internal static class XeFileSourceReader
         {
             if (hasRows || retainedFrom is not null || hasMore || state == XeFileSourceState.ResetRequired && source is null)
                 throw new InvalidDataException("Unavailable XE source returned contradictory evidence.");
-            return new(state, source, readAt, null, null, new([]), HeaderBytes, 0, false, XeFileReadStop.None);
+            return new(state, source, readAt, null, null, Array.AsReadOnly(Array.Empty<XeFilePosition>()), new([]), HeaderBytes, 0, false, XeFileReadStop.None);
         }
         if (source is null || retainedFrom is null || retainedFrom > readAt || !hasRows || reader.FieldCount != 8)
             throw new InvalidDataException("Ready XE source omitted its bounded metadata result.");
@@ -87,10 +87,12 @@ internal static class XeFileSourceReader
             var position = new XeFilePosition(reader.GetInt64(0), reader.GetInt32(1), reader.GetInt64(2));
             if (position.BufferOffset > MaximumOffset)
                 throw new InvalidDataException("XE source buffer offset exceeds the file bound.");
-            positions.Add(position);
-            if (positions.Count > limits.MetadataRows) { stop = XeFileReadStop.MetadataLimit; break; }
+            // A byte stop leaves the previously observed final buffer incomplete.
+            // Every retained witness, including the metadata probe, is accounted.
             if (responseBytes + MetadataBytes > limits.ResponseBytes) { stop = XeFileReadStop.ResponseLimit; break; }
+            positions.Add(position);
             responseBytes += MetadataBytes;
+            if (positions.Count > limits.MetadataRows) { stop = XeFileReadStop.MetadataLimit; break; }
             DateTimeOffset occurred = Utc(reader.GetDateTime(3));
             bool isDeadlock = reader.GetBoolean(4), oversized = reader.GetBoolean(5), quota = reader.GetBoolean(6);
             bool missingXml = reader.IsDBNull(7);
@@ -111,7 +113,7 @@ internal static class XeFileSourceReader
             if (missingXml) throw new InvalidDataException("Deadlock source omitted its reviewed XML or loss sentinel.");
             using TextReader text = reader.GetTextReader(7);
             SqlServerDeadlockCollector.BoundedXmlRead xml = await SqlServerDeadlockCollector.ReadBoundedXmlAsync(text, token).ConfigureAwait(false);
-            if (responseBytes + xml.Utf8Bytes > limits.ResponseBytes) { stop = XeFileReadStop.ResponseLimit; break; }
+            if (responseBytes + xml.Utf8Bytes + MetadataBytes > limits.ResponseBytes) { stop = XeFileReadStop.ResponseLimit; break; }
             responseBytes += xml.Utf8Bytes;
             if (xml.Oversized || occurred > readAt) { rejected++; continue; }
             try
@@ -136,8 +138,8 @@ internal static class XeFileSourceReader
             throw new InvalidDataException("XE source returned an unreviewed result set.");
         XeFileReadProgress progress = XeFileReadProgressCalculator.Compare(previous, source, positions, ended && !hasMore && stop == XeFileReadStop.None);
         if (progress.Kind == XeFileReadProgressKind.ResetRequired)
-            return new(XeFileSourceState.ResetRequired, source, readAt, null, null, new([]), responseBytes, rejected, timingGap, stop);
-        return new(state, source, readAt, retainedFrom, progress, new(events.Values.ToArray()), responseBytes, rejected, timingGap, stop);
+            return new(XeFileSourceState.ResetRequired, source, readAt, null, null, Array.AsReadOnly(Array.Empty<XeFilePosition>()), new([]), responseBytes, rejected, timingGap, stop);
+        return new(state, source, readAt, retainedFrom, progress, Array.AsReadOnly(positions.ToArray()), new(events.Values.ToArray()), responseBytes, rejected, timingGap, stop);
     }
 
     private static DateTimeOffset Utc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));

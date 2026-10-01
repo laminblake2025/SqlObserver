@@ -18,7 +18,7 @@ using SqlObserver.Domain.SensitiveData;
 namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>Repository-clock, fenced PostgreSQL persistence for the fixed M4 collector runtime.</summary>
-public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntimeRepositoryPort
+public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntimeRepositoryPort, IDeadlockReadRepositoryPort
 {
     private static readonly JsonSerializerOptions M9JsonOptions = new(JsonSerializerDefaults.Web);
     private const string CatalogReconciliationLeaseKey = "collector/catalog/reconcile";
@@ -737,6 +737,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     {
         ArgumentNullException.ThrowIfNull(request);
         ValidateCommit(request);
+        if (request.Work.CollectorId.Value == "deadlocks.system-health" && request.Work.CollectorManifestVersion != 1)
+            throw new ArgumentException("Incremental deadlocks require the atomic source-proof commit path.", nameof(request));
         byte[] requestDigest = CreateRequestDigest(request.Work, request.Summary.RunId, request.Lease);
         using CancellationTokenSource timeout = PostgreSqlRuntimeSupport.CreateTimeoutScope(
             request.Timeout,

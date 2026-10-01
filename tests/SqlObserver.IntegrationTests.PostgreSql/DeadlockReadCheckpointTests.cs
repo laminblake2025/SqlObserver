@@ -127,16 +127,21 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
             Assert.Equal(JsonValueKind.Null, empty.RootElement.GetProperty("checkpoint").ValueKind);
             Assert.Equal(JsonValueKind.Null, empty.RootElement.GetProperty("checkpointDigest").ValueKind);
         }
-        CollectorRunCommitResult completed = await first.Runtime.CommitRunAsync(first.Commit, default);
+        var firstPort = first.Runtime;
+        DeadlockReadCheckpointResult emptyTyped = await firstPort.ReadDeadlockCheckpointAsync(new(first.Work, first.Commit.Summary.RunId, first.Lease, Timeout), default);
+        Assert.Null(emptyTyped.Checkpoint);
+        var firstProof = new DeadlockReadSourceProof(first.Work.TargetId, first.Work.TargetRevision, first.Work.ScheduleRevision.Value,
+            first.Commit.Summary.RunId, null, DeadlockReadSourceState.Ready,
+            new(first.Work.TargetId, first.Work.TargetRevision, new string('a', 64)), first.Work.RepositoryTimeUtc,
+            first.Work.RepositoryTimeUtc.AddMinutes(-10), [new(1000, 0, 100)], true, false);
+        CollectorRunCommitResult completed = await firstPort.CommitDeadlockReadAsync(WithSourceAccounting(first.Commit, firstProof.Positions.Count), firstProof, default);
         Assert.Equal(CollectorRunCommitStatus.Committed, completed.Status);
         await first.Leases.ReleaseAsync(new(first.Lease, Timeout), default);
         await ExecuteAsync(database, """
-            INSERT INTO control.deadlock_read_checkpoint(instance_id,target_revision,schedule_revision,run_id,completed_at,
-                completion_digest,source_state,source_epoch,file_generation,rollover_index,buffer_offset,window_state)
-            SELECT @target,1,@schedule,o.run_id,o.completed_at,o.completion_digest,'ready',decode(repeat('a',64),'hex'),1000,0,100,
-                control.merge_deadlock_read_window(NULL,@target,1,decode(repeat('a',64),'hex'),o.completed_at,
-                    o.completed_at-interval '10 minutes',ARRAY[]::uuid[],ARRAY[]::timestamptz[],ARRAY[]::boolean[],true,false)
-            FROM telemetry.collection_run_outcome o WHERE o.run_id=@run;
+            UPDATE control.deadlock_read_checkpoint SET window_state=
+                control.merge_deadlock_read_window(NULL,@target,1,decode(repeat('a',64),'hex'),completed_at,
+                    completed_at-interval '10 minutes',ARRAY[]::uuid[],ARRAY[]::timestamptz[],ARRAY[]::boolean[],true,false)
+            WHERE instance_id=@target;
             UPDATE control.collector_schedule SET next_due_at=clock_timestamp()-interval '1 minute'
                 WHERE instance_id=@target AND collector_id='deadlocks.system-health';
             """, ("target", legacy.Target.Value), ("schedule", first.Work.ScheduleRevision.Value), ("run", first.Commit.Summary.RunId.Value));

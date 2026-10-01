@@ -486,15 +486,49 @@ TypeScript checking also passes. Evidence is `xe-receipt-retention-final.trx`,
 `xe-receipt-retention-preamble.trx`. The initial passing native run is retained in
 `xe-receipt-retention-first.trx`.
 
-Activation still requires typed Collector wiring for the fenced read and source
-proof, and explicit v2 routing. The legacy commit must reject v2 calls
-that bypass atomic publication when v2 becomes available. The pinned source page
-must expose every numeric position used in its frontier calculation and normalize
-timestamps to repository precision. Cold catch-up scheduling must stay bounded
-and fair. The alert evidence reader must use the retained window rather than
-counting only the newest delta, and preserve the verified five-minute
-firing/unknown/recovery behavior in native end-to-end tests before v2 replaces v1.
-There is still no writable application-role checkpoint API or active v2 contract.
+Migration 0313 grants Collector access to the atomic source-proof commit and
+restricts the legacy commit to v1/schema 1. The typed `IDeadlockReadRepositoryPort`
+reads the fenced checkpoint and publishes the bounded proof inside an explicit
+transaction with a transaction-local target scope. The private cache, receipt
+tables and merge helpers remain inaccessible to application roles. Collector
+composition aliases the port to the existing runtime instance; no scheduler or
+collector v2 activation is installed.
+
+The closed checkpoint codec verifies SHA-256 over the exact PostgreSQL JSON bytes,
+including the saved checkpoint body. It rejects duplicate, missing or unknown
+fields, conflicting target/run/schedule bindings, inconsistent resume metadata,
+noncanonical identities and non-UTC timestamps. Proof timestamps and the canonical
+v2 event vector use PostgreSQL microsecond precision. The proof snapshots numeric
+positions and carries no caller-computed count or window.
+
+The pinned source page now exposes an immutable snapshot of its numeric witnesses.
+Byte accounting includes the metadata probe, and XML admission reserves room for
+a subsequent witness. A byte stop retains only accounted positions and leaves the
+last observed buffer incomplete. A reset discards all resumable positions and
+accepted events.
+
+Focused Collector-role PostgreSQL tests cover cold reads, catch-up, quiet reads
+retaining a recent deadlock, old replay preserving the latest checkpoint, stale
+CAS rollback, legacy-v2 bypass rejection, exact timestamp precision and outage
+state retaining evidence while its count becomes unknown. Corrupted closed frames
+are rejected even when their outer digest is recomputed. The separate fence test
+checks complete rollback after the final checkpoint write. Existing v1 canonical
+commit behavior remains covered.
+
+Evidence for this typed boundary is in `xe-typed-checkpoint-native.trx` (three
+native checks), `xe-typed-checkpoint-final.trx` (expanded typed flow and existing
+v1 regression), `xe-typed-domain-contracts.trx` (16 domain checks),
+`xe-typed-reader-accounting.trx` (19 reader checks),
+`xe-typed-reader-probe-and-preamble.trx` (XML budget and migration convention),
+and `xe-typed-reader-native-budget.trx` (SQL Server 2022, 4 KiB page). The Collector
+project builds without warnings. These are focused checks; no fleet-wide or
+remote deployment validation was rerun.
+
+Activation still requires collector context and explicit v2 routing through this
+port. Cold catch-up scheduling must stay bounded and fair. The alert evidence
+reader must use the retained window rather than counting only the newest delta,
+and preserve the verified five-minute firing/unknown/recovery behavior in native
+end-to-end tests before v2 replaces v1. No active v2 catalog contract is installed.
 
 ## Verification and remaining work
 
