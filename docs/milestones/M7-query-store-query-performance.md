@@ -124,7 +124,7 @@ sample. It cannot prove that evicted work is absent or that a selected query's
 other entries were observed. The later writer can compare complete, qualified
 selected statements while retaining limited aggregate coverage; omitted or
 unresolved entries do not advance. Missing entries must never generate a zero.
-The source page deliberately has no database-incarnation watermark binding yet.
+The raw source page deliberately has no database-incarnation watermark binding.
 A live qualified database incarnation must bracket the counter capture, bound
 to the same target/revision and database ID. A stale inventory timestamp or
 arbitrary hash is insufficient, especially across database drop/restore/recreation.
@@ -148,5 +148,55 @@ zero probe databases and logins.
 This is source and comparison evidence, not production pipeline certification.
 The local contract uses its explicit local-only certificate bypass and does not
 qualify deployment TLS/Kerberos. SQL Server 2019/2025 execution, controlled restart
-and database-replacement races, live incarnation binding, lease-fenced atomic
+and database-replacement races, production incarnation orchestration, lease-fenced atomic
 storage/replay/retention, and the catalog/API/UI cutover remain required.
+
+## Live database identity binding — staged
+
+`PlanCacheDatabaseIdentitySource` now reads a closed seven-field identity frame
+inside an already-open user database, without changing database context. Its
+separate pinned SQL digest is
+`59f718e9c8725b4b42a2729c1ce532cbc3e26c21138c39c172933637a02bc349`.
+The identity hashes the native database GUID, backup family and current recovery
+fork. Missing metadata remains unknown. The frame preserves bounded UTC capture
+times, target/revision, database ID, catalog eligibility and the same startup
+epoch as the counter source; no raw GUID or database name enters the watermark.
+
+`PlanCacheRuntimeSourceAssembler` accepts only matching eligible identities read
+before and after the cache capture, within a 30-second overall qualification
+window. It rejects foreign target/revision evidence, duplicate IDs, invalid
+windows and inventories over 256 databases. A changed epoch or incarnation,
+missing identity, overlapping capture or expired bracket discards only that
+database's selected statements. Other qualified statements can advance even
+when whole-cache coverage is limited. Each accepted statement retains both
+identity snapshots alongside its raw counter watermark, and missing statements
+are never synthesized. The original source accounting remains intact.
+
+Thirty-two focused frame and binding cases pass in
+`plan-cache-identity-qualification.trx`. The real SQL Server 2022 case in
+`plan-cache-identity-native-background-close.trx` uses a disposable database and
+temporary non-sysadmin login with server performance-state, database visibility
+and a user in that database. It reads actual bracketing frames on the same open
+database connection, drops and recreates the database, verifies reuse of its
+numeric database ID with a different incarnation, and rejects old-to-new
+comparison despite the new counters exceeding the old values. A separate
+AUTO_CLOSE database stays closed throughout the identity and cache reads; the
+fixture waits for its asynchronous background close before asserting that
+precondition. A master context is explicitly rejected. The first native result
+records the fixture's immediate-close assumption; the corrected case passes.
+
+The restricted source must hold qualified database contexts across its future
+target sweep and account for inaccessible or omitted databases. This staged
+reader/mapper is not registered in production and does not yet provide that
+coordinator, persistent lease-fenced watermarks, atomic delta publication,
+replay/retention, or versioned catalog/ranking cutover. Restore/fork changes,
+forced disconnect/restart races, SQL Server 2019/2025, and deployment TLS/Kerberos
+still require native qualification. The scoped SQL Server 2022 passivity evidence
+does not qualify catalog behavior on every supported version.
+
+Native identity semantics and catalog side effects are documented in
+[sys.database_recovery_status](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-database-recovery-status-transact-sql?view=sql-server-ver17).
+The AUTO_CLOSE fixture uses the closed-database metadata behavior of
+[sys.databases](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-databases-transact-sql?view=sql-server-ver17)
+and the background shutdown behavior of
+[ALTER DATABASE SET options](https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-database-transact-sql-set-options?view=sql-server-ver17).

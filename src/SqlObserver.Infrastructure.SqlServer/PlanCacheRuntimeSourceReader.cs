@@ -6,7 +6,7 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Infrastructure.SqlServer;
 
 // Database ID alone cannot establish a watermark incarnation. The later
-// assembler must bind these native rows to qualified, current inventory.
+// assembler must bind these native rows to live, bracketing identity evidence.
 internal sealed record PlanCacheRuntimeSourceRow(QueryOpaqueIdentity Query,
     PlanOpaqueIdentity Plan, string CacheEntryFingerprint, PlanCacheRuntimeCounters Counters);
 

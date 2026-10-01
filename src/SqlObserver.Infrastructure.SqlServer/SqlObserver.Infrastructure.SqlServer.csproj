@@ -331,4 +331,7 @@
     <EmbeddedResource Include="../../collectors/plan-cache-runtime/read.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheRuntimeSourceAssets.read.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/plan-cache-runtime/read.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheRuntimeSourceAssets.read.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/plan-cache-identity/read.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheIdentitySourceAssets.read.v1.sql</LogicalName></EmbeddedResource>
+  </ItemGroup>
 </Project>
