@@ -28,6 +28,18 @@ internal static class PlanCacheRuntimeSourceReader
         MonitoredInstanceId targetId, ObservationTargetRevision targetRevision,
         int maximumRows, CancellationToken cancellationToken)
     {
+        PlanCacheRuntimeSourcePage page = await ReadFrameAsync(reader, targetId, targetRevision, maximumRows, cancellationToken).ConfigureAwait(false);
+        if (await reader.NextResultAsync(cancellationToken).ConfigureAwait(false))
+            throw new InvalidDataException("Cache source returned an unexpected additional result.");
+        return page;
+    }
+
+    // Leaves the reader at the end of the counter result. The separately pinned
+    // content bundle owns and validates its additional result, if requested.
+    internal static async Task<PlanCacheRuntimeSourcePage> ReadFrameAsync(DbDataReader reader,
+        MonitoredInstanceId targetId, ObservationTargetRevision targetRevision,
+        int maximumRows, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(targetRevision);
@@ -67,7 +79,7 @@ internal static class PlanCacheRuntimeSourceReader
                 throw new InvalidDataException("Cache source repeated a statement incarnation.");
             if (read <= maximumRows) rows.Add(new(query, plan, entry, counters));
         }
-        if (read != emitted || await reader.NextResultAsync(cancellationToken).ConfigureAwait(false))
+        if (read != emitted)
             throw new InvalidDataException("Cache source accounting differs from its result rows.");
         return new(targetId, targetRevision, started, completed, epoch, candidates, unresolved,
             invisible, excluded, rows.AsReadOnly(), candidates <= maximumRows && unresolved == 0 && invisible == 0, maximumRows);

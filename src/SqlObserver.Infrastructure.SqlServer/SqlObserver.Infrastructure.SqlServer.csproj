@@ -339,4 +339,10 @@
   <ItemGroup>
     <EmbeddedResource Include="../../collectors/plan-cache-identity/read.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheIdentitySourceAssets.read.v1.sql</LogicalName></EmbeddedResource>
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/plan-cache-content/assets.sha256" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.assets.sha256" />
+    <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver15-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver15-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver16-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver16-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver17-windows.v1.sql" />
+  </ItemGroup>
 </Project>

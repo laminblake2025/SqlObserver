@@ -816,3 +816,49 @@ the production build and generated web asset verification pass. No database or
 native collector tests were repeated for this frontend-only change. Protected
 cache content, supported-version qualification and production collector rollout
 remain separate gates.
+
+
+### Bounded native cache content source — staged (2026-10-01)
+
+A separate checksum-pinned source bundle now reads protected content alongside
+its native cache counters. It retains the existing bounded 2,000+1 candidate
+capture and expands text/plans only for an explicitly requested prefix of up to
+eight original candidates. Excluded candidates in that prefix do not cause
+additional candidates to be opened. Existing counter-only SQL stays unchanged.
+SQL Server 15/16/17 assets share bundle digest
+`82409fe67c91f9e9b6ffc31b31516306f494b1a0328773bfb6e4133cdc302cd8`.
+
+The source extracts a statement's UTF-16 byte range using a non-SC binary
+collation and requests the statement plan with `dm_exec_text_query_plan`. It
+rechecks handle, query/plan hash, offsets, creation time and generation against
+live cache stats after extraction. Removed/recompiled entries have unavailable
+content. Handles, plaintext and XML never enter the returned source object.
+No usable protection key sets the content prefix to zero before executing SQL.
+
+The closed reader binds each content row to the exact captured database, query,
+plan and cache-entry identity; it rejects duplicates, extra results and forged
+source states. Query text is limited to 16 KiB UTF-8 and plans to 1 MiB, without
+truncation. The SQL result has a 2 MiB aggregate UTF-16 content budget, separate
+from the existing counter/header budget; protected UTF-8 content has a separate
+2 MiB aggregate budget. Oversize, missing, byte-limit and protection failure
+states stay explicit. Strict encoding, cleared character/byte buffers and an
+independent 20-second source/protection deadline bound the optional read. XML
+is encrypted as inert content, without parsing it in production.
+
+Thirty focused content/counter reader cases pass. One real SQL Server 2022
+fixture passes with a non-sysadmin server-state reader, an astral character
+before the statement, exact statement text and statement-plan identity,
+AES-GCM protection, no-key capture, recompilation absence and permission denial.
+Only owned disposable databases/login are changed. Evidence is in
+`artifacts/plan-cache-deltas/cache-content-reader.trx` and
+`cache-native-protected-source.trx`; the final combined 31-case check is
+`cache-content-source-final.trx`. SQL Server 2019/2025 assets are pinned but
+not yet qualified by these runs. The native test parses the decrypted fixture
+XML with DTD/network resolution disabled; SQL Server's internal aggregate
+operators are allowed and statement identity is verified through `StatementText`.
+
+This is source evidence, not a persisted cache-content link. Live database
+incarnation brackets must still qualify this whole read; a bounded domain
+envelope, fenced canonical links, scoped retention, audited QueryTextReader
+retrieval and inert cache-history rendering remain next steps. The staged
+bundle has no production collector registration or API content exposure.
