@@ -273,6 +273,61 @@ application catalog prefixes reconcile with the corrected pinned bundle. Two
 asset-boundary checks and the migration preamble check also passed, recorded in
 `deadlock-file-filter-assets.trx` and `deadlock-file-filter-preamble.trx`.
 
+## Incremental reader foundation (not active)
+
+The review's XE bookmark refactor now has two domain boundaries. They are staged;
+the production Collector still uses the approved full-scan v1 source. No registry,
+schema, alert catalog or runtime switch has changed in this foundation step.
+
+`XeFileReadProgressCalculator` computes a resume point from metadata for **all**
+event types, ordered by numeric file generation and buffer offset. A position
+contains only generation, rollover index and offset; its identity binds the exact
+target/revision and a digest of the trusted XE source incarnation. It contains no
+provider path. A future reader reconstructs the paired initial file/offset from
+the current trusted target directory/prefix and these numeric tokens.
+
+SQL Server resumes after the entire buffer named by `initial_offset`, and multiple
+events can share that offset. See the
+[Microsoft function contract](https://learn.microsoft.com/sql/relational-databases/system-functions/sys-fn-xe-file-target-read-file-transact-sql).
+Consequently, a row/byte/deadline cutoff excludes its last, potentially partial
+buffer from the safe bookmark. An earlier complete buffer can advance; retry
+reads the partial buffer again in full. Only actual provider end-of-stream can
+complete the last buffer. Replayed/regressed positions, interleaved buffers or
+ambiguous file generations require reset. A changed source epoch or target
+revision cannot reuse the old bookmark, and another target's bookmark is rejected.
+The metadata budget is 8,192 rows plus a truncation probe, separate from the
+existing 256-deadlock and byte/parse bounds.
+
+`DeadlockReadWindowCalculator` retains a bounded set of event IDs, occurrence times
+and truncation flags across incremental reads. Quiet reads preserve recent events;
+duplicates cannot inflate the count. Events exactly on the five-minute boundary
+still count, and expire only after crossing it. Catchup can retain history but
+supplies unknown until end-of-stream. A cold read must supply a proven UTC
+retention boundary; a new source with less than five minutes of coverage remains
+unknown until that window is covered. Source loss and parser truncation mark an
+inclusive gap through the read time. Later quiet reads remain unknown while that
+gap overlaps the five-minute window. The retained window is capped at 256;
+overflow is explicit unknown, with a gap marker protecting against false recovery
+after clipping. Future/conflicting evidence and regressed time are rejected.
+
+Thirteen progress checks and eleven window checks pass. The read-only native
+SQL Server 2022 Express check also passes: it finds a real flushed buffer with
+multiple events, verifies that a two-row cutoff cannot advance its bookmark, and
+confirms the actual native resume excludes every event in that buffer. The native
+fixture uses existing bounded `system_health` metadata and never changes XE or
+creates a workload. Evidence: `artifacts/deadlock-alerts/xe-bookmark-progress.trx`,
+`xe-bookmark-window.trx` and `xe-bookmark-native-buffer.trx`.
+
+Integration remains required before activation: a versioned bounded SQL reader,
+fenced checkpoint read, and an atomic canonical commit for progress, accepted
+events, rolling history and coverage gaps. That commit must independently verify
+the source/target/schedule/run bindings, previous checkpoint and payload digest,
+reject lost worker fences, and leave latest state unchanged on an old exact
+replay. Missing rolled files, unavailable source and changed incarnation must
+be visible gaps or cold resets. No standalone bookmark write may skip uncommitted
+evidence. Repository/native regression checks must cover those boundaries and
+preserve the verified firing/unknown/recovery behavior before v2 replaces v1.
+
 ## Verification and remaining work
 
 Four native PostgreSQL checks use the full migration history and canonical
