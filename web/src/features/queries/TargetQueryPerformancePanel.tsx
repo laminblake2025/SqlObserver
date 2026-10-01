@@ -1,3 +1,4 @@
+import { PlanCacheIntervalPanel } from "./PlanCacheIntervalPanel";
 import { metricsForObservation, queryPerformanceDatabaseOptions } from "./querySelection";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
 import { ObservationChart } from "../../components/ObservationChart";
@@ -32,7 +33,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const trendRequest = useRef<AbortController | null>(null);
   const activeQuery = useRef<{ readonly instanceId: string; readonly ranking: QueryPerformanceMetric; readonly fromUtc: string; readonly toUtc: string; readonly refresh: number } | undefined>(undefined);
   const [ranking, setRanking] = useState<QueryPerformanceMetric>("cpu");
-  const [view, setView] = useState<"top" | "regressed">("top");
+  const [view, setView] = useState<"top" | "regressed" | "cache">("top");
   const [paging, setPaging] = useState(false);
   const [database, setDatabase] = useState("");
   // The live collector can legitimately fall back to plan cache when Query Store
@@ -228,10 +229,11 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const rows = page?.items.filter(item => (source === "mixed" || item.source === source) && (!database || String(item.query.databaseId) === database)) ?? [];
   return <section className="query-performance-screen" aria-labelledby="query-performance-heading">
     <div className="health-heading-row"><div><p className="eyebrow">Server · queries</p><h3 id="query-performance-heading">Queries for {displayName}</h3></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
-    {message === undefined ? null : <p className="status-message">{message}</p>}
-    {status === undefined ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></div>}
-    <Tabs label="Query views" tabs={[{ value: "top", label: "Top queries" }, { value: "regressed", label: `Regressed${regressions?.items.length ? ` (${regressions.items.length})` : ""}` }]}
-      value={view} onChange={value => setView(value as "top" | "regressed")} />
+    {message === undefined || view === "cache" ? null : <p className="status-message">{message}</p>}
+    {status === undefined || view === "cache" ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></div>}
+    <Tabs label="Query views" tabs={[{ value: "top", label: "Top queries" }, { value: "regressed", label: `Regressed${regressions?.items.length ? ` (${regressions.items.length})` : ""}` }, { value: "cache", label: "Cache interval deltas" }]}
+      value={view} onChange={value => setView(value as "top" | "regressed" | "cache")} />
+    {view === "cache" && <PlanCacheIntervalPanel instanceId={instanceId} timeWindow={timeWindow} refresh={refresh} databaseNames={databaseNames} />}
     {view === "regressed" && <section className="panel" aria-label="Possible plan regressions">
       <h4>Possible plan regressions</h4>
       <p>Compare this window with the immediately preceding window of the same length. A lead appears when the dominant Query Store plan changes and comparable duration per execution is at least twice as high and 50 ms slower, with at least two groups and ten executions per plan. This is a correlation, not proof that the plan caused the slowdown.</p>
@@ -279,7 +281,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       </table></div> : null}
     </section>}
     {view === "top" && page === undefined && message === undefined ? <p>Loading bounded query evidence…</p> : null}
-    {page === undefined ? null : <>
+    {page === undefined || view === "cache" ? null : <>
       {view === "top" && <>
         <p className="activity-evidence">Query Store and plan-cache rows are explicitly labelled; interval and cumulative semantics are not mixed. Protected Query Store text and plan XML can be opened by a QueryTextReader. Repository time: {timeLabel(page.repositoryTimeUtc)}.</p><div className="toolbar"><label>Rank by <select value={ranking} onChange={event => setRanking(event.target.value as QueryPerformanceMetric)}>{metrics.map(metric => <option key={metric}>{metric}</option>)}</select></label><button disabled={!page.nextCursor || paging} onClick={loadMetricPage}>Next ranking page</button></div>
         <p className="activity-evidence">Ranking window: {timeLabel(page.fromUtc)} to {timeLabel(page.toUtc)} · each row is the latest observation for one query/plan/source identity in this window. History retains every observation. Only the selected ranking metric is loaded; other metrics remain unavailable.</p>

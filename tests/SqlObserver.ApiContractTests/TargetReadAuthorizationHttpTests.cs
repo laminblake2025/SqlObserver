@@ -162,10 +162,12 @@ public sealed class TargetReadAuthorizationApiFactory : WebApplicationFactory<Pr
             // Keep all four production query services and the production HTTP pipeline.
             services.RemoveAll<IDeadlockProjectionRepositoryPort>();
             services.RemoveAll<IQueryPerformanceApiRepositoryPort>();
+            services.RemoveAll<IPlanCacheIntervalRankingRepositoryPort>();
             services.RemoveAll<IAlertRepositoryPort>();
             services.RemoveAll<IOperationalHealthRepositoryPort>();
             services.AddSingleton<IDeadlockProjectionRepositoryPort>(Repository);
             services.AddSingleton<IQueryPerformanceApiRepositoryPort>(Repository);
+            services.AddSingleton<IPlanCacheIntervalRankingRepositoryPort>(Repository);
             services.AddSingleton<IAlertRepositoryPort>(Repository);
             services.AddSingleton<IOperationalHealthRepositoryPort>(Repository);
             services.RemoveAll<WindowsGroupRoleResolver>();
@@ -224,7 +226,7 @@ internal sealed class TargetReadTestAuthenticationHandler(
 }
 
 internal sealed class TargetReadRepository : IDeadlockProjectionRepositoryPort,
-    IQueryPerformanceApiRepositoryPort, IAlertRepositoryPort, IOperationalHealthRepositoryPort
+    IQueryPerformanceApiRepositoryPort, IPlanCacheIntervalRankingRepositoryPort, IAlertRepositoryPort, IOperationalHealthRepositoryPort
 {
     private static readonly DateTimeOffset At = new(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
     private static readonly ObservationTargetRevision Revision = new(1);
@@ -245,6 +247,10 @@ internal sealed class TargetReadRepository : IDeadlockProjectionRepositoryPort,
     public ValueTask<QueryPerformanceStatusDto?> GetStatusAsync(QueryPerformanceStatusRequest request, CancellationToken cancellationToken) =>
         Read<QueryPerformanceStatusDto?>(request.TargetId, new(request.TargetId, At, QueryPerformanceSource.Unavailable,
             "unavailable", QueryCoverage.Unavailable, false, false, false, null, []));
+
+    public ValueTask<PlanCacheIntervalRankingResult> ReadAsync(PlanCacheIntervalRankingRequest request, CancellationToken cancellationToken) =>
+        Read(request.TargetId, new PlanCacheIntervalRankingResult(request.TargetId.Value, request.FromUtc, request.ToUtc,
+            "plan_cache_delta", request.MetricName, "no_comparable_rows", 0, 0, 0, 0, 0, false, []));
 
     public ValueTask<TopQueryPage> GetTopAsync(TopQueryRequest request, CancellationToken cancellationToken) =>
         Read(request.TargetId, new TopQueryPage([], false, At));

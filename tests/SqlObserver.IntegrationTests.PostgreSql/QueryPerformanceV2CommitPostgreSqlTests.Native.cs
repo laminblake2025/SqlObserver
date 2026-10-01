@@ -5,6 +5,7 @@ using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Collectors;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
@@ -159,6 +160,29 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
             string afterSecond = await Snapshot(scene);
             Assert.Equal(CollectorRunCommitStatus.Replayed, (await runtime.CommitRunAsync(secondRequest, deadline.Token)).Status);
             Assert.Equal(afterSecond, await Snapshot(scene)); Assert.Equal(0, factory.Active);
+
+            // Exercise the public read port as the server role against the actual native counter differences.
+            await using var server = scene.Database.CreateServerDataSource();
+            var ranking = await new SqlObserver.Application.Services.PlanCacheIntervalRankingQueryService(
+                new PostgreSqlPlanCacheIntervalRankingPort(server)).ReadAsync(
+                    new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1-2-3-1234"), AuthorizationPrincipalState.Active,
+                        [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([target]))]),
+                    new PlanCacheIntervalRankingRequest(target, firstResult.Payload.PlanCacheRuntime.ReadStartedUtc.AddMilliseconds(-1),
+                        secondResult.Payload.PlanCacheRuntime.ReadCompletedUtc.AddMilliseconds(1), QueryPerformanceMetric.CpuMilliseconds, 100, Timeout),
+                    deadline.Token);
+            var ranked = Assert.Single(ranking.Items, item => item.DatabaseId == ids[1]
+                && item.QueryFingerprint == secondProbe.Watermark.Key.Query.QueryFingerprint
+                && item.PlanFingerprint == secondProbe.Watermark.Key.Plan.PlanFingerprint
+                && item.DatabaseIncarnation == secondProbe.Watermark.Key.DatabaseIncarnation);
+            Assert.Equal("3", ranked.Executions);
+            var beforeCounters = firstProbe.Watermark.Counters; var afterCounters = secondProbe.Watermark.Counters;
+            Assert.Equal((afterCounters.CpuMicroseconds - beforeCounters.CpuMicroseconds) / 1000m,
+                decimal.Parse(ranked.CpuMilliseconds, System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Equal((afterCounters.DurationMicroseconds - beforeCounters.DurationMicroseconds) / 1000m,
+                decimal.Parse(ranked.DurationMilliseconds, System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Equal((afterCounters.LogicalReads - beforeCounters.LogicalReads).ToString(System.Globalization.CultureInfo.InvariantCulture), ranked.LogicalReads);
+            Assert.Equal((afterCounters.Writes - beforeCounters.Writes).ToString(System.Globalization.CultureInfo.InvariantCulture), ranked.Writes);
+            Assert.Equal((afterCounters.Rows - beforeCounters.Rows).ToString(System.Globalization.CultureInfo.InvariantCulture), ranked.Rows);
 
             async Task<CollectorPayload> Link(Frame frame, CollectorPayload source)
             {

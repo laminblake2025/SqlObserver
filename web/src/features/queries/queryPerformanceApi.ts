@@ -1,6 +1,6 @@
 import { apiFetch } from "../../apiClient.ts";
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList, PlanCacheIntervalRanking } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -327,4 +327,60 @@ export async function getQueryStorePlanRegressions(instanceId: string, fromUtc: 
     throw new Error("Plan regression coverage was invalid.");
   return { fromUtc, toUtc, comparisonFromUtc: value.comparisonFromUtc,
     coverage: value.coverage as QueryStorePlanRegressionList["coverage"], items };
+}
+
+
+export async function getPlanCacheIntervalRanking(instanceId: string, fromUtc: string, toUtc: string,
+    rankingMetric: QueryPerformanceMetric, signal: AbortSignal): Promise<PlanCacheIntervalRanking> {
+  if (!timestamp(fromUtc) || !timestamp(toUtc) || canonicalInstant(toUtc) <= canonicalInstant(fromUtc)
+      || !canonicalInstant(fromUtc).endsWith("0Z") || !canonicalInstant(toUtc).endsWith("0Z")
+      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000 || !metrics.has(rankingMetric))
+    throw new Error("Cache ranking window or metric was invalid.");
+  const path = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/cache/top`
+    + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&metric=${rankingMetric}&limit=25`;
+  const value = await readJson(path, instanceId, signal, 256 * 1024) as Record<string, unknown>;
+  const count = (input: unknown): input is number => typeof input === "number" && Number.isSafeInteger(input) && input >= 0;
+  if (!timestamp(value.fromUtc) || !timestamp(value.toUtc) || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc)
+      || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc) || value.metric !== rankingMetric || value.semantics !== "plan_cache_delta"
+      || !count(value.sourceFrames) || !count(value.incompleteFrames) || value.incompleteFrames > value.sourceFrames
+      || !count(value.comparableRows) || !count(value.unavailableRows) || !count(value.boundaryRows)
+      || typeof value.hasMore !== "boolean" || !Array.isArray(value.items) || value.items.length > 25
+      || value.hasMore && value.items.length !== 25
+      || value.coverage !== (value.comparableRows === 0 ? "no_comparable_rows" : "observed_entries_only")
+      || (value.comparableRows === 0) !== (value.items.length === 0)
+      || BigInt(value.comparableRows) + BigInt(value.unavailableRows) + BigInt(value.boundaryRows) > BigInt(value.sourceFrames) * 2000n)
+    throw new Error("Cache ranking response was outside its scope or coverage bounds.");
+  const exact = (input: unknown, integer = false): bigint => {
+    if (typeof input !== "string" || !/^(?:0|[1-9]\d{0,28})(?:\.\d{1,24})?$/u.test(input))
+      throw new Error("Cache ranking metric was invalid.");
+    const [whole, fraction = ""] = input.split(".");
+    if (integer && /[1-9]/u.test(fraction)) throw new Error("Cache ranking count was fractional.");
+    return BigInt(whole + fraction.padEnd(24, "0"));
+  };
+  const fields = ["cpuMilliseconds", "durationMilliseconds", "executions", "logicalReads", "writes", "rows"];
+  const rankField = ["cpu", "duration", "executions", "logical_reads", "writes", "rows"].indexOf(rankingMetric);
+  const seen = new Set<string>(); let previous: bigint | undefined; let included = 0n;
+  const items = value.items.map((input: unknown) => {
+    if (typeof input !== "object" || input === null) throw new Error("Cache ranking row was invalid.");
+    const row = input as Record<string, unknown>;
+    if (!count(row.databaseId) || row.databaseId < 5 || row.databaseId > 32766 || !digest(row.databaseIncarnation)
+        || !digest(row.queryFingerprint) || !digest(row.planFingerprint) || !count(row.comparableRows) || row.comparableRows === 0
+        || !timestamp(row.firstObservedAtUtc) || !timestamp(row.lastObservedAtUtc)
+        || canonicalInstant(row.firstObservedAtUtc) < canonicalInstant(fromUtc)
+        || canonicalInstant(row.lastObservedAtUtc) >= canonicalInstant(toUtc)
+        || canonicalInstant(row.lastObservedAtUtc) <= canonicalInstant(row.firstObservedAtUtc))
+      throw new Error("Cache ranking row identity or window was invalid.");
+    const identity = `${row.databaseId}:${row.databaseIncarnation}:${row.queryFingerprint}:${row.planFingerprint}`;
+    const values = fields.map((field, index) => exact(row[field], index >= 2));
+    const score = values[rankField];
+    if (score === undefined) throw new Error("Cache ranking metric was invalid.");
+    if (seen.has(identity) || previous !== undefined && score > previous) throw new Error("Cache ranking order was invalid.");
+    seen.add(identity); previous = score; included += BigInt(row.comparableRows);
+    return row as PlanCacheIntervalRanking["items"][number];
+  });
+  if (included > BigInt(value.comparableRows)) throw new Error("Cache ranking coverage was invalid.");
+  return { targetId: instanceId, fromUtc, toUtc, metric: rankingMetric, semantics: "plan_cache_delta",
+    coverage: value.coverage as PlanCacheIntervalRanking["coverage"], sourceFrames: value.sourceFrames,
+    incompleteFrames: value.incompleteFrames, comparableRows: value.comparableRows,
+    unavailableRows: value.unavailableRows, boundaryRows: value.boundaryRows, hasMore: value.hasMore, items };
 }

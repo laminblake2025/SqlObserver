@@ -187,6 +187,9 @@ builder.Services.AddSingleton<SavedIncidentListCursorCodec>();
 builder.Services.AddSingleton<IBackupEvidencePort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupEvidence);
 builder.Services.AddSingleton<BackupAssessmentQueryService>();
 builder.Services.AddSingleton<IQueryStorePlanRegressionQueryService, QueryStorePlanRegressionQueryService>();
+builder.Services.AddSingleton<IPlanCacheIntervalRankingRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().PlanCacheIntervalRankings);
+builder.Services.AddSingleton<IPlanCacheIntervalRankingQueryService, PlanCacheIntervalRankingQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
 builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertRuleReads);
 builder.Services.AddSingleton<IMaintenanceWindowReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceWindowReads);

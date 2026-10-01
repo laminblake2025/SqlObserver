@@ -43,3 +43,19 @@ export type QueryStoreGroupTrend = {
   readonly fromUtc: string; readonly toUtc: string;
   readonly points: readonly QueryStoreGroupTrendPoint[];
 };
+
+export type PlanCacheIntervalQuery = {
+  readonly databaseId: number; readonly databaseIncarnation: string;
+  readonly queryFingerprint: string; readonly planFingerprint: string;
+  readonly cpuMilliseconds: string; readonly durationMilliseconds: string;
+  readonly executions: string; readonly logicalReads: string; readonly writes: string; readonly rows: string;
+  readonly comparableRows: number; readonly firstObservedAtUtc: string; readonly lastObservedAtUtc: string;
+};
+export type PlanCacheIntervalRanking = {
+  readonly targetId: string; readonly fromUtc: string; readonly toUtc: string;
+  readonly metric: QueryPerformanceMetric; readonly semantics: "plan_cache_delta";
+  readonly coverage: "observed_entries_only" | "no_comparable_rows";
+  readonly sourceFrames: number; readonly incompleteFrames: number; readonly comparableRows: number;
+  readonly unavailableRows: number; readonly boundaryRows: number; readonly hasMore: boolean;
+  readonly items: readonly PlanCacheIntervalQuery[];
+};

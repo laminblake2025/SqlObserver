@@ -625,3 +625,54 @@ cases pass across the final boundary and upgrade runs. The real native SQL Serve
 This adds cache dependency protection to the existing graph-retirement gate. It does not implement broader
 canonical run/identity cleanup, public cache ranking/API, production catalog
 activation, SQL Server 2019/2025 or fleet qualification.
+
+
+### Public cache interval ranking (2026-10-01)
+
+Forward migration 0320 adds the target-scoped server projection consumed by
+`GET /api/v1/observation-targets/{instanceId}/query-performance/cache/top`.
+It accepts one of six ranking metrics, UTC bounds at whole microseconds, at most
+seven days and 100 results;
+the Queries screen requests the top 25 through the shared fetch client. The
+application service requires Viewer, Operator or TargetAdministrator on that
+exact target before repository access. Runtime identities retain no direct
+SELECT privilege on the private cache tables.
+
+The new **Cache interval deltas** view uses only committed comparable increments
+whose entire interval fits the selected window. It never clips a cumulative
+counter difference to a smaller window. First samples, resets, stale reads and
+expired comparisons remain unavailable. Coverage reports captured frames,
+incomplete frames, comparable rows, unavailable rows and excluded boundary
+crossings; an empty result does not assert zero activity. The ranking groups
+query/plan entries within their database incarnation, preserving recreation
+boundaries. CPU and duration retain microsecond differences converted to decimal
+milliseconds. All six totals use numeric aggregation and exact decimal strings;
+the browser compares them with fixed-scale BigInt instead of rounded Numbers.
+A lookahead exposes when additional plans were observed beyond the top N.
+
+The screen follows the global time window, supports all six metrics, formats
+UTC/local observation time through the shared preference, and aborts obsolete
+reads. Cumulative legacy observations stay on their existing evidence view,
+with no manufactured history or protected-content link for cache ranking rows.
+
+Evidence: the initial PostgreSQL regression fails because the projection is
+absent (`cache-interval-read-red.trx`). Focused real PostgreSQL tests exercise all
+six typed reads, baseline/comparable/reset coverage, exact scope and current
+revision, interval boundaries, database recreation, Int64 maximum counters and
+top-N lookahead (`cache-interval-read-typed.trx`,
+`cache-interval-read-scopes-topn.trx`). The native SQL Server 2022 round trip now
+reads through the server-role public port and compares all six metrics with the
+two actual native captures (`cache-interval-native-public-read.trx`). Service
+tests cover mixed grants, large
+exact totals and invalid repository output; seven real-pipeline HTTP cases cover
+role scopes, no-store and invalid bounds. The runtime route inventory and migration
+preamble checks pass. Five browser-client tests cover exact
+ordering and contract drift. Two focused Chromium checks verify rendered exact
+values, coverage, metric/window binding, obsolete target reads and an axe scan
+of the new panel. TypeScript and the production web build pass.
+
+The native v2 producer remains staged. This read path does not activate its
+catalog or grant ingestion, replace legacy cumulative API/MCP history, supply a
+cache history/content drill-down, or establish SQL Server 2019/2025/fleet proof.
+Those are remaining parts of the revamp, alongside canonical run cleanup and
+other requirements in the original review.
