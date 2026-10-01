@@ -30,7 +30,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
         await AssertAppendOnlyTriggerAsync(database);
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = WithLegacyInventory(application.GetRequiredService<CollectorRegistry>()
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>()
             .CatalogEntries.Take(15).ToArray());
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
@@ -54,7 +54,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         string backupsBefore = await ReadHistoricalBackupsForBundleAsync(database);
         Assert.Equal(Enumerable.Repeat(PriorBackupBundle, 4), await ReadBackupBundlesAsync(database));
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = WithLegacyInventory(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
         string currentBundle = SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum;
         Assert.All(entries.Skip(9).Take(4), entry => Assert.Equal(currentBundle, entry.AssetBundleDigest.Value));
         CollectorCatalogEntry[] m85Entries = WithHistoricalQueryBundle(WithActivityBundle(
@@ -176,7 +176,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
         await AssertAppendOnlyTriggerAsync(database);
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = WithLegacyInventory(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);

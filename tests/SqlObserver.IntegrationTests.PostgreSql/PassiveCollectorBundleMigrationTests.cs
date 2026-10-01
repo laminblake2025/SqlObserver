@@ -37,7 +37,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(MigrationBatchResult.MaximumResults);
         await using ServiceProvider application = CreateApplication();
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(count).ToArray();
-        if (count < 19) entries = WithLegacyInventory(entries);
+        if (count < 19) entries = WithLegacyInventoryAndDeadlocks(entries);
         Assert.Equal(UpdatedBundle, SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
         Assert.All(entries.Skip(3).Take(4), entry => Assert.Equal(UpdatedBundle, entry.AssetBundleDigest.Value));
         if (count == 15)
@@ -145,7 +145,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         string historyBefore = await ReadHistoryAndSchedulesAsync(database);
         Assert.Equal(Enumerable.Repeat(PriorBundle, 4).Append(PriorReplicationBundle), await ReadRepairedBundlesAsync(database));
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = WithLegacyInventory(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
         CollectorCatalogEntry[] frozenM9Entries = WithHistoricalQueryBundle(
             WithActivityBundle(WithBackupBundle(WithBackupManifest(
                 WithCoreBundle(entries, "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c"),
@@ -305,7 +305,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
                 new CollectorSha256Digest("ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f"))
             : entry).ToArray();
 
-    private static CollectorCatalogEntry[] WithLegacyInventory(CollectorCatalogEntry[] entries)
+    private static CollectorCatalogEntry[] WithLegacyInventoryAndDeadlocks(CollectorCatalogEntry[] entries)
     {
         SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadEmbedded();
         SqlServerCollectorAsset inventory = catalog.Get(new SqlObserver.Domain.Capabilities.CollectorId("database.inventory"));
@@ -313,6 +313,11 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         copy[1] = new CollectorCatalogEntry(2, inventory.Manifest,
             new CollectorSha256Digest(inventory.ManifestChecksum),
             new CollectorSha256Digest(catalog.BundleChecksum));
+        if (copy.Length >= 8)
+        {
+            var deadlock = SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded();
+            copy[7] = new(8, deadlock.Asset.Manifest, new(deadlock.Asset.ManifestChecksum), new(deadlock.BundleChecksum));
+        }
         return copy;
     }
 

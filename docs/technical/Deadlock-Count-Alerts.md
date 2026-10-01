@@ -273,12 +273,12 @@ application catalog prefixes reconcile with the corrected pinned bundle. Two
 asset-boundary checks and the migration preamble check also passed, recorded in
 `deadlock-file-filter-assets.trx` and `deadlock-file-filter-preamble.trx`.
 
-## Incremental reader foundation (not active)
+## Incremental reader foundation (staged through migration 0314)
 
 The review's XE bookmark refactor now has two domain boundaries, a pinned source
-reader and private PostgreSQL checkpoint read/commit storage. They are staged; the production
-Collector still uses the approved full-scan v1 source. Collector contracts,
-the alert catalog and runtime activation remain unchanged.
+reader and private PostgreSQL checkpoint read/commit storage. At this foundation
+checkpoint the production Collector still used the approved full-scan v1 source.
+Migration 0315 and the production registration below activate the qualified v2 reader.
 
 `XeFileReadProgressCalculator` computes a resume point from metadata for **all**
 event types, ordered by numeric file generation and buffer offset. A position
@@ -575,9 +575,9 @@ passes in `xe-incremental-engine-reset-postgresql.trx`. These are complementary
 checks, not a live SQL-to-PostgreSQL deployment certification. Earlier failed
 result files remain available.
 
-Production composition and catalog remain v1. The staged live v2 pipeline
-qualification has passed. Activation still requires a forward catalog rollout
-and production registration of v2; no active v2 catalog contract is installed.
+This adapter checkpoint retained v1 production composition while v2 was qualified.
+The live v2 pipeline subsequently passed; the forward rollout described below
+now selects the approved v2 registration.
 
 ## Retained alert evidence and v2 provenance
 
@@ -671,14 +671,65 @@ several minutes; these checks do not claim instant bootstrap or a faster
 production cadence. Live v2 pipeline qualification must distinguish that cold
 catch-up from a quiet complete read and keep capability/worker leases current.
 
+## Production incremental activation
+
+Migration `0315_deadlock_incremental_catalog_rollout.sql` appends the exact approved
+v2 contract and prerequisites while preserving v1 contracts, event history and
+schedules. Applying the migration alone leaves the activation gate inactive.
+Production composition registers `SqlServerIncrementalDeadlockCollector` with
+manifest `1530586d171d1b0300a83b8451c60a1f4a5ae25df7279f3815b7d43702b03c1b`
+and bundle `efcd15c53d0a75b30277446730f774dc40ffe6fa4ff78c1435967de56bc954fa`.
+The ordinary fenced 19-entry catalog reconciliation activates it only with the
+approved contract, unchanged prerequisites and enabled receipt retention.
+Backup and AG v2 retain their existing private activation paths; this wrapper
+rejects catalogs that combine their staged versions with deadlock v2.
+
+A live v1 lease, including a claim before begin, aborts reconciliation. A released
+or expired lease with an orphaned active run receives the canonical lease-loss
+outcome and visibility gap in the same transaction as the schedule promotion.
+Promotion increments the schedule revision, clears old current-health/circuit
+state and preserves the operator's enabled setting and cadence. The final catalog
+lease check fences the transaction. Subsequent reconciliations are idempotent;
+fresh or revised targets follow the activated version.
+
+V2 claims require that exact worker owner to have reconciled the qualified
+catalog within five minutes. Legacy, expired and future-dated capability markers
+cannot claim v2 work. Old catalog prefixes remain usable for their historical
+contracts but cannot downgrade activated deadlock schedules or register v2
+capability. Gate/capability tables use forced RLS and remain private; Collector
+has only the specific reconciliation function grant. V1 event replay remains
+unchanged, and a v2 reread of the same canonical event produces a duplicate
+without increasing its retained count.
+
+`xe-incremental-production-rollout.trx` records 25 passing native PostgreSQL cases
+and one failed missing-predecessor fixture setup. That setup encountered the
+contract's foreign key before executing the migration; the corrected bootstrap-only
+corruption fixture passes both predecessor cases in
+`xe-incremental-migration-predecessor-final.trx`. Together these verify 26 unique
+cases: five rollout boundaries, three migration upgrades/rejections, nine catalog
+prefixes, five existing backup rollout cases, the typed checkpoint reader,
+receipt retention/restore, cutoff-buffer catch-up and retained count evidence.
+Earlier focused runs remain in `xe-incremental-rollout-first.trx` and
+`xe-incremental-rollout-boundaries.trx`. The claim function was compared with
+migration 0274 and differs only by the added deadlock capability predicate;
+checksum and no-BOM/LF encoding were checked. Native SQL reader assets and
+production cadence are unchanged, so the earlier long SQL workload was not
+repeated for this registration/activation change.
+
+`xe-incremental-production-composition-final.trx` passes the actual host's 19-entry
+registry, v2 pin validation, shared typed/runtime repository and worker composition.
+The first composition run exposed the fixture's stale hosted-service count;
+that expectation was updated to the existing 11 services. The migration preamble
+check passes in `xe-incremental-rollout-preamble.trx`.
+
 ## Verification and remaining work
 
-The staged v2 live qualification entry point is
+The v2 live qualification entry point is
 `LiveIncrementalDeadlockPipelineRetainsQuietCountsAndDeliversSignedFireAndRecovery`.
 It shares the disposable SQL workload, restricted permission probe, production
 prerequisite collectors, real PostgreSQL alert ports and signed HTTPS receiver
-with the v1 qualification. Only its disposable target receives the exact staged
-v2 contract/digests and copied prerequisite dependencies. The adapter reads the
+with the v1 qualification. Its current fixture uses the production catalog
+reconciliation to activate v2 on its disposable target. The adapter reads the
 actual native XE source and publishes through the fenced checkpoint/atomic
 commit ports; it does not substitute typed source frames or fabricated outcomes.
 
@@ -705,7 +756,9 @@ unknown through the real five-minute recovery gap, two later zero confirmations,
 the same alert/episode identity, exactly two distinct signed fire/resolve
 deliveries, and exactly one new canonical event. Post-run native checks found
 zero probe logins and temporary tables. The original v1 entry point is preserved;
-its long-running qualification was not repeated for this staged v2 case.
+its long-running qualification was not repeated for this v2 case. The later
+production-registration change is checked separately by the rollout tests below;
+the earlier live result predates migration 0315.
 This test does not qualify deployment
 DNS, certificate chains, service Kerberos identity or SQL Server 2019/2025.
 
@@ -731,11 +784,11 @@ migrations. This records current dependencies; it does not remove them or prove
 original-run retirement is ready.
 
 Remaining work includes SQL Server 2019/2025 and deployment-specific identity,
-network and certificate qualification. The current XE reader still rescans its bounded 33-day file
-window. Incremental bookmarking remains a separate collector refactor; its
-coverage contract must preserve the five-minute history before it can replace
-this full-scan source. Hitting the current row/byte/parse bounds supplies unknown,
-which must not resolve an active alert.
+network and certificate qualification, cold-start catch-up time and sustained
+fleet throughput. Production now uses the bounded incremental source, whole-buffer
+bookmark and retained five-minute count. Hitting source-loss/byte/parse bounds
+supplies unknown evidence, which must not resolve an active alert. A bounded page
+cutoff remains catching up until a later read reaches end-of-stream.
 
 Evidence is recorded under `artifacts/deadlock-alerts/` in
 `deadlock-alert-commit-regressions.trx`,

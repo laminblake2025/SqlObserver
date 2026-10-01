@@ -157,7 +157,7 @@ public sealed class BackupV2RolloutTests(PostgreSql18Fixture fixture)
         Assert.Null(await ClaimAsync(runtime, new(Guid.NewGuid())));
         await using ServiceProvider legacyApplication = CreateApplication();
         WorkerLeaseIdentity legacyCatalog = await AcquireAsync(leases, "collector/catalog/reconcile");
-        await runtime.ReconcileCatalogAsync(new(legacyApplication.GetRequiredService<CollectorRegistry>().CatalogEntries, legacyCatalog, Timeout), CancellationToken.None);
+        await runtime.ReconcileCatalogAsync(new(WithLegacyDeadlocks(legacyApplication.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray()), legacyCatalog, Timeout), CancellationToken.None);
         await leases.ReleaseAsync(new(legacyCatalog, Timeout), CancellationToken.None);
         Assert.Null(await ClaimAsync(runtime, legacyCatalog.Owner));
         await ExecuteAsync(database, "UPDATE control.backups_v2_worker_capability SET last_reconciled_at=clock_timestamp()-interval '6 minutes';");
@@ -212,7 +212,7 @@ public sealed class BackupV2RolloutTests(PostgreSql18Fixture fixture)
     private static async Task<CollectorCatalogEntry[]> CatalogAsync(bool agV2 = false, bool backupV2 = true)
     {
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
+        CollectorCatalogEntry[] entries = WithLegacyDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray());
         var key = new IdentityFingerprintKey(new byte[32]);
         if (backupV2)
         {
@@ -226,6 +226,13 @@ public sealed class BackupV2RolloutTests(PostgreSql18Fixture fixture)
             entries[12] = new(13, new SqlServerAvailabilityGroupsV2Collector(agAssets, key).Manifest, Digest(agAssets.Manifest),
                 new("8fe71e27b59e2d9dc0ae79786a5680853835c2f7530c85dd1fdc7af3b035d208"));
         }
+        return entries;
+    }
+
+    private static CollectorCatalogEntry[] WithLegacyDeadlocks(CollectorCatalogEntry[] entries)
+    {
+        var legacy = SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded();
+        entries[7] = new(8, legacy.Asset.Manifest, new(legacy.Asset.ManifestChecksum), new(legacy.BundleChecksum));
         return entries;
     }
 

@@ -114,6 +114,14 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
             services.AddSqlObserverCollectorRuntime(catalogConfiguration);
             await using ServiceProvider composition = services.BuildServiceProvider();
             CollectorRegistry registry = composition.GetRequiredService<CollectorRegistry>();
+            if (!incremental)
+            {
+                // Preserve the separate legacy qualification after production selects v2.
+                SqlServerDeadlockCollectorAssetCatalog legacy = SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded();
+                registry = new(registry.Registrations.Select(item => item.Manifest.Id.Value != "deadlocks.system-health" ? item
+                    : new CollectorRegistration(8, new SqlServerDeadlockCollector(legacy), new CollectorOutputValidator(SqlServerDeadlockCollector.OutputContract),
+                        new(legacy.Asset.ManifestChecksum), new(legacy.BundleChecksum))).ToArray());
+            }
             WorkerLeaseIdentity catalogLease = Assert.IsType<WorkerLease>((await leases.AcquireAsync(new(new("collector/catalog/reconcile"),
                 new(Guid.NewGuid()), new(TimeSpan.FromMinutes(1)), Timeout), CancellationToken.None)).Lease).Identity;
             try
@@ -127,20 +135,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
             if (incremental)
             {
                 SqlServerIncrementalDeadlockAssetCatalog staged = SqlServerIncrementalDeadlockAssetCatalog.LoadEmbedded();
-                // Qualification fixture only: install the exact staged contract and
-                // dependencies in this disposable database before global activation.
-                await ExecuteAsync(database, """
-                    INSERT INTO control.collector_contract
-                    SELECT (jsonb_populate_record(NULL::control.collector_contract,to_jsonb(c)||jsonb_build_object(
-                        'collector_version',2,'output_schema_version',2,'maximum_rows',8193,
-                        'manifest_sha256',decode(@manifest,'hex'),'asset_bundle_sha256',decode(@bundle,'hex')))).*
-                    FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1;
-                    INSERT INTO control.collector_dependency
-                    SELECT collector_id,2,prerequisite_collector_id,prerequisite_collector_version FROM control.collector_dependency
-                        WHERE collector_id='deadlocks.system-health' AND collector_version=1;
-                    UPDATE control.collector_schedule SET collector_version=2,schedule_revision=schedule_revision+1,
-                        next_due_at=clock_timestamp() WHERE instance_id=@target AND collector_id='deadlocks.system-health';
-                    """, ("target", target.Value), ("manifest", staged.ManifestChecksum), ("bundle", SqlServerIncrementalDeadlockAssetCatalog.BundleChecksum));
+                // Production reconciliation installs and activates the approved v2 contract.
                 var adapter = new SqlServerIncrementalDeadlockCollector(staged, async (request, token) =>
                 {
                     await using SqlConnection connection = await factory.OpenConnectionAsync(request.ConnectionPolicy, token);

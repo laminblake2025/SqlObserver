@@ -42,6 +42,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
     private static readonly string ReconcileM13Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m13(", StringComparison.Ordinal);
     private static readonly string ReconcileM14Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m14(", StringComparison.Ordinal);
     private static readonly string ReconcileM15Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m15(", StringComparison.Ordinal);
+    private static readonly string ReconcileDeadlocksV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_deadlocks_v2(", StringComparison.Ordinal);
     private static readonly string ReconcileAgV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_ag_v2(", StringComparison.Ordinal);
     private static readonly string ReconcileBackupsV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_backups_v2(", StringComparison.Ordinal);
     private const string ListDueSql = "SELECT * FROM control.list_due_collector_work(@max_items);";
@@ -459,6 +460,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                 .ConfigureAwait(false);
             string reconcileSql = request.Entries.Count switch
             {
+                19 when request.Entries[7].Manifest.ManifestVersion.Value == 2 => ReconcileDeadlocksV2Sql,
                 19 when request.Entries[9].Manifest.ManifestVersion.Value == 2 => ReconcileBackupsV2Sql,
                 19 when request.Entries[12].Manifest.ManifestVersion.Value == 2 => ReconcileAgV2Sql,
                 19 when request.Entries[1].Manifest.ManifestVersion.Value == 2 => ReconcileM15Sql,
@@ -1623,6 +1625,12 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                     "5536227e577cd6f2c3d8bdab685fcd7c10eb915d0d1f2273c3733eebd43b4f21" &&
                 entry.AssetBundleDigest.Value ==
                     "e48082564bda4f8f0a06c545640832b13dd99b01db1755ec3a2a8d0b794a7311";
+            bool deadlocksV2 = entries.Count == 19 && index == 7 &&
+                entries[9].Manifest.ManifestVersion.Value == 1 && entries[12].Manifest.ManifestVersion.Value == 1 &&
+                entries[1].Manifest.ManifestVersion.Value == 2 &&
+                entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
+                entry.ManifestDigest.Value == "1530586d171d1b0300a83b8451c60a1f4a5ae25df7279f3815b7d43702b03c1b" &&
+                entry.AssetBundleDigest.Value == "efcd15c53d0a75b30277446730f774dc40ffe6fa4ff78c1435967de56bc954fa";
             bool backupsV2 = entries.Count == 19 && index == 9 &&
                 entries[1].Manifest.ManifestVersion.Value == 2 &&
                 entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
@@ -1635,7 +1643,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                 entry.AssetBundleDigest.Value == "8fe71e27b59e2d9dc0ae79786a5680853835c2f7530c85dd1fdc7af3b035d208";
             if (entry.ExecutionOrder != index + 1 ||
                 entry.Manifest.Id.Value != RequiredCollectorIds[index] ||
-                (!inventoryV2 && !backupsV2 && !availabilityV2 &&
+                (!inventoryV2 && !deadlocksV2 && !backupsV2 && !availabilityV2 &&
                     (entry.Manifest.ManifestVersion.Value != 1 ||
                      entry.Manifest.OutputSchemaVersion.Value != 1 ||
                      entry.ManifestDigest.Value != RequiredManifestDigests[index] ||

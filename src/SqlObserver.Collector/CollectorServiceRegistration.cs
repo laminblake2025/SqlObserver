@@ -132,6 +132,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
         services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerIncrementalDeadlockAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerIncrementalDeadlockCollector>();
         services.AddSingleton(static _ => SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerBackupsStatusCollector>();
@@ -268,7 +270,7 @@ public static class CollectorServiceRegistration
         SqlServerCollectorAsset requestsAsset = activityCatalog.Get(new CollectorId("activity.requests"));
         SqlServerCollectorAsset waitsAsset = activityCatalog.Get(new CollectorId("waits.server"));
         SqlServerCollectorAsset blockingAsset = activityCatalog.Get(new CollectorId("blocking.current"));
-        SqlServerDeadlockCollectorAssetCatalog deadlockCatalog = provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>();
+        SqlServerIncrementalDeadlockAssetCatalog deadlockCatalog = provider.GetRequiredService<SqlServerIncrementalDeadlockAssetCatalog>();
         SqlServerQueryPerformanceCollectorAssetCatalog queryCatalog = provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>();
         SqlServerOperationalHealthAssetCatalog m9Catalog = provider.GetRequiredService<SqlServerOperationalHealthAssetCatalog>();
         var m9Bundle = new CollectorSha256Digest(m9Catalog.BundleChecksum);
@@ -331,10 +333,10 @@ public static class CollectorServiceRegistration
                 activityBundleDigest),
             new CollectorRegistration(
                 executionOrder: 8,
-                provider.GetRequiredService<SqlServerDeadlockCollector>(),
-                new CollectorOutputValidator(SqlServerDeadlockCollector.OutputContract),
-                new CollectorSha256Digest(deadlockCatalog.Asset.ManifestChecksum),
-                new CollectorSha256Digest(deadlockCatalog.BundleChecksum)),
+                provider.GetRequiredService<SqlServerIncrementalDeadlockCollector>(),
+                new CollectorOutputValidator(SqlServerIncrementalDeadlockCollector.OutputContract),
+                new CollectorSha256Digest(deadlockCatalog.ManifestChecksum),
+                new CollectorSha256Digest(SqlServerIncrementalDeadlockAssetCatalog.BundleChecksum)),
             new CollectorRegistration(
                 executionOrder: 9,
                 provider.GetRequiredService<SqlServerQueryPerformanceCollector>(),

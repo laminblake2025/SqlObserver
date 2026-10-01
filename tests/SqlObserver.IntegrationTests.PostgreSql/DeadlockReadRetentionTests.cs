@@ -206,7 +206,8 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
                 'windows_integrated_service_identity','mandatory_validated','active',1,now(),now(),now());
             INSERT INTO control.collector_contract
             SELECT (jsonb_populate_record(NULL::control.collector_contract,to_jsonb(c)||jsonb_build_object('collector_version',2,'output_schema_version',2,'maximum_rows',8193))).*
-            FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1;
+            FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1
+            ON CONFLICT(collector_id,collector_version) DO NOTHING;
             """, ("target", target));
         foreach (DateTimeOffset start in new[] { old, held, month.AddMonths(-1), month })
         {

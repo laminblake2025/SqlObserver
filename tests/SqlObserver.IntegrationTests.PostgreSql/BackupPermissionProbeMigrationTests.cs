@@ -36,7 +36,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         Assert.False(remaining.HasFailures);
 
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = WithLegacyInventory(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);

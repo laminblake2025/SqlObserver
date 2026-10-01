@@ -109,13 +109,14 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         Assert.Equal(CollectorRunCommitStatus.Committed, (await legacy.Runtime.CommitRunAsync(legacy.Commit, default)).Status);
         await legacy.Leases.ReleaseAsync(new(legacy.Lease, Timeout), default);
 
-        // Bootstrap only: stage an isolated v2 contract for reader qualification.
-        // Production catalog/schedules remain v1 after migration 0310.
+        // Bootstrap only: select v2 on this isolated schedule for reader qualification.
+        // Production activation is separately covered by the catalog rollout tests.
         await ExecuteAsync(database, """
             INSERT INTO control.collector_contract
             SELECT (jsonb_populate_record(NULL::control.collector_contract,to_jsonb(c)||
                 jsonb_build_object('collector_version',2,'output_schema_version',2,'maximum_rows',8193))).*
-            FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1;
+            FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1
+            ON CONFLICT(collector_id,collector_version) DO NOTHING;
             UPDATE control.collector_schedule SET collector_version=2,schedule_revision=schedule_revision+1,
                 next_due_at=clock_timestamp()-interval '1 minute' WHERE instance_id=@target AND collector_id='deadlocks.system-health';
             """, ("target", legacy.Target.Value));

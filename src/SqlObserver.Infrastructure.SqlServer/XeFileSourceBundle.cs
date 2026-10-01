@@ -9,7 +9,7 @@ using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Infrastructure.SqlServer;
 
-/// <summary>Inactive, checksum-pinned incremental XE source. No checkpoint is persisted here.</summary>
+/// <summary>Checksum-pinned incremental XE source. No checkpoint is persisted here.</summary>
 internal sealed class XeFileSourceBundle
 {
     internal const string ExpectedBundleChecksum = "4b00f8c40a3b0359fc1308b748e945f4df46ac0daae2b647f6c165478a951822";

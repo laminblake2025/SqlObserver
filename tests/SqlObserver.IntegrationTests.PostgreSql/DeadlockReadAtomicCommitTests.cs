@@ -239,7 +239,8 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         INSERT INTO control.collector_contract
         SELECT (jsonb_populate_record(NULL::control.collector_contract,to_jsonb(c)||
             jsonb_build_object('collector_version',2,'output_schema_version',2,'maximum_rows',8193))).*
-        FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1;
+        FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1
+        ON CONFLICT(collector_id,collector_version) DO NOTHING;
         UPDATE control.collector_schedule SET collector_version=2,schedule_revision=schedule_revision+1,
             next_due_at=clock_timestamp()-interval '1 minute' WHERE instance_id=@target AND collector_id='deadlocks.system-health';
         """, ("target", target));

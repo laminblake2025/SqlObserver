@@ -6,7 +6,7 @@ using SqlObserver.Collector.Abstractions;
 
 namespace SqlObserver.Infrastructure.SqlServer;
 
-/// <summary>Staged v2 contract; production registration remains v1 until alert qualification.</summary>
+/// <summary>Approved v2 contract for the qualified incremental deadlock source.</summary>
 public sealed class SqlServerIncrementalDeadlockAssetCatalog
 {
     public const string ApprovedBundleChecksum = "efcd15c53d0a75b30277446730f774dc40ffe6fa4ff78c1435967de56bc954fa";
