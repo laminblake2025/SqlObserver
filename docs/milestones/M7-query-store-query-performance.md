@@ -787,3 +787,32 @@ migration rerun was needed because this change adds qualification evidence to
 existing behavior. This closes these native lifecycle cases on the local SQL
 Server 2022 fixture. Supported-version proof on SQL Server 2019/2025, fleet scale,
 production TLS/key configuration and catalog rollout remain open.
+
+
+### Measured cache interval rate chart (2026-10-01)
+
+Cache history now plots the selected CPU, duration, executions, reads, writes or
+rows metric as a rate over each full measured comparison interval. Counter and
+interval arithmetic stays in integers at microsecond precision until the final
+six-significant-digit chart value is produced. CPU/duration rates use ms/s; the
+other counters use their units per second. Tiny nonzero rates retain scientific
+notation. Exact counter strings and comparison timestamps remain in the table.
+Rates beyond the chart's safe numeric range are omitted with an explicit count.
+
+Each cache-entry/source-epoch pair has its own series. Every measured interval is
+a separate horizontal segment; adjacent intervals are not interpolated, and
+baselines, resets, stale samples, expired comparisons and boundary comparisons
+do not become zero values. The chart uses the newest 300 loaded samples and up
+to ten entries, with omissions stated beside the chart. These bounds do not
+remove table evidence. Earlier pages can extend loaded evidence within those
+chart bounds. Switching metrics reuses the loaded history snapshot. Dragging
+on the chart updates the shared time window and retains the selected cache
+query, database incarnation and metric in its shareable URL.
+
+Six focused rate-model tests pass, alongside the two shared chart-model tests.
+The focused Chromium cache-drilldown case passes with paging, metric switching,
+actual pointer drag, URL preservation and axe accessibility checks. TypeScript,
+the production build and generated web asset verification pass. No database or
+native collector tests were repeated for this frontend-only change. Protected
+cache content, supported-version qualification and production collector rollout
+remain separate gates.

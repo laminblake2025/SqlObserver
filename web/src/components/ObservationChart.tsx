@@ -14,8 +14,9 @@ const left = 48, right = 620, top = 30, bottom = 180;
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 
 export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, threshold, crosshairUtc,
-  onCrosshairChange, onSelectWindow }: {
+  onCrosshairChange, onSelectWindow, valueFormatter = value => number.format(value) }: {
   readonly label: string;
+  readonly valueFormatter?: (value: number) => string;
   readonly series: readonly ObservationSeries[];
   readonly fromUtc: string;
   readonly toUtc: string;
@@ -79,17 +80,17 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
       {[0, .5, 1].map(fraction => {
         const value = chart.minimum + fraction * (chart.maximum - chart.minimum);
         return <g key={fraction}><line className="chart-gridline" x1={left} x2={right} y1={y(value)} y2={y(value)} />
-          <text x="0" y={y(value) + 4}>{number.format(value)}</text></g>;
+          <text x="0" y={y(value) + 4}>{valueFormatter(value)}</text></g>;
       })}
       {[0, .5, 1].map(fraction => <line key={fraction} className="chart-gridline chart-gridline-vertical"
         x1={left + fraction * (right - left)} x2={left + fraction * (right - left)} y1={top} y2={bottom} />)}
       {referenceBand && <rect className="chart-baseline-band" x={left} y={y(referenceBand.upper)}
         width={right - left} height={Math.max(0, y(referenceBand.lower) - y(referenceBand.upper))}>
-        <title>{referenceBand.label}: {number.format(referenceBand.lower)} to {number.format(referenceBand.upper)}</title>
+        <title>{referenceBand.label}: {valueFormatter(referenceBand.lower)} to {valueFormatter(referenceBand.upper)}</title>
       </rect>}
       {referenceThreshold && <line className="chart-threshold" x1={left} x2={right}
         y1={y(referenceThreshold.value)} y2={y(referenceThreshold.value)}>
-        <title>{referenceThreshold.label}: {number.format(referenceThreshold.value)}</title>
+        <title>{referenceThreshold.label}: {valueFormatter(referenceThreshold.value)}</title>
       </line>}
       {chart.series.map((entry, index) => {
         const color = colors[index % colors.length];
@@ -99,7 +100,7 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
               stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />)}
           {entry.items.filter((item): item is PlottedObservation => item !== null).map((point, pointIndex) =>
             <circle className="chart-marker" key={`${point.time}:${pointIndex}`} cx={x(point.timestamp)} cy={y(point.value)}
-              r="2" fill={color} stroke={color}><title>{entry.label} · {timeLabel(point.timestamp)} · {number.format(point.value)}</title></circle>)}
+              r="2" fill={color} stroke={color}><title>{entry.label} · {timeLabel(point.timestamp)} · {valueFormatter(point.value)}</title></circle>)}
         </g>;
       })}
       {dragStart !== null && dragEnd !== null && <rect className="chart-selection" x={Math.min(dragStart, dragEnd)}
@@ -119,13 +120,13 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
     </div>
     {crosshairX !== null && <p className="chart-nearest">Nearest observations at {timeLabel(crosshairTime)}: {chart.series.map((entry) => {
       const nearest = nearestObservation(entry.items, crosshairTime);
-      return `${entry.label} ${nearest ? `${number.format(nearest.value)} at ${timeLabel(nearest.timestamp)}` : "unavailable"}`;
+      return `${entry.label} ${nearest ? `${valueFormatter(nearest.value)} at ${timeLabel(nearest.timestamp)}` : "unavailable"}`;
     }).join(" · ")}</p>}
     <small>Observed values only; lines do not imply samples between points.{onSelectWindow ? " Drag to narrow the workspace time range." : ""}</small>
     <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table>
       <thead><tr><th>Series</th><th>{mode === "local" ? "Local time" : "UTC"}</th><th>Value</th></tr></thead><tbody>
         {chart.series.flatMap((entry) => entry.items.filter((item): item is PlottedObservation => item !== null)
-          .map((point, index) => <tr key={`${entry.id}:${point.time}:${index}`}><td>{entry.label}</td><td title={point.time}>{timeLabel(point.timestamp)}</td><td>{number.format(point.value)}</td></tr>))}
+          .map((point, index) => <tr key={`${entry.id}:${point.time}:${index}`}><td>{entry.label}</td><td title={point.time}>{timeLabel(point.timestamp)}</td><td>{valueFormatter(point.value)}</td></tr>))}
       </tbody></table></div></details>
   </figure>;
 }

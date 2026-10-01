@@ -120,6 +120,12 @@ test('cache drilldown restores from its URL and pages exact samples with compari
   await expect(history.getByRole('cell',{name:'Counters reset',exact:true})).toBeVisible();
   await expect(history.getByRole('cell',{name:'Unavailable',exact:true})).toHaveCount(3);
   await expect(history.getByRole('cell',{name:'9007199254740993',exact:true})).toHaveCount(99);
+  const trend=history.getByRole('region',{name:'Cache interval rate trend'});
+  await expect(trend.getByRole('img',{name:/Measured cache interval rates \(CPU ms\/s\)/})).toBeVisible();
+  await expect(trend.locator('path.chart-series')).toHaveCount(99);
+  await expect(trend.getByText('99 measured intervals plotted · 1 unavailable comparisons',{exact:true})).toBeVisible();
+  expect(await trend.locator('circle.chart-marker title').first().textContent()).toMatch(/0\.25$/);
+
   await expect(page).toHaveURL(/cacheIncarnation=/);
   await page.reload();
   await expect(history.getByText('100 of 102 observed samples',{exact:false})).toBeVisible();
@@ -128,6 +134,25 @@ test('cache drilldown restores from its URL and pages exact samples with compari
   expect(historyRequests.at(-1).searchParams.get('cursor')).toBe('YQ.Yg');
   expect(historyRequests.at(-1).searchParams.get('databaseIncarnation')).toBe('a'.repeat(64));
   await expect(history.getByRole('button',{name:'Load earlier cache samples'})).toHaveCount(0);
+  await expect(trend.locator('path.chart-series')).toHaveCount(101);
+  await page.getByRole('combobox',{name:'Rank cache activity by'}).selectOption('duration');
+  await expect(trend.getByRole('img',{name:/Measured cache interval rates \(Duration ms\/s\)/})).toBeVisible();
+  expect(await trend.locator('circle.chart-marker title').first().textContent()).toMatch(/0\.5$/);
+  const beforeDrag=historyRequests.length;
+  const svg=trend.getByRole('img'); await svg.scrollIntoViewIfNeeded();
+  const bounds=await svg.boundingBox();
+  expect(bounds).not.toBeNull();
+  const left=bounds.x+(48+572*10/24)/650*bounds.width, right=bounds.x+(48+572*14/24)/650*bounds.width;
+  await page.mouse.move(left,bounds.y+bounds.height/2); await page.mouse.down();
+  await page.mouse.move(right,bounds.y+bounds.height/2,{steps:4}); await page.mouse.up();
+  await expect.poll(()=>historyRequests.length).toBeGreaterThan(beforeDrag);
+  await expect(trend.getByRole('img')).toBeVisible();
+  const narrowed=historyRequests.at(-1);
+  expect(Date.parse(narrowed.searchParams.get('fromUtc'))).toBeGreaterThan(Date.parse(from));
+  expect(Date.parse(narrowed.searchParams.get('toUtc'))).toBeLessThan(Date.parse(to));
+  expect(narrowed.searchParams.get('cursor')).toBeNull();
+  await expect(page).toHaveURL(/cacheIncarnation=/); await expect(page).toHaveURL(/queryMetric=duration/);
+
   const accessibility=await new AxeBuilder({page}).include('section[aria-label="Cache query interval history"]').analyze();
   expect(accessibility.violations).toEqual([]);
   await page.getByRole('combobox',{name:'Target server'}).selectOption(second);

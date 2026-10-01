@@ -1,7 +1,9 @@
+import { ObservationChart } from "../../components/ObservationChart";
+import { cacheIntervalRateLabel, formatCacheIntervalRate, maximumCacheTrendSamples, planCacheIntervalTrend } from "./planCacheIntervalTrendModel";
 import { useEffect, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { getPlanCacheIntervalHistory } from "./queryPerformanceApi";
-import type { PlanCacheHistorySelection, PlanCacheIntervalHistory, PlanCacheIntervalHistoryItem } from "./queryPerformanceTypes";
+import type { PlanCacheHistorySelection, PlanCacheIntervalHistory, PlanCacheIntervalHistoryItem, QueryPerformanceMetric } from "./queryPerformanceTypes";
 import type { QueryWindow } from "./queryWindowModel";
 
 const states = { comparable: "Measured", window_boundary: "Crosses window boundary", baseline_unavailable: "First qualified sample",
@@ -10,7 +12,8 @@ const label = (value: string | null) => value === null ? "Unavailable" : value.i
 const canonical = (value: string) => value.replace(/(?:\.(\d{1,7}))?Z$/u, (_match, fraction: string | undefined) => `.${(fraction ?? "").padEnd(7, "0")}Z`);
 const keyOf = (row: PlanCacheIntervalHistoryItem) => `${canonical(row.observedAtUtc)}:${canonical(row.committedAtUtc)}:${row.collectionRunId}:${row.cacheEntryFingerprint}`;
 
-export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, onClose }: {
+export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, onClose, metric, onSelectWindow }: {
+  readonly metric: QueryPerformanceMetric; readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly selection: PlanCacheHistorySelection; readonly timeWindow: QueryWindow; readonly refresh: number; readonly onClose: () => void;
 }) {
   const timeLabel = useTimeFormatter(); const request = useRef<AbortController | undefined>(undefined);
@@ -26,6 +29,7 @@ export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, 
     return () => controller.abort();
   }, [targetId, databaseId, databaseIncarnation, queryFingerprint, planFingerprint, timeWindow.fromUtc, timeWindow.toUtc, refresh, key]);
   const result = current?.result;
+  const trend = result ? planCacheIntervalTrend(result, metric) : undefined;
   const more = () => {
     if (!result?.nextCursor || current?.loading || result.items.length >= 1000) return;
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
@@ -49,6 +53,17 @@ export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, 
     {current?.error ? <p role="alert">{current.error}</p> : null}
     {result && <>
       <p className="activity-evidence">{result.items.length} of {result.totalRows} observed samples · snapshot {timeLabel(result.snapshotUtc)}</p>
+      {trend && result.items.length > 0 && <section aria-label="Cache interval rate trend">
+        <h5>Measured interval rates · {cacheIntervalRateLabel(metric)}</h5>
+        <p>Average rates over each full measured interval, rounded to six significant digits. Separate cache entries and epochs remain separate series; comparisons without counters are blank. Exact totals stay in the table.</p>
+        <p>{trend.plottedIntervals} measured intervals plotted · {trend.unavailableComparisons} unavailable comparisons</p>
+        {trend.hiddenSamples > 0 || trend.hiddenEntries > 0 ? <p>The chart uses the newest {maximumCacheTrendSamples} loaded samples and up to 10 cache entries. {trend.hiddenSamples} older samples and {trend.hiddenEntries} additional entries remain in the table.</p> : null}
+        {trend.precisionOmissions > 0 ? <p>{trend.precisionOmissions} intervals exceed chart precision. Inspect their exact totals in the table.</p> : null}
+        {trend.invalidIntervals > 0 ? <p>{trend.invalidIntervals} intervals could not be plotted. Inspect the evidence table.</p> : null}
+        <ObservationChart label={`Measured cache interval rates (${cacheIntervalRateLabel(metric)})`} fromUtc={result.fromUtc} toUtc={result.toUtc}
+          series={trend.series} valueFormatter={formatCacheIntervalRate} onSelectWindow={onSelectWindow} />
+        {result.nextCursor && result.items.length < 1000 ? <p>Load earlier cache samples to extend the loaded evidence.</p> : null}
+      </section>}
       {result.items.length === 0 ? <p>No samples for this query plan and database incarnation are available in this window.</p> : <div className="table-scroll"><table>
         <caption>Measured intervals and comparison gaps, newest first</caption>
         <thead><tr><th scope="col">Capture / cache entry</th><th scope="col">Comparison / interval</th><th scope="col">CPU ms</th><th scope="col">Duration ms</th><th scope="col">Executions</th><th scope="col">Reads / writes / rows</th></tr></thead>

@@ -11,9 +11,10 @@ const metrics: readonly [QueryPerformanceMetric, string][] = [
 ];
 const decimalLabel = (value: string) => value.includes(".") ? value.replace(/0+$/u, "").replace(/\.$/u, "") : value;
 
-export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databaseNames, metric, onMetricChange, selection, onSelect }: {
+export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databaseNames, metric, onMetricChange, selection, onSelect, onSelectWindow }: {
   readonly instanceId: string; readonly timeWindow: QueryWindow; readonly refresh: number;
   readonly metric: QueryPerformanceMetric; readonly onMetricChange: (metric: QueryPerformanceMetric) => void;
+  readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly selection?: PlanCacheHistorySelection; readonly onSelect: (selection?: PlanCacheHistorySelection) => void;
   readonly databaseNames: ReadonlyMap<number, string | undefined>;
 }) {
@@ -51,6 +52,6 @@ export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databa
       </table></div>}
       {result.hasMore ? <p>More query plans were observed; this ranking shows the first 25.</p> : null}
     </>}
-    {selection?.targetId === instanceId ? <PlanCacheIntervalHistoryPanel selection={selection} timeWindow={timeWindow} refresh={refresh} onClose={() => onSelect(undefined)} /> : null}
+    {selection?.targetId === instanceId ? <PlanCacheIntervalHistoryPanel selection={selection} metric={metric} onSelectWindow={onSelectWindow} timeWindow={timeWindow} refresh={refresh} onClose={() => onSelect(undefined)} /> : null}
   </section>;
 }
