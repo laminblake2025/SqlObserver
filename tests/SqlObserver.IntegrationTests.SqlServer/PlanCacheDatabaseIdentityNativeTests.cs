@@ -93,7 +93,21 @@ public sealed class PlanCacheDatabaseIdentityNativeTests
                     Assert.NotNull(before.DatabaseIncarnation); Assert.Equal(before.DatabaseIncarnation, after.DatabaseIncarnation);
                     Assert.True(page.Rows.Count(row => row.Query.DatabaseId == before.DatabaseId) >= 2);
                     // Other visible databases retain explicit unqualified rows.
-                    return (before, after, PlanCacheRuntimeSourceAssembler.Bind(page, [before], [after]));
+                    var qualified = PlanCacheRuntimeSourceAssembler.Bind(page, [before], [after]);
+                    var output = qualified.ToOutputBatch();
+                    Assert.Equal(page.CandidateLimit, output.CandidateLimit);
+                    Assert.Equal(qualified.Statements.Count, output.Items.Count);
+                    Assert.Equal(qualified.UnqualifiedStatementRows, output.UnqualifiedRows);
+                    Assert.Equal(qualified.Exhaustive, output.QualifiedExhaustive);
+                    Assert.All(output.Items, statement =>
+                    {
+                        Assert.Equal(0, statement.Watermark.ObservedAtUtc.Ticks % 10);
+                        Assert.Equal(before.DatabaseIncarnation, statement.Before.DatabaseIncarnation);
+                        Assert.Equal(after.DatabaseIncarnation, statement.After.DatabaseIncarnation);
+                        Assert.Contains(qualified.Statements, original => original.Watermark.Key == statement.Watermark.Key
+                            && original.Watermark.Counters == statement.Watermark.Counters);
+                    });
+                    return (before, after, qualified);
                 }
                 finally { await Execute(database, "REVERT;"); }
             }

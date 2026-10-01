@@ -7,7 +7,21 @@ internal sealed record PlanCacheRuntimeQualifiedStatement(PlanCacheRuntimeWaterm
 
 internal sealed record PlanCacheRuntimeQualifiedRead(PlanCacheRuntimeSourcePage Source,
     IReadOnlyList<PlanCacheRuntimeQualifiedStatement> Statements, int UnqualifiedStatementRows,
-    bool Exhaustive);
+    bool Exhaustive)
+{
+    internal PlanCacheRuntimeOutputBatch ToOutputBatch() => new(Source.TargetId, Source.TargetRevision,
+        Source.SourceEpoch, Source.ReadStartedAtUtc, Source.ReadCompletedAtUtc, Source.CandidateLimit,
+        Source.CandidateRows, Source.UnresolvedRows, Source.InvisibleDatabaseRows, Source.ExcludedRows,
+        Source.CandidateRows - Source.UnresolvedRows - Source.InvisibleDatabaseRows - Source.ExcludedRows,
+        UnqualifiedStatementRows, Statements.Select(static item => new PlanCacheRuntimeStatementObservation(
+            item.Watermark, Evidence(item.Before), Evidence(item.After))).ToArray());
+
+    private static PlanCacheDatabaseIdentityEvidence Evidence(PlanCacheDatabaseIdentitySnapshot snapshot) =>
+        snapshot.CatalogEligible && snapshot.DatabaseIncarnation is not null
+            ? new(snapshot.TargetId, snapshot.TargetRevision, snapshot.DatabaseId, snapshot.SourceEpoch,
+                snapshot.DatabaseIncarnation, snapshot.ReadStartedAtUtc, snapshot.ReadCompletedAtUtc)
+            : throw new InvalidDataException("Unqualified identity cannot enter a cache output batch.");
+}
 
 /// <summary>Bind complete statement tuples only to live, stable identities bracketing their capture.</summary>
 internal static class PlanCacheRuntimeSourceAssembler
@@ -22,7 +36,12 @@ internal static class PlanCacheRuntimeSourceAssembler
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
-        if (source.Rows.Count > PlanCacheRuntimeSourceReader.MaximumRows ||
+        long emittedRows = (long)source.CandidateRows - source.UnresolvedRows - source.InvisibleDatabaseRows - source.ExcludedRows;
+        if (source.CandidateLimit is < 1 or > PlanCacheRuntimeSourceReader.MaximumRows ||
+            source.CandidateRows < 0 || source.CandidateRows > source.CandidateLimit + 1 ||
+            source.UnresolvedRows < 0 || source.InvisibleDatabaseRows < 0 || source.ExcludedRows < 0 || emittedRows < 0 ||
+            source.Rows.Count != Math.Min(emittedRows, source.CandidateLimit) ||
+            source.Exhaustive != (source.CandidateRows <= source.CandidateLimit && source.UnresolvedRows == 0 && source.InvisibleDatabaseRows == 0) ||
             source.ReadStartedAtUtc.Offset != TimeSpan.Zero || source.ReadCompletedAtUtc.Offset != TimeSpan.Zero ||
             source.ReadCompletedAtUtc < source.ReadStartedAtUtc ||
             source.ReadCompletedAtUtc - source.ReadStartedAtUtc > TimeSpan.FromSeconds(20) ||

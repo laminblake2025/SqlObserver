@@ -15,7 +15,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class PlanCacheRuntimeStoragePostgreSqlTests(PostgreSql18Fixture fixture)
+public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests(PostgreSql18Fixture fixture)
 {
     private static readonly string[] CounterFields = ["cpuUs", "durationUs", "executionCount", "logicalReads", "writes", "rowsProcessed"];
     private static readonly string[] RejectedSqlStates = ["22023", "22003", "42501"];

@@ -1,4 +1,4 @@
-# M7 — Query Store and query performance
+# M7 â€” Query Store and query performance
 
 M7 (`queries.performance`, collector order 9) is a passive SQL Server 15/16/17
 Windows slice. It reads Query Store per accessible online user database and
@@ -27,7 +27,7 @@ privilege grants, and deterministic opaque-key projections. Runtime PostgreSQL
 and SQL Server integration environments are optional gates; Release compilation,
 static asset checksums, focused tests, and web type/build checks remain required.
 
-## Plan-cache delta refactor — comparison foundation
+## Plan-cache delta refactor â€” comparison foundation
 
 As of 2026-10-01 the production fallback still emits `plan_cache_cumulative`.
 The existing semantics enum does not establish that a delta collector is wired.
@@ -90,7 +90,7 @@ The focused comparison suite is recorded under `artifacts/plan-cache-deltas/`;
 it covers each falling counter, refilled new incarnations, precision, stale and
 incomplete reads, query/target isolation, and interval/long-counter boundaries.
 
-## Bounded native cache source — staged
+## Bounded native cache source â€” staged
 
 `collectors/plan-cache-runtime/` now contains pinned SQL Server 15/16/17 source
 variants. The approved bundle digest is
@@ -151,7 +151,7 @@ qualify deployment TLS/Kerberos. SQL Server 2019/2025 execution, controlled rest
 and database-replacement races, production incarnation orchestration, lease-fenced atomic
 storage/replay/retention, and the catalog/API/UI cutover remain required.
 
-## Live database identity binding — staged
+## Live database identity binding â€” staged
 
 `PlanCacheDatabaseIdentitySource` now reads a closed seven-field identity frame
 inside an already-open user database, without changing database context. Its
@@ -201,7 +201,7 @@ The AUTO_CLOSE fixture uses the closed-database metadata behavior of
 and the background shutdown behavior of
 [ALTER DATABASE SET options](https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-database-transact-sql-set-options?view=sql-server-ver17).
 
-## Private PostgreSQL cache storage and comparison — staged
+## Private PostgreSQL cache storage and comparison â€” staged
 
 Forward migrations 0316 and 0317 add separate `plan_cache_runtime_watermark`,
 `plan_cache_runtime_delta` and `plan_cache_runtime_receipt` parents. Daily baseline
@@ -218,9 +218,9 @@ UTC bounds, registry entries and the child's security policy against its parent;
 an altered child policy fails closed. The existing retention registry receives
 enabled policies for eight days of baseline state and 30 days of deltas/receipts.
 The administrative SQL and domain validator enforce those minimum durations.
-The scheduled retention driver's existing generic path can discover these
-registered parents; actual aged-partition detach/drop remains a qualification
-gate for this new data class.
+The scheduled retention driver uses its existing generic path for these
+registered parents. Populated aged-partition retirement and recovery have now
+been qualified as described below.
 
 `events.apply_plan_cache_runtime_batch` is a private, closed JSON comparison
 contract, with no EXECUTE grant to the collector, server, auditor or PUBLIC.
@@ -258,10 +258,72 @@ checksums remain unchanged.
 
 These proofs exercise the private comparison transaction with fixture run IDs;
 they are not canonical ingestion or production evidence. No production code
-calls this writer yet. The next required steps are the typed source/output
-codec, a canonical wrapper that validates the active target revision, run,
+calls this writer yet. The typed source/output codec is now implemented as
+described below. The next required step is a canonical wrapper that validates
+the active target revision, run,
 schedule, immutable collector contract, source accounting and live lease both
 before and after writing, and atomic outcome/gap/schedule publication. Public
 query observations, protected content links, canonical replay, run-retention
-dependencies, bounded collector orchestration, aged cache retention, rollout
-and native end-to-end/fleet qualification remain required before activation.
+dependencies, bounded collector orchestration, rollout and native end-to-end/
+fleet qualification remain required before activation.
+
+
+## Typed cache payload and aged retention qualification — staged
+
+`PlanCacheRuntimeOutputBatch` carries the exact target revision, source epoch,
+effective candidate limit, all source accounting and selected statement tuples
+with known live before/after database identities. It enforces the count partition,
+unique cache entries, at most 256 database brackets, and one consistent bracket
+per database. Unknown or omitted statements remain counts and never become zero
+observations. Source coverage and qualified coverage are derived separately;
+a capped sample can contain complete, usable statement tuples.
+
+The source decoder now preserves its effective candidate limit. The assembler
+checks the frame's accounting and coverage metadata before binding identities;
+its output bridge retains the source counts and only qualified observations.
+`PlanCacheRuntimeCommitPayload` serializes the existing closed 15-field header
+and 19-field items, sorted by database, query and entry for deterministic replay.
+It emits opaque identities and six unrounded Int64 counters within four MiB.
+A maximum 2,000-row frame with every counter at Int64.MaxValue fits both the
+serialized limit and the conservative payload size estimate.
+
+All original UTC capture bounds and identity brackets are checked before
+truncating timestamps to PostgreSQL's microsecond resolution. The immutable
+batch, its watermarks and its serialized evidence then share those normalized
+timestamps, so in-memory comparisons of published batches use the same time
+resolution as persistence. Counter precision is unchanged. Normalized windows
+are checked again; conversion cannot hide an invalid original overlap.
+
+Twenty-eight domain cases pass in `plan-cache-typed-output.trx`. The 45 source
+frame/identity binding checks in `plan-cache-typed-source-bridge.trx` exercise the
+bridge together with the existing native-frame decoder. The affected decoder
+limit assertions and database-bracket mismatch case are recorded separately in
+`plan-cache-typed-boundary-final.trx` and `plan-cache-typed-limit-final.trx`.
+Two codec checks in `plan-cache-typed-codec-postgresql.trx` prove maximum sizing,
+closed field counts, exact microsecond persistence, one-microsecond counter
+differences, partial receipts, and replay without duplicate writes after row
+reordering. The actual SQL Server 2022 bracketing/replacement/passivity case in
+`plan-cache-typed-native-bridge.trx` also converts real frames into typed batches
+without changing any source counters or identity scope.
+
+`plan-cache-aged-retention.trx` exercises populated 40-day-old partitions in all
+three private cache parents through the real PostgreSQL retention worker. A
+restored pg_dump archive reproduces the exact watermark, delta and receipt
+contents before attestation. Missing recovery attestation, active readers,
+pending backfill and the minimum partition floor block retirement. A stale
+worker fence is rejected before both detach and drop. Detach preserves rows
+during grace, a disabled policy reattaches its partition, and active readers
+continue to block drop after grace. Final retirement drops the aged relations,
+keeps current data, records eight successful lifecycle audit entries, and the
+same archive restores the complete original cache contents after deletion.
+Historical rows are seeded by the private migration role; the source writer's
+five-minute clock bound is never relaxed.
+
+These remain private storage and source proofs. The payload is deliberately
+not attached to `CollectorPayload` or routed to an existing collector commit
+until a versioned canonical path can account for every cache item and commit
+its deltas, replay receipt, outcome, visibility gap and schedule under one live
+lease. Query Store coverage, protected content links and existing query identity
+semantics must survive that change. Target sweep orchestration, canonical
+run-retention dependencies, public ranking/API integration, catalog rollout,
+and deployment/native fleet qualification remain open.

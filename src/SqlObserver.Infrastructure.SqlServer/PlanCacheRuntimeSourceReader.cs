@@ -14,7 +14,7 @@ internal sealed record PlanCacheRuntimeSourcePage(MonitoredInstanceId TargetId,
     ObservationTargetRevision TargetRevision, DateTimeOffset ReadStartedAtUtc,
     DateTimeOffset ReadCompletedAtUtc, string SourceEpoch, int CandidateRows,
     int UnresolvedRows, int InvisibleDatabaseRows, int ExcludedRows,
-    IReadOnlyList<PlanCacheRuntimeSourceRow> Rows, bool Exhaustive);
+    IReadOnlyList<PlanCacheRuntimeSourceRow> Rows, bool Exhaustive, int CandidateLimit);
 
 /// <summary>Closed native cache frame; exhaustive coverage is separate from a complete statement row.</summary>
 internal static class PlanCacheRuntimeSourceReader
@@ -70,6 +70,6 @@ internal static class PlanCacheRuntimeSourceReader
         if (read != emitted || await reader.NextResultAsync(cancellationToken).ConfigureAwait(false))
             throw new InvalidDataException("Cache source accounting differs from its result rows.");
         return new(targetId, targetRevision, started, completed, epoch, candidates, unresolved,
-            invisible, excluded, rows.AsReadOnly(), candidates <= maximumRows && unresolved == 0 && invisible == 0);
+            invisible, excluded, rows.AsReadOnly(), candidates <= maximumRows && unresolved == 0 && invisible == 0, maximumRows);
     }
 }

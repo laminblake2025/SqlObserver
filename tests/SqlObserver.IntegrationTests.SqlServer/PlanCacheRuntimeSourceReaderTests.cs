@@ -34,6 +34,7 @@ public sealed class PlanCacheRuntimeSourceReaderTests
         var page = await Read(reader);
         Assert.True(page.Exhaustive); Assert.Equal(Target, page.TargetId); Assert.Equal(Revision, page.TargetRevision);
         Assert.Equal(3, page.CandidateRows); Assert.Equal(1, page.ExcludedRows);
+        Assert.Equal(2000, page.CandidateLimit);
         Assert.Equal(At, page.ReadStartedAtUtc); Assert.Equal(At.AddMilliseconds(20), page.ReadCompletedAtUtc);
         Assert.Equal(new string('d', 64), page.SourceEpoch);
         Assert.Equal(2, page.Rows.Count); Assert.Equal(1001L, page.Rows[0].Counters.CpuMicroseconds);
@@ -58,10 +59,12 @@ public sealed class PlanCacheRuntimeSourceReaderTests
         using var reader = new DataTableReader([Header(3, excluded: 1, emitted: 2), Rows(Row('a'), Row('b'))]);
         var page = await Read(reader, limit: 2);
         Assert.False(page.Exhaustive); Assert.Equal(2, page.Rows.Count); Assert.Equal(3, page.CandidateRows);
+        Assert.Equal(2, page.CandidateLimit);
         Assert.All(page.Rows, item => Assert.Equal(7L, item.Counters.Executions));
         using var excess = new DataTableReader([Header(3, emitted: 3), Rows(Row('a'), Row('b'), Row('c'))]);
         var capped = await Read(excess, limit: 2);
         Assert.False(capped.Exhaustive); Assert.Equal(2, capped.Rows.Count);
+        Assert.Equal(2, capped.CandidateLimit);
     }
 
     [Fact]

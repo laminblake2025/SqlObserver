@@ -23,6 +23,12 @@ public sealed class PlanCacheRuntimeSourceAssemblerTests
         var result = PlanCacheRuntimeSourceAssembler.Bind(source, [first], [last]);
         Assert.Equal(exhaustive, result.Exhaustive); Assert.Equal(0, result.UnqualifiedStatementRows);
         Assert.Equal(2, result.Statements.Count);
+        var batch = result.ToOutputBatch();
+        Assert.Equal(exhaustive, batch.SourceExhaustive);
+        Assert.Equal(exhaustive, batch.QualifiedExhaustive);
+        Assert.Equal(source.CandidateLimit, batch.CandidateLimit);
+        Assert.Equal(source.CandidateRows, batch.CandidateRows);
+        Assert.Equal(2, batch.Items.Count);
         Assert.All(result.Statements, statement =>
         {
             Assert.Equal(first, statement.Before); Assert.Equal(last, statement.After);
@@ -68,6 +74,10 @@ public sealed class PlanCacheRuntimeSourceAssemblerTests
         var result = PlanCacheRuntimeSourceAssembler.Bind(Source(true, Row(5, 'a'), Row(6, 'b')), before, after);
         Assert.False(result.Exhaustive); Assert.Equal(1, result.UnqualifiedStatementRows);
         Assert.Equal(6, Assert.Single(result.Statements).Watermark.Key.Query.DatabaseId);
+        var batch = result.ToOutputBatch();
+        Assert.True(batch.SourceExhaustive); Assert.False(batch.QualifiedExhaustive);
+        Assert.Equal(1, batch.UnqualifiedRows);
+        Assert.Equal(6, Assert.Single(batch.Items).Watermark.Key.Query.DatabaseId);
     }
 
     [Theory]
@@ -155,7 +165,8 @@ public sealed class PlanCacheRuntimeSourceAssemblerTests
     }
 
     private static PlanCacheRuntimeSourcePage Source(bool exhaustive, params PlanCacheRuntimeSourceRow[] rows) =>
-        new(Target, Revision, At, At.AddMilliseconds(20), Digest('c'), rows.Length, 0, 0, 0, rows, exhaustive);
+        new(Target, Revision, At, At.AddMilliseconds(20), Digest('c'), rows.Length + (exhaustive ? 0 : 1),
+            0, 0, exhaustive ? 0 : 1, rows, exhaustive, exhaustive ? 2000 : rows.Length);
 
     private static DataTable IdentityFrame(string? incarnation, bool eligible)
     {
