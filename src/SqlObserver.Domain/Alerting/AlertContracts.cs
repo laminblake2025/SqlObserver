@@ -11,6 +11,7 @@ public enum AlertRuleKind
     MetricThreshold = 1, CollectorHealth = 2,
     BackupFullPolicy = 3, BackupLogPolicy = 4, BackupObservedFaults = 5,
     BlockingDuration = 6,
+    DeadlockCount = 7,
 }
 public enum AlertComparison { GreaterThan = 1, GreaterThanOrEqual = 2, LessThan = 3, LessThanOrEqual = 4, Equal = 5 }
 public enum AlertState { Normal = 1, Pending = 2, Firing = 3, Acknowledged = 4, Resolved = 5 }
@@ -67,6 +68,13 @@ public sealed class AlertRuleDefinition
              evaluationInterval < TimeSpan.FromSeconds(5) || evaluationInterval > TimeSpan.FromMinutes(1) ||
              confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
             throw new ArgumentException("Blocking rules require a bounded duration threshold and distinct confirmation intervals.", nameof(threshold));
+        if (kind == AlertRuleKind.DeadlockCount &&
+            (comparison is not (AlertComparison.GreaterThan or AlertComparison.GreaterThanOrEqual) ||
+             threshold is < 0 or > 256 || threshold != Math.Truncate(threshold) ||
+             hysteresis > threshold || hysteresis != Math.Truncate(hysteresis) ||
+             evaluationInterval < TimeSpan.FromSeconds(15) || evaluationInterval > TimeSpan.FromMinutes(1) ||
+             confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
+            throw new ArgumentException("Deadlock rules require bounded integer counts and distinct confirmation intervals.", nameof(threshold));
         RuleId = ruleId; Kind = kind; MetricId = metricId; Comparison = comparison; Threshold = threshold; Hysteresis = hysteresis;
         ConfirmationCount = confirmationCount; ConfirmationWindow = confirmationWindow; EvaluationInterval = evaluationInterval; Enabled = enabled;
         ClearConfirmationCount = clearConfirmationCount;

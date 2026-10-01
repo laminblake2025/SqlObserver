@@ -2,8 +2,9 @@
 
 The revamp plan calls for deadlock alert coverage beyond engine counters.
 Forward migration 0303 implements its bounded repository source and adds it to
-the Collector data plane. Rule capture, evaluation, catalog activation and the
-administration UI are still required before a user can enable this signal.
+the Collector data plane. Migration 0304 adds private durable capture and claiming.
+Verified evaluation, runtime dispatch, catalog activation and the administration
+UI are still required before a user can enable this signal.
 
 ## Signal and source
 
@@ -56,6 +57,33 @@ The C# port bounds calls to five seconds and the response to 2 KiB, checks SHA-2
 against the exact JSON bytes, rejects unknown or duplicate fields, validates UTC
 window/freshness/count bounds, and checks the returned target binding.
 
+## Durable capture and claiming
+
+The private queue binds each captured source to its target and rule revisions,
+canonical operation and evidence identities, and the exact evaluation worker
+lease. It permits one pending capture per rule. Reconciliation replaces expired
+or superseded work only after its claim expires; it never takes work from a live
+claimant. Completed queue metadata prevents a repeatedly read scan from supplying
+another fire or clear confirmation. Capture bodies are cleaned up separately.
+
+Known observations carry integer counts from zero through 256; unknown observations
+carry no count. Count policies require integer thresholds and hysteresis, evaluation
+intervals from 15 to 60 seconds, and a window that covers the requested confirmation
+intervals. The new kind and wire contract are not approved by the product catalog.
+All four queue helpers remain migrator-only, with a forced-RLS private capture
+table. Public claiming excludes deadlock work, and public evaluation explicitly
+rejects it until independently verified state/outbox transitions are implemented.
+
+Three native checks cover SQL/C# identity agreement, exact reclaim, consumed-source
+suppression, concurrent reconciliation, source and rule supersession, live-claim
+preservation, disabled-rule cleanup, forged observations, wrong lease owners,
+count bounds, private privileges, and the public activation gates. The consumed
+source check marks its queue row completed with a bootstrap-only fixture mutation;
+it does not exercise a production alert-state or notification commit. Four shared
+dispatcher regressions still pass for actual engine, backup and blocking work.
+Three unit checks cover zero versus unknown, forged count/source identities and
+integer policy bounds; the migration preamble check also passes.
+
 ## Verification and remaining work
 
 Four native PostgreSQL checks use the full migration history and canonical
@@ -79,7 +107,7 @@ availability, backup, database inventory, configuration, capacity and metric
 migrations. This records current dependencies; it does not remove them or prove
 original-run retirement is ready.
 
-Remaining work is durable capture/claim/transition/commit, runtime discovery and
+Remaining work is verified transition/atomic commit, runtime discovery and
 dispatch, approved catalog and UI settings, and live SQL Server-to-notification
 qualification. The current XE reader still rescans its bounded 33-day file
 window. Incremental bookmarking remains a separate collector refactor; its
@@ -97,3 +125,7 @@ retention/inventory run passed those three and exposed the stale inventory list;
 the separate final inventory run passed after reconciliation. Together they
 verify 32 unique native cases, plus the passing migration preamble check. Earlier
 failed result files are retained; the whole group was not rerun unnecessarily.
+Queue-stage evidence is in `deadlock-alert-queue.trx` (three native checks),
+`deadlock-alert-shared-dispatch-regressions.trx` (four native regressions) and
+`deadlock-alert-contracts-and-preamble.trx` (three unit checks and one preamble
+check) in the same directory.
