@@ -2390,6 +2390,11 @@ foreach ($testProject in $testProjectsToRun) {
         # it (and must not turn a missing release lab into a skip).
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresM12SqlServerRelease' } else { "($filter)&Category!=RequiresM12SqlServerRelease" }
     }
+    if ($testProject -like '*SqlObserver.IntegrationTests.PostgreSql.csproj') {
+        # Cross-store live blocking qualification owns disposable SQL objects
+        # and is selected explicitly rather than by an ordinary validation sweep.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }
+    }
     Invoke-TestProject -Project $testProject -Filter $filter
 }
 

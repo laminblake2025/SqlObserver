@@ -4,8 +4,9 @@ The revamp plan requires alert coverage beyond engine counters and backups.
 Blocking duration now has an approved product template and administration UI.
 The source contract below is implemented and verified in PostgreSQL. Private
 durable capture, claim, transition and atomic state/outbox commit helpers feed
-the normal evaluation worker. Live SQL Server and delivery qualification remains
-pending; catalog activation does not automatically create or enable target rules.
+the normal evaluation worker. A live SQL Server 2022/PostgreSQL 18 check now
+covers collection, firing, permission gaps, recovery and signed HTTPS delivery.
+Catalog activation does not automatically create or enable target rules.
 
 ## Signal meaning
 
@@ -165,12 +166,56 @@ Missing, stale and incomplete evidence keeps an active alert open.
 
 ## Remaining qualification
 
-The native checks use isolated PostgreSQL and seeded collector records. A live
-SQL Server blocking workload must still be collected and persisted through the
-canonical collection path, then evaluated and delivered to a lab notification
-receiver. SQL Server 2019/2025 qualification and further concurrent stress remain
-separate from the checked-in catalog/runtime behavior. The test VM is available
-for this work when current source can be deployed there.
+SQL Server 2019/2025 qualification and further concurrent stress remain open.
+The live check below invokes the collection engine and fenced repository ports
+directly; it does not qualify the complete service startup/scheduler loop or a
+deployed service identity. Production certificate trust, DNS and protected-key
+provisioning remain separate from its owned lab transport. The test VM is
+available for further qualification when current source can be deployed there.
+
+## Live collection and delivery verification
+
+`LiveBlockingCollectionCommitsPermissionGapsAndDeliversSignedFireAndRecovery`
+passed on Windows with SQL Server 2022 Express and an isolated PostgreSQL 18
+database containing the full migration history. It discovers actual capabilities,
+reconciles the production collector catalog and runs the real core, sessions,
+requests and waits prerequisites. It uses a random non-sysadmin login through
+`EXECUTE AS LOGIN`, with the version-specific server-state permission. Its real
+blocking collector output is validated and persisted by the collection engine
+and canonical begin/commit ports; no collection runs or edges are seeded.
+
+The test holds a row lock on an owned global temporary table. Two distinct
+complete samples fire a one-second custom rule. Revoking the collector's
+permission produces a committed permission-denied run and unknown evidence
+without resolving the episode or sending another notification. After permission
+is restored and the lock is released, two complete empty snapshots resolve the
+same alert. The production delivery worker completes two outbox rows, and the
+receiver verifies the HMAC signature, timestamp, distinct delivery identities,
+firing/recovery events and matching target/alert identities. The destination is
+created and approved through the application administration service.
+
+The HTTPS receiver owns an untrusted self-signed certificate and an ephemeral
+signing key. Production address/allowlist/pinning checks run with a synthetic DNS
+answer; a test-only socket adapter routes that exact address to the owned
+loopback receiver. Certificate validation is pinned to its exact certificate.
+SQL certificate validation is bypassed only under the Local lab contract.
+These seams do not establish production network, Kerberos, TLS or DPAPI readiness.
+The fixture cleans up its SQL sessions, temporary table and random login; native
+post-run catalog checks confirmed no probe logins or tables remained.
+
+This disposable test is explicitly selected and excluded from ordinary
+validation sweeps and PostgreSQL-only CI. Run it on a Windows lab with Docker,
+an accessible SQL Server 2019/2022/2025 instance and sysadmin fixture setup rights:
+
+```powershell
+$env:SQLOBSERVER_VALIDATION_PROFILE = 'Local'
+$env:SQLOBSERVER_LOCAL_SQLSERVER = 'Server=localhost\SQLEXPRESS;Database=master;Integrated Security=true;Encrypt=true;TrustServerCertificate=true'
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --no-restore --filter 'FullyQualifiedName~LiveBlockingCollectionCommitsPermissionGapsAndDeliversSignedFireAndRecovery' --logger 'trx;LogFileName=blocking-alert-live-pipeline.trx' --results-directory artifacts/blocking-alerts
+```
+
+Evidence: `artifacts/blocking-alerts/blocking-alert-live-pipeline.trx` (one passed
+live check, approximately 34 seconds). The fixture uses the shared SQL lab
+connection contract and refuses the Release profile.
 
 ## Current verification
 
@@ -197,8 +242,8 @@ source integrity and corruption handling. The queue checks invoke private
 helpers as the migrator and simulate a completed queue operation to test source
 consumption; they do not exercise the normal worker or a state/outbox commit.
 They do not run SQL Server collection or prove the normal worker or notification
-transport. Later runtime checks cover the worker; live SQL Server collection and
-notification-receiver checks remain in the qualification work above.
+transport. Later runtime checks cover the evaluation worker; the live check above
+adds SQL Server collection and notification-receiver coverage.
 
 Three native PostgreSQL commit checks exercise the full migration history and
 the production decision serializer. One compares PostgreSQL with the C# evaluator

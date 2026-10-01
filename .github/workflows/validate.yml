@@ -166,7 +166,7 @@ jobs:
           Start-Transcript -Path artifacts/ci/postgresql.log
           $testExitCode = 1
           try {
-            dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --configuration Release --no-restore --filter 'Category=RequiresPostgreSql&Category!=RequiresM12ReportsRelease&Category!=RequiresM12ObservabilityRelease&Category!=RequiresFleetBenchmark' --logger 'trx;LogFileName=postgresql.trx' --results-directory artifacts/ci/test-results
+            dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --configuration Release --no-restore --filter 'Category=RequiresPostgreSql&Category!=RequiresSqlServer&Category!=RequiresM12ReportsRelease&Category!=RequiresM12ObservabilityRelease&Category!=RequiresFleetBenchmark' --logger 'trx;LogFileName=postgresql.trx' --results-directory artifacts/ci/test-results
             $testExitCode = $LASTEXITCODE
           } finally {
             Stop-Transcript

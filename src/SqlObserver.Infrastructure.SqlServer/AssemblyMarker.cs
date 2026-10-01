@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("SqlObserver.IntegrationTests.SqlServer")]
+[assembly: InternalsVisibleTo("SqlObserver.IntegrationTests.PostgreSql")]
 
 namespace SqlObserver.Infrastructure.SqlServer;
 
