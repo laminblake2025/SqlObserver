@@ -5,6 +5,21 @@ namespace SqlObserver.Domain.Collection;
 /// <summary>Opaque link input; ciphertext is written separately under its collector lease.</summary>
 public static class PlanCacheContentPersistencePayload
 {
+    /// <summary>Measure opaque JSON before leased writes; placeholder IDs have the exact persisted width.</summary>
+    public static int Measure(PlanCacheContentOutputBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        var items = batch.Items.Select(item => new PlanCacheStatementContentObservation(item.Statement,
+            Reference(item.Text), Reference(item.Plan))).ToArray();
+        var linked = new PlanCacheContentOutputBatch(batch.Runtime, batch.ContentLimit, batch.AttemptedEntries,
+            batch.UnqualifiedEntries, batch.SourceContentBytes, items, batch.CaptureState);
+        using var document = JsonDocument.Parse(Serialize(linked));
+        return QueryPerformancePersistencePayload.SerializeCanonicalJsonb(document.RootElement).Length;
+        static PlanCacheContentValue Reference(PlanCacheContentValue value) => value.ProtectedContent is { } protectedContent
+            ? value.WithReference(new(new(Guid.Parse("00000000-0000-0000-0000-000000000001")), protectedContent.Kind, protectedContent.Fingerprint))
+            : value;
+    }
+
     public static byte[] Serialize(PlanCacheContentOutputBatch batch)
     {
         ArgumentNullException.ThrowIfNull(batch);

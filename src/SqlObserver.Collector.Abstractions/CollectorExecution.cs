@@ -111,7 +111,8 @@ public sealed class CollectorPayload
         SqlVolumeObservationBatch? sqlVolumes = null,
         QueryStoreGroupOutputBatch? queryStoreGroups = null,
         ServerConfigurationObservationBatch? serverConfigurations = null,
-        PlanCacheRuntimeOutputBatch? planCacheRuntime = null)
+        PlanCacheRuntimeOutputBatch? planCacheRuntime = null,
+        PlanCacheContentOutputBatch? planCacheContent = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -141,6 +142,9 @@ public sealed class CollectorPayload
         QueryPerformance = queryPerformance ?? new QueryPerformanceObservationBatch([]);
         QueryStoreGroups = queryStoreGroups;
         PlanCacheRuntime = planCacheRuntime;
+        PlanCacheContent = planCacheContent;
+        if (planCacheContent is not null && !ReferenceEquals(planCacheContent.Runtime, planCacheRuntime))
+            throw new ArgumentException("Cache content requires its exact qualified runtime frame.", nameof(planCacheContent));
         ServerConfigurations = serverConfigurations ?? new ServerConfigurationObservationBatch([]);
         int protectedCount = QueryPerformance.Items.Count(static item => item.ProtectedContent is not null);
         int protectedBytes = QueryPerformance.Items.Sum(static item => item.ProtectedContent?.ProtectedSizeBytes ?? 0);
@@ -165,6 +169,7 @@ public sealed class CollectorPayload
     public QueryPerformanceObservationBatch QueryPerformance { get; }
     public QueryStoreGroupOutputBatch? QueryStoreGroups { get; }
     public PlanCacheRuntimeOutputBatch? PlanCacheRuntime { get; }
+    public PlanCacheContentOutputBatch? PlanCacheContent { get; }
     public ServerConfigurationObservationBatch ServerConfigurations { get; }
     public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
     public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
@@ -183,6 +188,7 @@ public sealed class CollectorPayload
         QueryPerformance.Items.Count +
         (QueryStoreGroups?.Items.Count ?? 0) +
         (PlanCacheRuntime?.Items.Count ?? 0) +
+        (PlanCacheContent?.Items.Count ?? 0) +
         ServerConfigurations.Items.Count +
         (OperationalHealth?.ItemCount ?? 0));
     public int EstimatedSizeBytes => checked(
@@ -198,6 +204,7 @@ public sealed class CollectorPayload
         QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes) +
         (QueryStoreGroups?.EstimatedSizeBytes ?? 0) +
         (PlanCacheRuntime?.EstimatedSizeBytes ?? 0) +
+        (PlanCacheContent?.EstimatedSizeBytes ?? 0) +
         ServerConfigurations.EstimatedSizeBytes +
         (OperationalHealth?.EstimatedSizeBytes ?? 0));
 
@@ -355,7 +362,8 @@ public sealed class CollectorOutputContract
         int maxSqlVolumeObservations = 0,
         int maxQueryStoreGroupObservations = 0,
         int maxServerConfigurationObservations = 0,
-        int maxPlanCacheRuntimeObservations = 0)
+        int maxPlanCacheRuntimeObservations = 0,
+        int maxPlanCacheContentObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -453,6 +461,9 @@ public sealed class CollectorOutputContract
         MaxQueryPerformanceObservations = maxQueryPerformanceObservations;
         MaxQueryStoreGroupObservations = maxQueryStoreGroupObservations;
         MaxPlanCacheRuntimeObservations = maxPlanCacheRuntimeObservations;
+        if (maxPlanCacheContentObservations is < 0 or > PlanCacheContentOutputBatch.MaximumEntries)
+            throw new ArgumentOutOfRangeException(nameof(maxPlanCacheContentObservations));
+        MaxPlanCacheContentObservations = maxPlanCacheContentObservations;
         MaxServerConfigurationObservations = maxServerConfigurationObservations;
         MaxOperationalHealthObservations = maxOperationalHealthObservations;
     }
@@ -471,6 +482,7 @@ public sealed class CollectorOutputContract
     public int MaxQueryPerformanceObservations { get; }
     public int MaxQueryStoreGroupObservations { get; }
     public int MaxPlanCacheRuntimeObservations { get; }
+    public int MaxPlanCacheContentObservations { get; }
     public int MaxServerConfigurationObservations { get; }
     public int MaxOperationalHealthObservations { get; }
 }

@@ -36,7 +36,13 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
     [Trait("Category", "RequiresSqlServerDisposable")]
     public Task NativeDatabaseRecreationKeepsHistoricalIncarnationsSeparateThroughCommitAndReads() => NativeRoundtrip(true, true);
 
-    private async Task NativeRoundtrip(bool qualifyCacheLifecycle, bool recreateDatabase = false)
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    [Trait("Category", "RequiresSqlServerDisposable")]
+    public Task V3NativeCombinedProducerPersistsProtectedCacheContentWithCountersReplayAndRollback() =>
+        NativeRoundtrip(false, protocolVersion: 3);
+
+    private async Task NativeRoundtrip(bool qualifyCacheLifecycle, bool recreateDatabase = false, int protocolVersion = 2)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var settings = new SqlConnectionStringBuilder(SqlServerLabContract.ConnectionString)
@@ -69,7 +75,7 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
                 for (int run = 0; run < (index == 0 ? 3 : 5); run++) await NativeExecute(connection, "EXEC dbo.runtime_probe;", deadline.Token);
                 if (index == 0) await NativeExecute(connection, "EXEC sys.sp_query_store_flush_db;", deadline.Token);
             }
-            await using Scene scene = await Prepare();
+            await using Scene scene = await Prepare(protocolVersion: protocolVersion);
             SqlServerEndpoint endpoint = SqlServerLabContract.Endpoint;
             await using (var configure = scene.Database.DataSource.CreateCommand("UPDATE control.observation_target SET host_name=@host,instance_name=@instance,tcp_port=@port WHERE instance_id=@target;"))
             {
@@ -100,9 +106,11 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
             await using NpgsqlDataSource migrator = MigratorDataSource(scene);
             var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(migrator);
             using var protector = new RoundtripProtector();
-            var collector = new SqlServerQueryPerformanceV2Collector(factory, protector);
-            var registration = new CollectorRegistration(9, collector, new CollectorOutputValidator(SqlServerQueryPerformanceV2Collector.OutputContract),
-                new(QueryPerformanceV2ManifestTests.ManifestDigest), new(QueryPerformanceV2ManifestTests.BundleDigest));
+            ISqlServerCollector collector = protocolVersion == 3 ? new SqlServerQueryPerformanceV3Collector(factory, protector) : new SqlServerQueryPerformanceV2Collector(factory, protector);
+            var registration = new CollectorRegistration(9, collector, new CollectorOutputValidator(protocolVersion == 3
+                ? SqlServerQueryPerformanceV3Collector.OutputContract : SqlServerQueryPerformanceV2Collector.OutputContract),
+                new(protocolVersion == 3 ? QueryPerformanceV3ManifestTests.ManifestDigest : QueryPerformanceV2ManifestTests.ManifestDigest),
+                new(protocolVersion == 3 ? QueryPerformanceV3ManifestTests.BundleDigest : QueryPerformanceV2ManifestTests.BundleDigest));
             Frame first = await Start(scene, cache: false);
             Assert.NotNull(first.Work.CapabilityProfile);
             var firstResult = await new CollectorExecutionEngine().ExecuteAsync(registration, first.Work, first.Run, deadline.Token);
@@ -122,6 +130,28 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
             Assert.Equal(firstLinked.ItemCount, committed.InsertedCount); Assert.Equal(firstLinked.EstimatedSizeBytes, committed.PersistedBytes);
             await AssertDelta(first, firstProbe, null);
             await AssertCanonical(first, firstResult, firstLinked);
+            if (protocolVersion == 3)
+            {
+                var cacheContent = firstLinked.PlanCacheContent!;
+                Assert.Equal(PlanCacheContentCaptureState.Enabled, cacheContent.CaptureState);
+                Assert.Contains(cacheContent.Items, item => item.Text.Reference is not null && item.Plan.Reference is not null);
+                await using var linkedEvidence = scene.Database.DataSource.CreateCommand("""
+                    SELECT count(*)=@count AND bool_and(link.content_state<>'available' OR payload.payload_id IS NOT NULL)
+                    FROM events.plan_cache_content_link link
+                    LEFT JOIN security.protected_diagnostic_payload payload ON payload.payload_id=link.content_reference AND payload.instance_id=link.instance_id
+                    WHERE link.run_id=@run;
+                    """);
+                linkedEvidence.Parameters.AddWithValue("run", first.Run.Value); linkedEvidence.Parameters.AddWithValue("count", cacheContent.Items.Count * 2);
+                Assert.True(Assert.IsType<bool>(await linkedEvidence.ExecuteScalarAsync(deadline.Token)));
+                foreach (var item in firstResult.Payload.PlanCacheContent!.Items)
+                    foreach (var value in new[] { item.Text, item.Plan })
+                    {
+                        if (value.ProtectedContent is not { } encrypted) continue;
+                        byte[] clear = await protector.UnprotectAsync(target.Value, encrypted, deadline.Token);
+                        try { Assert.NotEmpty(clear); Assert.InRange(clear.Length, 1, value.CiphertextBytes); }
+                        finally { CryptographicOperations.ZeroMemory(clear); }
+                    }
+            }
             string afterFirst = await Snapshot(scene);
             Assert.Equal(CollectorRunCommitStatus.Replayed, (await runtime.CommitRunAsync(firstRequest, deadline.Token)).Status);
             Assert.Equal(afterFirst, await Snapshot(scene));
@@ -150,7 +180,7 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
             var badItems = secondLinked.QueryPerformance.Items.Select(item => ReferenceEquals(item, replace)
                 ? item.WithPlanContentReference(new(new(Guid.NewGuid()), SensitivePayloadKind.ExecutionPlan, replace.PlanContentReference!.Fingerprint)) : item).ToArray();
             var badPayload = new CollectorPayload(queryPerformance: new(badItems), queryPerformanceStatuses: secondLinked.QueryPerformanceStatuses,
-                planCacheRuntime: secondLinked.PlanCacheRuntime);
+                planCacheRuntime: secondLinked.PlanCacheRuntime, planCacheContent: secondLinked.PlanCacheContent);
             string beforeFailure = await Snapshot(scene);
             Assert.Equal("23503", (await Assert.ThrowsAsync<PostgresException>(async () => await runtime.CommitRunAsync(
                 new(second.Work, secondResult.Summary, badPayload, secondResult.NextCircuit, second.Lease, Timeout), deadline.Token))).SqlState);
@@ -349,8 +379,8 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
                 CollectorPayload linked = await new QueryPerformanceProtectedContentCommitter(new PostgreSqlSensitivePayloadPort(scene.Collector))
                     .WriteAsync(source, target, frame.Lease, Timeout, deadline.Token);
                 Assert.Same(source.PlanCacheRuntime, linked.PlanCacheRuntime);
-                Assert.Equal(QueryPerformanceV2PersistenceBudget.Measure(source.QueryPerformance.Items, source.QueryPerformanceStatuses, source.PlanCacheRuntime),
-                    QueryPerformanceV2PersistenceBudget.Measure(linked.QueryPerformance.Items, linked.QueryPerformanceStatuses, linked.PlanCacheRuntime));
+                Assert.Equal(QueryPerformanceV3PersistenceBudget.Measure(source.QueryPerformance.Items, source.QueryPerformanceStatuses, source.PlanCacheRuntime, source.PlanCacheContent),
+                    QueryPerformanceV3PersistenceBudget.Measure(linked.QueryPerformance.Items, linked.QueryPerformanceStatuses, linked.PlanCacheRuntime, linked.PlanCacheContent));
                 Assert.DoesNotContain(linked.QueryPerformance.Items, item => item.ProtectedContent is not null || item.ProtectedPlanContent is not null);
                 return linked;
             }

@@ -12,7 +12,8 @@ internal sealed class SqlServerQueryPerformanceV2Collector : ISqlServerCollector
 {
     internal static CollectorOutputContract OutputContract { get; } = new(new(2), [], 0, 0, 0,
         maxQueryPerformanceObservations: 20_000, maxPlanCacheRuntimeObservations: 2_000);
-    private readonly SqlServerQueryPerformanceV2AssetCatalog catalog;
+    private readonly SqlServerCollectorAsset asset;
+    private readonly SqlServerQueryPerformanceCollectorAssetCatalog queryStoreAssets;
     private readonly ISqlServerConnectionFactory factory;
     private readonly IQuerySensitiveContentProtector? protector;
     private readonly Func<CollectorExecutionRequest, CancellationToken, Task<PlanCacheRuntimeTargetRead>> cacheRead;
@@ -29,12 +30,26 @@ internal sealed class SqlServerQueryPerformanceV2Collector : ISqlServerCollector
         Func<CollectorExecutionRequest, CancellationToken, Task<PlanCacheRuntimeTargetRead>>? cacheRead,
         ISqlServerQueryPerformanceExecutionPort? queryStorePort)
     {
-        this.catalog = catalog; this.factory = factory; this.protector = protector; this.queryStorePort = queryStorePort;
+        asset = catalog.Asset; queryStoreAssets = catalog.QueryStore; this.factory = factory; this.protector = protector; this.queryStorePort = queryStorePort;
         this.cacheRead = cacheRead ?? ((request, token) => new PlanCacheRuntimeTargetSource(
             new PlanCacheRuntimeTargetExecutionPort(factory)).ReadAsync(request, 2_000, token));
     }
 
-    public CollectorManifest Manifest => catalog.Asset.Manifest;
+    // The shared bounded phases preserve v2 semantics; v3 additionally requires
+    // content from the same qualified cache capture and charges it independently.
+    internal SqlServerQueryPerformanceV2Collector(SqlServerQueryPerformanceV3AssetCatalog catalog,
+        ISqlServerConnectionFactory factory, IQuerySensitiveContentProtector? protector,
+        Func<CollectorExecutionRequest, CancellationToken, Task<PlanCacheRuntimeTargetRead>>? cacheRead,
+        ISqlServerQueryPerformanceExecutionPort? queryStorePort)
+    {
+        asset = catalog.Asset; queryStoreAssets = catalog.QueryStore;
+        this.factory = factory; this.protector = protector ?? new UnavailableQuerySensitiveContentProtector();
+        this.queryStorePort = queryStorePort;
+        this.cacheRead = cacheRead ?? ((request, token) => new PlanCacheRuntimeTargetSource(
+            new PlanCacheRuntimeTargetExecutionPort(factory)).ReadWithContentAsync(request, 2_000, 8, this.protector, token));
+    }
+
+    public CollectorManifest Manifest => asset.Manifest;
 
     public async ValueTask<CollectorExecutionResult> CollectAsync(CollectorExecutionRequest request, CancellationToken cancellationToken)
     {
@@ -56,11 +71,13 @@ internal sealed class SqlServerQueryPerformanceV2Collector : ISqlServerCollector
             PlanCacheRuntimeTargetRead? cache = canReadCache ? await cacheRead(RemainingRequest(), deadline.Token).ConfigureAwait(false) : null;
             deadline.Token.ThrowIfCancellationRequested();
             int responseLimit = checked(QueryPerformanceV2OutputValidation.MaximumResponseBytes - (cache?.ResponseBytes ?? 0));
-            int outputLimit = checked(QueryPerformanceV2OutputValidation.MaximumResponseBytes - (cache?.Output.EstimatedSizeBytes ?? 0));
+            int outputLimit = checked(QueryPerformanceV2OutputValidation.MaximumResponseBytes - (cache?.Output.EstimatedSizeBytes ?? 0)
+                - (Manifest.ManifestVersion.Value == 3 ? cache?.Content?.EstimatedSizeBytes ?? 0 : 0));
             if (responseLimit <= 0 || outputLimit <= 0) throw new InvalidDataException("Cache phase exceeds the combined source or output budget.");
-            var queryStore = new SqlServerQueryPerformanceCollector(catalog.Asset, catalog.QueryStore, factory, protector,
-                responseLimit, payload => QueryPerformanceV2PersistenceBudget.Measure(payload.QueryPerformance.Items,
-                    payload.QueryPerformanceStatuses, cache?.Output), outputLimit, queryStorePort);
+            var queryStore = new SqlServerQueryPerformanceCollector(asset, queryStoreAssets, factory, protector,
+                responseLimit, payload => Manifest.ManifestVersion.Value == 3
+                    ? QueryPerformanceV3PersistenceBudget.Measure(payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, cache?.Output, cache?.Content)
+                    : QueryPerformanceV2PersistenceBudget.Measure(payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, cache?.Output), outputLimit, queryStorePort);
             CollectorExecutionResult result = await queryStore.CollectAsync(RemainingRequest(), deadline.Token).ConfigureAwait(false);
             deadline.Token.ThrowIfCancellationRequested();
             // Global connection/deadline failures cannot publish earlier cache
@@ -70,7 +87,8 @@ internal sealed class SqlServerQueryPerformanceV2Collector : ISqlServerCollector
             if (cache is null && result.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
                 return Failed(result.Outcome, result.Reason);
             var payload = new CollectorPayload(queryPerformance: result.Payload.QueryPerformance,
-                queryPerformanceStatuses: result.Payload.QueryPerformanceStatuses, planCacheRuntime: cache?.Output);
+                queryPerformanceStatuses: result.Payload.QueryPerformanceStatuses, planCacheRuntime: cache?.Output,
+                planCacheContent: Manifest.ManifestVersion.Value == 3 ? cache?.Content : null);
             CollectorLossEvidence loss = result.Loss;
             if (cache is not null && !cache.Output.QualifiedExhaustive)
             {
@@ -93,8 +111,9 @@ internal sealed class SqlServerQueryPerformanceV2Collector : ISqlServerCollector
             };
             var accounting = new CollectorRunAccounting(checked(result.Accounting.SourceRowsRead + (cache?.SourceRowsRead ?? 0)),
                 payload.ItemCount, checked(result.Accounting.ResponseBytes + (cache?.ResponseBytes ?? 0)), payload.EstimatedSizeBytes);
-            QueryPerformanceV2OutputValidation.Validate(payload, request.TargetId, request.TargetRevision, outcome, accounting, loss);
-            return new(request.TargetId, request.TargetRevision, Manifest.Id, 2, 2, outcome, reason, payload, accounting, loss);
+            if (Manifest.ManifestVersion.Value == 3) QueryPerformanceV3OutputValidation.Validate(payload, request.TargetId, request.TargetRevision, outcome, accounting, loss);
+            else QueryPerformanceV2OutputValidation.Validate(payload, request.TargetId, request.TargetRevision, outcome, accounting, loss);
+            return new(request.TargetId, request.TargetRevision, Manifest.Id, Manifest.ManifestVersion.Value, Manifest.OutputSchemaVersion.Value, outcome, reason, payload, accounting, loss);
         }
         catch (Exception) when (cancellationToken.IsCancellationRequested) { throw new OperationCanceledException(cancellationToken); }
         catch (Exception) when (deadline.IsCancellationRequested) { return Failed(CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
@@ -120,7 +139,7 @@ internal sealed class SqlServerQueryPerformanceV2Collector : ISqlServerCollector
         {
             CollectorLossEvidence loss = outcome == CollectorRunOutcome.OutputInvalid
                 ? new(CollectorLossKind.OutputValidationFailure, 1, false) : CollectorLossEvidence.None;
-            return new(request.TargetId, request.TargetRevision, Manifest.Id, 2, 2, outcome, reason,
+            return new(request.TargetId, request.TargetRevision, Manifest.Id, Manifest.ManifestVersion.Value, Manifest.OutputSchemaVersion.Value, outcome, reason,
                 new(queryPerformanceTargetStatus: targetStatus), new(0, 0, 0, 0), loss);
         }
     }

@@ -345,4 +345,9 @@
     <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver16-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver16-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver17-windows.v1.sql" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance.v3.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV3Assets.queries.performance.v3.json" />
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance.v3.schema.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV3Assets.queries.performance.v3.schema.json" />
+    <EmbeddedResource Include="../../collectors/manifests/m7-query-performance-v3.assets.sha256" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV3Assets.m7-query-performance-v3.assets.sha256" />
+  </ItemGroup>
 </Project>

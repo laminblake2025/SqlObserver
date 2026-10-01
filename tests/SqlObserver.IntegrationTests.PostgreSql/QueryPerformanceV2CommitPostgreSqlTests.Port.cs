@@ -22,7 +22,7 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
         foreach ((string id, int manifest, int schema) in new[]
         {
             ("queries.performance",1,1), ("queries.performance",2,1),
-            ("queries.performance",1,2), ("queries.performance",3,3), ("queries.performance-groups",2,2),
+            ("queries.performance",1,2), ("queries.performance",4,4), ("queries.performance-groups",2,2),
         })
         {
             CollectorDueWorkItem work = frame.Work;
@@ -34,7 +34,7 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
                 new(3, payload.ItemCount, payload.EstimatedSizeBytes, payload.EstimatedSizeBytes), CollectorLossEvidence.None);
             await Assert.ThrowsAsync<InvalidDataException>(async () => await port.CommitRunAsync(new(other, summary, payload,
                 CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), frame.Lease, Timeout), default));
-            if (id == "queries.performance" && (manifest is not (1 or 2) || manifest != schema))
+            if (id == "queries.performance" && (manifest is not (1 or 2 or 3) || manifest != schema))
             {
                 var queryStoreOnly = new CollectorPayload(queryPerformance: payload.QueryPerformance,
                     queryPerformanceStatuses: payload.QueryPerformanceStatuses);
@@ -242,10 +242,10 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
     {
         CollectorRunOutcome state = outcome ?? (frame.Capped ? CollectorRunOutcome.Partial : CollectorRunOutcome.Succeeded);
         loss ??= frame.Capped ? new(CollectorLossKind.SourceRowLimit, 1, false) : CollectorLossEvidence.None;
-        accounting ??= new(payload.QueryPerformanceStatuses.Sum(status => status.SourceRowsRead) + (frame.Cache?.CandidateRows ?? 0),
+        accounting ??= new(payload.QueryPerformanceStatuses.Sum(status => status.SourceRowsRead) + (frame.Cache?.CandidateRows ?? 0) + (payload.PlanCacheContent?.AttemptedEntries ?? 0),
             payload.ItemCount, payload.EstimatedSizeBytes, payload.EstimatedSizeBytes);
         var summary = new CollectorRunSummary(frame.Run, frame.Work.TargetId, frame.Work.TargetRevision, frame.Work.CollectorId,
-            2, 2, state, state switch
+            frame.Work.CollectorManifestVersion, frame.Work.OutputSchemaVersion, state, state switch
             {
                 CollectorRunOutcome.Partial => CollectorRunReason.SourceRowLimit,
                 CollectorRunOutcome.OutputInvalid => CollectorRunReason.OutputValidationFailed,

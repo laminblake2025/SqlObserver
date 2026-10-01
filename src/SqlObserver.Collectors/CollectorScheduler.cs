@@ -314,7 +314,8 @@ public sealed class CollectorScheduler
                     : CollectorExecutionEngine.CreateIneligibleResult(registration, work, runId, eligibility);
 
                 if (engineResult.Payload.QueryPerformance.Items.Any(static item =>
-                        item.ProtectedContent is not null || item.ProtectedPlanContent is not null))
+                        item.ProtectedContent is not null || item.ProtectedPlanContent is not null) ||
+                    engineResult.Payload.PlanCacheContent is not null)
                 {
                     if (_queryContentCommitter is null)
                         throw new InvalidOperationException("Protected query content requires the fenced payload writer.");

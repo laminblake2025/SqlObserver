@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "queries.performance.v3.schema.json",
+  "title": "Exact staged SQL Server query performance v3 collector manifest",
+  "const": {
+    "$schema": "queries.performance.v3.schema.json",
+    "schemaVersion": 9,
+    "collectorId": "queries.performance",
+    "collectorVersion": 3,
+    "displayName": "SQL Server Query Store, cache-entry deltas and protected statement content",
+    "operationalMode": "passive",
+    "dependsOn": [
+      "capability.connection",
+      "engine.core",
+      "database.inventory"
+    ],
+    "supportedTargets": {
+      "product": "Microsoft SQL Server",
+      "minimumMajorVersion": 15,
+      "maximumMajorVersion": 17,
+      "platforms": [
+        "Windows"
+      ],
+      "engineEditions": [
+        2,
+        3,
+        4
+      ]
+    },
+    "requiredCapabilities": [
+      "connection.tds",
+      "authentication.windows-integrated",
+      "transport.tls-validated",
+      "privilege.non-sysadmin",
+      "platform.windows"
+    ],
+    "requiredPermissionsByMajor": {
+      "15": [
+        "database.view-state"
+      ],
+      "16": [
+        "database.view-performance-state"
+      ],
+      "17": [
+        "database.view-performance-state"
+      ]
+    },
+    "cadence": {
+      "defaultIntervalSeconds": 300,
+      "minimumIntervalSeconds": 60,
+      "nonOverlappingPerTarget": true
+    },
+    "executionBounds": {
+      "connectTimeoutSeconds": 5,
+      "commandTimeoutSeconds": 120,
+      "maximumRows": 22008,
+      "maximumResponseBytes": 8388608
+    },
+    "resilience": {
+      "maximumAttempts": 2,
+      "transientRetryDelayMilliseconds": 100,
+      "circuitFailureThreshold": 3,
+      "circuitOpenSeconds": 300
+    },
+    "estimatedCostClass": "moderate",
+    "fallback": {
+      "mode": "plan-cache",
+      "singleAttempt": true,
+      "permissionsByMajor": {
+        "15": [
+          "server.view-state"
+        ],
+        "16": [
+          "server.view-performance-state"
+        ],
+        "17": [
+          "server.view-performance-state"
+        ]
+      },
+      "on": {
+        "disabled": "fallback",
+        "unsupported": "fallback",
+        "permission_denied": "fallback",
+        "read_failure": "fallback",
+        "timed_out": "fallback",
+        "cancelled": "no_fallback",
+        "fence_lost": "no_fallback"
+      }
+    },
+    "queryResources": {
+      "supportedByMajor": {
+        "15": "queries.performance.sqlserver15-windows.v1.sql",
+        "16": "queries.performance.sqlserver16-windows.v1.sql",
+        "17": "queries.performance.sqlserver17-windows.v1.sql"
+      },
+      "queryText": {
+        "supportedByMajor": {
+          "15": "queries.performance.text.sqlserver15-windows.v1.sql",
+          "16": "queries.performance.text.sqlserver16-windows.v1.sql",
+          "17": "queries.performance.text.sqlserver17-windows.v1.sql"
+        },
+        "serverPermissionByMajor": {
+          "15": "server.view-state",
+          "16": "server.view-performance-state",
+          "17": "server.view-performance-state"
+        },
+        "maximumTextsPerTarget": 32,
+        "maximumUtf16Bytes": 8192
+      },
+      "executionPlan": {
+        "supportedByMajor": {
+          "15": "queries.performance.plan.sqlserver15-windows.v1.sql",
+          "16": "queries.performance.plan.sqlserver16-windows.v1.sql",
+          "17": "queries.performance.plan.sqlserver17-windows.v1.sql"
+        },
+        "serverPermissionByMajor": {
+          "15": "server.view-state",
+          "16": "server.view-performance-state",
+          "17": "server.view-performance-state"
+        },
+        "maximumPlansPerTarget": 4,
+        "maximumUtf16Bytes": 524288
+      },
+      "queryWaits": {
+        "supportedByMajor": {
+          "15": "queries.performance.waits.sqlserver15-windows.v1.sql",
+          "16": "queries.performance.waits.sqlserver16-windows.v1.sql",
+          "17": "queries.performance.waits.sqlserver17-windows.v1.sql"
+        },
+        "serverPermissionByMajor": {
+          "15": "server.view-state",
+          "16": "server.view-performance-state",
+          "17": "server.view-performance-state"
+        },
+        "maximumPlansPerTarget": 8,
+        "maximumCategoriesPerPlan": 32,
+        "maximumRows": 256
+      },
+      "cacheRuntime": {
+        "accountingFormatVersion": 1,
+        "bundleIndex": "collectors/plan-cache-content/assets.sha256",
+        "maximumCandidates": 2000,
+        "captureTimeoutSeconds": 20,
+        "identityResource": "collectors/plan-cache-identity/read.v1.sql",
+        "identityTimeoutSeconds": 5,
+        "maximumIdentityWindowSeconds": 30,
+        "maximumDatabases": 256,
+        "timestampResolution": "microseconds",
+        "queryStorePreferred": true
+      },
+      "cacheContent": {
+        "accountingFormatVersion": 1,
+        "bundleIndex": "collectors/plan-cache-content/assets.sha256",
+        "maximumEntries": 8,
+        "maximumSourceUtf16Bytes": 2097152,
+        "maximumTextCiphertextBytes": 16384,
+        "maximumPlanCiphertextBytes": 1048576,
+        "maximumCiphertextBytes": 2097152,
+        "maximumLinkJsonBytes": 32768,
+        "captureMode": "same-qualified-counter-frame",
+        "captureStates": [
+          "enabled",
+          "disabled",
+          "protection_unavailable"
+        ],
+        "missingContent": "explicit-per-kind-state-without-reference",
+        "counterFrameSource": "same-bundle-and-read-as-cacheRuntime"
+      }
+    },
+    "outputSchemaVersion": 3,
+    "outputKind": "query-performance",
+    "defaultEnabled": false,
+    "outputContract": {
+      "queryStoreMaximumItems": 20000,
+      "cacheMaximumItems": 2000,
+      "maximumCombinedBytes": 8388608,
+      "cacheCounters": "cumulative-microseconds-before-fenced-difference",
+      "cacheOutputAccounting": "selected-statement-tuples",
+      "cacheCoverage": "selected-completeness-independent-of-aggregate-coverage",
+      "atomicSidecars": [
+        "query-text",
+        "execution-plan",
+        "query-waits",
+        "cache-statement-content"
+      ],
+      "activation": "requires-qualified-versioned-source-and-fenced-catalog-rollout",
+      "cacheContentMaximumItems": 8,
+      "cacheContentOutputAccounting": "qualified-statement-content-pairs",
+      "cacheContentRetrieval": "audited-role-gated-exact-run-incarnation-entry"
+    }
+  }
+}

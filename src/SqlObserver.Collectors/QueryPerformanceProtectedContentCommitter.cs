@@ -17,7 +17,8 @@ public sealed class QueryPerformanceProtectedContentCommitter(ISensitivePayloadP
         ArgumentNullException.ThrowIfNull(payload);
         var observations = payload.QueryPerformance.Items;
         if (!observations.Any(static item => item.ProtectedContent is not null ||
-                                         item.ProtectedPlanContent is not null)) return payload;
+                                         item.ProtectedPlanContent is not null) &&
+            payload.PlanCacheContent is null) return payload;
 
         var references = new Dictionary<(SensitivePayloadKind Kind, string Fingerprint), SensitivePayloadReference>();
         var linked = new QueryPerformanceObservation[observations.Count];
@@ -47,11 +48,14 @@ public sealed class QueryPerformanceProtectedContentCommitter(ISensitivePayloadP
             }
             linked[index] = current;
         }
+        var linkedCacheContent = payload.PlanCacheContent is { } cacheContent
+            ? await new PlanCacheContentProtectedCommitter(port).WriteAsync(cacheContent, targetId, lease, timeout, cancellationToken).ConfigureAwait(false)
+            : null;
         return new CollectorPayload(payload.Metrics, payload.Databases, payload.DatabaseFiles,
             payload.ActivitySessions, payload.ActivityRequests, payload.ServerWaits,
             payload.BlockingEdges, payload.Deadlocks,
             new QueryPerformanceObservationBatch(linked), payload.QueryPerformanceStatuses,
             payload.QueryPerformanceTargetStatus, payload.OperationalHealth, payload.HostMetricsContext,
-            payload.SqlVolumes, payload.QueryStoreGroups, payload.ServerConfigurations, payload.PlanCacheRuntime);
+            payload.SqlVolumes, payload.QueryStoreGroups, payload.ServerConfigurations, payload.PlanCacheRuntime, linkedCacheContent);
     }
 }

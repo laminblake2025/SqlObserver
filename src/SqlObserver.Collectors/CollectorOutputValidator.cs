@@ -37,7 +37,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             throw new InvalidDataException("Collector output identity or contract version is invalid.");
         }
         if (manifest.Id.Value == "queries.performance" &&
-            (manifest.ManifestVersion.Value is not (1 or 2) ||
+            (manifest.ManifestVersion.Value is not (1 or 2 or 3) ||
              manifest.OutputSchemaVersion.Value != manifest.ManifestVersion.Value ||
              manifest.OutputKind != CollectorOutputKind.QueryPerformance))
             throw new InvalidDataException("Query performance requires a supported matching version and output schema.");
@@ -76,7 +76,9 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
                 : manifest.Id.Value == "storage.volume"
                     ? manifest.Limits.MaxRows + 1
                 : manifest.Id.Value == "queries.performance"
-            ? manifest.ManifestVersion.Value == 2
+            ? manifest.ManifestVersion.Value == 3
+                ? QueryPerformanceV3OutputValidation.MaximumSourceRows
+                : manifest.ManifestVersion.Value == 2
                 ? QueryPerformanceV2OutputValidation.MaximumSourceRows
                 : QueryPerformanceBounds.MaximumDatabases * QueryPerformanceBounds.ProbeRows
             : manifest.Limits.MaxRows;
@@ -105,6 +107,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             (payload.QueryStoreGroups is not null && Contract.MaxQueryStoreGroupObservations == 0) ||
             (payload.PlanCacheRuntime?.Items.Count ?? 0) > Contract.MaxPlanCacheRuntimeObservations ||
             (payload.PlanCacheRuntime is not null && Contract.MaxPlanCacheRuntimeObservations == 0) ||
+            (payload.PlanCacheContent?.Items.Count ?? 0) > Contract.MaxPlanCacheContentObservations ||
+            (payload.PlanCacheContent is not null && Contract.MaxPlanCacheContentObservations == 0) ||
             payload.ServerConfigurations.Items.Count > Contract.MaxServerConfigurationObservations ||
             (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations)
         {
@@ -179,7 +183,15 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         bool queryPerformanceV2 = manifest.Id.Value == "queries.performance" &&
             manifest.ManifestVersion.Value == 2 && manifest.OutputSchemaVersion.Value == 2 &&
             manifest.OutputKind == CollectorOutputKind.QueryPerformance;
-        if (payload.PlanCacheRuntime is not null && !queryPerformanceV2)
+        bool queryPerformanceV3 = manifest.Id.Value == "queries.performance" &&
+            manifest.ManifestVersion.Value == 3 && manifest.OutputSchemaVersion.Value == 3 &&
+            manifest.OutputKind == CollectorOutputKind.QueryPerformance;
+        if (payload.PlanCacheContent is not null && !queryPerformanceV3)
+            throw new InvalidDataException("Cache content requires the exact query performance v3 contract.");
+        if (queryPerformanceV3)
+            QueryPerformanceV3OutputValidation.Validate(payload, request.TargetId, request.TargetRevision,
+                result.Outcome, result.Accounting, result.Loss);
+        if (payload.PlanCacheRuntime is not null && !queryPerformanceV2 && !queryPerformanceV3)
             throw new InvalidDataException("Selected cache tuples require the exact query performance v2 contract.");
         if (queryPerformanceV2)
             QueryPerformanceV2OutputValidation.Validate(payload, request.TargetId, request.TargetRevision,
@@ -188,7 +200,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         // Incomplete topology and unqualified cache evidence require a supported
         // protocol with explicit coverage. This is not a generic Partial marker.
         if (result.Loss.Kind == CollectorLossKind.VisibilityIncomplete &&
-            !(queryPerformanceV2 && payload.PlanCacheRuntime is { QualifiedExhaustive: false } &&
+            !((queryPerformanceV2 || queryPerformanceV3) && payload.PlanCacheRuntime is { QualifiedExhaustive: false } &&
                 result.Outcome == CollectorRunOutcome.Partial && result.Reason == CollectorRunReason.VisibilityIncomplete) &&
             (manifest.Id.Value is not ("availability-groups.health" or "replication.health" or "backups.status") ||
              result.Outcome != CollectorRunOutcome.Partial ||

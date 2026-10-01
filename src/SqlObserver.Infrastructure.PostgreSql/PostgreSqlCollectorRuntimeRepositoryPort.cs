@@ -622,54 +622,54 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         ArgumentNullException.ThrowIfNull(request.Owner);
         ArgumentNullException.ThrowIfNull(request.LeaseDuration);
         ArgumentNullException.ThrowIfNull(request.Timeout);
-        using CancellationTokenSource timeout = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout,cancellationToken);
-        WorkerLeaseIdentity? identity=null;
+        using CancellationTokenSource timeout = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout, cancellationToken);
+        WorkerLeaseIdentity? identity = null;
         try
         {
             DueRow row;
             WorkerLease lease;
             DateTimeOffset leaseRepositoryTime;
-            await using(NpgsqlConnection connection=await _dataSource.OpenConnectionAsync(timeout.Token).ConfigureAwait(false))
-            await using(var command=new NpgsqlCommand(ClaimDueSql,connection)
+            await using (NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(timeout.Token).ConfigureAwait(false))
+            await using (var command = new NpgsqlCommand(ClaimDueSql, connection)
             {
-                CommandTimeout=PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             })
             {
-                command.Parameters.AddWithValue("owner_execution_id",request.Owner.Value);
-                command.Parameters.AddWithValue("ttl",request.LeaseDuration.Value);
-                await using NpgsqlDataReader reader=await command.ExecuteReaderAsync(timeout.Token).ConfigureAwait(false);
-                if(!await reader.ReadAsync(timeout.Token).ConfigureAwait(false)) return null;
-                identity=new WorkerLeaseIdentity(
-                    new WorkerLeaseKey("collector/run/"+reader.GetString(9)+"/"+reader.GetGuid(0).ToString("N")),
-                    request.Owner,new FencingToken(reader.GetInt64(19)));
-                row=ReadDueRow(reader);
-                lease=new WorkerLease(identity,
-                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,20),
-                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,21),
-                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,22));
-                leaseRepositoryTime=PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,23);
+                command.Parameters.AddWithValue("owner_execution_id", request.Owner.Value);
+                command.Parameters.AddWithValue("ttl", request.LeaseDuration.Value);
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(timeout.Token).ConfigureAwait(false);
+                if (!await reader.ReadAsync(timeout.Token).ConfigureAwait(false)) return null;
+                identity = new WorkerLeaseIdentity(
+                    new WorkerLeaseKey("collector/run/" + reader.GetString(9) + "/" + reader.GetGuid(0).ToString("N")),
+                    request.Owner, new FencingToken(reader.GetInt64(19)));
+                row = ReadDueRow(reader);
+                lease = new WorkerLease(identity,
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 20),
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 21),
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 22));
+                leaseRepositoryTime = PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 23);
             }
 
-            CapabilityProfileBatch profiles=await _capabilityProfiles.GetLatestForTargetsAsync(
-                new GetLatestCapabilityProfilesRequest([row.TargetId],request.Timeout),timeout.Token).ConfigureAwait(false);
-            CapabilityProfile? profile=profiles.Profiles.SingleOrDefault();
-            if(profile is not null && profile.TargetRevision!=row.TargetRevision) profile=null;
-            var work=new CollectorDueWorkItem(row.TargetId,row.TargetRevision,row.ConnectionPolicy,
-                row.CollectorId,row.CollectorVersion,row.OutputSchemaVersion,row.ScheduleRevision,
-                row.ScheduledAtUtc,row.RepositoryTimeUtc,row.Circuit,profile);
-            return new CollectorClaimedWork(work,lease,leaseRepositoryTime);
+            CapabilityProfileBatch profiles = await _capabilityProfiles.GetLatestForTargetsAsync(
+                new GetLatestCapabilityProfilesRequest([row.TargetId], request.Timeout), timeout.Token).ConfigureAwait(false);
+            CapabilityProfile? profile = profiles.Profiles.SingleOrDefault();
+            if (profile is not null && profile.TargetRevision != row.TargetRevision) profile = null;
+            var work = new CollectorDueWorkItem(row.TargetId, row.TargetRevision, row.ConnectionPolicy,
+                row.CollectorId, row.CollectorVersion, row.OutputSchemaVersion, row.ScheduleRevision,
+                row.ScheduledAtUtc, row.RepositoryTimeUtc, row.Circuit, profile);
+            return new CollectorClaimedWork(work, lease, leaseRepositoryTime);
         }
         catch
         {
-            if(identity is not null)
+            if (identity is not null)
             {
                 try
                 {
-                    await using var release=_dataSource.CreateCommand("SELECT control.release_worker_lease(@key,@owner,@fence)");
-                    release.CommandTimeout=5;
-                    release.Parameters.AddWithValue("key",identity.Key.Value);
-                    release.Parameters.AddWithValue("owner",identity.Owner.Value);
-                    release.Parameters.AddWithValue("fence",identity.FencingToken.Value);
+                    await using var release = _dataSource.CreateCommand("SELECT control.release_worker_lease(@key,@owner,@fence)");
+                    release.CommandTimeout = 5;
+                    release.Parameters.AddWithValue("key", identity.Key.Value);
+                    release.Parameters.AddWithValue("owner", identity.Owner.Value);
+                    release.Parameters.AddWithValue("fence", identity.FencingToken.Value);
                     await release.ExecuteScalarAsync(CancellationToken.None).ConfigureAwait(false);
                 }
                 catch { /* The bounded lease expiry remains the recovery path. */ }
@@ -769,6 +769,8 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                 return await CommitTypedWithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, sqlVolumeCollector, bufferNodePleCollector, serverConfigurationCollector, timeout.Token).ConfigureAwait(false);
             if (queryPerformanceCollector)
             {
+                if (request.Work.CollectorManifestVersion == 3 && request.Work.OutputSchemaVersion == 3)
+                    return await CommitQueryPerformanceV3Async(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
                 if (request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2)
                     return await CommitQueryPerformanceV2Async(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
                 return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
@@ -1334,8 +1336,21 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         // completion digests when this source field was not collected.
         if (item.SourceLocalStart is not { } local)
             return new { item.JobId, item.HistoryInstanceId, item.StepId, item.RunStatus, failureKind = (int)item.FailureKind, item.MessageId, item.Severity, item.RetryAttempt, item.DurationSeconds, item.FirstObservedAtUtc, item.FailureFingerprint };
-        return new { item.JobId, item.HistoryInstanceId, item.StepId, item.RunStatus, failureKind = (int)item.FailureKind, item.MessageId, item.Severity, item.RetryAttempt, item.DurationSeconds, item.FirstObservedAtUtc, item.FailureFingerprint,
-            sourceLocalStart = local.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) };
+        return new
+        {
+            item.JobId,
+            item.HistoryInstanceId,
+            item.StepId,
+            item.RunStatus,
+            failureKind = (int)item.FailureKind,
+            item.MessageId,
+            item.Severity,
+            item.RetryAttempt,
+            item.DurationSeconds,
+            item.FirstObservedAtUtc,
+            item.FailureFingerprint,
+            sourceLocalStart = local.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)
+        };
     }
 
     private static void AddQueryPerformanceCommitParameters(NpgsqlCommand command, CommitCollectorRunRequest request)
@@ -1614,7 +1629,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
     {
         if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18 or 19))
         {
-                throw new InvalidDataException("PostgreSQL accepts only an exact reviewed collector catalog.");
+            throw new InvalidDataException("PostgreSQL accepts only an exact reviewed collector catalog.");
         }
 
         for (int index = 0; index < entries.Count; index++)
@@ -1672,12 +1687,22 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
         if (request.Work.CollectorId.Value == "queries.performance" &&
-            (request.Work.CollectorManifestVersion is not (1 or 2) ||
+            (request.Work.CollectorManifestVersion is not (1 or 2 or 3) ||
              request.Work.OutputSchemaVersion != request.Work.CollectorManifestVersion))
             throw new InvalidDataException("Query performance requires a supported matching version and output schema.");
         bool queryPerformanceV2 = request.Work.CollectorId.Value == "queries.performance" &&
             request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2;
-        if (request.Payload.PlanCacheRuntime is not null && !queryPerformanceV2)
+        bool queryPerformanceV3 = request.Work.CollectorId.Value == "queries.performance" &&
+            request.Work.CollectorManifestVersion == 3 && request.Work.OutputSchemaVersion == 3;
+        if (request.Payload.PlanCacheContent is not null && !queryPerformanceV3)
+            throw new InvalidDataException("Cache content requires the exact query performance v3 collector.");
+        if (request.Payload.PlanCacheContent?.Items.Any(static item =>
+                item.Text.ProtectedContent is not null || item.Plan.ProtectedContent is not null) == true)
+            throw new InvalidDataException("Cache content must have leased repository references before canonical commit.");
+        if (queryPerformanceV3)
+            QueryPerformanceV3OutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Accounting, request.Summary.Loss);
+        if (request.Payload.PlanCacheRuntime is not null && !queryPerformanceV2 && !queryPerformanceV3)
             throw new InvalidDataException("Selected cache tuples require the exact query performance v2 collector.");
         if (queryPerformanceV2)
             QueryPerformanceV2OutputValidation.Validate(request.Payload, request.Work.TargetId,

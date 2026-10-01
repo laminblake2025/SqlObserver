@@ -273,7 +273,7 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests(PostgreSql18
         await Reject(scene, frame, "55000");
     }
 
-    private async Task<Scene> Prepare(bool badContract = false)
+    private async Task<Scene> Prepare(bool badContract = false, int protocolVersion = 2)
     {
         RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         try
@@ -302,22 +302,25 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests(PostgreSql18
                     'windows_integrated_service_identity','mandatory_validated','active',1,now(),now(),now());
                 INSERT INTO control.collector_contract
                 SELECT (jsonb_populate_record(NULL::control.collector_contract,to_jsonb(c)||jsonb_build_object(
-                    'collector_version',2,'manifest_schema_version',8,'output_schema_version',2,
+                    'collector_version',@version,'manifest_schema_version',@schema,'output_schema_version',@version,
                     'manifest_sha256',decode(@manifest,'hex'),'asset_bundle_sha256',decode(@bundle,'hex'),
-                    'execution_timeout',interval '2 minutes','maximum_rows',22000))).*
+                    'execution_timeout',interval '2 minutes','maximum_rows',@maximum))).*
                 FROM control.collector_contract c WHERE c.collector_id='queries.performance' AND c.collector_version=1;
                 UPDATE control.collector_schedule SET enabled=collector_id='queries.performance',
-                    collector_version=CASE WHEN collector_id='queries.performance' THEN 2 ELSE collector_version END,
+                    collector_version=CASE WHEN collector_id='queries.performance' THEN @version ELSE collector_version END,
                     last_outcome=CASE WHEN collector_id IN ('engine.core','database.inventory') THEN 'succeeded' ELSE last_outcome END
                 WHERE instance_id=@target;
                 """))
             {
                 seed.Parameters.AddWithValue("target", target);
-                seed.Parameters.AddWithValue("manifest", badContract ? Digest('0') : QueryPerformanceV2ManifestTests.ManifestDigest);
-                seed.Parameters.AddWithValue("bundle", QueryPerformanceV2ManifestTests.BundleDigest);
+                seed.Parameters.AddWithValue("version", protocolVersion);
+                seed.Parameters.AddWithValue("schema", protocolVersion == 3 ? 9 : 8);
+                seed.Parameters.AddWithValue("maximum", protocolVersion == 3 ? 22008 : 22000);
+                seed.Parameters.AddWithValue("manifest", badContract ? Digest('0') : protocolVersion == 3 ? QueryPerformanceV3ManifestTests.ManifestDigest : QueryPerformanceV2ManifestTests.ManifestDigest);
+                seed.Parameters.AddWithValue("bundle", protocolVersion == 3 ? QueryPerformanceV3ManifestTests.BundleDigest : QueryPerformanceV2ManifestTests.BundleDigest);
                 await seed.ExecuteNonQueryAsync();
             }
-            return new(database, database.CreateCollectorDataSource(), target);
+            return new(database, database.CreateCollectorDataSource(), target) { ProtocolVersion = protocolVersion };
         }
         catch { await database.DisposeAsync(); throw; }
     }
@@ -330,7 +333,7 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests(PostgreSql18
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(scene.Collector);
         CollectorDueWorkItem work = Assert.Single((await runtime.ListDueAsync(new(16, Timeout), default)).Items,
             item => item.CollectorId.Value == "queries.performance" && item.TargetId.Value == scene.Target);
-        Assert.Equal(2, work.CollectorManifestVersion); Assert.Equal(2, work.OutputSchemaVersion);
+        Assert.Equal(scene.ProtocolVersion, work.CollectorManifestVersion); Assert.Equal(scene.ProtocolVersion, work.OutputSchemaVersion);
         LeaseAcquisitionResult acquired = await new PostgreSqlWorkerLeasePort(scene.Collector).AcquireAsync(
             new(new($"collector/run/queries.performance/{scene.Target:N}"), new(Guid.NewGuid()), new(TimeSpan.FromMinutes(5)), Timeout), default);
         WorkerLeaseIdentity lease = Assert.IsType<WorkerLease>(acquired.Lease).Identity;
@@ -528,6 +531,8 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests(PostgreSql18
                 (SELECT jsonb_agg(to_jsonb(w) ORDER BY observed_day,cache_entry_fingerprint) FROM events.plan_cache_runtime_watermark w),
                 (SELECT jsonb_agg(to_jsonb(d) ORDER BY committed_at,cache_entry_fingerprint) FROM events.plan_cache_runtime_delta d),
                 (SELECT jsonb_agg(to_jsonb(r) ORDER BY committed_at,run_id) FROM events.plan_cache_runtime_receipt r),
+                (SELECT jsonb_agg(to_jsonb(r) ORDER BY committed_at,run_id) FROM events.plan_cache_content_receipt r),
+                (SELECT jsonb_agg(to_jsonb(r) ORDER BY committed_at,run_id,cache_entry_fingerprint,payload_kind) FROM events.plan_cache_content_link r),
                 (SELECT jsonb_agg(to_jsonb(q) ORDER BY collection_run_id) FROM events.query_performance_run q),
                 (SELECT jsonb_agg(to_jsonb(q) ORDER BY collection_run_id) FROM events.query_performance_observation q),
                 (SELECT jsonb_agg(to_jsonb(q) ORDER BY collection_run_id) FROM events.query_performance_observation_v3 q),
@@ -551,6 +556,7 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests(PostgreSql18
         public RepositoryTestDatabase Database { get; } = database;
         public NpgsqlDataSource Collector { get; } = collector;
         public Guid Target { get; } = target;
+        public int ProtocolVersion { get; init; } = 2;
         public WorkerLeaseIdentity? PreviousLease { get; set; }
         public async ValueTask DisposeAsync() { await Collector.DisposeAsync(); await Database.DisposeAsync(); }
     }

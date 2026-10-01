@@ -7,7 +7,7 @@ using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.SqlServer;
 
-public sealed class QueryPerformanceV2NativeCollectorTests
+public sealed partial class QueryPerformanceV2NativeCollectorTests
 {
     [Fact]
     public void ExpandedOpaqueOutputDoesNotInventSourceResponseBytes()

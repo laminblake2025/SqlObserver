@@ -945,3 +945,50 @@ The fixture clones a synthetic v3 contract only in its disposable database;
 it does not qualify or activate a production v3 collector. Versioned canonical
 commit/output wiring, audited retrieval, inert rendering and rollout remain
 required. No frontend, SQL Server or full suite was rerun for this storage step.
+
+### Versioned canonical cache-content commit (2026-10-01)
+
+The staged `queries.performance` v3 manifest pins the existing Query Store
+resources, counter identity protocol and combined cache counter/content bundle.
+Its exact schema uses manifest format 9 and output format 3. Query Store and
+cache retain the shared two-minute deadline and eight-MiB source/output limit;
+the content phase retains the preceding eight-entry and two-MiB bounds.
+Logical output accounting now includes up to eight qualified content pairs,
+raising the combined item ceiling to 22,008 and source ceiling to 514,777.
+Every collected counter frame carries an explicit content receipt, including
+disabled and protection-unavailable frames with zero content. Query Store-only
+and failed runs carry neither counter nor content frames.
+
+The collector payload, registered output contract, scheduler protection helper
+and repository dispatch support v3. Protected content becomes leased opaque
+references before repository commit; unlinked content is rejected before
+repository I/O. Producer budgeting measures all six JSON inputs with fixed-width
+placeholder IDs, and the content measurement agrees with PostgreSQL JSONB bytes.
+Content does not cause a second cache capture or reset the overall deadline.
+
+Forward migration 0323 adds a private versioned canonical writer. It binds the
+immutable v3 manifest/bundle pins, run identity, target revision, schedule and
+lease. Query Store observations and sidecars, cache deltas and watermarks,
+content links and receipt, visibility gap, run outcome and next schedule commit
+in one transaction. The replay digest includes content and every existing
+summary/circuit/source input. A late bad content or Query Store plan reference,
+or lease expiry while writing the outcome, rolls the whole transaction back.
+Failure and rejected-output accounting retain the enlarged bound without
+publishing earlier content. Applied v1/v2 manifests and SQL migrations are
+unchanged; the existing v2 producer still uses its counter-only path.
+
+Forty-five distinct focused checks pass: twenty shared producer checks, fifteen
+domain/protection/migration checks, two existing v2 repository regressions and
+eight final v3 checks. The final v3 group includes an actual SQL Server 2022 to
+PostgreSQL 18 round trip through capability discovery, engine execution, leased
+AES-GCM payload writes, canonical replay, late-reference failure and lease-loss
+rollback. Its disposable non-sysadmin SQL reader produces qualified protected
+cache text/plans; all connections close. Evidence is in
+`cache-content-v3-source.trx`, `cache-content-v3-contracts.trx`,
+`cache-content-v3-boundary-regressions.trx` and
+`cache-content-v3-qualified-final.trx` under `artifacts/plan-cache-deltas`.
+
+No v3 production catalog, runtime grant or schedule activation is installed.
+Audited exact-run/incarnation/entry content retrieval, inert history rendering,
+SQL Server 2019/2025 qualification and qualified rollout remain required.
+No frontend or full suite was run for this commit step.
