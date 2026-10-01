@@ -130,6 +130,9 @@ public sealed class RepositoryTestDatabase : IAsyncDisposable
 
     public NpgsqlDataSource DataSource { get; }
 
+    internal Task<RepositoryTestBackup> CreateBackupAsync() => RepositoryTestBackup.CreateAsync(
+        this, _container?.Id ?? Environment.GetEnvironmentVariable("SQLOBSERVER_POSTGRES_TEST_CONTAINER"), _cleanupConnectionString);
+
     public NpgsqlDataSource CreateCollectorDataSource(bool initializeEmptyTargetScope = false) =>
         CreateRoleDataSource("sqlobserver_collector", initializeEmptyTargetScope);
 

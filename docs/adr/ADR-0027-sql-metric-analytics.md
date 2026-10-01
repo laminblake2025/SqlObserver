@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active; retention attestation and fleet validation remain open.
+Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore is verified on isolated PostgreSQL; fleet and lab validation remain open.
 
 ## Context
 
@@ -174,9 +174,10 @@ SQL baselines are available through the explicit version 2 read API, shared
 dashboard/Resources chart references and separate MCP tools. Existing jobs,
 cursors and host/replication reads retain their original catalog.
 
-Validate the SQL baseline parent's retention lifecycle with real recovery
-attestation, and benchmark fleet derivation and history coverage. Collector
-source validation on the SQL Server lab and a connected browser remain open.
+Benchmark fleet derivation and history coverage. Collector source validation
+on the SQL Server lab and a connected browser remain open. The SQL baseline
+retention lifecycle now has a real backup/restore check on isolated PostgreSQL;
+production recovery procedures and the Windows lab remain separately unverified.
 
 ## SQL baseline read API and chart references
 
@@ -336,3 +337,45 @@ official SDK: every tool with and without a cursor signer, plus a persisted
 scope denial and exactly one audit row per call. Results are under
 `artifacts/sql-baseline-mcp`. These are isolated PostgreSQL tests with synthetic
 source rows; they do not validate the Windows SQL Server collector or browser.
+
+## SQL baseline retention and recovery verification
+
+The focused `SqlBaselineRetentionRequiresVerifiedRecoveryAndKeepsFencesHoldsAndPolicyReattachment`
+test writes four 168-hour bundles through the real fenced SQL baseline writer
+and completes their jobs through the repository adapter. One source window
+ended 100 days ago; three newer partitions satisfy the default retention floor.
+The bundles explicitly preserve unavailable statistics, rather than manufacturing
+observations to pass the test.
+
+The test takes a full custom-format `pg_dump` archive of its owned repository
+database, computes its SHA-256 digest, and restores it with `pg_restore
+--exit-on-error` into a fresh isolated database. It compares every stored SQL
+baseline field and reads the restored old bundle through the server-role
+application service. Only after that verification does it record a recovery
+attestation through the normal server repository mutation, binding its digest
+and reference to this archive. An identical mutation replays without duplication.
+
+The default retention worker refuses to detach without the attestation. It
+also honors overlapping analytics jobs, active reader leases, incomplete
+backfill and the minimum partition floor, while a job in another window does
+not block this partition. A stale worker fence is refused. Detach keeps the
+168 rows in the physical child during the 24-hour grace period and hides them
+from the baseline API; disabling the policy reattaches the child and restores
+the exact original rows.
+
+After resuming the policy, fixture-only advancement of the grace deadline
+avoids waiting a day. An active reader still blocks deletion. A dependent view
+causes a bounded retry without losing the child. Removing that view and
+appending an elapsed retry permits the worker to drop the old partition,
+retain the three newer partitions and record the successful retention audits.
+The same pre-deletion archive then restores the deleted baseline rows into a
+second fresh database, with identical content and a readable 168-hour bundle.
+
+This check passed on digest-pinned PostgreSQL 18.4. Its terminal result is in
+`artifacts/sql-baseline-retention/sql-baseline-retention.trx`. It exercises real
+backup and restoration within the same isolated PostgreSQL cluster, whose
+repository roles already exist. It is not a fresh-cluster or Windows-lab disaster
+recovery certification, and it does not cover production backup storage,
+encryption, off-site copies or fleet volume. No production migration was needed.
+The GitHub PostgreSQL job is configured to expose its service container ID to
+this test; that remote job has not been executed in this session.

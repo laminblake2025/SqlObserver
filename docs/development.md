@@ -100,6 +100,22 @@ repository roles. Store credentials outside version control. Pooling and verbose
 database error details are disabled by the fixture. Docker is still required
 because the lease restart test owns a separate container.
 
+The SQL baseline retention recovery test uses the PostgreSQL 18 container's
+`pg_dump` and `pg_restore` binaries to back up its owned fixture database and
+restore into two fresh databases. With the default Testcontainers fixture,
+the container ID is automatic. When using an external disposable Docker
+service, set `SQLOBSERVER_POSTGRES_TEST_CONTAINER` to that exact service's full
+64-character container ID. CI sets it from the PostgreSQL job's service metadata.
+The helper verifies that the container hosts the random fixture database before
+dumping; it never backs up or drops an unrelated database. The current helper
+requires a Docker-hosted fixture, rather than a native PostgreSQL service.
+Archives stay in the container's temporary directory and are removed after the
+check; fixture databases are also removed. To run only this recovery check:
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter FullyQualifiedName~SqlBaselineRetentionRequiresVerifiedRecovery --logger 'trx;LogFileName=sql-baseline-retention.trx' --results-directory artifacts/sql-baseline-retention
+```
+
 With that local connection configured, also run the operational-health journey:
 
 ```powershell

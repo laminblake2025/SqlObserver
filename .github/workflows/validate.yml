@@ -113,6 +113,8 @@ jobs:
 
       - name: Test repository behavior and role boundaries
         shell: pwsh
+        env:
+          SQLOBSERVER_POSTGRES_TEST_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           New-Item -ItemType Directory -Force artifacts/ci | Out-Null
           Start-Transcript -Path artifacts/ci/postgresql.log
