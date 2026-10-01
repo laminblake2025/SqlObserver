@@ -524,11 +524,61 @@ and `xe-typed-reader-native-budget.trx` (SQL Server 2022, 4 KiB page). The Colle
 project builds without warnings. These are focused checks; no fleet-wide or
 remote deployment validation was rerun.
 
-Activation still requires collector context and explicit v2 routing through this
-port. Cold catch-up scheduling must stay bounded and fair. The alert evidence
-reader must use the retained window rather than counting only the newest delta,
-and preserve the verified five-minute firing/unknown/recovery behavior in native
-end-to-end tests before v2 replaces v1. No active v2 catalog contract is installed.
+The staged incremental adapter now has a checksum-pinned v2 manifest and the
+existing approved numeric XE reader. Its limits are 8,192 metadata rows plus one
+probe, 256 deadlocks and 1 MiB per attempt, under the existing 20-second deadline
+and at most two attempts. Its passive permissions, supported targets, dependency
+order and cadence match the verified v1 contract. The approved collector bundle
+digest is `efcd15c53d0a75b30277446730f774dc40ffe6fa4ff78c1435967de56bc954fa`.
+
+The scheduler reads the checkpoint after the canonical begin while lease renewal
+runs. A bounded execution context binds the run, target/revision, schedule,
+predecessor digest and optional source/bookmark. Retries share that context; only
+the final validated result supplies a proof. Incremental output cannot report
+success without its proof or attach proof/context to another collector contract.
+Rejected or unexecutable output publishes an unavailable read without advancing
+transport progress. The existing ownership assertion still precedes the atomic
+commit, and execution cancellation leaves the previous checkpoint untouched.
+
+The adapter carries numeric witnesses through the engine and scheduler into the
+typed atomic port. Quiet complete reads retain recent canonical deadlocks. A
+same-epoch missing resume file records reset with no bookmark, allowing a cold
+scan of the remaining trusted files. A changed epoch needs a distinct empty reset
+probe: it carries the new trusted header identity, no positions/events or
+end-of-stream claim, and explicit loss with conservative coverage starting at the
+probe time. PostgreSQL independently recognizes the epoch transition, stores the
+new epoch as unknown and clears the bookmark. The next read can match that new
+epoch and recover without repeatedly expecting the old incarnation. Coverage
+remains unknown while the reset gap intersects the five-minute window. Canonical
+event history is preserved outside the rolling cache.
+
+Focused scheduler tests cover ordering, atomic routing, failed checkpoint reads,
+missing/foreign proofs, retry context and eligibility denial. The existing 15
+scheduler/engine checks passed in `xe-incremental-routing-first.trx`; its six new
+fixtures failed before execution because they used engine order 1 instead of
+mandatory deadlock order 8. Five corrected fixtures pass in
+`xe-incremental-routing-fixtures.trx`, and the sixth passes in
+`xe-incremental-adapter-first.trx`. That adapter run also passes seven of eight
+adapter cases; its source-loss case used the topology-only VisibilityIncomplete
+loss kind, and passes after using the established output-validation loss marker
+in `xe-incremental-adapter-loss.trx`. Two distinct reset cases pass in
+`xe-incremental-adapter-reset.trx`. Together these runs cover 31 unique unit cases.
+
+The real SQL Server 2022 adapter/warm-resume check passes in
+`xe-incremental-adapter-native-final.trx`; its earlier fixture was rejected before
+I/O for a timestamp not aligned to microseconds. The PostgreSQL adapter/engine
+check uses the actual Collector-role begin, checkpoint and atomic commit ports,
+with bounded synthetic source frames, and covers catch-up, quiet retained history
+and malformed-source unknown coverage. It passes in
+`xe-incremental-engine-postgresql.trx`; the expanded changed-epoch recovery case
+passes in `xe-incremental-engine-reset-postgresql.trx`. These are complementary
+checks, not a live SQL-to-PostgreSQL deployment certification. Earlier failed
+result files remain available.
+
+Production composition and catalog remain v1. Activation still requires the
+alert evidence reader to use the retained window, bounded/fair catch-up validation
+and native firing/unknown/recovery tests before v2 replaces the full-scan source.
+No active v2 catalog contract is installed.
 
 ## Verification and remaining work
 

@@ -6,7 +6,7 @@ using SqlObserver.Domain.Coordination;
 
 namespace SqlObserver.UnitTests;
 
-public sealed class M4SchedulerTests
+public sealed partial class M4SchedulerTests
 {
     private static readonly RepositoryCallTimeout RepositoryTimeout = new(TimeSpan.FromSeconds(1));
 
@@ -261,13 +261,32 @@ public sealed class M4SchedulerTests
                 new WorkerLeaseDuration(TimeSpan.FromSeconds(5)),
                 RepositoryTimeout));
 
-    private sealed class FakeRuntimeRepository : ICollectorRuntimeRepositoryPort
+    private sealed class FakeRuntimeRepository : ICollectorRuntimeRepositoryPort, IDeadlockReadRepositoryPort
     {
         private readonly CollectorDueWorkItem _work;
 
         internal FakeRuntimeRepository(CollectorDueWorkItem work) => _work = work;
 
         internal List<CommitCollectorRunRequest> Commits { get; } = [];
+        internal List<DeadlockReadSourceProof> DeadlockProofs { get; } = [];
+        internal int DeadlockReads { get; private set; }
+        internal bool FailCheckpointRead { get; init; }
+        public ValueTask<DeadlockReadCheckpointResult> ReadDeadlockCheckpointAsync(BeginCollectorRunRequest request, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DeadlockReads++;
+            Assert.Equal(Assert.Single(Starts).RunId, request.RunId);
+            if (FailCheckpointRead) throw new InvalidDataException("Checkpoint is unavailable.");
+            return ValueTask.FromResult(new DeadlockReadCheckpointResult(request, M4TestData.RepositoryTime, new(new string('a', 64)), null, false));
+        }
+        public ValueTask<CollectorRunCommitResult> CommitDeadlockReadAsync(CommitCollectorRunRequest request, DeadlockReadSourceProof proof, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DeadlockProofs.Add(proof);
+            Commits.Add(request);
+            return ValueTask.FromResult(new CollectorRunCommitResult(CollectorRunCommitStatus.Committed, request.Payload.ItemCount, 0, 0, request.Payload.EstimatedSizeBytes, M4TestData.RepositoryTime));
+        }
+
         internal List<BeginCollectorRunRequest> Starts { get; } = [];
         internal CollectorRunStartStatus StartStatus { get; init; } = CollectorRunStartStatus.Started;
         internal bool BlockCommit { get; init; }
@@ -328,6 +347,8 @@ public sealed class M4SchedulerTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (request.Work.CollectorId.Value == "deadlocks.system-health" && request.Work.CollectorManifestVersion == 2)
+                throw new InvalidOperationException("Incremental deadlocks cannot use the generic commit.");
             _commitEntered.TrySetResult();
             if (BlockCommit)
             {

@@ -51,7 +51,8 @@ public sealed class CollectorExecutionRequest
         SqlServerConnectionPolicy connectionPolicy,
         CapabilityProfile capabilityProfile,
         CollectorAttemptNumber attempt,
-        CollectorExecutionTimeout timeout)
+        CollectorExecutionTimeout timeout,
+        DeadlockReadExecutionContext? deadlockReadContext = null)
     {
         ArgumentNullException.ThrowIfNull(runId);
         ArgumentNullException.ThrowIfNull(targetId);
@@ -67,6 +68,9 @@ public sealed class CollectorExecutionRequest
                 nameof(capabilityProfile));
         }
 
+        if (deadlockReadContext is not null && (deadlockReadContext.TargetId != targetId || deadlockReadContext.TargetRevision != targetRevision || deadlockReadContext.RunId != runId))
+            throw new ArgumentException("Deadlock context must match the exact execution request.", nameof(deadlockReadContext));
+        DeadlockReadContext = deadlockReadContext;
         RunId = runId;
         TargetId = targetId;
         TargetRevision = targetRevision;
@@ -83,6 +87,7 @@ public sealed class CollectorExecutionRequest
     public CapabilityProfile CapabilityProfile { get; }
     public CollectorAttemptNumber Attempt { get; }
     public CollectorExecutionTimeout Timeout { get; }
+    public DeadlockReadExecutionContext? DeadlockReadContext { get; }
 }
 
 public sealed class CollectorPayload
@@ -207,7 +212,8 @@ public sealed class CollectorExecutionResult
         CollectorRunReason reason,
         CollectorPayload payload,
         CollectorRunAccounting accounting,
-        CollectorLossEvidence loss)
+        CollectorLossEvidence loss,
+        DeadlockReadSourceProof? deadlockReadProof = null)
     {
         ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(targetRevision);
@@ -271,6 +277,7 @@ public sealed class CollectorExecutionResult
         Payload = payload;
         Accounting = accounting;
         Loss = loss;
+        DeadlockReadProof = deadlockReadProof;
     }
 
     public MonitoredInstanceId TargetId { get; }
@@ -283,6 +290,7 @@ public sealed class CollectorExecutionResult
     public CollectorPayload Payload { get; }
     public CollectorRunAccounting Accounting { get; }
     public CollectorLossEvidence Loss { get; }
+    public DeadlockReadSourceProof? DeadlockReadProof { get; }
 }
 
 public sealed class CollectorMetricOutputContract

@@ -290,6 +290,17 @@ public sealed class CollectorScheduler
                 ownershipLost.Token);
             try
             {
+                IDeadlockReadRepositoryPort? deadlockPort = null;
+                DeadlockReadExecutionContext? deadlockContext = null;
+                if (work.CollectorId.Value == "deadlocks.system-health" && work.CollectorManifestVersion == 2)
+                {
+                    deadlockPort = _repository as IDeadlockReadRepositoryPort
+                        ?? throw new InvalidOperationException("Incremental deadlocks require the atomic read repository.");
+                    DeadlockReadCheckpointResult checkpoint = await deadlockPort.ReadDeadlockCheckpointAsync(
+                        new(work, runId, leaseIdentity, _options.RepositoryTimeout), ownershipCancellation.Token).ConfigureAwait(false);
+                    deadlockContext = new(work.TargetId, work.TargetRevision, work.ScheduleRevision.Value, runId,
+                        checkpoint.Checkpoint?.Digest, checkpoint.ResumeSource, checkpoint.ResumeBookmark);
+                }
                 CollectorEligibilityResult eligibility = CollectorEligibilityEvaluator.Evaluate(
                     registration.Manifest,
                     work);
@@ -298,7 +309,7 @@ public sealed class CollectorScheduler
                             registration,
                             work,
                             runId,
-                            ownershipCancellation.Token)
+                            ownershipCancellation.Token, deadlockContext)
                         .ConfigureAwait(false)
                     : CollectorExecutionEngine.CreateIneligibleResult(registration, work, runId, eligibility);
 
@@ -329,16 +340,17 @@ public sealed class CollectorScheduler
                     return CollectorWorkDisposition.LeaseLost;
                 }
 
-                CollectorRunCommitResult committed = await _repository.CommitRunAsync(
-                        new CommitCollectorRunRequest(
-                            work,
-                            engineResult.Summary,
-                            engineResult.Payload,
-                            engineResult.NextCircuit,
-                            leaseIdentity,
-                            _options.RepositoryTimeout),
-                        ownershipCancellation.Token)
-                    .ConfigureAwait(false);
+                var commitRequest = new CommitCollectorRunRequest(work, engineResult.Summary, engineResult.Payload,
+                    engineResult.NextCircuit, leaseIdentity, _options.RepositoryTimeout);
+                CollectorRunCommitResult committed;
+                if (deadlockContext is not null)
+                {
+                    DeadlockReadSourceProof proof = engineResult.DeadlockReadProof ?? deadlockContext.UnavailableProof();
+                    deadlockContext.Validate(proof);
+                    committed = await deadlockPort!.CommitDeadlockReadAsync(commitRequest, proof, ownershipCancellation.Token).ConfigureAwait(false);
+                }
+                else
+                    committed = await _repository.CommitRunAsync(commitRequest, ownershipCancellation.Token).ConfigureAwait(false);
                 if (committed.Status == CollectorRunCommitStatus.LeaseLost)
                 {
                     RecordLeaseLoss(work);

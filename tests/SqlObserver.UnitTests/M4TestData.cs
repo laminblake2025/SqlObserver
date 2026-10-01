@@ -24,13 +24,14 @@ internal static class M4TestData
         TimeSpan? retryDelay = null,
         int failureThreshold = 3,
         int maxRows = 10_000,
-        int maxResponseBytes = 33_554_432)
+        int maxResponseBytes = 33_554_432,
+        int version = 1)
     {
         _ = executionOrder;
         return new CollectorManifest(
             new CollectorId(id),
             new CollectorDisplayName(id),
-            new CollectorManifestVersion(1),
+            new CollectorManifestVersion(version),
             [new CapabilityId("connection.tds")],
             [
                 new CollectorPermissionRequirement(
@@ -48,7 +49,7 @@ internal static class M4TestData
                 maxResponseBytes,
                 CollectorEstimatedCost.Low),
             fallback ?? new CollectorFallbackPolicy(CollectorFallbackMode.Unsupported),
-            new CollectorOutputSchemaVersion(1),
+            new CollectorOutputSchemaVersion(version),
             CollectorOperationalMode.Passive,
             [
                 SqlServerEngineEdition.Standard,

@@ -318,6 +318,8 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/collector.v2.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.collector.v2.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/collector.assets-v2.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.collector.assets-v2.sha256</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/xe-file-reader/assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.assets.sha256</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>

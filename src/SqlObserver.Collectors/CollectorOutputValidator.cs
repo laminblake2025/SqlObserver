@@ -37,6 +37,27 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             throw new InvalidDataException("Collector output identity or contract version is invalid.");
         }
 
+        bool incrementalDeadlocks = manifest.Id.Value == "deadlocks.system-health" && manifest.ManifestVersion.Value == 2;
+        if (incrementalDeadlocks)
+        {
+            DeadlockReadExecutionContext context = request.DeadlockReadContext
+                ?? throw new InvalidDataException("Incremental deadlock output requires a fenced read context.");
+            if (result.DeadlockReadProof is { } proof)
+            {
+                context.Validate(proof);
+                if (proof.State == DeadlockReadSourceState.Ready && (result.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial)
+                    || result.Accounting.SourceRowsRead != proof.Positions.Count || result.Accounting.ResponseBytes < 128 + 64 * proof.Positions.Count
+                    || result.Payload.Deadlocks.Items.Count > proof.Positions.Count || proof.SourceLoss && !result.Loss.HasLoss
+                    || result.Payload.Deadlocks.Items.Any(d => d.ParseTruncated) && !proof.SourceLoss)
+                    || proof.State != DeadlockReadSourceState.Ready && (result.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial || result.Payload.ItemCount != 0))
+                    throw new InvalidDataException("Incremental deadlock source proof contradicts its output.");
+            }
+            else if (result.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial)
+                throw new InvalidDataException("Incremental deadlock success omitted its source proof.");
+        }
+        else if (request.DeadlockReadContext is not null || result.DeadlockReadProof is not null)
+            throw new InvalidDataException("Deadlock read context belongs only to the incremental deadlock contract.");
+
         int sourceRowBound = manifest.Id.Value == "sql-agent.failures"
             ? OperationalHealthBounds.AgentScanRows
             : manifest.Id.Value == "backups.status" && manifest.ManifestVersion.Value == 2
