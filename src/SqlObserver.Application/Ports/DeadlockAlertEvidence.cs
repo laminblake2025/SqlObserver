@@ -8,18 +8,21 @@ public enum DeadlockAlertEvidenceReason
     Current, CollectorDisabled, SourceUnavailable, SourceStale, SourceIncomplete, SourceInconsistent,
 }
 
-/// <summary>Unique events in the five minutes ending at a complete committed scan.</summary>
+/// <summary>Unique canonical events in the five minutes ending at a complete committed read.</summary>
 public sealed record DeadlockAlertEvidence(
     MonitoredInstanceId TargetId, long TargetRevision, DateTimeOffset ReadAtUtc,
     DateTimeOffset? ValidUntilUtc, long? ScheduleRevision, Guid? RunId,
     DateTimeOffset? CompletedAtUtc, DateTimeOffset? WindowFromUtc, DateTimeOffset? WindowToUtc,
     int? RetainedEvents, int? DeadlockCount, DeadlockAlertEvidenceReason Reason,
-    string? CompletionDigest, string SourceDigest)
+    string? CompletionDigest, string SourceDigest, int CollectorVersion = 1, int OutputSchemaVersion = 1, string? CheckpointDigest = null)
 {
     public void Validate()
     {
         bool current = Reason == DeadlockAlertEvidenceReason.Current;
-        if (TargetId is null || TargetRevision <= 0 || ReadAtUtc.Offset != TimeSpan.Zero || !Enum.IsDefined(Reason) ||
+        if ((CollectorVersion, OutputSchemaVersion) is not ((1, 1) or (2, 2)) ||
+            CollectorVersion == 1 && CheckpointDigest is not null || CheckpointDigest is not null && !Digest(CheckpointDigest) ||
+            current && CollectorVersion == 2 && CheckpointDigest is null ||
+            TargetId is null || TargetRevision <= 0 || ReadAtUtc.Offset != TimeSpan.Zero || !Enum.IsDefined(Reason) ||
             ScheduleRevision <= 0 || RunId == Guid.Empty || RetainedEvents is < 0 or > 256 ||
             DeadlockCount is < 0 or > 256 || DeadlockCount > RetainedEvents ||
             !Utc(CompletedAtUtc) || !Utc(WindowFromUtc) || !Utc(WindowToUtc) || !Utc(ValidUntilUtc) ||

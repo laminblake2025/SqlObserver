@@ -23,8 +23,8 @@ public static class DeadlockAlertObservationFactory
         Guid operation = AlertOperationIdentity.Compute(evidence.TargetId, rule.RuleId, evidence.ReadAtUtc, reason);
         var observation = new AlertObservation(evidence.TargetId, rule.RuleId, evidence.ReadAtUtc,
             evidence.DeadlockCount, null, reason, sampleId: operation.ToString("D"), runId: evidence.RunId,
-            sourceKind: DeadlockAlertRuleContract.SourceKind, sourceCollector: "deadlocks.system-health", sourceVersion: "1",
-            sourceSchemaVersion: 1, sourceDigest: evidence.SourceDigest);
+            sourceKind: DeadlockAlertRuleContract.SourceKind, sourceCollector: "deadlocks.system-health", sourceVersion: evidence.CollectorVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            sourceSchemaVersion: evidence.OutputSchemaVersion, sourceDigest: evidence.SourceDigest);
         DeadlockAlertRuleContract.ValidateObservation(rule, observation); return observation;
     }
 }

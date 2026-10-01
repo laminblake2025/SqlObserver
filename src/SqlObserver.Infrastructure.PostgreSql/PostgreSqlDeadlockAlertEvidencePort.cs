@@ -71,9 +71,11 @@ public sealed class PostgreSqlDeadlockAlertEvidencePort(NpgsqlDataSource dataSou
         {
             using JsonDocument document = JsonDocument.Parse(payload, new() { MaxDepth = 3 });
             JsonElement root = document.RootElement;
+            int schema = root.GetProperty("schemaVersion").GetInt32();
+            string[] properties = schema == 2 ? [.. Properties, "collectorVersion", "outputSchemaVersion", "checkpointDigest"] : Properties;
             if (root.ValueKind != JsonValueKind.Object ||
                 !root.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal)
-                    .SequenceEqual(Properties.Order(StringComparer.Ordinal)) || root.GetProperty("schemaVersion").GetInt32() != 1)
+                    .SequenceEqual(properties.Order(StringComparer.Ordinal)) || schema is not (1 or 2))
                 throw Invalid();
             DeadlockAlertEvidenceReason reason = root.GetProperty("reason").GetString() switch
             {
@@ -92,7 +94,11 @@ public sealed class PostgreSqlDeadlockAlertEvidencePort(NpgsqlDataSource dataSou
                 Utc(root, "windowFromUtc"), Utc(root, "windowToUtc"),
                 Number(root, "retainedEvents") is { } retained ? checked((int)retained) : null,
                 Number(root, "deadlockCount") is { } count ? checked((int)count) : null,
-                reason, root.GetProperty("completionDigest").GetString(), digest);
+                reason, root.GetProperty("completionDigest").GetString(), digest,
+                schema == 2 ? root.GetProperty("collectorVersion").GetInt32() : 1,
+                schema == 2 ? root.GetProperty("outputSchemaVersion").GetInt32() : 1,
+                schema == 2 ? root.GetProperty("checkpointDigest").GetString() : null);
+            if (schema == 2 && (result.CollectorVersion != 2 || result.OutputSchemaVersion != 2)) throw Invalid();
             result.Validate();
             return result;
         }

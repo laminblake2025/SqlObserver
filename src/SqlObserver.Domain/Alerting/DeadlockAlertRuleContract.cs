@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace SqlObserver.Domain.Alerting;
 
-/// <summary>Unique events in a complete five-minute scan window; null is unknown.</summary>
+/// <summary>Unique events in a complete five-minute read window; null is unknown.</summary>
 public static class DeadlockAlertRuleContract
 {
     public const string SourceKind = "deadlock_count_v1";
@@ -19,7 +19,7 @@ public static class DeadlockAlertRuleContract
             parts[3] == "digest=" + observation.SourceDigest;
         if (rule.Kind != AlertRuleKind.DeadlockCount || rule.RuleId != observation.RuleId ||
             observation.SourceKind != SourceKind || observation.SourceCollector != "deadlocks.system-health" ||
-            observation.SourceVersion != "1" || observation.SourceSchemaVersion != 1 ||
+            (observation.SourceVersion, observation.SourceSchemaVersion) is not (("1", 1) or ("2", 2)) ||
             observation.MetricId is not null || observation.CollectorHealthy is not null ||
             observation.SourceDigest is not { Length: 64 } digest || digest.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f')) ||
             !reasonValid || (observation.Value is not null) != (parts[2] == "reason=current") ||

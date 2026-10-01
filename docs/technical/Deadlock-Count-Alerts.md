@@ -575,10 +575,59 @@ passes in `xe-incremental-engine-reset-postgresql.trx`. These are complementary
 checks, not a live SQL-to-PostgreSQL deployment certification. Earlier failed
 result files remain available.
 
-Production composition and catalog remain v1. Activation still requires the
-alert evidence reader to use the retained window, bounded/fair catch-up validation
-and native firing/unknown/recovery tests before v2 replaces the full-scan source.
+Production composition and catalog remain v1. Activation still requires
+bounded/fair catch-up qualification and a live SQL-to-PostgreSQL
+firing/unknown/recovery check before v2 replaces the full-scan source.
 No active v2 catalog contract is installed.
+
+## Retained alert evidence and v2 provenance
+
+Migration 0314 adds a version-aware evidence reader. The v1 helper preserves
+the original reader body and 13-property envelope exactly. A schedule using
+collector/schema 2 selects a private v2 helper with a 16-property envelope,
+including the actual collector/schema versions and checkpoint digest. Only the
+fenced public reader is executable by Collector; both helpers remain private.
+
+The v2 count comes from the complete retained five-minute window. It is checked
+against the latest canonical run/outcome, the checkpoint's generated digest,
+the immutable read receipt, the latest delta snapshot and each retained event's
+canonical target, time and truncation flag. A quiet metadata read can therefore
+have zero new events while retaining a nonzero count. A changed cache cannot
+produce a trusted zero by recomputing its own digest. Missing or inconsistent
+bindings, incomplete coverage, disabled collection and stale evidence remain
+unknown. Reads keep the committed window and source digest stable until another
+canonical commit or a freshness-state change; expiry is applied by the next
+commit, not by silently changing a captured count during an evidence read.
+
+Alert observations keep the `deadlock_count_v1` count/rule semantic contract,
+and record source version/schema 2 when using incremental evidence. The C# and
+SQL transition contracts accept only matched 1/1 or 2/2 metadata, with canonical
+evidence digests using that actual pair. Existing v1 captures and exact replays
+remain valid. Firing, confirmation, hysteresis, clear confirmation and delivery
+policies are unchanged. An outage preserves the active episode, and a quiet
+recovery remains unknown while its recorded visibility gap overlaps the window.
+
+Four focused native PostgreSQL cases use real Collector begin/checkpoint/atomic
+commit ports and the full migration history. They cover catch-up unknown,
+retained counts after quiet reads, both health-reader routes, stable digests,
+receipt/cache and delta binding corruption, disabled collection, target revision
+and lease fences, private helpers, v2 durable capture and alert commit, held
+episodes across an outage/recovery gap, exact replay, null/mixed provenance with
+recomputed digests, and real-clock event expiry on a later quiet commit. The
+expiry fixture commits an event just before its five-minute boundary; it does
+not alter canonical outcomes or the database clock. Canonical history survives
+expiry from the retained window.
+
+Results are in `artifacts/deadlock-alerts/xe-retained-alert-native.trx` (reader
+case passes; initial recovery expectation fails),
+`xe-retained-alert-commit-regressions.trx` (three existing v1 reader/capture/commit
+cases pass; an overly narrow unknown-reason expectation fails),
+`xe-retained-alert-final.trx` (corrected v2 durable commit and closed provenance
+cases pass), and `xe-retained-alert-expiry.trx` (expiry case).
+The contract/transition/preamble checks pass in `xe-retained-alert-unit.trx`
+(10 cases). Earlier failed results remain available; unchanged passing cases
+were not repeated. The native tests use bounded typed source frames rather than
+a live SQL Server workload, so production activation remains a separate step.
 
 ## Verification and remaining work
 

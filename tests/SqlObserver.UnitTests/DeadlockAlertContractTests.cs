@@ -5,7 +5,7 @@ using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.UnitTests;
 
-public sealed class DeadlockAlertContractTests
+public sealed partial class DeadlockAlertContractTests
 {
     private static readonly MonitoredInstanceId Target = new(Guid.NewGuid());
     private static readonly DateTimeOffset At = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
