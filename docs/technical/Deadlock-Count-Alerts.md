@@ -2,9 +2,10 @@
 
 The revamp plan calls for deadlock alert coverage beyond engine counters.
 Forward migration 0303 implements its bounded repository source and adds it to
-the Collector data plane. Migration 0304 adds private durable capture and claiming.
-Verified evaluation, runtime dispatch, catalog activation and the administration
-UI are still required before a user can enable this signal.
+the Collector data plane. Migration 0304 adds private durable capture and claiming;
+0305 and 0306 add independently verified transitions and atomic persistence.
+Runtime discovery/dispatch, catalog activation and the administration UI are still
+required before a user can enable this signal.
 
 ## Signal and source
 
@@ -72,7 +73,7 @@ intervals from 15 to 60 seconds, and a window that covers the requested confirma
 intervals. The new kind and wire contract are not approved by the product catalog.
 All four queue helpers remain migrator-only, with a forced-RLS private capture
 table. Public claiming excludes deadlock work, and public evaluation explicitly
-rejects it until independently verified state/outbox transitions are implemented.
+rejects it until runtime discovery and dispatch are activated together.
 
 Three native checks cover SQL/C# identity agreement, exact reclaim, consumed-source
 suppression, concurrent reconciliation, source and rule supersession, live-claim
@@ -83,6 +84,42 @@ it does not exercise a production alert-state or notification commit. Four share
 dispatcher regressions still pass for actual engine, backup and blocking work.
 Three unit checks cover zero versus unknown, forged count/source identities and
 integer policy bounds; the migration preamble check also passes.
+
+## Verified transition and atomic persistence
+
+The C# evaluator validates the deadlock source contract before processing it.
+Unknown evidence interrupts both confirmation streaks, preserves firing and
+acknowledged episodes, and cannot resolve or allocate an alert. Known counts use
+the configured integer threshold and hysteresis. A gap beyond the confirmation
+window restarts confirmation. Replay is read-only; regressed observation time is
+rejected. The independently derived private PostgreSQL transition agrees with
+C# on 1,680 combinations across all states, null/zero/count boundaries, both
+comparisons, hysteresis, clear counts, maintenance and gaps before, exactly at,
+and beyond the window boundary. Forged counts and source bindings are rejected.
+
+The private commit requires the exact captured observation, live claim and worker
+lease, target/rule revisions, and repository-derived decision. State, history,
+replay, approved notification intent, audit, queue consumption and capture cleanup
+share one transaction. It rechecks source, claim and lease after durable writes.
+Exact committed replay requires the same rule/target binding and canonical result;
+it performs no writes and does not need the deleted capture body. Changed replay
+or a changed target revision is rejected.
+
+Three new native commit checks cover seven canonical typed collection scans at the
+actual 15-second evaluation cadence, Server-role acknowledgement, unknown evidence
+between clear samples, recovery, re-fire, maintenance deferral and immutable replay.
+They also reject forged state/event decisions and prove rollback after injected
+audit failure, lost worker ownership and expired queue claim. A successful retry
+consumes the original capture once. Transition and commit functions remain
+migrator-only; the public runtime gate and unapproved catalog are unchanged.
+
+These are isolated PostgreSQL checks. Typed collector payloads and bootstrap-only
+rule/destination fixtures supply the test evidence; the seven scans do not come
+from a live SQL Server XE workload. The checks persist notification intent but
+do not run the normal alert worker or send a webhook. The C# regression first
+failed because deadlock evidence was not accepted by the evaluator, then passed
+after source-bound handling was added. Existing backup/blocking transition unit
+checks also pass.
 
 ## Verification and remaining work
 
@@ -107,7 +144,7 @@ availability, backup, database inventory, configuration, capacity and metric
 migrations. This records current dependencies; it does not remove them or prove
 original-run retirement is ready.
 
-Remaining work is verified transition/atomic commit, runtime discovery and
+Remaining work is runtime discovery and
 dispatch, approved catalog and UI settings, and live SQL Server-to-notification
 qualification. The current XE reader still rescans its bounded 33-day file
 window. Incremental bookmarking remains a separate collector refactor; its
@@ -129,3 +166,9 @@ Queue-stage evidence is in `deadlock-alert-queue.trx` (three native checks),
 `deadlock-alert-shared-dispatch-regressions.trx` (four native regressions) and
 `deadlock-alert-contracts-and-preamble.trx` (three unit checks and one preamble
 check) in the same directory.
+Transition/persistence evidence is in `deadlock-alert-transition-before.trx`
+(expected failing regression), `deadlock-alert-transition-unit.trx` (25 checks),
+`deadlock-alert-transition-postgresql.trx` (two native checks, including the 1,680
+comparison cases), `deadlock-alert-atomic-commit.trx` (two new native commit checks
+and three existing deadlock regressions), `deadlock-alert-final-fences.trx` (one
+native check), and `deadlock-alert-atomic-preamble.trx` (one preamble check).

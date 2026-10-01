@@ -19,7 +19,9 @@ public static class AlertEvaluator
         if (backup) BackupAlertRuleContract.ValidateObservation(rule, observation);
         bool blocking = rule.Kind == AlertRuleKind.BlockingDuration;
         if (blocking) BlockingAlertRuleContract.ValidateObservation(rule, observation);
-        bool sourceBound = backup || blocking;
+        bool deadlock = rule.Kind == AlertRuleKind.DeadlockCount;
+        if (deadlock) DeadlockAlertRuleContract.ValidateObservation(rule, observation);
+        bool sourceBound = backup || blocking || deadlock;
         // A replay is a read-only operation.  A reused operation identity is only
         // valid when its evidence digest is byte-for-byte identical.
         if (prior.LastOperationId == observation.OperationId)
