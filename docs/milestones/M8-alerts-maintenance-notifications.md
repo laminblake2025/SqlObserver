@@ -7,6 +7,10 @@ blocks deliveries approved against the old configuration. See
 [Signed alert webhooks](../technical/Signed-Alert-Webhooks.md) for provisioning,
 the exact receiver contract, replay handling and verification limits.
 
+The leased, bounded [blocking-duration source](../technical/Blocking-Duration-Alerts.md)
+is implemented with native PostgreSQL coverage. Its rule/catalog activation is
+pending the durable queue, verified transition/outbox commit and administration UI.
+
 M8 adds repository-driven `metric_threshold` and `collector_health` rules. The evaluator is a deterministic state machine: confirmation protects against one-sample noise, hysteresis prevents flapping, and acknowledgement changes delivery state without changing evaluation. All timestamps are UTC and all transitions are fenced by the collector lease.
 
 Recovery uses `clearConfirmationCount` (1–100) independently of firing confirmation. New HTTP rules default to two clear observations; updates and disables require the field explicitly. Migration `0083_alert_clear_confirmation.sql` preserves existing rules at one clear observation. While recovery is pending, the alert keeps its active state, episode, and acknowledgement. Returning to the hysteresis band resets recovery progress; replaying an observation does not advance it. Progress survives collector restarts, resets when a rule changes, and is bypassed by administrative disablement. This is count-based confirmation and can span a collection gap. Unknown evidence cannot count as recovery.

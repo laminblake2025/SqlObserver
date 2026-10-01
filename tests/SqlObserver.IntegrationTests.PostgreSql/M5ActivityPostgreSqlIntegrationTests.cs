@@ -13,7 +13,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class M5ActivityPostgreSqlIntegrationTests
+public sealed partial class M5ActivityPostgreSqlIntegrationTests
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
     private readonly PostgreSql18Fixture _fixture;
@@ -1859,7 +1859,7 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         return (work, lease, runId, new CommitCollectorRunRequest(work, summary, payload, CollectorCircuitSnapshot.Closed(work.RepositoryTimeUtc), lease, Timeout));
     }
 
-    private static async Task SeedTargetAndRunAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, string collectorId, DateTimeOffset completedAt, int outputItemCount = 2, DateTimeOffset? startedAt = null)
+    private static async Task SeedTargetAndRunAsync(RepositoryTestDatabase database, MonitoredInstanceId targetId, Guid runId, string collectorId, DateTimeOffset completedAt, int outputItemCount = 2, DateTimeOffset? startedAt = null, string outcome = "succeeded", bool loss = false)
     {
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
@@ -1882,8 +1882,11 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
                  rejected_item_count, response_bytes, output_bytes, persisted_bytes, truncated,
                  loss_detected, loss_kind, loss_count_exact, lost_row_count, lost_byte_count,
                  completion_digest, completed_at)
-            VALUES (@run, 'succeeded', 'completed', 1, 0, 10, @items, @items, @items, 0, 0, 128, 128, 128,
-                    false, false, 'none', true, 0, 0, decode(repeat('bb', 32), 'hex'), @at);
+            VALUES (@run, @outcome, CASE @outcome WHEN 'partial' THEN 'source_row_limit'
+                    WHEN 'permission_denied' THEN 'required_permission_missing' ELSE 'completed' END,
+                    1, 0, 10, @items+CASE WHEN @loss THEN 1 ELSE 0 END, @items, @items, 0, 0, 128, 128, 128,
+                    @loss, @loss, CASE WHEN @loss THEN 'source_row_limit' ELSE 'none' END, true,
+                    CASE WHEN @loss THEN 1 ELSE 0 END, 0, decode(repeat('bb', 32), 'hex'), @at);
             """,
             connection);
         command.Parameters.AddWithValue("target", targetId.Value);
@@ -1895,6 +1898,8 @@ public sealed class M5ActivityPostgreSqlIntegrationTests
         command.Parameters.AddWithValue("at", completedAt);
         command.Parameters.AddWithValue("items", outputItemCount);
         command.Parameters.AddWithValue("started", startedAt ?? completedAt);
+        command.Parameters.AddWithValue("outcome", outcome);
+        command.Parameters.AddWithValue("loss", loss);
         await command.ExecuteNonQueryAsync();
     }
 

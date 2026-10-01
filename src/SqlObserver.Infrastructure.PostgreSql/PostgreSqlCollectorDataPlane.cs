@@ -30,6 +30,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         BackupFleetSummary = new PostgreSqlBackupFleetSummaryPort(dataSource);
         BackupFleetCache = new PostgreSqlBackupFleetCachePort(dataSource);
         BackupAlertEvidence = new PostgreSqlBackupAlertEvidencePort(dataSource);
+        BlockingAlertEvidence = new PostgreSqlBlockingAlertEvidencePort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
@@ -54,6 +55,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     public IBackupFleetSummaryPort BackupFleetSummary { get; }
     public IBackupFleetCachePort BackupFleetCache { get; }
     public IBackupAlertEvidencePort BackupAlertEvidence { get; }
+    public IBlockingAlertEvidencePort BlockingAlertEvidence { get; }
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
     public IReplicationDistributionBindingResolver ReplicationDistributionBindings { get; }
     public IAlertRepositoryPort Alerts { get; }
