@@ -11,7 +11,7 @@ using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.SqlServer;
 
-public sealed class SqlServerCoreHealthIntegrationTests
+public sealed partial class SqlServerCoreHealthIntegrationTests
 {
     private static readonly MonitoredInstanceId TargetId =
         new(Guid.Parse("91919191-9191-9191-9191-919191919191"));
@@ -336,7 +336,8 @@ public sealed class SqlServerCoreHealthIntegrationTests
         Assert.Equal(24, exception.Accounting.OutputBytes);
     }
 
-    private static CollectorExecutionRequest CreateRequest(TimeSpan? timeout = null)
+    private static CollectorExecutionRequest CreateRequest(TimeSpan? timeout = null, int majorVersion = 16,
+        SqlServerEngineEdition edition = SqlServerEngineEdition.Express)
     {
         DateTimeOffset checkedAt = new(2026, 8, 23, 17, 0, 0, TimeSpan.Zero);
         var profile = new CapabilityProfile(
@@ -346,9 +347,9 @@ public sealed class SqlServerCoreHealthIntegrationTests
             collectorManifestVersion: 1,
             outputSchemaVersion: 1,
             new SqlServerIdentity(
-                new SqlServerVersion(16, 0, 1000, 0),
+                new SqlServerVersion(majorVersion, 0, 1000, 0),
                 new SqlServerEditionName("Express Edition"),
-                SqlServerEngineEdition.Express,
+                edition,
                 SqlServerPlatform.Windows),
             CapabilityDiscoveryOutcome.Supported,
             CapabilityDiscoveryReason.Verified,

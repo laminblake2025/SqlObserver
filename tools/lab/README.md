@@ -1,5 +1,31 @@
 # Disposable SQL Server workload
 
+The opt-in
+`CoreBaselineInputsAreBoundedAndComparableUnderOnlyTheVersionSpecificStateGrant`
+test in `SqlObserver.IntegrationTests.SqlServer` verifies the current core
+collector's native SQL baseline inputs. On a disposable instance it creates a
+unique non-sysadmin login, confirms denial without a state grant, grants only
+`VIEW SERVER STATE` (2019) or `VIEW SERVER PERFORMANCE STATE` (2022/2025), and
+checks three consecutive bounded reads for all gauges and comparable counter
+epochs. It removes the login afterward and checks that monitored server state
+is unchanged. Impersonation verifies SQL execution permissions, rather than
+a separate Windows service account's authentication. It refuses the Release
+profile and has the `RequiresSqlServerDisposable` trait.
+
+Configure `SQLOBSERVER_VALIDATION_PROFILE=Local` and
+`SQLOBSERVER_LOCAL_SQLSERVER` with a Windows-authenticated connection to the
+disposable instance; the caller must be a sysadmin to create and remove the
+probe login. Then run only this check from the repository root:
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter FullyQualifiedName~CoreBaselineInputsAreBounded --logger 'trx;LogFileName=sql-core-live-source.trx' --results-directory artifacts/sql-core-live-source
+```
+
+The SQL Server 2022 result and its limits are recorded in ADR-0027. Select the
+test explicitly for each other supported server version before claiming its
+source is qualified. The test does not exercise PostgreSQL ingestion, a busy
+workload, TLS certification or the browser.
+
 `verify-system-health-bookmark.ps1` is a read-only qualification probe for the
 incremental XE contract in [ADR-0024](../../docs/adr/ADR-0024-incremental-system-health-reader.md).
 It uses Windows authentication and validated TLS, discovers the running

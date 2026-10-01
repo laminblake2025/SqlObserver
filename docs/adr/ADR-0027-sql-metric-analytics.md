@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore and a synthetic SQL baseline fleet benchmark are verified on isolated PostgreSQL; lab and production fleet validation remain open.
+Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore and a synthetic SQL baseline fleet benchmark are verified on isolated PostgreSQL. Native core inputs are verified on SQL Server 2022; SQL Server 2019/2025, connected browser and production fleet validation remain open.
 
 ## Context
 
@@ -175,8 +175,9 @@ SQL baselines are available through the explicit version 2 read API, shared
 dashboard/Resources chart references and separate MCP tools. Existing jobs,
 cursors and host/replication reads retain their original catalog.
 
-Collector source validation on the SQL Server lab, a connected browser and
-production fleet throughput remain open. Migration 0296 also corrects the
+Collector source validation on SQL Server 2019/2025, a connected browser and
+production fleet throughput remain open. The native source check below verifies
+SQL Server 2022. Migration 0296 also corrects the
 legacy catalog-v1 scheduler's first-128-target starvation, as verified below.
 The SQL baseline
 retention lifecycle now has a real backup/restore check on isolated PostgreSQL;
@@ -297,8 +298,8 @@ Server lab or a complete MCP flow. No broad suite was run for this checkpoint.
 The SSH VM is reachable and its PostgreSQL 18 service is running, but this
 session has no configured PostgreSQL login for that VM. These checks ran
 against the isolated local container. The Windows SQL Server lab remains
-necessary to confirm actual collector inputs; that source validation and
-production fleet performance are not proven by these tests.
+necessary to confirm actual collector inputs on SQL Server 2025; that source
+validation and production fleet performance are not proven by these tests.
 
 ## MCP SQL discovery and baseline reads
 
@@ -446,3 +447,45 @@ is `artifacts/m10-fleet-scheduler/m10-fleet-upgrade.trx`; the pre-fix failure is
 in `m10-fleet-before.trx`. No broad suite or remote lab check was needed for
 this PostgreSQL scheduling change. The migration preamble check also passed;
 its result is `m10-fleet-preamble.trx` in the same directory.
+
+## Native SQL core baseline inputs
+
+Two focused checks passed against the current branch's checksum-pinned source
+on local SQL Server 2022 Express, version 16.0.1000.6. The existing collector
+check verifies bounded, passive core/inventory/file output. The new
+`CoreBaselineInputsAreBoundedAndComparableUnderOnlyTheVersionSpecificStateGrant`
+check runs the actual core collector under a temporary non-sysadmin SQL login's
+execution context. Without a state grant it returns permission denied with no
+metrics. Granting only `VIEW SERVER PERFORMANCE STATE` permits three successful
+reads of all 14 metrics, with no loss and within the manifest row/byte bounds.
+
+All observations have UTC timestamps, empty dimensions and finite nonnegative
+values. Successive reads retain the same startup identity and positive scheduler
+count. Batch and scheduler CPU counters stay within the exact-double bound and
+do not decrease. Their elapsed windows are positive and under two minutes;
+scheduler CPU deltas remain within the configured elapsed-capacity tolerance.
+The five SQL gauge inputs are present. These checks validate native source
+compatibility; they do not manufacture a busy workload or claim full history.
+
+The probe creates a unique disposable login, grants the version-specific state
+permission and impersonates it on unpooled Windows-authenticated test
+connections. It removes the login in `finally` and confirms unchanged database,
+configuration, event-session and server-permission state. This verifies SQL
+execution permissions, not a real non-sysadmin Windows service account's complete
+authentication/discovery flow. It is an explicit disposable Local check and
+refuses the Release profile. The local instance uses encrypted connections with
+its development certificate trusted by the Local test contract; production TLS
+validation is not certified by this check.
+
+Evidence is `artifacts/sql-core-live-source/sql-core-live-source.trx`; the final
+permission/pair check is `sql-core-permission-pair.trx` in the same directory.
+The SSH VM
+was independently inspected: SQL Server 2025 version 17.0.1000.7 and PostgreSQL
+18 services are running, and the scheduler CPU column exists. Its main checkout's
+SQL Server 17 core asset hashes to
+`1b7d453e509a597685ca1a9b729cf4469fe4cd8f451946497ac8609af2d5dc86`,
+whereas this branch's asset hashes to
+`5f05506ee7a3e6b9c97975ca9e28efe094a8a57a07b090f416ee966d2d23da70`.
+Running the VM's older collector would not validate this branch. No repository
+files were uploaded and no VM database or service was changed. SQL Server
+2019/2025 source qualification and the connected end-to-end flow remain open.
