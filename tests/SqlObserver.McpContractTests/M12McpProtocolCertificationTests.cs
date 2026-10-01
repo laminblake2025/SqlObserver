@@ -34,11 +34,11 @@ public sealed class M12McpProtocolCertificationTests
     private const int MaximumStdioProtocolOutputBytes = 128 * 1024;
     private const string ApprovedCurrentProtocol = "2026-07-28";
     private const string ApprovedDownlevelProtocol = "2025-11-25";
-    private const int ApprovedToolCount = 30;
-    private const string ApprovedCatalogDigest = "45D3A5E64277D305DD375C17D114F515490EB3A94A76BEC51FABB8BEB6345CBF";
-    private const string ApprovedServerVersion = "m11-2.2.0+catalog-45D3A5E64277D305DD375C17D114F515490EB3A94A76BEC51FABB8BEB6345CBF";
-    private const string ApprovedContractSha256 = "2b9fe79b43211f0a2ccd9be33cde6dc9b5c123ee2db384a9d8fa9aa6c919bb72";
-    private const string ApprovedContractSchemaSha256 = "0d3c725186b2e4edaafd0c2dae7bf665e024e8329397ed1674299c1f6cac0c87";
+    private const int ApprovedToolCount = 32;
+    private const string ApprovedCatalogDigest = "ABEFA5ADA97EFDA91714112AD9F6FCDB97A6159FF537C43C4D2B0674FEB3E7F3";
+    private const string ApprovedServerVersion = "m11-2.2.0+catalog-ABEFA5ADA97EFDA91714112AD9F6FCDB97A6159FF537C43C4D2B0674FEB3E7F3";
+    private const string ApprovedContractSha256 = "9dd5eb6d51826d3e39eb60539df135bf7c60b21bd9c2b483a59374502c0b8a10";
+    private const string ApprovedContractSchemaSha256 = "efcccf4a0f8275d03700450daf8ecdfb6392224ef01e5412ceca0349ba9ffb51";
     private static readonly string[] ApprovedToolNames =
     [
         "list_instances", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
@@ -46,7 +46,8 @@ public sealed class M12McpProtocolCertificationTests
         "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
         "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
         "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
-        "list_metric_catalog", "list_incidents", "get_availability_replicas_v2", "get_availability_databases_v2", "get_backup_assessments_v2"
+        "list_metric_catalog", "list_incidents", "get_availability_replicas_v2", "get_availability_databases_v2", "get_backup_assessments_v2",
+        "list_sql_metric_catalog_v2", "get_sql_metric_baselines_v2"
     ];
     private static readonly string[] JsonRpcResponseProperties = ["jsonrpc", "id", "result", "error"];
     private static readonly string[] SafeResponseMediaTypes = ["application/json", "text/event-stream"];

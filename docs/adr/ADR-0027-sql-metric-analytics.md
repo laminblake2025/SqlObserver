@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: proposed, 2026-09-30. SQL source, rollup/baseline workers, read API and chart references implemented; MCP discovery/read activation pending.
+Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active; retention attestation and fleet validation remain open.
 
 ## Context
 
@@ -120,7 +120,8 @@ The legacy claim function still returns its original shape and claims only
 version 1 jobs. Its writer also rejects version 2 jobs. New claims and writes
 are collector-only; their private helpers have no runtime-role or PUBLIC
 execute grants. Version 1 host and replication interpretation remains intact.
-Existing API and MCP catalog discovery still uses version 1.
+Existing metric-series, comparison, forecast and `list_metric_catalog` contracts
+still use version 1. Separate SQL discovery and baseline reads use version 2.
 
 Replay binds the versioned payload and lease identity. A replacement lease
 can accept an identical persisted result after a crash before job completion;
@@ -169,14 +170,13 @@ remain intact. Apply migration 0294 before deploying this worker version.
 
 ## Remaining activation work
 
-SQL baselines are available through the explicit version 2 read API and shared
-dashboard/Resources chart references. They are not yet available through MCP.
+SQL baselines are available through the explicit version 2 read API, shared
+dashboard/Resources chart references and separate MCP tools. Existing jobs,
+cursors and host/replication reads retain their original catalog.
 
-1. Add version-aware catalog discovery and MCP reads, then approve MCP schemas and
-   their approved digest, using an explicit active version. Resume existing
-   jobs and cursors under their original catalog, refusing version changes.
-2. Validate the SQL baseline parent's retention lifecycle with real recovery
-   attestation, and benchmark fleet derivation and history coverage.
+Validate the SQL baseline parent's retention lifecycle with real recovery
+attestation, and benchmark fleet derivation and history coverage. Collector
+source validation on the SQL Server lab and a connected browser remain open.
 
 ## SQL baseline read API and chart references
 
@@ -295,3 +295,44 @@ session has no configured PostgreSQL login for that VM. These checks ran
 against the isolated local container. The Windows SQL Server lab remains
 necessary to confirm actual collector inputs; that source validation and
 production fleet performance are not proven by these tests.
+
+## MCP SQL discovery and baseline reads
+
+`list_sql_metric_catalog_v2` is a no-argument metadata tool for the seven
+activated SQL baseline keys. It returns the full catalog-v2 checksum, canonical
+units, derivation versions, comparable-sample requirements and the baseline
+tool name. This subset does not expand `list_metric_catalog` or the v1 series,
+comparison and forecast tools. Metadata requires an active Viewer, Operator or
+TargetAdministrator grant and is audited without a target ID.
+
+`get_sql_metric_baselines_v2` calls the same `SqlMetricBaselineQueryService`
+as the read API. Required inputs are instance ID, current target revision,
+SQL metric key and an exact 28-day source window ending at UTC midnight.
+Generation defaults to 1 and the publication snapshot defaults to now. All
+timestamps use UTC ending in Z. Revisions and generations retain Int64 bounds.
+Authorization binds the read role to this target before repository access.
+
+The result includes revision, generation, unit, catalog/checksum, source and
+baseline algorithm versions, source window and publication snapshot. A missing
+or unpublished bundle returns `no_data` with no rows. A published bundle returns
+all 168 UTC hours together, retaining unavailable hours and nullable statistics.
+Sunday 00:00 is hour 0. Each hour includes its source cutoff, complete days,
+sample count, median, MAD, p10/p90, coverage, confidence and visibility. This
+bounded read has no limit or cursor and needs no signing key. Corrupt repository
+statistics fail without returning the payload; missing audit also withholds it.
+
+The discovery catalog now has 32 tools. Its approved identity is
+`ABEFA5ADA97EFDA91714112AD9F6FCDB97A6159FF537C43C4D2B0674FEB3E7F3`.
+Runtime, stdio bridge, release contract/schema, their checksums and certification
+pins change together. Closed output schemas use explicit field mapping; no
+query text, plan XML, credentials or administrative action is added.
+
+Focused verification passed: 62 MCP contract checks, three additional boundary
+cases for Int64 identities and audit withholding/target handling, release
+catalog integrity, and official SDK discovery under both supported protocols.
+Three PostgreSQL 18.4 checks exercised the real server pipeline through the
+official SDK: every tool with and without a cursor signer, plus a persisted
+168-hour SQL baseline, knowledge-cutoff and generation misses, mixed Viewer/Auditor
+scope denial and exactly one audit row per call. Results are under
+`artifacts/sql-baseline-mcp`. These are isolated PostgreSQL tests with synthetic
+source rows; they do not validate the Windows SQL Server collector or browser.

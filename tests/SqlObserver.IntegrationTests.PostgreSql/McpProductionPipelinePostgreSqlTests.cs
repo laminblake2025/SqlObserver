@@ -333,7 +333,7 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
         }, http, ownsHttpClient: false);
         await using McpClient client = await McpClient.CreateAsync(transport);
         IList<McpClientTool> tools = await client.ListToolsAsync();
-        Assert.Equal(29, tools.Count);
+        Assert.Equal(32, tools.Count);
         McpClientTool tool = Assert.Single(tools, tool => tool.Name == "list_instances");
         JsonElement outputSchema = Assert.IsType<JsonElement>(tool.ProtocolTool.OutputSchema);
         await using NpgsqlConnection auditConnection = await database.DataSource.OpenConnectionAsync();
@@ -493,8 +493,15 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
     {
         var arguments = new Dictionary<string, JsonElement>();
         void Put<T>(string name, T value) => arguments[name] = JsonSerializer.SerializeToElement(value);
-        if (tool == "list_metric_catalog") return arguments;
+        if (tool is "list_metric_catalog" or "list_sql_metric_catalog_v2") return arguments;
         Put("instanceId", targetId.ToString("D"));
+        if (tool == "get_sql_metric_baselines_v2")
+        {
+            DateTimeOffset end = new(DateTimeOffset.UtcNow.UtcDateTime.Date, TimeSpan.Zero);
+            Put("targetRevision", 1); Put("metricKey", "engine.batch_requests_per_second");
+            Put("fromUtc", end.AddDays(-28).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture));
+            Put("toUtc", end.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture));
+        }
         if (tool is "list_incidents" or "get_metric_series" or "get_blocking_history" or
             "search_deadlocks" or "get_top_queries" or "get_query_history" or
             "get_job_failures" or "search_diagnostic_events")
@@ -531,7 +538,8 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
     }
 }
 
-internal sealed class McpProductionPipelineFactory(string connectionString, bool withCursorSigner) : WebApplicationFactory<ServerAssembly::Program>
+internal sealed class McpProductionPipelineFactory(string connectionString, bool withCursorSigner,
+    Guid? viewerTarget = null, Guid? auditorTarget = null) : WebApplicationFactory<ServerAssembly::Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -541,7 +549,15 @@ internal sealed class McpProductionPipelineFactory(string connectionString, bool
         builder.UseSetting("SqlObserver:Mcp:CursorSigningKey", withCursorSigner
             ? Convert.ToBase64String(Enumerable.Repeat((byte)0xB6, 32).ToArray()) : string.Empty);
         builder.UseSetting("SqlObserver:Authorization:Bindings:0:GroupSid", McpPipelineAuthenticationHandler.GroupSid);
-        builder.UseSetting("SqlObserver:Authorization:Bindings:0:AllTargets", "true");
+        builder.UseSetting("SqlObserver:Authorization:Bindings:0:AllTargets", viewerTarget is null ? "true" : "false");
+        if (viewerTarget is { } target) builder.UseSetting("SqlObserver:Authorization:Bindings:0:TargetIds:0", target.ToString("D"));
+        if (auditorTarget is { } other)
+        {
+            builder.UseSetting("SqlObserver:Authorization:Bindings:1:GroupSid", McpPipelineAuthenticationHandler.AuditorGroupSid);
+            builder.UseSetting("SqlObserver:Authorization:Bindings:1:AllTargets", "false");
+            builder.UseSetting("SqlObserver:Authorization:Bindings:1:TargetIds:0", other.ToString("D"));
+            builder.UseSetting("SqlObserver:Authorization:Bindings:1:Roles:0", "Auditor");
+        }
         builder.UseSetting("SqlObserver:Authorization:Bindings:0:Roles:0", "Viewer");
         builder.ConfigureLogging(static logging => logging.ClearProviders());
         builder.ConfigureTestServices(services => services.AddAuthentication(options =>
@@ -561,6 +577,7 @@ internal sealed class McpPipelineAuthenticationHandler(
 {
     internal const string SchemeName = "McpPipeline.Tests";
     internal const string GroupSid = "S-1-5-21-6201-6202-6203-6204";
+    internal const string AuditorGroupSid = "S-1-5-21-6201-6202-6203-6206";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -568,6 +585,7 @@ internal sealed class McpPipelineAuthenticationHandler(
         {
             new Claim(ClaimTypes.PrimarySid, "S-1-5-21-6201-6202-6203-6205"),
             new Claim(ClaimTypes.GroupSid, GroupSid),
+            new Claim(ClaimTypes.GroupSid, AuditorGroupSid),
         };
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName)));

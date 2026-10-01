@@ -46,6 +46,8 @@ internal static class McpWireMapper
         return tool switch
         {
         "list_metric_catalog" => value is MetricCatalogProjection catalog ? MetricCatalog(catalog) : null,
+        McpSqlMetricBaselines.CatalogTool => value is JsonObject sqlCatalog ? sqlCatalog : null,
+        McpSqlMetricBaselines.BaselineTool => value is SqlMetricBaselinePage sqlBaselines ? McpSqlMetricBaselines.Map(sqlBaselines) : null,
         "list_incidents" => value is IncidentListPage incidents ? IncidentList(incidents) : null,
         "list_instances" => value is ObservationTargetPage p ? O(("targets", A(p.Targets, Target)), ("nextCursor", Cursor(p.NextCursor)), ("hasMore", p.NextCursor is not null)) : null,
         "get_instance_capabilities" => value is ObservationTargetStatusSnapshot s ? Status(s) : null,

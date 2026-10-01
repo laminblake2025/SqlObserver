@@ -40,8 +40,8 @@ public static class McpCatalog
     public const string DownlevelProtocolVersion = "2025-11-25";
     // Reviewed catalog approval point. Digest is re-derived below and must
     // agree, so changing the catalog cannot silently retain this identity.
-    public const string ApprovedCatalogDigest = "45D3A5E64277D305DD375C17D114F515490EB3A94A76BEC51FABB8BEB6345CBF";
-    public const string ServerVersion = "m11-2.2.0+catalog-45D3A5E64277D305DD375C17D114F515490EB3A94A76BEC51FABB8BEB6345CBF";
+    public const string ApprovedCatalogDigest = "ABEFA5ADA97EFDA91714112AD9F6FCDB97A6159FF537C43C4D2B0674FEB3E7F3";
+    public const string ServerVersion = "m11-2.2.0+catalog-ABEFA5ADA97EFDA91714112AD9F6FCDB97A6159FF537C43C4D2B0674FEB3E7F3";
     private static readonly JsonSerializerOptions DigestJsonOptions = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static readonly IReadOnlyList<McpToolDefinition> Definitions = new[]
     {
@@ -50,11 +50,13 @@ public static class McpCatalog
         "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
         "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
         "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
-        "list_metric_catalog", "list_incidents", McpAvailabilityGroupEvidence.ReplicasTool, McpAvailabilityGroupEvidence.DatabasesTool, McpBackupAssessments.Tool
+        "list_metric_catalog", "list_incidents", McpAvailabilityGroupEvidence.ReplicasTool, McpAvailabilityGroupEvidence.DatabasesTool, McpBackupAssessments.Tool,
+        McpSqlMetricBaselines.CatalogTool, McpSqlMetricBaselines.BaselineTool
     }.Select(static name => new McpToolDefinition(name, McpCatalogDescriptions.Tool(name).Title, McpCatalogDescriptions.Tool(name).Description, SchemaFor(name))).ToArray();
 
     private static string SchemaFor(string name)
     {
+        if (McpSqlMetricBaselines.IsTool(name)) return McpSqlMetricBaselines.InputSchema(name);
         var properties = new JsonObject();
         void Add(string key, string json)
         {
@@ -139,6 +141,7 @@ public static class McpCatalog
     /// <summary>Closed common envelope for structured output. Text content retains the legacy direct projection shape.</summary>
     public static JsonElement OutputSchema(string toolName)
     {
+        if (McpSqlMetricBaselines.IsTool(toolName)) return McpSqlMetricBaselines.OutputSchema(toolName);
         JsonObject dataProperties = new();
         foreach (string field in McpOutputProjection.RootFields(toolName))
         {
@@ -372,7 +375,7 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
     private static McpAuditSnapshot CaptureAuditSnapshot(string toolName, IDictionary<string, JsonElement> arguments)
     {
         JsonElement parameters = JsonSerializer.SerializeToElement(arguments, AuditSnapshotOptions).Clone();
-        Guid? target = toolName == "list_metric_catalog" ? null : ReadAuditGuid(parameters, "instanceId");
+        Guid? target = toolName is "list_metric_catalog" or McpSqlMetricBaselines.CatalogTool ? null : ReadAuditGuid(parameters, "instanceId");
         Guid? incident = toolName == "get_incident_evidence" ? ReadAuditGuid(parameters, "threadId") : null;
         return new McpAuditSnapshot(parameters, target, incident);
     }
@@ -424,6 +427,11 @@ public sealed class McpCallHandler(IServiceProvider services, IHttpContextAccess
         object? value = name switch
         {
             "list_metric_catalog" => MetricCatalogQueryService.Get(authorization),
+            McpSqlMetricBaselines.CatalogTool => McpSqlMetricBaselines.Catalog(authorization),
+            McpSqlMetricBaselines.BaselineTool when id.HasValue => await _services.GetRequiredService<SqlMetricBaselineQueryService>().GetAsync(authorization,
+                new AnalyticsQueryRequest(new MonitoredInstanceId(id.Value), metric, from, to, 168, timeout,
+                    new ObservationTargetRevision(args["targetRevision"].GetInt64()), ReadUtc(args, "snapshotUtc")),
+                MetricCatalogV2.Version, args.TryGetValue("generation", out JsonElement generation) ? generation.GetInt64() : 1, token).ConfigureAwait(false),
             "list_incidents" when id.HasValue => await _services.GetRequiredService<IIncidentListQueryService>().ListAsync(new IncidentListQuery(authorization, new MonitoredInstanceId(id.Value), from, to, limit, timeout, Cursor: continuation?.Read<IncidentListCursor>(JsonOptions)), token).ConfigureAwait(false),
             "list_instances" => await ListInstancesAsync(authorization, limit, continuation?.Read<ObservationTargetListCursor>(JsonOptions), timeout, token).ConfigureAwait(false),
             "get_instance_capabilities" when id.HasValue => await _services.GetRequiredService<IObservationTargetStatusQueryService>().GetAsync(new GetObservationTargetStatusQuery(authorization, new MonitoredInstanceId(id.Value), timeout), token).ConfigureAwait(false),

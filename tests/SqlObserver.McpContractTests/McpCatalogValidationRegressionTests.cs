@@ -40,6 +40,8 @@ public sealed class McpCatalogValidationRegressionTests
         ("get_availability_databases_v2", "Get AG database-replica evidence v2", "offset-free SQL Server local timestamp", "instanceId atUtc limit cursor"),
         ("list_instances", "List monitored instances", "Call this first", "limit cursor"),
         ("list_metric_catalog", "List metric definitions", "supported metric definitions", ""),
+        ("list_sql_metric_catalog_v2", "List SQL baseline metrics", "seven SQL-engine metrics", ""),
+        ("get_sql_metric_baselines_v2", "Read SQL metric baselines", "all 168 UTC hours", "instanceId targetRevision metricKey fromUtc toUtc snapshotUtc generation"),
         ("list_incidents", "List incident threads", "cursor_stale", "instanceId fromUtc toUtc limit cursor"),
         ("get_instance_capabilities", "Get capability discovery status", "discovery status", "instanceId"),
         ("get_instance_health", "Get instance collection health", "collection freshness", "instanceId"),
@@ -103,7 +105,7 @@ public sealed class McpCatalogValidationRegressionTests
 
         Assert.Equal(protocol, client.NegotiatedProtocolVersion);
         Assert.Equal(Catalog.Select(x => x.Name).Order(StringComparer.Ordinal), tools.Select(x => x.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(30, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(32, tools.Select(x => x.Description).Distinct(StringComparer.Ordinal).Count());
         var titles = new HashSet<string>(StringComparer.Ordinal);
         foreach ((string name, string title, string meaning, string properties) in Catalog)
         {
@@ -141,7 +143,9 @@ public sealed class McpCatalogValidationRegressionTests
                 Assert.Equal(expected, limit.GetProperty("default").GetInt32());
             }
             if (advertised.TryGetProperty("metricKey", out JsonElement metric))
-                Assert.Equal(MetricKeys, metric.GetProperty("enum").EnumerateArray().Select(x => x.GetString()).ToArray());
+                Assert.Equal(name == "get_sql_metric_baselines_v2"
+                    ? MetricCatalogV2.All.Where(x => x.Source == AnalyticsMetricSource.SqlEngine).Select(x => x.Metric.Key).Order(StringComparer.Ordinal)
+                    : MetricKeys, metric.GetProperty("enum").EnumerateArray().Select(x => x.GetString()).ToArray());
             if (advertised.TryGetProperty("fromUtc", out JsonElement from))
             {
                 Assert.Contains("ending in Z", from.GetProperty("description").GetString()!, StringComparison.Ordinal);
@@ -449,7 +453,8 @@ public sealed class McpCatalogValidationRegressionTests
     private static Dictionary<string, JsonElement> Arguments(string tool)
     {
         var args = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        if (tool is not ("list_instances" or "list_metric_catalog")) Put(args, "instanceId", Target);
+        if (tool is not ("list_instances" or "list_metric_catalog" or "list_sql_metric_catalog_v2")) Put(args, "instanceId", Target);
+        if (tool == "get_sql_metric_baselines_v2") { Put(args, "targetRevision", 1); Put(args, "metricKey", "engine.batch_requests_per_second"); Window(args, Start.AddDays(-28), Start); }
         if (WindowCaps.Any(row => (string)row[0] == tool)) Window(args, Start, Start.AddHours(1));
         if (tool is "get_metric_series" or "get_storage_forecast" or "compare_metric_windows") Put(args, "metricKey", Metric);
         if (tool == "get_top_queries") Put(args, "metric", "cpuMilliseconds");

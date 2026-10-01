@@ -25,11 +25,12 @@ public sealed class McpBoundaryScaffoldTests
             "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
             "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
             "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
-            "get_availability_replicas_v2", "get_availability_databases_v2", "get_backup_assessments_v2"
+            "get_availability_replicas_v2", "get_availability_databases_v2", "get_backup_assessments_v2",
+            "list_sql_metric_catalog_v2", "get_sql_metric_baselines_v2"
         ];
 
         Assert.Equal(expected.OrderBy(static n => n), SqlObserver.Mcp.McpCatalog.Definitions.Select(static d => d.Name).OrderBy(static n => n));
-        Assert.Equal(30, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
+        Assert.Equal(32, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
     }
 
     [Fact]
@@ -114,9 +115,10 @@ public sealed class McpBoundaryScaffoldTests
                 return selected switch
                 {
                     "object" => BuildObject(schema),
-                    "array" => new JsonArray(Build(schema.GetProperty("items"))),
+                    "array" => new JsonArray(Enumerable.Range(0, schema.TryGetProperty("minItems", out JsonElement minItems) ? Math.Max(1, minItems.GetInt32()) : 1)
+                        .Select(_ => Build(schema.GetProperty("items"))).ToArray()),
                     "integer" => JsonValue.Create(schema.TryGetProperty("minimum", out JsonElement minimum) ? Math.Max(1, minimum.GetInt64()) : 1)!,
-                    "number" => JsonValue.Create(1.0)!,
+                    "number" => JsonValue.Create(schema.TryGetProperty("maximum", out JsonElement maximum) ? Math.Min(1, maximum.GetDouble()) : 1.0)!,
                     "boolean" => JsonValue.Create(true)!,
                     "null" => JsonValue.Create((string?)null)!,
                     _ => JsonValue.Create("sample")!

@@ -29,9 +29,9 @@ internal static class McpInputValidation
             string type = property.GetProperty("type").GetString()!;
             if (type == "integer")
             {
-                int minimum = property.GetProperty("minimum").GetInt32();
-                int maximum = property.GetProperty("maximum").GetInt32();
-                if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int integer) || integer < minimum || integer > maximum)
+                long minimum = property.GetProperty("minimum").GetInt64();
+                long maximum = property.GetProperty("maximum").GetInt64();
+                if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out long integer) || integer < minimum || integer > maximum)
                     throw new McpInputValidationException($"{key} must be an integer from {minimum} to {maximum}.");
                 continue;
             }
@@ -68,6 +68,15 @@ internal static class McpInputValidation
                 throw new McpInputValidationException("volumeFingerprint is only valid for host.volume.* metricKey.");
         }
         if (name == "compare_metric_windows") ValidateComparison(args);
+        if (name == McpSqlMetricBaselines.BaselineTool)
+        {
+            DateTimeOffset from = ParseUtc(args["fromUtc"].GetString()!, "fromUtc"), to = ParseUtc(args["toUtc"].GetString()!, "toUtc");
+            if (to.TimeOfDay != TimeSpan.Zero || to - from != TimeSpan.FromDays(28))
+                throw new McpInputValidationException("fromUtc and toUtc must span exactly 28 days ending at UTC midnight.");
+            DateTimeOffset snapshot = args.TryGetValue("snapshotUtc", out JsonElement cutoff) ? ParseUtc(cutoff.GetString()!, "snapshotUtc") : DateTimeOffset.UtcNow;
+            if (snapshot < to || snapshot > DateTimeOffset.UtcNow.AddMinutes(1))
+                throw new McpInputValidationException("snapshotUtc must be at or after toUtc and no later than one minute after now.");
+        }
         if ((McpAvailabilityGroupEvidence.IsTool(name) || name == McpBackupAssessments.Tool) && args.TryGetValue("atUtc", out JsonElement at))
         {
             DateTimeOffset value = ParseUtc(at.GetString()!, "atUtc");

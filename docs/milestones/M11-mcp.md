@@ -9,7 +9,7 @@ SQL Server, collector, target-credential, or administrative-service dependency.
 
 ## Fixed authority
 
-The runtime catalog contains exactly these 27 read-only tools:
+The runtime catalog contains exactly these 32 read-only tools:
 
 `list_instances`, `get_instance_capabilities`, `get_instance_health`,
 `get_active_alerts`, `get_metric_series`, `compare_metric_windows`,
@@ -19,7 +19,10 @@ The runtime catalog contains exactly these 27 read-only tools:
 `get_query_plan_metadata`, `get_database_health`, `get_tempdb_health`,
 `get_file_io`, `get_storage_forecast`, `get_backup_status`,
 `get_job_failures`, `get_availability_health`, `get_incident_evidence`, and
-`search_diagnostic_events`, `list_metric_catalog`, and `list_incidents`.
+`search_diagnostic_events`, `list_metric_catalog`, `list_incidents`,
+`get_availability_replicas_v2`, `get_availability_databases_v2`,
+`get_backup_assessments_v2`, `list_sql_metric_catalog_v2`, and
+`get_sql_metric_baselines_v2`.
 
 Registration is explicit and one-to-one with the catalog. Every schema is
 closed, every tool is annotated read-only, idempotent, non-destructive, and
