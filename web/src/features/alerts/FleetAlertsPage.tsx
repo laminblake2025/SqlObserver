@@ -11,6 +11,7 @@ import { alertActivityHref, groupFleetAlerts, type FleetAlertGrouping } from "./
 import type { FleetAlert } from "./alertTypes";
 import { fleetAlertKey, loadFleetAlertJump } from "./fleetAlertJump";
 import type { AlertSelection } from "../../components/commandPaletteModel";
+import { alertReasonSummary } from "./alertRuleSignals.ts";
 
 const acknowledgementAttempts = new AcknowledgementAttempts();
 export function FleetAlertsPage({ refresh, selection }: { readonly refresh: number; readonly selection?: AlertSelection }) {
@@ -168,7 +169,7 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
           disabled={busy} onClick={() => void acknowledge(selected)}>{busy ? "Acknowledging…" : "Acknowledge"}</button> : undefined}>
         <EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"}
           tone={selected.state === "firing" ? "critical" : "warning"} />
-        <p className="detail-note">{selected.reason ?? "No reason was returned for this alert."}</p>
+        <p className="detail-note">{alertReasonSummary(selected.reason, selected.value) ?? "No reason was returned for this alert."}</p>
         <p>First observed: {formatTime(selected.firstObservedUtc)}</p>
         <p>Fired: {formatTime(selected.firedUtc)}</p>
         <p>Acknowledged: {formatTime(selected.acknowledgedUtc)}</p>

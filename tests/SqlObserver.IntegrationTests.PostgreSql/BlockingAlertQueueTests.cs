@@ -188,7 +188,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
     }
 
     [Fact]
-    public async Task BlockingQueueBoundsConcurrentProducersAndKeepsPrivateSurfaceCatalogGated()
+    public async Task BlockingQueueBoundsConcurrentProducersAndRejectsOutOfContractAdministration()
     {
         await using RepositoryTestDatabase database=await CreateMigratedDatabaseAsync();
         var target=new MonitoredInstanceId(Guid.NewGuid()); await InsertActiveTargetAsync(database,target);
@@ -222,7 +222,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
         {
             await using NpgsqlDataReader row=await inspect.ExecuteReaderAsync(); Assert.True(await row.ReadAsync());
             Assert.True(row.GetBoolean(0)); Assert.True(row.GetBoolean(1)); Assert.Equal("sqlobserver_migrator",row.GetString(2));
-            Assert.False(row.GetBoolean(3)); Assert.Equal(3,row.GetInt32(4)); Assert.Equal(4L,row.GetInt64(5));
+            Assert.False(row.GetBoolean(3)); Assert.Equal(4,row.GetInt32(4)); Assert.Equal(4L,row.GetInt64(5));
         }
         await using var denied=collector.CreateCommand("SELECT alerting.reconcile_blocking_alert_evaluations(@target,@key,@owner,@fence,1);");
         AddBlockingQueueParameters(denied,target,lease,1);
@@ -233,7 +233,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
             await using var catalog=new NpgsqlCommand("""
                 SELECT * FROM alerting.upsert_rule(jsonb_build_object('RuleId',gen_random_uuid(),'TargetId',@target,
                   'Action','CreateAlertRule','Enabled',true,'Name','blocking.duration','Kind',6,'MetricId',NULL,
-                  'SourceCollector','blocking.current','SourceSchemaVersion',1,'Comparison',1,'Threshold',60,
+                  'SourceCollector','blocking.current','SourceSchemaVersion',1,'Comparison',1,'Threshold',86401,
                   'Hysteresis',10,'ConfirmationCount',2,'ClearConfirmationCount',2,'ConfirmationWindow','5 minutes',
                   'EvaluationInterval','5 seconds','CatalogDigest',
                     (SELECT catalog_digest FROM alerting.catalog_registry WHERE catalog_id='sqlobserver.m8.alerts')),

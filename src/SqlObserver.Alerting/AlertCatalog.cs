@@ -19,6 +19,11 @@ public sealed class AlertCatalog
             ? rule.Comparison is AlertComparison.GreaterThan or AlertComparison.GreaterThanOrEqual &&
               rule.Threshold is >= 0 and <= 1_000_000 && rule.Hysteresis <= rule.Threshold &&
               rule.EvaluationInterval >= TimeSpan.FromSeconds(15)
+            : rule.Kind == AlertRuleKind.BlockingDuration
+            ? rule.Comparison is AlertComparison.GreaterThan or AlertComparison.GreaterThanOrEqual &&
+              rule.Threshold is >= 0 and <= 86400 && rule.Hysteresis <= rule.Threshold &&
+              rule.EvaluationInterval >= TimeSpan.FromSeconds(5) && rule.EvaluationInterval <= TimeSpan.FromSeconds(60) &&
+              rule.ConfirmationWindow >= rule.EvaluationInterval * (Math.Max(rule.ConfirmationCount, rule.ClearConfirmationCount) - 1)
             : BackupAlertRuleContract.IsBackup(rule.Kind)
             ? entry.Comparison == rule.Comparison && entry.Threshold == rule.Threshold && entry.Hysteresis == rule.Hysteresis &&
               rule.EvaluationInterval >= TimeSpan.FromSeconds(15) &&
@@ -31,7 +36,7 @@ public sealed class AlertCatalog
     {
         using Stream stream = typeof(AlertCatalog).Assembly.GetManifestResourceStream("SqlObserver.Alerting.Assets.alert-catalog.json") ?? throw new InvalidOperationException("The embedded alert catalog is missing.");
         using JsonDocument document = JsonDocument.Parse(stream);
-        if (document.RootElement.GetProperty("schemaVersion").GetInt32() != 2 || document.RootElement.GetProperty("contractVersion").GetInt32() != 3) throw new InvalidOperationException("Unsupported alert catalog schema.");
+        if (document.RootElement.GetProperty("schemaVersion").GetInt32() != 2 || document.RootElement.GetProperty("contractVersion").GetInt32() != 4) throw new InvalidOperationException("Unsupported alert catalog schema.");
         return document.RootElement.GetProperty("rules").EnumerateArray().Select(static item =>
         {
             string kind = item.GetProperty("kind").GetString()!;
@@ -50,6 +55,8 @@ public sealed class AlertCatalog
             string unit = item.GetProperty("unit").GetString()!;
             bool sourceApproved = BackupAlertRuleContract.IsBackup(ruleKind)
                 ? sourceCollector == "backups.status" && sourceSchemaVersion == 2
+                : ruleKind == AlertRuleKind.BlockingDuration
+                ? sourceCollector == "blocking.current" && sourceSchemaVersion == 1 && unit == "seconds"
                 : sourceCollector == "engine.core" && sourceSchemaVersion == 1;
             if ((ruleKind == AlertRuleKind.MetricThreshold) != (metric is not null) || !sourceApproved || string.IsNullOrWhiteSpace(unit) || threshold is double.NaN or double.PositiveInfinity or double.NegativeInfinity || hysteresis < 0 || confirmations is < 1 or > 100 || clearConfirmations is < 1 or > 100 || interval < TimeSpan.FromSeconds(1) || interval > TimeSpan.FromHours(1)) throw new InvalidOperationException("Alert catalog rule bounds are invalid.");
             _ = new AlertRuleDefinition(Guid.NewGuid(), item.GetProperty("name").GetString()!, ruleKind,

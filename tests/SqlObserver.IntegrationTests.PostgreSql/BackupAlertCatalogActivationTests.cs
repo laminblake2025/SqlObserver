@@ -73,7 +73,7 @@ public sealed partial class BackupEvidenceReadTests
             SELECT (SELECT revision=3 AND NOT enabled FROM alerting.rule WHERE rule_id=@rule),
               (SELECT bool_and(cancelled_at IS NOT NULL AND cancel_reason='rule_revision_changed')
                  FROM alerting.delivery_outbox WHERE rule_id=@rule),
-              (SELECT catalog_digest=@digest AND contract_version=3 FROM alerting.catalog_registry WHERE catalog_id='sqlobserver.m8.alerts');
+              (SELECT catalog_digest=@digest AND contract_version=4 FROM alerting.catalog_registry WHERE catalog_id='sqlobserver.m8.alerts');
             """);
         verify.Parameters.AddWithValue("rule",full.RuleId); verify.Parameters.AddWithValue("digest",AlertCatalog.Digest);
         await using NpgsqlDataReader row = await verify.ExecuteReaderAsync(); Assert.True(await row.ReadAsync());

@@ -217,6 +217,7 @@ tbody tr.selected-row, .selected-row { background: var(--teal-soft); }
 caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 12px; }
 .table-link { min-height: auto; padding: 0; color: var(--teal-deep); background: transparent; border: 0; font-weight: 700; text-align: left; }
 .table-link:hover { text-decoration: underline; }
+.selected-row .table-link { color: #076a72; }
 .pager { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding-top: 14px; }
 .pager > span { flex: 1 1 220px; color: var(--muted); font-size: 12px; }
 

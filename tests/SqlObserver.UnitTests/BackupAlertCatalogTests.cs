@@ -8,8 +8,8 @@ public sealed class BackupAlertCatalogTests
     [Fact]
     public void CatalogApprovesBackupCountsWithConfigurableTimingAndExplicitWireKinds()
     {
-        Assert.Equal("b90f9f21d338c62239a82c4244a68537884f03fc6b2166e3c386b1dd1b55af15", AlertCatalog.Digest);
-        Assert.Equal(5, AlertCatalog.Entries.Count);
+        Assert.Equal("2acfcab767941fa6a40dff240314662456ff9908d4422eb83afe8ede865b8f0b", AlertCatalog.Digest);
+        Assert.Equal(6, AlertCatalog.Entries.Count);
         foreach (AlertCatalogEntry entry in AlertCatalog.Entries.Where(entry => BackupAlertRuleContract.IsBackup(entry.Kind)))
         {
             Assert.Equal(entry.Kind, AlertRuleKindWire.Parse(AlertRuleKindWire.Format(entry.Kind)));

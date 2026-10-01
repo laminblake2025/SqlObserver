@@ -8,9 +8,13 @@ blocks deliveries approved against the old configuration. See
 the exact receiver contract, replay handling and verification limits.
 
 The leased, bounded [blocking-duration source, private queue and verified commit](../technical/Blocking-Duration-Alerts.md)
-are implemented with native PostgreSQL coverage. Rule/catalog activation remains
-pending the product catalog template and administration UI. Runtime discovery,
-claims and verified dispatch are connected to the existing evaluation worker.
+are implemented with native PostgreSQL coverage. Catalog contract 4 now adds the
+blocking-duration template and Target Administrator create/edit/disable settings
+in seconds. Defaults require two observations to fire or clear; source gaps keep
+active alerts open. Runtime discovery, claims and verified dispatch are connected
+to the existing worker. Native tests cover acknowledgement between evaluation
+and commit, changed source/target/rule bindings and lease ownership. Live SQL
+Server collection and notification-receiver qualification remain pending.
 
 M8 adds repository-driven `metric_threshold` and `collector_health` rules. The evaluator is a deterministic state machine: confirmation protects against one-sample noise, hysteresis prevents flapping, and acknowledgement changes delivery state without changing evaluation. All timestamps are UTC and all transitions are fenced by the collector lease.
 

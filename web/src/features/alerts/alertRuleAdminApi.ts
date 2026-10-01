@@ -1,6 +1,6 @@
 import { apiFetch } from "../../apiClient.ts";
 import { readJsonBounded } from "./alertRuntimeParser.ts";
-import { isAlertRuleKind, isBackupRuleKind, validBackupRuleSettings, type AlertRuleKind } from "./alertRuleSignals.ts";
+import { isAlertRuleKind, isBackupRuleKind, validBlockingRuleSettings, validBackupRuleSettings, type AlertRuleKind } from "./alertRuleSignals.ts";
 
 export interface AlertRuleAdminItem {
   readonly ruleId: string;
@@ -59,7 +59,7 @@ export function parseAlertRuleAdminPage(value: unknown, targetId: string): Alert
         !isInteger(rule.confirmationCount, 1, 100) || !isInteger(rule.confirmationSeconds, 0, 604800) ||
         !isInteger(rule.evaluationSeconds, 1, 3600) || !isInteger(rule.clearConfirmationCount, 1, 100) ||
         typeof rule.enabled !== "boolean" || !isInteger(rule.revision, 1, Number.MAX_SAFE_INTEGER) ||
-        !isUtc(rule.updatedAtUtc) || isBackupRuleKind(rule.kind) && !validBackupRuleSettings({
+        !isUtc(rule.updatedAtUtc) || rule.kind === "blocking_duration_v1" && !validBlockingRuleSettings(rule) || isBackupRuleKind(rule.kind) && !validBackupRuleSettings({
           comparison: rule.comparison, threshold: rule.threshold, hysteresis: rule.hysteresis,
           confirmationCount: rule.confirmationCount, clearConfirmationCount: rule.clearConfirmationCount,
           confirmationSeconds: rule.confirmationSeconds, evaluationSeconds: rule.evaluationSeconds,

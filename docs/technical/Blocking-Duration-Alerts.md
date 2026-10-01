@@ -1,11 +1,11 @@
 # Blocking duration alerts
 
 The revamp plan requires alert coverage beyond engine counters and backups.
-Blocking duration is the next signal being implemented. The source contract
-below is implemented and verified in PostgreSQL. Private durable capture,
-claim, transition and atomic state/outbox commit helpers are implemented;
-runtime queue dispatch is implemented and product catalog activation remains pending. No blocking rule
-has been enabled in the product catalog yet.
+Blocking duration now has an approved product template and administration UI.
+The source contract below is implemented and verified in PostgreSQL. Private
+durable capture, claim, transition and atomic state/outbox commit helpers feed
+the normal evaluation worker. Live SQL Server and delivery qualification remains
+pending; catalog activation does not automatically create or enable target rules.
 
 ## Signal meaning
 
@@ -56,7 +56,7 @@ Forward migration 0298 reserves repository rule kind 6 for blocking duration and
 adds a forced-RLS `alerting.blocking_evaluation_capture` table. Its observation,
 producer, claim and claim-verification functions are migrator-owned and private:
 Collector, Server, Auditor and PUBLIC have no execution or table grants. The
-existing catalog remains contract 3 and rejects creating a blocking rule. The
+catalog gate originally remained at contract 3; migration 0302 activates contract 4. The
 normal worker now reaches these helpers through the scoped Collector function
 surface. The commit dispatcher routes blocking decisions through the verified
 commit helper, and rejects malformed decisions and attempts to bind a blocking
@@ -86,7 +86,7 @@ The repository constraints reserve an upper-duration comparison with a
 threshold. Evaluation intervals are 5–60 seconds; the confirmation window must
 cover the configured fire and clear counts. C# now defines the same rule kind,
 wire name, source observation contract and factory. Product defaults and
-administration remain part of activation.
+administration are activated by migration 0302 and the matching catalog/UI.
 
 ## Independently verified transitions and atomic commit
 
@@ -116,7 +116,7 @@ is rejected. State/decision serialization uses the existing production serialize
 and canonical SQL snapshot codec. The commit reuses the existing generic
 state-snapshot helper (currently named `backup_alert_state_snapshot`) without
 changing backup behavior. Both SQL functions remain migrator-only for direct
-execution; the scoped Collector dispatcher invokes them. The catalog remains gated.
+execution; the scoped Collector dispatcher invokes them.
 
 ## Runtime dispatch
 
@@ -142,13 +142,35 @@ for cleanup. The shared claimant now cancels revised operations only when their
 claims are available; an unexpired live claim keeps its ownership and is rejected
 by revision verification if someone attempts to commit it.
 
-## Remaining activation work
+## Catalog and administration activation
 
-1. Add the product-owned catalog template/defaults and expose duration threshold,
-   hysteresis and fire/clear settings through administration.
-2. Qualify additional source/revision/lease and acknowledgement races at runtime dispatch,
-   then activate the catalog. Expose the template/settings in Rules and describe
-   source gaps clearly in the alert inbox.
+Migration 0302 upgrades the product catalog to contract 4, digest
+`2acfcab767941fa6a40dff240314662456ff9908d4422eb83afe8ede865b8f0b`,
+only when the previous contract/digest match exactly. The migration and matching
+application/catalog must deploy together. It does not create rules automatically.
+The new `blocking.duration` template uses `blocking_duration_v1`, seconds and the
+passive `blocking.current` schema 1 collector. Defaults are `>= 60` seconds,
+10 seconds of hysteresis, two fire and two clear observations within five minutes,
+and a 15-second evaluation interval. Recovery therefore requires values below
+50 seconds, confirmed by two distinct complete source snapshots.
+
+Target Administrators can create, edit and disable the rule through Rules and
+the existing HTTP endpoints. Threshold, hysteresis, comparison, fire/clear counts
+and timing are configurable within the same domain/repository bounds. Its signal
+kind and metric binding cannot change after creation; changing the signal requires
+a new rule. Native SQL validates the source binding independently of C#.
+The Rules forms and details name seconds explicitly. The alert inbox turns the
+closed blocking source reasons into evidence-gap explanations and recovery actions.
+Missing, stale and incomplete evidence keeps an active alert open.
+
+## Remaining qualification
+
+The native checks use isolated PostgreSQL and seeded collector records. A live
+SQL Server blocking workload must still be collected and persisted through the
+canonical collection path, then evaluated and delivered to a lab notification
+receiver. SQL Server 2019/2025 qualification and further concurrent stress remain
+separate from the checked-in catalog/runtime behavior. The test VM is available
+for this work when current source can be deployed there.
 
 ## Current verification
 
@@ -167,7 +189,7 @@ complete-empty snapshot. They also exercise concurrent bounded producers,
 changed/unknown evidence, schedule/target/rule revision changes, rule disable,
 forged observation fields, wrong/expired owners, aged unknown captures,
 inactive-target cancellation and capture cleanup, private RLS/grants, and explicit
-catalog/engine-dispatch rejection. Evidence:
+out-of-contract administration rejection. Evidence:
 `artifacts/blocking-alerts/blocking-alert-queue.trx`.
 
 The fixtures seed repository rows under their isolated bootstrap role to test
@@ -175,7 +197,8 @@ source integrity and corruption handling. The queue checks invoke private
 helpers as the migrator and simulate a completed queue operation to test source
 consumption; they do not exercise the normal worker or a state/outbox commit.
 They do not run SQL Server collection or prove the normal worker or notification
-transport. Those checks belong to the remaining activation work above.
+transport. Later runtime checks cover the worker; live SQL Server collection and
+notification-receiver checks remain in the qualification work above.
 
 Three native PostgreSQL commit checks exercise the full migration history and
 the production decision serializer. One compares PostgreSQL with the C# evaluator
@@ -216,3 +239,25 @@ services and persists a firing transition plus one outbox intent. Evidence:
 `artifacts/blocking-alerts/blocking-alert-runtime.trx`.
 These fixtures still seed collector data as the isolated bootstrap owner; they
 do not run SQL Server collection or an external delivery adapter.
+
+Eight native PostgreSQL catalog/fencing checks validate the restricted Server
+administration port, idempotent creation, editable duration settings and disable,
+unchanged backup administration, rejected source/metric/comparison/timing settings,
+and rollback when the prior catalog is missing or has drifted. Runtime checks
+cover acknowledgement between evaluation and commit, stale source evidence,
+changed target revision and forged lease ownership. Failed commits leave the
+claim and durable effects unchanged; recomputation preserves acknowledgement.
+Private helper grants remain closed. Evidence:
+`artifacts/blocking-alerts/blocking-alert-catalog-postgresql.trx` and
+`artifacts/blocking-alerts/blocking-alert-catalog-fences.trx`.
+
+Two focused catalog unit checks, five HTTP pipeline checks, twelve browser
+parser/action checks and one Chromium create/retry/edit/disable flow passed.
+The browser flow verifies seconds labels, confirmation validation, stable retry
+identities, revision fences and axe accessibility. It uses synthetic HTTP
+responses and is separate from the native repository tests. A production web
+build and the migration preamble check also passed. Evidence:
+`artifacts/blocking-alerts/blocking-alert-catalog.trx`,
+`artifacts/blocking-alerts/blocking-alert-catalog-http.trx`,
+`artifacts/blocking-alerts/browser-results.json` and
+`artifacts/blocking-alerts/blocking-alert-catalog-preamble.trx`.

@@ -113,7 +113,7 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.Equal(AlertCatalog.Entries.Count, document.RootElement.GetProperty("items").GetArrayLength());
         Assert.Contains(document.RootElement.GetProperty("items").EnumerateArray(),
             item => item.GetProperty("metricId").GetString() == "engine.user_connections");
-        foreach (AlertRuleKind kind in new[] { AlertRuleKind.BackupFullPolicy, AlertRuleKind.BackupLogPolicy, AlertRuleKind.BackupObservedFaults })
+        foreach (AlertRuleKind kind in new[] { AlertRuleKind.BackupFullPolicy, AlertRuleKind.BackupLogPolicy, AlertRuleKind.BackupObservedFaults, AlertRuleKind.BlockingDuration })
             Assert.Contains(document.RootElement.GetProperty("items").EnumerateArray(),
                 item => item.GetProperty("kind").GetString() == AlertRuleKindWire.Format(kind) &&
                     item.GetProperty("metricId").ValueKind == System.Text.Json.JsonValueKind.Null);
@@ -130,7 +130,8 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
     [InlineData(AlertRuleKind.BackupFullPolicy)]
     [InlineData(AlertRuleKind.BackupLogPolicy)]
     [InlineData(AlertRuleKind.BackupObservedFaults)]
-    public async Task BackupRuleRoutesPreserveKindAcrossCreateListUpdateAndDisable(AlertRuleKind kind)
+    [InlineData(AlertRuleKind.BlockingDuration)]
+    public async Task SourceBoundRuleRoutesPreserveKindAcrossCreateListUpdateAndDisable(AlertRuleKind kind)
     {
         using var backupFactory = new M8AlertApiFactory();
         using HttpClient admin = backupFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -138,7 +139,7 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         string path = $"/api/v1/observation-targets/{M8AlertApiFactory.TargetId:D}/alerts/rules";
         var body = System.Text.Json.JsonSerializer.SerializeToNode(new {
             ruleId = Guid.NewGuid().ToString("D"), name = "backup.http", kind = AlertRuleKindWire.Format(kind), metricId = (string?)null,
-            comparison = "greater_than", threshold = 0, hysteresis = 0, confirmationCount = 2, clearConfirmationCount = 3,
+            comparison = "greater_than", threshold = kind == AlertRuleKind.BlockingDuration ? 60 : 0, hysteresis = kind == AlertRuleKind.BlockingDuration ? 10 : 0, confirmationCount = 2, clearConfirmationCount = 3,
             confirmationSeconds = 300, evaluationSeconds = 30, enabled = true, operationId = Guid.NewGuid().ToString("D"),
         })!.AsObject();
         Assert.Equal(HttpStatusCode.OK,(await admin.PostAsJsonAsync(path,body)).StatusCode);
@@ -157,7 +158,7 @@ public sealed class M8AlertEndpointsWafTests : IClassFixture<M8AlertApiFactory>
         Assert.Equal(3,backupFactory.Administration.LastRuleWriteRequest!.Rule.ClearConfirmationCount);
         Assert.Equal(HttpStatusCode.OK,(await admin.PostAsJsonAsync($"{path}/{ruleId}/disable",body)).StatusCode);
         Assert.False(backupFactory.Administration.LastRuleWriteRequest!.Rule.Enabled);
-        body["threshold"] = 1;
+        body["threshold"] = kind == AlertRuleKind.BlockingDuration ? 86401 : 1;
         Assert.Equal(HttpStatusCode.BadRequest,(await admin.PostAsJsonAsync(path,body)).StatusCode);
     }
 

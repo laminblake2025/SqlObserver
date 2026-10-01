@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseRuleCatalog, prepareRule } from "../src/features/alerts/alertRuleAdminActions.ts";
 import { parseAlertRuleAdminPage } from "../src/features/alerts/alertRuleAdminApi.ts";
-import { ruleSignalLabel, backupRuleExplanation } from "../src/features/alerts/alertRuleSignals.ts";
+import { ruleSignalLabel, ruleExplanation } from "../src/features/alerts/alertRuleSignals.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
 for (const kind of ["backup_full_policy_v2", "backup_log_policy_v2", "backup_observed_faults_v2"]) {
@@ -25,6 +25,6 @@ for (const kind of ["backup_full_policy_v2", "backup_log_policy_v2", "backup_obs
     assert.throws(() => parseAlertRuleAdminPage({ ...page, items: [{ ...item, threshold: 1 }] },target),/invalid/);
     assert.throws(() => parseRuleCatalog({ ...catalog, items: [{ ...template, metricId: "engine.user_connections" }] },target),/invalid/);
     assert.doesNotMatch(ruleSignalLabel(kind,null),/Collector health|null/);
-    assert.match(backupRuleExplanation(kind),kind === "backup_observed_faults_v2" ? /cannot prove recovery/ : /unknown evidence/);
+    assert.match(ruleExplanation(kind),kind === "backup_observed_faults_v2" ? /cannot prove recovery/ : /unknown evidence/);
   });
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createRule, getRuleCatalog, prepareRule, RuleAttempts,
   type RuleTemplate, type RuleValues } from "./alertRuleAdminActions";
-import { backupRuleExplanation, ruleSignalLabel } from "./alertRuleSignals.ts";
+import { ruleExplanation, ruleSignalLabel } from "./alertRuleSignals.ts";
 
 const attempts = new RuleAttempts();
 
@@ -37,7 +37,8 @@ export function RuleCreateForm({ instanceId, onCreated }: {
   }, [instanceId, catalogRetry]);
 
   const template = templates[selectedTemplate];
-  const metric = values?.kind === "metric_threshold";
+  const blocking = values?.kind === "blocking_duration_v1";
+  const thresholdSignal = values?.kind === "metric_threshold" || blocking;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || !template || !values) return;
@@ -69,17 +70,17 @@ export function RuleCreateForm({ instanceId, onCreated }: {
         if (!next) return;
         setSelectedTemplate(index); setValues(valuesFromTemplate(next)); setError(undefined);
       }}>{templates.map((entry, index) => <option key={`${entry.kind}:${entry.metricId}`} value={index}>{ruleSignalLabel(entry.kind, entry.metricId)} ({entry.unit})</option>)}</select></label>
-      {backupRuleExplanation(values.kind) ? <p className="table-note">{backupRuleExplanation(values.kind)}</p> : null}
+      {ruleExplanation(values.kind) ? <p className="table-note">{ruleExplanation(values.kind)}</p> : null}
       <label>Rule name<input required maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" value={values.name} disabled={busy || values.kind === "collector_health"} onChange={event => setValues({ ...values, name: event.target.value })} /></label>
-      {metric ? <>
+      {thresholdSignal ? <>
         <label>Condition<select value={values.comparison} disabled={busy} onChange={event => setValues({ ...values, comparison: event.target.value as RuleValues["comparison"] })}><option value="greater_than_or_equal">At least</option><option value="greater_than">Greater than</option></select></label>
-        <label>Threshold<input type="number" required min="0" max="1000000" step="any" value={values.threshold} disabled={busy} onChange={event => setNumber("threshold", event.target.value)} /></label>
-        <label>Clear below threshold by<input type="number" required min="0" max="1000000" step="any" value={values.hysteresis} disabled={busy} onChange={event => setNumber("hysteresis", event.target.value)} /></label>
+        <label>{blocking ? "Duration threshold (seconds)" : "Threshold"}<input type="number" required min="0" max={blocking ? 86400 : 1000000} step="any" value={values.threshold} disabled={busy} onChange={event => setNumber("threshold", event.target.value)} /></label>
+        <label>{blocking ? "Clear below threshold by (seconds)" : "Clear below threshold by"}<input type="number" required min="0" max={blocking ? 86400 : 1000000} step="any" value={values.hysteresis} disabled={busy} onChange={event => setNumber("hysteresis", event.target.value)} /></label>
       </> : null}
       {values.kind !== "collector_health" ? <>
         <label>Fire after observations<input type="number" required min="1" max="100" value={values.confirmationCount} disabled={busy} onChange={event => setNumber("confirmationCount", event.target.value)} /></label>
         <label>Within seconds<input type="number" required min="0" max="604800" value={values.confirmationSeconds} disabled={busy} onChange={event => setNumber("confirmationSeconds", event.target.value)} /></label>
-        <label>Evaluate every seconds<input type="number" required min="15" max="3600" value={values.evaluationSeconds} disabled={busy} onChange={event => setNumber("evaluationSeconds", event.target.value)} /></label>
+        <label>Evaluate every seconds<input type="number" required min={blocking ? 5 : 15} max={blocking ? 60 : 3600} value={values.evaluationSeconds} disabled={busy} onChange={event => setNumber("evaluationSeconds", event.target.value)} /></label>
       </> : null}
       {values.kind !== "backup_observed_faults_v2" ? <label>Clear after observations<input type="number" required min="1" max="100" value={values.clearConfirmationCount} disabled={busy} onChange={event => setNumber("clearConfirmationCount", event.target.value)} /></label> : null}
     </div> : null}

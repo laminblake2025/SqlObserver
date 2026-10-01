@@ -6,6 +6,8 @@ Forward migration 0287 activates full-policy, log-policy and observed-fault rule
 through the production administrative repository. The catalog advances to contract
 version 3 with digest
 `b90f9f21d338c62239a82c4244a68537884f03fc6b2166e3c386b1dd1b55af15`.
+Migration 0302 subsequently adds blocking duration and advances the current
+catalog to contract 4; see [blocking duration alerts](../technical/Blocking-Duration-Alerts.md).
 Its guarded migration requires the exact previous catalog/version and rolls back
 without replacing the administrative function if that binding has drifted.
 Deploy the matching Server/Collector binaries and migration together. Earlier
