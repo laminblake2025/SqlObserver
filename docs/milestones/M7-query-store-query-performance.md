@@ -589,3 +589,39 @@ Server 2022 and PostgreSQL fixtures. Canonical run-retention dependencies, publi
 cache ranking/API, production catalog activation, SQL Server 2019/2025 and fleet
 qualification remain open. It does not qualify production TLS/key configuration,
 end-to-end HTTP/MCP projection, or the broader revamp as complete.
+
+
+### Cache dependencies on canonical runs (2026-10-01)
+
+Forward migration 0319 anchors each private cache watermark, delta and receipt
+(including empty receipts) to `telemetry.collection_run_identity` with a validated,
+non-cascading foreign key and a run-leading index. Native canonical run headers
+already populate that bridge. The standalone storage fixtures now seed real run
+anchors; their synthetic v1 headers do not qualify v2 leases or activation.
+
+The query-performance graph retirement preview includes exact target/run cache
+holds. Attached evidence reports watermark/delta/receipt holds. Detached evidence
+remains a hold throughout partition grace, including after reattachment and a
+second detachment. Dropping all expired cache partitions releases those holds.
+Unrelated run IDs do not acquire a time-window approximation hold. Missing or
+unverified detached relations fail closed, and the helper remains private to the
+migration role with an exact target scope.
+
+The populated migration test exposed PostgreSQL foreign-key validation overlooking
+rows hidden by forced RLS. The migration locks the private cache relations, exposes
+SELECT only to the migration owner within its transaction, and explicitly checks
+all existing attached and registered detached evidence. Temporary policies are
+removed before commit. Valid evidence is preserved; orphan evidence aborts the
+upgrade without deleting rows, fabricating headers, or recording migration 0319.
+Existing detached grace tables also receive their own run index and foreign key.
+
+Focused PostgreSQL checks cover catalog constraints, unknown-run rollback, runtime
+role denial, wrong target scope, valid/orphan upgrade adoption, detached grace,
+reattachment, expiry and restore. Evidence is recorded under
+`artifacts/plan-cache-deltas/plan-cache-retention-*`. Eight focused PostgreSQL
+cases pass across the final boundary and upgrade runs. The real native SQL Server
+2022-to-PostgreSQL fenced round trip also passes with 0319 applied, recorded in
+`combined-native-run-dependencies.trx`; the migration preamble check passes.
+This adds cache dependency protection to the existing graph-retirement gate. It does not implement broader
+canonical run/identity cleanup, public cache ranking/API, production catalog
+activation, SQL Server 2019/2025 or fleet qualification.

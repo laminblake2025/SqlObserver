@@ -33,6 +33,10 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests
                 DECLARE parent_name text; child_name text; old_day timestamptz:=(current_date-40)::timestamptz;
                     old_time timestamptz:=old_day+interval '12 hours'; old_run uuid:=gen_random_uuid(); common jsonb;
                 BEGIN
+                    INSERT INTO telemetry.collection_run(run_id,instance_id,collector_id,collector_version,output_schema_version,
+                        target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+                    SELECT old_run,instance_id,'queries.performance',1,1,1,1,'fixture/cache-identity',gen_random_uuid(),1,
+                        decode(repeat('aa',32),'hex'),old_time,old_time FROM events.plan_cache_runtime_receipt LIMIT 1;
                     common:=jsonb_build_object('observed_day',old_day,'committed_at',old_time,'updated_at',old_time,
                         'run_id',old_run,'last_run_id',old_run,
                         'source_read_started_at',old_time,'source_read_completed_at',old_time+interval '20 milliseconds',
@@ -61,6 +65,11 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests
                 """);
             await seed.CommitAsync();
         }
+        Guid oldRun;
+        await using (var lookup = database.DataSource.CreateCommand("SELECT run_id FROM events.plan_cache_runtime_receipt WHERE committed_at<clock_timestamp()-interval '35 days' LIMIT 1;"))
+            oldRun = Assert.IsType<Guid>(await lookup.ExecuteScalarAsync());
+        Assert.Equal(["cache_delta", "cache_receipt", "cache_watermark"], await CacheHolds(oldRun));
+        Assert.Empty(await CacheHolds(Guid.NewGuid()));
         string original = await CacheContents(database);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var timeout = new RepositoryCallTimeout(TimeSpan.FromSeconds(30));
@@ -112,6 +121,8 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests
         var stale = new WorkerLeaseIdentity(lease.Key, lease.Owner, new(lease.FencingToken.Value + 1));
         Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(() => Step(stale).AsTask())).SqlState);
         for (int index = 0; index < 3; index++) Assert.Equal(SystemRetentionStepOutcome.Detached, await Step(lease));
+        Assert.Equal(["cache_partition_grace", "cache_partition_grace", "cache_partition_grace"], await CacheHolds(oldRun));
+        Assert.Empty(await CacheHolds(Guid.NewGuid()));
         Assert.Equal(SystemRetentionStepOutcome.Idle, await Step(lease));
         foreach (string parent in CacheParents)
         {
@@ -122,6 +133,7 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests
             UPDATE system.retention_policy SET enabled=false,retain_for=NULL,policy_revision=policy_revision+1 WHERE data_class='m7_cache_watermarks';
             """);
         Assert.Equal(SystemRetentionStepOutcome.Reattached, await Step(lease));
+        Assert.Equal(["cache_partition_grace", "cache_partition_grace", "cache_watermark"], await CacheHolds(oldRun));
         await Sql("""
             UPDATE system.retention_policy SET enabled=true,retain_for=interval '8 days',policy_revision=policy_revision+1 WHERE data_class='m7_cache_watermarks';
             """);
@@ -137,6 +149,7 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests
         await Sql("UPDATE system.partition_reader_lease SET released_at=clock_timestamp() WHERE released_at IS NULL;");
         Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(() => Step(stale).AsTask())).SqlState);
         for (int index = 0; index < 3; index++) Assert.Equal(SystemRetentionStepOutcome.Dropped, await Step(lease));
+        Assert.Empty(await CacheHolds(oldRun));
         await using (var final = database.DataSource.CreateCommand("""
             SELECT count(*)=3 AND bool_and(to_regclass(format('%I.%I',partition_schema,partition_name)) IS NULL)
             FROM system.partition_registry WHERE partition_name LIKE '%_old_cache_test' AND lifecycle_state='dropped';
@@ -157,6 +170,16 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests
             Assert.Equal(8L, await audit.ExecuteScalarAsync());
 
         ValueTask<SystemRetentionStepOutcome> Step(WorkerLeaseIdentity supplied) => maintenance.RunSystemRetentionStepAsync(supplied, timeout, default);
+        async Task<string[]> CacheHolds(Guid run)
+        {
+            await using var scoped = await database.DataSource.OpenConnectionAsync();
+            await using var transaction = await scoped.BeginTransactionAsync();
+            await Scope(scoped, transaction, target);
+            await using var command = new NpgsqlCommand("SELECT hold_code FROM system.plan_cache_runtime_run_retention_holds(@target,@run) ORDER BY hold_code;", scoped, transaction);
+            command.Parameters.AddWithValue("target", target); command.Parameters.AddWithValue("run", run);
+            var result = new List<string>(); await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(reader.GetString(0)); return result.ToArray();
+        }
         async Task Sql(string sql)
         { await using var command = database.DataSource.CreateCommand(sql); await command.ExecuteNonQueryAsync(); }
         async Task<string[]> Reasons()

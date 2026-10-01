@@ -328,13 +328,13 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests(PostgreSql18F
         await transaction.RollbackAsync();
     }
 
-    private async Task<RepositoryTestDatabase> Migrate()
+    private async Task<RepositoryTestDatabase> Migrate(int maximum = MigrationBatchResult.MaximumResults)
     {
         var database = await fixture.CreateDatabaseAsync();
         try
         {
             var result = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
+                new MigrationApplyRequest(maximum, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))), CancellationToken.None);
             Assert.False(result.HasFailures, string.Join(",", result.Results.Where(row => row.Outcome == MigrationOutcome.Failed)
                 .Select(row => $"{row.Migration.Number.Value}:{row.FailureCode}")));
             return database;
@@ -350,10 +350,31 @@ public sealed partial class PlanCacheRuntimeStoragePostgreSqlTests(PostgreSql18F
 
     private static async Task<int> Apply(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid target, JsonObject payload, Guid? run = null)
     {
+        Guid runId = run ?? Guid.NewGuid();
+        await SeedCanonicalRun(connection, transaction, target, runId, ParseTime(payload["readStartedUtc"]!));
         await using var command = new NpgsqlCommand("SELECT events.apply_plan_cache_runtime_batch(@run,@target,1,@payload);", connection, transaction) { CommandTimeout = 30 };
-        command.Parameters.AddWithValue("run", run ?? Guid.NewGuid()); command.Parameters.AddWithValue("target", target);
+        command.Parameters.AddWithValue("run", runId); command.Parameters.AddWithValue("target", target);
         command.Parameters.AddWithValue("payload", NpgsqlDbType.Jsonb, payload.ToJsonString());
         return Assert.IsType<int>(await command.ExecuteScalarAsync());
+    }
+
+    // Standalone transition tests use real identity anchors rather than orphan
+    // run UUIDs. Their synthetic v1 header is not a v2 activation or lease proof.
+    private static async Task SeedCanonicalRun(NpgsqlConnection connection, NpgsqlTransaction transaction,
+        Guid target, Guid run, DateTimeOffset started)
+    {
+        await using var seed = new NpgsqlCommand("""
+            INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+                authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
+            VALUES(@target,@target::text,'private cache identity fixture','cache.fixture',1433,interval '5 seconds',
+                'windows_integrated_service_identity','mandatory_validated','active',1,now(),now(),now()) ON CONFLICT DO NOTHING;
+            INSERT INTO telemetry.collection_run(run_id,instance_id,collector_id,collector_version,output_schema_version,
+                target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+            VALUES(@run,@target,'queries.performance',1,1,1,1,'fixture/cache-identity',gen_random_uuid(),1,
+                decode(repeat('aa',32),'hex'),@started,@started) ON CONFLICT DO NOTHING;
+            """, connection, transaction);
+        seed.Parameters.AddWithValue("target", target); seed.Parameters.AddWithValue("run", run); seed.Parameters.AddWithValue("started", started);
+        await seed.ExecuteNonQueryAsync();
     }
 
     private static async Task Execute(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql)
