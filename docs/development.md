@@ -89,7 +89,7 @@ and removes a random isolated database for each test. Build and run the function
 selection from the repository root:
 
 ```powershell
-dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --configuration Release --filter 'Category=RequiresPostgreSql&Category!=RequiresM12ReportsRelease&Category!=RequiresM12ObservabilityRelease' --logger 'trx;LogFileName=postgresql.trx' --results-directory artifacts/local-tests
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --configuration Release --filter 'Category=RequiresPostgreSql&Category!=RequiresM12ReportsRelease&Category!=RequiresM12ObservabilityRelease&Category!=RequiresFleetBenchmark' --logger 'trx;LogFileName=postgresql.trx' --results-directory artifacts/local-tests
 ```
 
 To use an existing disposable PostgreSQL 18.4 service, set
@@ -115,6 +115,21 @@ check; fixture databases are also removed. To run only this recovery check:
 ```powershell
 dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter FullyQualifiedName~SqlBaselineRetentionRequiresVerifiedRecovery --logger 'trx;LogFileName=sql-baseline-retention.trx' --results-directory artifacts/sql-baseline-retention
 ```
+
+The SQL baseline fleet benchmark seeds 129 targets and 603,288 hourly rollups,
+then drains 903 jobs through the real worker. It checks all 168 hours per
+target/metric and preserves partial coverage for a target with only seven
+days of history. It is excluded from normal functional runs because of its
+larger workload. Run it explicitly, or enable `sql_baseline_fleet_benchmark`
+when manually dispatching the validation workflow:
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --filter FullyQualifiedName~SqlBaselineFleetBenchmarkDrainsEveryTarget --logger 'trx;LogFileName=sql-baseline-fleet-benchmark.trx' --results-directory artifacts/sql-baseline-fleet
+```
+
+Timing, process memory and table/index sizes are emitted as JSON in the TRX.
+This fixed synthetic backlog does not measure SQL Server collection or
+production capacity; see ADR-0027 for the measured result and limits.
 
 With that local connection configured, also run the operational-health journey:
 

@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore is verified on isolated PostgreSQL; fleet and lab validation remain open.
+Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore and a synthetic SQL baseline fleet benchmark are verified on isolated PostgreSQL; lab and production fleet validation remain open.
 
 ## Context
 
@@ -107,7 +107,8 @@ Each call inserts at most 2,688 missing jobs; later calls advance through the
 remaining targets. Successful worker batches drain continuously within the
 existing concurrency limit of two. Empty or failed batches retain the polling
 delay. This changes draining behavior, not the overall collector concurrency
-design, and fleet throughput has not been benchmarked.
+design. The synthetic baseline benchmark below measures baseline draining;
+it does not measure collection or SQL rollup throughput.
 
 Direct gauges use sample weights; rates use elapsed seconds. Expected samples
 are the bucket duration divided by captured cadence, rounded up. Missing or
@@ -159,8 +160,8 @@ row-level security, no direct runtime-role grants, append-only history and UTC
 daily partitions registered at persistence. Partition bounds, ownership and
 registry identity are verified. The new `sql_metric_baselines` retention policy
 defaults to 90 days and participates in the existing scheduled retention
-workflow and administrator policy controls. Actual detach/drop under recovery
-attestation has not been exercised for this new parent in these checks.
+workflow and administrator policy controls. The recovery check below exercises
+actual detach/drop under recovery attestation for this parent.
 
 The fenced writer persists all hours atomically, validates their identities and
 statistics, and accepts identical replay after lease replacement. Divergent
@@ -174,8 +175,10 @@ SQL baselines are available through the explicit version 2 read API, shared
 dashboard/Resources chart references and separate MCP tools. Existing jobs,
 cursors and host/replication reads retain their original catalog.
 
-Benchmark fleet derivation and history coverage. Collector source validation
-on the SQL Server lab and a connected browser remain open. The SQL baseline
+Collector source validation on the SQL Server lab, a connected browser and
+production fleet throughput remain open. The legacy catalog-v1 scheduler still
+selects the first 128 targets before eliminating existing jobs; advancing that
+scheduler through the fleet remains separate work. The SQL baseline
 retention lifecycle now has a real backup/restore check on isolated PostgreSQL;
 production recovery procedures and the Windows lab remain separately unverified.
 
@@ -379,3 +382,34 @@ recovery certification, and it does not cover production backup storage,
 encryption, off-site copies or fleet volume. No production migration was needed.
 The GitHub PostgreSQL job is configured to expose its service container ID to
 this test; that remote job has not been executed in this session.
+
+## SQL baseline fleet benchmark
+
+The opt-in `SqlBaselineFleetBenchmarkDrainsEveryTargetAndPreservesFullAndPartialHistory`
+check passed on isolated PostgreSQL 18.4 with 129 targets and all seven SQL
+metrics. It seeds 603,288 canonical hourly rollups: 28 complete UTC days for
+128 targets and seven days for the final target. The fenced baseline scheduler
+inserts 896 jobs, then seven, then zero on successive calls, crossing its
+128-target batch boundary without duplicates or omissions.
+
+The real derivation worker completed all 903 baseline jobs in 94.89 seconds
+(9.52 jobs/second), with at most two running at once. It persisted 151,704 rows,
+168 unique hours for every target/key pair. Every median, MAD and percentile
+matches the seeded series. The target with seven days retains 25% coverage
+and partial visibility; it does not acquire invented complete history.
+
+Seeding took 18.05 seconds and the three scheduling calls took 0.105 seconds.
+Leaf tables and indexes occupied 468,418,560 bytes for inputs and 197,836,800
+bytes for baselines. The whole test process peaked at 164,851,712 bytes of
+working set and allocated 10,104,679,200 bytes during worker execution. Those
+memory measurements include fixture/test activity and are not worker-only
+profiles. The machine exposed 24 logical processors and used .NET 10.0.7.
+
+This is a fixed synthetic baseline backlog, not a production capacity claim.
+Collection is disabled after jobs are scheduled, and input rollups are seeded
+rather than collected from SQL Server. The worker may also schedule legacy-v1
+analytics; the check stops once the 903 SQL baseline jobs finish and does not
+assert that the entire analytics queue is empty. No source collector, browser,
+concurrent ingestion or production retention load is covered. Evidence is
+`artifacts/sql-baseline-fleet/sql-baseline-fleet-benchmark.trx`. CI excludes this
+benchmark from normal functional runs and offers it as a manual workflow input.

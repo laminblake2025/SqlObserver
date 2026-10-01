@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      sql_baseline_fleet_benchmark:
+        description: Run the SQL baseline fleet benchmark
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -120,12 +125,19 @@ jobs:
           Start-Transcript -Path artifacts/ci/postgresql.log
           $testExitCode = 1
           try {
-            dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --configuration Release --no-restore --filter 'Category=RequiresPostgreSql&Category!=RequiresM12ReportsRelease&Category!=RequiresM12ObservabilityRelease' --logger 'trx;LogFileName=postgresql.trx' --results-directory artifacts/ci/test-results
+            dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --configuration Release --no-restore --filter 'Category=RequiresPostgreSql&Category!=RequiresM12ReportsRelease&Category!=RequiresM12ObservabilityRelease&Category!=RequiresFleetBenchmark' --logger 'trx;LogFileName=postgresql.trx' --results-directory artifacts/ci/test-results
             $testExitCode = $LASTEXITCODE
           } finally {
             Stop-Transcript
           }
           exit $testExitCode
+
+      - name: Benchmark SQL baseline fleet history
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sql_baseline_fleet_benchmark }}
+        shell: pwsh
+        run: |
+          dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj --configuration Release --no-restore --filter 'Category=RequiresFleetBenchmark' --logger 'trx;LogFileName=sql-baseline-fleet-benchmark.trx' --results-directory artifacts/ci/test-results
+          exit $LASTEXITCODE
 
       - name: Test operational-health repository journey
         if: ${{ !cancelled() }}
