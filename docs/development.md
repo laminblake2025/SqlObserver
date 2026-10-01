@@ -79,6 +79,33 @@ with synthetic API data. They do not contact SQL Server, PostgreSQL, or the real
 API. Stop each process with Ctrl+C and rebuild after changing frontend source.
 These fixtures cover their named surfaces, not every application route.
 
+The focused browser suite builds the current frontend and starts its own
+loopback-only Overview fixture on port 4321. Install the locked development
+dependencies and pinned Chromium browser once, then run it:
+
+```powershell
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web exec playwright install chromium
+pnpm --dir web run test:browser
+```
+
+The suite checks the SQL baseline references on Resources and the server
+dashboard: historical window/target identity, GiB conversion, partial history,
+missing hours, unavailable/foreign/error responses, and switching servers while
+reference requests are delayed. It also runs axe WCAG 2/2.1 A/AA checks on
+Resources with the sidebar footer visible. It uses the real built React client
+and synthetic API responses; it does not certify PostgreSQL, SQL Server,
+Windows authentication or the whole application. The existing model/contract
+tests remain separate.
+
+Results are written under `artifacts/web-browser`: `results.json`, an HTML
+report in `report`, and failure screenshots/traces in `results`. The validation
+workflow has a dedicated Linux browser job using the same locked dependencies.
+Its Chromium installation includes system dependencies, following the
+[Playwright CI setup](https://playwright.dev/docs/ci). No external API or
+credentials are needed. The fixture port must be free; the suite refuses to
+reuse an existing server. Stop any manually started fixture with Ctrl+C.
+
 For Overview states, open `/__fixture?mode=ready`, `empty`, `partial`, `error`, or
 `loading` on port 4185. The selected state is stored in a loopback cookie.
 

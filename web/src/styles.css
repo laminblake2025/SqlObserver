@@ -10,7 +10,7 @@
   --surface: #ffffff;
   --surface-soft: #f8fafc;
   --text: #132b48;
-  --muted: #647890;
+  --muted: #566b82;
   --muted-deep: #4e637a;
   --border: #d9e2eb;
   --border-strong: #c3d1df;
@@ -82,7 +82,7 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .skip-link:focus { top: 10px; }
 
 .app-layout { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; }
-.sidebar { position: sticky; top: 0; display: flex; flex-direction: column; width: 244px; height: 100vh; padding: 26px 16px 20px; color: #e4edf5; background: linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%); }
+.sidebar { position: sticky; top: 0; display: flex; flex-direction: column; width: 244px; height: 100vh; overflow-y: auto; padding: 26px 16px 20px; color: #e4edf5; background: linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%); }
 .brand-lockup { display: flex; gap: 11px; align-items: center; margin: 0 8px 38px; }
 .brand-lockup strong { display: block; font-size: 20px; letter-spacing: -.02em; }
 .brand-lockup span:not(.brand-mark) { display: block; margin-top: 3px; color: #9fb4c7; font-size: 12px; }

@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore and a synthetic SQL baseline fleet benchmark are verified on isolated PostgreSQL. Native core inputs are verified on SQL Server 2022; SQL Server 2019/2025, connected browser and production fleet validation remain open.
+Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore and a synthetic SQL baseline fleet benchmark are verified on isolated PostgreSQL. Native core inputs are verified on SQL Server 2022 and browser behavior against the synthetic API fixture. SQL Server 2019/2025, the browser connected to the real API and production fleet validation remain open.
 
 ## Context
 
@@ -489,3 +489,33 @@ whereas this branch's asset hashes to
 Running the VM's older collector would not validate this branch. No repository
 files were uploaded and no VM database or service was changed. SQL Server
 2019/2025 source qualification and the connected end-to-end flow remain open.
+
+## Browser SQL baseline verification
+
+Eight Chromium checks passed against the current built React client and a
+loopback-only synthetic API fixture. They verify the seven catalog-v2 requests
+carry the selected target/revision and the preceding 28-day UTC source window;
+Resources converts byte baselines to GiB while retaining separate SQL and host
+memory bands. The dashboard renders workload references in batches/second and
+uses the same shared Rewind window.
+
+Partial history retains its coverage label. Unavailable hours remain gaps,
+and empty, unavailable, foreign-target or failed baseline responses do not
+draw SQL bands or hide current observations. A delayed first-server response
+cannot replace the second server's distinct bands; changing the server through
+the actual selector preserves the shared custom window.
+
+The axe WCAG 2/2.1 A/AA scan found insufficient contrast in secondary text and
+a sidebar footer overflowing its dark background on shorter desktop viewports.
+The shared secondary text color is now darker and the sidebar scrolls within
+its own background. The final scan passes with the footer scrolled into view.
+No accessibility rules were disabled. This is automated coverage of the tested
+Resources state, not a whole-application accessibility certification.
+
+The test runner and axe dependencies are pinned in the pnpm lockfile. A new
+Linux CI job builds the client, installs Chromium, runs these checks and
+publishes the machine-readable/HTML report with failure traces/screenshots.
+Local results are `artifacts/web-browser/results.json` and `report/index.html`.
+The remote CI job has not been run in this session. Synthetic fixture coverage
+does not prove the Windows authentication, actual database ingestion or browser
+connected to the production API; those end-to-end checks remain open.
