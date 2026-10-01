@@ -37,10 +37,10 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         await AssertDeadlockQueueClaimAsync(database, prepared.Target, observation, lease);
         Assert.Empty(await ClaimDeadlockQueueAsync(database, prepared.Target, lease));
         await ExpireDeadlockQueueAsync(database, prepared.Target);
-        Assert.Empty(await DeadlockQueueCallAsync(database, prepared.Target, lease,
+        JsonObject reclaimed = Assert.Single(await DeadlockQueueCallAsync(database, prepared.Target, lease,
             "SELECT observations FROM alerting.claim_due_evaluations(@target,@key,@owner,@fence,100);"));
-        JsonObject reclaimed = Assert.Single(await ClaimDeadlockQueueAsync(database, prepared.Target, lease));
         Assert.Equal(observation.ToJsonString(), reclaimed.ToJsonString());
+        Assert.Empty(await ClaimDeadlockQueueAsync(database, prepared.Target, lease));
         await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
         {
             await using NpgsqlTransaction transaction = await DeadlockQueueTransactionAsync(connection, prepared.Target);
@@ -49,10 +49,10 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
             gated.Parameters.AddWithValue("observations", NpgsqlDbType.Jsonb, new JsonArray(observation.DeepClone()).ToJsonString());
             PostgresException failure = await Assert.ThrowsAsync<PostgresException>(async () => await gated.ExecuteNonQueryAsync());
             Assert.Equal("22023", failure.SqlState);
-            Assert.Equal("Deadlock alert runtime is not activated", failure.MessageText);
+            Assert.Equal("Deadlock evaluation batch bindings are invalid", failure.MessageText);
         }
         // Only this isolated migrator fixture simulates consumption. Normal
-        // state/outbox commit is deliberately not activated by migration 0304.
+        // state/outbox commit is covered separately by the commit/runtime tests.
         await ExecuteAsync(database, "UPDATE alerting.evaluation_queue SET completed_at=clock_timestamp(),claimed_until=NULL,claim_work_key=NULL,claim_owner_execution_id=NULL,claim_fencing=NULL WHERE instance_id=@target;", ("target", prepared.Target.Value));
         await Task.Delay(TimeSpan.FromSeconds(15.1));
         Assert.Equal(0, await ReconcileDeadlockQueueAsync(database, prepared.Target, lease));

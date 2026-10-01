@@ -3,9 +3,10 @@
 The revamp plan calls for deadlock alert coverage beyond engine counters.
 Forward migration 0303 implements its bounded repository source and adds it to
 the Collector data plane. Migration 0304 adds private durable capture and claiming;
-0305 and 0306 add independently verified transitions and atomic persistence.
-Runtime discovery/dispatch, catalog activation and the administration UI are still
-required before a user can enable this signal.
+0305 and 0306 add independently verified transitions and atomic persistence;
+0307 connects them to normal runtime discovery, claiming and dispatch. Catalog
+activation and the administration UI are still required before a user can enable
+this signal.
 
 ## Signal and source
 
@@ -72,13 +73,16 @@ carry no count. Count policies require integer thresholds and hysteresis, evalua
 intervals from 15 to 60 seconds, and a window that covers the requested confirmation
 intervals. The new kind and wire contract are not approved by the product catalog.
 All four queue helpers remain migrator-only, with a forced-RLS private capture
-table. Public claiming excludes deadlock work, and public evaluation explicitly
-rejects it until runtime discovery and dispatch are activated together.
+table. Migration 0304 initially gated public claiming/evaluation. Migration 0307
+activates both through the normal fenced pipeline; the product catalog still
+does not permit user creation of deadlock rules.
 
 Three native checks cover SQL/C# identity agreement, exact reclaim, consumed-source
 suppression, concurrent reconciliation, source and rule supersession, live-claim
 preservation, disabled-rule cleanup, forged observations, wrong lease owners,
-count bounds, private privileges, and the public activation gates. The consumed
+count bounds, private privileges, and the original public activation gates. With
+0307 applied, the queue check now verifies public reclaim and rejection of an
+incomplete decision batch. The consumed
 source check marks its queue row completed with a bootstrap-only fixture mutation;
 it does not exercise a production alert-state or notification commit. Four shared
 dispatcher regressions still pass for actual engine, backup and blocking work.
@@ -111,7 +115,8 @@ between clear samples, recovery, re-fire, maintenance deferral and immutable rep
 They also reject forged state/event decisions and prove rollback after injected
 audit failure, lost worker ownership and expired queue claim. A successful retry
 consumes the original capture once. Transition and commit functions remain
-migrator-only; the public runtime gate and unapproved catalog are unchanged.
+migrator-only; public runtime dispatch invokes them internally. The catalog is
+still unapproved for deadlock rules.
 
 These are isolated PostgreSQL checks. Typed collector payloads and bootstrap-only
 rule/destination fixtures supply the test evidence; the seven scans do not come
@@ -120,6 +125,35 @@ do not run the normal alert worker or send a webhook. The C# regression first
 failed because deadlock evidence was not accepted by the evaluator, then passed
 after source-bound handling was added. Existing backup/blocking transition unit
 checks also pass.
+
+## Normal runtime integration
+
+The Collector's existing evaluation worker uses the normal repository source,
+coordinator lease and target grouping for deadlock work. Public discovery includes
+due deadlock rules and expired captures needing cleanup. A private, forced-RLS
+reconciliation cursor records each target check, so repeatedly consumed or
+unchanged evidence cannot monopolize the first fleet page. Its target foreign key
+cascades cleanup. Captures are reconciled under target scope before claiming;
+deadlock work shares the existing global queue limit with engine, backup and
+blocking work. Public claiming revalidates every deadlock capture and claim.
+
+Public dispatch validates rule/source and batch bindings, derives deadlock
+transitions independently, and commits them in the same transaction as the other
+sources in a target batch. Forging a deadlock decision rolls back engine, backup,
+blocking and deadlock effects together. Exact mixed-batch replay remains read-only.
+The source helpers and atomic commit stay private; the Collector receives access
+through the existing public functions.
+
+Four new native checks run the actual background worker over a canonical typed
+deadlock commit, dispatch a mixed four-source batch, preserve a revised rule's live
+claim, and exercise 129-target paging without re-consuming unchanged evidence.
+The worker creates one firing notification intent. The mixed batch deliberately
+uses unknown deadlock evidence and confirms that it stays Normal while valid
+engine/blocking evidence fires. The fleet fixtures likewise use unknown sources;
+they qualify bounded discovery and claiming, not live SQL Server throughput.
+Three queue checks and four existing blocking-runtime regressions also pass.
+Rules and approved destination rows remain isolated bootstrap fixtures. No live
+SQL Server deadlock workload or notification delivery is qualified by these checks.
 
 ## Verification and remaining work
 
@@ -131,7 +165,7 @@ evidence, permission-denied collection, target revision changes, private table
 and core-function privileges, wrong scopes/owners and released leases. Injected
 snapshot failure proves full rollback, followed by one successful retry.
 
-The fixtures seed only their target/prerequisite setup and typed collector
+The source-reader fixtures seed only their target/prerequisite setup and typed collector
 payloads. They do not run a SQL Server workload or the alert evaluation/delivery
 workers. Bootstrap-only mutations simulate corruption and expired timestamps.
 The existing deadlock commit, projection and retention regression group is also
@@ -144,8 +178,7 @@ availability, backup, database inventory, configuration, capacity and metric
 migrations. This records current dependencies; it does not remove them or prove
 original-run retirement is ready.
 
-Remaining work is runtime discovery and
-dispatch, approved catalog and UI settings, and live SQL Server-to-notification
+Remaining work is approved catalog and UI settings, and live SQL Server-to-notification
 qualification. The current XE reader still rescans its bounded 33-day file
 window. Incremental bookmarking remains a separate collector refactor; its
 coverage contract must preserve the five-minute history before it can replace
@@ -172,3 +205,11 @@ Transition/persistence evidence is in `deadlock-alert-transition-before.trx`
 comparison cases), `deadlock-alert-atomic-commit.trx` (two new native commit checks
 and three existing deadlock regressions), `deadlock-alert-final-fences.trx` (one
 native check), and `deadlock-alert-atomic-preamble.trx` (one preamble check).
+Runtime evidence is in `deadlock-alert-runtime-and-regressions.trx`: nine of 11
+cases passed, including the worker, mixed dispatch, queue and existing dispatcher
+checks. Two new fleet fixtures failed before exercising the runtime, first on
+outdated target column names, then on duplicate fixture rule names and inconsistent
+fixture timestamps (`deadlock-alert-runtime-fleet-fixtures.trx`). Both pass after
+correction in `deadlock-alert-runtime-fleet-corrected.trx`; together the runs verify
+11 unique native cases. Earlier failed files remain available. The new migration
+preamble check passes in `deadlock-alert-runtime-preamble.trx`.
