@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 using Microsoft.Data.SqlClient;
+using SqlObserver.Domain.Collection;
+using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.SensitiveData;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
@@ -69,6 +71,29 @@ public sealed class PlanCacheContentNativeSourceTests
             Assert.Empty(noKey.Content); Assert.Equal(0, noKey.SourceContentBytes); Assert.Equal(0, noKey.ProtectedContentBytes);
             Assert.Contains(noKey.Counters.Rows, row => row.CacheEntryFingerprint == item.Statement.CacheEntryFingerprint);
 
+            await Execute(database, $"CREATE USER [{login}] FOR LOGIN [{login}]; GRANT {(major == 15 ? "VIEW DATABASE STATE" : "VIEW DATABASE PERFORMANCE STATE")} TO [{login}];");
+            var factory = new RestrictedFactory(settings.ConnectionString, login);
+            var qualifiedSource = new PlanCacheRuntimeTargetSource(new PlanCacheRuntimeTargetExecutionPort(factory));
+            CollectorExecutionRequest qualifiedRequest = PlanCacheRuntimeTargetSourceTests.Request();
+            PlanCacheRuntimeTargetRead qualified = await qualifiedSource.ReadWithContentAsync(qualifiedRequest, 2000, 8, protector, deadline.Token);
+            var qualifiedContent = Assert.IsType<PlanCacheContentOutputBatch>(qualified.Content);
+            PlanCacheStatementContentObservation qualifiedItem = Assert.Single(qualifiedContent.Items,
+                row => row.Statement.Watermark.Key.Query == item.Statement.Query);
+            Assert.Equal(PlanCacheContentState.Available, qualifiedItem.Text.State);
+            Assert.Equal(PlanCacheContentState.Available, qualifiedItem.Plan.State);
+            Assert.Contains(qualifiedItem.Statement, qualified.Output.Items);
+            Assert.Equal(qualified.Output.ReadCompletedUtc, qualifiedItem.Statement.Watermark.ObservedAtUtc);
+            Assert.Equal(qualifiedItem.Statement.Before.DatabaseIncarnation, qualifiedItem.Statement.After.DatabaseIncarnation);
+            byte[] qualifiedText = protector.Decrypt(qualifiedRequest.TargetId.Value, qualifiedItem.Text.ProtectedContent!);
+            try { Assert.Equal(statement, Encoding.UTF8.GetString(qualifiedText).TrimEnd(';')); }
+            finally { CryptographicOperations.ZeroMemory(qualifiedText); }
+            Assert.Equal(0, factory.Active); Assert.InRange(factory.Peak, 1, 8);
+            PlanCacheRuntimeTargetRead qualifiedNoKey = await qualifiedSource.ReadWithContentAsync(qualifiedRequest, 2000, 8,
+                new UnavailableQuerySensitiveContentProtector(), deadline.Token);
+            Assert.Equal(PlanCacheContentCaptureState.ProtectionUnavailable, qualifiedNoKey.Content!.CaptureState);
+            Assert.Equal(0, qualifiedNoKey.Content.ContentLimit); Assert.Empty(qualifiedNoKey.Content.Items);
+            Assert.NotEmpty(qualifiedNoKey.Output.Items); Assert.Equal(0, factory.Active);
+
             await Execute(database, "EXEC sys.sp_recompile N'dbo.content_probe';");
             PlanCacheContentSourceRead absent = await Restricted(protector);
             Assert.DoesNotContain(absent.Counters.Rows, row => row.CacheEntryFingerprint == item.Statement.CacheEntryFingerprint);
@@ -105,6 +130,27 @@ public sealed class PlanCacheContentNativeSourceTests
         { await using var command = new SqlCommand(sql, connection) { CommandTimeout = 20 }; await command.ExecuteNonQueryAsync(deadline.Token); }
         async Task<object?> Scalar(SqlConnection connection, string sql)
         { await using var command = new SqlCommand(sql, connection) { CommandTimeout = 20 }; return await command.ExecuteScalarAsync(deadline.Token); }
+    }
+
+    private sealed class RestrictedFactory(string connectionString, string login) : ISqlServerConnectionFactory
+    {
+        internal int Active;
+        internal int Peak;
+        public async ValueTask<SqlConnection> OpenConnectionAsync(SqlServerConnectionPolicy policy, CancellationToken token)
+        {
+            var connection = new SqlConnection(connectionString);
+            try
+            {
+                await connection.OpenAsync(token);
+                await using (var command = new SqlCommand($"EXECUTE AS LOGIN='{login}';", connection))
+                    await command.ExecuteNonQueryAsync(token);
+                int active = Interlocked.Increment(ref Active), old;
+                do { old = Peak; } while (active > old && Interlocked.CompareExchange(ref Peak, active, old) != old);
+                connection.StateChange += (_, change) => { if (change.CurrentState == System.Data.ConnectionState.Closed) Interlocked.Decrement(ref Active); };
+                return connection;
+            }
+            catch { await connection.DisposeAsync(); throw; }
+        }
     }
 
     private sealed class Protector : IQuerySensitiveContentProtector, IDisposable

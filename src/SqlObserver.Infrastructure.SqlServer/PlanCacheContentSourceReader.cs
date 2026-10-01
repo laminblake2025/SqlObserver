@@ -14,7 +14,7 @@ internal sealed record PlanCacheProtectedContent(PlanCacheRuntimeSourceRow State
     string TextState, ProtectedSensitivePayload? Text, string PlanState, ProtectedSensitivePayload? Plan);
 
 internal sealed record PlanCacheContentSourceRead(PlanCacheRuntimeSourcePage Counters,
-    IReadOnlyList<PlanCacheProtectedContent> Content, int SourceContentBytes, int ProtectedContentBytes);
+    IReadOnlyList<PlanCacheProtectedContent> Content, int SourceContentBytes, int ProtectedContentBytes, int ContentLimit, PlanCacheContentCaptureState CaptureState = PlanCacheContentCaptureState.Enabled);
 
 internal static class PlanCacheContentSourceReader
 {
@@ -25,7 +25,7 @@ internal static class PlanCacheContentSourceReader
 
     internal static async Task<PlanCacheContentSourceRead> ReadAsync(DbDataReader reader,
         MonitoredInstanceId targetId, ObservationTargetRevision revision, int maximumRows,
-        int maximumContentEntries, IQuerySensitiveContentProtector protector, CancellationToken token)
+        int maximumContentEntries, IQuerySensitiveContentProtector protector, CancellationToken token, PlanCacheContentCaptureState? captureState = null)
     {
         ArgumentNullException.ThrowIfNull(protector);
         if (maximumContentEntries is < 0 or > MaximumEntries || maximumContentEntries > maximumRows)
@@ -56,7 +56,8 @@ internal static class PlanCacheContentSourceReader
         }
         if (await reader.NextResultAsync(token).ConfigureAwait(false))
             throw new InvalidDataException("Cache content returned an unexpected additional result.");
-        return new(page, content.AsReadOnly(), sourceBytes, protectedBytes);
+        return new(page, content.AsReadOnly(), sourceBytes, protectedBytes, maximumContentEntries, captureState ??
+            (maximumContentEntries > 0 ? PlanCacheContentCaptureState.Enabled : protector.IsAvailable ? PlanCacheContentCaptureState.Disabled : PlanCacheContentCaptureState.ProtectionUnavailable));
 
         async Task<(string State, ProtectedSensitivePayload? Payload)> Protect(int stateColumn, int contentColumn,
             SensitivePayloadKind kind, int maximumBytes)

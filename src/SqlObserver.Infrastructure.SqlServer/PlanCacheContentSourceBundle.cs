@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Domain.SensitiveData;
+using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 
@@ -61,6 +62,8 @@ internal sealed class PlanCacheContentSourceBundle
         await using var command = new SqlCommand(GetSql(major), connection) { CommandTimeout = 20 };
         command.Parameters.Add("@maximum_rows", SqlDbType.Int).Value = maximumRows;
         int effectiveEntries = protector.IsAvailable ? maximumContentEntries : 0;
+        var captureState = maximumContentEntries == 0 ? PlanCacheContentCaptureState.Disabled : effectiveEntries == 0
+            ? PlanCacheContentCaptureState.ProtectionUnavailable : PlanCacheContentCaptureState.Enabled;
         command.Parameters.Add("@maximum_content_entries", SqlDbType.Int).Value = effectiveEntries;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));
@@ -69,7 +72,7 @@ internal sealed class PlanCacheContentSourceBundle
             await using SqlDataReader reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess,
                 deadline.Token).ConfigureAwait(false);
             PlanCacheContentSourceRead result = await PlanCacheContentSourceReader.ReadAsync(reader, targetId, targetRevision,
-                maximumRows, effectiveEntries, protector, deadline.Token).ConfigureAwait(false);
+                maximumRows, effectiveEntries, protector, deadline.Token, captureState).ConfigureAwait(false);
             deadline.Token.ThrowIfCancellationRequested();
             return result;
         }

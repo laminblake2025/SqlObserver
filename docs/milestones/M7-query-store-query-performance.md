@@ -862,3 +862,50 @@ incarnation brackets must still qualify this whole read; a bounded domain
 envelope, fenced canonical links, scoped retention, audited QueryTextReader
 retrieval and inert cache-history rendering remain next steps. The staged
 bundle has no production collector registration or API content exposure.
+
+
+### Qualified cache content envelope and leased payload references (2026-10-01)
+
+The optional content path now uses the target sweep's existing bounded inventory
+and before/after live database identities around one combined counter/content
+capture. It keeps the 256-database, eight-connection and 5/20/5-second phase
+bounds. There is no second cache counter query. Content is retained only when
+its complete statement tuple survives the same target, revision, epoch and
+database-incarnation qualification as the runtime counters. Replaced, unknown
+or unreadable database identities drop their content and increment an explicit
+unqualified-content count. Malformed content still fails the frame even when
+its database would have been excluded. Source row/byte accounting includes
+content result rows and bytes, including evidence later excluded by qualification.
+The existing counter-only target read and staged v2 collector retain their path.
+
+A separate bounded domain envelope holds at most eight exact qualified statement
+observations and two MiB of ciphertext. It preserves the three capture states
+`enabled`, `disabled` and `protection_unavailable`, independently of per-kind
+availability. Each text/plan value has exactly one protected payload or leased
+reference when available; unavailable values have neither. Duplicate entries,
+foreign incarnations/scopes, changed counters/timestamps, unsupported payload
+kinds and inconsistent byte/accounting claims are rejected. Source capture
+resolution is normalized to the same repository microseconds as the counter
+frame. The collector helper deduplicates by kind/fingerprint under the supplied
+lease, rejects a foreign scheduled target before writes, checks returned
+reference fingerprints and preserves cancellation. Ciphertext writes remain
+separate from the future canonical link transaction and can leave unreferenced
+rows if that transaction never succeeds, as in the existing protection protocol.
+
+Opaque persistence JSON is deterministic under row reordering and changes when
+a reference changes. It contains exact database/incarnation/query/plan/entry
+identities, capture time, safe state/count metadata and protected payload IDs;
+it contains no plaintext, ciphertext or key metadata. Serialization is refused
+until every available payload has a repository reference and is bounded to
+32 KiB. These IDs are private writer input, not summary/API/MCP projections.
+
+Focused evidence: twelve domain/leased-reference cases and 48 source cases pass,
+including the extended real SQL Server 2022 fixture. Its non-sysadmin reader
+now has a fixture database user to establish live identity brackets; protected
+statement text and plan survive qualification, no-key capture retains its reason
+and counters, and all connections close. Results are in
+`cache-content-qualified-envelope.trx` and `cache-content-qualified-source.trx`
+under `artifacts/plan-cache-deltas`. No PostgreSQL, frontend or broad suite was
+run for this layer. A forward canonical cache-content link migration, versioned
+collector payload/commit wiring, retention integration, audited retrieval and
+inert rendering remain required before activation.

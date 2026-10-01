@@ -1,6 +1,7 @@
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.SensitiveData;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Infrastructure.SqlServer;
@@ -122,6 +123,52 @@ public sealed class PlanCacheRuntimeTargetSourceTests
         Assert.Equal(captures, port.CacheCalls);
     }
 
+    [Theory]
+    [InlineData(null, 2, 0)]
+    [InlineData("replacement", 1, 1)]
+    [InlineData("epoch", 1, 1)]
+    [InlineData("unknown", 1, 1)]
+    [InlineData("missing", 1, 1)]
+    public async Task ContentSharesOneCounterCaptureAndOnlyStableLiveDatabaseBracketsSurvive(string? fault, int retained, int unqualified)
+    {
+        CollectorExecutionRequest request = Request(); var port = new Port(request) { Failure = fault };
+        PlanCacheRuntimeTargetRead read = await new PlanCacheRuntimeTargetSource(port).ReadWithContentAsync(request, 2000, 8,
+            new UnavailableQuerySensitiveContentProtector(), default);
+        Assert.Equal(1, port.CacheCalls); Assert.Equal(1, port.ContentCalls);
+        var content = Assert.IsType<PlanCacheContentOutputBatch>(read.Content);
+        Assert.Equal(retained, content.Items.Count); Assert.Equal(unqualified, content.UnqualifiedEntries);
+        Assert.Equal(2, content.AttemptedEntries); Assert.Same(read.Output, content.Runtime);
+        Assert.All(content.Items, item => Assert.Contains(item.Statement, read.Output.Items));
+        Assert.Equal(read.Output.CandidateRows + read.IdentityRowsRead + 2, read.SourceRowsRead);
+        Assert.Equal(PlanCacheRuntimeSourceReader.HeaderBytes + read.Output.EmittedRows * PlanCacheRuntimeSourceReader.RowBytes
+            + read.IdentityResponseBytes + content.SourceContentBytes + 2 * 512, read.ResponseBytes);
+    }
+
+    [Theory]
+    [InlineData("content-scope")]
+    [InlineData("content-limit")]
+    [InlineData("content-bytes")]
+    [InlineData("content-unqualified-state")]
+    public async Task MalformedContentCannotBeHiddenByAnUnqualifiedDatabase(string fault)
+    {
+        CollectorExecutionRequest request = Request(); var port = new Port(request) { Failure = fault };
+        await Assert.ThrowsAsync<InvalidDataException>(() => new PlanCacheRuntimeTargetSource(port).ReadWithContentAsync(request, 2000, 8,
+            new UnavailableQuerySensitiveContentProtector(), default));
+    }
+
+    [Fact]
+    public async Task OptionalContentKeepsTheExistingCaptureDeadlineAndLegacyReadUnchanged()
+    {
+        CollectorExecutionRequest request = Request(); var slow = new Port(request) { Failure = "cache-timeout" };
+        var source = new PlanCacheRuntimeTargetSource(slow, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(30), TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAsync<TimeoutException>(() => source.ReadWithContentAsync(request, 2000, 8,
+            new UnavailableQuerySensitiveContentProtector(), default));
+        Assert.Equal(2, slow.IdentityCalls); Assert.Equal(1, slow.CacheCalls); Assert.Equal(1, slow.ContentCalls);
+        var port = new Port(request);
+        var legacy = await new PlanCacheRuntimeTargetSource(port).ReadAsync(request, 2000, default);
+        Assert.Null(legacy.Content); Assert.Equal(0, port.ContentCalls); Assert.Equal(1, port.CacheCalls);
+    }
+
     internal static CollectorExecutionRequest Request()
     {
         var target = new MonitoredInstanceId(Guid.NewGuid()); var revision = new ObservationTargetRevision(1);
@@ -133,7 +180,7 @@ public sealed class PlanCacheRuntimeTargetSourceTests
             new(TimeSpan.FromSeconds(1))), profile, new(1), new(TimeSpan.FromMinutes(2)));
     }
 
-    private sealed class Port(CollectorExecutionRequest request, int databaseCount = 2) : IPlanCacheRuntimeTargetExecutionPort
+    private sealed class Port(CollectorExecutionRequest request, int databaseCount = 2) : IPlanCacheContentTargetExecutionPort
     {
         private readonly DateTimeOffset at = DateTimeOffset.UtcNow;
         private int active;
@@ -141,6 +188,7 @@ public sealed class PlanCacheRuntimeTargetSourceTests
         internal CancellationTokenSource? Cancel { get; init; }
         internal TimeSpan IdentityDelay { get; init; }
         internal int CacheCalls;
+        internal int ContentCalls;
         internal int IdentityCalls;
         internal int Peak;
         internal System.Collections.Concurrent.ConcurrentBag<int> ObservedDatabases { get; } = [];
@@ -176,7 +224,7 @@ public sealed class PlanCacheRuntimeTargetSourceTests
                 if (IdentityDelay > TimeSpan.Zero) await Task.Delay(IdentityDelay, token);
                 if (database.DatabaseId == 6)
                 {
-                    if (Failure == "missing") return null;
+                    if (Failure is "missing" or "content-unqualified-state") return null;
                     if (Failure == "slow") await Task.Delay(Timeout.InfiniteTimeSpan, token);
                     if (Failure == "cancel-fault") { Cancel!.Cancel(); throw new InvalidDataException("faulted sibling"); }
                 }
@@ -210,6 +258,21 @@ public sealed class PlanCacheRuntimeTargetSourceTests
                 at, at.AddMilliseconds(20), Digest('c'), 2, 0, 0, 0, rows, maximumRows >= 2,
                 Failure == "wrong-limit" ? 1000 : maximumRows);
         }
+        public async Task<PlanCacheContentSourceRead> ReadCacheContentAsync(CollectorExecutionRequest execution, int maximumRows,
+            int maximumContentEntries, IQuerySensitiveContentProtector protector, CancellationToken token)
+        {
+            Interlocked.Increment(ref ContentCalls);
+            var page = await ReadCacheAsync(execution, maximumRows, token);
+            var content = page.Rows.Select(row => new PlanCacheProtectedContent(row, "protected", Payload(SensitivePayloadKind.QueryText, 8),
+                "protected", Payload(SensitivePayloadKind.ExecutionPlan, 16))).ToArray();
+            if (Failure == "content-scope") content[0] = content[0] with { Statement = content[0].Statement with { Counters = new(2, 2, 3, 4, 5, 6) } };
+            if (Failure == "content-unqualified-state") content[1] = content[1] with { PlanState = "partial" };
+            return new(page, content, content.Length * 48, content.Length * 24 + (Failure == "content-bytes" ? 1 : 0),
+                Failure == "content-limit" ? 1 : maximumContentEntries);
+        }
+        private static ProtectedSensitivePayload Payload(SensitivePayloadKind kind, int size) =>
+            new(kind, new(new byte[32]), "AES-256-GCM", "fixture-only", new byte[12], new byte[16], new byte[size]);
+
         private static string Digest(char value) => new(value, 64);
     }
 }

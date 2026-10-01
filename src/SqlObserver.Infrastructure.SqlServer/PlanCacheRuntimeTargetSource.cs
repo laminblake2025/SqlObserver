@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.SensitiveData;
 
 namespace SqlObserver.Infrastructure.SqlServer;
 
@@ -13,12 +14,19 @@ internal interface IPlanCacheRuntimeTargetExecutionPort
     Task<PlanCacheRuntimeSourcePage> ReadCacheAsync(CollectorExecutionRequest request, int maximumRows, CancellationToken token);
 }
 
-internal sealed record PlanCacheRuntimeTargetRead(PlanCacheRuntimeOutputBatch Output,
-    int IdentityRowsRead, int IdentityResponseBytes)
+internal interface IPlanCacheContentTargetExecutionPort : IPlanCacheRuntimeTargetExecutionPort
 {
-    internal int SourceRowsRead => checked(Output.CandidateRows + IdentityRowsRead);
+    Task<PlanCacheContentSourceRead> ReadCacheContentAsync(CollectorExecutionRequest request, int maximumRows,
+        int maximumContentEntries, IQuerySensitiveContentProtector protector, CancellationToken token);
+}
+
+internal sealed record PlanCacheRuntimeTargetRead(PlanCacheRuntimeOutputBatch Output,
+    int IdentityRowsRead, int IdentityResponseBytes, PlanCacheContentOutputBatch? Content = null)
+{
+    internal int SourceRowsRead => checked(Output.CandidateRows + IdentityRowsRead + (Content?.AttemptedEntries ?? 0));
     internal int ResponseBytes => checked(PlanCacheRuntimeSourceReader.HeaderBytes +
-        Output.EmittedRows * PlanCacheRuntimeSourceReader.RowBytes + IdentityResponseBytes);
+        Output.EmittedRows * PlanCacheRuntimeSourceReader.RowBytes + IdentityResponseBytes
+        + (Content?.SourceContentBytes ?? 0) + (Content?.AttemptedEntries ?? 0) * 512);
 }
 
 /// <summary>One cache capture with bounded live identities before and after it.</summary>
@@ -44,8 +52,29 @@ internal sealed class PlanCacheRuntimeTargetSource
         this.identityBudget = identityBudget; this.captureBudget = captureBudget; this.targetBudget = targetBudget;
     }
 
-    internal async Task<PlanCacheRuntimeTargetRead> ReadAsync(CollectorExecutionRequest request,
-        int maximumRows, CancellationToken cancellationToken)
+    internal Task<PlanCacheRuntimeTargetRead> ReadAsync(CollectorExecutionRequest request,
+        int maximumRows, CancellationToken cancellationToken) => ReadCoreAsync(request, maximumRows, null, cancellationToken);
+
+    internal Task<PlanCacheRuntimeTargetRead> ReadWithContentAsync(CollectorExecutionRequest request,
+        int maximumRows, int maximumContentEntries, IQuerySensitiveContentProtector protector, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(protector);
+        if (maximumContentEntries is < 0 or > PlanCacheContentOutputBatch.MaximumEntries || maximumContentEntries > maximumRows)
+            throw new ArgumentOutOfRangeException(nameof(maximumContentEntries));
+        if (port is not IPlanCacheContentTargetExecutionPort contentPort)
+            throw new ArgumentException("A content-qualified cache execution port is required.");
+        return ReadCoreAsync(request, maximumRows, async token =>
+        {
+            PlanCacheContentSourceRead result = await contentPort.ReadCacheContentAsync(request, maximumRows,
+                maximumContentEntries, protector, token).ConfigureAwait(false);
+            if (result.ContentLimit != maximumContentEntries && result.ContentLimit != 0)
+                throw new InvalidDataException("Cache content source changed the requested selection limit.");
+            return result;
+        }, cancellationToken);
+    }
+
+    private async Task<PlanCacheRuntimeTargetRead> ReadCoreAsync(CollectorExecutionRequest request,
+        int maximumRows, Func<CancellationToken, Task<PlanCacheContentSourceRead>>? contentRead, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (maximumRows is < 1 or > PlanCacheRuntimeSourceReader.MaximumRows)
@@ -75,12 +104,18 @@ internal sealed class PlanCacheRuntimeTargetSource
             SqlServerDatabaseIdentity[] databases = inventory.Take(PlanCacheRuntimeSourceAssembler.MaximumDatabases).ToArray();
             IReadOnlyList<PlanCacheDatabaseIdentitySnapshot> before = await ReadIdentities(databases).ConfigureAwait(false);
             PlanCacheRuntimeSourcePage page;
+            PlanCacheContentSourceRead? rawContent = null;
             using (var phase = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token))
             {
                 phase.CancelAfter(captureBudget);
                 try
                 {
-                    page = await port.ReadCacheAsync(request, maximumRows, phase.Token).ConfigureAwait(false);
+                    if (contentRead is null) page = await port.ReadCacheAsync(request, maximumRows, phase.Token).ConfigureAwait(false);
+                    else
+                    {
+                        rawContent = await contentRead(phase.Token).ConfigureAwait(false);
+                        page = rawContent.Counters;
+                    }
                     phase.Token.ThrowIfCancellationRequested();
                 }
                 catch (Exception) when (phase.IsCancellationRequested)
@@ -95,7 +130,8 @@ internal sealed class PlanCacheRuntimeTargetSource
             deadline.Token.ThrowIfCancellationRequested();
             PlanCacheRuntimeOutputBatch output = PlanCacheRuntimeSourceAssembler.Bind(page, before, after).ToOutputBatch();
             int identities = checked(before.Count + after.Count);
-            return new(output, identities, checked(identities * 256));
+            return new(output, identities, checked(identities * 256),
+                rawContent is null ? null : PlanCacheContentSourceAssembler.Bind(rawContent, output));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         { throw new OperationCanceledException(cancellationToken); }
@@ -141,7 +177,7 @@ internal sealed class PlanCacheRuntimeTargetSource
 }
 
 /// <summary>Passive native reads; closed AUTO_CLOSE databases are never opened for identities.</summary>
-internal sealed class PlanCacheRuntimeTargetExecutionPort : IPlanCacheRuntimeTargetExecutionPort
+internal sealed class PlanCacheRuntimeTargetExecutionPort : IPlanCacheContentTargetExecutionPort
 {
     private const string InventorySql = "SELECT TOP (257) database_id,name FROM sys.databases " +
         "WHERE state=0 AND user_access=0 AND database_id>4 AND database_id<32767 AND collation_name IS NOT NULL ORDER BY database_id;";
@@ -191,6 +227,14 @@ internal sealed class PlanCacheRuntimeTargetExecutionPort : IPlanCacheRuntimeTar
         { return null; }
         catch (SqlException exception) when (!token.IsCancellationRequested && SqlServerCollectorErrorClassifier.IsCommandTimeout(exception.Number))
         { return null; }
+    }
+
+    public async Task<PlanCacheContentSourceRead> ReadCacheContentAsync(CollectorExecutionRequest request, int maximumRows,
+        int maximumContentEntries, IQuerySensitiveContentProtector protector, CancellationToken token)
+    {
+        await using SqlConnection connection = await factory.OpenConnectionAsync(request.ConnectionPolicy, token).ConfigureAwait(false);
+        return await PlanCacheContentSourceBundle.LoadEmbedded().ReadAsync(connection, request.TargetId, request.TargetRevision,
+            maximumRows, maximumContentEntries, protector, token).ConfigureAwait(false);
     }
 
     public async Task<PlanCacheRuntimeSourcePage> ReadCacheAsync(CollectorExecutionRequest request, int maximumRows, CancellationToken token)
