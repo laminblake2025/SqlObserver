@@ -909,3 +909,39 @@ under `artifacts/plan-cache-deltas`. No PostgreSQL, frontend or broad suite was
 run for this layer. A forward canonical cache-content link migration, versioned
 collector payload/commit wiring, retention integration, audited retrieval and
 inert rendering remain required before activation.
+
+### Private cache-content storage and retention (2026-10-01)
+
+Forward migration 0322 adds partitioned, append-only content receipts and
+text/plan links with forced target-scoped RLS. Runtime collector, server and
+auditor roles cannot read or write these tables or call the private writer.
+Available links require the protected payload's exact target, kind, fingerprint
+and ciphertext length. Missing values retain their reason without a reference.
+The writer checks an unfinished v3 run, current worker lease, active target
+revision, and the exact counter receipt and qualified statement tuple, including
+database incarnation and cache-entry identity. It rejects altered replay,
+unknown fields, duplicate entries, non-microsecond timestamps and inconsistent
+source/ciphertext budgets. A late invalid link rolls back every preceding link
+and its receipt; an enclosing transaction can also roll back the counter frame.
+
+Content links and receipts have independent 30-day retention floors and share
+the bounded daily partition maintenance path. They retain canonical run
+identities while attached or in detached grace. Orphan text and plan cleanup
+now checks both attached links and registered detached link partitions under
+registry locks, preserving ciphertext until the link partition is dropped.
+Unverified registered grace data conservatively prevents payload cleanup.
+No cross-partition foreign key ties content retirement to counter retirement;
+the private writer enforces that relationship at insertion. Future retrieval
+must require surviving counter evidence as well as the content link.
+
+Five distinct PostgreSQL 18 checks pass: exact-link and rollback boundaries,
+private catalog and policy floors, content backup/restore and the real leased
+detach/grace/drop/orphan lifecycle, plus the existing counter partition and
+retention regressions affected by the shared functions. Eleven focused domain
+policy and migration-preamble checks pass. Results are
+`cache-content-storage.trx`, `cache-content-shared-regressions.trx` and
+`cache-content-retention-contracts.trx` in `artifacts/plan-cache-deltas`.
+The fixture clones a synthetic v3 contract only in its disposable database;
+it does not qualify or activate a production v3 collector. Versioned canonical
+commit/output wiring, audited retrieval, inert rendering and rollout remain
+required. No frontend, SQL Server or full suite was rerun for this storage step.

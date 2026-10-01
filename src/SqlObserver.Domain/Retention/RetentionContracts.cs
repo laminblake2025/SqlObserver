@@ -115,7 +115,7 @@ public static class RetentionPolicyValidator
             throw new ArgumentException("Deadlock replay receipts require at least 30 days and two monthly partitions.", nameof(policy));
         if (policy.Enabled && policy.DataClass == "m7_cache_watermarks" && policy.RetainFor < TimeSpan.FromDays(8))
             throw new ArgumentException("Cache baselines require at least eight days of retention.", nameof(policy));
-        if (policy.Enabled && (policy.DataClass is "m7_cache_deltas" or "m7_cache_receipts") && policy.RetainFor < TimeSpan.FromDays(30))
+        if (policy.Enabled && (policy.DataClass is "m7_cache_deltas" or "m7_cache_receipts" or "m7_cache_content_receipts" or "m7_cache_content_links") && policy.RetainFor < TimeSpan.FromDays(30))
             throw new ArgumentException("Cache delta history and replay receipts require at least 30 days of retention.", nameof(policy));
     }
 }
