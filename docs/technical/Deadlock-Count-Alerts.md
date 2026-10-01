@@ -275,9 +275,10 @@ asset-boundary checks and the migration preamble check also passed, recorded in
 
 ## Incremental reader foundation (not active)
 
-The review's XE bookmark refactor now has two domain boundaries and a pinned source reader. They are staged;
-the production Collector still uses the approved full-scan v1 source. No registry,
-schema, alert catalog or runtime switch has changed in this foundation step.
+The review's XE bookmark refactor now has two domain boundaries, a pinned source
+reader and private PostgreSQL checkpoint storage. They are staged; the production
+Collector still uses the approved full-scan v1 source. Collector contracts,
+the alert catalog and runtime activation remain unchanged.
 
 `XeFileReadProgressCalculator` computes a resume point from metadata for **all**
 event types, ordered by numeric file generation and buffer offset. A position
@@ -371,8 +372,46 @@ Earlier failed native attempts remain recorded: they exposed the filename
 allowlist, cold-read expression cost, computed DMV predicate filtering and native
 creation-time jitter. This reader is not yet qualified on SQL Server 2019/2025.
 
-Integration remains required before activation: a fenced checkpoint read,
-and an atomic canonical commit for progress, accepted
+Migration 0310 adds the private persistence foundation. It does not register or
+activate a v2 collector. `control.deadlock_read_checkpoint` stores one bounded
+row per target, containing only canonical run bindings, source digest/state,
+numeric bookmark and retained window. A generated digest binds all those fields
+for a future compare-and-swap commit. The table has forced RLS and no direct
+application-role privileges. There is no writable Collector checkpoint API.
+
+`control.read_deadlock_read_checkpoint` requires the exact target scope, active
+target revision, v2 schedule, begun run, scheduled time, owner and fencing token.
+It asserts the same target Collector lease before and after reading. Saved state
+must bind to its canonical v2 run and outcome; reuse also requires matching
+target/schedule revisions. The latest completion must have its matching state.
+Events that could survive the next merge must exist in canonical deadlock
+evidence. A current window must include every recent event from its source
+snapshot, so neither an invented catch-up event nor a forged zero can become a
+known count. Expired cache events do not require rows already removed by retention.
+The returned envelope and stored checkpoint each carry a SHA-256 digest. Server
+and Auditor roles cannot execute this read; the Collector cannot read or write
+the table directly or execute its private merge helpers.
+
+The private SQL window calculator reproduces the domain merge, including
+inclusive expiry/gap boundaries, quiet history, duplicate identities, ordered
+conflict detection, catch-up, source loss, parser truncation, bounded overflow,
+revision changes and changed source epochs. It validates the previous window's
+closed shape and coverage invariants. PostgreSQL-normalized UTC inputs avoid
+inventing precision absent from repository timestamps.
+
+Three isolated native PostgreSQL checks pass. Nineteen merge transitions match
+the domain model, including expired duplicate identities. Invalid input checks
+reject future/conflicting/regressed evidence, another target, missing cold
+coverage and forged window reasons. Reader qualification uses bootstrap-only
+v2 fixtures and canonical begin/commit ports; it checks empty state, restored
+state and digests, forged zero/catch-up evidence, wrong scopes/runs/owners/fences,
+released leases, corrupted completion binding and private object privileges.
+Evidence is in `xe-checkpoint-foundation-final.trx`,
+`xe-checkpoint-canonical-binding.trx` and `xe-checkpoint-retained-binding.trx`.
+The new migration preamble check is `xe-checkpoint-preamble.trx`.
+
+Integration remains required before activation: Collector wiring for this fenced
+read and an atomic canonical commit for progress, accepted
 events, rolling history and coverage gaps. That commit must independently verify
 the source/target/schedule/run bindings, previous checkpoint and payload digest,
 reject lost worker fences, and leave latest state unchanged on an old exact
