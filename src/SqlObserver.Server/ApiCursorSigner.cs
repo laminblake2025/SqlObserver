@@ -18,22 +18,24 @@ public sealed class ApiCursorSigner
         _key = key.ToArray();
     }
 
-    public string Encode(string purpose, string payload)
+    public string Encode(string purpose, string payload, int maximumPayloadBytes = 256)
     {
         ValidatePurpose(purpose);
+        ValidatePayloadBound(maximumPayloadBytes);
         ArgumentNullException.ThrowIfNull(payload);
         byte[] body = StrictUtf8.GetBytes(payload);
-        if (body.Length is < 1 or > 256)
+        if ((body.Length < 1 || body.Length > maximumPayloadBytes))
             throw new ArgumentException("API cursor payload exceeds its byte bound.", nameof(payload));
         byte[] tag = HMACSHA256.HashData(_key, SignedBytes(purpose, body));
         return string.Concat(Base64Url(body), ".", Base64Url(tag));
     }
 
-    public string Decode(string purpose, string token)
+    public string Decode(string purpose, string token, int maximumPayloadBytes = 256)
     {
         ValidatePurpose(purpose);
+        ValidatePayloadBound(maximumPayloadBytes);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
-        if (token.Length > MaximumTokenLength ||
+        if (token.Length > (maximumPayloadBytes == 256 ? MaximumTokenLength : (maximumPayloadBytes + 2) / 3 * 4 + 44) ||
             token.Any(static character => !char.IsAsciiLetterOrDigit(character) &&
                 character is not '-' and not '_' and not '.'))
             throw Invalid();
@@ -43,7 +45,7 @@ public sealed class ApiCursorSigner
         {
             byte[] body = FromBase64Url(parts[0]);
             byte[] tag = FromBase64Url(parts[1]);
-            if (body.Length is < 1 or > 256 || tag.Length != 32 ||
+            if ((body.Length < 1 || body.Length > maximumPayloadBytes) || tag.Length != 32 ||
                 !CryptographicOperations.FixedTimeEquals(
                     HMACSHA256.HashData(_key, SignedBytes(purpose, body)), tag))
                 throw Invalid();
@@ -58,6 +60,11 @@ public sealed class ApiCursorSigner
     private static byte[] SignedBytes(string purpose, byte[] body) =>
         [.. "sqlobserver-api-cursor-v1\n"u8.ToArray(),
          .. StrictUtf8.GetBytes(purpose), (byte)'\n', .. body];
+
+    private static void ValidatePayloadBound(int bound)
+    {
+        if (bound is < 1 or > 512) throw new ArgumentOutOfRangeException(nameof(bound));
+    }
 
     private static void ValidatePurpose(string purpose)
     {

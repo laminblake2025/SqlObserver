@@ -26,3 +26,13 @@ test('unknown URL values fall back independently and do not leak to other screen
   assert.throws(() => queryViewHref('#/queries', { view: 'unknown', metric: 'cpu' }));
   assert.equal(queryViewHref('#/queries', { view: 'top', metric: 'cpu' }), '#/queries');
 });
+
+test('cache drilldown restores the database incarnation and clears it on server or view changes', () => {
+  const cacheSelection = { targetId: 'a', databaseId: 6, databaseIncarnation: 'a'.repeat(64), queryFingerprint: 'b'.repeat(64), planFingerprint: 'c'.repeat(64) };
+  const selection = { view: 'cache', metric: 'cpu', cacheSelection };
+  const href = queryViewHref('#/queries?target=a&range=7d', selection);
+  assert.deepEqual(readQueryViewSelection(href), selection);
+  assert.equal(readQueryViewSelection(queryViewHref('#/queries?target=b', selection)).cacheSelection, undefined);
+  assert.equal(readQueryViewSelection(queryViewHref(href, { ...selection, view: 'top' })).cacheSelection, undefined);
+  assert.equal(readQueryViewSelection(href.replace('cacheDatabaseId=6', 'cacheDatabaseId=0')).cacheSelection, undefined);
+});

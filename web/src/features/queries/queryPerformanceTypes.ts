@@ -59,3 +59,20 @@ export type PlanCacheIntervalRanking = {
   readonly unavailableRows: number; readonly boundaryRows: number; readonly hasMore: boolean;
   readonly items: readonly PlanCacheIntervalQuery[];
 };
+
+export type PlanCacheHistorySelection = {
+  readonly targetId: string; readonly databaseId: number; readonly databaseIncarnation: string;
+  readonly queryFingerprint: string; readonly planFingerprint: string;
+};
+export type PlanCacheIntervalHistoryItem = {
+  readonly collectionRunId: string; readonly cacheEntryFingerprint: string; readonly sourceEpoch: string;
+  readonly observedAtUtc: string; readonly committedAtUtc: string; readonly captureComplete: boolean;
+  readonly transition: "comparable" | "window_boundary" | "baseline_unavailable" | "reset" | "stale" | "comparison_window_expired";
+  readonly intervalFromUtc: string | null; readonly intervalToUtc: string | null;
+  readonly cpuMilliseconds: string | null; readonly durationMilliseconds: string | null;
+  readonly executions: string | null; readonly logicalReads: string | null; readonly writes: string | null; readonly rows: string | null;
+};
+export type PlanCacheIntervalHistory = PlanCacheHistorySelection & {
+  readonly fromUtc: string; readonly toUtc: string; readonly snapshotUtc: string; readonly revision: number;
+  readonly totalRows: number; readonly nextCursor: string | null; readonly items: readonly PlanCacheIntervalHistoryItem[];
+};

@@ -19,6 +19,7 @@ public static class TargetQueryPerformanceApiEndpoints
         group.MapGet("/top", TopAsync);
         group.MapGet("/waits/top", TopWaitsAsync);
         group.MapGet("/cache/top", CacheTopAsync);
+        group.MapGet("/cache/databases/{databaseId:int}/history/{queryFingerprint}/plans/{planFingerprint}", CacheHistoryAsync);
         group.MapGet("/regressions", RegressionsAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}/runs/{collectionRunId:guid}/text", TextAsync);
@@ -46,6 +47,28 @@ public static class TargetQueryPerformanceApiEndpoints
             var request = new PlanCacheIntervalRankingRequest(new MonitoredInstanceId(instanceId),
                 from, to, ParseMetric(metric), limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
             return Results.Ok(await service.ReadAsync(roles.Resolve(context.User), request, cancellationToken));
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+    private static async Task<IResult> CacheHistoryAsync(HttpContext context, Guid instanceId, int databaseId,
+        string queryFingerprint, string planFingerprint, IPlanCacheIntervalHistoryQueryService service,
+        PlanCacheIntervalHistoryCursorCodec cursors, WindowsGroupRoleResolver roles, string? databaseIncarnation = null,
+        string? fromUtc = null, string? toUtc = null, int limit = 100, string? cursor = null, CancellationToken cancellationToken = default)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            if (databaseIncarnation is null || fromUtc is null || toUtc is null || !fromUtc.EndsWith('Z') || !toUtc.EndsWith('Z')) throw new ArgumentException("Explicit UTC bounds and a database incarnation are required.");
+            var request = new PlanCacheIntervalHistoryRequest(new MonitoredInstanceId(instanceId), databaseId, databaseIncarnation,
+                queryFingerprint, planFingerprint, Parse(fromUtc)!.Value, Parse(toUtc)!.Value, limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            if (cursor is not null) request = new(request.TargetId, databaseId, databaseIncarnation, queryFingerprint, planFingerprint,
+                request.FromUtc, request.ToUtc, limit, request.Timeout, cursors.Decode(request, cursor));
+            var result = await service.ReadAsync(roles.Resolve(context.User), request, cancellationToken);
+            string? next = result.HasMore ? cursors.Encode(request, new(result.Revision, result.Snapshot, result.SnapshotUtc, result.TotalRows,
+                result.Items[^1].ObservedAtUtc, result.Items[^1].CommittedAtUtc, result.Items[^1].CollectionRunId, result.Items[^1].CacheEntryFingerprint)) : null;
+            return Results.Ok(new { result.TargetId, result.DatabaseId, result.DatabaseIncarnation, result.QueryFingerprint, result.PlanFingerprint,
+                result.FromUtc, result.ToUtc, result.Semantics, result.Coverage, result.Revision, result.SnapshotUtc, result.TotalRows, result.Items, nextCursor = next });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }

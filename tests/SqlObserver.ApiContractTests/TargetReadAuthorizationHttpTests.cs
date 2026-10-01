@@ -163,11 +163,13 @@ public sealed class TargetReadAuthorizationApiFactory : WebApplicationFactory<Pr
             services.RemoveAll<IDeadlockProjectionRepositoryPort>();
             services.RemoveAll<IQueryPerformanceApiRepositoryPort>();
             services.RemoveAll<IPlanCacheIntervalRankingRepositoryPort>();
+            services.RemoveAll<IPlanCacheIntervalHistoryRepositoryPort>();
             services.RemoveAll<IAlertRepositoryPort>();
             services.RemoveAll<IOperationalHealthRepositoryPort>();
             services.AddSingleton<IDeadlockProjectionRepositoryPort>(Repository);
             services.AddSingleton<IQueryPerformanceApiRepositoryPort>(Repository);
             services.AddSingleton<IPlanCacheIntervalRankingRepositoryPort>(Repository);
+            services.AddSingleton<IPlanCacheIntervalHistoryRepositoryPort>(Repository);
             services.AddSingleton<IAlertRepositoryPort>(Repository);
             services.AddSingleton<IOperationalHealthRepositoryPort>(Repository);
             services.RemoveAll<WindowsGroupRoleResolver>();
@@ -226,7 +228,7 @@ internal sealed class TargetReadTestAuthenticationHandler(
 }
 
 internal sealed class TargetReadRepository : IDeadlockProjectionRepositoryPort,
-    IQueryPerformanceApiRepositoryPort, IPlanCacheIntervalRankingRepositoryPort, IAlertRepositoryPort, IOperationalHealthRepositoryPort
+    IQueryPerformanceApiRepositoryPort, IPlanCacheIntervalRankingRepositoryPort, IPlanCacheIntervalHistoryRepositoryPort, IAlertRepositoryPort, IOperationalHealthRepositoryPort
 {
     private static readonly DateTimeOffset At = new(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
     private static readonly ObservationTargetRevision Revision = new(1);
@@ -251,6 +253,11 @@ internal sealed class TargetReadRepository : IDeadlockProjectionRepositoryPort,
     public ValueTask<PlanCacheIntervalRankingResult> ReadAsync(PlanCacheIntervalRankingRequest request, CancellationToken cancellationToken) =>
         Read(request.TargetId, new PlanCacheIntervalRankingResult(request.TargetId.Value, request.FromUtc, request.ToUtc,
             "plan_cache_delta", request.MetricName, "no_comparable_rows", 0, 0, 0, 0, 0, false, []));
+
+    public ValueTask<PlanCacheIntervalHistoryResult> ReadAsync(PlanCacheIntervalHistoryRequest request, CancellationToken cancellationToken) =>
+        Read(request.TargetId, new PlanCacheIntervalHistoryResult(request.TargetId.Value, request.DatabaseId, request.DatabaseIncarnation,
+            request.QueryFingerprint, request.PlanFingerprint, request.FromUtc, request.ToUtc, "plan_cache_delta", "observed_entries_only",
+            1, "2", At, 0, false, []));
 
     public ValueTask<TopQueryPage> GetTopAsync(TopQueryRequest request, CancellationToken cancellationToken) =>
         Read(request.TargetId, new TopQueryPage([], false, At));

@@ -1,6 +1,6 @@
 import { apiFetch } from "../../apiClient.ts";
 import { readBoundedBody } from "../activity/activityParser.mjs";
-import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList, PlanCacheIntervalRanking } from "./queryPerformanceTypes";
+import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList, PlanCacheIntervalRanking, PlanCacheHistorySelection, PlanCacheIntervalHistory } from "./queryPerformanceTypes";
 
 const maximumResponseBytes = 8 * 1024 * 1024;
 const states = new Set(["read_write", "read_only", "disabled", "unsupported", "permission_denied", "read_failure", "timed_out", "mixed", "unavailable"]);
@@ -383,4 +383,70 @@ export async function getPlanCacheIntervalRanking(instanceId: string, fromUtc: s
     coverage: value.coverage as PlanCacheIntervalRanking["coverage"], sourceFrames: value.sourceFrames,
     incompleteFrames: value.incompleteFrames, comparableRows: value.comparableRows,
     unavailableRows: value.unavailableRows, boundaryRows: value.boundaryRows, hasMore: value.hasMore, items };
+}
+
+export async function getPlanCacheIntervalHistory(selection: PlanCacheHistorySelection, fromUtc: string, toUtc: string,
+    signal: AbortSignal, cursor?: string): Promise<PlanCacheIntervalHistory> {
+  const count = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+  const utc = (value: unknown): value is string => timestamp(value) && canonicalInstant(value).endsWith("0Z");
+  const ticks = (value: string): bigint => {
+    const canonical = canonicalInstant(value); return BigInt(Date.parse(canonical.slice(0, 19) + "Z")) * 10000n + BigInt(canonical.slice(20, 27));
+  };
+  if (!count(selection.databaseId) || selection.databaseId < 5 || selection.databaseId > 32766
+      || ![selection.databaseIncarnation, selection.queryFingerprint, selection.planFingerprint].every(value => /^[0-9a-f]{64}$/u.test(value))
+      || !utc(fromUtc) || !utc(toUtc) || ticks(toUtc) <= ticks(fromUtc) || ticks(toUtc) - ticks(fromUtc) > 6048000000000n
+      || cursor !== undefined && (cursor.length > 728 || !/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/u.test(cursor)))
+    throw new Error("Cache history scope or window was invalid.");
+  const parameters = new URLSearchParams({ databaseIncarnation: selection.databaseIncarnation, fromUtc, toUtc, limit: "100" });
+  if (cursor) parameters.set("cursor", cursor);
+  const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(selection.targetId)}/query-performance/cache/databases/${selection.databaseId}/history/${selection.queryFingerprint}/plans/${selection.planFingerprint}?${parameters}`,
+    selection.targetId, signal, 262144, true) as Record<string, unknown>;
+  if (value.databaseId !== selection.databaseId || value.databaseIncarnation !== selection.databaseIncarnation
+      || value.queryFingerprint !== selection.queryFingerprint || value.planFingerprint !== selection.planFingerprint
+      || !utc(value.fromUtc) || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc)
+      || !utc(value.toUtc) || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)
+      || value.semantics !== "plan_cache_delta" || value.coverage !== "observed_entries_only"
+      || !utc(value.snapshotUtc) || !count(value.revision) || value.revision < 1 || !count(value.totalRows)
+      || !Array.isArray(value.items) || value.items.length > 100 || value.items.length > value.totalRows
+      || value.nextCursor !== null && (typeof value.nextCursor !== "string" || value.nextCursor.length > 728
+        || !/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/u.test(value.nextCursor))
+      || value.nextCursor !== null && value.items.length !== 100
+      || cursor === undefined && (value.items.length !== Math.min(100, value.totalRows) || (value.nextCursor !== null) !== (value.totalRows > 100)))
+    throw new Error("Cache history response exceeded its snapshot bounds.");
+  const fields = ["cpuMilliseconds", "durationMilliseconds", "executions", "logicalReads", "writes", "rows"];
+  const seen = new Set<string>(); let previous: string | undefined;
+  const items = value.items.map((input: unknown) => {
+    if (!input || typeof input !== "object") throw new Error("Cache history row was invalid.");
+    const row = input as Record<string, unknown>;
+    if (typeof row.collectionRunId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(row.collectionRunId)
+        || row.collectionRunId === "00000000-0000-0000-0000-000000000000" || !digest(row.cacheEntryFingerprint) || !digest(row.sourceEpoch)
+        || !utc(row.observedAtUtc) || !utc(row.committedAtUtc) || ticks(row.observedAtUtc) < ticks(fromUtc) || ticks(row.observedAtUtc) >= ticks(toUtc)
+        || ticks(row.committedAtUtc) < ticks(fromUtc) - 3000000000n || ticks(row.committedAtUtc) >= ticks(toUtc) + 3000000000n
+        || typeof row.captureComplete !== "boolean") throw new Error("Cache history row identity was invalid.");
+    const key = `${canonicalInstant(row.observedAtUtc)}:${canonicalInstant(row.committedAtUtc)}:${row.collectionRunId}:${row.cacheEntryFingerprint}`;
+    const identity = `${row.collectionRunId}:${row.cacheEntryFingerprint}`;
+    if (seen.has(identity) || previous !== undefined && key >= previous) throw new Error("Cache history row order was invalid.");
+    seen.add(identity); previous = key;
+    const comparable = row.transition === "comparable", boundary = row.transition === "window_boundary";
+    if (comparable || boundary) {
+      if (!utc(row.intervalFromUtc) || !utc(row.intervalToUtc) || canonicalInstant(row.intervalToUtc) !== canonicalInstant(row.observedAtUtc)
+          || ticks(row.intervalToUtc) <= ticks(row.intervalFromUtc) || ticks(row.intervalToUtc) - ticks(row.intervalFromUtc) > 6048000000000n
+          || comparable && ticks(row.intervalFromUtc) < ticks(fromUtc) || boundary && ticks(row.intervalFromUtc) >= ticks(fromUtc))
+        throw new Error("Cache history comparison interval was invalid.");
+    } else if (!["baseline_unavailable", "reset", "stale", "comparison_window_expired"].includes(String(row.transition))
+        || row.intervalFromUtc !== null || row.intervalToUtc !== null) throw new Error("Cache history state was invalid.");
+    fields.forEach((field, index) => {
+      const number = row[field];
+      if (!comparable) { if (number !== null) throw new Error("Unavailable comparison included counters."); return; }
+      if (typeof number !== "string" || !/^(?:0|[1-9]\d{0,18})(?:\.\d{1,24})?$/u.test(number) || index >= 2 && number.includes("."))
+        throw new Error("Cache history counter was invalid.");
+      const [whole = "0", fraction = ""] = number.split(".");
+      if (index < 2 && /[1-9]/u.test(fraction.slice(3))) throw new Error("Cache history counter precision was invalid.");
+      const native = index < 2 ? BigInt(whole) * 1000n + BigInt(fraction.slice(0, 3).padEnd(3, "0")) : BigInt(whole);
+      if (native > 9223372036854775807n) throw new Error("Cache history counter exceeded its native bound.");
+    });
+    return row as PlanCacheIntervalHistory["items"][number];
+  });
+  return { ...selection, fromUtc, toUtc, snapshotUtc: value.snapshotUtc, revision: value.revision, totalRows: value.totalRows,
+    nextCursor: value.nextCursor as string | null, items };
 }

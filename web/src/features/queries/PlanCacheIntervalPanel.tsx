@@ -1,7 +1,8 @@
+import { PlanCacheIntervalHistoryPanel } from "./PlanCacheIntervalHistoryPanel";
 import { useEffect, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { getPlanCacheIntervalRanking } from "./queryPerformanceApi";
-import type { PlanCacheIntervalRanking, QueryPerformanceMetric } from "./queryPerformanceTypes";
+import type { PlanCacheHistorySelection, PlanCacheIntervalRanking, QueryPerformanceMetric } from "./queryPerformanceTypes";
 import type { QueryWindow } from "./queryWindowModel";
 
 const metrics: readonly [QueryPerformanceMetric, string][] = [
@@ -10,9 +11,10 @@ const metrics: readonly [QueryPerformanceMetric, string][] = [
 ];
 const decimalLabel = (value: string) => value.includes(".") ? value.replace(/0+$/u, "").replace(/\.$/u, "") : value;
 
-export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databaseNames, metric, onMetricChange }: {
+export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databaseNames, metric, onMetricChange, selection, onSelect }: {
   readonly instanceId: string; readonly timeWindow: QueryWindow; readonly refresh: number;
   readonly metric: QueryPerformanceMetric; readonly onMetricChange: (metric: QueryPerformanceMetric) => void;
+  readonly selection?: PlanCacheHistorySelection; readonly onSelect: (selection?: PlanCacheHistorySelection) => void;
   readonly databaseNames: ReadonlyMap<number, string | undefined>;
 }) {
   const timeLabel = useTimeFormatter();
@@ -42,12 +44,13 @@ export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databa
         <thead><tr><th scope="col">Database / query</th><th scope="col">Plan</th><th scope="col">CPU ms</th><th scope="col">Duration ms</th><th scope="col">Executions</th><th scope="col">Reads / writes / rows</th><th scope="col">Samples / latest</th></tr></thead>
         <tbody>{result.items.map(row => <tr key={`${row.databaseId}:${row.databaseIncarnation}:${row.queryFingerprint}:${row.planFingerprint}`}>
           <td>{databaseNames.get(row.databaseId) ?? `Database ID ${row.databaseId}`}<span className="fingerprint"> / {row.queryFingerprint.slice(0, 12)}…</span></td>
-          <td className="fingerprint">{row.planFingerprint.slice(0, 12)}…</td>
+          <td className="fingerprint"><button type="button" onClick={() => onSelect({ targetId: instanceId, databaseId: row.databaseId, databaseIncarnation: row.databaseIncarnation, queryFingerprint: row.queryFingerprint, planFingerprint: row.planFingerprint })}>Inspect {row.planFingerprint.slice(0, 12)}…</button></td>
           <td>{decimalLabel(row.cpuMilliseconds)}</td><td>{decimalLabel(row.durationMilliseconds)}</td><td>{row.executions}</td>
           <td>{row.logicalReads} / {row.writes} / {row.rows}</td><td>{row.comparableRows} / {timeLabel(row.lastObservedAtUtc)}</td>
         </tr>)}</tbody>
       </table></div>}
       {result.hasMore ? <p>More query plans were observed; this ranking shows the first 25.</p> : null}
     </>}
+    {selection?.targetId === instanceId ? <PlanCacheIntervalHistoryPanel selection={selection} timeWindow={timeWindow} refresh={refresh} onClose={() => onSelect(undefined)} /> : null}
   </section>;
 }

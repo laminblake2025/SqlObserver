@@ -92,3 +92,44 @@ test('a shared cache URL restores view and metric across reload, Rewind edits an
   await expect(panel.getByRole('combobox', { name: 'Rank cache activity by' })).toHaveValue('logical_reads');
   await expect(panel.getByRole('table', { name: 'Top 25 observed cache query plans by logical reads' })).toBeVisible();
 });
+
+test('cache drilldown restores from its URL and pages exact samples with comparison gaps', async ({ page }) => {
+  const historyRequests=[];
+  await page.route('**/query-performance/cache/top?*', route => route.fulfill({json:body(new URL(route.request().url()))}));
+  const sample=index=>{
+    const observed=new Date(Date.parse('2026-09-28T12:00:00Z')-index*1000).toISOString();
+    const unknown=index===0;
+    return {collectionRunId:`11111111-1111-4111-8111-${String(index+1).padStart(12,'0')}`,cacheEntryFingerprint:'d'.repeat(64),sourceEpoch:'e'.repeat(64),
+      observedAtUtc:observed,committedAtUtc:observed,captureComplete:false,transition:unknown?'reset':'comparable',
+      intervalFromUtc:unknown?null:new Date(Date.parse(observed)-1000).toISOString(),intervalToUtc:unknown?null:observed,
+      cpuMilliseconds:unknown?null:'0.25000000000000000000',durationMilliseconds:unknown?null:'0.50000000000000000000',
+      executions:unknown?null:'9007199254740993',logicalReads:unknown?null:'1',writes:unknown?null:'2',rows:unknown?null:'3'};
+  };
+  await page.route('**/query-performance/cache/databases/6/history/*/plans/*?*',async route=>{
+    const url=new URL(route.request().url());historyRequests.push(url);
+    const earlier=url.searchParams.has('cursor');
+    await route.fulfill({json:{targetId:first,databaseId:6,databaseIncarnation:'a'.repeat(64),queryFingerprint:'b'.repeat(64),planFingerprint:'c'.repeat(64),
+      fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc'),semantics:'plan_cache_delta',coverage:'observed_entries_only',
+      revision:1,snapshotUtc:'2026-09-29T00:00:00Z',totalRows:102,nextCursor:earlier?null:'YQ.Yg',
+      items:earlier?[sample(100),sample(101)]:Array.from({length:100},(_,index)=>sample(index))}});
+  });
+  await page.goto(`${href(first)}&queryView=cache`);
+  await page.getByRole('button',{name:'Inspect cccccccccccc…'}).click();
+  const history=page.getByRole('region',{name:'Cache query interval history'});
+  await expect(history.getByText('100 of 102 observed samples',{exact:false})).toBeVisible();
+  await expect(history.getByRole('cell',{name:'Counters reset',exact:true})).toBeVisible();
+  await expect(history.getByRole('cell',{name:'Unavailable',exact:true})).toHaveCount(3);
+  await expect(history.getByRole('cell',{name:'9007199254740993',exact:true})).toHaveCount(99);
+  await expect(page).toHaveURL(/cacheIncarnation=/);
+  await page.reload();
+  await expect(history.getByText('100 of 102 observed samples',{exact:false})).toBeVisible();
+  await history.getByRole('button',{name:'Load earlier cache samples'}).click();
+  await expect(history.getByText('102 of 102 observed samples',{exact:false})).toBeVisible();
+  expect(historyRequests.at(-1).searchParams.get('cursor')).toBe('YQ.Yg');
+  expect(historyRequests.at(-1).searchParams.get('databaseIncarnation')).toBe('a'.repeat(64));
+  await expect(history.getByRole('button',{name:'Load earlier cache samples'})).toHaveCount(0);
+  const accessibility=await new AxeBuilder({page}).include('section[aria-label="Cache query interval history"]').analyze();
+  expect(accessibility.violations).toEqual([]);
+  await page.getByRole('combobox',{name:'Target server'}).selectOption(second);
+  await expect(history).toHaveCount(0); await expect(page).not.toHaveURL(/cacheIncarnation=/);
+});

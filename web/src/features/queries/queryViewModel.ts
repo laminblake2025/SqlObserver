@@ -1,9 +1,10 @@
-import type { QueryPerformanceMetric } from "./queryPerformanceTypes";
+import type { PlanCacheHistorySelection, QueryPerformanceMetric } from "./queryPerformanceTypes";
 
 export type QueryView = "top" | "regressed" | "cache";
 export interface QueryViewSelection {
   readonly view: QueryView;
   readonly metric: QueryPerformanceMetric;
+  readonly cacheSelection?: PlanCacheHistorySelection;
 }
 const views = new Set(["top", "regressed", "cache"]);
 const metrics = new Set(["cpu", "duration", "executions", "logical_reads", "writes", "rows"]);
@@ -15,7 +16,15 @@ export function readQueryViewSelection(hash: string): QueryViewSelection {
   const parameters = new URLSearchParams(query);
   const view = parameters.get("queryView") ?? "top";
   const metric = parameters.get("queryMetric") ?? "cpu";
-  return { view: views.has(view) ? view as QueryView : "top",
+  const targetId = parameters.get("target");
+  const databaseId = Number(parameters.get("cacheDatabaseId"));
+  const databaseIncarnation = parameters.get("cacheIncarnation");
+  const queryFingerprint = parameters.get("cacheQuery"); const planFingerprint = parameters.get("cachePlan");
+  const validDigest = (value: string | null): value is string => value !== null && /^[0-9a-f]{64}$/u.test(value);
+  const selection = view === "cache" && targetId && Number.isInteger(databaseId) && databaseId >= 5 && databaseId <= 32766
+    && validDigest(databaseIncarnation) && validDigest(queryFingerprint) && validDigest(planFingerprint)
+    ? { cacheSelection: { targetId, databaseId, databaseIncarnation, queryFingerprint, planFingerprint } } : {};
+  return { ...selection, view: views.has(view) ? view as QueryView : "top",
     metric: metrics.has(metric) ? metric as QueryPerformanceMetric : "cpu" };
 }
 
@@ -27,5 +36,14 @@ export function queryViewHref(href: string, selection: QueryViewSelection): stri
   const parameters = new URLSearchParams(query);
   if (selection.view === "top") parameters.delete("queryView"); else parameters.set("queryView", selection.view);
   if (selection.metric === "cpu") parameters.delete("queryMetric"); else parameters.set("queryMetric", selection.metric);
+  const cache = selection.view === "cache" && selection.cacheSelection?.targetId === parameters.get("target") ? selection.cacheSelection : undefined;
+  for (const key of ["cacheDatabaseId", "cacheIncarnation", "cacheQuery", "cachePlan"]) parameters.delete(key);
+  if (cache) {
+    if (!Number.isInteger(cache.databaseId) || cache.databaseId < 5 || cache.databaseId > 32766
+        || ![cache.databaseIncarnation, cache.queryFingerprint, cache.planFingerprint].every(value => /^[0-9a-f]{64}$/u.test(value)))
+      throw new Error("Cache history selection is invalid.");
+    parameters.set("cacheDatabaseId", String(cache.databaseId)); parameters.set("cacheIncarnation", cache.databaseIncarnation);
+    parameters.set("cacheQuery", cache.queryFingerprint); parameters.set("cachePlan", cache.planFingerprint);
+  }
   return `${path}${parameters.size ? `?${parameters}` : ""}`;
 }

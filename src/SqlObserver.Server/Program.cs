@@ -187,6 +187,10 @@ builder.Services.AddSingleton<SavedIncidentListCursorCodec>();
 builder.Services.AddSingleton<IBackupEvidencePort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupEvidence);
 builder.Services.AddSingleton<BackupAssessmentQueryService>();
 builder.Services.AddSingleton<IQueryStorePlanRegressionQueryService, QueryStorePlanRegressionQueryService>();
+builder.Services.AddSingleton<PlanCacheIntervalHistoryCursorCodec>();
+builder.Services.AddSingleton<IPlanCacheIntervalHistoryRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().PlanCacheIntervalHistory);
+builder.Services.AddSingleton<IPlanCacheIntervalHistoryQueryService, PlanCacheIntervalHistoryQueryService>();
 builder.Services.AddSingleton<IPlanCacheIntervalRankingRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().PlanCacheIntervalRankings);
 builder.Services.AddSingleton<IPlanCacheIntervalRankingQueryService, PlanCacheIntervalRankingQueryService>();

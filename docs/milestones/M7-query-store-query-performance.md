@@ -696,3 +696,53 @@ server changes during pending evidence, and shared-URL reload/Rewind/Back behavi
 TypeScript, the production build and web asset verification pass. No database or
 native-source rerun was needed for this frontend state change. Cache history,
 collector activation and the broader revamp requirements remain open.
+
+
+### Cache query interval drilldown (revamp branch, 2026-10-01)
+
+The cache delta ranking now opens a separate per-entry history view. Its URL retains
+server, database ID and incarnation, query, plan, metric and the shared time window.
+Changing servers clears the cache selection; changing the time window re-reads it.
+Each row preserves its actual comparison interval, source epoch, cache entry and
+capture completeness. Baselines, resets, stale samples, expired comparisons and
+intervals crossing the selected boundary retain null counters. The six native
+counter differences are exact strings; CPU and duration convert microseconds to
+milliseconds without rounding. This view does not aggregate different entry intervals
+or supply protected query text/plan XML through the legacy Query Store routes.
+
+The authenticated `GET /api/v1/observation-targets/{instanceId}/query-performance/cache/databases/{databaseId}/history/{queryFingerprint}/plans/{planFingerprint}`
+requires `databaseIncarnation`, explicit `fromUtc`/`toUtc` ending in `Z`, whole
+microsecond precision, at most seven days and `limit` from 1 to 100. Viewer,
+Operator or TargetAdministrator must cover that exact target. Replies are no-store.
+The database server role can execute the scoped projection but cannot select the
+private cache tables or sequence.
+
+Forward migration 0321 stamps the staged cache receipt parent with a repository
+sequence. It rewrites existing receipts once, under the five-second migration lock
+budget. Page one allocates a fence under the same target transaction lock as the
+cache writer; this can briefly wait for an in-flight commit within the five-second
+request deadline. Future writes receive higher sequence values, even when their
+source timestamps precede the selected window's end. The sequence and its value
+survive pg_dump/restore. Every later page uses a signed, purpose-bound cursor tied
+to target, incarnation, query, plan, UTC window, limit, target revision, sequence
+fence and deterministic last-row key. Default signer limits for existing cursor
+purposes remain unchanged; this codec allows a 512-byte payload and a 728-character
+token. Continuations expire after 30 minutes. Revision drift or retirement of any
+matching snapshot row invalidates continuation rather than silently skipping data.
+The browser loads 100 samples per page and stops at 1,000; narrowing the time range
+is required beyond that bound.
+
+Focused verification covers populated upgrade, actual backup/restore, an in-flight
+writer, late commits, exact row ties without duplicates, database incarnation scope,
+null and boundary comparisons, retired evidence, expired cursors, typed server-role
+reads, mixed-role HTTP denial and signed cursor tampering. Client and browser checks
+cover exact large counters, reloadable selection, paging, server changes and axe
+accessibility. Collector activation, supported SQL Server version qualification,
+fleet rollout and cache query content remain separate gates.
+
+The native SQL Server 2022/PostgreSQL roundtrip also reads the new history through
+the actual server-role port: it matches the probe's three added executions and
+exact CPU difference, and preserves its first baseline and comparison timestamps.
+One run lost the fixture's warmed five-execution cache entry before that assertion;
+a focused repeat passed. This reinforces the existing cache eviction qualification
+gate; it does not establish stable fleet coverage or SQL Server 2019/2025 parity.

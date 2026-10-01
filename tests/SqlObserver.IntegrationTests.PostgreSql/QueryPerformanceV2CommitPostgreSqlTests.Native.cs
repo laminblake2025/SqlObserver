@@ -184,6 +184,22 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
             Assert.Equal((afterCounters.Writes - beforeCounters.Writes).ToString(System.Globalization.CultureInfo.InvariantCulture), ranked.Writes);
             Assert.Equal((afterCounters.Rows - beforeCounters.Rows).ToString(System.Globalization.CultureInfo.InvariantCulture), ranked.Rows);
 
+            var history = await new SqlObserver.Application.Services.PlanCacheIntervalHistoryQueryService(
+                new PostgreSqlPlanCacheIntervalHistoryPort(server)).ReadAsync(
+                    new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1-2-3-1234"), AuthorizationPrincipalState.Active,
+                        [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([target]))]),
+                    new PlanCacheIntervalHistoryRequest(target,ids[1],secondProbe.Watermark.Key.DatabaseIncarnation,
+                        secondProbe.Watermark.Key.Query.QueryFingerprint,secondProbe.Watermark.Key.Plan.PlanFingerprint,
+                        ranking.FromUtc,ranking.ToUtc,100,Timeout),deadline.Token);
+            var measuredHistory = Assert.Single(history.Items,item => item.CacheEntryFingerprint == secondProbe.Watermark.Key.CacheEntryFingerprint && item.Transition == "comparable");
+            Assert.Equal("3",measuredHistory.Executions);
+            Assert.Equal(firstProbe.Watermark.ObservedAtUtc,measuredHistory.IntervalFromUtc);
+            Assert.Equal(secondProbe.Watermark.ObservedAtUtc,measuredHistory.IntervalToUtc);
+            Assert.Equal(decimal.Parse(ranked.CpuMilliseconds,System.Globalization.CultureInfo.InvariantCulture),
+                decimal.Parse(measuredHistory.CpuMilliseconds!,System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Contains(history.Items,item => item.CacheEntryFingerprint == firstProbe.Watermark.Key.CacheEntryFingerprint
+                && item.Transition == "baseline_unavailable" && item.Executions is null);
+
             async Task<CollectorPayload> Link(Frame frame, CollectorPayload source)
             {
                 CollectorPayload linked = await new QueryPerformanceProtectedContentCommitter(new PostgreSqlSensitivePayloadPort(scene.Collector))

@@ -48,6 +48,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         QueryStoreGroupPlanTrends = new PostgreSqlQueryStoreGroupPlanTrendPort(dataSource);
         QueryStoreWaitRankings = new PostgreSqlQueryStoreWaitRankingPort(dataSource);
         QueryStorePlanRegressions = new PostgreSqlQueryStorePlanRegressionPort(dataSource);
+        PlanCacheIntervalHistory = new PostgreSqlPlanCacheIntervalHistoryPort(dataSource);
         PlanCacheIntervalRankings = new PostgreSqlPlanCacheIntervalRankingPort(dataSource);
         CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
         var alertRepository = new PostgreSqlAlertRepositoryPort(dataSource);
@@ -107,6 +108,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IQueryStoreGroupPlanTrendRepositoryPort QueryStoreGroupPlanTrends { get; }
     public IQueryStoreWaitRankingRepositoryPort QueryStoreWaitRankings { get; }
     public IQueryStorePlanRegressionRepositoryPort QueryStorePlanRegressions { get; }
+    public IPlanCacheIntervalHistoryRepositoryPort PlanCacheIntervalHistory { get; }
     public IPlanCacheIntervalRankingRepositoryPort PlanCacheIntervalRankings { get; }
 
     public ICollectorRuntimeRepositoryPort CollectorRuntime { get; }
