@@ -4,7 +4,7 @@ The revamp plan requires alert coverage beyond engine counters and backups.
 Blocking duration is the next signal being implemented. The source contract
 below is implemented and verified in PostgreSQL. Private durable capture,
 claim, transition and atomic state/outbox commit helpers are implemented;
-runtime queue dispatch and product catalog activation remain pending. No blocking rule
+runtime queue dispatch is implemented and product catalog activation remains pending. No blocking rule
 has been enabled in the product catalog yet.
 
 ## Signal meaning
@@ -57,9 +57,10 @@ adds a forced-RLS `alerting.blocking_evaluation_capture` table. Its observation,
 producer, claim and claim-verification functions are migrator-owned and private:
 Collector, Server, Auditor and PUBLIC have no execution or table grants. The
 existing catalog remains contract 3 and rejects creating a blocking rule. The
-normal worker is not wired to the private producer/claim helpers yet. The current
-commit dispatcher rejects their source kind instead of accepting a caller's
-blocking transition through the engine path.
+normal worker now reaches these helpers through the scoped Collector function
+surface. The commit dispatcher routes blocking decisions through the verified
+commit helper, and rejects malformed decisions and attempts to bind a blocking
+rule to engine evidence.
 
 The producer holds target/rule locks, reads the 0297 source transactionally,
 and binds each queued operation to target revision, rule revision, source
@@ -114,20 +115,38 @@ current active target revision and the unchanged rule binding; divergent replay
 is rejected. State/decision serialization uses the existing production serializer
 and canonical SQL snapshot codec. The commit reuses the existing generic
 state-snapshot helper (currently named `backup_alert_state_snapshot`) without
-changing backup behavior. Both new SQL functions remain migrator-only until
-the runtime dispatcher and catalog are activated together.
+changing backup behavior. Both SQL functions remain migrator-only for direct
+execution; the scoped Collector dispatcher invokes them. The catalog remains gated.
+
+## Runtime dispatch
+
+Migration 0301 integrates blocking target discovery, reconciliation, claiming and
+commit into the existing Collector repository surface. The background worker's
+production source, rule/state reads, evaluator and persistence path accept the
+blocking contract. The repository retains its global 100-operation claim bound
+and groups persistence by target. Blocking claims verify the exact current
+capture after the shared claimant has assigned owner/fencing metadata.
+
+Mixed engine, backup and blocking decisions share the request transaction.
+Blocking rules cannot masquerade as engine sources; their decisions always pass
+through the independent verifier. A rejected blocking decision rolls back the
+engine/backup work already staged in that transaction. Exact replay preserves
+the existing independent ledgers and introduces no new effects.
+
+A private, forced-RLS cursor records the last reconciliation check per blocking
+target. It advances even when the current snapshot was already consumed, so
+unchanged evidence on the first discovery page cannot starve later targets.
+Eligible checks are ordered by their due time and capped by the discovery limit.
+Available captures for disabled rules or inactive targets remain discoverable
+for cleanup. The shared claimant now cancels revised operations only when their
+claims are available; an unexpired live claim keeps its ownership and is rejected
+by revision verification if someone attempts to commit it.
 
 ## Remaining activation work
 
 1. Add the product-owned catalog template/defaults and expose duration threshold,
    hysteresis and fire/clear settings through administration.
-2. Wire the private capture/claim helpers into coordinator discovery and the
-   normal evaluation queue dispatcher, retaining global claim budgets and
-   target isolation alongside existing engine and backup work.
-3. Route blocking decisions exclusively through the independently verified commit
-   path, including mixed engine/backup/blocking batches. Preserve unknown holds,
-   exact replay and distinct-snapshot confirmation through the normal worker.
-4. Qualify source/revision/lease and acknowledgement races at runtime dispatch,
+2. Qualify additional source/revision/lease and acknowledgement races at runtime dispatch,
    then activate the catalog. Expose the template/settings in Rules and describe
    source gaps clearly in the alert inbox.
 
@@ -185,3 +204,15 @@ These commit fixtures seed collector outcomes/edges and a synthetic approved
 destination in isolated PostgreSQL. They prove durable state and outbox intent
 creation through the private helpers, without running the normal Collector
 worker, collecting from SQL Server or sending an external notification.
+
+Eight native PostgreSQL runtime/queue checks use the full migration history and
+restricted Collector repository. They verify mixed engine/backup/blocking batch
+rollback and replay, shared fleet claim budgets, live revised claims, source
+fences and the existing private queue boundaries. A 129-target fixture claims
+100 then 29 unique targets and subsequently checks every consumed target beyond
+the first page without creating repeated confirmation work. The production
+`AlertEvaluationWorker` is also started with its real source/repository/lease
+services and persists a firing transition plus one outbox intent. Evidence:
+`artifacts/blocking-alerts/blocking-alert-runtime.trx`.
+These fixtures still seed collector data as the isolated bootstrap owner; they
+do not run SQL Server collection or an external delivery adapter.

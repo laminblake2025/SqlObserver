@@ -45,7 +45,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
             legacy.Parameters.AddWithValue("decisions",NpgsqlDbType.Jsonb,new JsonArray(new JsonObject{["Observation"]=observation.DeepClone()}).ToJsonString());
             PostgresException rejected=await Assert.ThrowsAsync<PostgresException>(async()=>await legacy.ExecuteNonQueryAsync());
             Assert.Equal("22023",rejected.SqlState);
-            Assert.Equal("evaluation evidence source binding is not immutable telemetry",rejected.MessageText);
+            Assert.Equal("Blocking alert decision shape is invalid",rejected.MessageText);
         }
         Assert.Empty(await ClaimBlockingQueueAsync(database,target,lease));
         await ExpireBlockingQueueClaimsAsync(database,target);
