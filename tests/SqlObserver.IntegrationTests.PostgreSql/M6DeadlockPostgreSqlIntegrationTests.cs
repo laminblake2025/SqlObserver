@@ -12,7 +12,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class M6DeadlockPostgreSqlIntegrationTests
+public sealed partial class M6DeadlockPostgreSqlIntegrationTests
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
     private readonly PostgreSql18Fixture fixture;
@@ -495,7 +495,10 @@ public sealed class M6DeadlockPostgreSqlIntegrationTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         DateTimeOffset now = await ReadClockAsync(database);
-        DateTimeOffset oldMonth = new(new DateTime(now.Year, now.Month, 1).AddDays(-1).AddHours(23), TimeSpan.Zero);
+        // The prior month is not yet retention-eligible on the first day of a
+        // month. Stay inside ingestion's 33-day bound while choosing a closed,
+        // expired partition on every calendar day.
+        DateTimeOffset oldMonth = now.AddDays(-32);
         var prepared = await PrepareCommitAsync(database, occurrence: oldMonth);
         Assert.Equal(CollectorRunCommitStatus.Committed,
             (await prepared.Runtime.CommitRunAsync(prepared.Commit, CancellationToken.None)).Status);
@@ -593,7 +596,7 @@ public sealed class M6DeadlockPostgreSqlIntegrationTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         DateTimeOffset now = await ReadClockAsync(database);
-        DateTimeOffset oldMonth = new(new DateTime(now.Year, now.Month, 1).AddDays(-1).AddHours(23), TimeSpan.Zero);
+        DateTimeOffset oldMonth = now.AddDays(-32);
         var prepared = await PrepareCommitAsync(database, occurrence: oldMonth);
         Assert.Equal(CollectorRunCommitStatus.Committed,
             (await prepared.Runtime.CommitRunAsync(prepared.Commit, CancellationToken.None)).Status);
@@ -641,7 +644,7 @@ public sealed class M6DeadlockPostgreSqlIntegrationTests
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         DateTimeOffset now = await ReadClockAsync(database);
-        DateTimeOffset oldMonth = new(new DateTime(now.Year, now.Month, 1).AddDays(-1).AddHours(23), TimeSpan.Zero);
+        DateTimeOffset oldMonth = now.AddDays(-32);
         var prepared = await PrepareCommitAsync(database, occurrence: oldMonth);
         Assert.Equal(CollectorRunCommitStatus.Committed,
             (await prepared.Runtime.CommitRunAsync(prepared.Commit, CancellationToken.None)).Status);

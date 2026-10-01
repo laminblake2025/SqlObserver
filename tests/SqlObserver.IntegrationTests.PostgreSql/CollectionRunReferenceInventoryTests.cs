@@ -52,13 +52,17 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.backfill_collection_run_v2/2
             function control.begin_collection_run/12
             function control.collection_run_v2_parity_coverage/2
+            function control.commit_availability_groups_v2_collection_run/28
+            function control.commit_backups_v2_collection_run_core/28
             function control.commit_buffer_node_ple_collection_run/28
             function control.commit_collection_run/57
             function control.commit_collection_run_v2/59
+            function control.commit_database_inventory_v2/60
             function control.commit_m10_collection_run/28
             function control.commit_m9_collection_run/28
             function control.commit_query_performance_collection_run_canonical/34
             function control.commit_query_store_group_collection_run/28
+            function control.commit_server_configuration_collection_run/28
             function control.commit_sql_volume_collection_run/28
             function control.cutover_collection_run_identity_fks/1
             function control.ensure_target_collector_schedules/0
@@ -78,14 +82,16 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.list_blocking_history_legacy/10
             function reporting.list_buffer_node_ple_nodes_legacy/3
             function reporting.list_current_blocking_legacy/8
+            function reporting.list_database_option_changes/4
             function reporting.list_server_wait_category_trend_legacy/3
             function reporting.list_server_wait_history_legacy/7
             function reporting.list_server_wait_summary_legacy/6
+            function reporting.list_sql_volume_capacity_history/4
             function reporting.list_sql_volume_snapshot_legacy/5
             function reporting.overview_database_activity_history_legacy/5
-            function reporting.overview_workload_history_legacy/5
             function reporting.read_m10_backfill_page_legacy/10
             function reporting.read_m10_rollup_derivation_inputs_legacy/9
+            function reporting.sql_core_metric_inputs/6
             function telemetry.capture_server_wait_category_summary_v1/0
             function telemetry.insert_collection_run_runtime/13
             function telemetry.lock_collection_run_runtime/1
@@ -97,7 +103,8 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             view reporting.collector_health_projection_legacy
             view telemetry.collection_run_alert_read
             """;
-        Assert.Equal(expected.Split('\n'), names);
+        Assert.True(expected.Split('\n').SequenceEqual(names, StringComparer.Ordinal),
+            "Unexpected active run references:\n" + string.Join('\n', names));
     }
 
     [Fact]
