@@ -275,7 +275,7 @@ public sealed partial class M4SchedulerTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             DeadlockReads++;
-            Assert.Equal(Assert.Single(Starts).RunId, request.RunId);
+            lock (Starts) Assert.Contains(Starts, start => start.RunId == request.RunId);
             if (FailCheckpointRead) throw new InvalidDataException("Checkpoint is unavailable.");
             return ValueTask.FromResult(new DeadlockReadCheckpointResult(request, M4TestData.RepositoryTime, new(new string('a', 64)), null, false));
         }

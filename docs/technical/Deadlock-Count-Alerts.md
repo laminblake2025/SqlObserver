@@ -576,7 +576,7 @@ checks, not a live SQL-to-PostgreSQL deployment certification. Earlier failed
 result files remain available.
 
 Production composition and catalog remain v1. Activation still requires
-bounded/fair catch-up qualification and a live SQL-to-PostgreSQL
+a live SQL-to-PostgreSQL
 firing/unknown/recovery check before v2 replaces the full-scan source.
 No active v2 catalog contract is installed.
 
@@ -628,6 +628,49 @@ The contract/transition/preamble checks pass in `xe-retained-alert-unit.trx`
 (10 cases). Earlier failed results remain available; unchanged passing cases
 were not repeated. The native tests use bounded typed source frames rather than
 a live SQL Server workload, so production activation remains a separate step.
+
+## Catch-up dispatch qualification
+
+The scheduler continues to use one bounded incremental source page per run.
+It publishes that page's proof through the atomic repository port and returns
+the slot; it does not loop over the target's remaining history inside a dispatch.
+The existing canonical commit advances the target's next due time by its
+configured cadence. Other eligible due work therefore remains claimable between
+catch-up pages. Normal catch-up remains successful collection with unknown
+window coverage, rather than permanent sample loss.
+
+The focused dispatch test blocks a v2 source while another collector finishes,
+then verifies that a third collector starts in the free slot before the v2
+read is released. It also checks one source call, one checkpoint read, one final
+proof, and fenced lease release. The shared test repository now checks a run
+against its matching begin instead of assuming that only one run ever began.
+This enables continuous-dispatch fixtures without changing production code.
+
+The native PostgreSQL case drives the real adapter, engine, checkpoint and
+atomic commit ports across three bounded typed pages. A cutoff inside one XE
+buffer leaves the bookmark at the preceding complete buffer. Re-reading its
+safe event produces one canonical duplicate, then end-of-stream exposes the
+retained count without inserting another event. After each commit the run lease
+is released, the next due time is in the future, and real Collector-role claims
+can select due blocking work. The fixture advances due times to exercise the
+pages quickly; it does not accelerate production catch-up cadence. It does not
+qualify a live SQL workload or a fleet's sustained throughput.
+
+`xe-catchup-dispatch.trx` passes the new v2 dispatch case and existing continuous
+refill case. `xe-catchup-collector-postgresql.trx` passes the three-page native
+repository case. The earlier compile attempt used the static limit name as an
+instance property; it failed before executing tests and was corrected to the
+manifest's `MaxResponseBytes` property. SQL assets and production scheduling
+behavior are unchanged.
+
+Existing SQL Server source evidence remains in `xe-source-native-reference.trx`
+and `xe-source-native-stable-epoch.trx`: native pages reached end-of-stream,
+matched the independently approved full-scan event identities, resumed quietly
+and rejected missing/changed sources. The reference run needed 37 pages. At
+normal production cadence a cold target can therefore remain catching up for
+several minutes; these checks do not claim instant bootstrap or a faster
+production cadence. Live v2 pipeline qualification must distinguish that cold
+catch-up from a quiet complete read and keep capability/worker leases current.
 
 ## Verification and remaining work
 
