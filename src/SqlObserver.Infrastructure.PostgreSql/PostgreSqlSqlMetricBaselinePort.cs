@@ -10,6 +10,53 @@ namespace SqlObserver.Infrastructure.PostgreSql;
 
 public sealed partial class PostgreSqlAnalyticsRepositoryPort
 {
+    public async ValueTask<IReadOnlyList<SqlMetricBaselineResult>> ReadSqlBaselinesAsync(AnalyticsQueryRequest request, long generation, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.TargetRevision is not { Value: > 0 } || generation < 1 || request.Limit != 168 || request.SnapshotUtc is null)
+            throw new ArgumentException("A bounded SQL baseline revision and snapshot are required.", nameof(request));
+        await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, FiveSecondTimeout, cancellationToken).ConfigureAwait(false);
+        await SetScopeAsync(connection, transaction, request.TargetId.Value, FiveSecondTimeout, cancellationToken).ConfigureAwait(false);
+        await using var command = Command(connection, transaction, """
+            SELECT result,source_cutoff_utc FROM reporting.read_sql_metric_baselines(@target,@revision,@metric,@from,@to,@snapshot,@generation);
+            """, FiveSecondTimeout);
+        command.Parameters.AddWithValue("target", request.TargetId.Value); command.Parameters.AddWithValue("revision", request.TargetRevision.Value);
+        command.Parameters.AddWithValue("metric", request.MetricKey); command.Parameters.AddWithValue("from", request.FromUtc);
+        command.Parameters.AddWithValue("to", request.ToUtc); command.Parameters.AddWithValue("snapshot", request.SnapshotUtc.Value);
+        command.Parameters.AddWithValue("generation", generation);
+        var rows = new List<SqlMetricBaselineResult>();
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            string json = reader.GetString(0);
+            using JsonDocument document = JsonDocument.Parse(json); JsonElement identity = document.RootElement;
+            if (identity.GetProperty("catalogVersion").GetInt32() != MetricCatalogV2.Version ||
+                identity.GetProperty("catalogChecksum").GetString() != MetricCatalogV2.Checksum ||
+                identity.GetProperty("algorithmVersion").GetString() != "sql-baseline-v2" ||
+                identity.GetProperty("sourceAlgorithmVersion").GetString() != "sql-rollup-v2" ||
+                identity.GetProperty("sourceCutoffUtc").GetDateTimeOffset() != ReadUtc(reader, 1))
+                throw new InvalidDataException("Stored SQL baseline version identity differs.");
+            BaselinePersistenceDto row = JsonSerializer.Deserialize<BaselinePersistenceDto>(json, CamelCaseJson)
+                ?? throw new InvalidDataException("Stored SQL baseline is missing.");
+            var statistics = new BaselineResult
+            {
+                MetricKey = row.MetricKey, HourOfWeek = row.HourOfWeek, CompleteDays = row.CompleteDays, SampleCount = row.SampleCount,
+                Dimensions = row.Dimensions, DimensionsSha256 = row.DimensionHash, WindowStartUtc = row.WindowStartUtc, WindowEndUtc = row.WindowEndUtc,
+                Mean = row.Mean, Stddev = row.Stddev, Median = row.Median, Mad = row.Mad, P10 = row.P10, P90 = row.P90,
+                Coverage = row.Coverage, Confidence = row.Confidence, LowerBound = row.LowerBound, UpperBound = row.UpperBound,
+                Generation = row.Generation, VisibilityState = row.VisibilityState,
+            };
+            var result = new SqlMetricBaselineResult(statistics, ReadUtc(reader, 1));
+            try { result.Validate(); }
+            catch (ArgumentException exception) { throw new InvalidDataException("Stored SQL baseline statistics are invalid.", exception); }
+            rows.Add(result);
+        }
+        await reader.CloseAsync().ConfigureAwait(false); await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return rows.AsReadOnly();
+    }
+
     public async ValueTask<IReadOnlyList<SqlMetricRollupResult>> ReadSqlBaselineInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken)
     {
         job.Validate();

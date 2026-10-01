@@ -1,4 +1,5 @@
 import { apiFetch } from "../../apiClient.ts";
+import { parseSqlBaselinePage, type SqlBaselinePage } from "./sqlBaselineModel.ts";
 import { parseAnalyticsSurfacePage, parseBaselines, parseComparison, parseForecasts, parseIncidentsSurfacePage, parseMetricSeries, parseMutationReceipt, parseRetentionExecution, parseRetentionPolicy, parseRetentionPreview, parseRollupPage } from "./analyticsParser.ts";
 import type { AnalyticsComparison, AnalyticsMutationReceipt, AnalyticsSurface, AnalyticsSurfacePage, MetricSeries, RetentionExecutionResult, RetentionPolicyResult, RetentionPreview, RollupPage } from "./analyticsTypes";
 
@@ -23,6 +24,13 @@ export const getIncidents = <T = Record<string, unknown>>(targetId: string, sign
 export const getEvidencePackets = <T = Record<string, unknown>>(targetId: string, signal: AbortSignal, options?: Parameters<typeof getAnalyticsSurface>[3]) => getAnalyticsSurface<T>(targetId, "evidence-packets", signal, options);
 export async function compareAnalytics(targetId: string, metricKey: string, windows: { leftFromUtc: string; leftToUtc: string; rightFromUtc: string; rightToUtc: string }, signal: AbortSignal): Promise<AnalyticsComparison> { const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/compare?${query({ metricKey, ...windows })}`, signal); return parseComparison(result, targetId); }
 export async function getBaselines(targetId: string, metricKey: string, signal: AbortSignal): Promise<readonly import("./analyticsTypes").Baseline[]> { const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/baselines?${query({ metricKey, limit: 200 })}`, signal); return parseBaselines(result, targetId); }
+export async function getSqlBaselineWindow(targetId: string, targetRevision: number, metricKey: string,
+  window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal): Promise<SqlBaselinePage> {
+  const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/sql-baselines?${query({
+    metricKey, targetRevision, ...window, catalogVersion: 2, generation: 1,
+  })}`, signal);
+  return parseSqlBaselinePage(result, { targetId, targetRevision, metricKey, ...window });
+}
 export async function getBaselineWindow(targetId: string, metricKey: string, window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal): Promise<readonly import("./analyticsTypes").Baseline[]> {
   const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/baselines?${query({ metricKey, ...window, limit: 200 })}`, signal);
   const rows = parseBaselines(result, targetId);

@@ -1,6 +1,6 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: proposed, 2026-09-30. Catalog definitions, source, SQL rollup and baseline workers implemented; API activation pending.
+Status: proposed, 2026-09-30. SQL source, rollup/baseline workers, read API and chart references implemented; MCP discovery/read activation pending.
 
 ## Context
 
@@ -169,14 +169,50 @@ remain intact. Apply migration 0294 before deploying this worker version.
 
 ## Remaining activation work
 
-SQL baselines are not yet available through the API, MCP or dashboard.
+SQL baselines are available through the explicit version 2 read API and shared
+dashboard/Resources chart references. They are not yet available through MCP.
 
-1. Add version-aware application/API reads and catalog discovery, then MCP schemas and
+1. Add version-aware catalog discovery and MCP reads, then approve MCP schemas and
    their approved digest, using an explicit active version. Resume existing
    jobs and cursors under their original catalog, refusing version changes.
-2. Bind UI references to matching keys and units after read API activation.
-3. Validate the SQL baseline parent's retention lifecycle with real recovery
+2. Validate the SQL baseline parent's retention lifecycle with real recovery
    attestation, and benchmark fleet derivation and history coverage.
+
+## SQL baseline read API and chart references
+
+Migration 0295 adds the server-only `reporting.read_sql_metric_baselines`
+function. A read selects one exact target revision, SQL metric, 28-day UTC
+source window and generation. It returns all 168 hours or no rows, with no
+pagination. A snapshot before the last row's computation time returns no
+bundle, even if some hourly row timestamps precede it. PUBLIC, collector and
+auditor execute grants remain denied, as do direct runtime-role table reads.
+
+`GET /api/v1/observation-targets/{instanceId}/analytics/sql-baselines` requires
+`metricKey`, `targetRevision`, `fromUtc` and `toUtc`. The window must be exactly
+28 days and end at UTC midnight. `catalogVersion` defaults to 2 and rejects
+other versions; `generation` defaults to 1; `snapshotUtc` defaults to the read
+time and cannot precede the source window or exceed current time by a minute.
+Application authorization checks a read-capable role on this target, and the
+five-second read deadline is enforced independently of caller settings.
+
+The response retains target revision, catalog checksum, baseline/source
+algorithms, source and read windows, generation, canonical metric unit and
+typed hourly results with their cutoff. It distinguishes no stored bundle,
+unavailable hours, partial history and complete history. The application and
+web client reject mixed metric, window, generation or snapshot identities,
+duplicate/incomplete hours, invalid coverage and nonfinite statistics.
+The legacy host/replication baseline API remains unchanged.
+
+The shared dashboard and Resources reference hook requests only SQL metrics
+present in the selected evidence, at most seven requests, alongside the
+existing collector-host memory reference. Each SQL band matches target,
+metric, units and UTC hour of week; bytes convert to GiB. Partial history stays
+labelled with sample count, coverage and confidence. Unavailable hours remain
+gaps. Host and SQL results merge independently so asynchronous completion does
+not erase other reference bands. Existing matching logic prevents host memory
+references from attaching to SQL memory series. Reads use the exact source
+window preceding the selected window; a later read snapshot is a descriptive
+comparison and does not prove what was known at the selected Rewind time.
 
 ## Validation
 
@@ -229,13 +265,30 @@ rollup worker and fresh-install idempotence. Evidence is
 `artifacts/sql-metric-baseline-worker/sql-baseline-unit.trx` and
 `sql-baseline-worker.trx` in the same directory. The focused web analytics
 contract checks also passed nine cases, including the new retention policy
-class in the bounded update client. SQL baseline reads remain internal to the
-worker; these checks do not prove API, MCP or dashboard activation.
+class in the bounded update client. At that checkpoint, SQL baseline reads
+were internal to the worker; those checks do not prove API, MCP or dashboard activation.
 
 The strengthened catalog/snapshot check also passed separately after seeding
 version 1 rows with an otherwise matching SQL key and window. The reader
 excluded them. Evidence is `sql-baseline-catalog-snapshot.trx` in the same
 artifact directory.
+
+SQL baseline read activation passed three isolated PostgreSQL 18.4 checks for
+production port/service reads, all hourly identities, mixed-grant denial,
+revision refusal, version/generation separation, function grants, atomic
+snapshot visibility and fresh-install idempotence. The real HTTP pipeline
+check passed for serialization, target-role refusal, invalid catalog/key/
+window rejection and server-failure classification of malformed repository
+statistics. Migration preamble validation passed. Evidence is under
+`artifacts/sql-baseline-read-api` in `sql-baseline-read-postgres.trx`,
+`sql-baseline-http.trx` and `sql-baseline-read-preamble.trx`.
+
+Thirteen focused web checks passed for SQL client identity binding, source
+windows, all-hour completeness, units, percentiles, partial/unavailable history
+and reference matching, together with existing host/rule/chart rendering
+behavior. TypeScript typechecking passed. These checks exercise the API,
+PostgreSQL and web layers independently, not a browser connected to the SQL
+Server lab or a complete MCP flow. No broad suite was run for this checkpoint.
 
 The SSH VM is reachable and its PostgreSQL 18 service is running, but this
 session has no configured PostgreSQL login for that VM. These checks ran

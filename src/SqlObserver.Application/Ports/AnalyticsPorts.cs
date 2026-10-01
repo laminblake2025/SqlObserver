@@ -34,6 +34,8 @@ public interface IAnalyticsRepositoryPort
     ValueTask<IReadOnlyList<RollupResult>> ReadRollupsAsync(AnalyticsQueryRequest request, RollupInterval interval, CancellationToken cancellationToken);
     ValueTask<AnalyticsRollupPage> ReadRollupPageAsync(AnalyticsQueryRequest request, RollupInterval interval, string? cursor, CancellationToken cancellationToken);
     ValueTask<IReadOnlyList<BaselineResult>> ReadBaselinesAsync(AnalyticsQueryRequest request, CancellationToken cancellationToken);
+    ValueTask<IReadOnlyList<SqlMetricBaselineResult>> ReadSqlBaselinesAsync(AnalyticsQueryRequest request, long generation, CancellationToken cancellationToken)
+        => throw new NotSupportedException("Catalog-v2 SQL baseline reads are not supported by this adapter.");
     ValueTask<IReadOnlyList<ForecastResult>> ReadForecastsAsync(AnalyticsQueryRequest request, TimeSpan horizon, CancellationToken cancellationToken);
     ValueTask<IReadOnlyList<IncidentThread>> ReadIncidentsAsync(AnalyticsQueryRequest request, CancellationToken cancellationToken);
     ValueTask StoreRollupsAsync(AnalyticsJobRequest request, IReadOnlyList<RollupResult> rollups, CancellationToken cancellationToken);

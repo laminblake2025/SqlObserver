@@ -39,7 +39,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data) : [];
   const agentHistory = useAgentHistory(instanceId, targetRevision, data && evidence ? data : undefined, refresh);
-  const chartReferences = useChartReferences(instanceId, targetRevision, data && evidence ? data : undefined, canReadRules, refresh);
+  const chartReferences = useChartReferences(instanceId, targetRevision, data && evidence ? data : undefined, canReadRules, refresh, evidence?.series.map(item => item.metric));
   const [optionEvents, setOptionEvents] = useState<DatabaseOptionChangeResult>();
   const [optionEventError, setOptionEventError] = useState(false);
   const [configurationEvents, setConfigurationEvents] = useState<ServerConfigurationChangeResult>();

@@ -31,7 +31,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   const result = useOverviewAnalytics({ ...scope, target: instanceId }, refresh);
   const evidence = result.data?.evidence.find(item => item.targetId === instanceId);
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
-  const chartReferences = useChartReferences(instanceId, targetRevision, result.data && evidence ? result.data : undefined, canReadRules, refresh);
+  const chartReferences = useChartReferences(instanceId, targetRevision, result.data && evidence ? result.data : undefined, canReadRules, refresh, evidence?.series.map(item => item.metric));
   const [files, setFiles] = useState<DatabaseFileHealthPage>();
   const [fileError, setFileError] = useState<string>();
   const [filesLoading, setFilesLoading] = useState(false);

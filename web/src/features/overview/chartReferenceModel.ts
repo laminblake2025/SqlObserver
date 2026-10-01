@@ -1,6 +1,7 @@
 import type { Baseline } from "../analytics/analyticsTypes";
 import type { AlertRuleAdminItem } from "../alerts/alertRuleAdminApi.ts";
 import type { OverviewSeries } from "./overviewTypes";
+import { sqlBaselineMetrics, type SqlBaselinePage } from "../analytics/sqlBaselineModel.ts";
 
 export interface ChartBaselineBand {
   readonly targetId: string; readonly metric: string; readonly dimension: string | null; readonly unit: string;
@@ -79,4 +80,22 @@ export function matchingReferences(series: readonly OverviewSeries[], references
   return { bands: (references?.bands ?? []).filter(reference => matches(reference) && Number.isFinite(reference.low) && Number.isFinite(reference.high)
     && Number.isFinite(reference.median) && reference.low <= reference.median && reference.median <= reference.high),
   thresholds: (references?.thresholds ?? []).filter(reference => matches(reference) && Number.isFinite(reference.value)) };
+}
+
+export function sqlBaselineBands(page: SqlBaselinePage, fromUtc: string, toUtc: string): readonly ChartBaselineBand[] {
+  const from = Date.parse(fromUtc), to = Date.parse(toUtc), metric = sqlBaselineMetrics[page.metricKey];
+  if (!metric || !Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 31 * 86400000)
+    throw new Error("Invalid SQL baseline chart window.");
+  if (Date.parse(page.toUtc) > from) return [];
+  const byHour = new Map(page.items.map(row => [row.hourOfWeek, row]));
+  const bands: ChartBaselineBand[] = [];
+  for (let at = Math.floor(from / 3600000) * 3600000; at < to; at += 3600000) {
+    const date = new Date(at), row = byHour.get(date.getUTCDay() * 24 + date.getUTCHours());
+    if (!row || row.sampleCount === 0 || row.p10 === null || row.p90 === null || row.median === null) continue;
+    bands.push({ targetId: page.targetId, metric: page.metricKey, dimension: null, unit: metric.chartUnit,
+      fromUtc: new Date(Math.max(from, at)).toISOString(), toUtc: new Date(Math.min(to, at + 3600000)).toISOString(),
+      low: row.p10 / metric.scale, high: row.p90 / metric.scale, median: row.median / metric.scale,
+      label: `${metric.label} baseline · ${row.visibilityState} · p10–p90 · UTC hour ${row.hourOfWeek} · ${row.sampleCount} samples · coverage ${Math.round(row.coverage * 100)}% · confidence ${Math.round(row.confidence * 100)}% · source ${page.fromUtc} to ${page.toUtc} · generation ${page.generation}` });
+  }
+  return bands;
 }

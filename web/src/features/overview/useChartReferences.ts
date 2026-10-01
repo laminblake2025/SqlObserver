@@ -1,28 +1,44 @@
 import { useEffect, useState } from "react";
-import { getBaselineWindow } from "../analytics/analyticsApi.ts";
+import { getBaselineWindow, getSqlBaselineWindow } from "../analytics/analyticsApi.ts";
+import { sqlBaselineMetrics } from "../analytics/sqlBaselineModel.ts";
 import { readChartRuleThresholds } from "./chartReferenceApi.ts";
-import { baselineLookupWindow, memoryBaselineBands, type ChartReferences } from "./chartReferenceModel.ts";
+import { baselineLookupWindow, memoryBaselineBands, sqlBaselineBands, type ChartBaselineBand, type ChartReferences } from "./chartReferenceModel.ts";
 
-export function useChartReferences(targetId: string, revision: number, window: { fromUtc: string; toUtc: string } | undefined, canReadRules: boolean, refresh: number) {
-  const key = JSON.stringify([targetId.toLowerCase(), revision, window?.fromUtc, window?.toUtc, canReadRules, refresh]);
+export function useChartReferences(targetId: string, revision: number, window: { fromUtc: string; toUtc: string } | undefined, canReadRules: boolean, refresh: number, visibleMetrics: readonly string[] = []) {
+  const metrics = [...new Set(visibleMetrics)].filter(metric => sqlBaselineMetrics[metric]).sort();
+  const key = JSON.stringify([targetId.toLowerCase(), revision, window?.fromUtc, window?.toUtc, canReadRules, refresh, metrics]);
   const [result, setResult] = useState<{ key: string; references: ChartReferences; baselineStatus: string; ruleStatus: string }>();
   useEffect(() => {
     if (!window) return;
     const controller = new AbortController();
     let references: ChartReferences = { bands: [], thresholds: [] };
-    let baselineStatus = "Loading collector-host memory baseline…";
+    let hostBands: readonly ChartBaselineBand[] = [], sqlBands: readonly ChartBaselineBand[] = [];
+    let hostStatus = "Loading collector-host memory baseline…";
+    let sqlStatus = metrics.length ? "Loading SQL baseline references…" : "";
     let ruleStatus = canReadRules ? "Loading current rule thresholds…" : "Target Administrator access unlocks current rule threshold lines.";
-    const publish = () => { if (!controller.signal.aborted) setResult({ key, references, baselineStatus, ruleStatus }); };
+    const publish = () => { if (!controller.signal.aborted) setResult({ key, references: { ...references, bands: [...hostBands, ...sqlBands] }, baselineStatus: `${hostStatus} ${sqlStatus}`.trim(), ruleStatus }); };
     publish();
     void getBaselineWindow(targetId, "host.memory.available_bytes", baselineLookupWindow(window.fromUtc), controller.signal)
       .then(rows => {
-        references = { ...references, bands: memoryBaselineBands(targetId, rows, window.fromUtc, window.toUtc) };
-        baselineStatus = references.bands.length
+        hostBands = memoryBaselineBands(targetId, rows, window.fromUtc, window.toUtc);
+        hostStatus = hostBands.length
           ? "Shaded band: collector-host memory p10–p90 by UTC hour of week. Its source window ends before this selection. Confidence and source dates are available in the reference details. This is a descriptive comparison, not a healthy range or proof of what was known at Rewind time."
-          : "No complete, dimension-matched collector-host memory baseline covers these UTC hours. Other SQL metrics have no baseline band.";
+          : "No complete collector-host memory baseline covers these UTC hours.";
         publish();
       })
-      .catch(() => { baselineStatus = "Collector-host memory baseline is unavailable. Check analytics collection and derivation, then refresh."; publish(); });
+      .catch(() => { hostStatus = "Collector-host memory baseline is unavailable. Check analytics collection and derivation, then refresh."; publish(); });
+    if (metrics.length) void Promise.allSettled(metrics.map(async metric => {
+      const page = await getSqlBaselineWindow(targetId, revision, metric, baselineLookupWindow(window.fromUtc), controller.signal);
+      return sqlBaselineBands(page, window.fromUtc, window.toUtc);
+    })).then(results => {
+      sqlBands = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+      const failures = results.filter(result => result.status === "rejected").length;
+      sqlStatus = sqlBands.length
+        ? `SQL p10–p90 bands use matching hourly history, with coverage and confidence in each reference. Partial history remains labelled. These are descriptive comparisons, not healthy ranges or proof of what was known at Rewind time.${failures ? ` ${failures} SQL metric reference reads failed; check access and derivation, then refresh.` : ""}`
+        : failures ? "SQL baseline references are unavailable. Check target access and analytics derivation, then refresh."
+          : "No SQL baseline covers these UTC hours. Enable SQL core collection and retain complete hourly history for the preceding 28 UTC days.";
+      publish();
+    });
     if (canReadRules) void readChartRuleThresholds(targetId, controller.signal).then(page => {
       references = { ...references, thresholds: page.thresholds };
       ruleStatus = `Dashed threshold lines use enabled metric rules read now, including in Rewind. They do not establish historical rule settings or an alert verdict; confirmation and clear settings still apply.${page.truncated ? " Only the first four rule pages were read (up to 400 rules); more rules may exist." : references.thresholds.length ? "" : " No matching enabled metric thresholds were returned."}`;

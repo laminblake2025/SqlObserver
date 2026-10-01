@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Net.Http.Headers;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
 using SqlObserver.Domain.Analytics;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Retention;
@@ -46,6 +47,7 @@ public static class AnalyticsEndpoints
         targets.MapGet("/rollups", RollupsAsync);
         targets.MapGet("/compare", CompareAsync);
         targets.MapGet("/baselines", BaselinesAsync);
+        targets.MapGet("/sql-baselines", SqlBaselinesAsync);
         targets.MapGet("/forecasts", ForecastsAsync);
         targets.MapGet("/jobs", JobsAsync);
         targets.MapGet("/backfill", BackfillAsync);
@@ -121,6 +123,22 @@ public static class AnalyticsEndpoints
         try { if (fromUtc.HasValue != toUtc.HasValue) return Results.BadRequest(); if (limit is < 1 or > 200) return Results.BadRequest(); DateTimeOffset to = toUtc ?? DateTimeOffset.UtcNow, from = fromUtc ?? to.AddDays(-31); if (!ValidWindow(from, to, TimeSpan.FromDays(31))) return Results.BadRequest(); var target = new MonitoredInstanceId(instanceId); AuthorizationContext auth = resolver.Resolve(context.User); if (!CanReadTarget(auth, target)) return Results.Forbid(); var rows = await repository.ReadBaselinesAsync(new AnalyticsQueryRequest(target, metricKey, from, to, limit, RepositoryTimeout), cancellationToken).ConfigureAwait(false); return Bounded(new { targetId = instanceId, metricKey, fromUtc = from, toUtc = to, items = rows, state = rows.Count == 0 ? "no_data" : rows.Any(x => x.VisibilityState == "unsupported") ? "unsupported" : rows.Any(x => x.VisibilityState != "complete" || x.Confidence < .5) ? "partial" : "complete" }); }
         catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
     }
+    private static async Task<IResult> SqlBaselinesAsync(HttpContext context, Guid instanceId, SqlMetricBaselineQueryService service,
+        WindowsGroupRoleResolver resolver, string metricKey, long targetRevision, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        int catalogVersion = 2, long generation = 1, DateTimeOffset? snapshotUtc = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new AnalyticsQueryRequest(new MonitoredInstanceId(instanceId), metricKey, fromUtc, toUtc, 168,
+                RepositoryTimeout, new ObservationTargetRevision(targetRevision), snapshotUtc);
+            return Bounded(await service.GetAsync(resolver.Resolve(context.User), request, catalogVersion, generation, cancellationToken).ConfigureAwait(false));
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); }
+        catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+    }
+
     private static async Task<IResult> ForecastsAsync(HttpContext context, Guid instanceId, IAnalyticsRepositoryPort repository, WindowsGroupRoleResolver resolver, string metricKey, string? dimensionsSha256 = null, string? volumeFingerprint = null, int horizonDays = 30, CancellationToken cancellationToken = default)
     {
         try { if (horizonDays is < 1 or > 366 || dimensionsSha256 is not null && (dimensionsSha256.Length != 64 || !dimensionsSha256.All(Uri.IsHexDigit)) || volumeFingerprint is not null && (volumeFingerprint.Length is 0 or > 256 || volumeFingerprint.Any(char.IsControl))) return Results.BadRequest(); var target = new MonitoredInstanceId(instanceId); AuthorizationContext auth = resolver.Resolve(context.User); if (!CanReadTarget(auth, target)) return Results.Forbid(); IReadOnlyDictionary<string, string>? dimensions = volumeFingerprint is null ? null : new Dictionary<string, string>(StringComparer.Ordinal) { ["volume"] = volumeFingerprint }; string? effectiveHash = dimensions is null ? dimensionsSha256 : CanonicalDimensions.Sha256(dimensions); var request = new AnalyticsQueryRequest(target, metricKey, DateTimeOffset.UtcNow.AddDays(-31), DateTimeOffset.UtcNow, 200, RepositoryTimeout, DimensionsSha256: effectiveHash, Dimensions: dimensions); var rows = await repository.ReadForecastsAsync(request, TimeSpan.FromDays(horizonDays), cancellationToken).ConfigureAwait(false); return Bounded(new { targetId = instanceId, metricKey, dimensionsSha256 = effectiveHash, horizonDays, items = rows, state = rows.Count == 0 ? "no_data" : rows.Any(x => x.VisibilityState == "unsupported") ? "unsupported" : rows.Any(x => x.VisibilityState != "complete" || x.Confidence < .5) ? "partial" : "complete" }); }
