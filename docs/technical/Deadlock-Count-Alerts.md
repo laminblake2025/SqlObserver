@@ -575,10 +575,9 @@ passes in `xe-incremental-engine-reset-postgresql.trx`. These are complementary
 checks, not a live SQL-to-PostgreSQL deployment certification. Earlier failed
 result files remain available.
 
-Production composition and catalog remain v1. Activation still requires
-a live SQL-to-PostgreSQL
-firing/unknown/recovery check before v2 replaces the full-scan source.
-No active v2 catalog contract is installed.
+Production composition and catalog remain v1. The staged live v2 pipeline
+qualification has passed. Activation still requires a forward catalog rollout
+and production registration of v2; no active v2 catalog contract is installed.
 
 ## Retained alert evidence and v2 provenance
 
@@ -673,6 +672,42 @@ production cadence. Live v2 pipeline qualification must distinguish that cold
 catch-up from a quiet complete read and keep capability/worker leases current.
 
 ## Verification and remaining work
+
+The staged v2 live qualification entry point is
+`LiveIncrementalDeadlockPipelineRetainsQuietCountsAndDeliversSignedFireAndRecovery`.
+It shares the disposable SQL workload, restricted permission probe, production
+prerequisite collectors, real PostgreSQL alert ports and signed HTTPS receiver
+with the v1 qualification. Only its disposable target receives the exact staged
+v2 contract/digests and copied prerequisite dependencies. The adapter reads the
+actual native XE source and publishes through the fenced checkpoint/atomic
+commit ports; it does not substitute typed source frames or fabricated outcomes.
+
+The fixture drains cold pages promptly by advancing only its disposable schedule,
+then follows the 15-second schedule for live collection and evaluation. Cold
+coverage must reach complete zero before the new workload/rule is created. Later
+quiet pages contain no new owned event, while retained count observations still
+confirm firing. Permission revocation must preserve the episode and provide
+unknown evidence. After permission is restored, count evidence must remain
+unknown through the canonical failed read's inclusive five-minute gap. Two
+later trustworthy zeros must resolve that same episode and deliver a second
+distinct signed message. Canonical event history must contain exactly one new
+owned deadlock despite quiet reads and recovery.
+
+The first live v2 run reached the real firing delivery and permission-denied
+episode hold, then failed a fixture assertion inherited from v1 that expected a
+known count immediately after permission recovery. It is retained in
+`xe-incremental-live-pipeline.trx`. The corrected fixture explicitly checks the
+coverage-gap boundary and passed in 8 minutes 49 seconds against SQL Server
+2022 Express `16.0.1000.6` and isolated PostgreSQL 18. Its full recovery result is
+recorded separately in `xe-incremental-live-pipeline-final.trx`. It verified two
+count observations to fire, a quiet retained count, permission-denied unknown,
+unknown through the real five-minute recovery gap, two later zero confirmations,
+the same alert/episode identity, exactly two distinct signed fire/resolve
+deliveries, and exactly one new canonical event. Post-run native checks found
+zero probe logins and temporary tables. The original v1 entry point is preserved;
+its long-running qualification was not repeated for this staged v2 case.
+This test does not qualify deployment
+DNS, certificate chains, service Kerberos identity or SQL Server 2019/2025.
 
 Four native PostgreSQL checks use the full migration history and canonical
 Collector begin/commit ports. They cover complete zero, recent versus old events,

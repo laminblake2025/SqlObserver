@@ -33,7 +33,14 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
     [Fact]
     [Trait("Category", "RequiresSqlServer")]
     [Trait("Category", "RequiresSqlServerDisposable")]
-    public async Task LiveDeadlockCollectionCommitsPermissionGapsAndDeliversSignedFireAndRecovery()
+    public Task LiveDeadlockCollectionCommitsPermissionGapsAndDeliversSignedFireAndRecovery() => RunLiveDeadlockPipelineAsync(false);
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    [Trait("Category", "RequiresSqlServerDisposable")]
+    public Task LiveIncrementalDeadlockPipelineRetainsQuietCountsAndDeliversSignedFireAndRecovery() => RunLiveDeadlockPipelineAsync(true);
+
+    private async Task RunLiveDeadlockPipelineAsync(bool incremental)
     {
         Assert.True(OperatingSystem.IsWindows());
         Assert.NotEqual("Release", Environment.GetEnvironmentVariable("SQLOBSERVER_VALIDATION_PROFILE"));
@@ -116,29 +123,70 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
             finally { await leases.ReleaseAsync(new(catalogLease, Timeout), CancellationToken.None); }
             await ExecuteAsync(database, "UPDATE control.collector_schedule SET collection_interval=interval '15 seconds' WHERE instance_id=@target AND collector_id='deadlocks.system-health';", ("target", target.Value));
             SqlServerActivityCollectorAssetCatalog assets = SqlServerActivityCollectorAssetCatalog.LoadEmbedded();
-            CollectorRegistration registration = WithConnectionFactory(new SqlServerDeadlockCollector(SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded(), factory));
+            CollectorRegistration registration;
+            if (incremental)
+            {
+                SqlServerIncrementalDeadlockAssetCatalog staged = SqlServerIncrementalDeadlockAssetCatalog.LoadEmbedded();
+                // Qualification fixture only: install the exact staged contract and
+                // dependencies in this disposable database before global activation.
+                await ExecuteAsync(database, """
+                    INSERT INTO control.collector_contract
+                    SELECT (jsonb_populate_record(NULL::control.collector_contract,to_jsonb(c)||jsonb_build_object(
+                        'collector_version',2,'output_schema_version',2,'maximum_rows',8193,
+                        'manifest_sha256',decode(@manifest,'hex'),'asset_bundle_sha256',decode(@bundle,'hex')))).*
+                    FROM control.collector_contract c WHERE c.collector_id='deadlocks.system-health' AND c.collector_version=1;
+                    INSERT INTO control.collector_dependency
+                    SELECT collector_id,2,prerequisite_collector_id,prerequisite_collector_version FROM control.collector_dependency
+                        WHERE collector_id='deadlocks.system-health' AND collector_version=1;
+                    UPDATE control.collector_schedule SET collector_version=2,schedule_revision=schedule_revision+1,
+                        next_due_at=clock_timestamp() WHERE instance_id=@target AND collector_id='deadlocks.system-health';
+                    """, ("target", target.Value), ("manifest", staged.ManifestChecksum), ("bundle", SqlServerIncrementalDeadlockAssetCatalog.BundleChecksum));
+                var adapter = new SqlServerIncrementalDeadlockCollector(staged, async (request, token) =>
+                {
+                    await using SqlConnection connection = await factory.OpenConnectionAsync(request.ConnectionPolicy, token);
+                    return await staged.Source.ReadAsync(connection, request.TargetId, request.TargetRevision,
+                        request.DeadlockReadContext!.Bookmark, request.DeadlockReadContext.ResumeSource, new(), token);
+                });
+                registration = new(8, adapter, new CollectorOutputValidator(SqlServerIncrementalDeadlockCollector.OutputContract),
+                    new(staged.ManifestChecksum), new(SqlServerIncrementalDeadlockAssetCatalog.BundleChecksum));
+            }
+            else registration = WithConnectionFactory(new SqlServerDeadlockCollector(SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded(), factory));
             Assert.Equal(CollectorRunOutcome.Succeeded, (await CollectRegistrationAsync(WithConnectionFactory(new SqlServerCoreEngineCollector(SqlServerCollectorAssetCatalog.LoadEmbedded(), factory)))).Summary.Outcome);
             Assert.Equal(CollectorRunOutcome.Succeeded, (await CollectRegistrationAsync(WithConnectionFactory(new SqlServerActivitySessionsCollector(assets, factory)))).Summary.Outcome);
             Assert.Equal(CollectorRunOutcome.Succeeded, (await CollectRegistrationAsync(WithConnectionFactory(new SqlServerActivityRequestsCollector(assets, factory)))).Summary.Outcome);
             Assert.Equal(CollectorRunOutcome.Succeeded, (await CollectRegistrationAsync(WithConnectionFactory(new SqlServerServerWaitsCollector(assets, factory)))).Summary.Outcome);
             Assert.Equal(CollectorRunOutcome.Succeeded, (await CollectRegistrationAsync(WithConnectionFactory(new SqlServerCurrentBlockingCollector(assets, factory)))).Summary.Outcome);
+            WorkerLeaseIdentity evaluation = await BlockingAlertLeaseAsync(collector);
+            var evidencePort = new PostgreSqlDeadlockAlertEvidencePort(collector);
             CollectorEngineResult baseline = await CollectAsync();
             AssertComplete(baseline);
             // Retained events from a prior qualification remain in system_health.
             // Let the real count reach zero before creating this fixture's rule.
             DateTimeOffset baselineDeadline = DateTimeOffset.UtcNow.AddMinutes(6);
-            while (baseline.Payload.Deadlocks.Items.Any(item => item.OccurredAtUtc >= DateTimeOffset.UtcNow.AddMinutes(-5)))
+            DeadlockAlertEvidence baselineEvidence = await evidencePort.ReadAsync(target, 1, evaluation, Timeout, default);
+            while (incremental ? baselineEvidence.Reason != DeadlockAlertEvidenceReason.Current || baselineEvidence.DeadlockCount != 0
+                : baseline.Payload.Deadlocks.Items.Any(item => item.OccurredAtUtc >= DateTimeOffset.UtcNow.AddMinutes(-5)))
             {
-                Assert.True(DateTimeOffset.UtcNow < baselineDeadline, "The disposable SQL lab has continuing deadlocks.");
-                await Task.Delay(TimeSpan.FromSeconds(15.2));
+                Assert.True(DateTimeOffset.UtcNow < baselineDeadline, "The disposable SQL lab did not reach complete zero coverage.");
+                if (incremental && baselineEvidence.Reason == DeadlockAlertEvidenceReason.SourceIncomplete)
+                {
+                    // Exercise each cold page promptly in the fixture. Production
+                    // catch-up cadence and dispatch fairness are qualified separately.
+                    await ExecuteAsync(database, "UPDATE control.collector_schedule SET next_due_at=clock_timestamp() WHERE instance_id=@target AND collector_id='deadlocks.system-health';", ("target", target.Value));
+                    Assert.Equal(LeaseRenewalStatus.Renewed, (await leases.RenewAsync(
+                        new(evaluation, new(TimeSpan.FromMinutes(2)), Timeout), default)).Status);
+                }
+                else await WaitForNextScanAsync();
                 baseline = await CollectAsync();
                 AssertComplete(baseline);
+                baselineEvidence = await evidencePort.ReadAsync(target, 1, evaluation, Timeout, default);
             }
+            long baselineHistory = await BlockingQueueCountAsync(database, target,
+                "SELECT count(*) FROM events.deadlock_summary WHERE instance_id=@target;");
             var rule = new AlertRuleDefinition(Guid.NewGuid(), "deadlocks.live", AlertRuleKind.DeadlockCount, null,
                 AlertComparison.GreaterThan, 0, 0, 2, TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(15), clearConfirmationCount: 2);
             await admin.UpsertRuleAsync(new(rule, Guid.NewGuid().ToString("D"),
                 BlockingRuleAudit(target, AdministrativeAuditAction.CreateAlertRule), Timeout), CancellationToken.None);
-            WorkerLeaseIdentity evaluation = await BlockingAlertLeaseAsync(collector);
             await using var receiver = await BlockingWebhookReceiver.StartAsync();
             IConfiguration config = new ConfigurationBuilder().AddInMemoryCollection(receiver.Configuration).Build();
             var dns = new BlockingProbeDns();
@@ -210,7 +258,8 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
             await WaitForNextScanAsync();
             CollectorEngineResult second = await CollectAsync();
             AssertComplete(second);
-            Assert.Equal(owned.EventId, Assert.Single(second.Payload.Deadlocks.Items, IsOwned).EventId);
+            if (incremental) Assert.DoesNotContain(second.Payload.Deadlocks.Items, IsOwned);
+            else Assert.Equal(owned.EventId, Assert.Single(second.Payload.Deadlocks.Items, IsOwned).EventId);
             AlertRuleState firing = await EvaluateAsync();
             Assert.Equal(AlertState.Firing, firing.State);
             Assert.Equal(1d, firing.LastValue);
@@ -228,25 +277,41 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
                 Assert.Equal(0, unknown.ConsecutiveClears);
                 Assert.Contains("reason=source_unavailable", unknown.Reason, StringComparison.Ordinal);
                 Assert.Single(receiver.Receipts);
+                DateTimeOffset gapThrough = (await evidencePort.ReadAsync(target, 1, evaluation, Timeout, default)).CompletedAtUtc!.Value;
                 await SqlAsync($"GRANT {permission} TO [{login}];");
-                DateTimeOffset recoveryDeadline = owned.OccurredAtUtc.AddMinutes(6);
+                DateTimeOffset recoveryDeadline = incremental ? DateTimeOffset.UtcNow.AddMinutes(6) : owned.OccurredAtUtc.AddMinutes(6);
                 AlertRuleState state = unknown;
                 int zeroObservations = 0;
+                bool observedRecoveryGap = false;
                 while (state.State != AlertState.Resolved)
                 {
                     Assert.True(DateTimeOffset.UtcNow < recoveryDeadline, "Real five-minute deadlock window did not resolve.");
                     await WaitForNextScanAsync();
                     CollectorEngineResult scan = await CollectAsync();
                     AssertComplete(scan);
-                    Assert.Equal(owned.EventId, Assert.Single(scan.Payload.Deadlocks.Items, IsOwned).EventId);
+                    if (incremental) Assert.DoesNotContain(scan.Payload.Deadlocks.Items, IsOwned);
+                    else Assert.Equal(owned.EventId, Assert.Single(scan.Payload.Deadlocks.Items, IsOwned).EventId);
                     state = await EvaluateAsync();
+                    if (incremental)
+                    {
+                        DeadlockAlertEvidence recovered = await evidencePort.ReadAsync(target, 1, evaluation, Timeout, default);
+                        if (recovered.CompletedAtUtc <= gapThrough.AddMinutes(5))
+                        {
+                            observedRecoveryGap = true;
+                            Assert.Equal(DeadlockAlertEvidenceReason.SourceIncomplete, recovered.Reason);
+                            Assert.Null(state.LastValue);
+                            Assert.Equal(AlertState.Firing, state.State);
+                            Assert.Equal(0, state.ConsecutiveClears);
+                        }
+                        if (state.LastValue is not null) Assert.True(recovered.CompletedAtUtc > gapThrough.AddMinutes(5));
+                    }
                     if (state.LastValue == 0)
                     {
                         zeroObservations++;
                         Assert.Equal(zeroObservations == 1 ? AlertState.Firing : AlertState.Resolved, state.State);
                         Assert.Equal(zeroObservations == 1 ? 1 : 0, state.ConsecutiveClears);
                     }
-                    if (DateTimeOffset.UtcNow < owned.OccurredAtUtc.AddMinutes(5))
+                    if (DateTimeOffset.UtcNow < owned.OccurredAtUtc.AddMinutes(5) && (!incremental || state.LastValue is not null))
                     {
                         Assert.Equal(1d, state.LastValue);
                         Assert.Equal(AlertState.Firing, state.State);
@@ -255,6 +320,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
                     if (state.State != AlertState.Resolved) Assert.Single(receiver.Receipts);
                 }
                 Assert.Equal(0d, state.LastValue);
+                if (incremental) Assert.True(observedRecoveryGap);
                 Assert.Equal(2, zeroObservations);
                 Assert.Equal(0, state.ConsecutiveClears);
                 Assert.Equal(firing.AlertId, state.AlertId);
@@ -269,7 +335,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
                     Assert.Equal(target.Value, json.RootElement.GetProperty("targetId").GetGuid());
                     Assert.Equal(firing.AlertId, json.RootElement.GetProperty("alertId").GetGuid());
                 });
-                Assert.Equal(baseline.Payload.Deadlocks.Items.Count + 1L, await BlockingQueueCountAsync(database, target,
+                Assert.Equal(baselineHistory + 1L, await BlockingQueueCountAsync(database, target,
                     "SELECT count(*) FROM events.deadlock_summary WHERE instance_id=@target;"));
             }
             finally { await delivery.StopAsync(CancellationToken.None); }
@@ -300,9 +366,18 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
                 try
                 {
                     Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(new(work, run, lease, Timeout), CancellationToken.None)).Status);
-                    CollectorEngineResult result = await new CollectorExecutionEngine().ExecuteAsync(selected, work, run, CancellationToken.None);
-                    Assert.Equal(CollectorRunCommitStatus.Committed, (await runtime.CommitRunAsync(
-                        new(work, result.Summary, result.Payload, result.NextCircuit, lease, Timeout), CancellationToken.None)).Status);
+                    DeadlockReadExecutionContext? context = null;
+                    if (incremental && selected.Manifest.Id.Value == "deadlocks.system-health")
+                    {
+                        DeadlockReadCheckpointResult checkpoint = await runtime.ReadDeadlockCheckpointAsync(new(work, run, lease, Timeout), default);
+                        context = new(work.TargetId, work.TargetRevision, work.ScheduleRevision.Value, run,
+                            checkpoint.Checkpoint?.Digest, checkpoint.ResumeSource, checkpoint.ResumeBookmark);
+                    }
+                    CollectorEngineResult result = await new CollectorExecutionEngine().ExecuteAsync(selected, work, run, CancellationToken.None, context);
+                    var commit = new CommitCollectorRunRequest(work, result.Summary, result.Payload, result.NextCircuit, lease, Timeout);
+                    CollectorRunCommitResult saved = context is null ? await runtime.CommitRunAsync(commit, default)
+                        : await runtime.CommitDeadlockReadAsync(commit, result.DeadlockReadProof ?? context.UnavailableProof(), default);
+                    Assert.Equal(CollectorRunCommitStatus.Committed, saved.Status);
                     return result;
                 }
                 finally { await leases.ReleaseAsync(new(lease, Timeout), CancellationToken.None); }
@@ -311,6 +386,12 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
             {
                 IReadOnlyList<AlertEvaluationWork> work = await repository.ClaimDueEvaluationsAsync(evaluation, 100, Timeout, CancellationToken.None);
                 Assert.Single(work);
+                if (incremental)
+                {
+                    AlertObservation observed = Assert.Single(Assert.Single(work).Observations);
+                    Assert.Equal("2", observed.SourceVersion);
+                    Assert.Equal(2, observed.SourceSchemaVersion);
+                }
                 Assert.Equal(1, (await repository.EvaluateAndPersistAsync(await BlockingRuntimeBatchAsync(repository, evaluation, work), CancellationToken.None)).Evaluated);
                 return Assert.IsType<AlertRuleState>(await repository.GetStateAsync(target, rule.RuleId, Timeout, CancellationToken.None));
             }
