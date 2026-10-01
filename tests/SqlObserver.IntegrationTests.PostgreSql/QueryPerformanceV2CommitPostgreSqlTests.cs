@@ -64,7 +64,7 @@ public sealed class QueryPerformanceV2ManifestTests
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class QueryPerformanceV2CommitPostgreSqlTests(PostgreSql18Fixture fixture)
+public sealed partial class QueryPerformanceV2CommitPostgreSqlTests(PostgreSql18Fixture fixture)
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
     private static readonly char[] CacheEntries = ['e', 'f'];

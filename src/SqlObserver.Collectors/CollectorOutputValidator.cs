@@ -36,6 +36,11 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         {
             throw new InvalidDataException("Collector output identity or contract version is invalid.");
         }
+        if (manifest.Id.Value == "queries.performance" &&
+            (manifest.ManifestVersion.Value is not (1 or 2) ||
+             manifest.OutputSchemaVersion.Value != manifest.ManifestVersion.Value ||
+             manifest.OutputKind != CollectorOutputKind.QueryPerformance))
+            throw new InvalidDataException("Query performance requires a supported matching version and output schema.");
 
         bool incrementalDeadlocks = manifest.Id.Value == "deadlocks.system-health" && manifest.ManifestVersion.Value == 2;
         if (incrementalDeadlocks)
@@ -71,7 +76,9 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
                 : manifest.Id.Value == "storage.volume"
                     ? manifest.Limits.MaxRows + 1
                 : manifest.Id.Value == "queries.performance"
-            ? QueryPerformanceBounds.MaximumDatabases * QueryPerformanceBounds.ProbeRows
+            ? manifest.ManifestVersion.Value == 2
+                ? QueryPerformanceV2OutputValidation.MaximumSourceRows
+                : QueryPerformanceBounds.MaximumDatabases * QueryPerformanceBounds.ProbeRows
             : manifest.Limits.MaxRows;
         if (result.Accounting.SourceRowsRead > sourceRowBound ||
             result.Accounting.ResponseBytes > manifest.Limits.MaxResponseBytes ||
@@ -96,6 +103,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.QueryPerformance.Items.Count > Contract.MaxQueryPerformanceObservations ||
             (payload.QueryStoreGroups?.Items.Count ?? 0) > Contract.MaxQueryStoreGroupObservations ||
             (payload.QueryStoreGroups is not null && Contract.MaxQueryStoreGroupObservations == 0) ||
+            (payload.PlanCacheRuntime?.Items.Count ?? 0) > Contract.MaxPlanCacheRuntimeObservations ||
+            (payload.PlanCacheRuntime is not null && Contract.MaxPlanCacheRuntimeObservations == 0) ||
             payload.ServerConfigurations.Items.Count > Contract.MaxServerConfigurationObservations ||
             (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations)
         {
@@ -167,10 +176,20 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             throw new InvalidDataException("Collector outcome does not expose sample loss consistently.");
         }
 
-        // VisibilityIncomplete is a deliberately narrow topology exception: it
-        // is an explicit no-row-loss marker for a degraded observation, not a
-        // generic way for another collector to manufacture Partial output.
+        bool queryPerformanceV2 = manifest.Id.Value == "queries.performance" &&
+            manifest.ManifestVersion.Value == 2 && manifest.OutputSchemaVersion.Value == 2 &&
+            manifest.OutputKind == CollectorOutputKind.QueryPerformance;
+        if (payload.PlanCacheRuntime is not null && !queryPerformanceV2)
+            throw new InvalidDataException("Selected cache tuples require the exact query performance v2 contract.");
+        if (queryPerformanceV2)
+            QueryPerformanceV2OutputValidation.Validate(payload, request.TargetId, request.TargetRevision,
+                result.Outcome, result.Accounting, result.Loss);
+
+        // Incomplete topology and unqualified cache evidence require a supported
+        // protocol with explicit coverage. This is not a generic Partial marker.
         if (result.Loss.Kind == CollectorLossKind.VisibilityIncomplete &&
+            !(queryPerformanceV2 && payload.PlanCacheRuntime is { QualifiedExhaustive: false } &&
+                result.Outcome == CollectorRunOutcome.Partial && result.Reason == CollectorRunReason.VisibilityIncomplete) &&
             (manifest.Id.Value is not ("availability-groups.health" or "replication.health" or "backups.status") ||
              result.Outcome != CollectorRunOutcome.Partial ||
              result.Reason != CollectorRunReason.VisibilityIncomplete ||

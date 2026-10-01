@@ -51,6 +51,7 @@ public sealed class QueryPerformanceProtectedContentCommitter(ISensitivePayloadP
             payload.ActivitySessions, payload.ActivityRequests, payload.ServerWaits,
             payload.BlockingEdges, payload.Deadlocks,
             new QueryPerformanceObservationBatch(linked), payload.QueryPerformanceStatuses,
-            payload.QueryPerformanceTargetStatus, payload.OperationalHealth, payload.HostMetricsContext);
+            payload.QueryPerformanceTargetStatus, payload.OperationalHealth, payload.HostMetricsContext,
+            payload.SqlVolumes, payload.QueryStoreGroups, payload.ServerConfigurations, payload.PlanCacheRuntime);
     }
 }

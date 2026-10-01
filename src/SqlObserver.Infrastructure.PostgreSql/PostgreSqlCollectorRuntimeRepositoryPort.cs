@@ -769,6 +769,8 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                 return await CommitTypedWithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, sqlVolumeCollector, bufferNodePleCollector, serverConfigurationCollector, timeout.Token).ConfigureAwait(false);
             if (queryPerformanceCollector)
             {
+                if (request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2)
+                    return await CommitQueryPerformanceV2Async(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
                 return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             }
             string m9Sql = request.Work.CollectorId.Value switch
@@ -1669,6 +1671,17 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
+        if (request.Work.CollectorId.Value == "queries.performance" &&
+            (request.Work.CollectorManifestVersion is not (1 or 2) ||
+             request.Work.OutputSchemaVersion != request.Work.CollectorManifestVersion))
+            throw new InvalidDataException("Query performance requires a supported matching version and output schema.");
+        bool queryPerformanceV2 = request.Work.CollectorId.Value == "queries.performance" &&
+            request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2;
+        if (request.Payload.PlanCacheRuntime is not null && !queryPerformanceV2)
+            throw new InvalidDataException("Selected cache tuples require the exact query performance v2 collector.");
+        if (queryPerformanceV2)
+            QueryPerformanceV2OutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Accounting, request.Summary.Loss);
         if (request.Payload.QueryStoreGroups is not null &&
             request.Work.CollectorId.Value != "queries.performance-groups")
             throw new InvalidDataException("Query Store groups require their exact versioned collector.");

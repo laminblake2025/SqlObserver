@@ -110,7 +110,8 @@ public sealed class CollectorPayload
         HostMetricsPayloadContext? hostMetricsContext = null,
         SqlVolumeObservationBatch? sqlVolumes = null,
         QueryStoreGroupOutputBatch? queryStoreGroups = null,
-        ServerConfigurationObservationBatch? serverConfigurations = null)
+        ServerConfigurationObservationBatch? serverConfigurations = null,
+        PlanCacheRuntimeOutputBatch? planCacheRuntime = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -139,6 +140,7 @@ public sealed class CollectorPayload
         Deadlocks = deadlocks ?? new DeadlockObservationBatch([]);
         QueryPerformance = queryPerformance ?? new QueryPerformanceObservationBatch([]);
         QueryStoreGroups = queryStoreGroups;
+        PlanCacheRuntime = planCacheRuntime;
         ServerConfigurations = serverConfigurations ?? new ServerConfigurationObservationBatch([]);
         int protectedCount = QueryPerformance.Items.Count(static item => item.ProtectedContent is not null);
         int protectedBytes = QueryPerformance.Items.Sum(static item => item.ProtectedContent?.ProtectedSizeBytes ?? 0);
@@ -162,6 +164,7 @@ public sealed class CollectorPayload
     public DeadlockObservationBatch Deadlocks { get; }
     public QueryPerformanceObservationBatch QueryPerformance { get; }
     public QueryStoreGroupOutputBatch? QueryStoreGroups { get; }
+    public PlanCacheRuntimeOutputBatch? PlanCacheRuntime { get; }
     public ServerConfigurationObservationBatch ServerConfigurations { get; }
     public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
     public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
@@ -179,6 +182,7 @@ public sealed class CollectorPayload
         Deadlocks.Items.Count +
         QueryPerformance.Items.Count +
         (QueryStoreGroups?.Items.Count ?? 0) +
+        (PlanCacheRuntime?.Items.Count ?? 0) +
         ServerConfigurations.Items.Count +
         (OperationalHealth?.ItemCount ?? 0));
     public int EstimatedSizeBytes => checked(
@@ -193,6 +197,7 @@ public sealed class CollectorPayload
         Deadlocks.Items.Sum(static item => item.EstimatedSizeBytes) +
         QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes) +
         (QueryStoreGroups?.EstimatedSizeBytes ?? 0) +
+        (PlanCacheRuntime?.EstimatedSizeBytes ?? 0) +
         ServerConfigurations.EstimatedSizeBytes +
         (OperationalHealth?.EstimatedSizeBytes ?? 0));
 
@@ -349,7 +354,8 @@ public sealed class CollectorOutputContract
         int maxOperationalHealthObservations = 0,
         int maxSqlVolumeObservations = 0,
         int maxQueryStoreGroupObservations = 0,
-        int maxServerConfigurationObservations = 0)
+        int maxServerConfigurationObservations = 0,
+        int maxPlanCacheRuntimeObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -406,6 +412,8 @@ public sealed class CollectorOutputContract
         }
         if (maxServerConfigurationObservations is < 0 or > ServerConfigurationObservationBatch.MaximumItems)
             throw new ArgumentOutOfRangeException(nameof(maxServerConfigurationObservations));
+        if (maxPlanCacheRuntimeObservations is < 0 or > PlanCacheRuntimeOutputBatch.MaximumItems)
+            throw new ArgumentOutOfRangeException(nameof(maxPlanCacheRuntimeObservations));
         if (maxOperationalHealthObservations is < 0 or > IngestionLimits.MaximumItemCount)
         {
             throw new ArgumentOutOfRangeException(nameof(maxOperationalHealthObservations));
@@ -444,6 +452,7 @@ public sealed class CollectorOutputContract
         MaxDeadlockObservations = maxDeadlockObservations;
         MaxQueryPerformanceObservations = maxQueryPerformanceObservations;
         MaxQueryStoreGroupObservations = maxQueryStoreGroupObservations;
+        MaxPlanCacheRuntimeObservations = maxPlanCacheRuntimeObservations;
         MaxServerConfigurationObservations = maxServerConfigurationObservations;
         MaxOperationalHealthObservations = maxOperationalHealthObservations;
     }
@@ -461,6 +470,7 @@ public sealed class CollectorOutputContract
     public int MaxDeadlockObservations { get; }
     public int MaxQueryPerformanceObservations { get; }
     public int MaxQueryStoreGroupObservations { get; }
+    public int MaxPlanCacheRuntimeObservations { get; }
     public int MaxServerConfigurationObservations { get; }
     public int MaxOperationalHealthObservations { get; }
 }

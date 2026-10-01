@@ -378,3 +378,61 @@ to `CollectorPayload`, explicit versioned validation and repository routing,
 bounded native orchestration, public cache ranking/API, canonical run-retention
 dependencies, safe catalog rollout and native fleet qualification remain
 required before activation.
+
+## Typed collector payload and version 2 repository routing — staged
+
+`CollectorPayload.PlanCacheRuntime` now carries the immutable selected cache
+batch and includes its tuples and conservative frame size in output accounting.
+Output contracts deny this member by default, including an empty frame. Only
+the matching `queries.performance` version 2/output schema 2 protocol accepts
+it. Both collector validation and the repository boundary check the exact
+target revision, aggregate source accounting, response bounds and explicit
+loss for capped or unqualified evidence. Public observations in this protocol
+remain Query Store interval observations; legacy cumulative cache observations
+are rejected. Wait sidecars occur once per plan so their logical byte accounting
+matches their persisted representation. Multiple intervals for a plan remain
+valid when the wait snapshot is attached once, as the native reader does.
+
+The C# repository dispatches version 2 to the private fenced atomic commit in
+its own transaction with transaction-local target scope. It serializes cache
+evidence, text and plan references and wait snapshots into the same call. The
+SQL completion digest binds the cache frame independently of the reused Query
+Store envelope digest. Output rejected by the execution engine contributes no
+persistable observations; its retained item count and byte count are carried
+as loss evidence and recorded as rejected output. Lease assertion failures
+roll back the transaction and return `LeaseLost`. Version 1 keeps its existing
+commit route, and unsupported or mismatched versions are rejected before I/O.
+
+Protected-content replacement previously rebuilt only the original payload
+members. A failing regression exposed loss of the new cache batch during that
+operation. The replacement now preserves the complete payload alongside opaque
+text and plan references, keeping its count, bytes and wait evidence unchanged.
+The failing case is recorded in `plan-cache-v2-content-preservation-red.trx`
+and passes with the two existing content-writer cases in
+`plan-cache-v2-content-preservation.trx`.
+
+Seventeen new unit cases cover the versioned output boundary. Fourteen pass in
+`plan-cache-v2-output-contract.trx`; the additional content, wait accounting
+and version cases are recorded in `plan-cache-v2-content-preservation.trx`,
+`plan-cache-v2-wait-accounting.trx` and `plan-cache-v2-version-boundary.trx`.
+Two real PostgreSQL C# route cases pass in `plan-cache-v2-repository-port.trx`,
+covering successful text/plan/wait links, changed-cache replay rejection,
+missing-plan rollback, lease release after writes, valid subsequent six-counter
+deltas, partial results, rejected output, timeout replay and Query Store-only
+output. The collector role still cannot execute the staged function. The
+pre-I/O version/scope/accounting matrix passes in
+`plan-cache-v2-repository-boundary-final.trx`, including mismatched or unsupported
+versions without cache frames. `plan-cache-v2-cache-only-final.trx` proves commit
+and replay of selected cache tuples while Query Store is disabled: Query Store
+status remains disabled/unavailable and no public Query Store rows are invented.
+Its initial run committed successfully but failed an incorrect source assertion;
+the corrected assertion preserves the existing Query Store metadata semantics.
+Five existing version 1 text-link commit, rollback and v3 routing cases pass in
+`plan-cache-v2-legacy-route.trx`.
+
+These 28 focused checks qualify the payload boundary and C# transaction route,
+using a fixture-only version 2 catalog and the private migration identity.
+No new runtime grant or active source registration is installed. Bounded native
+coordination of Query Store, cache and live identity reads, public cache ranking
+and API integration, canonical run-retention dependencies, safe catalog rollout
+and native end-to-end/fleet qualification remain required before activation.
