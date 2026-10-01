@@ -24,7 +24,19 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
     [Fact]
     [Trait("Category", "RequiresSqlServer")]
     [Trait("Category", "RequiresSqlServerDisposable")]
-    public async Task NativeCombinedProducerCommitsBaselinesDeltasProtectedLinksReplayAndRollback()
+    public Task NativeCombinedProducerCommitsBaselinesDeltasProtectedLinksReplayAndRollback() => NativeRoundtrip(false);
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    [Trait("Category", "RequiresSqlServerDisposable")]
+    public Task NativeCacheEvictionAndRecompileCommitNewBaselinesBeforeResumingMeasuredHistory() => NativeRoundtrip(true);
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    [Trait("Category", "RequiresSqlServerDisposable")]
+    public Task NativeDatabaseRecreationKeepsHistoricalIncarnationsSeparateThroughCommitAndReads() => NativeRoundtrip(true, true);
+
+    private async Task NativeRoundtrip(bool qualifyCacheLifecycle, bool recreateDatabase = false)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var settings = new SqlConnectionStringBuilder(SqlServerLabContract.ConnectionString)
@@ -188,17 +200,149 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
                 new PostgreSqlPlanCacheIntervalHistoryPort(server)).ReadAsync(
                     new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1-2-3-1234"), AuthorizationPrincipalState.Active,
                         [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([target]))]),
-                    new PlanCacheIntervalHistoryRequest(target,ids[1],secondProbe.Watermark.Key.DatabaseIncarnation,
-                        secondProbe.Watermark.Key.Query.QueryFingerprint,secondProbe.Watermark.Key.Plan.PlanFingerprint,
-                        ranking.FromUtc,ranking.ToUtc,100,Timeout),deadline.Token);
-            var measuredHistory = Assert.Single(history.Items,item => item.CacheEntryFingerprint == secondProbe.Watermark.Key.CacheEntryFingerprint && item.Transition == "comparable");
-            Assert.Equal("3",measuredHistory.Executions);
-            Assert.Equal(firstProbe.Watermark.ObservedAtUtc,measuredHistory.IntervalFromUtc);
-            Assert.Equal(secondProbe.Watermark.ObservedAtUtc,measuredHistory.IntervalToUtc);
-            Assert.Equal(decimal.Parse(ranked.CpuMilliseconds,System.Globalization.CultureInfo.InvariantCulture),
-                decimal.Parse(measuredHistory.CpuMilliseconds!,System.Globalization.CultureInfo.InvariantCulture));
-            Assert.Contains(history.Items,item => item.CacheEntryFingerprint == firstProbe.Watermark.Key.CacheEntryFingerprint
+                    new PlanCacheIntervalHistoryRequest(target, ids[1], secondProbe.Watermark.Key.DatabaseIncarnation,
+                        secondProbe.Watermark.Key.Query.QueryFingerprint, secondProbe.Watermark.Key.Plan.PlanFingerprint,
+                        ranking.FromUtc, ranking.ToUtc, 100, Timeout), deadline.Token);
+            var measuredHistory = Assert.Single(history.Items, item => item.CacheEntryFingerprint == secondProbe.Watermark.Key.CacheEntryFingerprint && item.Transition == "comparable");
+            Assert.Equal("3", measuredHistory.Executions);
+            Assert.Equal(firstProbe.Watermark.ObservedAtUtc, measuredHistory.IntervalFromUtc);
+            Assert.Equal(secondProbe.Watermark.ObservedAtUtc, measuredHistory.IntervalToUtc);
+            Assert.Equal(decimal.Parse(ranked.CpuMilliseconds, System.Globalization.CultureInfo.InvariantCulture),
+                decimal.Parse(measuredHistory.CpuMilliseconds!, System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Contains(history.Items, item => item.CacheEntryFingerprint == firstProbe.Watermark.Key.CacheEntryFingerprint
                 && item.Transition == "baseline_unavailable" && item.Executions is null);
+
+            if (qualifyCacheLifecycle)
+            {
+                var authorization = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1-2-3-1234"), AuthorizationPrincipalState.Active,
+                    [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([target]))]);
+                var historyService = new SqlObserver.Application.Services.PlanCacheIntervalHistoryQueryService(new PostgreSqlPlanCacheIntervalHistoryPort(server));
+                var rankingService = new SqlObserver.Application.Services.PlanCacheIntervalRankingQueryService(new PostgreSqlPlanCacheIntervalRankingPort(server));
+                await using var cacheDatabase = new SqlConnection(new SqlConnectionStringBuilder(settings.ConnectionString)
+                { InitialCatalog = names[1] }.ConnectionString);
+                await cacheDatabase.OpenAsync(deadline.Token);
+                // Remove only this owned fixture procedure. Capture its absence before
+                // executing it again; the collector itself remains entirely passive.
+                await NativeExecute(cacheDatabase, "EXEC sys.sp_recompile N'dbo.runtime_probe';", deadline.Token);
+                var absent = await Capture();
+                Assert.DoesNotContain(absent.Result.Payload.PlanCacheRuntime!.Items, item => item.Watermark.Key.Query == secondProbe.Watermark.Key.Query);
+                var absentHistory = await ReadHistory(secondProbe, absent.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                Assert.Equal(2, absentHistory.Items.Count(item => item.CacheEntryFingerprint == firstProbe.Watermark.Key.CacheEntryFingerprint));
+                Assert.DoesNotContain(absentHistory.Items, item => item.CollectionRunId == absent.Frame.Run.Value);
+                Assert.Equal("3", Assert.Single(absentHistory.Items, item => item.Transition == "comparable").Executions);
+
+                // New allocation has a HIGHER total than the old entry. Identity,
+                // rather than a counter decrease, must prevent an invented delta.
+                for (int execution = 0; execution < 10; execution++) await NativeExecute(cacheDatabase, "EXEC dbo.runtime_probe;", deadline.Token);
+                var baseline = await Capture();
+                var freshProbe = Assert.Single(baseline.Result.Payload.PlanCacheRuntime!.Items,
+                    item => item.Watermark.Key.Query == secondProbe.Watermark.Key.Query && item.Watermark.Counters.Executions == 10);
+                Assert.NotEqual(secondProbe.Watermark.Key.CacheEntryFingerprint, freshProbe.Watermark.Key.CacheEntryFingerprint);
+                Assert.Equal(secondProbe.Watermark.Key.DatabaseIncarnation, freshProbe.Watermark.Key.DatabaseIncarnation);
+                Assert.Equal(secondProbe.Watermark.Key.SourceEpoch, freshProbe.Watermark.Key.SourceEpoch);
+                await AssertDelta(baseline.Frame, freshProbe, null);
+                var baselineHistory = await ReadHistory(freshProbe, baseline.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                var newBaseline = Assert.Single(baselineHistory.Items, item => item.CollectionRunId == baseline.Frame.Run.Value
+                    && item.CacheEntryFingerprint == freshProbe.Watermark.Key.CacheEntryFingerprint);
+                Assert.Equal("baseline_unavailable", newBaseline.Transition);
+                Assert.Null(newBaseline.IntervalFromUtc); Assert.Null(newBaseline.IntervalToUtc);
+                Assert.Null(newBaseline.CpuMilliseconds); Assert.Null(newBaseline.DurationMilliseconds); Assert.Null(newBaseline.Executions);
+                Assert.Null(newBaseline.LogicalReads); Assert.Null(newBaseline.Writes); Assert.Null(newBaseline.Rows);
+                var baselineRanking = await ReadRanking(baseline.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                Assert.Equal(3m, QueryExecutions(baselineRanking));
+
+                for (int execution = 0; execution < 3; execution++) await NativeExecute(cacheDatabase, "EXEC dbo.runtime_probe;", deadline.Token);
+                var resumed = await Capture();
+                var resumedProbe = Assert.Single(resumed.Result.Payload.PlanCacheRuntime!.Items,
+                    item => item.Watermark.Key == freshProbe.Watermark.Key);
+                Assert.Equal(13, resumedProbe.Watermark.Counters.Executions);
+                await AssertDelta(resumed.Frame, resumedProbe, freshProbe);
+                var resumedHistory = await ReadHistory(resumedProbe, resumed.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                var measured = Assert.Single(resumedHistory.Items, item => item.CollectionRunId == resumed.Frame.Run.Value
+                    && item.CacheEntryFingerprint == freshProbe.Watermark.Key.CacheEntryFingerprint);
+                Assert.Equal("comparable", measured.Transition); Assert.Equal("3", measured.Executions);
+                Assert.Equal(freshProbe.Watermark.ObservedAtUtc, measured.IntervalFromUtc);
+                Assert.Equal(resumedProbe.Watermark.ObservedAtUtc, measured.IntervalToUtc);
+                var finalRanking = await ReadRanking(resumed.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                Assert.Equal(6m, QueryExecutions(finalRanking));
+                Assert.Equal(0, factory.Active);
+
+                if (recreateDatabase)
+                {
+                    await cacheDatabase.CloseAsync();
+                    await NativeExecute(admin, $"ALTER DATABASE [{names[1]}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{names[1]}]; CREATE DATABASE [{names[1]}]; ALTER DATABASE [{names[1]}] SET AUTO_CLOSE OFF; ALTER DATABASE [{names[1]}] SET QUERY_STORE=OFF;", deadline.Token);
+                    await cacheDatabase.OpenAsync(deadline.Token);
+                    int recreatedId = Assert.IsType<int>(await NativeScalar(cacheDatabase, "SELECT CONVERT(int,DB_ID());", deadline.Token));
+                    Assert.Equal(ids[1], recreatedId);
+                    await NativeExecute(cacheDatabase, $"CREATE USER [{login}] FOR LOGIN [{login}]; GRANT {(major == 15 ? "VIEW DATABASE STATE" : "VIEW DATABASE PERFORMANCE STATE")} TO [{login}]; CREATE TABLE dbo.runtime_probe_rows(value int NOT NULL); INSERT dbo.runtime_probe_rows VALUES(1),(2),(3);", deadline.Token);
+                    await NativeExecute(cacheDatabase, "CREATE PROCEDURE dbo.runtime_probe AS SELECT SUM(value) FROM dbo.runtime_probe_rows;", deadline.Token);
+                    for (int execution = 0; execution < 20; execution++) await NativeExecute(cacheDatabase, "EXEC dbo.runtime_probe;", deadline.Token);
+                    var recreatedBaseline = await Capture();
+                    var recreatedProbe = Assert.Single(recreatedBaseline.Result.Payload.PlanCacheRuntime!.Items,
+                        item => item.Watermark.Key.Query == secondProbe.Watermark.Key.Query && item.Watermark.Counters.Executions == 20);
+                    Assert.NotEqual(secondProbe.Watermark.Key.DatabaseIncarnation, recreatedProbe.Watermark.Key.DatabaseIncarnation);
+                    Assert.Equal(secondProbe.Watermark.Key.SourceEpoch, recreatedProbe.Watermark.Key.SourceEpoch);
+                    await AssertDelta(recreatedBaseline.Frame, recreatedProbe, null);
+                    var recreatedHistory = await ReadHistory(recreatedProbe, recreatedBaseline.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                    var initial = Assert.Single(recreatedHistory.Items);
+                    Assert.Equal("baseline_unavailable", initial.Transition); Assert.Null(initial.Executions);
+                    var beforeNewDelta = await ReadRanking(recreatedBaseline.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                    Assert.Equal(6m, QueryExecutions(beforeNewDelta));
+                    Assert.DoesNotContain(beforeNewDelta.Items, item => item.DatabaseIncarnation == recreatedProbe.Watermark.Key.DatabaseIncarnation
+                        && item.QueryFingerprint == recreatedProbe.Watermark.Key.Query.QueryFingerprint);
+
+                    for (int execution = 0; execution < 3; execution++) await NativeExecute(cacheDatabase, "EXEC dbo.runtime_probe;", deadline.Token);
+                    var recreatedComparison = await Capture();
+                    var comparedProbe = Assert.Single(recreatedComparison.Result.Payload.PlanCacheRuntime!.Items,
+                        item => item.Watermark.Key == recreatedProbe.Watermark.Key);
+                    Assert.Equal(23, comparedProbe.Watermark.Counters.Executions);
+                    await AssertDelta(recreatedComparison.Frame, comparedProbe, recreatedProbe);
+                    var newHistory = await ReadHistory(comparedProbe, recreatedComparison.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                    Assert.Equal(2, newHistory.Items.Count);
+                    Assert.Equal("3", Assert.Single(newHistory.Items, item => item.Transition == "comparable").Executions);
+                    Assert.DoesNotContain(newHistory.Items, item => item.CacheEntryFingerprint == secondProbe.Watermark.Key.CacheEntryFingerprint
+                        || item.CacheEntryFingerprint == resumedProbe.Watermark.Key.CacheEntryFingerprint);
+                    var oldHistory = await ReadHistory(resumedProbe, recreatedComparison.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                    Assert.Equal(2, oldHistory.Items.Count(item => item.CacheEntryFingerprint == resumedProbe.Watermark.Key.CacheEntryFingerprint));
+                    Assert.DoesNotContain(oldHistory.Items, item => item.CacheEntryFingerprint == comparedProbe.Watermark.Key.CacheEntryFingerprint);
+                    var incarnations = await ReadRanking(recreatedComparison.Result.Payload.PlanCacheRuntime.ReadCompletedUtc);
+                    Assert.Equal(6m, QueryExecutions(incarnations));
+                    var newRank = Assert.Single(incarnations.Items, item => item.DatabaseId == ids[1]
+                        && item.QueryFingerprint == comparedProbe.Watermark.Key.Query.QueryFingerprint
+                        && item.DatabaseIncarnation == comparedProbe.Watermark.Key.DatabaseIncarnation);
+                    Assert.Equal("3", newRank.Executions);
+                    Assert.Equal(0, factory.Active);
+                }
+
+                async Task<PlanCacheIntervalHistoryResult> ReadHistory(PlanCacheRuntimeStatementObservation probe, DateTimeOffset end) =>
+                    await historyService.ReadAsync(authorization, new(target, ids[1], probe.Watermark.Key.DatabaseIncarnation,
+                        probe.Watermark.Key.Query.QueryFingerprint, probe.Watermark.Key.Plan.PlanFingerprint,
+                        ranking.FromUtc, end.AddMilliseconds(1), 100, Timeout), deadline.Token);
+                async Task<PlanCacheIntervalRankingResult> ReadRanking(DateTimeOffset end) =>
+                    await rankingService.ReadAsync(authorization, new(target, ranking.FromUtc, end.AddMilliseconds(1),
+                        QueryPerformanceMetric.Executions, 100, Timeout), deadline.Token);
+                decimal QueryExecutions(PlanCacheIntervalRankingResult rows) => rows.Items.Where(item => item.DatabaseId == ids[1]
+                    && item.DatabaseIncarnation == secondProbe.Watermark.Key.DatabaseIncarnation
+                    && item.QueryFingerprint == secondProbe.Watermark.Key.Query.QueryFingerprint)
+                    .Sum(item => decimal.Parse(item.Executions, System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            async Task<(Frame Frame, CollectorEngineResult Result)> Capture()
+            {
+                Frame frame = await Start(scene, cache: false);
+                var result = await new CollectorExecutionEngine().ExecuteAsync(registration, frame.Work, frame.Run, deadline.Token);
+                Assert.True(result.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial, result.Summary.Reason.ToString());
+                Assert.NotNull(result.Payload.PlanCacheRuntime);
+                CollectorPayload linked = await Link(frame, result.Payload);
+                Assert.Equal(CollectorRunCommitStatus.Committed, (await runtime.CommitRunAsync(
+                    new(frame.Work, result.Summary, linked, result.NextCircuit, frame.Lease, Timeout), deadline.Token)).Status);
+                await AssertCanonical(frame, result, linked);
+                string beforeReplay = await Snapshot(scene);
+                Assert.Equal(CollectorRunCommitStatus.Replayed, (await runtime.CommitRunAsync(
+                    new(frame.Work, result.Summary, linked, result.NextCircuit, frame.Lease, Timeout), deadline.Token)).Status);
+                Assert.Equal(beforeReplay, await Snapshot(scene));
+                return (frame, result);
+            }
 
             async Task<CollectorPayload> Link(Frame frame, CollectorPayload source)
             {

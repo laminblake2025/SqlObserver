@@ -746,3 +746,44 @@ exact CPU difference, and preserves its first baseline and comparison timestamps
 One run lost the fixture's warmed five-execution cache entry before that assertion;
 a focused repeat passed. This reinforces the existing cache eviction qualification
 gate; it does not establish stable fleet coverage or SQL Server 2019/2025 parity.
+
+
+### Native cache lifecycle and database recreation qualification (2026-10-01)
+
+Two additional focused SQL Server 2022/PostgreSQL tests extend the combined native
+roundtrip through its actual fenced runtime and public server-role readers. They
+retain the existing protected-content, exact replay, late-reference rollback and
+lease-loss checks. Each additional capture commits atomically and replays without
+changing the repository snapshot. SQL mutations belong only to owned disposable
+fixture databases; the production collector remains passive and staged.
+
+The cache lifecycle case removes only the fixture procedure using `sp_recompile`,
+then captures the resulting absence before another execution. PostgreSQL preserves
+the previous two observations and three measured executions without inserting a
+zero counter or a synthetic history row for that absent capture. After ten new
+executions, the native reader returns a distinct cache-entry identity with the
+same query, database incarnation and server epoch. This new allocation has a
+higher execution total than the previous eight-execution allocation: nevertheless
+its fenced comparison is a baseline with all six counters and interval bounds
+null. The public ranking stays at three measured executions. Three further
+executions resume a comparison at exactly the new allocation's baseline timestamp;
+the public history returns three and the ranking totals six across the two valid
+entry intervals, excluding the replacement allocation's initial ten executions.
+
+The recreation case drops and recreates the owned cache-only database under the
+same name, asserts reuse of its numeric database ID, and reinstalls the lab's
+least-privilege database user and probe. Query and server epoch stay stable, but
+live identity brackets report a different database incarnation. Its initial twenty
+executions become a fresh unavailable baseline and contribute no ranking total.
+Three further executions create a measured comparison. Public reads retain six
+executions in the original incarnation and three in the new incarnation as
+separate ranking rows. Each incarnation's history excludes the other's cache
+entries. The connection tracker returns to zero; owned databases and login are
+removed by the existing cleanup path.
+
+Both focused runs pass: `artifacts/plan-cache-deltas/cache-native-lifecycle.trx`
+and `cache-native-database-recreation.trx`. No broad suite, frontend checks or
+migration rerun was needed because this change adds qualification evidence to
+existing behavior. This closes these native lifecycle cases on the local SQL
+Server 2022 fixture. Supported-version proof on SQL Server 2019/2025, fleet scale,
+production TLS/key configuration and catalog rollout remain open.
