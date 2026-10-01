@@ -46,6 +46,9 @@ public static class QueryPerformanceV2OutputValidation
             (accounting.OutputItemsProduced != 0 || accounting.OutputBytes != 0 || loss.HasLoss))
             throw new InvalidDataException("A failed query performance v2 run cannot publish output accounting.");
 
+        if (success && QueryPerformanceV2PersistenceBudget.Measure(payload.QueryPerformance.Items,
+            payload.QueryPerformanceStatuses, payload.PlanCacheRuntime, payload.QueryPerformanceTargetStatus) > MaximumResponseBytes)
+            throw new InvalidDataException("Query performance v2 combined JSON inputs exceed the atomic persistence bound.");
         PlanCacheRuntimeOutputBatch? cache = payload.PlanCacheRuntime;
         long minimumSourceRows = payload.QueryPerformanceStatuses.Sum(static status => (long)status.SourceRowsRead)
             + (cache?.CandidateRows ?? 0);

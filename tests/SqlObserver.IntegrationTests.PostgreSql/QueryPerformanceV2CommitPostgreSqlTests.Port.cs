@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using Npgsql;
 using SqlObserver.Application.Ports;
@@ -70,6 +71,20 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
         CollectorPayload payload = PortPayload(first, links);
         Assert.Equal(3, payload.ItemCount);
         Assert.Equal(5400, payload.EstimatedSizeBytes);
+        // Compare the producer's five-input budget with PostgreSQL's actual
+        // JSONB textual representation, including both opaque link families.
+        await using (var measure = scene.Database.DataSource.CreateCommand("SELECT octet_length(@query::jsonb::text)+octet_length(@cache::jsonb::text)+octet_length(@text::jsonb::text)+octet_length(@plan::jsonb::text)+octet_length(@waits::jsonb::text);"))
+        {
+            measure.Parameters.AddWithValue("query", Encoding.UTF8.GetString(QueryPerformancePersistencePayload.Serialize(
+                payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, null, contentLinksCommittedWithRun: true)));
+            measure.Parameters.AddWithValue("cache", Encoding.UTF8.GetString(PlanCacheRuntimeCommitPayload.Serialize(payload.PlanCacheRuntime!)));
+            measure.Parameters.AddWithValue("text", (string)links["text"]);
+            measure.Parameters.AddWithValue("plan", (string)links["plan"]);
+            measure.Parameters.AddWithValue("waits", "[{\"database_id\":5,\"query_fingerprint\":\"" + Digest('1') +
+                "\",\"plan_fingerprint\":\"" + Digest('2') + "\",\"categories\":[{\"category\":1,\"waitMilliseconds\":17}]}]");
+            Assert.Equal(QueryPerformanceV2PersistenceBudget.Measure(payload.QueryPerformance.Items,
+                payload.QueryPerformanceStatuses, payload.PlanCacheRuntime), Assert.IsType<int>(await measure.ExecuteScalarAsync()));
+        }
         CommitCollectorRunRequest request = PortRequest(first, payload);
         CollectorRunCommitResult committed = await runtime.CommitRunAsync(request, default);
         Assert.Equal(CollectorRunCommitStatus.Committed, committed.Status);

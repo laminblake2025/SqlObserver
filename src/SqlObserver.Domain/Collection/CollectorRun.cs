@@ -139,10 +139,9 @@ public sealed class CollectorRunAccounting
         ArgumentOutOfRangeException.ThrowIfNegative(responseBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(outputBytes);
 
-        if (outputBytes > responseBytes && responseBytes != 0)
-        {
-            throw new ArgumentException("Output bytes cannot exceed non-zero response bytes.", nameof(outputBytes));
-        }
+        // Source frames and normalized output are independently bounded. Live
+        // identity evidence can expand into several opaque statement tuples;
+        // that expansion must not inflate the bytes read from the target.
 
         SourceRowsRead = sourceRowsRead;
         OutputItemsProduced = outputItemsProduced;

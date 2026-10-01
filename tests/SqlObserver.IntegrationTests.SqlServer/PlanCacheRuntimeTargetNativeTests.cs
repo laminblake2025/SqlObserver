@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.SensitiveData;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Infrastructure.SqlServer;
 
@@ -37,11 +39,16 @@ public sealed class PlanCacheRuntimeTargetNativeTests
             {
                 var databaseSettings = new SqlConnectionStringBuilder(settings.ConnectionString) { InitialCatalog = names[index] };
                 await using var database = new SqlConnection(databaseSettings.ConnectionString); await database.OpenAsync(deadline.Token);
+                if (index == 0) await Execute(admin, $"ALTER DATABASE [{names[0]}] SET QUERY_STORE=ON (OPERATION_MODE=READ_WRITE,QUERY_CAPTURE_MODE=ALL);", deadline.Token);
                 ids[index] = Assert.IsType<int>(await Scalar(database, "SELECT CONVERT(int,DB_ID());", deadline.Token));
                 await Execute(database, "CREATE TABLE dbo.target_probe_rows(value int NOT NULL); INSERT dbo.target_probe_rows VALUES(1),(2),(3);", deadline.Token);
                 await Execute(database, "CREATE PROCEDURE dbo.target_probe AS SELECT SUM(value) FROM dbo.target_probe_rows;", deadline.Token);
                 for (int run = 0; run < 3; run++) await Execute(database, "EXEC dbo.target_probe;", deadline.Token);
-                if (index == 0) await Execute(database, $"CREATE USER [{login}] FOR LOGIN [{login}];", deadline.Token);
+                if (index == 0)
+                {
+                    await Execute(database, $"CREATE USER [{login}] FOR LOGIN [{login}]; GRANT {(major == 15 ? "VIEW DATABASE STATE" : "VIEW DATABASE PERFORMANCE STATE")} TO [{login}];", deadline.Token);
+                    await Execute(database, "EXEC sys.sp_query_store_flush_db;", deadline.Token);
+                }
             }
             await Execute(admin, $"ALTER DATABASE [{names[2]}] SET AUTO_CLOSE ON;", deadline.Token);
             for (int attempt = 0; attempt < 100 && await Closed() != DBNull.Value; attempt++) await Task.Delay(100, deadline.Token);
@@ -67,6 +74,24 @@ public sealed class PlanCacheRuntimeTargetNativeTests
             Assert.Equal(1, second.Output.CandidateLimit); Assert.InRange(second.Output.CandidateRows, 0, 2);
             Assert.InRange(second.Output.Items.Count, 0, 1); Assert.Equal(0, factory.Active);
             Assert.Equal(DBNull.Value, await Closed());
+            CollectorExecutionRequest combinedRequest = QueryPerformanceV2NativeCollectorTests.Request();
+            using var protector = new LabProtector();
+            var collector = new SqlServerQueryPerformanceV2Collector(factory, protector);
+            CollectorExecutionResult combined = await collector.CollectAsync(combinedRequest, deadline.Token);
+            Assert.Equal(CollectorRunOutcome.Partial, combined.Outcome);
+            Assert.NotEmpty(combined.Payload.QueryPerformance.Items);
+            Assert.All(combined.Payload.QueryPerformance.Items, item =>
+            {
+                Assert.Equal(ids[0], item.Query.DatabaseId);
+                Assert.Equal(SqlObserver.Domain.Collection.QueryPerformanceSource.QueryStore, item.Source);
+            });
+            Assert.NotEmpty(combined.Payload.PlanCacheRuntime!.Items);
+            Assert.Contains(combined.Payload.QueryPerformance.Items, item => item.ProtectedContent is not null);
+            Assert.Contains(combined.Payload.QueryPerformance.Items, item => item.ProtectedPlanContent is not null);
+            Assert.DoesNotContain(combined.Payload.QueryPerformanceStatuses, status => status.FallbackAttempted);
+            new SqlObserver.Collectors.CollectorOutputValidator(SqlServerQueryPerformanceV2Collector.OutputContract)
+                .Validate(collector.Manifest, combinedRequest, combined);
+            Assert.Equal(DBNull.Value, await Closed()); Assert.Equal(0, factory.Active);
 
             async Task<object?> Closed()
             {
@@ -80,6 +105,30 @@ public sealed class PlanCacheRuntimeTargetNativeTests
                 await Execute(admin, $"ALTER DATABASE [{name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{name}];", default);
             if (loginCreated) await Execute(admin, $"DROP LOGIN [{login}];", default);
         }
+    }
+
+    private sealed class LabProtector : IQuerySensitiveContentProtector, IDisposable
+    {
+        private readonly byte[] key = RandomNumberGenerator.GetBytes(32);
+        public bool IsAvailable => true;
+        public ValueTask<ProtectedSensitivePayload?> ProtectAsync(Guid targetId, SensitivePayloadKind kind,
+            ReadOnlyMemory<byte> content, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            byte[] nonce = RandomNumberGenerator.GetBytes(12), tag = new byte[16], ciphertext = new byte[content.Length];
+            using var cipher = new AesGcm(key, 16);
+            cipher.Encrypt(nonce, content.Span, ciphertext, tag, targetId.ToByteArray());
+            return ValueTask.FromResult<ProtectedSensitivePayload?>(new(kind, new(SHA256.HashData(content.Span)),
+                "AES-256-GCM", "disposable-lab-key", nonce, tag, ciphertext));
+        }
+        public ValueTask<byte[]> UnprotectAsync(Guid targetId, ProtectedSensitivePayload payload, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested(); byte[] content = new byte[payload.CiphertextLengthBytes];
+            using var cipher = new AesGcm(key, 16);
+            cipher.Decrypt(payload.GetNonce(), payload.GetCiphertext(), payload.GetAuthenticationTag(), content, targetId.ToByteArray());
+            return ValueTask.FromResult(content);
+        }
+        public void Dispose() => CryptographicOperations.ZeroMemory(key);
     }
 
     private sealed class RestrictedFactory(string connectionString, string login) : ISqlServerConnectionFactory

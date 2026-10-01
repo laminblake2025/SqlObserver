@@ -29,6 +29,10 @@ public sealed class QueryPerformanceV2OutputTests
         var lease = new WorkerLeaseIdentity(new("collector/run/queries.performance/test"), new(Guid.NewGuid()), new(1));
         CollectorPayload linked = await new QueryPerformanceProtectedContentCommitter(port).WriteAsync(payload,
             item.TargetId, lease, new(TimeSpan.FromSeconds(5)), default);
+        Assert.Equal(QueryPerformanceV2PersistenceBudget.Measure(payload.QueryPerformance.Items,
+                payload.QueryPerformanceStatuses, payload.PlanCacheRuntime),
+            QueryPerformanceV2PersistenceBudget.Measure(linked.QueryPerformance.Items,
+                linked.QueryPerformanceStatuses, linked.PlanCacheRuntime));
         Assert.Same(payload.PlanCacheRuntime, linked.PlanCacheRuntime);
         Assert.Equal(payload.ItemCount, linked.ItemCount); Assert.Equal(payload.EstimatedSizeBytes, linked.EstimatedSizeBytes);
         QueryPerformanceObservation output = Assert.Single(linked.QueryPerformance.Items);

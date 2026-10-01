@@ -90,7 +90,7 @@ public sealed class SqlServerQueryPerformanceCollectorAssetCatalog
         (CollectorManifest manifest, string fallbackMode, IReadOnlyDictionary<int, IReadOnlyList<string>> fallbackPermissions) = ParseManifest(Encoding.UTF8.GetString(bytes[1]));
         return new SqlServerQueryPerformanceCollectorAssetCatalog(new SqlServerCollectorAsset(manifest, Encoding.UTF8.GetString(bytes[1]), Convert.ToHexString(SHA256.HashData(bytes[1])).ToLowerInvariant(), queries), Convert.ToHexString(SHA256.HashData(Read(assembly, "m7-query-performance.assets.sha256"))).ToLowerInvariant(), fallbackMode, fallbackPermissions, textQueries, planQueries, waitQueries);
     }
-    private static (CollectorManifest Manifest, string FallbackMode, IReadOnlyDictionary<int, IReadOnlyList<string>> Permissions) ParseManifest(string json)
+    internal static (CollectorManifest Manifest, string FallbackMode, IReadOnlyDictionary<int, IReadOnlyList<string>> Permissions) ParseManifest(string json)
     {
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
@@ -220,6 +220,20 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
         planQueryByMajor = catalog.PlanQueriesByMajor;
         waitQueryByMajor = catalog.WaitQueriesByMajor;
     }
+    internal SqlServerQueryPerformanceCollector(SqlServerCollectorAsset asset, SqlServerQueryPerformanceCollectorAssetCatalog catalog,
+        ISqlServerConnectionFactory factory, IQuerySensitiveContentProtector? protector, int responseBytes,
+        Func<CollectorPayload, int> measure, int maximumOutputBytes, ISqlServerQueryPerformanceExecutionPort? executionPort = null)
+        : base(asset, factory)
+    {
+        this.executionPort = executionPort;
+        contentProtector = protector ?? new UnavailableQuerySensitiveContentProtector();
+        textQueryByMajor = catalog.TextQueriesByMajor; planQueryByMajor = catalog.PlanQueriesByMajor; waitQueryByMajor = catalog.WaitQueriesByMajor;
+        allowLegacyCache = false; responseLimit = responseBytes; persistenceMeasure = measure; outputLimit = maximumOutputBytes;
+    }
+    private readonly bool allowLegacyCache = true;
+    private readonly int? responseLimit;
+    private readonly int outputLimit = QueryPerformancePersistencePayload.MaximumSerializedBytes;
+    private readonly Func<CollectorPayload, int>? persistenceMeasure;
     private readonly IReadOnlyDictionary<int, string> textQueryByMajor;
     private readonly IReadOnlyDictionary<int, string> planQueryByMajor;
     private readonly IReadOnlyDictionary<int, string> waitQueryByMajor;
@@ -250,7 +264,8 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
                 else
                 {
                     await using SqlConnection inventoryConnection = await ConnectionFactory.OpenConnectionAsync(request.ConnectionPolicy, deadline.Token).ConfigureAwait(false);
-                    await using (var inventory = new SqlCommand(InventorySql, inventoryConnection) { CommandTimeout = Math.Max(1, (int)Manifest.Limits.CommandTimeout.TotalSeconds) })
+                    await using (var inventory = new SqlCommand(allowLegacyCache ? InventorySql :
+                        "SELECT TOP (257) database_id,name FROM sys.databases WHERE state=0 AND user_access=0 AND database_id>4 AND database_id<32767 AND collation_name IS NOT NULL ORDER BY database_id;", inventoryConnection) { CommandTimeout = Math.Max(1, (int)Manifest.Limits.CommandTimeout.TotalSeconds) })
                     await using (SqlDataReader rows = await inventory.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false))
                         while (await rows.ReadAsync(deadline.Token).ConfigureAwait(false))
                         {
@@ -263,7 +278,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
             catch (SqlException) { throw; }
             catch (TimeoutException) { return Invalid(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded, new QueryPerformanceTargetStatus("deadline_exceeded", "deadline_exceeded")); }
             catch (Exception) { return Invalid(request, CollectorRunOutcome.PermanentFailure, CollectorRunReason.PermanentTargetFailure, new QueryPerformanceTargetStatus("inventory_failure", "inventory_read_failure")); }
-            var targetResponseBudget = new SharedResponseBudget(Manifest.Limits.MaxResponseBytes);
+            var targetResponseBudget = new SharedResponseBudget(responseLimit ?? Manifest.Limits.MaxResponseBytes);
             var dbReader = new DatabaseReader(this, request, major, targetResponseBudget);
             IReadOnlyList<QueryPerformanceReadResult> reads;
             QueryPerformancePlanCacheSample? planCacheSample;
@@ -383,7 +398,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
                 }
                 return new QueryPerformanceDatabaseStatus(read.Database.DatabaseId, read.Status, read.Reason, read.FallbackAttempted, sourceTruncated, sourceRowsForStatus, responseBytesForStatus, read.SourceState, sourceLoss, sourceLoss == CollectorLossKind.None ? 0 : Math.Max(1, read.MinimumLostItems), sourceLoss == CollectorLossKind.None || read.LossCountIsExact, sourceLoss == CollectorLossKind.None ? 0 : Math.Max(1, read.MinimumLostBytes));
             }).ToArray();
-            (CollectorPayload payload, int serializedOverflowBytes) = BoundSerializedPayload(observations.Items, statuses, cancellationToken);
+            (CollectorPayload payload, int serializedOverflowBytes) = BoundSerializedPayload(observations.Items, statuses, QueryPerformancePersistencePayload.MaximumSerializedBytes, persistenceMeasure, outputLimit, deadline.Token);
             bool serializedPayloadCapped = serializedOverflowBytes > 0;
             targetResponseLoss |= serializedPayloadCapped;
             bool finalStatusLoss = payload.QueryPerformanceStatuses.Any(static status => status.Truncated || status.LossKind != CollectorLossKind.None);
@@ -441,27 +456,39 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
     }
 
     private static bool IsSuccessfulStatus(QueryPerformanceReadStatus status) => status is QueryPerformanceReadStatus.QueryStoreRows or QueryPerformanceReadStatus.QueryStoreEmpty or QueryPerformanceReadStatus.PlanCacheRows or QueryPerformanceReadStatus.PlanCacheEmpty;
-    internal static (CollectorPayload Payload, int OverflowBytes) BoundSerializedPayload(IReadOnlyList<QueryPerformanceObservation> sourceItems, IReadOnlyList<QueryPerformanceDatabaseStatus> sourceStatuses, CancellationToken cancellationToken = default)
+    internal static (CollectorPayload Payload, int OverflowBytes) BoundSerializedPayload(IReadOnlyList<QueryPerformanceObservation> items,
+        IReadOnlyList<QueryPerformanceDatabaseStatus> statuses, CancellationToken cancellationToken = default) =>
+        BoundSerializedPayload(items, statuses, QueryPerformancePersistencePayload.MaximumSerializedBytes,
+            null, QueryPerformancePersistencePayload.MaximumSerializedBytes, cancellationToken);
+
+    internal static (CollectorPayload Payload, int OverflowBytes) BoundSerializedPayload(IReadOnlyList<QueryPerformanceObservation> sourceItems, IReadOnlyList<QueryPerformanceDatabaseStatus> sourceStatuses, int maximumBytes, Func<CollectorPayload, int>? measure, int maximumOutputBytes, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sourceItems);
         ArgumentNullException.ThrowIfNull(sourceStatuses);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumOutputBytes);
+        int Size(QueryPerformanceObservation[] items, QueryPerformanceDatabaseStatus[] statuses)
+        {
+            var candidate = new CollectorPayload(queryPerformance: new QueryPerformanceObservationBatch(items), queryPerformanceStatuses: statuses);
+            return measure is null ? QueryPerformancePersistencePayload.Serialize(items, statuses, null, contentLinksCommittedWithRun: true).Length : measure(candidate);
+        }
+        bool Fits(QueryPerformanceObservation[] items, int bytes) => bytes <= maximumBytes && items.Sum(static item => (long)item.EstimatedSizeBytes) <= maximumOutputBytes;
         var originalItems = sourceItems.ToArray();
         var originalStatuses = sourceStatuses.ToArray();
         cancellationToken.ThrowIfCancellationRequested();
         var originalCounts = sourceItems.GroupBy(static item => item.Query.DatabaseId).ToDictionary(static group => group.Key, static group => group.Count());
-        byte[] serialized = QueryPerformancePersistencePayload.Serialize(originalItems, originalStatuses, null);
-        int originalLength = serialized.Length;
-        if (serialized.Length <= QueryPerformancePersistencePayload.MaximumSerializedBytes)
+        int originalLength = Size(originalItems, originalStatuses);
+        if (Fits(originalItems, originalLength))
             return (new CollectorPayload(queryPerformance: new QueryPerformanceObservationBatch(originalItems), queryPerformanceStatuses: originalStatuses), 0);
 
         // The payload is monotonic in retained observations except for the
         // bounded status transition when a database loses its final row. Use a
         // binary search for the largest candidate, then recheck a small bounded
-        // neighborhood after status growth. This avoids the former O(nÂ²)
+        // neighborhood after status growth. This avoids the former O(nÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²)
         // reserialization loop while retaining exact final-size validation.
         int low = 0;
         int high = originalItems.Length;
-        (QueryPerformanceObservation[] Items, QueryPerformanceDatabaseStatus[] Statuses, byte[] Bytes) Candidate(int count)
+        (QueryPerformanceObservation[] Items, QueryPerformanceDatabaseStatus[] Statuses, int Bytes) Candidate(int count)
         {
             cancellationToken.ThrowIfCancellationRequested();
             QueryPerformanceObservation[] items = originalItems.Take(count).ToArray();
@@ -472,26 +499,27 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
                 bool empty = remainingCounts.GetValueOrDefault(status.DatabaseId) == 0;
                 return new QueryPerformanceDatabaseStatus(status.DatabaseId, empty ? QueryPerformanceReadStatus.OutputCapped : status.Status, empty ? "output_capped" : status.Reason, status.FallbackAttempted, true, status.SourceRowsRead, status.ResponseBytes, status.SourceState, CollectorLossKind.ResponseByteLimit, 1, false, 1);
             }).ToArray();
-            return (items, statuses, QueryPerformancePersistencePayload.Serialize(items, statuses, null));
+            return (items, statuses, Size(items, statuses));
         }
 
         while (low < high)
         {
             cancellationToken.ThrowIfCancellationRequested();
             int mid = low + ((high - low + 1) / 2);
-            if (Candidate(mid).Bytes.Length <= QueryPerformancePersistencePayload.MaximumSerializedBytes) low = mid;
+            var candidate = Candidate(mid);
+            if (Fits(candidate.Items, candidate.Bytes)) low = mid;
             else high = mid - 1;
         }
         var bounded = Candidate(low);
-        for (int adjustment = 0; bounded.Bytes.Length > QueryPerformancePersistencePayload.MaximumSerializedBytes && low > 0 && adjustment < 64; adjustment++)
+        for (int adjustment = 0; !Fits(bounded.Items, bounded.Bytes) && low > 0 && adjustment < 64; adjustment++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             low--;
             bounded = Candidate(low);
         }
-        if (bounded.Bytes.Length > QueryPerformancePersistencePayload.MaximumSerializedBytes)
+        if (!Fits(bounded.Items, bounded.Bytes))
             throw new InvalidDataException("Query performance status payload exceeds the accepted response bound.");
-        return (new CollectorPayload(queryPerformance: new QueryPerformanceObservationBatch(bounded.Items), queryPerformanceStatuses: bounded.Statuses), Math.Max(0, originalLength - QueryPerformancePersistencePayload.MaximumSerializedBytes));
+        return (new CollectorPayload(queryPerformance: new QueryPerformanceObservationBatch(bounded.Items), queryPerformanceStatuses: bounded.Statuses), Math.Max(1, originalLength - maximumBytes));
     }
     private static (CollectorRunOutcome Outcome, CollectorRunReason Reason) AggregateUnavailable(IReadOnlyList<QueryPerformanceDatabaseStatus> statuses)
     {
@@ -514,7 +542,15 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
             try
             {
                 await using SqlConnection connection = await owner.ConnectionFactory.OpenConnectionAsync(request.ConnectionPolicy, token).ConfigureAwait(false);
-                connection.ChangeDatabase(database.Name);
+                if (!owner.allowLegacyCache)
+                {
+                    await using var eligible = new SqlCommand("SELECT 1 FROM sys.databases WHERE database_id=@id AND name=@name AND state=0 AND user_access=0 AND collation_name IS NOT NULL;", connection) { CommandTimeout = 5 };
+                    eligible.Parameters.AddWithValue("id", database.DatabaseId); eligible.Parameters.AddWithValue("name", database.Name);
+                    if (await eligible.ExecuteScalarAsync(token).ConfigureAwait(false) is null)
+                        return new(database, QueryPerformanceReadStatus.QueryStoreUnsupported, [], "query_store_unsupported", false, false, 0, 0, QueryStoreState.Unsupported);
+                    await connection.ChangeDatabaseAsync(database.Name, token).ConfigureAwait(false);
+                }
+                else connection.ChangeDatabase(database.Name);
                 await using var command = new SqlCommand(owner.Asset.GetQuery(major), connection) { CommandTimeout = Math.Max(1, (int)owner.Manifest.Limits.CommandTimeout.TotalSeconds) };
                 command.Parameters.Add("probe_rows", System.Data.SqlDbType.Int).Value = QueryPerformanceBounds.ProbeRows;
                 DateTime windowEnd = DateTime.UtcNow;
@@ -590,6 +626,7 @@ public sealed class SqlServerQueryPerformanceCollector : SqlServerActivityCollec
         }
         private bool CanUsePlanCache()
         {
+            if (!owner.allowLegacyCache) return false;
             string required = major == 15 ? "server.view-state" : "server.view-performance-state";
             return request.CapabilityProfile.Permissions.Any(x => x.Scope == PermissionEvidenceScope.Server && x.Outcome == PermissionEvidenceOutcome.Granted && x.PermissionId.Value == required);
         }

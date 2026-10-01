@@ -489,3 +489,58 @@ and Query Store preference, remains the next source integration step. Public
 cache ranking/API, canonical run-retention dependencies, versioned catalog
 rollout and combined native end-to-end/fleet qualification remain open. No
 collector registration, catalog version or runtime grant is activated here.
+
+
+### Combined native v2 producer and shared bounds (2026-10-01)
+
+The staged `SqlServerQueryPerformanceV2Collector` loads the approved v2 manifest
+and exact schema, reviewed Query Store assets, cache counter bundle and live
+identity source. Its embedded catalog verifies the index and every nested pin.
+It does not install a production catalog version or register a collector.
+
+The cache capture and Query Store sweep share the original request deadline,
+capped at 120 seconds. Each phase receives the remaining time. The Query Store
+reader retains text, execution-plan and wait capture, explicitly disables legacy
+cumulative-cache fallback, and uses the real v2 identity. Its native inventory
+and context changes avoid known closed AUTO_CLOSE databases. Private cache tuples
+remain independent from public Query Store intervals; no cumulative totals are
+relabelled as intervals or added to public query rankings.
+
+Source frames, selected tuples and normalized output bytes are counted
+separately. Normalization can expand output without inventing source response
+bytes; registered source and output limits apply independently. Query Store
+receives the response and output budget remaining after cache capture. Its
+retained prefix also fits all five canonical PostgreSQL JSON inputs: Query Store
+metadata, cache metadata, text links, plan links and wait snapshots. The cache
+codec is shared with the private repository writer. Protected payloads are
+measured with their eventual fixed-width opaque references. Withheld observations
+update database statuses and expose inexact loss.
+
+Two failing regression checks demonstrated the former source/output byte
+coupling and the serializer rejecting wait-bearing observations; both pass now.
+Thirteen focused source checks cover asset pins, exact combined accounting,
+Query Store-only permission behavior, disabled Query Store with cache evidence,
+partial cache coverage, global failures, one deadline, caller cancellation,
+a 20,000 Query Store / 2,000 cache sample with wide integer counters, and
+independent serialized/output limits. Results are in
+`combined-native-orchestration.trx`, `combined-native-deadline-and-v1.trx` and
+`combined-native-loss-byte-bound-red.trx` (the wide-counter check passed; that
+filename does not denote a failing result).
+
+The restricted-login SQL Server 2022 fixture passes with native Query Store
+intervals and qualified cache tuples, protected text and execution plans under
+a disposable in-memory key, denied cache rows represented as unqualified,
+connection cleanup and a closed AUTO_CLOSE database remaining closed
+(`combined-native-protected-sidecars.trx`). The private PostgreSQL fixture
+confirms the shared byte measurement equals actual JSONB text size and preserves
+the atomic commit, replay and rollback checks
+(`combined-native-postgresql-budget.trx`). Three affected v1 serialization checks
+and 27 output, protected-content and execution-engine checks pass. Across these
+artifacts, 45 unique focused checks pass. These use local disposable fixtures,
+not the SSH VM or a production fleet.
+
+A native-producer-to-fenced-repository round trip, public cache ranking/API,
+canonical run-retention dependencies, production catalog rollout, SQL Server
+2019/2025 and fleet qualification remain open. The lab key qualifies capture
+behavior, not deployment key-store configuration. No production registration
+or runtime grant is activated here.
