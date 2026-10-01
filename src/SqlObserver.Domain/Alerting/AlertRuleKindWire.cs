@@ -9,6 +9,7 @@ public static class AlertRuleKindWire
         AlertRuleKind.BackupFullPolicy => "backup_full_policy_v2",
         AlertRuleKind.BackupLogPolicy => "backup_log_policy_v2",
         AlertRuleKind.BackupObservedFaults => "backup_observed_faults_v2",
+        AlertRuleKind.BlockingDuration => BlockingAlertRuleContract.SourceKind,
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -19,6 +20,7 @@ public static class AlertRuleKindWire
         "backup_full_policy_v2" => AlertRuleKind.BackupFullPolicy,
         "backup_log_policy_v2" => AlertRuleKind.BackupLogPolicy,
         "backup_observed_faults_v2" => AlertRuleKind.BackupObservedFaults,
+        BlockingAlertRuleContract.SourceKind => AlertRuleKind.BlockingDuration,
         _ => throw new ArgumentException("Rule kind is not allowlisted.", nameof(kind)),
     };
 }

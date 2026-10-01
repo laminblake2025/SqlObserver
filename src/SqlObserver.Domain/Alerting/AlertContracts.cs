@@ -10,6 +10,7 @@ public enum AlertRuleKind
 {
     MetricThreshold = 1, CollectorHealth = 2,
     BackupFullPolicy = 3, BackupLogPolicy = 4, BackupObservedFaults = 5,
+    BlockingDuration = 6,
 }
 public enum AlertComparison { GreaterThan = 1, GreaterThanOrEqual = 2, LessThan = 3, LessThanOrEqual = 4, Equal = 5 }
 public enum AlertState { Normal = 1, Pending = 2, Firing = 3, Acknowledged = 4, Resolved = 5 }
@@ -60,6 +61,12 @@ public sealed class AlertRuleDefinition
         if (BackupAlertRuleContract.IsBackup(kind) && (evaluationInterval < TimeSpan.FromSeconds(15) ||
             confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
             throw new ArgumentException("Backup confirmation windows must cover their distinct evaluation intervals.", nameof(confirmationWindow));
+        if (kind == AlertRuleKind.BlockingDuration &&
+            (comparison is not (AlertComparison.GreaterThan or AlertComparison.GreaterThanOrEqual) ||
+             threshold is < 0 or > 86400 || hysteresis > threshold ||
+             evaluationInterval < TimeSpan.FromSeconds(5) || evaluationInterval > TimeSpan.FromMinutes(1) ||
+             confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
+            throw new ArgumentException("Blocking rules require a bounded duration threshold and distinct confirmation intervals.", nameof(threshold));
         RuleId = ruleId; Kind = kind; MetricId = metricId; Comparison = comparison; Threshold = threshold; Hysteresis = hysteresis;
         ConfirmationCount = confirmationCount; ConfirmationWindow = confirmationWindow; EvaluationInterval = evaluationInterval; Enabled = enabled;
         ClearConfirmationCount = clearConfirmationCount;

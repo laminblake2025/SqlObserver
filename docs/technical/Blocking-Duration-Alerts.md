@@ -2,9 +2,9 @@
 
 The revamp plan requires alert coverage beyond engine counters and backups.
 Blocking duration is the next signal being implemented. The source contract
-below is implemented and verified in PostgreSQL. Private durable capture and
-claim helpers are also implemented; runtime queue dispatch and the independently
-verified state/outbox commit remain pending. No blocking rule
+below is implemented and verified in PostgreSQL. Private durable capture,
+claim, transition and atomic state/outbox commit helpers are implemented;
+runtime queue dispatch and product catalog activation remain pending. No blocking rule
 has been enabled in the product catalog yet.
 
 ## Signal meaning
@@ -83,27 +83,53 @@ These helpers bound reconciliation and claiming to 100 operations per call.
 The repository constraints reserve an upper-duration comparison with a
 0–86,400 second threshold and nonnegative hysteresis no larger than the
 threshold. Evaluation intervals are 5–60 seconds; the confirmation window must
-cover the configured fire and clear counts. Product defaults, C# rule-kind
-support and administration remain part of activation, rather than being exposed
-before the verified commit path exists.
+cover the configured fire and clear counts. C# now defines the same rule kind,
+wire name, source observation contract and factory. Product defaults and
+administration remain part of activation.
+
+## Independently verified transitions and atomic commit
+
+Forward migration 0299 adds the private `alerting.blocking_alert_transition`.
+It validates the closed observation/state shapes, canonical identities/digests,
+duration units, source contract and increasing observation time. PostgreSQL
+derives the next state independently of the caller. Greater-than and
+greater-than-or-equal comparisons apply hysteresis only to active episodes;
+fire and clear counts remain separate. A confirmation-window gap restarts a
+clear streak, and an expired pending-fire window starts a new fire streak.
+Unknown evidence resets both streaks and pending state while preserving an
+active, acknowledged or resolved episode and its existing identities.
+
+Forward migration 0300 adds the private `alerting.commit_blocking_alert_evaluation`.
+It locks target, rule and state, verifies the exact current claim/source, derives
+the expected decision from repository prior state and maintenance, and rejects
+any differing caller decision. State, history, immutable replay, approved
+destination outbox intents, evaluation audit and queue completion share one
+transaction. A second source/claim check after writes prevents consuming evidence
+that expired during the transaction. Another completed operation with the same
+source/rule revision cannot count again. Capture bodies are removed on commit.
+
+Exact replay returns zero changes without consulting expired/changed source
+data or writing new audit/history/outbox rows. It still requires a live lease,
+current active target revision and the unchanged rule binding; divergent replay
+is rejected. State/decision serialization uses the existing production serializer
+and canonical SQL snapshot codec. The commit reuses the existing generic
+state-snapshot helper (currently named `backup_alert_state_snapshot`) without
+changing backup behavior. Both new SQL functions remain migrator-only until
+the runtime dispatcher and catalog are activated together.
 
 ## Remaining activation work
 
-1. Add the product-owned blocking rule kind/template, duration threshold and
-   hysteresis settings, with explicit fire/clear confirmation semantics.
+1. Add the product-owned catalog template/defaults and expose duration threshold,
+   hysteresis and fire/clear settings through administration.
 2. Wire the private capture/claim helpers into coordinator discovery and the
    normal evaluation queue dispatcher, retaining global claim budgets and
    target isolation alongside existing engine and backup work.
-3. Independently derive and verify state transitions in PostgreSQL before
-   committing state, history, outbox and audit atomically. Unknown data holds
-   active episodes and resets confirmation streaks. Replays must be exact.
-4. Revalidate captured source/revisions/expiry at claim and commit. Allow each
-   distinct collector snapshot to count once, so polling cannot manufacture
-   sustained blocking or clear confirmation from one unchanged observation.
-5. Activate the catalog only after native tests cover fire, hysteresis, clear,
-   unknown interruption, maintenance, acknowledgement, revision/lease races,
-   replay and outbox uniqueness. Expose the template/settings in Rules and
-   describe source gaps clearly in the alert inbox.
+3. Route blocking decisions exclusively through the independently verified commit
+   path, including mixed engine/backup/blocking batches. Preserve unknown holds,
+   exact replay and distinct-snapshot confirmation through the normal worker.
+4. Qualify source/revision/lease and acknowledgement races at runtime dispatch,
+   then activate the catalog. Expose the template/settings in Rules and describe
+   source gaps clearly in the alert inbox.
 
 ## Current verification
 
@@ -129,5 +155,33 @@ The fixtures seed repository rows under their isolated bootstrap role to test
 source integrity and corruption handling. The queue checks invoke private
 helpers as the migrator and simulate a completed queue operation to test source
 consumption; they do not exercise the normal worker or a state/outbox commit.
-They do not run SQL Server collection or prove firing/delivery behavior. Those checks belong to the remaining
-activation work above.
+They do not run SQL Server collection or prove the normal worker or notification
+transport. Those checks belong to the remaining activation work above.
+
+Three native PostgreSQL commit checks exercise the full migration history and
+the production decision serializer. One compares PostgreSQL with the C# evaluator
+across 1,120 combinations: all five states, unknown/zero/fractional duration and
+threshold/hysteresis boundary values, both upper comparisons, clear counts,
+confirmation-window gaps and maintenance. Another commits seven real decisions
+through the private queue/commit helpers: fire, unknown hold, partial recovery,
+unknown interruption, recovery and refire. It uses the existing Server-only
+acknowledgement function, preserves the acknowledged episode during unknown
+evidence, allocates a new episode on refire, and checks seven immutable replay
+rows, eight history rows including acknowledgement, three deferred notification
+intents and seven evaluation audit rows. During maintenance the existing
+acknowledgement function omits its notification; the blocking fire/resolve
+intents wait for the window to end. The flow also checks unchanged replay after
+source changes, divergent replay and target-revision fencing.
+
+The third commit check rejects forged state/event/suppression fields and injects
+an audit-write failure after state/history/replay/outbox writes. The entire
+transaction rolls back and retains the original claim; retry then commits once
+and exact replay changes nothing. The private commit function's owner/grants are
+checked. Evidence: `artifacts/blocking-alerts/blocking-alert-commit.trx`.
+The focused C# blocking, existing backup and engine evaluator checks passed
+(34 cases): `artifacts/blocking-alerts/blocking-alert-transitions.trx`.
+
+These commit fixtures seed collector outcomes/edges and a synthetic approved
+destination in isolated PostgreSQL. They prove durable state and outbox intent
+creation through the private helpers, without running the normal Collector
+worker, collecting from SQL Server or sending an external notification.

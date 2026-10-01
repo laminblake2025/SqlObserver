@@ -17,6 +17,9 @@ public static class AlertEvaluator
             throw new ArgumentException("Rule and target identities must match.");
         bool backup = BackupAlertRuleContract.IsBackup(rule.Kind);
         if (backup) BackupAlertRuleContract.ValidateObservation(rule, observation);
+        bool blocking = rule.Kind == AlertRuleKind.BlockingDuration;
+        if (blocking) BlockingAlertRuleContract.ValidateObservation(rule, observation);
+        bool sourceBound = backup || blocking;
         // A replay is a read-only operation.  A reused operation identity is only
         // valid when its evidence digest is byte-for-byte identical.
         if (prior.LastOperationId == observation.OperationId)
@@ -25,17 +28,17 @@ public static class AlertEvaluator
                 throw new AlertReplayConflictException("The operation identity was reused with divergent evidence.");
             return new AlertEvaluationResult(prior, null, prior.DeliverySuppressed, prior.Reason ?? "replayed", true);
         }
-        if (backup)
+        if (sourceBound)
         {
             if (prior.LastObservedUtc >= observation.ObservedAtUtc)
-                throw new ArgumentException("Backup alert observation time regressed.", nameof(observation));
+                throw new ArgumentException("Source-bound alert observation time regressed.", nameof(observation));
         }
-        if (!rule.Enabled || !backup && (rule.Kind == AlertRuleKind.MetricThreshold ? observation.Value is null : observation.CollectorHealthy is null))
+        if (!rule.Enabled || !sourceBound && (rule.Kind == AlertRuleKind.MetricThreshold ? observation.Value is null : observation.CollectorHealthy is null))
             throw new ArgumentException("An enabled rule and known evidence are required.", nameof(observation));
-        if (backup && observation.Value is null) return UnknownBackup(rule, prior, observation, maintenance);
+        if (sourceBound && observation.Value is null) return UnknownEvidence(rule, prior, observation, maintenance);
         bool matches = IsMatch(rule, observation, prior.State);
         bool active = prior.State is AlertState.Firing or AlertState.Acknowledged;
-        bool clearGap = backup && prior.LastObservedUtc is { } previous && observation.ObservedAtUtc - previous > rule.ConfirmationWindow;
+        bool clearGap = sourceBound && prior.LastObservedUtc is { } previous && observation.ObservedAtUtc - previous > rule.ConfirmationWindow;
         int clears = active && !matches ? clearGap ? 1 : Math.Min(rule.ClearConfirmationCount, prior.ConsecutiveClears + 1) : 0;
         bool partialClear = clears > 0 && clears < rule.ClearConfirmationCount;
         DateTimeOffset now = observation.ObservedAtUtc;
@@ -119,7 +122,7 @@ public static class AlertEvaluator
         };
     }
 
-    private static AlertEvaluationResult UnknownBackup(AlertRuleDefinition rule, AlertRuleState prior,
+    private static AlertEvaluationResult UnknownEvidence(AlertRuleDefinition rule, AlertRuleState prior,
         AlertObservation observation, MaintenanceWindow? maintenance)
     {
         bool suppressed = maintenance is not null && maintenance.TargetId == observation.TargetId && maintenance.Contains(observation.ObservedAtUtc);
