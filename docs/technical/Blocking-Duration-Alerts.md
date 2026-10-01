@@ -2,8 +2,9 @@
 
 The revamp plan requires alert coverage beyond engine counters and backups.
 Blocking duration is the next signal being implemented. The source contract
-below is implemented and verified in PostgreSQL; rule activation is pending the
-durable queue and independently verified state/outbox commit. No blocking rule
+below is implemented and verified in PostgreSQL. Private durable capture and
+claim helpers are also implemented; runtime queue dispatch and the independently
+verified state/outbox commit remain pending. No blocking rule
 has been enabled in the product catalog yet.
 
 ## Signal meaning
@@ -49,13 +50,50 @@ The SHA-256 digest binds the exact source JSON envelope. The typed
 Collector port validates its closed shape, size, digest and source invariants,
 with a five-second call budget. It is registered in Collector composition.
 
+## Private durable capture and claims
+
+Forward migration 0298 reserves repository rule kind 6 for blocking duration and
+adds a forced-RLS `alerting.blocking_evaluation_capture` table. Its observation,
+producer, claim and claim-verification functions are migrator-owned and private:
+Collector, Server, Auditor and PUBLIC have no execution or table grants. The
+existing catalog remains contract 3 and rejects creating a blocking rule. The
+normal worker is not wired to the private producer/claim helpers yet. The current
+commit dispatcher rejects their source kind instead of accepting a caller's
+blocking transition through the engine path.
+
+The producer holds target/rule locks, reads the 0297 source transactionally,
+and binds each queued operation to target revision, rule revision, source
+digest, read time and canonical operation/evidence identities. Observations
+carry the maximum duration in seconds, or null for unknown evidence. An indexed
+completed-operation lookup prevents an unchanged source digest from supplying
+another confirmation for the same rule revision. Cancelled operations do not
+consume the source. Pending unchanged captures retain their exact identities;
+expired claims can be reclaimed without changing the observation or digest.
+
+Each rule has at most one pending blocking capture. A source/revision change or
+expired capture supersedes only available work, preserving another live claim.
+Claim verification rereads the current source and checks the exact observation,
+accounting envelope, deadline, target/rule revisions and owner/fencing token.
+Changed evidence invalidates a live claim even though reconciliation cannot
+steal it. Available completed/cancelled capture bodies are deleted in bounded
+batches; queue metadata remains the source-consumption ledger. Future queue
+retention must preserve that identity throughout the source validity horizon.
+These helpers bound reconciliation and claiming to 100 operations per call.
+
+The repository constraints reserve an upper-duration comparison with a
+0–86,400 second threshold and nonnegative hysteresis no larger than the
+threshold. Evaluation intervals are 5–60 seconds; the confirmation window must
+cover the configured fire and clear counts. Product defaults, C# rule-kind
+support and administration remain part of activation, rather than being exposed
+before the verified commit path exists.
+
 ## Remaining activation work
 
 1. Add the product-owned blocking rule kind/template, duration threshold and
    hysteresis settings, with explicit fire/clear confirmation semantics.
-2. Capture this source transactionally in the fenced evaluation queue. Bind
-   operations to target/rule revisions and complete source identity. Refresh or
-   supersede expired/unclaimed captures; do not replace another live claim.
+2. Wire the private capture/claim helpers into coordinator discovery and the
+   normal evaluation queue dispatcher, retaining global claim budgets and
+   target isolation alongside existing engine and backup work.
 3. Independently derive and verify state transitions in PostgreSQL before
    committing state, history, outbox and audit atomically. Unknown data holds
    active episodes and resets confirmation streaks. Replays must be exact.
@@ -77,7 +115,19 @@ failed, stale/future, disabled, reconfigured, wrong-revision, self-blocking,
 overlarge-value and 1,025-row sources; every unavailable case remains unknown.
 Evidence: `artifacts/blocking-alerts/blocking-alert-evidence.trx`.
 
+Four native PostgreSQL 18 queue checks verify SQL/C# canonical identities for
+a 65.001-second observation, pending deduplication, exact claim recovery,
+completed-source suppression after the real evaluation interval, and a distinct
+complete-empty snapshot. They also exercise concurrent bounded producers,
+changed/unknown evidence, schedule/target/rule revision changes, rule disable,
+forged observation fields, wrong/expired owners, aged unknown captures,
+inactive-target cancellation and capture cleanup, private RLS/grants, and explicit
+catalog/engine-dispatch rejection. Evidence:
+`artifacts/blocking-alerts/blocking-alert-queue.trx`.
+
 The fixtures seed repository rows under their isolated bootstrap role to test
-source integrity and corruption handling. They do not run SQL Server collection
-or prove firing/delivery behavior. Those checks belong to the remaining
+source integrity and corruption handling. The queue checks invoke private
+helpers as the migrator and simulate a completed queue operation to test source
+consumption; they do not exercise the normal worker or a state/outbox commit.
+They do not run SQL Server collection or prove firing/delivery behavior. Those checks belong to the remaining
 activation work above.

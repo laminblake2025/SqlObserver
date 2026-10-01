@@ -7,9 +7,9 @@ blocks deliveries approved against the old configuration. See
 [Signed alert webhooks](../technical/Signed-Alert-Webhooks.md) for provisioning,
 the exact receiver contract, replay handling and verification limits.
 
-The leased, bounded [blocking-duration source](../technical/Blocking-Duration-Alerts.md)
-is implemented with native PostgreSQL coverage. Its rule/catalog activation is
-pending the durable queue, verified transition/outbox commit and administration UI.
+The leased, bounded [blocking-duration source and private queue](../technical/Blocking-Duration-Alerts.md)
+are implemented with native PostgreSQL coverage. Rule/catalog activation remains
+pending runtime dispatch, the verified transition/outbox commit and administration UI.
 
 M8 adds repository-driven `metric_threshold` and `collector_health` rules. The evaluator is a deterministic state machine: confirmation protects against one-sample noise, hysteresis prevents flapping, and acknowledgement changes delivery state without changing evaluation. All timestamps are UTC and all transitions are fenced by the collector lease.
 
