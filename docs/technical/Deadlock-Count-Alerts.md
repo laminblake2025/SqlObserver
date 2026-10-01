@@ -276,7 +276,7 @@ asset-boundary checks and the migration preamble check also passed, recorded in
 ## Incremental reader foundation (not active)
 
 The review's XE bookmark refactor now has two domain boundaries, a pinned source
-reader and private PostgreSQL checkpoint storage. They are staged; the production
+reader and private PostgreSQL checkpoint read/commit storage. They are staged; the production
 Collector still uses the approved full-scan v1 source. Collector contracts,
 the alert catalog and runtime activation remain unchanged.
 
@@ -410,15 +410,50 @@ Evidence is in `xe-checkpoint-foundation-final.trx`,
 `xe-checkpoint-canonical-binding.trx` and `xe-checkpoint-retained-binding.trx`.
 The new migration preamble check is `xe-checkpoint-preamble.trx`.
 
-Integration remains required before activation: Collector wiring for this fenced
-read and an atomic canonical commit for progress, accepted
-events, rolling history and coverage gaps. That commit must independently verify
-the source/target/schedule/run bindings, previous checkpoint and payload digest,
-reject lost worker fences, and leave latest state unchanged on an old exact
-replay. Missing rolled files, unavailable source and changed incarnation must
-be visible gaps or cold resets. No standalone bookmark write may skip uncommitted
-evidence. Repository/native regression checks must cover those boundaries and
-preserve the verified firing/unknown/recovery behavior before v2 replaces v1.
+Migration 0311 stages `control.commit_deadlock_read_collection_run`, an owner-only
+atomic producer. It accepts the canonical bounded graphs plus a closed source
+proof: expected checkpoint digest, source state/epoch, UTC read/retention times,
+all numeric metadata positions, end-of-stream and source-loss flags. The database
+independently calculates the safe whole-buffer frontier, compares the predecessor,
+and merges canonical event identities into the retained window. Metadata probes
+cannot become a false end-of-stream. A partial buffer remains replayable; normal
+catch-up does not claim permanent sample loss. Outages retain recent event history
+without advancing the bookmark. Changed incarnations/regressions reset progress
+and record a gap; target-clock skew cannot supply a current zero count.
+
+Canonical events/outcome, source snapshot, checkpoint, coverage gaps and replay
+receipt are written in one transaction, with the final target lease assertion
+after all writes. Canonical run outcomes remain append-only. The separate private
+`events.deadlock_read_receipt` contains only run/target bindings and SHA-256 hashes,
+partitioned by canonical completion month and registered for retention inventory.
+An exact replay validates both canonical completion and source proof, returns zero
+new writes and preserves newer checkpoint state. Divergent proof or predecessor
+is rejected. Existing receipt partitions require no fleet-wide DDL lock or
+per-page schema mutation.
+
+Focused native checks verify 13 whole-buffer comparisons against the domain model,
+invalid positions, history across two pages and an outage, current versus unknown,
+changed incarnation, quiet catch-up after a gap, clock skew, immutable receipts,
+closed proof shape, compare-and-swap and divergent/old replay. A trigger invalidates
+the lease after the checkpoint write: events, outcome, source snapshot, checkpoint,
+receipt and partition registration all roll back. Canonical commit and fenced-read
+regressions also pass. Evidence is `xe-checkpoint-atomic-native.trx` (the progress
+check passed; two initial commit checks exposed append-only outcome protection),
+`xe-checkpoint-atomic-receipts.trx` (both corrected commit checks),
+`xe-checkpoint-atomic-final.trx` (three commit checks plus two regressions),
+`xe-checkpoint-atomic-registry.trx` (registry allowlist preservation) and
+`xe-checkpoint-atomic-preamble.trx`.
+
+Activation still requires receipt retention policy/worker integration and holds
+for latest checkpoints/replay readers, typed Collector wiring for the fenced read
+and source proof, and explicit v2 routing. The legacy commit must reject v2 calls
+that bypass atomic publication when v2 becomes available. The pinned source page
+must expose every numeric position used in its frontier calculation and normalize
+timestamps to repository precision. Cold catch-up scheduling must stay bounded
+and fair. The alert evidence reader must use the retained window rather than
+counting only the newest delta, and preserve the verified five-minute
+firing/unknown/recovery behavior in native end-to-end tests before v2 replaces v1.
+There is still no writable application-role checkpoint API or active v2 contract.
 
 ## Verification and remaining work
 
