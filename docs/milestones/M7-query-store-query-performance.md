@@ -436,3 +436,56 @@ No new runtime grant or active source registration is installed. Bounded native
 coordination of Query Store, cache and live identity reads, public cache ranking
 and API integration, canonical run-retention dependencies, safe catalog rollout
 and native end-to-end/fleet qualification remain required before activation.
+
+## Bounded native cache target sweep — staged
+
+`PlanCacheRuntimeTargetSource` now performs a bounded native inventory, live
+identity reads, one pinned cache capture and final live identity reads. It
+allows at most eight database connections concurrently and at most 256
+inventory databases, with a 257th look-ahead entry left unopened. Inventory
+and each identity phase have five-second budgets; cache capture has a
+20-second budget and the entire cache sweep shares a 30-second deadline
+bounded by the original execution request. After reads are attempted only for
+databases with completed before evidence. The source never retries a cache
+capture to find more identities.
+
+Identity phase expiration retains completed evidence and leaves missing cache
+statements explicitly unqualified. Caller cancellation takes precedence over
+a faulted sibling. Capture or overall deadline expiration stops the sweep;
+malformed or foreign inventory, identity and cache frames are rejected. The
+existing assembler still requires matching live incarnation and epoch evidence
+within the original SQL capture windows before creating typed tuples. Cache
+candidates and returned identity frames contribute once to source accounting;
+response accounting retains the cache header, emitted native rows and identity
+frames without rounding any counters.
+
+The native port inventories online, multi-user databases whose catalog
+collation is present. It rechecks ID, name and that eligibility before changing
+database context, avoiding a known closed AUTO_CLOSE database. An inaccessible
+database or identity command timeout yields unavailable identity evidence.
+Transient target failures and invalid source frames remain failures. Every
+connection and reader is disposed before the next phase.
+
+Eighteen focused orchestration checks pass in
+`plan-cache-target-orchestration.trx`. They cover concurrency, one capture,
+missing/unknown/replaced/changed-epoch identities, partial identity phase
+expiration, inventory bounds and shape, foreign frames, an effective capped
+sample, capture cancellation and caller cancellation against a faulted sibling.
+Two additional phase-expiration cases verify that a provider fault after
+cancellation remains a timeout, with the affected cancellation cases passing
+in `plan-cache-target-deadline-boundaries.trx`.
+The real SQL Server 2022 restricted-login case passes in
+`plan-cache-target-native-open-fixture.trx`. It reads two disposable active
+databases, qualifies only the accessible database, records the denied database's
+cache rows as unqualified, keeps a third AUTO_CLOSE database closed, verifies
+connection cleanup and repeats with a one-candidate cap. Initial fixture runs
+exposed a procedure batch error and inherited AUTO_CLOSE settings; the fixture
+now declares its intended open and closed states explicitly.
+
+This qualifies the cache phase of native orchestration, not the combined
+version 2 collector. Connecting this sweep to the Query Store reader under one
+overall deadline and response budget, while preserving text/plan/wait capture
+and Query Store preference, remains the next source integration step. Public
+cache ranking/API, canonical run-retention dependencies, versioned catalog
+rollout and combined native end-to-end/fleet qualification remain open. No
+collector registration, catalog version or runtime grant is activated here.
