@@ -519,3 +519,35 @@ Local results are `artifacts/web-browser/results.json` and `report/index.html`.
 The remote CI job has not been run in this session. Synthetic fixture coverage
 does not prove the Windows authentication, actual database ingestion or browser
 connected to the production API; those end-to-end checks remain open.
+
+## Connected development browser verification
+
+Two additional Chromium checks pass through the actual Vite proxy, development
+authentication, Server pipeline and PostgreSQL 18.4 repository, with no HTTP
+mocks. The guarded seed adds a versioned set of fourteen SQL core inputs at
+thirty-second intervals. Original samples remain unchanged; a separate startup
+epoch prevents the overlapping legacy counters from producing rate spikes.
+The real Overview API returns all seven SQL history series, scheduler CPU at
+25%, workload at 100 batches/second, correctly scaled memory and distinct
+connection counts for the two targets. An out-of-scope SQL baseline request
+returns 403. Resources retains its custom window when switching servers and
+renders observations while all seven baseline reads return empty `no_data`
+bundles with the selected target, revision and preceding 28-day UTC window.
+
+Running this check exposed a development bootstrap replay failure: the saved
+sample was a week old, beyond the production activity partition creation
+window. The seed now reuses existing attached partitions only after checking
+their exact UTC bounds and registry entries. Missing or mismatched partitions
+still go through the production guarded creator. A focused native PostgreSQL
+test verifies replay with creation deliberately closed, unchanged sample counts,
+SQL rates without spikes, restricted application privileges and the unchanged
+historical creation refusal. The persistent development stack then started
+successfully without replacing its original sample window.
+
+Evidence is `artifacts/development-sql-core/development-sql-core-replay.trx`
+and `artifacts/development-browser/results.json` (two checks, no retries).
+These are real repository/API/browser reads of synthetic data. SQL Server
+ingestion, real Windows authentication and populated baseline bands through
+the connected browser remain open; the separate fixture suite covers the
+band-rendering cases. The connected runner is an explicit development command,
+separate from the ordinary synthetic browser CI job.

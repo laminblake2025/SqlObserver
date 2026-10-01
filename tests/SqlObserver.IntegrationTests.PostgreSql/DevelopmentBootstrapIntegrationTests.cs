@@ -29,11 +29,47 @@ public sealed class DevelopmentBootstrapIntegrationTests
         await using var admin = new NpgsqlConnection(bootstrap.ConnectionString);
         await admin.OpenAsync();
         long[] firstCounts = await ReadCountsAsync(admin);
-        Assert.Equal(new long[] { 2, 130, 130, 234, 52, 26, 52, 13 }, firstCounts);
+        Assert.Equal(new long[] { 2, 156, 156, 598, 52, 26, 52, 13 }, firstCounts);
+        await using (var seeded = new NpgsqlCommand("""
+            SELECT count(*)=26 AND bool_and(o.source_row_count=14 AND o.output_item_count=14 AND NOT o.loss_detected)
+              AND (SELECT count(*) FROM telemetry.raw_metric_sample m JOIN telemetry.collection_run r ON r.run_id=m.collection_run_id
+                WHERE r.work_key LIKE 'development/sample/core-v2/%')=364
+            FROM telemetry.collection_run r JOIN telemetry.collection_run_outcome o USING(run_id)
+            WHERE r.work_key LIKE 'development/sample/core-v2/%';
+            """, admin))
+            Assert.Equal(true, await seeded.ExecuteScalarAsync());
+        await using (var original = new NpgsqlCommand("""
+            SELECT count(*)=26 AND bool_and(o.source_row_count=9 AND o.output_item_count=9)
+            FROM telemetry.collection_run r JOIN telemetry.collection_run_outcome o USING(run_id)
+            WHERE collector_id='engine.core' AND work_key LIKE 'development/sample/v1/%';
+            """, admin))
+            Assert.Equal(true, await original.ExecuteScalarAsync());
+        // Existing fixture partitions must be reused, even when creation is no
+        // longer allowed. Refusing every creation call makes that boundary
+        // deterministic without waiting for the saved sample window to age.
+        string partitionDefinitions;
+        await using (var definitions = new NpgsqlCommand("""
+            SELECT pg_get_functiondef('control.ensure_activity_daily_partitions(date)'::regprocedure)
+                || E';\n' || pg_get_functiondef('control.ensure_blocking_monthly_partition(date)'::regprocedure) || ';';
+            """, admin)) partitionDefinitions = (string)(await definitions.ExecuteScalarAsync())!;
+        await using (var refuseCreation = new NpgsqlCommand("""
+            CREATE OR REPLACE FUNCTION control.ensure_activity_daily_partitions(p_partition_day date) RETURNS void
+            LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture partition creation is closed'; END $$;
+            CREATE OR REPLACE FUNCTION control.ensure_blocking_monthly_partition(p_partition_month date) RETURNS void
+            LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture partition creation is closed'; END $$;
+            """, admin)) await refuseCreation.ExecuteNonQueryAsync();
         DevelopmentBootstrapResult replay = await PostgreSqlDevelopmentBootstrap.ApplyAsync(
             "Development", bootstrap.ConnectionString, applicationPassword, CancellationToken.None);
         Assert.Equal(first, replay);
         Assert.Equal(firstCounts, await ReadCountsAsync(admin));
+        await using (var restoreCreation = new NpgsqlCommand(partitionDefinitions, admin))
+            await restoreCreation.ExecuteNonQueryAsync();
+        await using (var historicalCreation = new NpgsqlCommand(
+            "SELECT control.ensure_activity_daily_partitions(current_date-30);", admin))
+        {
+            PostgresException refused = await Assert.ThrowsAsync<PostgresException>(() => historicalCreation.ExecuteNonQueryAsync());
+            Assert.Equal(PostgresErrorCodes.InvalidParameterValue, refused.SqlState);
+        }
 
         var appConfiguration = new NpgsqlConnectionStringBuilder(bootstrap.ConnectionString)
         {
@@ -63,6 +99,24 @@ public sealed class DevelopmentBootstrapIntegrationTests
         await AssertDeniedAsync(app, "SELECT * FROM telemetry.raw_metric_sample LIMIT 1;");
         await AssertDeniedAsync(app, "SET ROLE sqlobserver_migrator;");
         await AssertDeniedAsync(app, "CREATE TABLE control.development_escape(id integer);");
+
+        await using (var source = new NpgsqlCommand("""
+            SELECT set_config('sqlobserver.role','Viewer',false),set_config('sqlobserver.target_scope','00000000-0000-4000-8000-000000000001',false);
+            """, app)) await source.ExecuteNonQueryAsync();
+        await using (var history = new NpgsqlCommand("""
+            SELECT count(*) FILTER(WHERE metric_key='engine.sql_scheduler_cpu_percent' AND metric_value=25),
+              count(*) FILTER(WHERE metric_key='engine.batch_requests_per_second' AND metric_value=100),
+              count(*) FILTER(WHERE metric_value IS NOT NULL AND (metric_key='engine.sql_scheduler_cpu_percent' AND metric_value<>25
+                OR metric_key='engine.batch_requests_per_second' AND metric_value<>100)),count(DISTINCT metric_key)
+            FROM reporting.overview_workload_history('00000000-0000-4000-8000-000000000001',1,@from,@to,@snapshot);
+            """, app))
+        {
+            history.Parameters.AddWithValue("from", first.SeedFromUtc); history.Parameters.AddWithValue("to", first.SeedToUtc);
+            history.Parameters.AddWithValue("snapshot", DateTimeOffset.UtcNow);
+            await using NpgsqlDataReader historyRows = await history.ExecuteReaderAsync();
+            Assert.True(await historyRows.ReadAsync()); Assert.True(historyRows.GetInt64(0)>0); Assert.True(historyRows.GetInt64(1)>0);
+            Assert.Equal(0,historyRows.GetInt64(2)); Assert.Equal(7,historyRows.GetInt64(3));
+        }
 
         // A foreign target blocks the whole bootstrap before either credentials or seed data change.
         await using (var foreign = new NpgsqlCommand(

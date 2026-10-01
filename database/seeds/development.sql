@@ -39,10 +39,37 @@ DECLARE day date; month date;
 BEGIN
     FOR day IN SELECT DISTINCT observed_at::date FROM development_seed_runs LOOP
         PERFORM control.ensure_daily_metric_partition(day);
-        PERFORM control.ensure_activity_daily_partitions(day);
+        -- Replaying a saved fixture may be outside the live collector's creation
+        -- window. Reuse only attached children with the exact UTC bounds and
+        -- matching registry entries; keep the production creation guard intact.
+        IF (SELECT count(*) FROM pg_catalog.pg_inherits i
+            JOIN pg_catalog.pg_class parent ON parent.oid=i.inhparent
+            JOIN pg_catalog.pg_namespace ns ON ns.oid=parent.relnamespace
+            JOIN pg_catalog.pg_class child ON child.oid=i.inhrelid
+            JOIN pg_catalog.pg_namespace child_ns ON child_ns.oid=child.relnamespace
+            JOIN system.partition_registry r ON r.parent_schema=ns.nspname AND r.parent_table=parent.relname
+                AND r.partition_schema=child_ns.nspname AND r.partition_name=child.relname
+            WHERE ns.nspname='telemetry' AND child_ns.nspname='telemetry'
+                AND parent.relname IN ('activity_session_snapshot','activity_request_snapshot','server_wait_snapshot')
+                AND child.relname=parent.relname || '_' || to_char(day,'YYYYMMDD')
+                AND pg_catalog.pg_get_expr(child.relpartbound,child.oid)=format('FOR VALUES FROM (%L) TO (%L)',day::timestamptz,(day+1)::timestamptz)
+                AND r.partition_granularity='day' AND r.range_start=day::timestamptz
+                AND r.range_end=(day+1)::timestamptz AND r.lifecycle_state='attached')<>3 THEN
+            PERFORM control.ensure_activity_daily_partitions(day);
+        END IF;
     END LOOP;
     FOR month IN SELECT DISTINCT date_trunc('month',observed_at)::date FROM development_seed_runs LOOP
-        PERFORM control.ensure_blocking_monthly_partition(month);
+        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i
+            JOIN pg_catalog.pg_class child ON child.oid=i.inhrelid
+            JOIN system.partition_registry r ON r.parent_schema='events' AND r.parent_table='blocking_edge'
+                AND r.partition_schema='events' AND r.partition_name=child.relname
+            WHERE i.inhparent='events.blocking_edge'::regclass
+                AND child.oid=to_regclass(format('events.blocking_edge_%s',to_char(month,'YYYYMM')))
+                AND pg_catalog.pg_get_expr(child.relpartbound,child.oid)=format('FOR VALUES FROM (%L) TO (%L)',month::timestamptz,(month+interval '1 month')::timestamptz)
+                AND r.partition_granularity='month' AND r.range_start=month::timestamptz
+                AND r.range_end=(month+interval '1 month')::timestamptz AND r.lifecycle_state='attached') THEN
+            PERFORM control.ensure_blocking_monthly_partition(month);
+        END IF;
     END LOOP;
 END
 $development$;
@@ -125,3 +152,55 @@ SET last_started_at=run.observed_at,last_completed_at=run.observed_at,last_succe
 FROM development_seed_runs AS run
 WHERE run.sample_number=12 AND schedule.instance_id=run.instance_id AND schedule.collector_id=run.collector_id
     AND schedule.last_completed_at IS NULL;
+
+-- Versioned SQL core sample data. Keep v1 run identities, accounting and rows
+-- unchanged; its five-minute cadence cannot qualify two-minute rate inputs.
+-- The new runs are inside the original returned window, ending one second before
+-- its exclusive boundary. A separate synthetic startup epoch prevents pairing
+-- its counters with the older v1 seed. No .invalid host is scheduled or contacted.
+SET LOCAL ROLE NONE;
+CREATE TEMP TABLE development_sql_core_v2 ON COMMIT DROP AS
+SELECT t.instance_id,t.instance_key,t.created_at AS seed_to,n AS sample_number,
+    t.created_at-interval '6 minutes 1 second'+n*interval '30 seconds' AS observed_at,
+    md5('sqlobserver-development-core-v2:'||t.instance_id||':'||n)::uuid AS run_id
+FROM control.observation_target t CROSS JOIN generate_series(0,12) n;
+GRANT SELECT ON TABLE pg_temp.development_sql_core_v2 TO sqlobserver_migrator;
+SET LOCAL ROLE sqlobserver_migrator;
+DO $$ DECLARE d date; BEGIN
+  FOR d IN SELECT DISTINCT observed_at::date FROM development_sql_core_v2 LOOP
+    PERFORM control.ensure_daily_metric_partition(d);
+  END LOOP;
+END $$;
+INSERT INTO telemetry.collection_run
+    (run_id,instance_id,collector_id,collector_version,output_schema_version,target_revision,schedule_revision,
+     work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+SELECT run_id,instance_id,'engine.core',1,1,1,1,'development/sample/core-v2/'||run_id,
+    '00000000-0000-4000-8000-000000000900',1,decode(repeat('ef',32),'hex'),observed_at,observed_at
+FROM development_sql_core_v2 ON CONFLICT(run_id) DO NOTHING;
+INSERT INTO telemetry.collection_run_outcome
+    (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,source_row_count,output_item_count,
+     inserted_item_count,duplicate_item_count,rejected_item_count,response_bytes,output_bytes,persisted_bytes,
+     truncated,loss_detected,loss_kind,loss_count_exact,lost_row_count,lost_byte_count,completion_digest,completed_at)
+SELECT run_id,'succeeded','completed',1,0,10,14,14,14,0,0,3584,3584,3584,
+    false,false,'none',true,0,0,decode(repeat('01',32),'hex'),observed_at
+FROM development_sql_core_v2 ON CONFLICT(run_id) DO NOTHING;
+INSERT INTO telemetry.raw_metric_sample
+    (observed_at,sample_id,instance_id,metric_key,metric_value,dimensions,collected_at,collection_run_id)
+SELECT s.observed_at,md5(s.run_id||':'||m.key)::uuid,s.instance_id,m.key,m.value,'{}'::jsonb,s.observed_at,s.run_id
+FROM development_sql_core_v2 s CROSS JOIN LATERAL (VALUES
+    ('engine.user_connections',CASE WHEN s.instance_key='development.sample.001' THEN 40.0 ELSE 12.0 END+s.sample_number%4*5),
+    ('engine.batch_requests_total',100000.0+s.sample_number*3000),
+    ('engine.sql_compilations_total',1000.0+s.sample_number*3),
+    ('engine.sql_recompilations_total',100.0+s.sample_number),
+    ('engine.page_life_expectancy_seconds',8000.0+s.sample_number*60),
+    ('engine.process_physical_memory_bytes',8589934592.0+s.sample_number*1048576),
+    ('engine.os_available_memory_bytes',17179869184.0),
+    ('engine.memory_grants_pending',CASE WHEN s.instance_key='development.sample.001' THEN 2.0 ELSE 0.0 END),
+    ('engine.scheduler_runnable_tasks',CASE WHEN s.instance_key='development.sample.001' THEN 3.0 ELSE 1.0 END),
+    ('engine.scheduler_cpu_milliseconds_total',1000000.0+s.sample_number*30000),
+    ('engine.visible_scheduler_count',4.0),
+    ('engine.committed_memory_bytes',10737418240.0),
+    ('engine.target_memory_bytes',12884901888.0),
+    ('engine.start_time_key',extract(epoch FROM s.seed_to-timestamptz '2000-01-01 00:00:00+00')-3600)
+) m(key,value)
+ON CONFLICT(observed_at,sample_id) DO NOTHING;

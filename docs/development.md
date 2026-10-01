@@ -28,6 +28,15 @@ The Collector is not started; the sample hosts end in `.invalid`.
 setup, `pwsh ./tools/seed-lab.ps1` reuses the same guarded bootstrap. It returns
 the sample's UTC window. Repeated seeding retains its original bounded snapshot,
 so freshness ages normally; choose the returned window when investigating it.
+Replays reuse existing activity/blocking partitions only when their attachment,
+UTC bounds and registry entries match. Production partition creation limits
+still apply when a partition is missing.
+
+The seed includes a separate, versioned set of fourteen SQL core inputs sampled
+every thirty seconds in the final six minutes. It preserves the original samples
+and uses a distinct startup epoch so overlapping old counters cannot create false
+rates. SQL history includes 25% scheduler CPU, 100 batches/second and the five SQL
+gauges. It does not include a 28-day SQL baseline history.
 
 Random development credentials are encrypted with Windows DPAPI for the current
 user in `artifacts/development/settings.dpapi`, with a current-user-only file ACL.
@@ -61,6 +70,24 @@ Open `http://127.0.0.1:5173`. Vite binds to loopback and proxies `/api` to
 `http://127.0.0.1:5080`. It preserves the browser's Host/Origin relationship and
 credentials. Vite starts only the frontend; it does not start or seed the Server.
 The proxy belongs to the development server and is absent from production assets.
+
+With this guarded stack running, run the two connected Chromium checks:
+
+```powershell
+pnpm --dir web exec playwright install chromium
+pnpm --dir web run test:browser:development
+```
+
+These checks use the actual Vite proxy, API, scoped development identity and
+PostgreSQL repository without HTTP mocks. They read the saved seed window,
+verify all seven SQL history series and bounded rates for both targets, check
+an out-of-scope baseline request is denied, and switch servers on Resources
+while preserving the window. Missing baseline history remains `no_data` with
+current observations visible. The separate runner requires an already running
+development stack and writes reports to `artifacts/development-browser`.
+Stop the stack afterward with `pwsh ./tools/dev-up.ps1 -Stop`. This checks the
+synthetic database-to-browser path; it does not exercise SQL Server collection,
+real Windows authentication or populated SQL baseline bands.
 
 ## Synthetic browser fixtures
 
