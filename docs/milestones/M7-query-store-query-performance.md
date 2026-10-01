@@ -200,3 +200,68 @@ The AUTO_CLOSE fixture uses the closed-database metadata behavior of
 [sys.databases](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-databases-transact-sql?view=sql-server-ver17)
 and the background shutdown behavior of
 [ALTER DATABASE SET options](https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-database-transact-sql-set-options?view=sql-server-ver17).
+
+## Private PostgreSQL cache storage and comparison — staged
+
+Forward migrations 0316 and 0317 add separate `plan_cache_runtime_watermark`,
+`plan_cache_runtime_delta` and `plan_cache_runtime_receipt` parents. Daily baseline
+buckets retain the latest counters for each target revision, database, normalized
+query and cache entry. Plan identity, database incarnation and startup epoch are
+comparison fields, so a changed incarnation starts an unknown baseline rather
+than subtracting counters. Multiple entries for one query retain independent
+baselines. CPU and duration remain unrounded microseconds throughout storage.
+
+All three parents and their daily children force target-scoped row-level
+security and grant no direct access to runtime roles. Delta history and replay
+receipts are append-only. Partition preparation validates ownership, attachment,
+UTC bounds, registry entries and the child's security policy against its parent;
+an altered child policy fails closed. The existing retention registry receives
+enabled policies for eight days of baseline state and 30 days of deltas/receipts.
+The administrative SQL and domain validator enforce those minimum durations.
+The scheduled retention driver's existing generic path can discover these
+registered parents; actual aged-partition detach/drop remains a qualification
+gate for this new data class.
+
+`events.apply_plan_cache_runtime_batch` is a private, closed JSON comparison
+contract, with no EXECUTE grant to the collector, server, auditor or PUBLIC.
+It independently checks target/revision scope, accounting including lookahead
+and unqualified statements, UTC capture bounds, all six counters, unique cache
+entries and matching before/after identity evidence. The batch is limited to
+2,000 selected statements and four MiB. A per-target transaction lock protects
+comparison and replay, without serializing unrelated targets.
+
+First or changed identities, a falling counter, an expired comparison window
+and stale reads never produce fabricated additive counters. Only a comparable
+entry emits differences and an actual previous-to-current interval; a quiet
+entry emits six known zero differences. Stale captures retain the preceding
+watermark. A complete selected tuple can advance under limited aggregate
+coverage, while an omitted or unqualified tuple does not advance. Source
+coverage and unqualified counts survive in a fixed-size receipt rather than
+duplicating raw rows into a replay ledger. Exact payload replay performs no
+new write, and divergent replay fails. Invalid later rows roll back earlier
+rows from the same invocation.
+Complete current-cache coverage still cannot establish total work across
+evicted entries or prove complete query-level rankings.
+
+The four real PostgreSQL repository cases in `plan-cache-runtime-storage.trx`
+cover migrated private storage, parent/child scope, administrative retention,
+per-entry comparison against the domain calculator, all six falling counters,
+incarnation/epoch/plan/entry changes, quiet and precision differences, stale
+captures, limited/unqualified coverage, exact/divergent replay, 21 invalid
+frame variants, and the exact seven-day versus one-microsecond-expired boundary
+across daily partitions. `plan-cache-runtime-partition-scope.trx` rechecks the
+affected storage case after strengthening child-policy validation, including
+direct-child access and an intentionally altered policy. Six domain retention
+cases and the forward-migration preamble check pass in
+`plan-cache-retention-and-preambles.trx`. Existing applied migration bytes and
+checksums remain unchanged.
+
+These proofs exercise the private comparison transaction with fixture run IDs;
+they are not canonical ingestion or production evidence. No production code
+calls this writer yet. The next required steps are the typed source/output
+codec, a canonical wrapper that validates the active target revision, run,
+schedule, immutable collector contract, source accounting and live lease both
+before and after writing, and atomic outcome/gap/schedule publication. Public
+query observations, protected content links, canonical replay, run-retention
+dependencies, bounded collector orchestration, aged cache retention, rollout
+and native end-to-end/fleet qualification remain required before activation.

@@ -113,5 +113,9 @@ public static class RetentionPolicyValidator
         if (policy.DataClass == "m6_deadlock_read_receipts" &&
             (policy.MinimumPartitionsToKeep < 2 || policy.Enabled && policy.RetainFor < TimeSpan.FromDays(30)))
             throw new ArgumentException("Deadlock replay receipts require at least 30 days and two monthly partitions.", nameof(policy));
+        if (policy.Enabled && policy.DataClass == "m7_cache_watermarks" && policy.RetainFor < TimeSpan.FromDays(8))
+            throw new ArgumentException("Cache baselines require at least eight days of retention.", nameof(policy));
+        if (policy.Enabled && (policy.DataClass is "m7_cache_deltas" or "m7_cache_receipts") && policy.RetainFor < TimeSpan.FromDays(30))
+            throw new ArgumentException("Cache delta history and replay receipts require at least 30 days of retention.", nameof(policy));
     }
 }
