@@ -327,3 +327,54 @@ lease. Query Store coverage, protected content links and existing query identity
 semantics must survive that change. Target sweep orchestration, canonical
 run-retention dependencies, public ranking/API integration, catalog rollout,
 and deployment/native fleet qualification remain open.
+
+## Fenced Query Store and cache commit — staged
+
+The pinned `queries.performance.v2.json` manifest retains Query Store, protected
+query text, execution plans and query waits, and adds the bounded cache source
+and live database identity assets. Its exact schema and five-entry bundle index
+pin both source paths. Version 2 remains disabled by default. Migration 0318
+does not install its collector contract or grant execution to runtime roles;
+existing version 1 scheduling and ingestion remain active.
+
+`control.commit_query_performance_v2` commits Query Store observations and
+selected cache tuples in one transaction with protected content links, wait
+snapshots, the canonical outcome, visibility gap and next schedule. It checks
+the target revision, run identity, schedule, immutable manifest and asset pins,
+source counts, output counts, byte bounds and circuit transition. The worker
+lease is checked before writes and again after outcome and schedule publication.
+Cache tuples use the private delta writer and never enter the legacy cumulative
+cache projection. Query Store still follows the existing observation-v3 writer
+route. Public rows and selected cache tuples count once each; protected links
+and mirrored rows do not add output items.
+
+The stored completion digest binds every summary, circuit, source and sidecar
+argument as well as the caller's digest. Exact replay produces no new writes;
+changed completion arguments fail. Evidence without a canonical completion,
+including an empty cache receipt, blocks the commit. A timeout emits no cache
+observations, advances the failure circuit and records a gap with an unknown
+loss count rather than presenting its required gap marker as an exact count.
+
+Five focused checks cover the manifest and real PostgreSQL lifecycle. The
+initial `plan-cache-canonical-v2.trx` passed the manifest, rollback and immutable
+pin cases. Its other two cases exposed fixture setup omissions: the observation
+v3 parity certificate and timeout source visibility. After correcting those
+fixtures, both passed in `plan-cache-canonical-v2-routing-failure.trx`.
+`plan-cache-canonical-v2-sidecars.trx` verifies successful protected text, plan
+and wait links in the combined commit. The two affected cases pass again in
+`plan-cache-canonical-v2-final-boundaries.trx`, adding exact replay through the
+partitioned collection-run route, an inexact timeout gap and rejection of an
+orphaned empty receipt. The rollback case covers eleven invalid inputs or late
+failures, including a bad later cache row, missing plan content and lease release
+after writes; all contributions and schedule changes roll back. Subsequent
+valid deltas prove those failures did not advance the cache baseline.
+
+The forward-migration preamble check passes in
+`plan-cache-canonical-v2-preamble.trx`; all 318 indexed checksums match and
+the existing 317-entry index is unchanged. These are private transaction proofs
+using the real repository scheduler and fixture-only version 2 contract. No
+production collector calls this function yet. Attaching the typed cache batch
+to `CollectorPayload`, explicit versioned validation and repository routing,
+bounded native orchestration, public cache ranking/API, canonical run-retention
+dependencies, safe catalog rollout and native fleet qualification remain
+required before activation.
