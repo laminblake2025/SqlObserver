@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Primitives;
 using SqlObserver.Application.Ports;
@@ -13,6 +14,48 @@ namespace SqlObserver.ApiContractTests;
 
 public sealed class M8DestinationApprovalTests
 {
+    [Fact]
+    public async Task SignedApprovalAndDeliveryResolverBindTheSameKeyAndRejectRotation()
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["AlertDestinations:primary"] = "https://alerts.example.test/hook",
+            ["AlertDestinations:primary:Kind"] = "https-webhook",
+            ["AlertDestinations:primary:Revision"] = "7",
+            ["AlertDestinations:primary:Allowlist"] = "93.184.216.0/24",
+            ["AlertDestinations:primary:Signing:KeyId"] = "2026-primary",
+            ["AlertDestinations:primary:Signing:ProtectedKeyPath"] = "protected-reference",
+        };
+        var keys = new SigningKeys();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        var approval = new ConfiguredAlertDestinationApproval(configuration, new FakeDns(IPAddress.Parse("93.184.216.34")), new FakeEventWriter(), keys);
+        AlertDestinationApproval approved = await approval.PreflightAsync(Request(Guid.NewGuid(), "primary"), CancellationToken.None);
+        var resolver = new ConfigurationAlertDestinationResolver(name => configuration[name], keys);
+        using (AlertWebhookConfiguration snapshot = resolver.ResolveWebhook("primary", approved.Revision, approved.ConfigurationContentDigest))
+            Assert.Equal(approved.ConfigurationContentDigest, snapshot.ConfigurationDigest(approved.Revision));
+        keys.Key = RandomNumberGenerator.GetBytes(32);
+        AlertDestinationApproval rotated = await approval.PreflightAsync(Request(approved.Scope, "primary"), CancellationToken.None);
+        Assert.NotEqual(approved.ConfigurationContentDigest, rotated.ConfigurationContentDigest);
+        Assert.Throws<InvalidOperationException>(() => resolver.ResolveWebhook("primary", approved.Revision, approved.ConfigurationContentDigest));
+        Assert.All(keys.Buffers, buffer => Assert.All(buffer, value => Assert.Equal(0, value)));
+    }
+
+    [Fact]
+    public async Task ApprovalRejectsIncompleteSigningWithoutDisclosingProviderDetails()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["AlertDestinations:primary"] = "https://alerts.example.test/hook",
+            ["AlertDestinations:primary:Allowlist"] = "93.184.216.0/24",
+            ["AlertDestinations:primary:Signing:KeyId"] = "missing-protected-file",
+        }).Build();
+        var keys = new SigningKeys();
+        var approval = new ConfiguredAlertDestinationApproval(configuration, new FakeDns(IPAddress.Parse("93.184.216.34")), new FakeEventWriter(), keys);
+        AlertDestinationValidationException refused = await Assert.ThrowsAsync<AlertDestinationValidationException>(() =>
+            approval.PreflightAsync(Request(Guid.NewGuid(), "primary"), CancellationToken.None).AsTask());
+        Assert.Equal("Destination configuration is invalid.", refused.Message); Assert.Empty(keys.Buffers);
+    }
+
     [Fact]
     public async Task ApprovalUsesConfiguredResolverAndServerOwnedCanonicalBinding()
     {
@@ -122,6 +165,12 @@ public sealed class M8DestinationApprovalTests
     private sealed class FakeDns(IPAddress address) : IAlertDnsResolver
     {
         public ValueTask<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyList<IPAddress>>([address]);
+    }
+    private sealed class SigningKeys : IWebhookSigningKeyProvider
+    {
+        public byte[] Key { get; set; } = RandomNumberGenerator.GetBytes(32);
+        public List<byte[]> Buffers { get; } = [];
+        public byte[] ReadKey(string protectedKeyPath) { byte[] buffer = Key.ToArray(); Buffers.Add(buffer); return buffer; }
     }
     private sealed class FailingDns : IAlertDnsResolver
     {

@@ -1,5 +1,12 @@
 # M8 — Alerts, maintenance, and notifications
 
+Configured HTTPS destinations now support optional HMAC-SHA256 signing with
+Windows-protected shared keys. Approval/outbox configuration digests bind the
+signing protocol, key ID and key fingerprint; key rotation or signing removal
+blocks deliveries approved against the old configuration. See
+[Signed alert webhooks](../technical/Signed-Alert-Webhooks.md) for provisioning,
+the exact receiver contract, replay handling and verification limits.
+
 M8 adds repository-driven `metric_threshold` and `collector_health` rules. The evaluator is a deterministic state machine: confirmation protects against one-sample noise, hysteresis prevents flapping, and acknowledgement changes delivery state without changing evaluation. All timestamps are UTC and all transitions are fenced by the collector lease.
 
 Recovery uses `clearConfirmationCount` (1–100) independently of firing confirmation. New HTTP rules default to two clear observations; updates and disables require the field explicitly. Migration `0083_alert_clear_confirmation.sql` preserves existing rules at one clear observation. While recovery is pending, the alert keeps its active state, episode, and acknowledgement. Returning to the hysteresis band resets recovery progress; replaying an observation does not advance it. Progress survives collector restarts, resets when a rule changes, and is bypassed by administrative disablement. This is count-based confirmation and can span a collection gap. Unknown evidence cannot count as recovery.

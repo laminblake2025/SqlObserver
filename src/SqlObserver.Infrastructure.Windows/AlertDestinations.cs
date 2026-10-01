@@ -135,28 +135,53 @@ public static class AlertNetworkPolicy
 
 }
 
-public sealed class ConfigurationAlertDestinationResolver(Func<string, string?> lookup) : IVersionedAlertDestinationConfigurationResolver, IConfiguredDestinationNetworkPolicy
+public sealed class ConfigurationAlertDestinationResolver(Func<string, string?> lookup, IWebhookSigningKeyProvider? signingKeys = null)
+    : IVersionedAlertDestinationConfigurationResolver, IConfiguredDestinationNetworkPolicy, IAlertWebhookConfigurationResolver
 {
     private Func<IPAddress, bool> ConfiguredPolicy(string reference) => AlertNetworkPolicy.ParseAllowlist(Read($"AlertDestinations:{reference}:Allowlist") ?? string.Empty);
     public bool IsAllowed(string configurationReference, IPAddress address) => ConfiguredPolicy(configurationReference)(address);
     public Uri ResolveHttps(string configurationReference)
     {
-        if (string.IsNullOrWhiteSpace(configurationReference) || configurationReference.Contains("://", StringComparison.Ordinal)) throw new ArgumentException("A configuration reference is required.", nameof(configurationReference));
-        string? value = Read($"AlertDestinations:{configurationReference}");
-        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || IsBlockedHost(uri.Host)) throw new InvalidOperationException("Destination configuration is not a bounded HTTPS URI.");
-        _ = AlertNetworkPolicy.ParseAllowlist(Read($"AlertDestinations:{configurationReference}:Allowlist") ?? string.Empty);
-        return uri;
+        using AlertWebhookConfiguration configuration = ResolveWebhook(configurationReference);
+        return configuration.Uri;
     }
     public Uri ResolveHttps(string configurationReference, long configurationRevision, string configurationDigest)
     {
-        if (configurationRevision <= 0 || string.IsNullOrWhiteSpace(configurationDigest)) throw new InvalidOperationException("An immutable destination configuration version is required.");
-        Uri uri = ResolveHttps(configurationReference);
+        using AlertWebhookConfiguration configuration = ResolveWebhook(configurationReference, configurationRevision, configurationDigest);
+        return configuration.Uri;
+    }
+    public AlertWebhookConfiguration ResolveWebhook(string configurationReference, long? revision = null, string? digest = null)
+    {
+        if (string.IsNullOrWhiteSpace(configurationReference) || configurationReference.Contains("://", StringComparison.Ordinal)) throw new ArgumentException("A configuration reference is required.", nameof(configurationReference));
+        if ((revision is null) != (digest is null) || revision <= 0 || digest is not null &&
+            (digest.Length != 64 || digest.Any(c => !char.IsAsciiHexDigit(c))))
+            throw new InvalidOperationException("An immutable destination configuration version is required.");
+        string? value = Read($"AlertDestinations:{configurationReference}");
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || IsBlockedHost(uri.Host)) throw new InvalidOperationException("Destination configuration is not a bounded HTTPS URI.");
         string allowlist = Read($"AlertDestinations:{configurationReference}:Allowlist") ?? string.Empty;
         _ = AlertNetworkPolicy.ParseAllowlist(allowlist);
-        string canonical = $"kind=https-webhook|uri={uri.AbsoluteUri}|host={uri.Host}|port={uri.Port}|path={uri.AbsolutePath}|allowlist={allowlist}|proxy=false|redirect=false|tls=https|revision={configurationRevision}";
-        string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
-        if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(configurationDigest), Convert.FromHexString(digest))) throw new InvalidOperationException("Destination configuration version is not retained or has drifted.");
-        return uri;
+        string? keyId = Read($"AlertDestinations:{configurationReference}:Signing:KeyId");
+        string? keyPath = Read($"AlertDestinations:{configurationReference}:Signing:ProtectedKeyPath");
+        if ((keyId is null) != (keyPath is null) || keyId is not null &&
+            (keyId.Length is < 1 or > 64 || keyId.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-')))
+            || keyPath is not null && string.IsNullOrWhiteSpace(keyPath))
+            throw new InvalidOperationException("Webhook signing configuration is invalid.");
+        byte[]? key = null;
+        try
+        {
+            if (keyPath is not null)
+            {
+                key = (signingKeys ?? new DpapiWebhookSigningKeyProvider()).ReadKey(keyPath);
+                if (key.Length != 32) throw new InvalidOperationException("Webhook signing key is invalid.");
+            }
+            var configuration = new AlertWebhookConfiguration(uri, allowlist, keyId, key);
+            if (revision is not null && !CryptographicOperations.FixedTimeEquals(
+                Convert.FromHexString(digest!), Convert.FromHexString(configuration.ConfigurationDigest(revision.Value))))
+                throw new InvalidOperationException("Destination configuration version is not retained or has drifted.");
+            key = null; // The caller owns the snapshot and erases its key on disposal.
+            return configuration;
+        }
+        finally { if (key is not null) CryptographicOperations.ZeroMemory(key); }
     }
     private string? Read(string key)
     {
@@ -172,7 +197,7 @@ public sealed class ConfigurationAlertDestinationResolver(Func<string, string?> 
     }
 }
 
-public sealed class HttpsWebhookAlertDestination(HttpClient client, IAlertDestinationConfigurationResolver resolver, IAlertDnsResolver? dnsResolver = null, IAlertDestinationHttpClientFactory? clientFactory = null) : IAlertDestinationPort
+public sealed class HttpsWebhookAlertDestination(HttpClient client, IAlertDestinationConfigurationResolver resolver, IAlertDnsResolver? dnsResolver = null, IAlertDestinationHttpClientFactory? clientFactory = null, TimeProvider? timeProvider = null) : IAlertDestinationPort
 {
     public const int MaximumBodyBytes = 16 * 1024;
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
@@ -180,21 +205,27 @@ public sealed class HttpsWebhookAlertDestination(HttpClient client, IAlertDestin
     public async ValueTask<AlertDeliveryResult> DeliverAsync(AlertDeliveryWork work, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(work); ArgumentNullException.ThrowIfNull(client); ArgumentNullException.ThrowIfNull(resolver);
+        cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(work.Kind, "https-webhook", StringComparison.Ordinal)) return Failed(work, "destination_kind_not_supported", true);
         if (work.Payload.Length is 0 or > MaximumBodyBytes) return Failed(work, "payload_bound_exceeded", true);
         Uri uri;
+        using AlertWebhookConfiguration? webhook = ResolveWebhook(work, resolver, out AlertDeliveryResult? configurationFailure);
+        if (configurationFailure is not null) return configurationFailure;
+        if (webhook?.KeyId is not null && (work.ConfigurationRevision is null || work.ConfigurationDigest is null))
+            return Failed(work, "destination_configuration_invalid", true);
         try
         {
-            uri = work.ConfigurationRevision is not null && !string.IsNullOrWhiteSpace(work.ConfigurationDigest) && resolver is IVersionedAlertDestinationConfigurationResolver versioned
+            uri = webhook?.Uri ?? (work.ConfigurationRevision is not null && !string.IsNullOrWhiteSpace(work.ConfigurationDigest) && resolver is IVersionedAlertDestinationConfigurationResolver versioned
                 ? versioned.ResolveHttps(work.ConfigurationReference, work.ConfigurationRevision.Value, work.ConfigurationDigest)
-                : resolver.ResolveHttps(work.ConfigurationReference);
+                : resolver.ResolveHttps(work.ConfigurationReference));
         }
         catch (AlertDestinationValidationException exception) { return Failed(work, exception.IsTransient ? "destination_provider_unavailable" : "destination_configuration_invalid", !exception.IsTransient); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return Failed(work, "destination_configuration_invalid", true); }
         if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return Failed(work, "https_required", true);
         IAlertDnsResolver? dns = dnsResolver;
         IPAddress? literal = IPAddress.TryParse(uri.Host, out IPAddress? parsedLiteral) ? parsedLiteral : null;
-        Func<IPAddress, bool> configuredPolicy = resolver is IConfiguredDestinationNetworkPolicy policy ? address => policy.IsAllowed(work.ConfigurationReference, address) : AlertNetworkPolicy.IsApprovedAddress;
+        Func<IPAddress, bool> configuredPolicy = webhook is not null ? AlertNetworkPolicy.ParseAllowlist(webhook.Allowlist)
+            : resolver is IConfiguredDestinationNetworkPolicy policy ? address => policy.IsAllowed(work.ConfigurationReference, address) : AlertNetworkPolicy.IsApprovedAddress;
         IReadOnlySet<IPAddress>? pinnedAddresses = null;
         if (clientFactory is not null)
         {
@@ -220,12 +251,14 @@ public sealed class HttpsWebhookAlertDestination(HttpClient client, IAlertDestin
             catch (Exception) { return Failed(work, "destination_dns_blocked", true); }
         }
         else if (clientFactory is null && dns is not null && literal is not null && (AlertNetworkPolicy.IsBlockedAddress(literal) || !configuredPolicy(literal))) return Failed(work, "destination_dns_blocked", true);
-        using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = new ByteArrayContent(work.Payload) };
+        byte[] payload = work.Payload.ToArray();
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = new ByteArrayContent(payload) };
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(RequestTimeout);
         try
         {
+            webhook?.Sign(request, payload, work.DeliveryId, (timeProvider ?? TimeProvider.System).GetUtcNow());
             using HttpClient? requestClient = clientFactory is null ? null : clientFactory.Create(dns ?? new SystemAlertDnsResolver(), configuredPolicy, pinnedAddresses ?? new HashSet<IPAddress>());
             using HttpResponseMessage response = await (requestClient ?? client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             if (!IPAddress.TryParse(uri.Host, out _) && dns is not null && clientFactory is null)
@@ -247,6 +280,16 @@ public sealed class HttpsWebhookAlertDestination(HttpClient client, IAlertDestin
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Failed(work, "request_timeout", false); }
         catch (HttpRequestException) { return Failed(work, "transport_failure", false); }
+        finally { CryptographicOperations.ZeroMemory(payload); }
+    }
+    private static AlertWebhookConfiguration? ResolveWebhook(AlertDeliveryWork work, IAlertDestinationConfigurationResolver resolver, out AlertDeliveryResult? failure)
+    {
+        failure = null;
+        if (resolver is not IAlertWebhookConfigurationResolver signing) return null;
+        try { return signing.ResolveWebhook(work.ConfigurationReference, work.ConfigurationRevision, work.ConfigurationDigest); }
+        catch (AlertDestinationValidationException exception) { failure = Failed(work, exception.IsTransient ? "destination_provider_unavailable" : "destination_configuration_invalid", !exception.IsTransient); }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException) { failure = Failed(work, "destination_configuration_invalid", true); }
+        return null;
     }
     private static AlertDeliveryResult Failed(AlertDeliveryWork work, string reason, bool permanent) => new(work.DeliveryId, false, permanent, reason, DateTimeOffset.UtcNow, work.TargetId);
 }
