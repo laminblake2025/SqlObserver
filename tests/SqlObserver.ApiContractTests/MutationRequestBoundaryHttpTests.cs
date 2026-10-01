@@ -308,6 +308,29 @@ public sealed class MutationRequestBoundaryHttpTests
         else Assert.Equal("policy-update", Assert.Single(factory.Ports.Mutations));
     }
 
+    [Theory]
+    [InlineData(30, 2, false, HttpStatusCode.OK)]
+    [InlineData(30, 2, true, HttpStatusCode.Forbidden)]
+    [InlineData(29, 2, false, HttpStatusCode.BadRequest)]
+    [InlineData(30, 1, false, HttpStatusCode.BadRequest)]
+    public async Task DeadlockReceiptPolicyMaintainsReplayBoundsAndOriginProtection(int days, int floor, bool hostile, HttpStatusCode expected)
+    {
+        using var factory = new MutationBoundaryFactory();
+        using HttpClient client = factory.Client();
+        string json = JsonSerializer.Serialize(new
+        {
+            dataClass = "m6_deadlock_read_receipts", enabled = true, retainFor = $"{days}.00:00:00",
+            minimumPartitionsToKeep = floor, expectedRevision = 1, changeReason = "Receipt retention contract test"
+        });
+        using HttpRequestMessage request = Request("/api/v1/retention/policies/m6_deadlock_read_receipts", json);
+        request.Method = HttpMethod.Put;
+        BrowserHeaders(request, hostile ? "https://attacker.example" : SameOrigin, hostile ? "cross-site" : "same-origin");
+        using HttpResponseMessage response = await client.SendAsync(request);
+        Assert.Equal(expected, response.StatusCode);
+        if (expected == HttpStatusCode.OK) Assert.Equal("policy-update", Assert.Single(factory.Ports.Mutations));
+        else AssertNoPortCalls(factory.Ports);
+    }
+
     private static void AssertNoPortCalls(MutationBoundaryPorts ports)
     {
         Assert.Empty(ports.Audits);

@@ -110,5 +110,8 @@ public static class RetentionPolicyValidator
         if (policy.RetainFor is not null && policy.RetainFor < TimeSpan.FromDays(1)) throw new ArgumentOutOfRangeException(nameof(policy));
         if (policy.Enabled && policy.RetainFor is null) throw new ArgumentException("An enabled policy must have a duration.", nameof(policy));
         if (policy.MinimumPartitionsToKeep < 1) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (policy.DataClass == "m6_deadlock_read_receipts" &&
+            (policy.MinimumPartitionsToKeep < 2 || policy.Enabled && policy.RetainFor < TimeSpan.FromDays(30)))
+            throw new ArgumentException("Deadlock replay receipts require at least 30 days and two monthly partitions.", nameof(policy));
     }
 }

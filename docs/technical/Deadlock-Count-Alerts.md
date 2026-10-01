@@ -444,9 +444,50 @@ check passed; two initial commit checks exposed append-only outcome protection),
 `xe-checkpoint-atomic-registry.trx` (registry allowlist preservation) and
 `xe-checkpoint-atomic-preamble.trx`.
 
-Activation still requires receipt retention policy/worker integration and holds
-for latest checkpoints/replay readers, typed Collector wiring for the fenced read
-and source proof, and explicit v2 routing. The legacy commit must reject v2 calls
+Migration 0312 connects receipt cleanup to the scheduled retention worker. Its
+enabled policy defaults to 30 days and a floor of two monthly partitions; domain,
+HTTP and PostgreSQL policy updates preserve those minima. Global administrative
+authorization and same-origin mutation checks still apply. The API and web parser
+accept the new `m6_deadlock_read_receipts` policy and `checkpoint_active` reason.
+Manual detach cannot bypass its scheduled grace route.
+
+An eligible month stays attached and readable for 24 hours before one fenced
+transaction detaches and drops it. Policy changes cancel pending grace without
+hiding data. The worker rechecks current policy, recovery attestation, partition
+identity, reader leases, backfills, external foreign-key dependencies and latest
+checkpoints before DDL. A latest checkpoint holds its own receipt month, including
+an offline target's bookmark; other months can proceed. Analytics jobs do not
+consume replay receipts, so they do not create a blanket fleet hold. Parent and
+child locks use NOWAIT to leave in-flight SQL replay reads intact. Drop failures
+roll back detach, remain readable and use the existing bounded retry ledger. The
+final lease assertion follows DDL, registry/execution changes and audit writes.
+
+Exact replay needs its retained receipt. After a month is retired, old run outcomes
+remain unchanged, but that month's source-proof replay is unavailable; callers
+cannot recreate or silently accept a missing receipt. The latest checkpoint's
+month remains held until the checkpoint advances. Receipt retention does not
+activate the staged v2 collector or change the active v1 deadlock alert source.
+
+Two native retention checks cover readable grace, policy cancellation, explicit
+and physical reader holds, backfill holds, scoped latest-checkpoint protection,
+unrelated analytics work, recovery rechecks, retry after a dependent view blocks
+drop, invalid policy bounds, private privileges, blocked manual detach and rollback
+after a lease is invalidated by the final audit write. A real PostgreSQL dump is
+restored before attestation and after receipt deletion; the original two receipts'
+complete identities and digests are recovered. Old receipts are bootstrap-only
+retention fixtures; canonical incremental producer qualification remains the
+separate migration-0311 checks. Four regressions pass for backup, manual TempDB and SQL-baseline
+retention and incremental deadlock replay. Four HTTP cases cover the new policy's
+valid request, replay minima and origin protection. Two web behavior checks cover
+policy/hold parsing, policy PUT and rejection of manual cleanup before fetch;
+TypeScript checking also passes. Evidence is `xe-receipt-retention-final.trx`,
+`xe-receipt-retention-restore-identity.trx`,
+`xe-receipt-retention-regressions.trx`, `xe-receipt-retention-http.trx` and
+`xe-receipt-retention-preamble.trx`. The initial passing native run is retained in
+`xe-receipt-retention-first.trx`.
+
+Activation still requires typed Collector wiring for the fenced read and source
+proof, and explicit v2 routing. The legacy commit must reject v2 calls
 that bypass atomic publication when v2 becomes available. The pinned source page
 must expose every numeric position used in its frontier calculation and normalize
 timestamps to repository precision. Cold catch-up scheduling must stay bounded
