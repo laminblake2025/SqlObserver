@@ -401,12 +401,16 @@ export function App() {
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} viewSelection={queryView}
                 onViewSelectionChange={selection => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "queries" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
                   const href = selection.cacheSelection
                     ? overviewHref({ ...scope, databaseId: selection.cacheSelection.databaseId }, "queries", props.instanceId)
                     : location.hash;
                   location.hash = queryViewHref(href, selection);
                 }} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
                 onSelectQuery={(databaseId, queryFingerprint, planFingerprint, sourceKind) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "queries" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
                   const href = queryViewHref(queryJumpHref(scope, props.instanceId, databaseId, queryFingerprint,
                     planFingerprint, sourceKind), queryView);
                   window.history.replaceState(window.history.state, "", href);

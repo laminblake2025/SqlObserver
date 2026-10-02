@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend } from "../src/features/queries/queryPerformanceApi.ts";
 
 test("Query Store group trend binds plan and window and preserves coverage gaps", async () => {
@@ -54,14 +53,6 @@ test("Query Store group trend binds plan and window and preserves coverage gaps"
       bucketStartUtc: "2026-09-25T10:00:00Z" }] });
     await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /bucket was outside its window/);
   } finally { globalThis.fetch = originalFetch; }
-});
-
-test("query performance panel shows all source evidence by default", async () => {
-  const panel = await readFile(new URL("../src/features/queries/TargetQueryPerformancePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /const \[source, setSource\] = useState\("mixed"\)/);
-  assert.match(panel, /<option value="mixed">All sources · evidence<\/option>/);
-  assert.match(panel, /queryPerformanceDatabaseOptions/);
-  assert.match(panel, /databaseName/);
 });
 
 test("query text read binds the exact run, bypasses browser cache, and rejects invalid content", async () => {

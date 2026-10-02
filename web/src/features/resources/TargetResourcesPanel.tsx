@@ -234,8 +234,8 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       selectedNodeId={resourceSelection.numaNodeId} onSelectNode={nodeId => updateSelection({ numaNodeId: nodeId })}
       crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
       onSelectWindow={onSelectWindow} />}
-    <SqlVolumePanel instanceId={instanceId} refresh={refresh} isRewind={isRewind} />
-    <section className="panel" aria-label="Database file I/O" aria-busy={filesLoading}>
+    <SqlVolumePanel instanceId={instanceId} targetRevision={targetRevision} refresh={refresh} isRewind={isRewind} />
+    <section className="panel server-dashboard-chart" aria-label="Database file I/O" aria-busy={filesLoading}>
       <h3>Database file I/O</h3>
         <p>Choose a file to chart read and write latency in the selected window. The table is the latest snapshot even in Rewind; its averages use cumulative counters since reset. This is not free disk space.</p>
         {activeSelectedFile && <><p className="activity-evidence">Selected file: database ID {activeSelectedFile.databaseId}, file ID {activeSelectedFile.fileId} · {activeSelectedFile.logicalName}.</p>
@@ -248,16 +248,16 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
             <p>Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)}. The table shows the latest source snapshot, including in Rewind; it does not follow the chart window.</p>
           </EvidenceDisclosure>
           {scope.databaseId !== undefined ? <p className="table-note">Showing {visibleFiles.length} of {files.items.length} loaded files for database ID {scope.databaseId}.</p> : null}
-          {visibleFiles.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest database file counters"><table><caption>Latest SQL Server file counters</caption>
+          {visibleFiles.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest database file counters"><table className="evidence-table"><caption>Latest SQL Server file counters</caption>
             <thead><tr><th scope="col">Database / file</th><th scope="col">Size</th>
               <th scope="col">Reads</th><th scope="col">Avg read stall (ms)</th>
               <th scope="col">Writes</th><th scope="col">Avg write stall (ms)</th>
               <th scope="col">Observed</th><th scope="col">History</th></tr></thead><tbody>
               {visibleFiles.map(file => <tr key={`${file.databaseId}:${file.fileId}`}>
-                <td>{file.databaseId} / {file.logicalName}</td><td title={`${file.sizeBytes} bytes`}>{fileSizeGib(file.sizeBytes) ?? "—"}</td>
-                <td>{file.readCount}</td><td>{lifetimeAverageStallMilliseconds(file.readStallMilliseconds, file.readCount) ?? "—"}</td>
-                <td>{file.writeCount}</td><td>{lifetimeAverageStallMilliseconds(file.writeStallMilliseconds, file.writeCount) ?? "—"}</td>
-                <td>{formatDisplayTime(file.observedAtUtc, mode)}</td>
+                <td>{file.databaseId} / {file.logicalName}</td><td className="evidence-scalar" title={`${file.sizeBytes} bytes`}>{fileSizeGib(file.sizeBytes) ?? "—"}</td>
+                <td className="evidence-scalar">{file.readCount}</td><td className="evidence-scalar">{lifetimeAverageStallMilliseconds(file.readStallMilliseconds, file.readCount) ?? "—"}</td>
+                <td className="evidence-scalar">{file.writeCount}</td><td className="evidence-scalar">{lifetimeAverageStallMilliseconds(file.writeStallMilliseconds, file.writeCount) ?? "—"}</td>
+                <td className="evidence-scalar">{formatDisplayTime(file.observedAtUtc, mode)}</td>
                 <td><button type="button" className="secondary-button" style={{ whiteSpace: "nowrap", minWidth: "max-content" }} aria-label={`View read and write latency trend for database ${file.databaseId}, file ${file.logicalName}`} aria-pressed={activeSelectedFile?.databaseId === file.databaseId && activeSelectedFile?.fileId === file.fileId}
                   onClick={() => updateSelection({ file: { databaseId: file.databaseId, fileId: file.fileId } })}>View trend</button></td></tr>)}
             </tbody></table></div> : <p>{scope.databaseId === undefined ? "No file rows were returned for this snapshot." : "No file rows for the selected database are present in this loaded page. Browse other file pages to continue."}</p>}
@@ -275,7 +275,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       <p>Selected window: {formatDisplayTime(result.data.fromUtc, mode)} to {formatDisplayTime(result.data.toUtc, mode)}. Refreshed {formatDisplayTime(result.data.refreshedAtUtc, mode)}.</p>
       <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} · {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
       <EvidenceDisclosure label="Collection evidence details" attention={evidence.gaps.length > 0 || evidence.collectionState !== "current"}>
-        <p>CPU and memory history follow this loaded window. PLE and selected-file latency state their own coverage; file counters and volume capacity show latest snapshots even in Rewind. Missing observations are never filled with zero.</p>
+        <p>CPU and memory history follow this loaded window. PLE and selected-file latency state their own coverage. File counters show the latest snapshot even in Rewind; volume capacity is available only in Live. Missing observations are never filled with zero.</p>
         <p>Last SQL core observation: {evidence.lastObservedUtc ? formatDisplayTime(evidence.lastObservedUtc, mode) : "unavailable"}. Source status does not establish a health verdict.</p>
       </EvidenceDisclosure>
       <ReferenceEvidenceStatus {...chartReferences} />

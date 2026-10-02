@@ -14,6 +14,7 @@ import {handleQueryRowTrendFixture} from './query-row-trend-fixture.mjs';
 import {syntheticCollector,syntheticFile} from './health-contract-fixture.mjs';
 import {handleWorkspaceSelectionFixture} from './workspace-selection-fixture.mjs';
 import {handleMaintenanceCalendarFixture} from './maintenance-calendar-fixture.mjs';
+import {handleSqlVolumeFixture} from './sql-volume-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
@@ -43,6 +44,7 @@ const utcTicks=value=>{
 const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ if(handleSqlVolumeFixture(url,res,req,targets,send))return;
  if(handleMaintenanceCalendarFixture(url,res,req,targets,send))return;
  if(handleWorkspaceSelectionFixture(url,res,req,targets,send))return;
  const incidentWorkspace=req.headers.cookie?.includes('incidentWorkspaceFixture=1');
