@@ -5,6 +5,12 @@ export const otherTarget = '44444444-4444-4444-8444-444444444444';
 export const runId = '22222222-2222-4222-8222-222222222222';
 export const otherRunId = '55555555-5555-4555-8555-555555555555';
 export const postPath = id => `/api/v1/observation-targets/${id}/reports`;
+export function reportHref({ reportKind = 'instance-health', targetId = target, range = 'custom',
+  from = '2026-08-01T13:45:00.000Z', to = '2026-08-02T13:45:00.000Z' } = {}) {
+  const query = new URLSearchParams({ target: targetId, range, reportKind });
+  if (range === 'custom') { query.set('from', from); query.set('to', to); }
+  return `#/reports?${query}`;
+}
 const kindValues = { 'instance-health': 0, 'performance-window': 1, 'incident-evidence': 2, 'capacity-readiness': 3 };
 const roundTripUtc = value => `${value.slice(0, 19)}.${(value.match(/\.(\d{1,6})Z$/)?.[1] ?? '').padEnd(7, '0')}+00:00`;
 export function reportRunForRequest(request, overrides = {}) {

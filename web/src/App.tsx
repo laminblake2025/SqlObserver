@@ -40,6 +40,7 @@ import { TargetQueryPerformancePanel } from "./features/queries/TargetQueryPerfo
 import { TargetResourcesPanel } from "./features/resources/TargetResourcesPanel";
 import { queryPerformanceDefaultHref, resolveQueryWindow, type QueryWindowResult } from "./features/queries/queryWindowModel";
 import { ReportsPanel } from "./features/reports/ReportsPanel";
+import { readReportSelection, reportSelectionHref, retainReportSelectionHref } from "./features/reports/reportsWorkspaceModel.ts";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
 import { TargetPermissionScriptPanel } from "./features/targets/TargetPermissionScriptPanel";
 import "./features/targets/permissionScript.css";
@@ -78,6 +79,7 @@ export function App() {
   const queryView = readQueryViewSelection(location.hash);
   const alertSelection = alertSelectionFromHash(location.hash);
   const deadlockSelection = readDeadlockSelection(location.hash, route.target);
+  const reportSelection = readReportSelection(location.hash);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string>();
@@ -91,8 +93,10 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
-  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" || route.page === "operations" || route.page === "alerts" ||
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" || route.page === "operations" || route.page === "alerts" || route.page === "reports" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
+  const maxTimeRangeDays = route.page === "analytics" || route.page === "reports" && reportSelection.state === "valid" &&
+    (reportSelection.kind === "performance-window" || reportSelection.kind === "incident-evidence") ? 7 : 31;
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
   const requestedCursor = useRef<string | undefined>(undefined);
@@ -329,7 +333,7 @@ export function App() {
             {timeDisplayMode === "local" ? "Local time" : "UTC"}
           </button>
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
-            <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={route.page === "analytics" ? 7 : 31} />
+            <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={maxTimeRangeDays} />
             <span className="topbar-time-mode">{isRewind ? "Rewind · fixed" : livePaused ? "Live · paused" : "Live · moving"}</span>
           </div>}
           {!isRewind && <button className="secondary-button" type="button" aria-pressed={livePaused} onClick={() => {
@@ -432,7 +436,12 @@ export function App() {
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}
               {route.page === "permissions" && <TargetPermissionScriptPanel key={props.instanceId} targetId={props.instanceId} displayName={props.displayName} host={selected!.host} canGenerate={canManageRules} onClose={closeTarget} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}
-              {route.page === "reports" && <ReportsPanel {...props} />}
+              {route.page === "reports" && <ReportsPanel {...props} scope={scope} selection={reportSelection}
+                onSelectKind={kind => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "reports" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  location.hash = reportSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, kind);
+                }} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
             </div>
           ) : null}
@@ -459,7 +468,8 @@ function retainDiagnosticSelectionHref(href: string, currentHash: string): strin
   next = retainSessionWaitCategoryHref(next, currentHash);
   next = retainSessionWaitCaptureHref(next, currentHash);
   next = retainAdminSelectionHref(next, currentHash);
-  return retainDeadlockSelectionHref(next, currentHash);
+  next = retainDeadlockSelectionHref(next, currentHash);
+  return retainReportSelectionHref(next, currentHash);
 }
 
 function retainDashboardTimelineHref(href: string, currentHash: string): string {

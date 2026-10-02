@@ -1,93 +1,114 @@
 import { useEffect, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
-import {
-  createReport, localDateTimeToUtc, reportCsvUrl, reportHtmlUrl, validateReportWindow,
-  type ReportKind, type ReportRun,
-} from "./reportsApi";
+import type { OverviewScope } from "../overview/overviewTypes";
+import { createReport, reportCsvUrl, reportHtmlUrl, type ReportKind, type ReportRun } from "./reportsApi";
+import { reportContextKey, resolveReportWindow, type ReportSelection, type ReportWindow } from "./reportsWorkspaceModel";
 
 interface ReportAttempt {
+  readonly contextKey: string;
   readonly targetId: string;
   readonly kind: ReportKind;
-  readonly fromUtc?: string;
-  readonly toUtc?: string;
+  readonly window?: ReportWindow;
   readonly operationId: string;
 }
+interface ActiveRequest { readonly contextKey: string; readonly controller: AbortController; }
+interface ReportView {
+  readonly contextKey: string;
+  readonly busy: boolean;
+  readonly window?: ReportWindow;
+  readonly run?: ReportRun;
+  readonly message?: string;
+}
 
-export function ReportsPanel({ instanceId, displayName, onClose }: {
+export function ReportsPanel({ instanceId, displayName, onClose, scope, selection, onSelectKind }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
+  readonly scope: OverviewScope;
+  readonly selection: ReportSelection;
+  readonly onSelectKind: (kind: ReportKind) => void;
 }) {
   const formatTime = useTimeFormatter();
-  const [kind, setKind] = useState<ReportKind>("instance-health");
-  const [fromUtc, setFromUtc] = useState("");
-  const [toUtc, setToUtc] = useState("");
-  const [run, setRun] = useState<ReportRun>();
-  const [message, setMessage] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const activeRequest = useRef<AbortController | null>(null);
+  const contextKey = reportContextKey(instanceId, selection, scope);
+  const latestContext = useRef(contextKey);
+  latestContext.current = contextKey;
+  const [view, setView] = useState<ReportView>({ contextKey, busy: false });
+  const activeRequest = useRef<ActiveRequest | null>(null);
   const attempt = useRef<ReportAttempt | null>(null);
 
   useEffect(() => {
-    activeRequest.current?.abort();
-    activeRequest.current = null;
-    attempt.current = null;
-    setRun(undefined);
-    setMessage(undefined);
-    setBusy(false);
-    return () => {
-      activeRequest.current?.abort();
+    if (activeRequest.current && activeRequest.current.contextKey !== contextKey) {
+      activeRequest.current.controller.abort();
       activeRequest.current = null;
-      attempt.current = null;
+    }
+    if (attempt.current?.contextKey !== contextKey) attempt.current = null;
+    setView(previous => previous.contextKey === contextKey ? previous : { contextKey, busy: false });
+    return () => {
+      // Cleanup belongs to its captured context and cannot cancel a newer submission.
+      if (activeRequest.current?.contextKey === contextKey) {
+        activeRequest.current.controller.abort();
+        activeRequest.current = null;
+      }
+      if (attempt.current?.contextKey === contextKey) attempt.current = null;
     };
-  }, [instanceId]);
+  }, [contextKey]);
 
-  function resetRequest() {
-    activeRequest.current?.abort();
+  function changeKind(kind: ReportKind) {
+    activeRequest.current?.controller.abort();
     activeRequest.current = null;
     attempt.current = null;
-    setRun(undefined);
-    setMessage(undefined);
-    setBusy(false);
+    setView({ contextKey, busy: false });
+    onSelectKind(kind);
   }
 
-  const needsWindow = kind !== "instance-health";
+  // A changed context never displays old exports, errors or pending state while effects catch up.
+  const visibleView = view.contextKey === contextKey ? view : undefined;
+  const kind = selection.state === "valid" ? selection.kind : undefined;
+  const needsWindow = kind !== undefined && kind !== "instance-health";
   const maximumDays = kind === "capacity-readiness" ? 31 : 7;
+  let selectedWindow: ReportWindow | undefined;
+  let windowError: string | undefined;
+  if (kind !== undefined && visibleView?.window === undefined) {
+    try { selectedWindow = resolveReportWindow(scope, kind, Date.now()); }
+    catch (error) { windowError = error instanceof Error ? error.message : "Update the shared time range to generate this report."; }
+  }
+  const displayWindow = visibleView?.window ?? selectedWindow;
+  const message = selection.state === "invalid" ? selection.message : visibleView?.message ?? windowError;
+  const run = visibleView?.run;
   const exportSection = kind === "instance-health" ? "health"
     : kind === "performance-window" ? "performance"
     : kind === "incident-evidence" ? "incidents" : "capacity";
 
   async function generate() {
-    if (activeRequest.current) return;
+    if (selection.state !== "valid") return;
+    if (activeRequest.current?.contextKey === contextKey) return;
+    activeRequest.current?.controller.abort();
     const controller = new AbortController();
-    activeRequest.current = controller;
-    setBusy(true);
-    setRun(undefined);
-    setMessage(undefined);
-    const isCurrent = () => activeRequest.current === controller && !controller.signal.aborted;
+    activeRequest.current = { contextKey, controller };
+    setView({ contextKey, busy: true, window: visibleView?.window });
+    const isCurrent = () => latestContext.current === contextKey
+      && activeRequest.current?.controller === controller && !controller.signal.aborted;
+    let immutableAttempt: ReportAttempt | undefined;
 
     try {
-      const start = needsWindow ? localDateTimeToUtc(fromUtc) : undefined;
-      const end = needsWindow ? localDateTimeToUtc(toUtc) : undefined;
-      validateReportWindow(kind, start, end);
-      const previous = attempt.current;
-      const immutableAttempt = previous?.targetId === instanceId && previous.kind === kind
-        && previous.fromUtc === start && previous.toUtc === end ? previous
-        : { targetId: instanceId, kind, fromUtc: start, toUtc: end, operationId: globalThis.crypto.randomUUID() };
+      // Live time is resolved once per attempt. A retry preserves its exact window and payload.
+      immutableAttempt = attempt.current?.contextKey === contextKey ? attempt.current : {
+        contextKey, targetId: instanceId, kind: selection.kind,
+        window: resolveReportWindow(scope, selection.kind, Date.now()), operationId: globalThis.crypto.randomUUID(),
+      };
       attempt.current = immutableAttempt;
+      setView({ contextKey, busy: true, window: immutableAttempt.window });
       const result = await createReport(immutableAttempt.targetId, immutableAttempt.kind, controller.signal,
-        immutableAttempt.fromUtc, immutableAttempt.toUtc, immutableAttempt.operationId);
+        immutableAttempt.window?.fromUtc, immutableAttempt.window?.toUtc, immutableAttempt.operationId);
       if (isCurrent()) {
         attempt.current = null;
-        setRun(result);
+        setView({ contextKey, busy: false, run: result, window: immutableAttempt.window });
       }
     } catch (error: unknown) {
-      if (isCurrent()) setMessage(error instanceof Error ? error.message : "The report request failed.");
+      if (isCurrent()) setView({ contextKey, busy: false, window: immutableAttempt?.window,
+        message: error instanceof Error ? error.message : "The report request failed." });
     } finally {
-      if (isCurrent()) {
-        activeRequest.current = null;
-        setBusy(false);
-      }
+      if (isCurrent()) activeRequest.current = null;
     }
   }
 
@@ -106,10 +127,10 @@ export function ReportsPanel({ instanceId, displayName, onClose }: {
     }}>
       <div className="report-field">
         <label htmlFor="report-kind">Report type</label>
-        <select id="report-kind" value={kind} onChange={event => {
-          resetRequest();
-          setKind(event.target.value as ReportKind);
+        <select id="report-kind" value={kind ?? ""} onChange={event => {
+          if (event.target.value) changeKind(event.target.value as ReportKind);
         }}>
+          {kind === undefined ? <option value="" disabled>Choose report type</option> : null}
           <option value="instance-health">Instance Health</option>
           <option value="performance-window">Performance Window</option>
           <option value="incident-evidence">Incident Evidence</option>
@@ -117,32 +138,33 @@ export function ReportsPanel({ instanceId, displayName, onClose }: {
         </select>
       </div>
 
-      {needsWindow ? <fieldset className="report-window">
+      {needsWindow ? <fieldset className="report-window" aria-describedby="report-window-help">
         <legend>UTC window (maximum {maximumDays} days)</legend>
-        <div className="report-window-fields">
+        {displayWindow === undefined ? null : <dl className="report-window-summary report-window-fields">
           <div className="report-field">
-            <label htmlFor="report-from">From (UTC)</label>
-            <input id="report-from" aria-describedby="report-window-help" required type="datetime-local"
-              value={fromUtc} onChange={event => {
-                resetRequest();
-                setFromUtc(event.target.value);
-              }} />
+            <dt>From</dt>
+            <dd><time dateTime={displayWindow.fromUtc}>{formatTime(displayWindow.fromUtc)}</time></dd>
           </div>
           <div className="report-field">
-            <label htmlFor="report-to">To (UTC, exclusive)</label>
-            <input id="report-to" aria-describedby="report-window-help" required type="datetime-local"
-              value={toUtc} onChange={event => {
-                resetRequest();
-                setToUtc(event.target.value);
-              }} />
+            <dt>To (exclusive)</dt>
+            <dd><time dateTime={displayWindow.toUtc}>{formatTime(displayWindow.toUtc)}</time></dd>
           </div>
-        </div>
-        <p id="report-window-help">The end is exclusive. Times are submitted as UTC.</p>
-      </fieldset> : <p className="empty-state">Instance Health is a current snapshot and does not use a time window.</p>}
+        </dl>}
+        <p id="report-window-help">Uses the shared time bar. The end is exclusive.</p>
+        <p className="report-window-note">{displayWindow === undefined
+          ? "Choose a supported range in the shared time bar before generating this report."
+          : visibleView?.window !== undefined
+          ? run === undefined ? "This report attempt uses the frozen window shown here. Retries keep these bounds."
+            : "This generated report uses the window shown here. Generate again to use the current shared range."
+          : "The selected report window is shown here. Live bounds freeze when you generate."}</p>
+      </fieldset> : kind === "instance-health"
+        ? <p className="empty-state">Instance Health is a current snapshot and does not use the shared time window.</p> : null}
+
+      {scope.databaseId === undefined ? null : <p className="report-window-note">Reports use server-wide evidence; database context is retained for navigation.</p>}
 
       <div className="report-actions">
-        <button disabled={busy || (needsWindow && (!fromUtc || !toUtc))} type="submit">
-          {busy ? "Generating…" : "Generate report"}
+        <button disabled={kind === undefined || (visibleView?.busy ?? false) || windowError !== undefined} type="submit">
+          {visibleView?.busy ? "Generating…" : "Generate report"}
         </button>
       </div>
     </form>

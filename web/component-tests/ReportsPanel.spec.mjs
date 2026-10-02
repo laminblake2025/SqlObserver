@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { target, otherTarget, runId, otherRunId, postPath, reportRun, reportRunForRequest, reportBackend } from './reportsFixture.mjs';
+import { target, otherTarget, runId, otherRunId, postPath, reportRun, reportRunForRequest, reportBackend, reportHref } from './reportsFixture.mjs';
 
 const contexts = new WeakMap();
 const panel = page => page.getByRole('region', { name: /^Reports for / });
@@ -18,20 +18,21 @@ async function json(route, body, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(body) });
 }
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
-function heldResponse(body) {
+function heldResponse(body, status = 200) {
   const started = deferred(); const released = deferred(); const completed = deferred();
   return {
     started: started.promise,
     release: async () => { released.resolve(); await completed.promise; },
     handle: async route => {
       started.resolve(route.request()); await released.promise;
-      try { await json(route, body); }
+      try { await json(route, body, status); }
       catch (error) { if (!route.request().failure()?.errorText.includes('ERR_ABORTED')) throw error; }
       finally { completed.resolve(); }
     },
   };
 }
 test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-24T13:00:00Z'));
   const context = { unexpected: [], requests: [], handler: undefined };
   contexts.set(page, context);
   page.on('pageerror', error => context.unexpected.push(`Page error: ${error.message}`));
@@ -51,21 +52,27 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => {
   expect(contexts.get(page).unexpected, 'Only registered local API fixtures may be requested; page errors must be absent').toEqual([]);
 });
-async function mount(page, handler) {
+async function mount(page, handler, hash = reportHref()) {
   contexts.get(page).handler = handler;
-  await page.goto('/component-tests/reports.html');
+  await page.goto(`/component-tests/reports.html${hash}`);
   await expect(page.getByRole('heading', { name: 'Reports panel harness' })).toBeVisible();
 }
 async function fillWindow(page, from = '2026-08-01T13:45', to = '2026-08-02T13:45') {
-  await page.getByLabel('From (UTC)', { exact: true }).fill(from);
-  await page.getByLabel('To (UTC, exclusive)', { exact: true }).fill(to);
+  const range = page.getByRole('combobox', { name: 'Time range', exact: true });
+  if (await range.inputValue() !== 'custom') await range.selectOption('custom');
+  const editor = page.getByRole('form', { name: 'Custom UTC time range', exact: true });
+  if (!await editor.isVisible()) await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  await editor.getByLabel('From (UTC)', { exact: true }).fill(from);
+  await editor.getByLabel('To (UTC)', { exact: true }).fill(to);
+  await editor.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await expect(editor).toHaveCount(0);
 }
 function assertOperation(body, reportKind, window) {
   expect(body).toEqual({ reportKind, operationId: expect.any(String), ...window });
   expect(body.operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 }
 
-test('renders the four fixed report kinds and inert server text; snapshot generation has no window', async ({ page }) => {
+test('renders the four fixed report kinds and inert server text; Instance Health remains a current snapshot in Rewind', async ({ page }) => {
   await mount(page, async route => {
     if (!isPost(route)) return false;
     assertOperation(route.request().postDataJSON(), 'instance-health');
@@ -78,7 +85,10 @@ test('renders the four fixed report kinds and inert server text; snapshot genera
   ]);
   await expect(panel(page).getByRole('heading')).toHaveText('Reports for Production SQL <img src=x onerror=alert(1)>');
   await expect(panel(page).locator('img, script')).toHaveCount(0);
-  await expect(page.getByLabel('From (UTC)', { exact: true })).toHaveCount(0);
+  await expect(panel(page).locator('input')).toHaveCount(0);
+  await expect(panel(page)).toContainText(/current snapshot/i);
+  await expect(page.getByRole('combobox', { name: 'Time range', exact: true })).toHaveValue('custom');
+  await expect(panel(page).locator('.report-window')).toHaveCount(0);
   await generate(page).click();
   await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/html`);
   await expect(htmlLink(page)).toHaveAttribute('target', '_blank');
@@ -120,10 +130,9 @@ test('rejects an oversized window before IO and retries a safe failure with the 
     return true;
   });
   await kind(page).selectOption('performance-window');
-  await expect(generate(page)).toBeDisabled();
   await fillWindow(page, '2026-08-01T13:45', '2026-08-08T13:46');
-  await generate(page).click();
-  await expect(panel(page).getByRole('alert')).toHaveText('Choose a window of at most 7 days.');
+  await expect(panel(page).getByRole('alert')).toHaveText('Update the shared time range to generate this report. Choose a window of at most 7 days.');
+  await expect(generate(page)).toBeDisabled();
   expect(contexts.get(page).requests).toHaveLength(0);
   await fillWindow(page);
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
@@ -204,6 +213,13 @@ for (const width of [320, 390, 768, 1440]) test(`report controls and exports rem
     await json(route, reportRunForRequest(route.request().postDataJSON())); return true;
   });
   await kind(page).selectOption('capacity-readiness'); await fillWindow(page);
+  const sharedRange = page.getByRole('combobox', { name: 'Time range', exact: true });
+  const sharedEditorToggle = page.getByRole('button', { name: 'Edit UTC range', exact: true });
+  for (const [control, minimumWidth] of [[sharedRange, 140], [sharedEditorToggle, 100]]) {
+    const bounds = await control.boundingBox();
+    expect(bounds.width).toBeGreaterThanOrEqual(minimumWidth);
+    expect(bounds.height).toBeGreaterThanOrEqual(40);
+  }
   await expect(panel(page).getByRole('form', { name: 'Generate server report', exact: true })).toBeVisible();
   await expect(panel(page).locator('form.report-form')).toHaveCount(1);
   await expect(panel(page).locator('.report-field')).toHaveCount(3);
@@ -213,23 +229,28 @@ for (const width of [320, 390, 768, 1440]) test(`report controls and exports rem
     const box = node => { const rect = node.getBoundingClientRect(); return {
       left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height,
     }; };
-    const fields = [...element.querySelectorAll('.report-field')].map(field => ({
-      label: box(field.querySelector('label')), control: box(field.querySelector('input, select')),
+    const picker = element.querySelector('.report-field select');
+    const fields = [...element.querySelectorAll('.report-window-fields .report-field')].map(field => ({
+      label: box(field.querySelector('dt')), value: box(field.querySelector('dd')),
     }));
-    return { fields, window: box(element.querySelector('.report-window')), action: box(element.querySelector('.report-actions')) };
+    return { picker: box(picker), pickerLabel: box(element.querySelector('label')), fields,
+      window: box(element.querySelector('.report-window')), action: box(element.querySelector('.report-actions')) };
   });
+  expect(layout.picker.width).toBeGreaterThanOrEqual(220);
+  expect(layout.picker.height).toBeGreaterThanOrEqual(40);
+  expect(layout.pickerLabel.bottom).toBeLessThanOrEqual(layout.picker.top + 1);
   for (const field of layout.fields) {
-    expect(field.control.width).toBeGreaterThanOrEqual(220);
-    expect(field.control.height).toBeGreaterThanOrEqual(40);
-    expect(field.label.bottom).toBeLessThanOrEqual(field.control.top + 1);
-    expect(field.label.left).toBeGreaterThanOrEqual(field.control.left - 1);
-    expect(field.label.right).toBeLessThanOrEqual(field.control.right + 1);
+    expect(field.value.width).toBeGreaterThanOrEqual(220);
+    expect(field.value.height).toBeGreaterThan(0);
+    expect(field.label.bottom).toBeLessThanOrEqual(field.value.top + 1);
+    expect(field.label.left).toBeGreaterThanOrEqual(field.value.left - 1);
+    expect(field.label.right).toBeLessThanOrEqual(field.value.right + 1);
   }
-  const [fromField, toField] = layout.fields.slice(1);
-  if (width <= 390) expect(toField.control.top).toBeGreaterThanOrEqual(fromField.control.bottom);
+  const [fromField, toField] = layout.fields;
+  if (width <= 390) expect(toField.label.top).toBeGreaterThanOrEqual(fromField.value.bottom);
   else {
-    expect(Math.abs(fromField.control.top - toField.control.top)).toBeLessThanOrEqual(1);
-    expect(toField.control.left).toBeGreaterThanOrEqual(fromField.control.right);
+    expect(Math.abs(fromField.label.top - toField.label.top)).toBeLessThanOrEqual(1);
+    expect(toField.value.left).toBeGreaterThanOrEqual(fromField.value.right);
   }
   expect(layout.action.top).toBeGreaterThanOrEqual(layout.window.bottom);
   await generate(page).click();
@@ -283,7 +304,7 @@ test('invalid success receipts retry the identical accepted operation and recove
   expect(backend.operations.size).toBe(5);
 });
 
-test('a lost receipt replays the accepted operation while a verified success permits a fresh report', async ({ page }) => {
+test('a lost Live receipt freezes its first window through clock, refresh and display changes; verified success permits a fresh window', async ({ page }) => {
   const backend = reportBackend();
   const bodies = [];
   await mount(page, async route => {
@@ -294,24 +315,31 @@ test('a lost receipt replays the accepted operation while a verified success per
     if (bodies.length === 1) await route.abort('failed');
     else await json(route, accepted.receipt);
     return true;
-  });
+  }, reportHref({ reportKind: 'performance-window', range: '1h' }));
   await generate(page).click();
   await expect(panel(page).getByRole('alert')).toHaveText('The report response could not be verified.');
   await expect(htmlLink(page)).toHaveCount(0);
   expect(backend.operations.size).toBe(1);
+  assertOperation(JSON.parse(bodies[0]), 'performance-window', { fromUtc: '2026-09-24T12:00:00.000Z', toUtc: '2026-09-24T13:00:00.000Z' });
+  await page.clock.setFixedTime(new Date('2026-09-24T14:00:00Z'));
+  await page.getByRole('button', { name: 'Refresh context', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Time display', exact: true }).selectOption('local');
+  await expect(panel(page).locator('time[datetime="2026-09-24T12:00:00.000Z"]')).toBeVisible();
   await generate(page).click();
   await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/html`);
   expect(bodies[1]).toBe(bodies[0]);
   expect(backend.operations.size).toBe(1);
+  await page.getByRole('combobox', { name: 'Time display', exact: true }).selectOption('utc');
   await generate(page).click();
   await expect.poll(() => backend.operations.size).toBe(2);
   const newest = [...backend.operations.values()][1];
   await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${newest.receipt.runId}/html`);
   expect(JSON.parse(bodies[2]).operationId).not.toBe(JSON.parse(bodies[1]).operationId);
+  assertOperation(JSON.parse(bodies[2]), 'performance-window', { fromUtc: '2026-09-24T13:00:00.000Z', toUtc: '2026-09-24T14:00:00.000Z' });
   expect(backend.operations.size).toBe(2);
 });
 
-test('kind, UTC window and server edits each release an uncertain operation instead of replaying another context', async ({ page }) => {
+test('kind, From, To, range and server edits each release an uncertain operation instead of replaying another context', async ({ page }) => {
   const backend = reportBackend();
   const bodies = [];
   await mount(page, async route => {
@@ -330,19 +358,25 @@ test('kind, UTC window and server edits each release an uncertain operation inst
   await uncertain();
   await kind(page).selectOption('performance-window'); await fillWindow(page);
   await uncertain();
-  await page.getByLabel('To (UTC, exclusive)', { exact: true }).fill('2026-08-02T13:46');
+  await fillWindow(page, '2026-08-01T13:45', '2026-08-02T13:46');
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
+  await uncertain();
+  await fillWindow(page, '2026-08-01T13:44', '2026-08-02T13:46');
+  await uncertain();
+  await page.getByRole('combobox', { name: 'Time range', exact: true }).selectOption('6h');
   await uncertain();
   await page.getByRole('combobox', { name: 'Server context', exact: true }).selectOption(otherTarget);
   await expect(panel(page).getByRole('heading')).toHaveText('Reports for Reporting SQL');
   await uncertain();
-  expect(bodies).toHaveLength(4);
-  expect(new Set(bodies.map(body => body.operationId)).size).toBe(4);
+  expect(bodies).toHaveLength(6);
+  expect(new Set(bodies.map(body => body.operationId)).size).toBe(6);
   assertOperation(bodies[0], 'instance-health');
   assertOperation(bodies[1], 'performance-window', { fromUtc: '2026-08-01T13:45:00.000Z', toUtc: '2026-08-02T13:45:00.000Z' });
   assertOperation(bodies[2], 'performance-window', { fromUtc: '2026-08-01T13:45:00.000Z', toUtc: '2026-08-02T13:46:00.000Z' });
-  expect(bodies[3]).toEqual({ ...bodies[2], operationId: bodies[3].operationId });
-  expect(backend.operations.size).toBe(4);
+  assertOperation(bodies[3], 'performance-window', { fromUtc: '2026-08-01T13:44:00.000Z', toUtc: '2026-08-02T13:46:00.000Z' });
+  assertOperation(bodies[4], 'performance-window', { fromUtc: '2026-09-24T07:00:00.000Z', toUtc: '2026-09-24T13:00:00.000Z' });
+  expect(bodies[5]).toEqual({ ...bodies[4], operationId: bodies[5].operationId });
+  expect(backend.operations.size).toBe(6);
 });
 
 test('Enter submits the report form and duplicate pending submissions materialize only one operation', async ({ page }) => {
@@ -357,7 +391,8 @@ test('Enter submits the report form and duplicate pending submissions materializ
     await pending.handle(route); return true;
   });
   await kind(page).selectOption('performance-window'); await fillWindow(page);
-  await page.getByLabel('To (UTC, exclusive)', { exact: true }).press('Enter');
+  await generate(page).focus();
+  await page.keyboard.press('Enter');
   await pending.started;
   await expect(panel(page).getByRole('button', { name: 'Generating…', exact: true })).toBeDisabled();
   await panel(page).getByRole('form', { name: 'Generate server report', exact: true })
@@ -367,4 +402,104 @@ test('Enter submits the report form and duplicate pending submissions materializ
   await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/html`);
   expect(contexts.get(page).requests).toHaveLength(1);
   expect(backend.operations.size).toBe(1);
+});
+
+test('the shared custom editor preserves exact microsecond scope bounds into native report payloads and displayed provenance', async ({ page }) => {
+  const fromUtc = '2026-08-01T13:45:00.123456Z';
+  const toUtc = '2026-08-02T13:45:00.654321Z';
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    const body = route.request().postDataJSON();
+    assertOperation(body, 'performance-window', { fromUtc, toUtc });
+    await json(route, reportRunForRequest(body)); return true;
+  }, reportHref({ reportKind: 'performance-window', from: fromUtc, to: toUtc }));
+  await expect(panel(page).locator('time').nth(0)).toHaveAttribute('datetime', fromUtc);
+  await expect(panel(page).locator('time').nth(1)).toHaveAttribute('datetime', toUtc);
+  await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  const editor = page.getByRole('form', { name: 'Custom UTC time range', exact: true });
+  await expect(editor.getByLabel('From (UTC)', { exact: true })).toHaveValue('2026-08-01T13:45:00.123');
+  await expect(editor.getByLabel('To (UTC)', { exact: true })).toHaveValue('2026-08-02T13:45:00.654');
+  await editor.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await generate(page).click();
+  await expect(csvLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/performance.csv`);
+  expect(contexts.get(page).requests).toHaveLength(1);
+});
+
+test('unknown and duplicate URL report selections refuse generation until the picker repairs the selection', async ({ page }) => {
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    const body = route.request().postDataJSON();
+    assertOperation(body, 'instance-health'); await json(route, reportRunForRequest(body)); return true;
+  }, reportHref({ reportKind: '<img src=x onerror=alert(1)>' }));
+  for (const hash of [reportHref({ reportKind: '<img src=x onerror=alert(1)>' }),
+    `${reportHref({ reportKind: 'performance-window' })}&reportKind=instance-health`]) {
+    await page.evaluate(value => { location.hash = value; }, hash);
+    await expect(kind(page)).toHaveValue('');
+    await expect(panel(page).getByRole('alert')).toBeVisible();
+    await expect(generate(page)).toBeDisabled();
+    await expect(htmlLink(page)).toHaveCount(0);
+    await expect(panel(page).locator('img, script')).toHaveCount(0);
+    expect(contexts.get(page).requests).toHaveLength(0);
+  }
+  await kind(page).selectOption('instance-health');
+  await expect(generate(page)).toBeEnabled();
+  await expect(panel(page).getByRole('alert')).toHaveCount(0);
+  const repaired = await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).getAll('reportKind'));
+  expect(repaired).toEqual(['instance-health']);
+  await generate(page).click(); await expect(htmlLink(page)).toBeVisible();
+  expect(contexts.get(page).requests).toHaveLength(1);
+});
+
+test('invalid, reversed, future and over-31-day shared windows refuse native IO and can be repaired through global controls', async ({ page }) => {
+  const badWindows = [
+    { from: '', to: '2026-08-02T13:45:00.000Z' },
+    { from: '2026-02-30T13:45:00Z', to: '2026-03-01T13:45:00Z' },
+    { from: '2026-08-02T13:45:00Z', to: '2026-08-01T13:45:00Z' },
+    { from: '2026-09-24T13:00:00Z', to: '2026-09-25T13:00:00Z' },
+    { from: '2026-08-01T13:45:00Z', to: '2026-09-01T13:45:00.000001Z' },
+  ];
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    const body = route.request().postDataJSON();
+    assertOperation(body, 'capacity-readiness', { fromUtc: '2026-08-01T13:45:00.000Z', toUtc: '2026-08-02T13:45:00.000Z' });
+    await json(route, reportRunForRequest(body)); return true;
+  }, reportHref({ reportKind: 'capacity-readiness', ...badWindows[0] }));
+  for (const window of badWindows) {
+    await page.evaluate(hash => { location.hash = hash; }, reportHref({ reportKind: 'capacity-readiness', ...window }));
+    await expect(panel(page).getByRole('alert')).toBeVisible();
+    await expect(generate(page)).toBeDisabled();
+    await expect(htmlLink(page)).toHaveCount(0);
+    expect(contexts.get(page).requests).toHaveLength(0);
+  }
+  await fillWindow(page);
+  await expect(generate(page)).toBeEnabled();
+  await generate(page).click(); await expect(csvLink(page)).toBeVisible();
+  expect(contexts.get(page).requests).toHaveLength(1);
+});
+
+test('shared scope edits abort pending work and fence late exports and late safe-error receipts', async ({ page }) => {
+  const denied = heldResponse({ detail: 'SECRET_LATE_FAILURE' }, 403);
+  const accepted = heldResponse(reportRunForRequest({ reportKind: 'performance-window',
+    fromUtc: '2026-09-24T12:00:00.000Z', toUtc: '2026-09-24T13:00:00.000Z' }));
+  let posts = 0;
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    await (++posts === 1 ? denied : accepted).handle(route); return true;
+  }, reportHref({ reportKind: 'performance-window' }));
+  await generate(page).click(); const first = await denied.started;
+  const firstCancelled = page.waitForEvent('requestfailed', { predicate: request => request === first });
+  await page.getByRole('combobox', { name: 'Time range', exact: true }).selectOption('1h');
+  await firstCancelled; await denied.release();
+  await expect(panel(page).getByRole('alert')).toHaveCount(0);
+  await expect(generate(page)).toBeEnabled();
+  await generate(page).click(); const second = await accepted.started;
+  const secondCancelled = page.waitForEvent('requestfailed', { predicate: request => request === second });
+  await fillWindow(page);
+  await secondCancelled; await accepted.release();
+  await expect(htmlLink(page)).toHaveCount(0); await expect(csvLink(page)).toHaveCount(0);
+  await expect(panel(page).getByRole('alert')).toHaveCount(0);
+  await expect(panel(page)).not.toContainText('SECRET_LATE_FAILURE');
+  await expect(generate(page)).toBeEnabled();
+  expect(contexts.get(page).requests).toHaveLength(2);
 });
