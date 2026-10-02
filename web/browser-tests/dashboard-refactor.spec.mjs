@@ -41,6 +41,140 @@ async function sessionUrlFixture(page) {
   await page.context().addCookies([{ name: 'sessionSelectionFixture', value: '1', url: origin }]);
 }
 const sessionHref = (identity, observed = sessionObserved, snapshot = sessionSnapshot) => `${href('activity', first, '1h')}&${new URLSearchParams({ sessionSnapshot: snapshot, sessionObserved: observed, ...(identity ? { sessionIdentity: identity } : {}) })}`;
+const seededIncident = 'aaaaaaaa-aaaa-4aaa-8aaa-000000000001';
+async function incidentWorkspaceFixture(page, retry = false) {
+  await databaseFixture(page);
+  await page.context().addCookies([{ name: 'incidentWorkspaceFixture', value: '1', url: origin }, ...(retry ? [{ name: 'incidentWorkspaceRetry', value: '1', url: origin }] : [])]);
+}
+
+test('the common incident action is available across target diagnostics and closing a draft returns keyboard focus', async ({ page }) => {
+  await incidentWorkspaceFixture(page);
+  for (const surface of ['overview', 'health', 'activity', 'waits', 'resources', 'queries', 'deadlocks', 'operations', 'alerts']) {
+    await page.goto(href(surface));
+    const open = page.getByRole('button', { name: 'Open incident', exact: true });
+    await expect(open).toHaveCount(1);
+    await expect(open).toBeEnabled();
+    await open.focus(); await open.press('Enter');
+    await expect(page.getByLabel('Incident title', { exact: true })).toBeFocused();
+    await page.getByLabel('Incident title', { exact: true }).fill(`SYNTHETIC ${surface} investigation`);
+    await page.getByRole('button', { name: 'Close draft', exact: true }).press('Enter');
+    await expect(open).toBeFocused();
+    await expect(page.getByLabel('Incident title', { exact: true })).toHaveCount(0);
+    await assertHistoricalScope(page);
+  }
+});
+
+test('incident save pins the original window and revision while duplicate activation and retry keep one immutable operation', async ({ page }) => {
+  await incidentWorkspaceFixture(page, true);
+  await page.goto(`${href('resources')}&databaseId=6`);
+  await page.getByRole('button', { name: 'Open incident', exact: true }).click();
+  const title = page.getByRole('textbox', { name: 'Incident title', exact: true }), notes = page.getByRole('textbox', { name: 'Notes', exact: true });
+  await title.fill('SYNTHETIC resource investigation'); await notes.fill('Synthetic note\nNo connected VM evidence.');
+  await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  await page.getByLabel('From (UTC)', { exact: true }).fill('2026-09-26T09:00');
+  await page.getByLabel('To (UTC)', { exact: true }).fill('2026-09-26T11:00');
+  await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+  const commands = [];
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/incidents/saved`, async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    commands.push(route.request().postDataJSON());
+    if (commands.length === 1) await gate;
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await page.getByRole('button', { name: 'Save incident', exact: true }).evaluate(element => { element.click(); element.click(); });
+  await expect.poll(() => commands.length).toBe(1);
+  await expect(page.getByRole('button', { name: 'Saving\u2026', exact: true })).toBeDisabled();
+  await expect(title).toBeDisabled(); await expect(notes).toBeDisabled();
+  expect(commands[0]).toMatchObject({ expectedTargetRevision: 1, fromUtc: from, toUtc: to, title: 'SYNTHETIC resource investigation', notes: 'Synthetic note\nNo connected VM evidence.' });
+  release();
+  const retry = page.getByRole('button', { name: 'Retry same save', exact: true });
+  await expect(retry).toBeEnabled();
+  await expect(title).toBeDisabled(); await expect(notes).toBeDisabled();
+  await retry.press('Enter');
+  await expect.poll(() => commands.length).toBe(2);
+  expect(commands[1]).toEqual(commands[0]);
+  await expect(page).toHaveURL(/#\/health\?/);
+  await expect.poll(() => scope(page).get('incident')).toMatch(/^[0-9a-f-]{36}$/);
+  await assertHistoricalScope(page); await assertDatabaseScope(page, 6);
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC resource investigation', exact: true })).toBeVisible();
+  await expect(page.getByText('No analytics evidence packets existed for this window when it was saved. This does not mean the server was healthy.', { exact: true })).toBeVisible();
+  const incidentId = scope(page).get('incident');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC resource investigation', exact: true })).toBeVisible();
+  expect(scope(page).get('incident')).toBe(incidentId);
+  await expect(page.locator('.incident-notes')).toHaveText('Synthetic note\nNo connected VM evidence.');
+});
+
+test('saved incident links are canonical and delayed old-target or foreign reads never display another investigation', async ({ page }) => {
+  await incidentWorkspaceFixture(page);
+  await page.goto(href('waits'));
+  await page.getByRole('button', { name: 'Saved investigations', exact: true }).click();
+  const retained = page.getByRole('link', { name: 'SYNTHETIC retained investigation 01', exact: true });
+  await expect(retained).toHaveAttribute('href', /#\/health\?/);
+  await expect(retained).toHaveAttribute('href', new RegExp(`incident=${seededIncident}`));
+  await retained.press('Enter');
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC retained investigation 01', exact: true })).toBeVisible();
+  let release, pending = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/incidents/saved/${seededIncident}`, async route => {
+    const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response });
+  });
+  await page.reload(); await expect.poll(() => pending).toBe(true);
+  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  await expect.poll(() => scope(page).get('target')).toBe(second);
+  await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeEnabled();
+  release();
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC retained investigation 01', exact: true })).toHaveCount(0);
+  await page.unroute(`**/observation-targets/${first}/incidents/saved/${seededIncident}`);
+  for (const [target, id] of [[second, seededIncident], [first, 'ffffffff-ffff-4fff-8fff-ffffffffffff']]) {
+    await page.goto(`${href('health', target)}&incident=${id}`);
+    await expect(page.getByText('This saved investigation was not found. Automatically correlated incidents remain available in Analytics.', { exact: true })).toBeVisible();
+    await expect(page.locator('.saved-incident')).toHaveCount(0);
+    expect(scope(page).get('incident')).toBe(id);
+  }
+});
+
+test('Viewer activity inspection exposes metadata but no protected SQL action or incident mutation', async ({ page }) => {
+  await sessionUrlFixture(page);
+  let protectedReads = 0, incidentWrites = 0;
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.endsWith('/activity/live/query')) protectedReads++;
+    if (new URL(request.url()).pathname.endsWith('/incidents/saved') && request.method() === 'POST') incidentWrites++;
+  });
+  await page.goto(sessionHref('c'.repeat(64)));
+  const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
+  await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
+  await expect(detail).toContainText('Captured SQL is hidden. Query Text Reader access is required for this server.');
+  await expect(detail.getByRole('button', { name: 'Load captured SQL', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toHaveCount(0);
+  await expect(detail.locator('pre.query-text')).toHaveCount(0);
+  expect(protectedReads).toBe(0); expect(incidentWrites).toBe(0);
+});
+
+test('revoking Query Text Reader while captured SQL is pending hides the action and rejects its late plaintext', async ({ page }) => {
+  await sessionUrlFixture(page);
+  await page.context().addCookies([{ name: 'activityQueryReaderFixture', value: '1', url: origin }]);
+  await page.goto(sessionHref('c'.repeat(64)));
+  const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
+  const load = detail.getByRole('button', { name: 'Load captured SQL', exact: true });
+  await expect(load).toBeEnabled();
+  let release, pending = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/activity/live/query?*`, async route => {
+    const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response });
+  });
+  await load.press('Enter'); await expect.poll(() => pending).toBe(true);
+  await page.context().addCookies([{ name: 'activityQueryReaderFixture', value: '0', url: origin }]);
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect(detail).toContainText('Captured SQL is hidden. Query Text Reader access is required for this server.');
+  await expect(load).toHaveCount(0);
+  release();
+  await expect(detail.locator('pre.query-text')).toHaveCount(0);
+  await expect(detail).not.toContainText('SELECT 1 AS synthetic_fixture_only;');
+  await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
+});
 
 test('Resources URL restores file node and inspection while pointer stays transient and fixed investigation freezes only the loaded window', async ({ page }) => {
   await resourceUrlFixture(page);
@@ -135,6 +269,7 @@ test('delayed old Resources file and NUMA evidence cannot repopulate selections 
 
 test('Activity URL finds the exact paged request identity rather than another row sharing its SPID and protects SQL behind an explicit action', async ({ page }) => {
   await sessionUrlFixture(page);
+  await page.context().addCookies([{ name: 'activityQueryReaderFixture', value: '1', url: origin }]);
   const reads = [], protectedReads = [];
   page.on('request', request => {
     const url = new URL(request.url());

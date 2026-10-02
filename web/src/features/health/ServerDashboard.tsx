@@ -11,7 +11,6 @@ import type { TargetHealthState } from "./healthTypes";
 import { DashboardTimeline } from "../../components/DashboardTimeline";
 import { timelineEventsInWindow, type TimelineEvent } from "../../components/dashboardTimelineModel";
 import { useDashboardTimeline } from "./useDashboardTimeline";
-import { IncidentWorkspace } from "../incidents/IncidentWorkspace.tsx";
 import { useAgentHistory } from "../operations/useAgentHistory.ts";
 import { healthCheckHref } from "../operations/agentHistoryModel.ts";
 import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx";
@@ -20,14 +19,13 @@ import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, read
   type DashboardTimelineSelection } from "../../components/dashboardTimelineSelectionModel.ts";
 import { utcMicroseconds } from "../../utcTimestamp.ts";
 
-export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, canSaveIncident, targetRevision, selectionHash, canReadRules }: {
+export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
   readonly blockingRefresh: number;
   readonly configurationCollectorState?: TargetHealthState;
-  readonly canSaveIncident: boolean;
   readonly targetRevision: number;
   readonly selectionHash: string;
   readonly canReadRules: boolean;
@@ -119,9 +117,6 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
 
   return <section className="server-dashboard" aria-labelledby="server-dashboard-heading">
     <div className="section-heading"><div><p className="eyebrow">Server dashboard</p><h3 id="server-dashboard-heading">Investigate {displayName}</h3></div></div>
-    <IncidentWorkspace key={instanceId} targetId={instanceId} targetRevision={targetRevision} canSave={canSaveIncident}
-      scope={selectedScope} selectionHash={selectionHash} formatTime={timeLabel}
-      window={data && evidence ? { fromUtc: data.fromUtc, toUtc: data.toUtc } : undefined} />
     <div className="overview-controls server-dashboard-controls">
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
       <span className="server-dashboard-mode">Drag a chart to select a shared time window. Live ranges refresh every 60 seconds.</span>

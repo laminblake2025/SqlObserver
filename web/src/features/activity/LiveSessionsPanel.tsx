@@ -15,7 +15,7 @@ import { activitySelectionExpired, activitySelectionHref, activityUtc, loadActiv
 // repository/capture latency so the exact triggered snapshot is returned.
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
-export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, selectedDatabaseId, onSelectDatabase, historyUnavailableReason, scope, selectionHash, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; selectedDatabaseId?: number; onSelectDatabase?: (databaseId: number | undefined) => void; historyUnavailableReason?: string; scope?: OverviewScope; selectionHash?: string; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean }) {
+export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, selectedDatabaseId, onSelectDatabase, historyUnavailableReason, scope, selectionHash, canReadText = false, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; selectedDatabaseId?: number; onSelectDatabase?: (databaseId: number | undefined) => void; historyUnavailableReason?: string; scope?: OverviewScope; selectionHash?: string; canReadText?: boolean; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean }) {
   const { mode: timeMode } = useTimeDisplay();
   const timeLabel = (value: string | number) => formatDisplayTime(value, timeMode);
   const urlEnabled = scope !== undefined && selectionHash !== undefined;
@@ -50,6 +50,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const [selectionMessage, setSelectionMessage] = useState<string>();
   const [restoration, setRestoration] = useState<{ key: string; loading: boolean; message?: string }>();
   const [detail, setDetail] = useState<QueryDetail>(); const [detailError, setDetailError] = useState<string>();
+  const [detailAccessGeneration, setDetailAccessGeneration] = useState<number>();
   const [queryLoading, setQueryLoading] = useState(false);
   const [databaseOptions, setDatabaseOptions] = useState<LivePage["databases"]>([]);
   const [pageKey, setPageKey] = useState<string>();
@@ -57,6 +58,11 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const historyFrom = selectedHistoryWindow ? Date.parse(selectedHistoryWindow.fromUtc) : historyEnd - hours * 3600000;
   const historyTo = selectedHistoryWindow ? Date.parse(selectedHistoryWindow.toUtc) : historyEnd;
   const queryRequest = useRef<AbortController | undefined>(undefined);
+  const textAccessRef = useRef({ allowed: canReadText, generation: 0 });
+  if (textAccessRef.current.allowed !== canReadText) textAccessRef.current = {
+    allowed: canReadText, generation: textAccessRef.current.generation + 1,
+  };
+  const visibleDetail = canReadText && detailAccessGeneration === textAccessRef.current.generation ? detail : undefined;
   const inspectionKeyRef = useRef(`${contextKey}/${selectionKey}`);
   inspectionKeyRef.current = `${contextKey}/${selectionKey}`;
   const loadedPageScope = useRef<{ filterKey: string; cursor?: string } | undefined>(undefined);
@@ -65,6 +71,12 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const consecutiveFailures = useRef(0);
   const retryAfter = useRef(0);
   useEffect(() => { manual.current = true; }, [refreshToken]);
+  useEffect(() => {
+    if (!canReadText) {
+      queryRequest.current?.abort(); queryRequest.current = undefined;
+      setDetail(undefined); setDetailError(undefined); setDetailAccessGeneration(undefined); setQueryLoading(false);
+    }
+  }, [canReadText]);
   const lastRequestKey = useRef("");
   const filterKey = JSON.stringify({ database, login, application, status, idle, system, blocked, sort, descending });
   const snapshots = new Map(history.map(value => [Math.floor(Date.parse(value.observedUtc) / 60000), value]));
@@ -279,16 +291,20 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     else publishCapture(undefined);
   }
   async function loadCapturedSql(observation: NonNullable<typeof selection>) {
+    if (!textAccessRef.current.allowed || !stillCurrent()) return;
     queryRequest.current?.abort(); const controller = new AbortController(); queryRequest.current = controller;
     const expected = inspectionKeyRef.current;
+    const accessGeneration = textAccessRef.current.generation;
+    const mayPublish = () => !controller.signal.aborted && textAccessRef.current.allowed &&
+      textAccessRef.current.generation === accessGeneration && inspectionKeyRef.current === expected && stillCurrent();
     setDetail(undefined); setDetailError(undefined); setQueryLoading(true);
-    if (!observation.row.queryId) { setDetail({ state: observation.row.queryState, text: null }); setQueryLoading(false); return; }
+    if (!observation.row.queryId) { setDetail({ state: observation.row.queryState, text: null }); setDetailAccessGeneration(accessGeneration); setQueryLoading(false); return; }
     try {
       const value = await readLive<QueryDetail>(instanceId, "/query", new URLSearchParams({ snapshot: observation.snapshot, identity: observation.row.identity }), controller.signal);
-      if (!controller.signal.aborted && inspectionKeyRef.current === expected && stillCurrent()) setDetail(value);
+      if (mayPublish()) { setDetail(value); setDetailAccessGeneration(accessGeneration); }
     } catch (failure) {
-      if (!controller.signal.aborted && inspectionKeyRef.current === expected && stillCurrent()) setDetailError(failure instanceof Error ? failure.message : "Query detail unavailable.");
-    } finally { if (!controller.signal.aborted && inspectionKeyRef.current === expected) setQueryLoading(false); }
+      if (mayPublish()) setDetailError(failure instanceof Error ? failure.message : "Query detail unavailable.");
+    } finally { if (mayPublish()) setQueryLoading(false); }
   }
   async function open(row: LiveRow) {
     if (!displayPage?.snapshotId || !displayPage.observedUtc) return;
@@ -362,9 +378,11 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <p>Engine startup: {selection.row.engineStartup}; session login: {selection.row.sessionLogin}; request start: {selection.row.requestStart ?? "idle"} (SQL Server local timestamps).</p>
       <p>Cumulative CPU {selection.row.cpuMs} ms · memory {selection.row.memoryBytes} bytes · logical reads {selection.row.logicalReads} · reads {selection.row.reads} · writes {selection.row.writes} · elapsed {selection.row.elapsedMs} ms.</p>
       <p>{selection.row.delta ? `Changes over ${selection.row.delta.seconds}s: CPU +${selection.row.delta.cpuMs} ms; reads +${selection.row.delta.reads}; writes +${selection.row.delta.writes}; logical reads +${selection.row.delta.logicalReads}.` : "Interval changes unavailable: no matching complete baseline, restarted lifetime or reset counters."}</p>
-      <h4>Captured executing SQL</h4><p role={detailError ? "alert" : "status"}>{selection.row.queryState === "truncated" ? "Statement truncated to 16 KiB. " : ""}{detailError ?? detail?.state ?? (queryLoading ? "Loading protected query…" : selection.row.queryId ? "Metadata restored. Captured SQL requires a deliberate request and Query Text Reader access." : selection.row.queryState)}</p>
-      {selection.row.queryId && <button type="button" disabled={queryLoading} onClick={() => void loadCapturedSql(selection)}>Load captured SQL</button>}
-      {detail?.text && <pre className="query-text" tabIndex={0} aria-label="Captured executing SQL">{detail.text}</pre>}
+      <h4>Captured executing SQL</h4><p role={canReadText && detailError ? "alert" : "status"}>{selection.row.queryId && !canReadText
+        ? "Captured SQL is hidden. Query Text Reader access is required for this server."
+        : <>{selection.row.queryState === "truncated" ? "Statement truncated to 16 KiB. " : ""}{detailError ?? visibleDetail?.state ?? (queryLoading ? "Loading protected query…" : selection.row.queryId ? "Metadata restored. Captured SQL requires a deliberate request and Query Text Reader access." : selection.row.queryState)}</>}</p>
+      {selection.row.queryId && canReadText && <button type="button" disabled={queryLoading} onClick={() => void loadCapturedSql(selection)}>Load captured SQL</button>}
+      {visibleDetail?.text && <pre className="query-text" tabIndex={0} aria-label="Captured executing SQL">{visibleDetail.text}</pre>}
     </aside>}
   </section>;
 }

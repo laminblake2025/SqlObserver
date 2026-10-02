@@ -2,6 +2,7 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {handleAvailabilityFixture} from './availability-evidence-fixture.mjs';
 import {handleBackupFixture} from './backup-assessment-fixture.mjs';
 import {overviewBackupFixture} from './overview-backup-fixture.mjs';
@@ -14,6 +15,11 @@ const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
 // The ordinary live fixture exposes one synthetic capture. Filter/page reads
 // must retain that GUID's observation time even as repository read time moves.
 const ordinaryLiveCapturedUtc=new Date().toISOString();
+const workspaceIncidents=new Map();
+for(const target of targets.slice(0,2)) {
+ const tail=target.instanceId.slice(-12),operationId=`bbbbbbbb-bbbb-4bbb-8bbb-${tail}`;
+ workspaceIncidents.set(operationId,{body:null,result:{targetId:target.instanceId,targetRevision:target.configurationRevision,threadId:`aaaaaaaa-aaaa-4aaa-8aaa-${tail}`,operationId,fromUtc:'2026-09-26T08:00:00.000Z',toUtc:'2026-09-26T12:00:00.000Z',savedAtUtc:'2026-09-30T12:00:00.000Z',title:`SYNTHETIC retained investigation ${tail.slice(-2)}`,notes:'Synthetic retained notes; no connected server evidence.',evidenceTruncated:false,evidence:[]}});
+}
 const alertSelectionRows=[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:'2026-09-30T09:00:00.000Z',firedUtc:'2026-09-30T09:01:00.000Z',value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false},{alertId:'66666666-6666-4666-8666-666666666666',ruleId:'77777777-7777-4777-8777-777777777777',ruleName:'SYNTHETIC paged alert',state:'firing',firstObservedUtc:'2026-09-30T10:00:00.000Z',firedUtc:'2026-09-30T10:01:00.000Z',value:7,reason:'Synthetic bounded second-page evidence',deliverySuppressed:false}];
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
 // Preserve the same microsecond precision as the native equal-width comparison contract.
@@ -25,6 +31,38 @@ const utcTicks=value=>{
 const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ const incidentWorkspace=req.headers.cookie?.includes('incidentWorkspaceFixture=1');
+ const queryTextReader=req.headers.cookie?.includes('activityQueryReaderFixture=1');
+ if((incidentWorkspace||queryTextReader)&&url.pathname==='/api/v1/me') {
+  const targetId=url.searchParams.get('targetId'),roles=['Viewer',...(queryTextReader?['QueryTextReader']:[]),...(incidentWorkspace&&!req.headers.cookie?.includes('incidentWorkspaceRole=viewer')?['Operator']:[])];
+  return send(res,{active:true,targetId,grantedRoles:roles,allTargetRoles:roles,targetRoles:targetId?roles:[]});
+ }
+ const incidentRoute=/^\/api\/v1\/observation-targets\/([^/]+)\/incidents\/saved(?:\/([^/]+))?$/.exec(url.pathname);
+ if(incidentWorkspace&&incidentRoute) {
+  const target=targets.find(item=>item.instanceId===incidentRoute[1]),threadId=incidentRoute[2];
+  if(!target)return send(res,{},404);
+  if(req.method==='GET'&&threadId) {
+   const saved=[...workspaceIncidents.values()].find(item=>item.result.targetId===target.instanceId&&item.result.threadId===threadId);
+   return send(res,saved?.result??{},saved?200:404);
+  }
+  if(req.method==='GET') {
+   const snapshotUtc=new Date().toISOString();
+   const records=[...workspaceIncidents.values()].map(item=>item.result).filter(item=>item.targetId===target.instanceId).sort((a,b)=>b.savedAtUtc.localeCompare(a.savedAtUtc)||b.threadId.localeCompare(a.threadId));
+   return send(res,{targetId:target.instanceId,snapshotUtc,items:records.slice(0,20).map(({targetId,targetRevision,threadId,fromUtc,toUtc,savedAtUtc,title,evidenceTruncated,evidence})=>({targetId,targetRevision,threadId,fromUtc,toUtc,savedAtUtc,title,evidenceTruncated,evidenceCount:evidence.length})),hasMore:false,nextCursor:null});
+  }
+  if(req.method!=='POST'||threadId)return send(res,{},405);
+  if(req.headers.cookie?.includes('incidentWorkspaceRole=viewer'))return send(res,{},403);
+  let body='';for await(const chunk of req){body+=chunk.toString('utf8');if(Buffer.byteLength(body)>16384)return send(res,{},413);}
+  const command=JSON.parse(body);
+  if(command.expectedTargetRevision!==target.configurationRevision)return send(res,{},409);
+  const existing=workspaceIncidents.get(command.operationId);
+  if(existing)return send(res,existing.result,existing.body===body&&existing.result.targetId===target.instanceId?200:409);
+  const result={targetId:target.instanceId,targetRevision:target.configurationRevision,threadId:randomUUID(),operationId:command.operationId,fromUtc:command.fromUtc,toUtc:command.toUtc,savedAtUtc:new Date().toISOString(),title:command.title,notes:command.notes,evidenceTruncated:false,evidence:[]};
+  workspaceIncidents.set(command.operationId,{body,result});
+  // The first uncertain response retains the synthetic committed record so the
+  // same immutable command can verify its outcome on retry.
+  return send(res,req.headers.cookie?.includes('incidentWorkspaceRetry=1')?{}:result,req.headers.cookie?.includes('incidentWorkspaceRetry=1')?500:200);
+ }
  if(req.headers.cookie?.includes('alertOperatorFixture=1')&&url.pathname==='/api/v1/me') {
   const targetId=url.searchParams.get('targetId'),roles=['Viewer','Operator'];
   return send(res,{active:true,targetId,grantedRoles:roles,allTargetRoles:roles,targetRoles:targetId?roles:[]});

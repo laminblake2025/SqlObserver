@@ -332,8 +332,10 @@ for (const width of [320, 390, 768, 1440]) {
     await page.goto('/#/activity?' + parameters);
     const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
     await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
-    const load = detail.getByRole('button', { name: 'Load captured SQL', exact: true });
-    await load.focus(); await expect(load).toBeFocused();
+    await expect(detail.getByRole('button', { name: 'Load captured SQL', exact: true })).toHaveCount(0);
+    await expect(detail).toContainText('Captured SQL is hidden. Query Text Reader access is required for this server.');
+    const clearSelection = page.getByRole('button', { name: 'Clear session selection', exact: true });
+    await clearSelection.focus(); await expect(clearSelection).toBeFocused();
     expect(protectedReads).toBe(0);
     await auditResponsiveState(page, testInfo, 'activity-restored-metadata');
     await saveFullPage(page, `activity-restored-selection-${width}.png`);
@@ -347,6 +349,42 @@ for (const width of [320, 390, 768, 1440]) {
     const clear = page.getByRole('button', { name: 'Clear session selection', exact: true });
     await clear.focus(); await clear.press('Enter');
     await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('sessionIdentity')).toBe(null);
+  });
+}
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`common incident workspace draft saved and unavailable states remain accessible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'databaseScopeFixture', value: '1', url: origin },
+      { name: 'incidentWorkspaceFixture', value: '1', url: origin },
+      { name: 'resourceInspectionFixture', value: '1', url: origin },
+    ]);
+    const from = '2026-09-26T08:00:00.000Z', to = '2026-09-26T12:00:00.000Z';
+    await page.goto(`/#/resources?${new URLSearchParams({ target, range: 'custom', from, to, databaseId: '6' })}`);
+    const open = page.getByRole('button', { name: 'Open incident', exact: true });
+    await open.focus(); await open.press('Enter');
+    const title = page.getByLabel('Incident title', { exact: true });
+    await expect(title).toBeFocused();
+    await title.fill(`SYNTHETIC workspace investigation ${width}`);
+    await page.getByLabel('Notes', { exact: true }).fill('Synthetic notes for the selected window.\nNo connected VM evidence.');
+    await auditResponsiveState(page, testInfo, 'incident-workspace-draft');
+    await saveFullPage(page, `incident-workspace-draft-${width}.png`);
+    await page.getByRole('button', { name: 'Save incident', exact: true }).press('Enter');
+    await expect(page.getByRole('heading', { name: `SYNTHETIC workspace investigation ${width}`, exact: true })).toBeVisible();
+    await expect(page.getByText('No analytics evidence packets existed for this window when it was saved. This does not mean the server was healthy.', { exact: true })).toBeVisible();
+    const selection = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+    expect(selection.get('incident')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(Object.fromEntries(selection)).toMatchObject({ target, range: 'custom', from, to, databaseId: '6' });
+    await auditResponsiveState(page, testInfo, 'incident-workspace-saved');
+    await saveFullPage(page, `incident-workspace-saved-${width}.png`);
+    await page.goto(`/#/health?${new URLSearchParams({ target, range: 'custom', from, to, incident: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000001' })}`);
+    await expect(page.getByText('This saved investigation was not found. Automatically correlated incidents remain available in Analytics.', { exact: true })).toBeVisible();
+    await expect(page.locator('.saved-incident')).toHaveCount(0);
+    await auditResponsiveState(page, testInfo, 'incident-workspace-unavailable');
+    await saveFullPage(page, `incident-workspace-unavailable-${width}.png`);
   });
 }
 

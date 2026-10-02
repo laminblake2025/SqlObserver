@@ -11,6 +11,10 @@ import { retainWaitCategoryHref } from "./features/activity/waitSelectionModel.t
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { DatabaseScopeControls } from "./components/DatabaseScopeControls";
+import { IncidentWorkspace } from "./features/incidents/IncidentWorkspace.tsx";
+import "./features/incidents/incidentWorkspace.css";
+import { resolveWorkspaceIncidentWindow } from "./features/incidents/workspaceIncidentWindow.ts";
+import { formatDisplayTime } from "./timeDisplay";
 import { useTimeDisplay } from "./TimeDisplayContext";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetWaitsPanel } from "./features/activity/TargetWaitsPanel";
@@ -78,7 +82,7 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
-  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" || route.page === "operations" ||
+  const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" || route.page === "operations" || route.page === "alerts" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
@@ -115,12 +119,12 @@ export function App() {
   useEffect(() => {
     const targetId = route.target || null;
     const controller = new AbortController();
-    setAccess(undefined);
+    setAccess(current => current?.targetId === targetId ? current : undefined);
     void getMyAccess(targetId, controller.signal)
       .then(value => { if (!controller.signal.aborted) setAccess({ targetId, value }); })
       .catch(() => { if (!controller.signal.aborted) setAccess(undefined); });
     return () => controller.abort();
-  }, [route.target]);
+  }, [route.target, slowRefresh]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -245,6 +249,8 @@ export function App() {
   const props = selected
     ? { instanceId: selected.instanceId, displayName: selected.displayName, onClose: closeTarget }
     : undefined;
+  const incidentPage = ["overview", "health", "activity", "waits", "resources", "queries", "deadlocks", "operations", "alerts"].includes(route.page);
+  const incidentContext = selected && incidentPage ? resolveWorkspaceIncidentWindow(location.hash, selected.instanceId, Date.now()) : undefined;
   const targetOptions = selected && !targets.some((target) => target.instanceId === selected.instanceId)
     ? [selected, ...targets]
     : targets;
@@ -348,6 +354,13 @@ export function App() {
           {scope.databaseId !== undefined && selected && <p className="muted database-context-notice" data-testid="database-context-notice">
             Database ID {scope.databaseId} stays selected across this server’s views. Supported session, query and file rows follow this context; server-wide metrics, waits, blocking history, deadlocks, alerts and health checks remain server-wide.
           </p>}
+          {selected && incidentPage && <section className="workspace-investigations" aria-label={`Investigations for ${selected.displayName}`}>
+            <IncidentWorkspace key={selected.instanceId} compact targetId={selected.instanceId} targetRevision={selected.configurationRevision}
+              canSave={canSaveIncident(myAccess, selected.instanceId)} scope={scope} selectionHash={location.hash}
+              window={incidentContext?.window} formatTime={value => formatDisplayTime(value, timeDisplayMode)} />
+            {incidentContext?.message && <p className="evidence-footer" role="status">{incidentContext.message}</p>}
+            {scope.databaseId !== undefined && <p className="evidence-footer">Saved incidents capture server-wide analytics evidence. The database context is retained for navigation.</p>}
+          </section>}
 
           {route.page !== "overview" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
           {route.page !== "overview" && !fleetAlertsPage && message ? <p role="alert" className="status-message">{message}</p> : null}
@@ -363,8 +376,8 @@ export function App() {
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
                 onSelectSection={section => { location.hash = retainDashboardTimelineHref(healthSectionHref(readOverviewScope(location.hash), props.instanceId, section), location.hash); }}
-                canManageConfiguration={canManageRules} canSaveIncident={canSaveIncident(myAccess,props.instanceId)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} selectionHash={location.hash} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+                canManageConfiguration={canManageRules} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
+              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} selectionHash={location.hash}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} canReadRules={canManageRules}

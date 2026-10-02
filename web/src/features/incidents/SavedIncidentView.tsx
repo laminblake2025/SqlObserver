@@ -1,12 +1,15 @@
+import { useId } from "react";
 import type { SavedIncident } from "./incidentModel.ts";
 import { SavedIncidentReportActions } from "./SavedIncidentReportActions.tsx";
 
-export function SavedIncidentView({ incident, formatTime, href, onClose }: {
+export function SavedIncidentView({ incident, formatTime, href, onClose, compact = false }: {
   readonly incident: SavedIncident; readonly formatTime: (value: string) => string;
-  readonly href: string; readonly onClose: () => void;
+  readonly href: string; readonly onClose: () => void; readonly compact?: boolean;
 }) {
-  return <section className="panel saved-incident" aria-labelledby="saved-incident-title">
-    <div className="section-heading"><div><p className="eyebrow">Saved investigation</p><h4 id="saved-incident-title">{incident.title}</h4></div>
+  const headingId = useId();
+  const Heading = compact ? "h2" : "h4";
+  return <section className={`panel saved-incident incident-workspace${compact ? " incident-workspace-compact" : ""}`} aria-labelledby={headingId}>
+    <div className="section-heading"><div><p className="eyebrow">Saved investigation</p><Heading id={headingId}>{incident.title}</Heading></div>
       <button type="button" onClick={onClose}>Close investigation</button></div>
     <p>Window: {formatTime(incident.fromUtc)} to {formatTime(incident.toUtc)}. Saved {formatTime(incident.savedAtUtc)}.</p>
     <p className="incident-notes">{incident.notes || "No notes were recorded."}</p>
@@ -19,8 +22,8 @@ export function SavedIncidentView({ incident, formatTime, href, onClose }: {
       <summary>{formatTime(packet.occurredAtUtc)} · {packet.evidenceKind} · {packet.visibilityState}</summary>
       <p>Packet {packet.packetId} · Confidence {packet.confidence === null ? "Unknown" : `${Math.round(packet.confidence*100)}%`}</p>
       <p>Source digest: <code>{packet.sourceSha256}</code></p>
-      <pre>{JSON.stringify(packet.evidence,null,2)}</pre>
+      <pre tabIndex={0} role="region" aria-label={`Saved evidence packet ${packet.packetId}`}>{JSON.stringify(packet.evidence,null,2)}</pre>
     </details>)}
-    <SavedIncidentReportActions key={`${incident.targetId}:${incident.threadId}`} incident={incident} formatTime={formatTime}/>
+    <SavedIncidentReportActions key={`${incident.targetId}:${incident.threadId}`} incident={incident} formatTime={formatTime} compact={compact}/>
   </section>;
 }

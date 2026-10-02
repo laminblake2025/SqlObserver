@@ -5,7 +5,8 @@ import type { SavedInvestigationReportRun } from "./savedIncidentReportApi.ts";
 import type { SavedIncident } from "./incidentModel.ts";
 import { reportCsvUrl, reportHtmlUrl } from "../reports/reportsApi.ts";
 
-export function SavedIncidentReportActions({incident,formatTime}:{readonly incident:SavedIncident;readonly formatTime:(value:string)=>string}) {
+export function SavedIncidentReportActions({incident,formatTime,compact=false}:{readonly incident:SavedIncident;readonly formatTime:(value:string)=>string;readonly compact?:boolean}) {
+  const Heading=compact?"h3":"h5";
   const operation=useRef<string|undefined>(undefined);
   const active=useRef<AbortController|null>(null);
   const [pending,setPending]=useState(false);
@@ -24,7 +25,7 @@ export function SavedIncidentReportActions({incident,formatTime}:{readonly incid
     } finally {if(active.current===controller){active.current=null;setPending(false);}}
   };
   return <div className="saved-incident-report">
-    <h5>Report and exports</h5>
+    <Heading>Report and exports</Heading>
     {!run && <button type="button" disabled={pending||error!==undefined&&!error.retryable} onClick={()=>void generate()}>{pending?"Generating report…":operation.current?"Retry report generation":"Generate investigation report"}</button>}
     {error && <p role="alert">{error.message}</p>}
     {run && <div className="toolbar" aria-live="polite">

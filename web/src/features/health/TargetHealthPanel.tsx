@@ -72,7 +72,6 @@ export interface TargetHealthPanelProps {
   readonly selectedDatabaseId?: number;
   readonly onSelectDatabase: (databaseId: number | undefined) => void;
   readonly canManageConfiguration: boolean;
-  readonly canSaveIncident: boolean;
   readonly targetRevision: number;
   readonly selectionHash: string;
   readonly selectedConfigurationRunId?: string;
@@ -80,7 +79,7 @@ export interface TargetHealthPanelProps {
   readonly onSelectSection?: (section: "summary" | "databases" | "collection") => void;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, canSaveIncident, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const [receivedEvidence, setEvidence] = useState<TargetHealthEvidence>();
   const evidence = receivedEvidence?.target.instanceId.toLowerCase() === instanceId.toLowerCase()
@@ -138,7 +137,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
         </button>
       </div>
       <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
-        canSaveIncident={canSaveIncident} targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
+        targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
         blockingRefresh={blockingRefresh}
         configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
       <p className="table-note">The dashboard follows the selected time window. Database, file, configuration, and collector summaries below show their latest snapshots, with source times alongside each observation.</p>

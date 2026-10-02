@@ -1,0 +1,24 @@
+.incident-workspace {
+  min-width: 0;
+  margin-block: 1rem;
+  overflow-wrap: anywhere;
+}
+.incident-workspace.panel,
+.incident-workspace .incident-list-content { padding: 1rem; }
+.incident-workspace-compact h2 { margin-block: 0 .75rem; font-size: 1.15rem; }
+.incident-workspace-compact h3 { font-size: 1rem; }
+.incident-workspace .incident-actions { margin-block: 0 .75rem; }
+.incident-workspace .saved-incident-list { margin-block: .5rem 0; }
+.incident-workspace input,
+.incident-workspace textarea { min-width: 0; box-sizing: border-box; }
+.incident-workspace textarea { resize: vertical; }
+.incident-workspace .toolbar,
+.incident-workspace .section-heading { flex-wrap: wrap; }
+.incident-workspace .section-heading > div { min-width: 0; }
+.incident-workspace button { max-width: 100%; }
+.incident-workspace pre:focus-visible { outline: 2px solid #96d5ff; outline-offset: 3px; }
+@media (max-width: 480px) {
+  .incident-workspace.panel,
+  .incident-workspace .incident-list-content { padding: .75rem; }
+  .incident-workspace .toolbar { gap: .5rem; }
+}
