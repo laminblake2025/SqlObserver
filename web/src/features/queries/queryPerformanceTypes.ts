@@ -64,6 +64,13 @@ export type PlanCacheHistorySelection = {
   readonly targetId: string; readonly databaseId: number; readonly databaseIncarnation: string;
   readonly queryFingerprint: string; readonly planFingerprint: string;
 };
+export type PlanCacheContentKind = "text" | "plan";
+export type PlanCacheContentReason = "available" | "evidence_unavailable" | "capture_missing" | "capture_disabled"
+  | "not_selected" | "source_unavailable" | "oversized" | "response_byte_limit" | "protection_unavailable" | "protection_failed";
+export type PlanCacheContent = {
+  readonly status: "available" | "unavailable"; readonly reason: PlanCacheContentReason;
+  readonly observedAtUtc: string | null; readonly content: string | null;
+};
 export type PlanCacheIntervalHistoryItem = {
   readonly collectionRunId: string; readonly cacheEntryFingerprint: string; readonly sourceEpoch: string;
   readonly observedAtUtc: string; readonly committedAtUtc: string; readonly captureComplete: boolean;

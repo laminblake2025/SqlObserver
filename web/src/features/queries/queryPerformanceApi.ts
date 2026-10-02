@@ -1,4 +1,5 @@
 import { apiFetch } from "../../apiClient.ts";
+import type { PlanCacheContent, PlanCacheContentKind, PlanCacheContentReason } from "./queryPerformanceTypes";
 import { readBoundedBody } from "../activity/activityParser.mjs";
 import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList, PlanCacheIntervalRanking, PlanCacheHistorySelection, PlanCacheIntervalHistory } from "./queryPerformanceTypes";
 
@@ -21,7 +22,7 @@ const canonicalInstant = (value: string): string => value.replace(/(?:\.(\d{1,7}
 const metric = (value: unknown): value is number | null | undefined => value === undefined || value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
 async function readJson(url: string, expectedTargetId: string, signal?: AbortSignal, maxBytes = maximumResponseBytes, sensitive = false): Promise<unknown> {
-  const response = await apiFetch(url, { signal, cache: sensitive ? "no-store" : "default", headers: { Accept: "application/json" } });
+  const response = await apiFetch(url, { signal, cache: sensitive ? "no-store" : "default", headers: { Accept: "application/json" } }, { maximumResponseBytes: maxBytes });
   if (!response.ok) throw new Error(response.status === 404 ? "Query performance evidence is unavailable." : "Query performance request failed.");
   if (!/^application\/json(?:;|$)/iu.test(response.headers.get("content-type") ?? "")) throw new Error("Query performance response content type was invalid.");
   const length = Number(response.headers.get("content-length") ?? "0");
@@ -30,6 +31,37 @@ async function readJson(url: string, expectedTargetId: string, signal?: AbortSig
   let value: unknown; try { value = JSON.parse(body); } catch { throw new Error("Query performance response was invalid."); }
   if (typeof value !== "object" || value === null || (value as { targetId?: unknown }).targetId !== expectedTargetId) throw new Error("Query performance response was outside its target contract.");
   return value;
+}
+
+export async function getPlanCacheContent(selection: PlanCacheHistorySelection, collectionRunId: string,
+    cacheEntryFingerprint: string, kind: PlanCacheContentKind, signal: AbortSignal): Promise<PlanCacheContent> {
+  const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  if (!guid.test(selection.targetId) || !guid.test(collectionRunId) || !Number.isInteger(selection.databaseId)
+      || selection.databaseId < 5 || selection.databaseId > 32766 || kind !== "text" && kind !== "plan"
+      || ![selection.databaseIncarnation, selection.queryFingerprint, selection.planFingerprint, cacheEntryFingerprint]
+        .every(value => /^[0-9a-f]{64}$/u.test(value))) throw new Error("Cache content identity was invalid.");
+  const url = `/api/v1/observation-targets/${selection.targetId}/query-performance/cache/databases/${selection.databaseId}`
+    + `/history/${selection.queryFingerprint}/plans/${selection.planFingerprint}/runs/${collectionRunId}`
+    + `/entries/${cacheEntryFingerprint}/content/${kind}?databaseIncarnation=${selection.databaseIncarnation}`;
+  // A JSON-escaped one-MiB UTF-8 plan can use six MiB on the wire.
+  const value = await readJson(url, selection.targetId, signal, kind === "text" ? 128 * 1024 : 8 * 1024 * 1024, true) as Record<string, unknown>;
+  const reasons = new Set(["available", "evidence_unavailable", "capture_missing", "capture_disabled", "not_selected",
+    "source_unavailable", "oversized", "response_byte_limit", "protection_unavailable", "protection_failed"]);
+  const content = kind === "text" ? value.text : value.xml;
+  if (value.databaseId !== selection.databaseId || value.databaseIncarnation !== selection.databaseIncarnation
+      || value.queryFingerprint !== selection.queryFingerprint || value.planFingerprint !== selection.planFingerprint
+      || typeof value.collectionRunId !== "string" || value.collectionRunId.toLowerCase() !== collectionRunId.toLowerCase()
+      || value.cacheEntryFingerprint !== cacheEntryFingerprint || value.payloadKind !== kind
+      || value.status !== "available" && value.status !== "unavailable"
+      || typeof value.reason !== "string" || !reasons.has(value.reason)
+      || value.status === "available" && (value.reason !== "available" || typeof content !== "string" || !content.length
+        || new TextEncoder().encode(content).length > (kind === "text" ? 16 * 1024 : 1024 * 1024) || !timestamp(value.observedAtUtc))
+      || value.status === "unavailable" && (value.reason === "available" || content !== null)
+      || value.observedAtUtc !== null && !timestamp(value.observedAtUtc)
+      || (kind === "text" ? value.xml : value.text) !== null)
+    throw new Error("Cache content response did not match its exact observation or bounds.");
+  return { status: value.status, reason: value.reason as PlanCacheContentReason,
+    observedAtUtc: value.observedAtUtc as string | null, content: content as string | null };
 }
 
 export async function getQueryPerformanceText(instanceId: string, databaseId: number, queryFingerprint: string, collectionRunId: string, signal: AbortSignal): Promise<QueryPerformanceText> {

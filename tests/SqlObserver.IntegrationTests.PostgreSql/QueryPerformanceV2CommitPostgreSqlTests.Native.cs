@@ -143,12 +143,28 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
                     """);
                 linkedEvidence.Parameters.AddWithValue("run", first.Run.Value); linkedEvidence.Parameters.AddWithValue("count", cacheContent.Items.Count * 2);
                 Assert.True(Assert.IsType<bool>(await linkedEvidence.ExecuteScalarAsync(deadline.Token)));
+                await using var contentServer = scene.Database.CreateServerDataSource();
+                var contentService = new SqlObserver.Application.Services.PlanCacheContentReadService(
+                    new PostgreSqlPlanCacheContentReadRepositoryPort(contentServer), protector);
+                var contentAuthorization = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1-2-3-1234"), AuthorizationPrincipalState.Active,
+                    [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([target])),
+                     new RoleAuthorizationGrant(ApplicationRole.QueryTextReader, TargetAuthorizationScope.ForTargets([target]))]);
                 foreach (var item in firstResult.Payload.PlanCacheContent!.Items)
                     foreach (var value in new[] { item.Text, item.Plan })
                     {
                         if (value.ProtectedContent is not { } encrypted) continue;
                         byte[] clear = await protector.UnprotectAsync(target.Value, encrypted, deadline.Token);
-                        try { Assert.NotEmpty(clear); Assert.InRange(clear.Length, 1, value.CiphertextBytes); }
+                        try
+                        {
+                            Assert.NotEmpty(clear); Assert.InRange(clear.Length, 1, value.CiphertextBytes);
+                            var contentKey = item.Statement.Watermark.Key;
+                            var opened = await contentService.ReadAsync(contentAuthorization, new(target, first.Run.Value,
+                                contentKey.Query.DatabaseId, contentKey.DatabaseIncarnation, contentKey.Query.QueryFingerprint,
+                                contentKey.Plan.PlanFingerprint, contentKey.CacheEntryFingerprint, value.Kind, Timeout), deadline.Token);
+                            Assert.Equal("available", opened.Status);
+                            Assert.Equal(System.Text.Encoding.UTF8.GetString(clear), opened.Content);
+                            Assert.Equal(firstLinked.PlanCacheRuntime!.ReadCompletedUtc, opened.ObservedAtUtc);
+                        }
                         finally { CryptographicOperations.ZeroMemory(clear); }
                     }
             }

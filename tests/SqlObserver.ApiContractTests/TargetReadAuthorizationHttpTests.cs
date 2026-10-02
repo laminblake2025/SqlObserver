@@ -179,6 +179,7 @@ public sealed class TargetReadAuthorizationApiFactory : WebApplicationFactory<Pr
                 Binding(TargetReadTestAuthenticationHandler.AuditorBSid, ApplicationRole.Auditor, TargetB),
                 Binding(TargetReadTestAuthenticationHandler.CollectorBSid, ApplicationRole.CollectorService, TargetB),
                 Binding(TargetReadTestAuthenticationHandler.SecurityAdministratorBSid, ApplicationRole.SecurityAdministrator, TargetB),
+                Binding(TargetReadTestAuthenticationHandler.QueryTextReaderBSid, ApplicationRole.QueryTextReader, TargetB),
             ]));
             services.AddAuthentication(options =>
             {
@@ -206,6 +207,7 @@ internal sealed class TargetReadTestAuthenticationHandler(
     internal const string AuditorBSid = "S-1-5-21-3103";
     internal const string CollectorBSid = "S-1-5-21-3104";
     internal const string SecurityAdministratorBSid = "S-1-5-21-3105";
+    internal const string QueryTextReaderBSid = "S-1-5-21-3106";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -217,6 +219,8 @@ internal sealed class TargetReadTestAuthenticationHandler(
             "mixed-collector" => [ViewerASid, CollectorBSid],
             "mixed-security-administrator" => [ViewerASid, SecurityAdministratorBSid],
             "viewer-b" => [ViewerBSid],
+            "viewer-reader-b" => [ViewerBSid, QueryTextReaderBSid],
+            "mixed-reader" => [ViewerASid, QueryTextReaderBSid],
             _ => [],
         };
         if (groups.Length == 0) return Task.FromResult(AuthenticateResult.Fail("Unknown test identity."));

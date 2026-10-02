@@ -191,6 +191,9 @@ builder.Services.AddSingleton<PlanCacheIntervalHistoryCursorCodec>();
 builder.Services.AddSingleton<IPlanCacheIntervalHistoryRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().PlanCacheIntervalHistory);
 builder.Services.AddSingleton<IPlanCacheIntervalHistoryQueryService, PlanCacheIntervalHistoryQueryService>();
+builder.Services.AddSingleton<IPlanCacheContentReadRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().PlanCacheContentReads);
+builder.Services.AddSingleton<IPlanCacheContentReadService, PlanCacheContentReadService>();
 builder.Services.AddSingleton<IPlanCacheIntervalRankingRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().PlanCacheIntervalRankings);
 builder.Services.AddSingleton<IPlanCacheIntervalRankingQueryService, PlanCacheIntervalRankingQueryService>();

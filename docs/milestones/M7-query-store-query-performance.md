@@ -992,3 +992,51 @@ No v3 production catalog, runtime grant or schedule activation is installed.
 Audited exact-run/incarnation/entry content retrieval, inert history rendering,
 SQL Server 2019/2025 qualification and qualified rollout remain required.
 No frontend or full suite was run for this commit step.
+
+### Audited cache-content reads and inert history rendering (2026-10-01)
+
+Forward migration 0324 exposes a Server-only content lookup for an exact target,
+run, database ID/incarnation, query, plan, cache entry and payload kind. It requires
+transaction-local target scope and content-reader context. The application
+requires both an operational read role and QueryTextReader on that same target.
+Mixed grants cannot supply either role from another server.
+
+The lookup requires a retained cache delta and receipt, current target revision,
+canonical run header and succeeded/partial outcome. Available content additionally
+requires its matching content receipt/link and bounded protected payload. There
+is no payload-ID or latest-query fallback. Retiring counter evidence makes
+still-retained content inaccessible. Older counter-only captures report missing
+content; disabled capture, absent selection, source loss, size limits and key
+failures retain distinct reasons. Raw content tables remain private.
+
+The service records denied, unavailable or opened access in the existing
+append-only audit envelope using opaque observation identities. It never audits
+plaintext, key material or payload IDs. Plaintext leaves the service only after
+the opened audit commits. Decryption uses strict UTF-8 and the capture size
+bounds; decrypted byte buffers are cleared on success, audit failure and
+cancellation. Read and audit scope settings are transaction-local.
+
+Cache history now offers explicit text and plan-XML buttons to authorized readers.
+Content renders as an inert React text node in a scrollable preformatted element,
+with no XML parsing, HTML insertion or execution. Each opening uses no-store
+transport, validates every returned observation identity and checks UTF-8 content
+size. The wire bound accommodates JSON escaping of a one-MiB plan. Closing,
+changing the server/window/refresh context or losing reader access unmounts the
+content view and cancels pending reads. Content selection is not saved in URLs or
+browser storage. Missing content explains its cause and the next useful action.
+
+Sixty-eight distinct focused checks pass: twenty-three service checks, nine real
+HTTP-pipeline checks, ten PostgreSQL content-read checks, the extended native
+SQL Server 2022/PostgreSQL 18 round trip, four content-client checks, three
+Chromium interaction/accessibility checks and eighteen existing query/history
+client regressions. The native case reads actual collected ciphertext through
+the new Server repository and audited service, comparing its plaintext with the
+original captured bytes. The web production build and asset verification pass.
+Database/HTTP/service evidence is in `cache-content-read-final.trx`,
+`cache-content-audited-native.trx`, `cache-content-read-http.trx` and
+`cache-content-read-service.trx` under `artifacts/plan-cache-deltas`; browser
+evidence is under `artifacts/web-browser`.
+
+This step does not activate v3 collector catalog grants or schedules. SQL Server
+2019/2025 qualification, production key/TLS qualification and qualified rollout
+remain. No full suite or SSH-lab source deployment was performed.

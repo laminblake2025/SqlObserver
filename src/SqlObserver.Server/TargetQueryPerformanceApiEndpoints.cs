@@ -19,6 +19,7 @@ public static class TargetQueryPerformanceApiEndpoints
         group.MapGet("/top", TopAsync);
         group.MapGet("/waits/top", TopWaitsAsync);
         group.MapGet("/cache/top", CacheTopAsync);
+        group.MapGet("/cache/databases/{databaseId:int}/history/{queryFingerprint}/plans/{planFingerprint}/runs/{collectionRunId:guid}/entries/{cacheEntryFingerprint}/content/{payloadKind}", PlanCacheContentApiEndpoints.ReadAsync);
         group.MapGet("/cache/databases/{databaseId:int}/history/{queryFingerprint}/plans/{planFingerprint}", CacheHistoryAsync);
         group.MapGet("/regressions", RegressionsAsync);
         group.MapGet("/databases/{databaseId:int}/history/{queryFingerprint}", HistoryAsync);
