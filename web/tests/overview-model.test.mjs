@@ -23,6 +23,14 @@ test('all servers defaults to 24h and windows reject invalid and future inputs',
  assert.equal(overviewWindow(scope,now).fromUtc,'2026-09-04T12:00:00.000Z');
  for(const [from,to] of [['invalid','invalid'],['2026-09-06','2026-09-05'],['2026-07-01','2026-09-01'],['2026-09-05','2026-09-06']]) assert.throws(()=>overviewWindow({...scope,range:'custom',from,to},now));
 });
+test('shared custom windows retain native microseconds and reject unrepresentable or malformed UTC boundaries',()=>{
+ const from='2026-09-05T11:00:00.1234560Z',to='2026-09-05T11:00:00.1234570Z';
+ assert.deepEqual(overviewWindow({target:'server-one',range:'custom',from,to,compare:false},now),
+  {fromUtc:'2026-09-05T11:00:00.123456Z',toUtc:'2026-09-05T11:00:00.123457Z'});
+ const scope={target:'server-one',range:'custom',from:'2026-09-04T11:00:00Z',to:'2026-09-05T11:00:00Z',compare:false};
+ for(const invalid of ['2026-09-04','2026-09-04T11:00:00.1234561Z','2026-09-04T11:00:00.12345600Z','2026-09-04T11:00:00-01:00','2026-02-30T11:00:00Z'])
+  assert.throws(()=>overviewWindow({...scope,from:invalid},now),/valid UTC range/);
+});
 const evidence=(value,state='current')=>({activeAlerts:{value,state},blockedSessions:{value,state},deadlocks:{value,state}});
 test('counts cover ten servers and more than five alerts, with unknown and stale distinct from zero',()=>{
  assert.equal(aggregateValue(Array.from({length:10},()=>evidence(9)),'activeAlerts').text,'90');

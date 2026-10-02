@@ -1,13 +1,14 @@
 import { utcMicroseconds } from "../utcTimestamp.ts";
-import { databaseJumpHref, queryJumpHref } from "./commandPaletteModel.ts";
+import { databaseJumpHref, queryJumpHref, targetAlertHref } from "./commandPaletteModel.ts";
 import { overviewHref } from "../features/overview/overviewModel.ts";
 import { queryViewHref } from "../features/queries/queryViewModel.ts";
 import type { OverviewScope } from "../features/overview/overviewTypes";
 import type { QueryStorePlanRegressionList } from "../features/queries/queryPerformanceTypes";
 import type { DatabaseOptionChangeResult, ServerConfigurationChangeResult } from "../features/health/healthTypes";
+import type { ActiveAlert, ActiveAlertPage } from "../features/alerts/alertTypes";
 
-export type TimelineKind = "deadlock" | "agent_failure" | "database_options" | "configuration" | "plan_regression" | "finding";
-export type TimelineTimeBasis = "occurred" | "first_observed" | "detected" | "last_observed" | "snapshot";
+export type TimelineKind = "deadlock" | "alert" | "agent_failure" | "database_options" | "configuration" | "plan_regression" | "finding";
+export type TimelineTimeBasis = "occurred" | "fired" | "first_observed" | "detected" | "last_observed" | "snapshot";
 export interface TimelineEvent {
   readonly id: string;
   readonly kind: TimelineKind;
@@ -17,8 +18,8 @@ export interface TimelineEvent {
   readonly href: string;
   readonly timeBasis: TimelineTimeBasis;
 }
-const kinds = new Set<TimelineKind>(["deadlock", "agent_failure", "database_options", "configuration", "plan_regression", "finding"]);
-const bases = new Set<TimelineTimeBasis>(["occurred", "first_observed", "detected", "last_observed", "snapshot"]);
+const kinds = new Set<TimelineKind>(["deadlock", "alert", "agent_failure", "database_options", "configuration", "plan_regression", "finding"]);
+const bases = new Set<TimelineTimeBasis>(["occurred", "fired", "first_observed", "detected", "last_observed", "snapshot"]);
 function instant(value: unknown): bigint | undefined {
   try { return utcMicroseconds(typeof value === "string" ? value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1") : value); } catch { return undefined; }
 }
@@ -27,6 +28,93 @@ function instant(value: unknown): bigint | undefined {
 export function supportsChangeTimelineWindow(fromUtc: string, toUtc: string): boolean {
   const from = instant(fromUtc), to = instant(toUtc);
   return from !== undefined && to !== undefined && to > from && to - from <= 7n * 86400n * 1000000n;
+}
+
+export interface AlertTimelineInbox {
+  readonly targetId: string;
+  readonly items: readonly ActiveAlert[];
+  readonly snapshotUtc?: string;
+  readonly pagesRead: number;
+  readonly hasMore: boolean;
+}
+
+function checkedAlert(row: ActiveAlert): void {
+  if (!row || !guid(row.alertId) || !guid(row.ruleId) || !readable(row.ruleName, 512)
+    || !["normal", "pending", "firing", "acknowledged", "resolved"].includes(row.state)
+    || instant(row.firstObservedUtc) === undefined || typeof row.deliverySuppressed !== "boolean"
+    || row.firedUtc !== undefined && instant(row.firedUtc) === undefined
+    || row.acknowledgedUtc !== undefined && instant(row.acknowledgedUtc) === undefined)
+    throw new Error("Current alert marker evidence is invalid.");
+}
+function checkedAlertCutoff(row: ActiveAlert, snapshotUtc: string | undefined): void {
+  checkedAlert(row);
+  // The native active-inbox query binds coalesce(fired, first-observed) to
+  // its repository snapshot, not to the target's unrelated collection clock.
+  if (snapshotUtc !== undefined && instant(row.firedUtc ?? row.firstObservedUtc)! > instant(snapshotUtc)!)
+    throw new Error("Current alert observation is newer than its inbox snapshot.");
+}
+
+/** Current inbox only: five snapshot-bound pages, with no transition reconstruction. */
+export async function loadAlertTimelineInbox(targetId: string,
+    reader: (cursor?: string) => Promise<ActiveAlertPage>, signal: AbortSignal): Promise<AlertTimelineInbox> {
+  if (!guid(targetId)) throw new Error("Current alert target is invalid.");
+  const items: ActiveAlert[] = [], identities = new Set<string>(), cursors = new Set<string>();
+  let cursor: string | undefined, snapshotUtc: string | undefined;
+  for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
+    signal.throwIfAborted();
+    const page = await reader(cursor);
+    signal.throwIfAborted();
+    if (!page || typeof page.targetId !== "string" || page.targetId.toLowerCase() !== targetId.toLowerCase()
+      || !Array.isArray(page.items) || page.items.length > 100
+      || page.snapshotUtc !== undefined && instant(page.snapshotUtc) === undefined)
+      throw new Error("Current alert page does not match the selected server or row bound.");
+    if (pageNumber === 0) snapshotUtc = page.snapshotUtc;
+    else if (snapshotUtc === undefined || page.snapshotUtc === undefined || instant(page.snapshotUtc) !== instant(snapshotUtc))
+      throw new Error("Current alert snapshot changed while paging. Refresh alert evidence.");
+    for (const item of page.items) {
+      checkedAlertCutoff(item, snapshotUtc);
+      const identity = item.alertId.toLowerCase();
+      if (identities.has(identity)) throw new Error("Current alert pages repeated an alert identity.");
+      identities.add(identity); items.push(item);
+    }
+    cursor = page.nextCursor;
+    if (cursor !== undefined && (typeof cursor !== "string" || cursor.length === 0 || cursor.length > 1024
+      || !/^[A-Za-z0-9+/]+={0,2}$/u.test(cursor) || cursors.has(cursor)))
+      throw new Error("Current alert paging cursor is invalid or repeated.");
+    if (!cursor) return { targetId, items, snapshotUtc, pagesRead: pageNumber + 1, hasMore: false };
+    if (snapshotUtc === undefined) throw new Error("Current alert paging lacks a stable snapshot time.");
+    cursors.add(cursor);
+  }
+  return { targetId, items, snapshotUtc, pagesRead: 5, hasMore: true };
+}
+
+/** Native fired instants from current firing/acknowledged rows, server-wide even in a database scope. */
+export function alertFiredTimelineEvents(targetId: string, scope: OverviewScope,
+    fromUtc: string, toUtc: string, inbox: AlertTimelineInbox): readonly TimelineEvent[] {
+  const from = instant(fromUtc), to = instant(toUtc);
+  if (!guid(targetId) || !inbox || typeof inbox.targetId !== "string" || inbox.targetId.toLowerCase() !== targetId.toLowerCase()
+    || typeof scope.target !== "string" || scope.target.toLowerCase() !== targetId.toLowerCase() || from === undefined || to === undefined || from >= to
+    || scope.range === "custom" && (instant(scope.from) !== from || instant(scope.to) !== to)
+    || !Array.isArray(inbox.items) || inbox.items.length > 500 || !Number.isInteger(inbox.pagesRead)
+    || inbox.pagesRead < 1 || inbox.pagesRead > 5 || typeof inbox.hasMore !== "boolean"
+    || inbox.snapshotUtc !== undefined && instant(inbox.snapshotUtc) === undefined)
+    throw new Error("Current alert markers do not match this server and window.");
+  const fixedScope: OverviewScope = { ...scope, target: targetId, range: "custom", from: fromUtc, to: toUtc };
+  const events: TimelineEvent[] = [], ids = new Set<string>();
+  for (const item of inbox.items) {
+    checkedAlertCutoff(item, inbox.snapshotUtc);
+    if (!["firing", "acknowledged"].includes(item.state) || item.firedUtc === undefined) continue;
+    const fired = instant(item.firedUtc)!;
+    if (fired < from || fired >= to) continue;
+    const id = `alert:${item.alertId.toLowerCase()}:${fired}`;
+    if (ids.has(id)) continue;
+    ids.add(id);
+    events.push({ id, kind: "alert", timeBasis: "fired", timeUtc: item.firedUtc,
+      title: `Alert fired · ${item.ruleName}`,
+      detail: `Native fired time ${item.firedUtc}. Current inbox state: ${item.state}; delivery ${item.deliverySuppressed ? "suppressed" : "enabled"}. Inbox snapshot: ${inbox.snapshotUtc ?? "not reported"}. This is current-inbox evidence, not a reconstructed transition history. Resolved or expired cycles can be absent. Alerts remain server-wide.`,
+      href: targetAlertHref(fixedScope, targetId, item.alertId.toLowerCase()) });
+  }
+  return timelineEventsInWindow(events, fromUtc, toUtc);
 }
 
 /** Latest 120 loaded events, shown chronologically. An empty list says nothing about uncollected events. */

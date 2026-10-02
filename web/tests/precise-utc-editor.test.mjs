@@ -14,6 +14,10 @@ test('UTC editor displays milliseconds while retaining separate exact source bou
 
 test('unchanged editor submission preserves microsecond bounds including native value normalization', () => {
   assert.deepEqual(customUtcWindow(customUtcInputValue(original.fromUtc), customUtcInputValue(original.toUtc), now, 31, original), original);
+  const native = { fromUtc: original.fromUtc.replace('Z', '0Z'), toUtc: original.toUtc.replace('Z', '0Z') };
+  assert.equal(customUtcInputValue(native.fromUtc), customUtcInputValue(original.fromUtc));
+  assert.deepEqual(customUtcWindow(customUtcInputValue(native.fromUtc), customUtcInputValue(native.toUtc), now, 31, native), original);
+  assert.equal(customUtcInputValue(original.fromUtc.replace('Z', '1Z')), '');
   const minuteBounds = { fromUtc: '2026-09-26T08:00:00.000123Z', toUtc: '2026-09-26T12:00:00.000456Z' };
   assert.deepEqual(customUtcWindow('2026-09-26T08:00', '2026-09-26T12:00', now, 31, minuteBounds), minuteBounds);
 });

@@ -30,24 +30,35 @@ export function backupAssessmentHref(scope: OverviewScope, target: string, asses
     ...scope, range: 'custom', from: new Date(Date.parse(assessedAtUtc) - 3600000).toISOString(), to: assessedAtUtc,
   } : { ...scope, range: '1h', from: undefined, to: undefined }, 'operations', target);
 }
+export function workspaceUtcTimestamp(input: string): string {
+  // Native .NET timestamps may append a zero beyond PostgreSQL's exact precision.
+  const normalized=input.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u,'$1');
+  return canonicalUtcTimestamp(normalized);
+}
+function overviewUtcBoundary(input: string): {value: bigint; text: string} {
+  const text=workspaceUtcTimestamp(input);
+  return {value:utcMicroseconds(text),text};
+}
 export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: string; toUtc: string} {
-  const end = scope.range === 'custom' ? Date.parse(scope.to ?? '') : now;
-  const start = scope.range === 'custom' ? Date.parse(scope.from ?? '') : end - ({'1h': 1, '6h': 6, '24h': 24, '7d': 168}[scope.range]) * 3600000;
-  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(now)) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
-  const boundary=(input:string|undefined,milliseconds:number) => {
-    try { return { value: utcMicroseconds(input), text: canonicalUtcTimestamp(input!) }; }
-    catch { return { value: BigInt(Math.trunc(milliseconds))*1000n, text: new Date(milliseconds).toISOString() }; }
-  };
-  const from=boundary(scope.range==='custom'?scope.from:undefined,start),to=boundary(scope.range==='custom'?scope.to:undefined,end);
-  if (from.value>=to.value || to.value-from.value>31n*86400n*1000000n || to.value>BigInt(Math.trunc(now+60000))*1000n) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
+  const invalid=()=>new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
+  if (!Number.isFinite(now)) throw invalid();
+  let from:{value:bigint;text:string},to:{value:bigint;text:string};
+  try {
+    if (scope.range==='custom') {
+      from=overviewUtcBoundary(scope.from??'');to=overviewUtcBoundary(scope.to??'');
+    } else {
+      const start=now-({'1h':1,'6h':6,'24h':24,'7d':168}[scope.range])*3600000;
+      from=overviewUtcBoundary(new Date(start).toISOString());to=overviewUtcBoundary(new Date(now).toISOString());
+    }
+  } catch { throw invalid(); }
+  if (from.value>=to.value || to.value-from.value>31n*86400n*1000000n || to.value>BigInt(Math.trunc(now+60000))*1000n) throw invalid();
   return {fromUtc:from.text,toUtc:to.text};
 }
 /** Native datetime-local controls expose millisecond precision; keep finer source bounds separately. */
 export function customUtcInputValue(utc:string|undefined): string {
   if (utc===undefined) return '';
   try {
-    utcMicroseconds(utc);
-    const timestamp=canonicalUtcTimestamp(utc).replace(/Z$/,'');
+    const timestamp=overviewUtcBoundary(utc).text.replace(/Z$/,'');
     const [seconds,fraction='']=timestamp.split('.');
     return `${seconds}.${fraction.slice(0,3).padEnd(3,'0')}`;
   } catch { return ''; }
@@ -66,7 +77,7 @@ export function customUtcWindow(from:string,to:string,now:number,maximumDays=31,
     const entered=parseInput(input);
     const displayed=customUtcInputValue(stored);
     if (!edited && stored!==undefined && displayed!=='' && entered.value===parseInput(displayed).value)
-      return {value:utcMicroseconds(stored),text:canonicalUtcTimestamp(stored)};
+      return overviewUtcBoundary(stored);
     return entered;
   };
   const start=parseBound(from,original?.fromUtc,original?.fromEdited),end=parseBound(to,original?.toUtc,original?.toEdited);

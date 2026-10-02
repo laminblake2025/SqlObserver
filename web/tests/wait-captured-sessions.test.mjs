@@ -2,13 +2,62 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { capturedSessionWaitCategory, capturedWaitSnapshotExpired, readSessionWaitCategory, sessionWaitCategoryHref, retainSessionWaitCategoryHref,
-  waitSessionHistoryWindow, boundedWaitSessionCaptures, loadCapturedWaitSessions } from '../src/features/activity/waitCapturedSessionsModel.ts';
+  waitSessionHistoryWindow, boundedWaitSessionCaptures, loadCapturedWaitSessions,
+  readSessionWaitCapture, sessionWaitCaptureHref, retainSessionWaitCaptureHref, validateWaitCaptureWindow } from '../src/features/activity/waitCapturedSessionsModel.ts';
 
 const target = '11111111-1111-4111-8111-111111111111', snapshot = '22222222-2222-4222-8222-222222222222';
 const observed = '2026-10-02T11:30:00.123456Z';
 const scope = { target, range: 'custom', from: '2026-10-02T11:00:00.000001Z', to: '2026-10-02T12:00:00.000001Z', compare: true, databaseId: 5 };
 const row = id => ({ identity: id.toString(16).padStart(64, '0'), sessionId: id + 1, requestId: 0, databaseId: 5, waitType: 'LCK_M_X' });
 const page = (rows, nextCursor = null) => ({ snapshotId: snapshot, observedUtc: observed, repositoryTimeUtc: '2026-10-02T12:00:00Z', state: 'available', truncated: false, rows, databases: [], nextCursor });
+
+test('chosen capture URL is target-bound, paired, exact and preserves independent categories', () => {
+  const base = `#/waits?${new URLSearchParams({ target, range: 'custom', from: scope.from, to: scope.to, databaseId: '5', compare: '1', waitCategory: '3', sessionWaitCategory: 'Lock' })}`;
+  const href = sessionWaitCaptureHref(scope, { id: snapshot, observedUtc: observed }, base);
+  assert.deepEqual(readSessionWaitCapture(href, target), { id: snapshot, observedUtc: observed });
+  const letterGuid = 'abcdefab-abcd-4abc-8abc-abcdefabcdef';
+  const uppercaseHref = sessionWaitCaptureHref(scope, { id: letterGuid.toUpperCase(), observedUtc: observed.replace('123456Z', '1234560Z') });
+  assert.equal(readSessionWaitCapture(uppercaseHref).id, letterGuid);
+  assert.equal(new URLSearchParams(uppercaseHref.split('?')[1]).get('sessionSnapshot'), letterGuid);
+  assert.equal(new URLSearchParams(uppercaseHref.split('?')[1]).get('sessionObservedUtc'), observed);
+  assert.equal(new URLSearchParams(href.split('?')[1]).get('waitCategory'), '3');
+  assert.equal(new URLSearchParams(href.split('?')[1]).get('sessionWaitCategory'), 'Lock');
+  assert.equal(readSessionWaitCapture(base, target), undefined);
+  assert.equal(readSessionWaitCapture(`${href}&sessionSnapshot=${snapshot}`, target), null);
+  assert.equal(readSessionWaitCapture(href.replace('sessionObservedUtc=', 'brokenObserved='), target), null);
+  assert.equal(readSessionWaitCapture(`${href}&databaseId=5`, target), null);
+  assert.equal(readSessionWaitCapture(href, snapshot), null);
+  assert.equal(readSessionWaitCapture(href.replace('#/waits', '#/activity'), target), null);
+  assert.equal(readSessionWaitCapture(sessionWaitCaptureHref(scope, undefined, href)), undefined);
+  assert.throws(() => sessionWaitCaptureHref(scope, { id: snapshot, observedUtc: scope.to }), /inside/u);
+  const zeroEquivalent = sessionWaitCaptureHref(scope, { id: snapshot, observedUtc: observed.replace('123456Z', '1234560Z') });
+  assert.equal(readSessionWaitCapture(zeroEquivalent).observedUtc, observed);
+});
+
+test('capture retention keeps compatible context but drops contradictory target/database/window', () => {
+  const href = sessionWaitCaptureHref(scope, { id: snapshot, observedUtc: observed });
+  const changed = `#/waits?${new URLSearchParams({ target, range: 'custom', from: scope.from, to: scope.to, databaseId: '5', waitCategory: '6' })}`;
+  assert.deepEqual(readSessionWaitCapture(retainSessionWaitCaptureHref(changed, href)), { id: snapshot, observedUtc: observed });
+  for (const next of [changed.replace(target, snapshot), changed.replace('databaseId=5', 'databaseId=6'), changed.replace(encodeURIComponent(scope.to), encodeURIComponent(observed))])
+    assert.equal(retainSessionWaitCaptureHref(next, href), next);
+  const live = { target, range: '1h', compare: false };
+  const liveHref = sessionWaitCaptureHref(live, { id: snapshot, observedUtc: observed });
+  assert.equal(readSessionWaitCapture(retainSessionWaitCaptureHref(`#/waits?target=${target}&range=1h`, liveHref)).id, snapshot);
+  assert.equal(retainSessionWaitCaptureHref(`#/waits?target=${target}&range=6h`, liveHref), `#/waits?target=${target}&range=6h`);
+});
+
+test('direct omitted-history capture must retain exact time, loaded window and native expiry', async () => {
+  const now = Date.parse('2026-10-02T12:00:00Z'), capture = { id: snapshot, observedUtc: observed, truncated: false };
+  validateWaitCaptureWindow(capture, scopeWindow(), now);
+  assert.throws(() => validateWaitCaptureWindow({ ...capture, observedUtc: scope.to }, scopeWindow(), now), /outside/u);
+  assert.throws(() => validateWaitCaptureWindow({ ...capture, observedUtc: '2026-10-01T12:00:00.000000Z' }, { fromUtc: '2026-10-01T11:00:00Z', toUtc: '2026-10-02T12:00:00Z' }, now), /expired/u);
+  const result = await loadCapturedWaitSessions(async parameters => {
+    assert.equal(parameters.get('snapshot'), snapshot); return page([row(1)]);
+  }, new URLSearchParams(), new AbortController().signal, capture);
+  assert.equal(result.page.snapshotId, snapshot);
+  await assert.rejects(loadCapturedWaitSessions(async () => ({ ...page([row(1)]), observedUtc: observed.replace('123456', '123457') }),
+    new URLSearchParams(), new AbortController().signal, capture), /observation time/u);
+});
 
 test('native session categories match the authoritative server-wait CASE including Idle precedence', () => {
   const examples = {

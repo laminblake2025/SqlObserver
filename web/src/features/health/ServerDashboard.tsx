@@ -11,6 +11,7 @@ import type { TargetHealthState } from "./healthTypes";
 import { DashboardTimeline } from "../../components/DashboardTimeline";
 import { timelineEventsInWindow, type TimelineEvent } from "../../components/dashboardTimelineModel";
 import { useDashboardTimeline } from "./useDashboardTimeline";
+import { useDashboardAlerts } from "./useDashboardAlerts.ts";
 import { useAgentHistory } from "../operations/useAgentHistory.ts";
 import { healthCheckHref } from "../operations/agentHistoryModel.ts";
 import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx";
@@ -49,9 +50,11 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const chartReferences = useChartReferences(instanceId, targetRevision, data && evidence ? data : undefined, canReadRules, refresh, evidence?.series.map(item => item.metric));
   const timelineWindow = data && evidence ? { fromUtc: data.fromUtc, toUtc: data.toUtc } : undefined;
   const timeline = useDashboardTimeline(instanceId, targetRevision, selectedScope, timelineWindow, refresh, configurationCollectorState);
+  const alerts = useDashboardAlerts(instanceId, targetRevision, selectedScope, timelineWindow, refresh);
   const fixedTimelineScope: OverviewScope = timelineWindow ? { ...selectedScope, range: "custom", from: timelineWindow.fromUtc, to: timelineWindow.toUtc } : selectedScope;
   const timelineEvents: readonly TimelineEvent[] = timelineWindow ? timelineEventsInWindow([
     ...timeline.events,
+    ...alerts.events,
     ...(agentHistory.page?.rows.filter(row => row.countsAsJobFailure).map(row => ({
       id: `agent:${row.jobId}:${row.historyInstanceId}`, kind: "agent_failure" as const,
       timeUtc: row.firstObservedAtUtc, title: `SQL Agent job failure · ${row.jobId} · history ${row.historyInstanceId}`,
@@ -77,6 +80,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   };
   const crosshairUtc = inWindow(hoveredUtc) ? hoveredUtc : restoredEvent?.timeUtc ?? null;
   const selectTimeline = (selection: DashboardTimelineSelection | undefined) => {
+    if (location.hash !== selectionHash) return;
     setCrosshairUtc(null);
     const current = readDashboardTimelineSelection(location.hash, instanceId);
     if (selection && !timelineEvents.some(event => matchesDashboardTimelineSelection(selection, event))) return;
@@ -87,11 +91,12 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const markers = timelineEvents.map(event => ({ timeUtc: event.timeUtc, label: `${event.title} · ${event.timeBasis.replaceAll("_", " ")}` }));
   const timelineNotes = [
     ...timeline.notes,
+    alerts.note,
     agentHistory.error ? `SQL Agent first-observed markers are unavailable: ${agentHistory.error}`
       : agentHistory.refreshing ? `Refreshing SQL Agent markers; showing the previous first-page snapshot from ${agentHistory.page!.observedAtUtc} in this same window.`
       : agentHistory.loading ? "Loading SQL Agent first-observed markers…"
       : `SQL Agent: first ${agentHistory.page?.rows.length ?? 0} of up to 50 history rows${agentHistory.page?.hasMore ? "; additional pages are available in SQL Agent history" : ""}${agentHistory.page?.truncated ? "; capture was truncated" : ""}. Only failed job-outcome rows become markers.`,
-    "The timeline retains the latest 120 loaded events. Database options and plan comparisons follow the selected database; deadlocks, job failures, configuration and snapshot findings remain server-wide.",
+    "The timeline retains the latest 120 loaded events. Database options and plan comparisons follow the selected database; alerts, deadlocks, job failures, configuration and snapshot findings remain server-wide.",
     "Restart and failover transitions and complete historical alert transitions are not supplied by these sources. An empty timeline is not an all-clear signal.",
   ];
   const memorySeries = (source: typeof evidence) => source?.series
@@ -139,11 +144,11 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <DashboardBaselineCards targetId={instanceId} series={evidence.series} bands={chartReferences.references.bands}
         fromUtc={data.fromUtc} toUtc={data.toUtc} formatTime={timeLabel} baselineStatus={chartReferences.baselineStatus} />
       <DashboardInvestigationSummary targetId={instanceId} scope={fixedTimelineScope} fromUtc={data.fromUtc} toUtc={data.toUtc}
-        issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || agentHistory.loading}
+        issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || alerts.loading || agentHistory.loading}
         sourceNotes={timelineNotes} />
       <DashboardTimeline events={timelineEvents}
         fromUtc={data.fromUtc} toUtc={data.toUtc} crosshairUtc={crosshairUtc}
-        selection={requestedSelection} onSelectionChange={selectTimeline} loading={result.loading || timeline.loading || agentHistory.loading}
+        selection={requestedSelection} onSelectionChange={selectTimeline} loading={result.loading || timeline.loading || alerts.loading || agentHistory.loading}
         onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes} />
       {agentHistory.page && <section className="panel" aria-label="SQL Agent first-observed evidence">
         <h4>SQL Agent failures first observed in this window</h4>

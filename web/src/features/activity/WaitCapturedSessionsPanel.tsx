@@ -6,6 +6,7 @@ import { readLive, type LivePage, type LiveSnapshot } from "./liveActivityApi";
 import { activitySelectionHref, activityUtc } from "./activitySelectionModel.ts";
 import { boundedWaitSessionCaptures, capturedSessionWaitCategory, capturedWaitSnapshotExpired, loadCapturedWaitSessions,
   readSessionWaitCategory, sessionWaitCategories, sessionWaitCategoryHref, waitSessionHistoryWindow,
+  readSessionWaitCapture, sessionWaitCaptureHref, validateWaitCaptureWindow,
   type CapturedWaitSessions, type SessionWaitCategory } from "./waitCapturedSessionsModel.ts";
 
 export function WaitCapturedSessionsPanel({ instanceId, scope, timeWindow, refresh, selectionHash }: {
@@ -17,6 +18,7 @@ export function WaitCapturedSessionsPanel({ instanceId, scope, timeWindow, refre
   const labelTime = (value: string) => formatDisplayTime(value, mode);
   const selectedCategory = readSessionWaitCategory(selectionHash, instanceId);
   const category = selectedCategory === undefined ? "Lock" : selectedCategory;
+  const requestedCapture = readSessionWaitCapture(selectionHash, instanceId);
   const isRewind = scope.range === "custom";
   const [retry, setRetry] = useState(0);
   const historyKey = JSON.stringify([instanceId.toLowerCase(), scope.range, scope.from, scope.to, scope.databaseId,
@@ -24,11 +26,11 @@ export function WaitCapturedSessionsPanel({ instanceId, scope, timeWindow, refre
   const currentHistoryKey = useRef(historyKey); currentHistoryKey.current = historyKey;
   const [historyResult, setHistoryResult] = useState<{ key: string; captures?: readonly LiveSnapshot[]; omitted?: number; error?: string; unavailable?: string }>();
   const history = historyResult?.key === historyKey ? historyResult : undefined;
-  const [captureSelection, setCaptureSelection] = useState<{ key: string; id: string }>();
   const captures = history?.captures;
-  const selectedCaptureId = captureSelection?.key === historyKey ? captureSelection.id : captures?.[0]?.id;
-  const selectedCapture = captures?.find(capture => capture.id.toLowerCase() === selectedCaptureId?.toLowerCase());
-  const pageKey = JSON.stringify([historyKey, isRewind ? selectedCapture?.id : "latest", isRewind ? selectedCapture?.observedUtc : undefined, category === null]);
+  const selectedCapture = requestedCapture ? { ...requestedCapture, truncated: false }
+    : requestedCapture === undefined && isRewind ? captures?.[0] : undefined;
+  const selectedCaptureId = selectedCapture?.id.toLowerCase();
+  const pageKey = JSON.stringify([historyKey, selectedCapture?.id ?? "latest", selectedCapture?.observedUtc, category === null, requestedCapture === null, selectionHash]);
   const currentPageKey = useRef(pageKey); currentPageKey.current = pageKey;
   const [result, setResult] = useState<{ key: string; data?: CapturedWaitSessions; error?: string; loading: boolean }>();
   const evidence = result?.key === pageKey ? result : undefined;
@@ -61,19 +63,30 @@ export function WaitCapturedSessionsPanel({ instanceId, scope, timeWindow, refre
 
   useEffect(() => {
     const controller = new AbortController();
-    if (category === null || isRewind && !selectedCapture) { setResult(undefined); return () => controller.abort(); }
+    if (category === null || requestedCapture === null || isRewind && !selectedCapture) { setResult(undefined); return () => controller.abort(); }
+    if (requestedCapture) {
+      try {
+        if (!timeWindow) throw new Error("Choose a valid loaded window to inspect this requested session capture. No other capture has been selected.");
+        validateWaitCaptureWindow(requestedCapture, timeWindow, Date.now());
+      } catch (error) {
+        setResult({ key: pageKey, loading: false, error: error instanceof Error ? error.message : "The requested capture is unavailable." });
+        return () => controller.abort();
+      }
+    }
     setResult({ key: pageKey, loading: true });
     const filters = new URLSearchParams({ includeIdle: "true", includeSystem: "true", sort: "session", descending: "false" });
     if (scope.databaseId !== undefined) filters.set("databaseId", String(scope.databaseId));
-    void loadCapturedWaitSessions((parameters, signal) => readLive<LivePage>(instanceId, "", parameters, signal), filters, controller.signal, isRewind ? selectedCapture : undefined)
+    void loadCapturedWaitSessions((parameters, signal) => readLive<LivePage>(instanceId, "", parameters, signal), filters, controller.signal, selectedCapture)
       .then(loaded => {
-        if (controller.signal.aborted || currentPageKey.current !== pageKey) return;
-        if (isRewind && loaded.page.observedUtc !== null && timeWindow
+        if (controller.signal.aborted || currentPageKey.current !== pageKey || location.hash !== selectionHash) return;
+        if ((isRewind || requestedCapture) && loaded.page.observedUtc !== null && timeWindow
             && (activityUtc(loaded.page.observedUtc) < activityUtc(timeWindow.fromUtc) || activityUtc(loaded.page.observedUtc) >= activityUtc(timeWindow.toUtc)))
           throw new Error("The session capture did not belong to the selected window.");
+        if (requestedCapture && capturedWaitSnapshotExpired(loaded.page, Date.now()))
+          throw new Error("The requested session capture has expired beyond the 24-hour retention. No other capture has been selected.");
         setResult({ key: pageKey, loading: false, data: loaded });
       })
-      .catch((error: unknown) => { if (!controller.signal.aborted && currentPageKey.current === pageKey)
+      .catch((error: unknown) => { if (!controller.signal.aborted && currentPageKey.current === pageKey && location.hash === selectionHash)
         setResult({ key: pageKey, loading: false, error: error instanceof Error ? error.message : "Captured session evidence is unavailable." }); });
     return () => controller.abort();
   }, [pageKey]);
@@ -96,23 +109,33 @@ export function WaitCapturedSessionsPanel({ instanceId, scope, timeWindow, refre
       {sessionWaitCategories.map(value => <option key={value} value={value}>{value}</option>)}
     </select></label>
     {category === null ? <p role="status">The requested session wait category is invalid or duplicated. Choose a supported category; no other category was substituted.</p> : null}
+    {requestedCapture === null ? <p role="status">The requested session capture is invalid, duplicated, or outside the selected window. No other capture has been selected.</p> : null}
+    {requestedCapture !== undefined ? <button type="button" className="secondary-button" onClick={() => {
+      if (location.hash === selectionHash && currentPageKey.current === pageKey)
+        location.hash = sessionWaitCaptureHref({ ...scope, target: instanceId }, undefined, selectionHash);
+    }}>Clear retained capture</button> : null}
     <p className="table-note">Classification follows telemetry.server_wait_category_v1: Lock, Log, I/O, CPU/signal, Memory, Parallelism and Other; benign waits are excluded unless Idle is selected. User and system request metadata is requested; rows without a captured wait type are excluded. This is separate from Query Store category numbers. No captured SQL text is loaded.</p>
     {scope.databaseId !== undefined ? <p className="table-note">Captured requests are scoped to database ID {scope.databaseId}; server wait counters remain server-wide.</p> : null}
     {isRewind && !history ? <p role="status">Finding retained session captures inside this window…</p> : null}
     {history?.error ? <p role="alert">{history.error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry captured sessions</button></p> : null}
     {history?.unavailable ? <p role="status">{history.unavailable}</p> : null}
-    {isRewind && captures && captures.length === 0 ? <p>No retained native session capture is available inside this window. The current capture has not been substituted.</p> : null}
+    {isRewind && captures && captures.length === 0 && requestedCapture === undefined ? <p>No retained native session capture is available inside this window. The current capture has not been substituted.</p> : null}
+    {requestedCapture && captures && (evidence?.loading || data) && !captures.some(capture => capture.id.toLowerCase() === requestedCapture.id.toLowerCase()) ? <p className="table-note">The requested capture is not in the offered history list. Its exact identity is retained; bounded metadata is read directly.</p> : null}
     {isRewind && captures && captures.length > 0 ? <>
-      <label>Retained session capture <select value={selectedCaptureId ?? ""} onChange={event => {
-        if (currentHistoryKey.current === historyKey) setCaptureSelection({ key: historyKey, id: event.target.value });
-      }}>{captures.map(capture => <option key={capture.id} value={capture.id}>{labelTime(capture.observedUtc)}{capture.truncated ? " · truncated capture" : ""}</option>)}</select></label>
+      <label>Retained session capture <select value={requestedCapture === null ? "invalid" : selectedCaptureId ?? ""} onChange={event => {
+        if (currentHistoryKey.current !== historyKey || location.hash !== selectionHash) return;
+        const capture = captures.find(item => item.id.toLowerCase() === event.target.value.toLowerCase());
+        if (capture) location.hash = sessionWaitCaptureHref({ ...scope, target: instanceId }, capture, selectionHash);
+      }}>{requestedCapture === null ? <option disabled value="invalid">Invalid requested capture</option> : null}
+        {requestedCapture && !captures.some(capture => capture.id.toLowerCase() === requestedCapture.id.toLowerCase()) ? <option value={requestedCapture.id}>{labelTime(requestedCapture.observedUtc)} · requested capture outside offered list</option> : null}
+        {captures.map(capture => <option key={capture.id} value={capture.id.toLowerCase()}>{labelTime(capture.observedUtc)}{capture.truncated ? " · truncated capture" : ""}</option>)}</select></label>
       <p className="table-note">{captures.length} retained captures offered{history?.omitted ? `; ${history.omitted} older captures omitted by the 100-capture selector bound` : ""}. Sessions are shown only for the chosen capture, not the whole window.</p>
     </> : null}
     {evidence?.loading ? <p role="status">Loading bounded captured session metadata…</p> : null}
     {evidence?.error ? <p role="alert">{evidence.error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry captured sessions</button></p> : null}
     {data && (!data.page.snapshotId || !data.page.observedUtc) ? <p>The session capture is unavailable or expired. No current capture has been substituted for the selected historical capture.</p> : null}
     {data?.page.snapshotId && data.page.observedUtc ? <>
-      <p className="activity-evidence">{isRewind ? "Selected retained capture" : "Latest native session capture"} observed {labelTime(data.page.observedUtc)} · repository time {labelTime(data.page.repositoryTimeUtc)} · {data.page.state === "stale" ? "stale evidence" : "available captured evidence"} · {rows.length} matching requests of {data.rows.length} loaded · {data.pagesRead} metadata pages.
+      <p className="activity-evidence">{isRewind || requestedCapture ? "Selected retained capture" : "Latest native session capture"} observed {labelTime(data.page.observedUtc)} · repository time {labelTime(data.page.repositoryTimeUtc)} · {data.page.state === "stale" ? "stale evidence" : "available captured evidence"} · {rows.length} matching requests of {data.rows.length} loaded · {data.pagesRead} metadata pages.
         {data.page.truncated ? " Capture is truncated; missing requests may have matching waits." : ""}
         {data.limited ? " Metadata paging stopped at the 11-page / 512-row bound; coverage is partial." : " End of the loaded capture's metadata pages."}</p>
       {expired ? <p className="table-note">This captured snapshot has expired beyond the 24-hour retention. Its returned metadata is shown as expired evidence; inspection links are unavailable. Refresh to request current retained evidence.</p>

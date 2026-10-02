@@ -8,7 +8,7 @@ import { dashboardTimelineSelectionHref, readDashboardTimelineSelection } from "
 import { retainResourceSelectionHref } from "./features/resources/resourceSelectionModel.ts";
 import { retainActivitySelectionHref } from "./features/activity/activitySelectionModel.ts";
 import { retainWaitCategoryHref } from "./features/activity/waitSelectionModel.ts";
-import { retainSessionWaitCategoryHref } from "./features/activity/waitCapturedSessionsModel.ts";
+import { retainSessionWaitCategoryHref, retainSessionWaitCaptureHref } from "./features/activity/waitCapturedSessionsModel.ts";
 import { adminSelectionHref, readAdminSelection, retainAdminSelectionHref, type AdminPage } from "./features/alerts/adminSelectionModel.ts";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
@@ -457,6 +457,7 @@ function retainDiagnosticSelectionHref(href: string, currentHash: string): strin
   next = retainActivitySelectionHref(next, currentHash);
   next = retainWaitCategoryHref(next, currentHash);
   next = retainSessionWaitCategoryHref(next, currentHash);
+  next = retainSessionWaitCaptureHref(next, currentHash);
   next = retainAdminSelectionHref(next, currentHash);
   return retainDeadlockSelectionHref(next, currentHash);
 }

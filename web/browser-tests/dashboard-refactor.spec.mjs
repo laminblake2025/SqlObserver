@@ -1782,7 +1782,9 @@ test('timeline category keyboard control aligns shared charts and clears hidden 
   const category = timeline.getByRole('combobox', { name: 'Timeline event category', exact: true });
   await category.focus();
   await category.press('Home');
-  for (let index = 0; index < 5; index++) await category.press('ArrowDown');
+  const planOptionIndex = await category.locator('option').evaluateAll(options => options.findIndex(option => option.value === 'plan_regression'));
+  expect(planOptionIndex).toBeGreaterThan(0);
+  for (let index = 0; index < planOptionIndex; index++) await category.press('ArrowDown');
   await category.press('Enter');
   await expect(category).toHaveValue('plan_regression');
   await expect(timeline.getByRole('listitem')).toHaveCount(2);

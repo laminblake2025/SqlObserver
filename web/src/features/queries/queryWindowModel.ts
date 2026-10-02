@@ -1,6 +1,6 @@
-import { overviewHref, overviewWindow } from "../overview/overviewModel.ts";
+import { overviewHref, overviewWindow, workspaceUtcTimestamp } from "../overview/overviewModel.ts";
 import type { OverviewScope } from "../overview/overviewTypes";
-import { canonicalUtcTimestamp, utcMicroseconds } from "../../utcTimestamp.ts";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 
 const maximumQueryWindowMilliseconds = 7 * 24 * 60 * 60 * 1000;
 
@@ -13,9 +13,8 @@ export type QueryWindowResult =
 
 export function resolveQueryWindow(scope: OverviewScope, now: number): QueryWindowResult {
   try {
-    const normalize = (value: string) => value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1");
     const window = scope.range === "custom" ? {
-      fromUtc: canonicalUtcTimestamp(normalize(scope.from ?? "")), toUtc: canonicalUtcTimestamp(normalize(scope.to ?? "")),
+      fromUtc: workspaceUtcTimestamp(scope.from ?? ""), toUtc: workspaceUtcTimestamp(scope.to ?? ""),
     } : overviewWindow(scope, now);
     const from = utcMicroseconds(window.fromUtc), to = utcMicroseconds(window.toUtc), duration = to - from;
     if (!Number.isFinite(now) || duration <= 0n || to > BigInt(Math.trunc(now + 60_000)) * 1000n) return invalidQueryWindow();

@@ -16,7 +16,7 @@ import { queryStoreWaitCategories } from "../queries/queryStoreWaitCategories";
 import { queryJumpHref } from "../../components/commandPaletteModel";
 import { readWaitCategory, waitCategoryHref } from "./waitSelectionModel.ts";
 import { WaitCapturedSessionsPanel } from "./WaitCapturedSessionsPanel";
-import { retainSessionWaitCategoryHref } from "./waitCapturedSessionsModel.ts";
+import { retainSessionWaitCategoryHref, retainSessionWaitCaptureHref } from "./waitCapturedSessionsModel.ts";
 
 export interface TargetWaitsPanelProps {
   readonly instanceId: string;
@@ -105,7 +105,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       <h3>Queries with matching Query Store waits</h3>
       <p>Query Store plan wait deltas are a separate source from the server wait trend above. They can point to queries worth investigating, but do not account for all server waits or identify a current waiting session.</p>
       {queryCategory === null && <p role="status">The requested Query Store wait category is invalid. Choose a supported category; no other category has been selected.</p>}
-      <label>Query Store category <select value={queryCategory ?? ""} onChange={event => { if (location.hash === selectionHash) location.hash = retainSessionWaitCategoryHref(waitCategoryHref({ ...scope, target: instanceId }, Number(event.target.value)), selectionHash); }}>
+      <label>Query Store category <select value={queryCategory ?? ""} onChange={event => { if (location.hash === selectionHash) location.hash = retainSessionWaitCaptureHref(retainSessionWaitCategoryHref(waitCategoryHref({ ...scope, target: instanceId }, Number(event.target.value)), selectionHash), selectionHash); }}>
         {queryCategory === null && <option value="" disabled>Choose a supported category</option>}
         {queryStoreWaitCategories.map((name, category) => category === 11 ? null :
           <option key={category} value={category}>{name}</option>)}

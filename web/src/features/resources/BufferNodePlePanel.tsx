@@ -89,7 +89,7 @@ export function BufferNodePlePanel({ instanceId, scope, refresh, onSelectWindow,
       {data.aggregatePoints.length ? <OverviewChart series={bufferManagerPleSeries(data)}
         crosshairUtc={crosshairUtc} onCrosshairChange={onCrosshairChange}
         fromUtc={data.fromUtc} toUtc={data.toUtc} onSelectWindow={onSelectWindow} />
-        : <p>No Buffer Manager PLE samples were stored in this window.</p>}
+        : <p>No Buffer Manager PLE samples were stored in this window. Check the collector schedule and SQL Server permissions, or choose a window with collected samples.</p>}
     </>}
   </section>;
 }

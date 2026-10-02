@@ -6,6 +6,7 @@ import { matchesDashboardTimelineSelection, type DashboardTimelineSelection } fr
 const categories: readonly { value: "all" | TimelineEvent["kind"]; label: string }[] = [
   { value: "all", label: "All events" },
   { value: "deadlock", label: "Deadlocks" },
+  { value: "alert", label: "Alerts fired (current inbox)" },
   { value: "agent_failure", label: "SQL Agent failures" },
   { value: "database_options", label: "Database options" },
   { value: "configuration", label: "Server configuration" },
@@ -14,6 +15,7 @@ const categories: readonly { value: "all" | TimelineEvent["kind"]; label: string
 ];
 const timeBasisLabels: Readonly<Record<TimelineEvent["timeBasis"], string>> = {
   occurred: "Event occurred",
+  fired: "Alert fired",
   first_observed: "First observed",
   detected: "Change detected",
   last_observed: "Last observed",
