@@ -5,12 +5,14 @@ using SqlObserver.Domain.SensitiveData;
 namespace SqlObserver.Infrastructure.SqlServer;
 
 /// <summary>Staged protected cache producer; production catalog activation requires separate qualification.</summary>
-internal sealed class SqlServerQueryPerformanceV3Collector : ISqlServerCollector
+public sealed class SqlServerQueryPerformanceV3Collector : ISqlServerCollector
 {
-    internal static CollectorOutputContract OutputContract { get; } = new(new(3), [], 0, 0, 0,
+    public static CollectorOutputContract OutputContract { get; } = new(new(3), [], 0, 0, 0,
         maxQueryPerformanceObservations: 20_000, maxPlanCacheRuntimeObservations: 2_000, maxPlanCacheContentObservations: 8);
     private readonly SqlServerQueryPerformanceV2Collector combined;
-    internal SqlServerQueryPerformanceV3Collector(ISqlServerConnectionFactory? factory = null,
+    public SqlServerQueryPerformanceV3Collector(IQuerySensitiveContentProtector? protector = null)
+        : this(null, protector) { }
+    internal SqlServerQueryPerformanceV3Collector(ISqlServerConnectionFactory? factory,
         IQuerySensitiveContentProtector? protector = null)
         : this(SqlServerQueryPerformanceV3AssetCatalog.LoadEmbedded(), factory ??
             new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName), protector, null, null)
@@ -21,6 +23,6 @@ internal sealed class SqlServerQueryPerformanceV3Collector : ISqlServerCollector
         ISqlServerQueryPerformanceExecutionPort? queryStorePort) =>
         combined = new(catalog, factory, protector, cacheRead, queryStorePort);
     public CollectorManifest Manifest => combined.Manifest;
-    public ValueTask<CollectorExecutionResult> CollectAsync(CollectorExecutionRequest request, CancellationToken token) =>
-        combined.CollectAsync(request, token);
+    public ValueTask<CollectorExecutionResult> CollectAsync(CollectorExecutionRequest request, CancellationToken cancellationToken) =>
+        combined.CollectAsync(request, cancellationToken);
 }

@@ -153,6 +153,10 @@ public static class CollectorServiceRegistration
         services.AddSingleton(static provider => new SqlServerQueryPerformanceCollector(
             provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>(),
             provider.GetRequiredService<IQuerySensitiveContentProtector>()));
+        // Staged producer uses the production key provider. Catalog activation
+        // remains a separately qualified operation; the registry still selects v1.
+        services.AddSingleton(static provider => new SqlServerQueryPerformanceV3Collector(
+            provider.GetRequiredService<IQuerySensitiveContentProtector>()));
         services.AddSingleton(static _ => SqlServerReplicationAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerReplicationCollector(
             provider.GetRequiredService<SqlServerReplicationAssetCatalog>(),

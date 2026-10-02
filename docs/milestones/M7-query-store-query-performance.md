@@ -1040,3 +1040,37 @@ evidence is under `artifacts/web-browser`.
 This step does not activate v3 collector catalog grants or schedules. SQL Server
 2019/2025 qualification, production key/TLS qualification and qualified rollout
 remain. No full suite or SSH-lab source deployment was performed.
+
+### Production provider composition and native Windows-key qualification (2026-10-01)
+
+Production dependency injection now supplies the staged v3 producer with the
+configured QuerySensitiveContentProtector. The public producer entry point uses
+the normal Windows-integrated SQL connection factory; the connection override
+remains an internal native-test seam. Registry/catalog selection stays on query
+v1 until the remaining version qualification and rollout gates are satisfied.
+
+The extended native case creates an isolated restricted key directory and a
+32-byte LocalMachine DPAPI key. It resolves the actual collector/key-provider
+composition, replacing only the source connection opener with the owned
+non-sysadmin SQL fixture. SQL Server 2022 capture, protection, leased PostgreSQL
+storage, canonical replay and late-failure/lease-loss rollback run with the
+production provider. A distinct reader instance loads the same key and retrieves
+the exact captured text and plans through the audited Server port. Another valid
+key cannot open the content and records one unavailable audit without plaintext
+or key identifiers. Temporary key material, fixture databases and login are
+cleaned up.
+
+Native fixture preparation now recreates only its owned procedure's cache
+baseline immediately before collection. One diagnostic attempt could not find
+the earlier five-execution allocation after repository/host setup; the test
+retains bounded counter diagnostics without dumping content. The final selection
+passes both the production-key v3 case and the existing counter-only v2 case.
+The production-composition check also passes, including default v1 registry
+selection and an unavailable key when no key path is configured. Evidence:
+`cache-content-production-qualified-final.trx` (two native checks) and
+`cache-content-production-composition.trx` (one composition check) under
+`artifacts/plan-cache-deltas`.
+
+This qualifies the real key provider on one Windows machine. Distinct service
+identities, production certificate trust, SQL Server 2019/2025 and catalog/runtime
+activation remain unqualified. No frontend or full suite was rerun for this step.

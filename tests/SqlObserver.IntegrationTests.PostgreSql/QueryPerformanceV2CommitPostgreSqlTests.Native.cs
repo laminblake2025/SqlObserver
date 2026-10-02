@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.DependencyInjection;
+using SqlObserver.Infrastructure.Windows;
 using Microsoft.Data.SqlClient;
 using Npgsql;
 using SqlObserver.Application.Ports;
@@ -42,8 +44,16 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
     public Task V3NativeCombinedProducerPersistsProtectedCacheContentWithCountersReplayAndRollback() =>
         NativeRoundtrip(false, protocolVersion: 3);
 
-    private async Task NativeRoundtrip(bool qualifyCacheLifecycle, bool recreateDatabase = false, int protocolVersion = 2)
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    [Trait("Category", "RequiresSqlServerDisposable")]
+    public Task V3NativeProductionProtectedKeyComposesCollectorAndIndependentAuditedReader() =>
+        NativeRoundtrip(false, protocolVersion: 3, productionProtection: true);
+
+    private async Task NativeRoundtrip(bool qualifyCacheLifecycle, bool recreateDatabase = false, int protocolVersion = 2,
+        bool productionProtection = false)
     {
+        using var keyScope = productionProtection ? NativeQueryProtectionKey.Create() : null;
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var settings = new SqlConnectionStringBuilder(SqlServerLabContract.ConnectionString)
         { InitialCatalog = "master", Pooling = false };
@@ -105,12 +115,25 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
             finally { await leases.ReleaseAsync(new(capabilityLease, Timeout), deadline.Token); }
             await using NpgsqlDataSource migrator = MigratorDataSource(scene);
             var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(migrator);
-            using var protector = new RoundtripProtector();
-            ISqlServerCollector collector = protocolVersion == 3 ? new SqlServerQueryPerformanceV3Collector(factory, protector) : new SqlServerQueryPerformanceV2Collector(factory, protector);
+            using var fallbackProtector = productionProtection ? null : new RoundtripProtector();
+            await using var production = productionProtection ? NativeCollectorApplication(factory, keyScope!.Path) : null;
+            IQuerySensitiveContentProtector protector = production?.GetRequiredService<IQuerySensitiveContentProtector>() ?? fallbackProtector!;
+            Assert.True(protector.IsAvailable);
+            ISqlServerCollector collector = production is not null ? production.GetRequiredService<SqlServerQueryPerformanceV3Collector>()
+                : protocolVersion == 3 ? new SqlServerQueryPerformanceV3Collector(factory, protector) : new SqlServerQueryPerformanceV2Collector(factory, protector);
             var registration = new CollectorRegistration(9, collector, new CollectorOutputValidator(protocolVersion == 3
                 ? SqlServerQueryPerformanceV3Collector.OutputContract : SqlServerQueryPerformanceV2Collector.OutputContract),
                 new(protocolVersion == 3 ? QueryPerformanceV3ManifestTests.ManifestDigest : QueryPerformanceV2ManifestTests.ManifestDigest),
                 new(protocolVersion == 3 ? QueryPerformanceV3ManifestTests.BundleDigest : QueryPerformanceV2ManifestTests.BundleDigest));
+            // Repository migration and full host composition can outlive an
+            // Express cache allocation. Establish the owned synthetic baseline
+            // immediately before collection, without touching any other plans.
+            await using (var warm = new SqlConnection(new SqlConnectionStringBuilder(settings.ConnectionString) { InitialCatalog = names[1] }.ConnectionString))
+            {
+                await warm.OpenAsync(deadline.Token);
+                await NativeExecute(warm, "EXEC sys.sp_recompile N'dbo.runtime_probe';", deadline.Token);
+                for (int execution = 0; execution < 5; execution++) await NativeExecute(warm, "EXEC dbo.runtime_probe;", deadline.Token);
+            }
             Frame first = await Start(scene, cache: false);
             Assert.NotNull(first.Work.CapabilityProfile);
             var firstResult = await new CollectorExecutionEngine().ExecuteAsync(registration, first.Work, first.Run, deadline.Token);
@@ -119,8 +142,12 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
             Assert.DoesNotContain(firstResult.Payload.QueryPerformance.Items, item => item.Query.DatabaseId == ids[1]);
             Assert.Contains(firstResult.Payload.QueryPerformanceStatuses, status => status.DatabaseId == ids[1] && status.Status == QueryPerformanceReadStatus.QueryStoreDisabled && status.SourceState == QueryStoreState.Disabled);
             Assert.DoesNotContain(firstResult.Payload.QueryPerformanceStatuses, status => status.FallbackAttempted);
-            var firstProbe = Assert.Single(firstResult.Payload.PlanCacheRuntime!.Items, item =>
-                item.Watermark.Key.Query.DatabaseId == ids[1] && item.Watermark.Counters.Executions == 5);
+            var firstProbes = firstResult.Payload.PlanCacheRuntime!.Items.Where(item =>
+                item.Watermark.Key.Query.DatabaseId == ids[1] && item.Watermark.Counters.Executions == 5).ToArray();
+            Assert.True(firstProbes.Length == 1, string.Join(";", firstResult.Payload.PlanCacheRuntime.Items
+                .Where(item => item.Watermark.Key.Query.DatabaseId == ids[1]).Take(20)
+                .Select(item => $"db={item.Watermark.Key.Query.DatabaseId},executions={item.Watermark.Counters.Executions},rows={item.Watermark.Counters.Rows}")));
+            var firstProbe = firstProbes[0];
             Assert.Contains(firstResult.Payload.QueryPerformance.Items, item => item.ProtectedContent is not null);
             Assert.Contains(firstResult.Payload.QueryPerformance.Items, item => item.ProtectedPlanContent is not null);
             CollectorPayload firstLinked = await Link(first, firstResult.Payload);
@@ -144,8 +171,12 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
                 linkedEvidence.Parameters.AddWithValue("run", first.Run.Value); linkedEvidence.Parameters.AddWithValue("count", cacheContent.Items.Count * 2);
                 Assert.True(Assert.IsType<bool>(await linkedEvidence.ExecuteScalarAsync(deadline.Token)));
                 await using var contentServer = scene.Database.CreateServerDataSource();
+                using var productionReader = productionProtection ? new QuerySensitiveContentProtector(keyScope!.Path) : null;
+                IQuerySensitiveContentProtector readerProtector = productionReader ?? protector;
+                Assert.True(readerProtector.IsAvailable);
+                if (productionProtection) Assert.NotSame(protector, readerProtector);
                 var contentService = new SqlObserver.Application.Services.PlanCacheContentReadService(
-                    new PostgreSqlPlanCacheContentReadRepositoryPort(contentServer), protector);
+                    new PostgreSqlPlanCacheContentReadRepositoryPort(contentServer), readerProtector);
                 var contentAuthorization = new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1-2-3-1234"), AuthorizationPrincipalState.Active,
                     [new RoleAuthorizationGrant(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([target])),
                      new RoleAuthorizationGrant(ApplicationRole.QueryTextReader, TargetAuthorizationScope.ForTargets([target]))]);
@@ -167,6 +198,26 @@ public sealed partial class QueryPerformanceV2CommitPostgreSqlTests
                         }
                         finally { CryptographicOperations.ZeroMemory(clear); }
                     }
+                if (productionProtection)
+                {
+                    using var wrongKey = NativeQueryProtectionKey.Create();
+                    using var wrongProtector = new QuerySensitiveContentProtector(wrongKey.Path);
+                    Assert.True(wrongProtector.IsAvailable);
+                    var item = cacheContent.Items.First(item => item.Text.Reference is not null);
+                    var contentKey = item.Statement.Watermark.Key;
+                    var unavailable = await new SqlObserver.Application.Services.PlanCacheContentReadService(
+                        new PostgreSqlPlanCacheContentReadRepositoryPort(contentServer), wrongProtector).ReadAsync(contentAuthorization,
+                        new(target, first.Run.Value, contentKey.Query.DatabaseId, contentKey.DatabaseIncarnation,
+                            contentKey.Query.QueryFingerprint, contentKey.Plan.PlanFingerprint, contentKey.CacheEntryFingerprint,
+                            SensitivePayloadKind.QueryText, Timeout), deadline.Token);
+                    Assert.Equal("unavailable", unavailable.Status); Assert.Equal("protection_failed", unavailable.Reason);
+                    Assert.Null(unavailable.Content);
+                    await using var audit = scene.Database.DataSource.CreateCommand("""
+                        SELECT count(*)=1 AND bool_and(NOT safe_details ? 'payloadId' AND NOT safe_details ? 'keyIdentifier')
+                        FROM audit.activity WHERE action_name='query.cache_content.read' AND safe_details->>'accessOutcome'='unavailable';
+                        """);
+                    Assert.True(Assert.IsType<bool>(await audit.ExecuteScalarAsync(deadline.Token)));
+                }
             }
             string afterFirst = await Snapshot(scene);
             Assert.Equal(CollectorRunCommitStatus.Replayed, (await runtime.CommitRunAsync(firstRequest, deadline.Token)).Status);
