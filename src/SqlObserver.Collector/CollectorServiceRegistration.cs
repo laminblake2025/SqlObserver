@@ -86,6 +86,8 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().DeadlockAlertEvidence);
         services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().PartitionMaintenance);
+        services.AddSingleton<IRetentionMaintenancePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlPartitionMaintenancePort>());
         services.AddSingleton<ICapabilityProfileRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().CapabilityProfiles);
         services.AddSingleton<ICollectorRuntimeRepositoryPort>(static provider =>

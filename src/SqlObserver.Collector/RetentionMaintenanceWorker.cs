@@ -1,6 +1,5 @@
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Coordination;
-using SqlObserver.Infrastructure.PostgreSql;
 
 namespace SqlObserver.Collector;
 
@@ -16,20 +15,24 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
     private static readonly TimeSpan IdleDelay = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan FailureDelay = TimeSpan.FromMinutes(1);
 
-    private readonly PostgreSqlPartitionMaintenancePort _partitions;
+    private readonly IRetentionMaintenancePort _maintenance;
     private readonly IWorkerLeasePort _leases;
     private readonly WorkerExecutionId _executionId;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<RetentionMaintenanceWorker> _logger;
+    private const int FamilyCount = 5;
+    private int _nextFamily;
+    private bool _sweepBusy;
+    private bool _sweepFailed;
 
     public RetentionMaintenanceWorker(
-        PostgreSqlPartitionMaintenancePort partitions,
+        IRetentionMaintenancePort maintenance,
         IWorkerLeasePort leases,
         WorkerExecutionId executionId,
         TimeProvider timeProvider,
         ILogger<RetentionMaintenanceWorker> logger)
     {
-        _partitions = partitions ?? throw new ArgumentNullException(nameof(partitions));
+        _maintenance = maintenance ?? throw new ArgumentNullException(nameof(maintenance));
         _leases = leases ?? throw new ArgumentNullException(nameof(leases));
         _executionId = executionId ?? throw new ArgumentNullException(nameof(executionId));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
@@ -42,6 +45,7 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
         {
             TimeSpan delay = IdleDelay;
             WorkerLeaseIdentity? identity = null;
+            bool attempted = false;
             try
             {
                 LeaseAcquisitionResult acquired = await _leases.AcquireAsync(
@@ -50,65 +54,13 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
                 if (acquired.Status == LeaseAcquisitionStatus.Acquired && acquired.Lease is not null)
                 {
                     identity = acquired.Lease.Identity;
-                    SystemRetentionStepOutcome outcome = await _partitions
-                        .RunSystemRetentionStepAsync(identity, StepTimeout, stoppingToken)
-                        .ConfigureAwait(false);
-                    if (outcome is SystemRetentionStepOutcome.Detached or SystemRetentionStepOutcome.Dropped or SystemRetentionStepOutcome.Reattached or SystemRetentionStepOutcome.GraceStarted or SystemRetentionStepOutcome.Cancelled)
-                    {
-                        LogCompleted(_logger, outcome);
-                        delay = BusyDelay;
-                    }
-                    else if (outcome is SystemRetentionStepOutcome.Retry or SystemRetentionStepOutcome.Failed)
-                    {
-                        LogActionFailed(_logger, outcome);
-                        delay = FailureDelay;
-                    }
-                    else
-                    {
-                        QueryRunRetentionStepOutcome graphOutcome = await _partitions
-                            .RunQueryRunRetentionStepAsync(identity, StepTimeout, stoppingToken)
-                            .ConfigureAwait(false);
-                        if (graphOutcome == QueryRunRetentionStepOutcome.Retired)
-                        {
-                            LogQueryRunRetired(_logger);
-                            delay = BusyDelay;
-                        }
-                        else if (graphOutcome != QueryRunRetentionStepOutcome.Idle)
-                        {
-                            if (graphOutcome == QueryRunRetentionStepOutcome.Oversize)
-                                LogQueryRunOversize(_logger);
-                            delay = BusyDelay;
-                        }
-                        else
-                        {
-                            OriginalCopyRetentionStepOutcome copyOutcome = await _partitions
-                                .RunOriginalCopyRetentionStepAsync(identity, StepTimeout, stoppingToken)
-                                .ConfigureAwait(false);
-                            if (copyOutcome == OriginalCopyRetentionStepOutcome.Retired)
-                            {
-                                LogOriginalCopiesRetired(_logger);
-                                delay = BusyDelay;
-                            }
-                            else if (copyOutcome is OriginalCopyRetentionStepOutcome.Scanned or OriginalCopyRetentionStepOutcome.Blocked)
-                            {
-                                if (copyOutcome == OriginalCopyRetentionStepOutcome.Blocked)
-                                    LogOriginalCopyBlocked(_logger);
-                                delay = BusyDelay;
-                            }
-                            else
-                            {
-                                int textPruned = await _partitions.PruneOrphanQueryTextPayloadsAsync(
-                                    identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
-                                int planPruned = await _partitions.PruneOrphanQueryPlanPayloadsAsync(
-                                    identity, OrphanTimeout, stoppingToken).ConfigureAwait(false);
-                                if (textPruned + planPruned > 0)
-                                {
-                                    LogOrphansPruned(_logger, textPruned + planPruned);
-                                    delay = BusyDelay;
-                                }
-                            }
-                        }
-                    }
+                    int family = _nextFamily;
+                    _nextFamily = (_nextFamily + 1) % FamilyCount;
+                    attempted = true;
+                    var outcome = await RunFamilyAsync(family, identity, stoppingToken).ConfigureAwait(false);
+                    _sweepBusy |= outcome == FamilyOutcome.Busy;
+                    _sweepFailed |= outcome == FamilyOutcome.Failed;
+                    delay = NextDelay();
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -118,7 +70,15 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
             catch (Exception exception)
             {
                 LogCycleFailed(_logger, exception.GetType().Name);
-                delay = FailureDelay;
+                if (attempted)
+                {
+                    _sweepFailed = true;
+                    delay = NextDelay();
+                }
+                else
+                {
+                    delay = FailureDelay;
+                }
             }
             finally
             {
@@ -141,6 +101,57 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
         }
     }
 
+    // Every family receives a short lease even when earlier families keep
+    // reporting work or failure. Only a complete idle sweep sleeps 15 minutes.
+    private TimeSpan NextDelay()
+    {
+        if (_nextFamily != 0) return BusyDelay;
+        TimeSpan delay = _sweepBusy ? BusyDelay : _sweepFailed ? FailureDelay : IdleDelay;
+        _sweepBusy = false;
+        _sweepFailed = false;
+        return delay;
+    }
+
+    private enum FamilyOutcome { Idle, Busy, Failed }
+
+    private async ValueTask<FamilyOutcome> RunFamilyAsync(int family, WorkerLeaseIdentity identity, CancellationToken token)
+    {
+        switch (family)
+        {
+            case 0:
+                var partition = await _maintenance.RunSystemRetentionStepAsync(identity, StepTimeout, token).ConfigureAwait(false);
+                if (partition is SystemRetentionStepOutcome.Retry or SystemRetentionStepOutcome.Failed)
+                {
+                    LogActionFailed(_logger, partition);
+                    return FamilyOutcome.Failed;
+                }
+                if (partition == SystemRetentionStepOutcome.Idle) return FamilyOutcome.Idle;
+                LogCompleted(_logger, partition);
+                return FamilyOutcome.Busy;
+            case 1:
+                var graph = await _maintenance.RunQueryRunRetentionStepAsync(identity, StepTimeout, token).ConfigureAwait(false);
+                if (graph == QueryRunRetentionStepOutcome.Retired) LogQueryRunRetired(_logger);
+                else if (graph == QueryRunRetentionStepOutcome.Oversize) LogQueryRunOversize(_logger);
+                return graph == QueryRunRetentionStepOutcome.Idle ? FamilyOutcome.Idle : FamilyOutcome.Busy;
+            case 2:
+                var copy = await _maintenance.RunOriginalCopyRetentionStepAsync(identity, StepTimeout, token).ConfigureAwait(false);
+                if (copy == OriginalCopyRetentionStepOutcome.Retired) LogOriginalCopiesRetired(_logger);
+                else if (copy == OriginalCopyRetentionStepOutcome.Blocked) LogOriginalCopyBlocked(_logger);
+                return copy == OriginalCopyRetentionStepOutcome.Idle ? FamilyOutcome.Idle : FamilyOutcome.Busy;
+            case 3:
+                int text = await _maintenance.PruneOrphanQueryTextPayloadsAsync(identity, OrphanTimeout, token).ConfigureAwait(false);
+                if (text == 0) return FamilyOutcome.Idle;
+                LogOrphansPruned(_logger, text);
+                return FamilyOutcome.Busy;
+            case 4:
+                int plan = await _maintenance.PruneOrphanQueryPlanPayloadsAsync(identity, OrphanTimeout, token).ConfigureAwait(false);
+                if (plan == 0) return FamilyOutcome.Idle;
+                LogOrphansPruned(_logger, plan);
+                return FamilyOutcome.Busy;
+            default: throw new InvalidOperationException("Unknown retention work family.");
+        }
+    }
+
     [LoggerMessage(EventId = 3150, Level = LogLevel.Information,
         Message = "Fenced system retention completed one action. Outcome={Outcome}")]
     private static partial void LogCompleted(ILogger logger, SystemRetentionStepOutcome outcome);
@@ -158,7 +169,7 @@ public sealed partial class RetentionMaintenanceWorker : BackgroundService
     private static partial void LogLeaseReleaseFailed(ILogger logger, string failureType);
 
     [LoggerMessage(EventId = 3154, Level = LogLevel.Information,
-        Message = "Fenced retention removed old unlinked query-text payloads. Count={Count}")]
+        Message = "Fenced retention removed old unlinked query text/plan payloads. Count={Count}")]
     private static partial void LogOrphansPruned(ILogger logger, int count);
 
     [LoggerMessage(EventId = 3155, Level = LogLevel.Information,

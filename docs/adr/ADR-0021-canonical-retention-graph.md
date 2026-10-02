@@ -490,6 +490,19 @@ attestation, target scope, active schedules, whole-row parity, unexpected
 catalog references, and the retention lease before each delete. Canonical v2
 partition retirement and child/identity lifecycle policy remain future work.
 
+The collector maintenance worker rotates through partition actions, M7 run
+graphs, sealed original copies, orphan query text, and orphan query plans.
+Each action acquires and releases its own 30-second fenced lease; text and
+plan pruning are separate actions so a failure in either cannot starve the
+other. Work, dependency holds, oversize graphs, and failures advance the
+rotation. The worker waits one second between actions, then selects a delay
+after the complete sweep: one second when any action reported work, one
+minute when only failures and idle results were reported, or 15 minutes when
+all five actions were idle. Lease contention does not consume an action.
+The existing repository policy, dependency, recovery, and authorization
+checks still govern each operation. This scheduling change does not retire
+canonical run identities or enable any retention policy.
+
 ## Implementation gates
 
 1. Migration 0160 adds an attached-grace lifecycle for diagnostic-event months

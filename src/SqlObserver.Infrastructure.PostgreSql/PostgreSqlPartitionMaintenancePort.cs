@@ -5,38 +5,8 @@ using SqlObserver.Domain.Repository;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
-public enum SystemRetentionStepOutcome
-{
-    Idle,
-    Detached,
-    Dropped,
-    Reattached,
-    GraceStarted,
-    Cancelled,
-    Retry,
-    Failed,
-}
-
-public enum QueryRunRetentionStepOutcome
-{
-    Idle,
-    Scanned,
-    Held,
-    Oversize,
-    Retired,
-    Missing,
-}
-
-public enum OriginalCopyRetentionStepOutcome
-{
-    Idle,
-    Scanned,
-    Retired,
-    Blocked,
-}
-
 /// <summary>Allowlisted UTC partition care, fenced system retention, and retention previews.</summary>
-public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePort
+public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePort, IRetentionMaintenancePort
 {
     private const string AssertLeaseSql = """
         SELECT control.assert_worker_lease(@work_key, @owner_execution_id, @fencing_token);
