@@ -299,13 +299,18 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .fleet-signal-partial .fleet-signal-dot { background: var(--amber-border); }
 .fleet-signal-attention .fleet-signal-dot { background: var(--red); }
 .fleet-strip { position: sticky; z-index: 4; top: 0; align-self: start; min-width: 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.fleet-strip.workspace-fleet-strip { position: sticky; }
+html:has(.workspace-fleet-strip) { scroll-padding-top: calc(var(--workspace-fleet-stack-height, 140px) + 8px); }
 .fleet-strip-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; white-space: nowrap; }
 .fleet-strip-heading strong { font-size: 12px; }
 .fleet-strip-heading small { color: var(--muted); font-size: 11px; }
-.fleet-strip-list { display: flex; gap: 8px; margin: 0; padding: 0 0 3px; overflow-x: auto; list-style: none; }
+.fleet-strip-scroll { min-width: 0; overflow-x: auto; border-radius: 4px; }
+.fleet-strip-list { display: flex; gap: 8px; margin: 0; padding: 3px 2px; list-style: none; }
+.workspace-fleet-status { margin: 6px 0 12px; overflow-wrap: anywhere; }
 .fleet-strip-list li { flex: 0 0 210px; min-width: 0; }
 .fleet-strip-list a { display: grid; gap: 4px; padding: 8px 10px; color: var(--text); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 7px; }
 .fleet-strip-list a:hover, .fleet-strip-list a:focus-visible { border-color: var(--teal); text-decoration: none; }
+.fleet-strip-list a[aria-current="location"] { border-color: var(--teal); background: var(--surface-hover); }
 .fleet-strip-name { overflow: hidden; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .fleet-strip-list a > small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .fleet-strip-signals { display: flex; flex-wrap: wrap; gap: 4px 9px; }

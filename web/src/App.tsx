@@ -32,6 +32,7 @@ import { getObservationTarget, listObservationTargets } from "./features/targets
 import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
+import { WorkspaceFleetStrip } from "./features/overview/WorkspaceFleetStrip";
 import { activityHistoryHref, healthSectionHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
 import { refreshCadence, startWorkspaceClock, wakeLiveTick } from "./liveRefreshSchedule";
 
@@ -299,6 +300,7 @@ export function App() {
           }}>{livePaused ? "Resume live updates" : "Pause live updates"}</button>}
         </header>
         <main id="main-content" tabIndex={-1} className="shell">
+          <WorkspaceFleetStrip scope={scope} refresh={slowRefresh} />
           <PageHeading
             eyebrow={route.page === "overview" ? "SQL OBSERVER / OVERVIEW" : `SQL OBSERVER / ${destinations[route.page].toUpperCase()}`}
             title={pageTitle}

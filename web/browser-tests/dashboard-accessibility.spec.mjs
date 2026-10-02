@@ -209,3 +209,66 @@ for (const width of [320, 390, 768, 1440]) {
     await timeline.screenshot({ path: resolve(folder, `timeline-detail-${width}.png`) });
   });
 }
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`persistent fleet navigation keeps keyboard focus and responsive evidence at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([{ name: 'databaseScopeFixture', value: '1', url: origin }]);
+    await open(page, 'health');
+    const fleet = page.getByRole('navigation', { name: 'Loaded server status', exact: true });
+    await expect(fleet).toBeVisible();
+    await expect(fleet.getByRole('link')).toHaveCount(10);
+    const current = fleet.locator('a[aria-current="location"]');
+    await expect(current).toHaveCount(1);
+    await expect(current).toHaveAccessibleName(/^SYNTHETIC SQL 02:/);
+    await expect(current).toHaveAttribute('href', new RegExp(`target=${target}`));
+
+    await page.getByRole('link', { name: 'Resources', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resources\?/);
+    await expect(fleet).toBeVisible();
+    await expect(current).toHaveAccessibleName(/^SYNTHETIC SQL 02:/);
+    const entries = fleet.getByRole('region', { name: 'Loaded fleet server entries', exact: true });
+    expect(await entries.evaluate(element => element.scrollWidth > element.clientWidth), 'The complete loaded fleet scrolls inside its region').toBe(true);
+    await entries.evaluate(element => { element.scrollLeft = 0; });
+    await entries.focus();
+    await entries.press('ArrowRight');
+    await expect(entries).toBeFocused();
+    await expect.poll(() => entries.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+
+    await page.evaluate(() => window.scrollTo(0, 600));
+    const stripBounds = await fleet.boundingBox();
+    expect(stripBounds).not.toBeNull();
+    if (width <= 960) {
+      const sidebarBounds = await page.locator('.sidebar').boundingBox();
+      expect(sidebarBounds).not.toBeNull();
+      expect(stripBounds.y, 'Pinned fleet navigation must sit below the mobile sidebar').toBeGreaterThanOrEqual(sidebarBounds.y + sidebarBounds.height - 1);
+    } else {
+      expect(stripBounds.y, 'Desktop fleet navigation pins to the viewport').toBeGreaterThanOrEqual(-1);
+      expect(stripBounds.y).toBeLessThanOrEqual(1);
+    }
+    const database = page.getByRole('combobox', { name: 'Workspace database', exact: true });
+    await database.focus();
+    await expect(database).toBeFocused();
+    await expect.poll(async () => {
+      const control = await database.boundingBox();
+      const pinned = await fleet.boundingBox();
+      return control && pinned ? control.y - (pinned.y + pinned.height) : -1;
+    }, { message: 'A focused workspace control must remain visible below pinned fleet navigation' }).toBeGreaterThanOrEqual(-1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+    await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
+    expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
+    const folder = resolve('../artifacts/dashboard-refactor/screenshots');
+    await mkdir(folder, { recursive: true });
+    await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+    await entries.evaluate(element => {
+      const link = element.querySelector('a[aria-current="location"]');
+      if (link) {
+        const linkLeft = link.getBoundingClientRect().left - element.getBoundingClientRect().left + element.scrollLeft;
+        element.scrollLeft = Math.max(0, linkLeft - (element.clientWidth - link.getBoundingClientRect().width) / 2);
+      }
+    });
+    await page.screenshot({ path: resolve(folder, `workspace-fleet-${width}.png`), fullPage: true });
+    await fleet.screenshot({ path: resolve(folder, `workspace-fleet-detail-${width}.png`) });
+  });
+}

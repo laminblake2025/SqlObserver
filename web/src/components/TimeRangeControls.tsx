@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { customUtcWindow, overviewWindow } from '../features/overview/overviewModel';
+import { customUtcInputValue, customUtcWindow, overviewWindow } from '../features/overview/overviewModel';
 import type { OverviewRange, OverviewScope } from '../features/overview/overviewTypes';
 
 export function TimeRangeControls({scope,onChange,maximumDays=31}: {
@@ -12,7 +12,7 @@ export function TimeRangeControls({scope,onChange,maximumDays=31}: {
   const editor=useRef<HTMLFormElement>(null);
   useEffect(()=>{
     if(editing&&scope.range==='custom') editor.current?.querySelector<HTMLInputElement>('input[name="from"]')?.focus();
-  },[editing,scope.range]);
+  },[editing,scope.range,scope.from,scope.to]);
   const closeEditor=()=>{setError('');setEditing(false);editorToggle.current?.focus();};
   return <>
     <label>Time range<select aria-label="Time range" value={scope.range} onChange={event=>{
@@ -37,13 +37,22 @@ export function TimeRangeControls({scope,onChange,maximumDays=31}: {
         event.preventDefault();
         const values=new FormData(event.currentTarget);
         try {
-          const window=customUtcWindow(String(values.get('from')??''),String(values.get('to')??''),Date.now(),maximumDays);
+          const window=customUtcWindow(String(values.get('from')??''),String(values.get('to')??''),Date.now(),maximumDays,
+            {fromUtc:scope.from,toUtc:scope.to,
+              fromEdited:event.currentTarget.dataset.fromEdited==='true',toEdited:event.currentTarget.dataset.toEdited==='true'});
           onChange({from:window.fromUtc,to:window.toUtc});closeEditor();
         } catch(failure) {setError(failure instanceof Error?failure.message:'Enter a valid UTC range.');}
       }}>
-        <label>From (UTC)<input name="from" required type="datetime-local" step="1" defaultValue={scope.from?.slice(0,19)??''}/></label>
-        <label>To (UTC)<input name="to" required type="datetime-local" step="1" defaultValue={scope.to?.slice(0,19)??''}/></label>
-        <small>Enter custom bounds in UTC. The display toggle changes timestamps without changing the selected instants.</small>
+        <label>From (UTC)<input name="from" required type="datetime-local" step="0.001"
+          defaultValue={customUtcInputValue(scope.from)} onChange={event=>{
+            if(event.currentTarget.form)event.currentTarget.form.dataset.fromEdited='true';
+          }}/></label>
+        <label>To (UTC)<input name="to" required type="datetime-local" step="0.001"
+          defaultValue={customUtcInputValue(scope.to)} onChange={event=>{
+            if(event.currentTarget.form)event.currentTarget.form.dataset.toEdited='true';
+          }}/></label>
+        <small>Enter custom bounds in UTC. Untouched bounds keep their exact stored precision; edited bounds use milliseconds. The display toggle changes timestamps without changing the selected instants.</small>
+        {customUtcInputValue(scope.from)&&customUtcInputValue(scope.to)&&<small>Exact current bounds: <code>{scope.from}</code> to <code>{scope.to}</code>.</small>}
         <button type="submit">Apply range</button>
         {error&&<p role="alert">{error}</p>}
       </form>}

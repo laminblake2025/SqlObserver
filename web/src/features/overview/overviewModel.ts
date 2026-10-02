@@ -42,14 +42,41 @@ export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: str
   if (from.value>=to.value || to.value-from.value>31n*86400n*1000000n || to.value>BigInt(Math.trunc(now+60000))*1000n) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
   return {fromUtc:from.text,toUtc:to.text};
 }
-export function customUtcWindow(from:string,to:string,now:number,maximumDays=31): {fromUtc:string;toUtc:string} {
-  const parse=(value:string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value) ? Date.parse(`${value}Z`) : NaN;
-  const start=parse(from),end=parse(to);
-  if (!Number.isFinite(start)||!Number.isFinite(end)) throw new Error('Enter both dates and times in UTC.');
-  if (start>=end) throw new Error('The end must be after the start.');
-  if (end-start>maximumDays*86400000) throw new Error(`Choose a range of ${maximumDays} days or less.`);
-  if (end>now) throw new Error('The end must not be in the future (UTC).');
-  return {fromUtc:new Date(start).toISOString(),toUtc:new Date(end).toISOString()};
+/** Native datetime-local controls expose millisecond precision; keep finer source bounds separately. */
+export function customUtcInputValue(utc:string|undefined): string {
+  if (utc===undefined) return '';
+  try {
+    utcMicroseconds(utc);
+    const timestamp=canonicalUtcTimestamp(utc).replace(/Z$/,'');
+    const [seconds,fraction='']=timestamp.split('.');
+    return `${seconds}.${fraction.slice(0,3).padEnd(3,'0')}`;
+  } catch { return ''; }
+}
+
+export function customUtcWindow(from:string,to:string,now:number,maximumDays=31,
+  original?:{readonly fromUtc?:string;readonly toUtc?:string;readonly fromEdited?:boolean;readonly toEdited?:boolean}): {fromUtc:string;toUtc:string} {
+  const parseInput=(value:string) => {
+    const match=/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(value);
+    if (!match) throw new Error('Enter both dates and times in UTC.');
+    const text=`${match[1]}:${match[2]??'00'}${match[3]?`.${match[3]}`:''}Z`;
+    try { return {value:utcMicroseconds(text),text:canonicalUtcTimestamp(text)}; }
+    catch { throw new Error('Enter both dates and times in UTC.'); }
+  };
+  const parseBound=(input:string,stored:string|undefined,edited:boolean|undefined) => {
+    const entered=parseInput(input);
+    const displayed=customUtcInputValue(stored);
+    if (!edited && stored!==undefined && displayed!=='' && entered.value===parseInput(displayed).value)
+      return {value:utcMicroseconds(stored),text:canonicalUtcTimestamp(stored)};
+    return entered;
+  };
+  const start=parseBound(from,original?.fromUtc,original?.fromEdited),end=parseBound(to,original?.toUtc,original?.toEdited);
+  if (!Number.isFinite(now) || !Number.isSafeInteger(maximumDays) || maximumDays<1)
+    throw new Error('Choose a valid UTC range limit.');
+  if (start.value>=end.value) throw new Error('The end must be after the start.');
+  if (end.value-start.value>BigInt(maximumDays)*86400n*1000000n)
+    throw new Error(`Choose a range of ${maximumDays} days or less.`);
+  if (end.value>BigInt(Math.trunc(now))*1000n) throw new Error('The end must not be in the future (UTC).');
+  return {fromUtc:start.text,toUtc:end.text};
 }
 export function aggregateValue(evidence: readonly OverviewEvidence[], key: 'activeAlerts' | 'blockedSessions' | 'deadlocks'): {text: string; note: string} {
   const values: OverviewValue[] = evidence.map(item => item[key]);

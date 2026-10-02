@@ -24,6 +24,7 @@ async function assertHistoricalScope(page, target = first, start = from, end = t
   await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ target, range: 'custom', from: start, to: end });
 }
 const mainNavigation = page => page.getByRole('navigation', { name: 'Main navigation' });
+const fleetStrip = page => page.getByRole('navigation', { name: 'Loaded server status', exact: true });
 
 test('diagnostic navigation and server changes retain the selected historical window', async ({ page }) => {
   const errors = [];
@@ -39,6 +40,151 @@ test('diagnostic navigation and server changes retain the selected historical wi
   await assertHistoricalScope(page, second);
   await expect(page.getByRole('heading', { name: 'Activity evidence for SYNTHETIC SQL 02' })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('persistent fleet strip keeps all authorized servers across diagnostics and scopes server selection correctly', async ({ page }) => {
+  await databaseFixture(page);
+  await page.goto(`${href('health')}&databaseId=6`);
+  for (const label of [null, 'Resources', 'Query performance']) {
+    if (label) await mainNavigation(page).getByRole('link', { name: label, exact: true }).click();
+    await expect(fleetStrip(page)).toHaveCount(1);
+    await expect(fleetStrip(page).getByRole('link')).toHaveCount(10);
+    await expect(fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 01:/ })).toHaveAttribute('aria-current', 'location');
+    await expect(fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 10:/ })).toHaveCount(1);
+    await assertDatabaseScope(page, 6);
+    await assertHistoricalScope(page);
+  }
+  await fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 01:/ }).click();
+  await assertDatabaseScope(page, 6);
+  await assertHistoricalScope(page);
+  await expect(page.getByRole('heading', { name: 'Server summary for SYNTHETIC SQL 01', exact: true })).toBeVisible();
+  await fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 02:/ }).click();
+  await assertHistoricalScope(page, second);
+  await expect.poll(() => scope(page).get('databaseId')).toBe(null);
+  await expect(workspaceDatabase(page)).toHaveValue('');
+  await expect(page.getByRole('heading', { name: 'Server summary for SYNTHETIC SQL 02', exact: true })).toBeVisible();
+  await expect(fleetStrip(page).getByRole('link')).toHaveCount(10);
+  await expect(fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 02:/ })).toHaveAttribute('aria-current', 'location');
+});
+
+test('persistent fleet strip rejects delayed old-window evidence and explicitly reports an unavailable refresh', async ({ page }) => {
+  await fixture(page);
+  let release, requested = false, released = false, failFleet = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/api/v1/overview?*', async route => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.has('targetId')) return route.continue();
+    if (failFleet) return route.fulfill({ status: 503, json: {} });
+    if (query.get('fromUtc') !== from) return route.continue();
+    const response = await route.fetch();
+    const body = await response.json();
+    const stale = { ...body, targets: body.targets.map(item => ({ ...item, displayName: `STALE WINDOW ${item.displayName}` })), evidence: body.evidence.map(item => ({ ...item, displayName: `STALE WINDOW ${item.displayName}` })) };
+    requested = true;
+    await gate;
+    await route.fulfill({ response, json: stale }).catch(() => {});
+    released = true;
+  });
+  try {
+    await page.goto(href('health'));
+    await expect.poll(() => requested).toBe(true);
+    await expect(page.getByRole('status').filter({ hasText: 'Loading authorized fleet status for the selected window' })).toBeVisible();
+    await expect(fleetStrip(page).getByRole('link')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+    await page.getByLabel('From (UTC)', { exact: true }).fill('2026-09-26T09:00');
+    await page.getByLabel('To (UTC)', { exact: true }).fill('2026-09-26T11:00');
+    await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+    await expect(fleetStrip(page).getByRole('link')).toHaveCount(10);
+  } finally { release(); }
+  await expect.poll(() => released).toBe(true);
+  await expect(fleetStrip(page).getByRole('link', { name: /STALE WINDOW/ })).toHaveCount(0);
+  for (const link of await fleetStrip(page).getByRole('link').all()) {
+    const query = new URLSearchParams((await link.getAttribute('href')).split('?')[1]);
+    expect(query.get('from')).toBe('2026-09-26T09:00:00.000Z');
+    expect(query.get('to')).toBe('2026-09-26T11:00:00.000Z');
+  }
+  failFleet = true;
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Fleet status is unavailable:' })).toContainText('Missing fleet evidence is not an all-clear signal.');
+  await expect(fleetStrip(page).getByRole('link')).toHaveCount(0);
+});
+
+test('persistent fleet strip preserves keyboard focus and horizontal scroll during a live snapshot refresh', async ({ page }) => {
+  await databaseFixture(page);
+  await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });
+  let release, pending = false, fleetRequests = 0, receivedWindow, initialWindow;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/api/v1/overview?*', async route => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.has('targetId')) return route.continue();
+    const sequence = ++fleetRequests;
+    if (sequence > 2) return route.continue();
+    const response = await route.fetch();
+    const body = await response.json();
+    if (sequence === 1) {
+      initialWindow = { from: body.fromUtc, to: body.toUtc };
+      return route.fulfill({ response, json: body });
+    }
+    receivedWindow = { from: body.fromUtc, to: body.toUtc };
+    pending = true;
+    await gate;
+    await route.fulfill({ response, json: body }).catch(() => {});
+  });
+  try {
+    await page.goto(`${href('health', first, '1h')}&databaseId=6`);
+    await expect(fleetStrip(page).getByRole('link')).toHaveCount(10);
+    await assertDatabaseScope(page, 6);
+    const entries = fleetStrip(page).getByRole('region', { name: 'Loaded fleet server entries', exact: true });
+    const originalEntries = await entries.elementHandle();
+    const originalNavigation = await fleetStrip(page).elementHandle();
+    const currentLink = fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 01:/ });
+    const assertLiveLink = async () => {
+      const bounds = new URLSearchParams((await currentLink.getAttribute('href')).split('?')[1]);
+      expect(Object.fromEntries(bounds)).toMatchObject({ target: first, range: '1h', databaseId: '6' });
+      expect(bounds.get('from')).toBe(null);
+      expect(bounds.get('to')).toBe(null);
+    };
+    await assertLiveLink();
+    const coverage = page.locator('.workspace-fleet-status').filter({ hasText: 'Fleet CPU and memory window:' });
+    const initialCoverage = await coverage.textContent();
+    await expect.poll(() => entries.evaluate(element => element.scrollWidth - element.clientWidth)).toBeGreaterThan(200);
+    await entries.focus();
+    await entries.evaluate(element => { element.scrollLeft = 200; });
+    await expect(entries).toBeFocused();
+    const initialScroll = await entries.evaluate(element => element.scrollLeft);
+    await page.clock.runFor(61_000);
+    await expect.poll(() => pending).toBe(true);
+    await expect(fleetStrip(page)).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('status').filter({ hasText: /previous.*snapshot/i })).toBeVisible();
+    expect(await originalNavigation.evaluate(element => element.isConnected)).toBe(true);
+    expect(await originalEntries.evaluate(element => element.isConnected)).toBe(true);
+    await expect(entries).toBeFocused();
+    expect(await entries.evaluate(element => element.scrollLeft)).toBe(initialScroll);
+    await assertLiveLink();
+    await expect(coverage).toHaveText(initialCoverage);
+    release();
+    await expect(fleetStrip(page)).toHaveAttribute('aria-busy', 'false');
+    await expect(coverage).not.toHaveText(initialCoverage);
+    expect(Date.parse(receivedWindow.to)).toBeGreaterThan(Date.parse(initialWindow.to));
+    expect(Date.parse(receivedWindow.from)).toBeGreaterThan(Date.parse(initialWindow.from));
+    await assertLiveLink();
+    expect(await originalNavigation.evaluate(element => element.isConnected)).toBe(true);
+    expect(await originalEntries.evaluate(element => element.isConnected)).toBe(true);
+    await expect(entries).toBeFocused();
+    expect(await entries.evaluate(element => element.scrollLeft)).toBe(initialScroll);
+    await expect(fleetStrip(page).getByRole('link')).toHaveCount(10);
+    await fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 02:/ }).click();
+    await expect.poll(() => scope(page).get('target')).toBe(second);
+    await expect.poll(() => scope(page).get('databaseId')).toBe(null);
+    await expect(page.getByRole('combobox', { name: 'Time range', exact: true })).toHaveValue('1h');
+    await expect(page.getByText('Live \u00b7 moving', { exact: true })).toBeVisible();
+    expect(scope(page).get('from')).toBe(null);
+    expect(scope(page).get('to')).toBe(null);
+    await page.reload();
+    await expect(page.getByRole('combobox', { name: 'Target server', exact: true })).toHaveValue(second);
+    await expect(page.getByRole('combobox', { name: 'Time range', exact: true })).toHaveValue('1h');
+    await expect(page.getByText('Live \u00b7 moving', { exact: true })).toBeVisible();
+    expect(scope(page).get('databaseId')).toBe(null);
+  } finally { release(); }
 });
 
 test('pause stops scheduled refresh, resume refreshes, and Rewind fixes the window', async ({ page }) => {
@@ -90,6 +236,49 @@ test('custom UTC editor supports keyboard dismissal, validation, apply and focus
   await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Show local time', exact: true })).toBeVisible();
   expect(page.url()).toBe(selectedUrl);
+});
+
+test('custom UTC editor preserves exact microsecond URL bounds on unchanged Apply and on one-bound edits', async ({ page }) => {
+  await fixture(page);
+  const exactFrom = '2026-09-26T08:00:00.123456Z', exactTo = '2026-09-26T12:00:00.654321Z';
+  await page.goto(`/#/health?${new URLSearchParams({ target: first, range: 'custom', from: exactFrom, to: exactTo })}`);
+  await assertHistoricalScope(page, first, exactFrom, exactTo);
+  const originalUrl = page.url();
+  await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  await expect(page.getByLabel('From (UTC)', { exact: true })).toHaveValue('2026-09-26T08:00:00.123');
+  await expect(page.getByLabel('To (UTC)', { exact: true })).toHaveValue('2026-09-26T12:00:00.654');
+  await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await expect(page).toHaveURL(originalUrl);
+  await assertHistoricalScope(page, first, exactFrom, exactTo);
+  await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  await page.getByLabel('From (UTC)', { exact: true }).fill('2026-09-26T08:00:00.777');
+  await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await assertHistoricalScope(page, first, '2026-09-26T08:00:00.777Z', exactTo);
+  await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  await page.getByLabel('To (UTC)', { exact: true }).fill('2026-09-26T12:00:00.888');
+  await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await assertHistoricalScope(page, first, '2026-09-26T08:00:00.777Z', '2026-09-26T12:00:00.888Z');
+});
+
+test('custom UTC editor accepts tenths and hundredths and keeps invalid ranges from changing scope', async ({ page }) => {
+  await open(page, 'health');
+  for (const [fraction, normalized] of [['1', '100'], ['01', '010']]) {
+    await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+    await page.getByLabel('From (UTC)', { exact: true }).fill(`2026-09-26T08:00:00.${fraction}`);
+    await page.getByLabel('To (UTC)', { exact: true }).fill(`2026-09-26T12:00:00.${fraction}`);
+    await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+    await assertHistoricalScope(page, first, `2026-09-26T08:00:00.${normalized}Z`, `2026-09-26T12:00:00.${normalized}Z`);
+  }
+  const valid = page.url();
+  await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  await page.getByLabel('From (UTC)', { exact: true }).fill('2026-08-01T08:00');
+  await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Choose a range of 31 days or less.' })).toBeVisible();
+  expect(page.url()).toBe(valid);
+  await page.getByLabel('From (UTC)', { exact: true }).fill('2026-09-26T13:00');
+  await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'The end must be after the start.' })).toBeVisible();
+  expect(page.url()).toBe(valid);
 });
 
 test('command palette keyboard results preserve Rewind scope and restore the invoking focus', async ({ page }) => {
