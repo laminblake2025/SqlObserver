@@ -67,11 +67,13 @@ export async function readLive<T>(target: string, path: string, parameters: URLS
     const from = utc(parameters.get("from")), to = utc(parameters.get("to")), ids = new Set<string>();
     for (const snapshot of value as LiveSnapshot[]) {
       if (!snapshot || !guid(snapshot.id) || ids.has(snapshot.id.toLowerCase()) || typeof snapshot.truncated !== "boolean" ||
-          utc(snapshot.observedUtc) < from || utc(snapshot.observedUtc) >= to ||
+          utc(snapshot.observedUtc) < from || utc(snapshot.observedUtc) > to ||
           snapshot.deadlockEventId != null && !guid(snapshot.deadlockEventId)) throw new Error("Invalid session history capture.");
       if (snapshot.deadlockOccurredUtc != null) utc(snapshot.deadlockOccurredUtc);
       ids.add(snapshot.id.toLowerCase());
     }
+    // The native history endpoint includes its upper bound; workspace windows do not.
+    return value.filter((snapshot: LiveSnapshot) => utc(snapshot.observedUtc) < to) as T;
   }
   return value as T;
 }

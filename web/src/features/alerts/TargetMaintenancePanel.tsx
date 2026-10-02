@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTimeDisplay, useTimeFormatter } from "../../TimeDisplayContext";
 import { DetailPane } from "../../components/DiagnosticUi";
 import { getMaintenanceForAdmin, type MaintenanceAdminItem } from "./alertAdminListsApi";
-import { cancelMaintenanceWindow, createMaintenanceWindow, MaintenanceAttempts, prepareMaintenanceWindow } from "./maintenanceAdminActions";
+import { cancelMaintenanceWindow, createMaintenanceWindow, updateMaintenanceWindow, MaintenanceAttempts, MaintenanceRevisionConflictError, prepareMaintenanceWindow } from "./maintenanceAdminActions";
+import { beginMaintenanceEdit, prepareMaintenanceEdit, type MaintenanceEditDraft } from "./maintenanceEditModel.ts";
 import { useAlertAdminList } from "./useAlertAdminList";
 import { adminSelectionMessage } from "./adminSelectionModel.ts";
 import { maintenanceCalendarMonth, maintenanceMonthAt, shiftMaintenanceMonth } from "./maintenanceCalendarModel.ts";
@@ -17,13 +18,77 @@ export function TargetMaintenancePanel({ instanceId, displayName, onClose, refre
   const formatTime = useTimeFormatter();
   const { mode } = useTimeDisplay();
   const list = useAlertAdminList(instanceId, refresh, getMaintenanceForAdmin, windowId, selectedId);
-  const [startsLocal, setStartsLocal] = useState("");
-  const [endsLocal, setEndsLocal] = useState("");
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState<string>();
-  const [actionMessage, setActionMessage] = useState<string>();
-  const [actionError, setActionError] = useState<string>();
   const selected = selectedId === undefined ? list.items[0] : list.items.find(item => item.windowId.toLowerCase() === selectedId?.toLowerCase());
+  const renderedHash = typeof location === "undefined" ? "" : location.hash;
+  const roleIdentity = useRef({ allowed: canManage, generation: 0 });
+  if (roleIdentity.current.allowed !== canManage) roleIdentity.current = { allowed: canManage, generation: roleIdentity.current.generation + 1 };
+  const mutationContext = JSON.stringify([instanceId.toLowerCase(), selectedId, selected, refresh, canManage, roleIdentity.current.generation, renderedHash]);
+  const currentContext = useRef(mutationContext);
+  currentContext.current = mutationContext;
+  const [creation, setCreation] = useState<{ context: string; startsLocal: string; endsLocal: string; reason: string }>();
+  const createDraft = creation?.context === mutationContext ? creation : { context: mutationContext, startsLocal: "", endsLocal: "", reason: "" };
+  const { startsLocal, endsLocal, reason } = createDraft;
+  const setStartsLocal = (value: string) => setCreation({ ...createDraft, startsLocal: value });
+  const setEndsLocal = (value: string) => setCreation({ ...createDraft, endsLocal: value });
+  const setReason = (value: string) => setCreation({ ...createDraft, reason: value });
+  const [action, setAction] = useState<{ context: string; busy?: string; message?: string; error?: string; revisionConflict?: boolean }>();
+  const actionState = action?.context === mutationContext ? action : undefined;
+  const busy = actionState?.busy, actionMessage = actionState?.message, actionError = actionState?.error;
+  const [receivedEditor, setEditor] = useState<{ context: string; draft: MaintenanceEditDraft }>();
+  const editor = canManage && receivedEditor?.context === mutationContext && !selected?.cancelledAtUtc ? receivedEditor : undefined;
+  const request = useRef<AbortController | undefined>(undefined);
+  const reasonInput = useRef<HTMLTextAreaElement>(null);
+  const editOpener = useRef<HTMLButtonElement>(null);
+  const restoreEditFocus = useRef(false);
+  const contextIsCurrent = () => canManage && currentContext.current === mutationContext &&
+    (typeof location === "undefined" || location.hash === renderedHash);
+  useEffect(() => {
+    request.current?.abort(); request.current = undefined;
+    setEditor(undefined); setAction(undefined); setCreation(undefined);
+    const changed = () => {
+      if (location.hash !== renderedHash) {
+        request.current?.abort(); request.current = undefined;
+        setEditor(undefined); setAction(undefined);
+      }
+    };
+    if (typeof window !== "undefined") window.addEventListener("hashchange", changed);
+    return () => { request.current?.abort(); if (typeof window !== "undefined") window.removeEventListener("hashchange", changed); };
+  }, [mutationContext, renderedHash]);
+  useEffect(() => {
+    if (editor) reasonInput.current?.focus();
+    else if (restoreEditFocus.current) { restoreEditFocus.current = false; editOpener.current?.focus(); }
+  }, [Boolean(editor)]);
+  function closeEditor() {
+    request.current?.abort(); request.current = undefined;
+    restoreEditFocus.current = true;
+    setEditor(undefined); setAction(undefined);
+  }
+  function openEditor() {
+    if (!contextIsCurrent() || !selected || selected.cancelledAtUtc || busy) return;
+    try { setEditor({ context: mutationContext, draft: beginMaintenanceEdit(selected) }); setAction(undefined); }
+    catch (failure) { setAction({ context: mutationContext, error: failure instanceof Error ? failure.message : "This window cannot be edited." }); }
+  }
+  async function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!contextIsCurrent() || !editor || busy || request.current || actionState?.revisionConflict) return;
+    const controller = new AbortController(); request.current = controller;
+    const active = () => contextIsCurrent() && !controller.signal.aborted && request.current === controller;
+    try {
+      const payload = prepareMaintenanceEdit(editor.draft);
+      const original = editor.draft.original;
+      const operationId = attempts.editFor(instanceId, original.windowId, original.revision, payload);
+      setAction({ context: mutationContext, busy: "edit" });
+      await updateMaintenanceWindow(instanceId, original.windowId, original.revision, payload, operationId, controller.signal);
+      if (!active()) return;
+      attempts.completeEdit(instanceId, original.windowId, original.revision, payload);
+      restoreEditFocus.current = true;
+      setEditor(undefined);
+      setAction({ context: mutationContext, message: "Maintenance window updated. The list is refreshing." });
+      list.retry();
+    } catch (failure) {
+      if (active()) setAction({ context: mutationContext, error: failure instanceof Error ? failure.message : "The maintenance change could not be saved.", revisionConflict: failure instanceof MaintenanceRevisionConflictError });
+    } finally { if (request.current === controller) request.current = undefined; }
+  }
   const selectionMessage = adminSelectionMessage(selectedId, Boolean(selected), list.findingSelection, Boolean(list.nextCursor));
   const calendarContext = JSON.stringify([instanceId.toLowerCase(), mode]);
   const [calendarView, setCalendarView] = useState<{ context: string; month: string; day: number }>();
@@ -50,39 +115,41 @@ export function TargetMaintenancePanel({ instanceId, displayName, onClose, refre
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canManage || busy) return;
-    setActionError(undefined);
-    setActionMessage(undefined);
+    if (!contextIsCurrent() || busy || request.current) return;
+    const controller = new AbortController(); request.current = controller;
+    const active = () => contextIsCurrent() && !controller.signal.aborted && request.current === controller;
     try {
       const window = prepareMaintenanceWindow(startsLocal, endsLocal, reason);
       const attempt = attempts.createFor(instanceId, window);
-      setBusy("create");
-      await createMaintenanceWindow(instanceId, window, attempt, new AbortController().signal);
+      setAction({ context: mutationContext, busy: "create" });
+      await createMaintenanceWindow(instanceId, window, attempt, controller.signal);
+      if (!active()) return;
       attempts.completeCreate(instanceId, window);
       onSelect(attempt.windowId);
-      setStartsLocal(""); setEndsLocal(""); setReason("");
-      setActionMessage("Maintenance window created. The list is refreshing.");
+      setCreation(undefined);
+      setAction({ context: mutationContext, message: "Maintenance window created. The list is refreshing." });
       list.retry();
     } catch (failure) {
-      setActionError(failure instanceof Error ? failure.message : "The maintenance window could not be created.");
-    } finally { setBusy(undefined); }
+      if (active()) setAction({ context: mutationContext, error: failure instanceof Error ? failure.message : "The maintenance window could not be created." });
+    } finally { if (request.current === controller) request.current = undefined; }
   }
 
   async function cancel(window: MaintenanceAdminItem) {
-    if (!canManage || busy || window.cancelledAtUtc) return;
-    setActionError(undefined);
-    setActionMessage(undefined);
+    if (!contextIsCurrent() || busy || request.current || window.cancelledAtUtc) return;
+    const controller = new AbortController(); request.current = controller;
+    const active = () => contextIsCurrent() && !controller.signal.aborted && request.current === controller;
     const operationId = attempts.cancellationFor(instanceId, window.windowId, window.revision);
-    setBusy(window.windowId);
+    setAction({ context: mutationContext, busy: window.windowId });
     try {
       await cancelMaintenanceWindow(instanceId, window.windowId, window.revision, operationId,
-        new AbortController().signal);
+        controller.signal);
+      if (!active()) return;
       attempts.completeCancellation(instanceId, window.windowId, window.revision);
-      setActionMessage("Maintenance window cancelled. The list is refreshing.");
+      setAction({ context: mutationContext, message: "Maintenance window cancelled. The list is refreshing." });
       list.retry();
     } catch (failure) {
-      setActionError(failure instanceof Error ? failure.message : "The maintenance window could not be cancelled.");
-    } finally { setBusy(undefined); }
+      if (active()) setAction({ context: mutationContext, error: failure instanceof Error ? failure.message : "The maintenance window could not be cancelled." });
+    } finally { if (request.current === controller) request.current = undefined; }
   }
 
   return <section className="alerts-screen" aria-labelledby="maintenance-heading">
@@ -90,8 +157,18 @@ export function TargetMaintenancePanel({ instanceId, displayName, onClose, refre
     {list.loading ? <p role="status" className="status-message">Loading maintenance windows…</p> : null}
     {selectionMessage ? <p role="status" className="status-message">{selectionMessage}</p> : null}
     {list.error ? <div role="alert" className="status-message">{list.error} <button className="secondary-button" type="button" onClick={list.retry}>Retry</button></div> : null}
-    {actionError ? <p role="alert" className="status-message">{actionError}</p> : null}
+    {actionError ? <p role="alert" className="status-message">{actionError} <button type="button" className="secondary-button" onClick={list.retry}>Refresh maintenance windows</button></p> : null}
     {actionMessage ? <p role="status" className="status-message">{actionMessage}</p> : null}
+    {editor && <form className="panel maintenance-form" aria-label="Edit maintenance window" aria-busy={busy === "edit"} onSubmit={event => void saveEdit(event)}>
+      <div><h3>Edit maintenance window</h3><p>Revision {editor.draft.original.revision} · Window identifier: {editor.draft.original.windowId}. Times use your computer’s local time zone. Unchanged time fields preserve the original UTC precision and offset. Changed fields use the displayed local minute; repeated daylight-saving times use the earlier occurrence.</p></div>
+      <div className="maintenance-fields">
+        <label>Edit starts (local time)<input type="datetime-local" required value={editor.draft.startsLocal} disabled={Boolean(busy)} onChange={event => setEditor({ ...editor, draft: { ...editor.draft, startsLocal: event.target.value } })} /></label>
+        <label>Edit ends (local time)<input type="datetime-local" required value={editor.draft.endsLocal} disabled={Boolean(busy)} onChange={event => setEditor({ ...editor, draft: { ...editor.draft, endsLocal: event.target.value } })} /></label>
+        <label>Edit reason<textarea ref={reasonInput} required maxLength={512} value={editor.draft.reason} disabled={Boolean(busy)} onChange={event => setEditor({ ...editor, draft: { ...editor.draft, reason: event.target.value } })} /></label>
+      </div>
+      <p>Reason is limited to 512 UTF-8 bytes without control characters. A change is saved only against the displayed revision.</p>
+      <div className="maintenance-calendar-controls"><button className="primary" type="submit" disabled={Boolean(busy) || actionState?.revisionConflict}>{busy === "edit" ? "Saving window changes…" : "Save window changes"}</button><button className="secondary-button" type="button" onClick={closeEditor}>Close editor</button></div>
+    </form>}
     {canManage ? <form className="panel maintenance-form" onSubmit={(event) => void create(event)}>
       <div><h3>Schedule a window</h3><p>Times use your computer’s local time zone. Alert evaluation and collection continue during the window.</p></div>
       <div className="maintenance-fields"><label>Starts (local time)<input type="datetime-local" required value={startsLocal} onChange={event => setStartsLocal(event.target.value)} disabled={busy === "create"} /></label><label>Ends (local time)<input type="datetime-local" required value={endsLocal} onChange={event => setEndsLocal(event.target.value)} disabled={busy === "create"} /></label><label>Reason<textarea required maxLength={512} value={reason} onChange={event => setReason(event.target.value)} disabled={busy === "create"} /></label></div>
@@ -132,7 +209,7 @@ export function TargetMaintenancePanel({ instanceId, displayName, onClose, refre
     </section>
     <div className="alerts-layout">
       <section className="alert-list panel" aria-label="Configured maintenance windows"><div className="table-card-heading"><div><h3>Windows ({list.items.length} loaded)</h3><p>Newest start time first. Cancelled windows remain visible for review.</p></div></div><div className="table-scroll"><table><caption>Maintenance windows for {displayName}</caption><thead><tr><th scope="col">State</th><th scope="col">Starts</th><th scope="col">Ends</th><th scope="col">Reason</th></tr></thead><tbody>{list.items.map(item => <tr key={item.windowId} className={item.windowId === selected?.windowId ? "selected-row" : ""}><td><span className="state-pill">{item.cancelledAtUtc ? "Cancelled" : "Configured"}</span></td><td><button className="table-link" type="button" aria-pressed={item.windowId === selected?.windowId} onClick={() => onSelect(item.windowId)}>{formatTime(item.startsAtUtc)}</button></td><td>{formatTime(item.endsAtUtc)}</td><td>{item.reason}</td></tr>)}</tbody></table></div>{!list.loading && !list.error && list.items.length === 0 ? <p className="empty-state">No maintenance windows are configured for this server.</p> : null}<div className="pager"><span>{list.nextCursor ? "More windows are available." : "End of loaded windows."}</span><button className="secondary-button" type="button" disabled={!list.nextCursor || list.loadingMore} onClick={() => void list.loadMore()}>{list.loadingMore ? "Loading…" : "Load more"}</button></div></section>
-      {selected ? <DetailPane title="Maintenance window" subtitle={`Revision ${selected.revision} · ${displayName}`} actions={canManage && !selected.cancelledAtUtc ? <button className="secondary-button" type="button" disabled={Boolean(busy)} onClick={() => void cancel(selected)}>{busy === selected.windowId ? "Cancelling…" : "Cancel window"}</button> : undefined}><dl className="rule-details"><div><dt>Starts</dt><dd>{formatTime(selected.startsAtUtc)}</dd></div><div><dt>Ends</dt><dd>{formatTime(selected.endsAtUtc)}</dd></div><div><dt>Reason</dt><dd>{selected.reason}</dd></div><div><dt>Cancelled</dt><dd>{selected.cancelledAtUtc ? formatTime(selected.cancelledAtUtc) : "No"}</dd></div></dl><p className="table-note">Window identifier: {selected.windowId}</p></DetailPane> : <div className="detail-pane empty-state">Select a window to inspect its configuration.</div>}
+      {selected ? <DetailPane title="Maintenance window" subtitle={`Revision ${selected.revision} · ${displayName}`} actions={canManage && !selected.cancelledAtUtc ? <><button ref={editOpener} className="secondary-button" type="button" disabled={Boolean(busy) || Boolean(editor)} onClick={openEditor}>Edit window</button><button className="secondary-button" type="button" disabled={Boolean(busy)} onClick={() => void cancel(selected)}>{busy === selected.windowId ? "Cancelling…" : "Cancel window"}</button></> : undefined}><dl className="rule-details"><div><dt>Starts</dt><dd>{formatTime(selected.startsAtUtc)}</dd></div><div><dt>Ends</dt><dd>{formatTime(selected.endsAtUtc)}</dd></div><div><dt>Reason</dt><dd>{selected.reason}</dd></div><div><dt>Cancelled</dt><dd>{selected.cancelledAtUtc ? formatTime(selected.cancelledAtUtc) : "No"}</dd></div></dl><p className="table-note">Window identifier: {selected.windowId}</p></DetailPane> : <div className="detail-pane empty-state">Select a window to inspect its configuration.</div>}
     </div>
   </section>;
 }

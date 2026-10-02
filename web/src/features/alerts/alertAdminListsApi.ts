@@ -1,5 +1,6 @@
 import { apiFetch } from "../../apiClient.ts";
 import { readJsonBounded } from "./alertRuntimeParser.ts";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 
 export interface AdminListPage<T> {
   readonly targetId: string;
@@ -31,6 +32,10 @@ const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|\+00:00)$/;
 const invalid = () => new Error("Administration response is invalid.");
 const isUtc = (value: unknown): value is string => typeof value === "string" && utc.test(value) && Number.isFinite(Date.parse(value));
 const isRevision = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+const preciseUtc = (value: string): bigint => {
+  try { return utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1")); }
+  catch { throw invalid(); }
+};
 
 function parsePage<T>(value: unknown, targetId: string, parseItem: (value: unknown) => T, id: (item: T) => string): AdminListPage<T> {
   if (value === null || typeof value !== "object" || Array.isArray(value) || !uuid.test(targetId)) throw invalid();
@@ -62,7 +67,7 @@ export function parseMaintenanceAdminPage(value: unknown, targetId: string): Adm
     if (Object.keys(item).sort().join("|") !== "cancelledAtUtc|endsAtUtc|reason|revision|startsAtUtc|windowId" ||
         typeof item.windowId !== "string" || !uuid.test(item.windowId) ||
         !isUtc(item.startsAtUtc) || !isUtc(item.endsAtUtc) ||
-        Date.parse(item.endsAtUtc) <= Date.parse(item.startsAtUtc) ||
+        preciseUtc(item.endsAtUtc) <= preciseUtc(item.startsAtUtc) ||
         typeof item.reason !== "string" || item.reason.length === 0 || item.reason.length > 512 ||
         !isRevision(item.revision) ||
         item.cancelledAtUtc !== null && !isUtc(item.cancelledAtUtc)) throw invalid();
