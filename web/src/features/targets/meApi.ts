@@ -60,6 +60,11 @@ export function canSaveIncident(access: MyAccess | undefined, targetId: string):
   return canAcknowledgeAlert(access,targetId);
 }
 
+export function canReadIncident(access: MyAccess | undefined, targetId: string): boolean {
+  return access?.active === true && access.targetId?.toLowerCase() === targetId.toLowerCase()
+    && (["Viewer", "Operator", "TargetAdministrator"] as const).some(role => access.targetRoles.includes(role));
+}
+
 export function canManageBackupPolicies(access: MyAccess | undefined, targetId: string): boolean {
   return access?.active === true && access.targetId?.toLowerCase() === targetId.toLowerCase()
     && access.targetRoles.includes("TargetAdministrator");

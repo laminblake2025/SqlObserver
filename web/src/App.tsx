@@ -48,7 +48,7 @@ import { ServersPage } from "./features/targets/ServersPage";
 import { TargetManagementPanel } from "./features/targets/TargetManagementPanel";
 import { mergeManagedTarget, readServerManagementSelection, serverSettingsHref } from "./features/targets/serverManagementSelection.ts";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
-import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
+import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadIncident, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { WorkspaceFleetStrip } from "./features/overview/WorkspaceFleetStrip";
@@ -384,7 +384,7 @@ export function App() {
           </p>}
           {selected && incidentPage && <section className="workspace-investigations" aria-label={`Investigations for ${selected.displayName}`}>
             <IncidentWorkspace key={selected.instanceId} compact targetId={selected.instanceId} targetRevision={selected.configurationRevision}
-              canSave={canSaveIncident(myAccess, selected.instanceId)} scope={scope} selectionHash={location.hash}
+              canSave={canSaveIncident(myAccess, selected.instanceId)} canRead={canReadIncident(myAccess, selected.instanceId)} scope={scope} selectionHash={location.hash}
               window={incidentContext?.window} formatTime={value => formatDisplayTime(value, timeDisplayMode)} />
             {incidentContext?.message && <p className="evidence-footer" role="status">{incidentContext.message}</p>}
             {scope.databaseId !== undefined && <p className="evidence-footer">Saved incidents capture server-wide analytics evidence. The database context is retained for navigation.</p>}

@@ -2,7 +2,29 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest server-administration dashboard qualification
+## Latest saved-incident dashboard qualification
+
+Saved investigations now summarize the existing copied analytics packets with recorded source references, coverage, confidence context, producer truncation, tombstones and complete source provenance. Unknown packet schemas retain a keyboard-accessible raw JSON disclosure. References remain opaque identities; the interface does not invent links to unrelated diagnostic selections or claim causation. Source digests are described as source metadata, not as verification of the entire JSON payload. Unsupported or unavailable evidence explains that reloading cannot replace the frozen capture.
+
+Expired report exports disappear at the UTC expiry boundary. Explicit renewal creates a new operation after a verified successful run expires; uncertain retries retain the same operation and payload. Exact-target read authority gates saved content and reporting, aborts pending requests on revocation, and fences late completions across permission and target changes. Closing an inaccessible investigation remains available. No backend, collector, dependency or authentication scheme changed.
+
+Three independent owners handled the evidence model/native tests, view/dark styling, and interaction/accessibility fixtures. The lead owned workspace/report authority, App integration and final validation. Fresh independent source reviews found no actionable integration issues.
+
+| Requested requirement | Final evidence | Status |
+|---|---|---|
+| Independent ownership and one integration lead | Separate model/native, view/theme and fixture/spec files; lead-owned authority, App integration and final validation. | Complete for this frontend slice. |
+| Dark theme | Existing shared tokens, readable coverage and provenance, visible keyboard focus, wrapping identities and scrollable raw evidence. | Passing in tested states. |
+| Diagnostic-screen review | Checked packet metadata against native producer/repository contracts, retained capture semantics, unknown-schema fallback, report expiry/retry identity and target/read fencing. | Existing evidence inspection improved; broader diagnostic capture remains open. |
+| Interaction tests | **30 affected native checks**, **16 mounted cases**, **11 built-App/browser cases** (seven new and four existing incident regressions). | All pass without failures, skips or retries. |
+| Accessibility and responsive checks | Axe, keyboard focus/scrolling, readable control geometry and overflow at **320/390/768/1440** pixels; **12 fresh screenshots**. | Passing in tested states; manual assistive-technology certification remains separate. |
+| Final integrated validation | Strict product/harness TypeScript, production build and asset generation/verification. Assets: `entry-index-699e7da3.js`, `index-fe8f90c3.css`. | Passing against **436 unchanged frozen inputs**. |
+| Screenshots and completion accounting | [Current gallery](../../artifacts/dashboard-saved-incidents/index.html), [case inventories and hashes](../../artifacts/dashboard-saved-incidents/completion.json), isolated browser reports and logs. | Complete locally, bound to the local commit. |
+
+All browser groups terminated normally before final documentation and commit. These are fresh affected-suite runs against one unchanged build, not a rerun of the earlier 578 native, 28 mounted and 31 browser server-administration checks or the older whole-dashboard matrix. Browser traffic used strict local synthetic fixtures; connected PostgreSQL/SQL Server tests and release certification were unnecessary for this frontend-only change. GitHub upload did not occur.
+
+The full original revamp remains incomplete. This view makes existing durable analytics packets usable; it does not newly capture Activity, Waits, Query Store, configuration or deadlock details. Broader incident capture, snooze/assignment, recurring maintenance, group template deployment, the optional assistant and telemetry/collector gaps remain open. Earlier qualifications below retain their original provenance.
+
+## Previous server-administration dashboard qualification
 
 The Servers screen now opens shareable current settings from each loaded row and supports revision-checked connection edits, capability rediscovery and typed retirement through the existing native APIs. Settings also load independently for an authorized target outside the bounded inventory page. Verified receipts replace only their loaded row; retirement removes it. Readback after an uncertain receipt never implies a successful mutation or injects an off-page registration. Current configuration remains independent of the retained investigation window, and drafts survive database-context edits, time-display changes and refresh with the same administrative grant.
 

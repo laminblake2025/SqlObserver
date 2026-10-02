@@ -15,9 +15,9 @@ interface IncidentWrite {
 }
 const byteLength = (value: string) => new TextEncoder().encode(value).length;
 
-export function IncidentWorkspace({ targetId, targetRevision, window, canSave, scope, selectionHash, formatTime, compact = false }: {
+export function IncidentWorkspace({ targetId, targetRevision, window, canSave, canRead, scope, selectionHash, formatTime, compact = false }: {
   readonly targetId: string; readonly targetRevision: number; readonly window?: IncidentWindow;
-  readonly canSave: boolean; readonly scope: OverviewScope; readonly selectionHash: string;
+  readonly canSave: boolean; readonly canRead: boolean; readonly scope: OverviewScope; readonly selectionHash: string;
   readonly formatTime: (value: string) => string; readonly compact?: boolean;
 }) {
   const selectedId = incidentSelection(selectionHash);
@@ -27,8 +27,9 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, s
   const context = JSON.stringify([binding, bindingRef.current.generation]);
   // Fence a revoke/regrant as well as page/time/database changes. The moving
   // effective Live window is deliberately absent from this raw route identity.
-  const role = useRef({ value: canSave, generation: 0 });
-  if (role.current.value !== canSave) role.current = { value: canSave, generation: role.current.generation + 1 };
+  const readWriteAccess = JSON.stringify([canSave, canRead]);
+  const role = useRef({ value: readWriteAccess, generation: 0 });
+  if (role.current.value !== readWriteAccess) role.current = { value: readWriteAccess, generation: role.current.generation + 1 };
   const identity = JSON.stringify([context, selectionHash, role.current.generation]);
   const latest = useRef(identity); latest.current = identity;
   const [draftState, setDraft] = useState<IncidentDraft>();
@@ -55,7 +56,7 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, s
   const stillHere = () => latest.current === identity && (typeof location === "undefined" || location.hash === selectionHash);
   const mutationHere = () => {
     const parameters = new URLSearchParams(selectionHash.split("?")[1]);
-    return stillHere() && window !== undefined && parameters.getAll("target").length === 1 &&
+    return canRead && stillHere() && window !== undefined && parameters.getAll("target").length === 1 &&
       parameters.get("target")?.toLowerCase() === targetId.toLowerCase() &&
       !["range", "from", "to", "databaseId", "compare"].some(key => parameters.getAll(key).length > 1);
   };
@@ -75,14 +76,14 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, s
   }, [identity, context]);
   useEffect(() => () => write.current?.controller.abort(), []);
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !canRead) return;
     const controller = new AbortController();
     void getSavedIncident(targetId, selectedId, controller.signal)
       .then(value => { if (!controller.signal.aborted && latestRead.current === readKey) setLoaded({ key: readKey, value }); })
       .catch(error => { if (!controller.signal.aborted && latestRead.current === readKey) setReadError({ key: readKey,
         message: error instanceof IncidentRequestError ? error.message : "This investigation is unavailable." }); });
     return () => controller.abort();
-  }, [targetId, selectedId, readKey]);
+  }, [targetId, selectedId, readKey, canRead]);
   useEffect(() => {
     if (draft && canSave && selectedId === undefined) titleInput.current?.focus();
     else if (restoreFocus.current) { restoreFocus.current = false; opener.current?.focus(); }
@@ -122,10 +123,14 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, s
   };
   const className = `incident-workspace${compact ? " incident-workspace-compact" : ""}`;
 
+  if (!canRead) return <section className={`${className} panel`}>
+    <p role="status">Viewer, Operator or Target Administrator access is required to read and export this saved investigation.</p>
+    {selectedId !== undefined ? <button type="button" onClick={close}>Close investigation</button> : null}
+  </section>;
   if (selectedId === null) return <section className={`${className} panel`}><p role="alert">The incident link is invalid. Open a saved investigation using its original link.</p><button type="button" onClick={close}>Close investigation</button></section>;
   if (selectedId !== undefined) {
     const current = loaded?.key === readKey ? loaded.value : undefined;
-    if (current) return <SavedIncidentView incident={current} compact={compact} formatTime={formatTime} href={savedIncidentHref(current, scope)} onClose={close} />;
+    if (current) return <SavedIncidentView incident={current} canRead={canRead} compact={compact} formatTime={formatTime} href={savedIncidentHref(current, scope)} onClose={close} />;
     const error = readError?.key === readKey ? readError : undefined;
     return <section className={`${className} panel`}><p role={error ? "alert" : "status"}>{error ? error.message : "Loading saved investigation…"}</p>
       {error && <button type="button" onClick={() => { if (stillHere()) setReload(value => value + 1); }}>Retry loading</button>}

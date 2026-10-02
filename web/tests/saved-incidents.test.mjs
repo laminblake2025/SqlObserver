@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
 import { incidentUtc, prepareIncident, parseSavedIncident, parseSavedIncidentPage, verifySavedIncident, savedIncidentHref, incidentSelection } from "../src/features/incidents/incidentModel.ts";
 import { getSavedIncident, listSavedIncidents, saveIncident, IncidentRequestError } from "../src/features/incidents/incidentApi.ts";
-import { canSaveIncident } from "../src/features/targets/meApi.ts";
+import { canReadIncident, canSaveIncident } from "../src/features/targets/meApi.ts";
 import { readOverviewScope, overviewWindow } from "../src/features/overview/overviewModel.ts";
 import { clearApiCache } from "../src/apiClient.ts";
 import { createSavedInvestigationReport } from "../src/features/incidents/savedIncidentReportApi.ts";
@@ -121,6 +121,18 @@ test("only active matching target grants unlock saving an investigation",()=>{
   assert.equal(canSaveIncident({...access,active:false,targetRoles:["Operator"]},target),false);
 });
 
+test("incident reads require active exact-target grants and never inherit a foreign target or unrelated role",()=>{
+  const access={active:true,targetId:target,grantedRoles:["Viewer","Operator","TargetAdministrator"],allTargetRoles:[],targetRoles:[]};
+  assert.equal(canReadIncident(undefined,target),false); assert.equal(canReadIncident(access,target),false);
+  for(const role of ["Viewer","Operator","TargetAdministrator"]){
+    assert.equal(canReadIncident({...access,targetRoles:[role]},target),true);
+    assert.equal(canReadIncident({...access,targetRoles:[role],active:false},target),false);
+    assert.equal(canReadIncident({...access,targetId:thread,targetRoles:[role]},target),false);
+  }
+  assert.equal(canReadIncident({...access,targetRoles:["Viewer"],targetId:null},target),false);
+  assert.equal(canReadIncident({...access,targetRoles:["AlertAdministrator"]},target),false);
+});
+
 const require=createRequire(import.meta.url);
 async function compile(name,replacements={}) {
   const source=await readFile(new URL(`../src/features/incidents/${name}.tsx`,import.meta.url),"utf8");
@@ -130,11 +142,13 @@ async function compile(name,replacements={}) {
   return `data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`;
 }
 const reportActionsUrl=await compile("SavedIncidentReportActions",{
+  "./incidentModel.ts":new URL("../src/features/incidents/incidentModel.ts",import.meta.url).href,
   "./incidentApi.ts":new URL("../src/features/incidents/incidentApi.ts",import.meta.url).href,
   "./savedIncidentReportApi.ts":new URL("../src/features/incidents/savedIncidentReportApi.ts",import.meta.url).href,
   "../reports/reportsApi.ts":new URL("../src/features/reports/reportsApi.ts",import.meta.url).href,
 });
-const viewUrl=await compile("SavedIncidentView",{"./SavedIncidentReportActions.tsx":reportActionsUrl}); const {SavedIncidentView}=await import(viewUrl);
+const viewUrl=await compile("SavedIncidentView",{"./SavedIncidentReportActions.tsx":reportActionsUrl,
+  "./savedEvidenceModel.ts":new URL("../src/features/incidents/savedEvidenceModel.ts",import.meta.url).href}); const {SavedIncidentView}=await import(viewUrl);
 const listUrl=await compile("SavedIncidentList",{
   "./incidentApi.ts":new URL("../src/features/incidents/incidentApi.ts",import.meta.url).href,
   "./incidentModel.ts":new URL("../src/features/incidents/incidentModel.ts",import.meta.url).href,
@@ -147,13 +161,15 @@ const workspaceUrl=await compile("IncidentWorkspace",{
 const {IncidentWorkspace}=await import(workspaceUrl);
 
 test("rendered investigations escape notes and evidence and explain empty, partial and truncated captures",()=>{
-  const render=incident=>renderToStaticMarkup(createElement(SavedIncidentView,{incident,formatTime:value=>value,href:"#/health",onClose:()=>{}}));
+  const render=incident=>renderToStaticMarkup(createElement(SavedIncidentView,{incident,canRead:true,formatTime:value=>value,href:"#/health",onClose:()=>{}}));
   const html=render(parseSavedIncident(fixture(),target));
   assert.match(html,/&lt;script&gt;Plain text/); assert.doesNotMatch(html,/<script>/); assert.doesNotMatch(html,/<img /);
   assert.match(html,/partial or unavailable coverage/); assert.match(html,/Confidence Unknown/);
   assert.match(html,/Generate investigation report/);
   const empty=render({ ...parseSavedIncident(fixture(),target),evidence:[] }); assert.match(empty,/does not mean the server was healthy/);
   const truncated=render({ ...parseSavedIncident(fixture(),target),evidenceTruncated:true }); assert.match(truncated,/not the entire window/);
+  const denied=renderToStaticMarkup(createElement(SavedIncidentView,{incident:parseSavedIncident(fixture(),target),canRead:false,formatTime:value=>value,href:"#/health",onClose:()=>{}}));
+  assert.match(denied,/access is required to read and export/); assert.doesNotMatch(denied,/Lock investigation|Plain text|Source digest|Raw saved evidence|Generate investigation report/);
 });
 
 test("saved report generation binds the thread receipt and retries an identical operation",async()=>{
@@ -175,12 +191,14 @@ test("saved report generation binds the thread receipt and retries an identical 
 });
 
 test("rendered workspace gates save actions and handles invalid selection without a read",()=>{
-  const render=extra=>renderToStaticMarkup(createElement(IncidentWorkspace,{targetId:target,targetRevision:7,window,scope,selectionHash:"#/health",formatTime:value=>value,canSave:true,...extra}));
+  const render=extra=>renderToStaticMarkup(createElement(IncidentWorkspace,{targetId:target,targetRevision:7,window,scope,selectionHash:"#/health",formatTime:value=>value,canSave:true,canRead:true,...extra}));
   assert.match(render({}),/Open incident/); assert.doesNotMatch(render({}),/<button[^>]+disabled/);
   assert.match(render({window:undefined}),/<button[^>]+disabled/);
   assert.doesNotMatch(render({canSave:false}),/>Open incident</); assert.match(render({canSave:false}),/Operator or Target Administrator/);
   assert.match(render({canSave:false}),/Saved investigations/);
   assert.match(render({selectionHash:"#/health?incident=bad"}),/incident link is invalid/);
+  assert.match(render({canRead:false}),/access is required to read and export/);
+  assert.doesNotMatch(render({canRead:false}),/Open incident|Saved investigations|Incident title/);
 });
 
 const summary=(index=0)=>({targetId:target,targetRevision:7,threadId:`22222222-2222-4222-8222-${(100-index).toString(16).padStart(12,"0")}`,
