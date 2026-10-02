@@ -9,6 +9,7 @@ import {overviewBackupFixture} from './overview-backup-fixture.mjs';
 import {handleSavedIncidentFixture} from './saved-incident-fixture.mjs';
 import {handleAgentHistoryFixture} from './agent-history-fixture.mjs';
 import {handleChartReferenceFixture} from './chart-reference-fixture.mjs';
+import {handleDashboardSummaryFixture,dashboardSummaryCpuPoints} from './dashboard-summary-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
@@ -73,6 +74,7 @@ createServer(async(req,res)=>{try{
   const index=cursor?1:0;
   return send(res,{snapshotUtc:alertSelectionSnapshot,items:[{...alertSelectionRows[index],targetId:targets[index].instanceId,targetName:targets[index].displayName}],nextCursor:cursor?null:'cGFnZTI='});
  }
+ if(handleDashboardSummaryFixture(url,res,req,targets,send))return;
  if(await handleChartReferenceFixture(url,res,req,targets,send))return;
  // Opt-in dashboard interaction evidence, isolated from existing scenario contracts.
  if(req.headers.cookie?.includes('dashboardRefactor=1')) {
@@ -98,8 +100,10 @@ createServer(async(req,res)=>{try{
     const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc'),start=Date.parse(fromUtc),end=Date.parse(toUtc);
     const populated=req.headers.cookie?.includes('timelineFixture=1')&&Number.isFinite(start)&&Number.isFinite(end)&&end>start;
     const times={previousObservedAtUtc:new Date((populated?start:Date.parse(now))-60000).toISOString(),observedAtUtc:new Date(populated?start+(end-start)/4:Date.parse(now)).toISOString(),detectedAtUtc:new Date(populated?start+(end-start)/4+1000:Date.parse(now)).toISOString()};
-    if(surface==='health/database-option-changes')return send(res,{targetId:instanceId,fromUtc,toUtc,semantics:'detected_between_consecutive_complete_inventory_runs',items:populated?[{...times,databaseId:5,databaseName:'Orders',optionKey:'compatibility_level',previousValue:'150',currentValue:'160',collectionRunId:evidence.runId},{...times,databaseId:6,databaseName:'Warehouse',optionKey:'is_read_only',previousValue:'false',currentValue:'true',collectionRunId:evidence.runId}]:[]});
-    return send(res,{targetId:instanceId,targetRevision:1,publicationGeneration:populated?1:0,fromUtc,toUtc,coverage:populated?'observed_changes_only':'never_collected',items:populated?[{...times,configurationId:1539,configurationName:'cost threshold for parallelism',sourceType:'int',previousConfiguredValue:'5',configuredValue:'50',previousInUseValue:'5',inUseValue:'50',configuredChanged:true,inUseChanged:true,runId:evidence.runId}]:[],nextCursor:null});
+    const context=req.headers.cookie?.includes('investigationContextFixture=1')&&populated;
+    const nearby=(fraction,minutes)=>({...times,detectedAtUtc:new Date(start+(end-start)*fraction-minutes*60000).toISOString()});
+    if(surface==='health/database-option-changes')return send(res,{targetId:instanceId,fromUtc,toUtc,semantics:'detected_between_consecutive_complete_inventory_runs',items:populated?[{...(context?nearby(0.5,8):times),databaseId:5,databaseName:'Orders',optionKey:'compatibility_level',previousValue:'150',currentValue:'160',collectionRunId:evidence.runId},{...(context?nearby(0.75,8):times),databaseId:6,databaseName:'Warehouse',optionKey:'is_read_only',previousValue:'false',currentValue:'true',collectionRunId:evidence.runId},...(context?[{...nearby(0.75,7),databaseId:7,databaseName:'Reporting',optionKey:'is_read_only',previousValue:'false',currentValue:'true',collectionRunId:evidence.runId}]:[])]:[]});
+    return send(res,{targetId:instanceId,targetRevision:1,publicationGeneration:populated?1:0,fromUtc,toUtc,coverage:populated?'observed_changes_only':'never_collected',items:populated?[{...(context?nearby(0.75,7):times),configurationId:1539,configurationName:'cost threshold for parallelism',sourceType:'int',previousConfiguredValue:'5',configuredValue:'50',previousInUseValue:'5',inUseValue:'50',configuredChanged:true,inUseChanged:true,runId:evidence.runId}]:[],nextCursor:null});
    }
    if(surface==='health/server-configuration-snapshot')return send(res,{targetId:instanceId,targetRevision:1,runId:null,observedAtUtc:null,serverMajorVersion:16,collectorEnabled:false,lastOutcome:null,coverage:'never_collected',items:[],nextCursor:null});
 
@@ -220,7 +224,7 @@ createServer(async(req,res)=>{try{
    const i=targets.indexOf(t),gap=mode==='partial'&&index===0;
    const value=n=>({value:gap?null:n,state:gap?'unavailable':'current',observedAtUtc:gap?null:at});
    const issues=i===1?[{targetId:t.instanceId,server:t.displayName,title:'Sessions blocked',detail:'12 distinct sessions waiting on SQL 02',destination:'activity',priority:1,observedAtUtc:at}]:i===4?[{targetId:t.instanceId,server:t.displayName,title:'SQL Agent failures',detail:'2 jobs affected in selected window',destination:'operations',priority:2,observedAtUtc:at}]:[];
-   const metric=(key,unit,base,dimension=null)=>({targetId:t.instanceId,label:t.displayName,metric:key,unit,state:gap?'partial':'observed',dimension,points:gap?[]:Array.from({length:48},(_,j)=>({timeUtc:new Date(from+(to-from)*j/48).toISOString(),value:Math.max(0,base*(1+.25*Math.sin(j/5+i))+(i===1&&j>27&&j<34?base*.7:0)),samples:10}))});
+   const metric=(key,unit,base,dimension=null)=>({targetId:t.instanceId,label:t.displayName,metric:key,unit,state:gap||key==='engine.sql_scheduler_cpu_percent'&&req.headers.cookie?.includes('dashboardObservationState=partial')?'partial':'observed',dimension,points:gap?[]:(key==='engine.sql_scheduler_cpu_percent'?dashboardSummaryCpuPoints(req,from,to,i):undefined)??Array.from({length:48},(_,j)=>({timeUtc:new Date(from+(to-from)*j/48).toISOString(),value:Math.max(0,base*(1+.25*Math.sin(j/5+i))+(i===1&&j>27&&j<34?base*.7:0)),samples:10}))});
    const resource=(label,n,unit)=>({targetId:t.instanceId,server:t.displayName,label,value:gap?null:n,unit,state:gap?'unavailable':'observed',observedAtUtc:gap?null:at});
    const databaseSeries=targetId?[metric('activity.user_sessions','sessions',14+i*4,'Orders'),metric('activity.user_sessions','sessions',8+i*3,'Reporting')]:[];
    const backupSummary=gap?null:overviewBackupFixture(t.instanceId,refreshedAtUtc,i,mode==='backup-expiry');

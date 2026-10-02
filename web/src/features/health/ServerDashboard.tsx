@@ -18,6 +18,8 @@ import { useChartReferences } from "../overview/useChartReferences.ts";
 import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, readDashboardTimelineSelection,
   type DashboardTimelineSelection } from "../../components/dashboardTimelineSelectionModel.ts";
 import { utcMicroseconds } from "../../utcTimestamp.ts";
+import { DashboardBaselineCards } from "./DashboardBaselineCards.tsx";
+import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.tsx";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules }: {
   readonly instanceId: string;
@@ -133,12 +135,11 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         <DashboardCount label="Blocked sessions now" value={evidence.blockedSessions} />
         <DashboardCount label="Deadlocks in window" value={evidence.deadlocks} />
       </div>
-      <section className="panel server-dashboard-investigate" aria-labelledby="server-investigate-heading">
-        <p className="eyebrow">Investigate first</p><h4 id="server-investigate-heading">What needs attention</h4>
-        {issues.length ? <ol>{issues.map((issue, index) => <li key={`${issue.destination}:${issue.observedAtUtc ?? "current"}:${index}`}>
-          <a href={issueHref(selectedScope, instanceId, issue.destination, issue.observedAtUtc, issue.title)}><strong>{issue.title}</strong><span>{issue.detail}</span><small>{issue.observedAtUtc ? timeLabel(issue.observedAtUtc) : "Observation time unavailable"} · Open evidence →</small></a>
-        </li>)}</ol> : <p className="empty-state">No ranked exceptions in the available evidence. Check collection gaps before treating this as all clear.</p>}
-      </section>
+      <DashboardBaselineCards targetId={instanceId} series={evidence.series} bands={chartReferences.references.bands}
+        fromUtc={data.fromUtc} toUtc={data.toUtc} formatTime={timeLabel} baselineStatus={chartReferences.baselineStatus} />
+      <DashboardInvestigationSummary targetId={instanceId} scope={fixedTimelineScope} fromUtc={data.fromUtc} toUtc={data.toUtc}
+        issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || agentHistory.loading}
+        sourceNotes={timelineNotes} />
       <DashboardTimeline events={timelineEvents}
         fromUtc={data.fromUtc} toUtc={data.toUtc} crosshairUtc={crosshairUtc}
         selection={requestedSelection} onSelectionChange={selectTimeline} loading={result.loading || timeline.loading || agentHistory.loading}

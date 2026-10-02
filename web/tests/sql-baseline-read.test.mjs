@@ -43,7 +43,20 @@ test("partial SQL history stays labelled and unavailable hours are gaps",()=>{
   Object.assign(value.items[82].statistics,{sampleCount:1,median:10*gib,mad:0,p10:10*gib,p90:10*gib,confidence:(1/28)/8,visibilityState:"partial"});
   const page=parseSqlBaselinePage(value,expected),bands=sqlBaselineBands(page,"2026-09-30T10:30:00Z","2026-09-30T12:15:00Z");
   assert.equal(bands.length,1);assert.match(bands[0].label,/partial/);assert.match(bands[0].label,/coverage 4%/);
+  assert.equal(bands[0].visibilityState,"partial");assert.equal(bands[0].coverage,1/28);assert.equal(bands[0].confidence,(1/28)/8);
+  assert.equal(bands[0].sourceFromUtc,window.fromUtc);assert.equal(bands[0].sourceToUtc,window.toUtc);
   assert.equal(parseSqlBaselinePage({...response(),items:[],state:"no_data"},expected).sourceCutoffUtc,null);
+});
+
+test("hourly references retain microsecond clips and include an end bucket only when it is inside the exact window",()=>{
+  const page=parseSqlBaselinePage(response(),expected);
+  const bands=sqlBaselineBands(page,"2026-09-30T10:30:00.1234560Z","2026-09-30T12:00:00.000001Z");
+  assert.equal(bands.length,3);assert.equal(bands[0].fromUtc,"2026-09-30T10:30:00.123456Z");
+  assert.equal(bands[2].fromUtc,"2026-09-30T12:00:00.000Z");assert.equal(bands[2].toUtc,"2026-09-30T12:00:00.000001Z");
+  assert.equal(sqlBaselineBands(page,"2026-09-30T10:30:00.123456Z","2026-09-30T12:00:00Z").length,2);
+  const narrow=sqlBaselineBands(page,"2026-09-30T10:30:00.123456Z","2026-09-30T10:30:00.123457Z");
+  assert.equal(narrow.length,1);assert.equal(narrow[0].fromUtc,"2026-09-30T10:30:00.123456Z");
+  assert.equal(narrow[0].toUtc,"2026-09-30T10:30:00.123457Z");
 });
 test("SQL baseline client pins target revision, version and source window",async()=>{
   const previous=globalThis.fetch;clearApiCache();

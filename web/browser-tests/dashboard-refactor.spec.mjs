@@ -42,6 +42,172 @@ async function sessionUrlFixture(page) {
 }
 const sessionHref = (identity, observed = sessionObserved, snapshot = sessionSnapshot) => `${href('activity', first, '1h')}&${new URLSearchParams({ sessionSnapshot: snapshot, sessionObserved: observed, ...(identity ? { sessionIdentity: identity } : {}) })}`;
 const seededIncident = 'aaaaaaaa-aaaa-4aaa-8aaa-000000000001';
+const baselineCards = page => page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true });
+const cpuBaselineCard = page => baselineCards(page).getByRole('region', { name: 'SQL scheduler CPU baseline comparison', exact: true });
+const attentionSummary = page => page.getByRole('region', { name: 'What needs attention', exact: true });
+const planAttention = (page, databaseId) => attentionSummary(page).getByRole('link', { name: new RegExp(`^Plan regression comparison.*database ${databaseId}`) }).locator('xpath=parent::li');
+async function baselineSummaryFixture(page, state = 'normal') {
+  await fixture(page);
+  await page.context().addCookies([{ name: 'baselineKpiFixture', value: '1', url: origin }, { name: 'dashboardBaselineState', value: state, url: origin }]);
+}
+
+test('dashboard baseline cards compare the latest bucket with its matching UTC hour and disclose source quality without extra reads', async ({ page }) => {
+  await baselineSummaryFixture(page);
+  const reads = [];
+  page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/analytics/sql-baselines')) reads.push(request.url()); });
+  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
+  const card = cpuBaselineCard(page);
+  await expect(card).toHaveAttribute('data-reference-state', 'available');
+  await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('70');
+  await expect(card.locator('dd')).toHaveText(['50 %', '55 %', '60 %']);
+  await expect(card).toContainText('11:30:00');
+  await expect(card).toContainText('10 samples');
+  await expect(card).toContainText('Reference quality: complete.');
+  const before = reads.length;
+  const details = card.getByText('SQL scheduler CPU source details', { exact: true });
+  await details.focus(); await details.press('Enter');
+  await expect(details).toBeFocused();
+  await expect(card.locator('details')).toHaveAttribute('open', '');
+  await expect(card).toContainText('UTC hour 155');
+  await expect(card).toContainText('source 2026-08-29T00:00:00.000Z to 2026-09-26T00:00:00.000Z');
+  await expect(card).toContainText('Dimension: server-wide');
+  expect(reads).toHaveLength(before);
+  await expect(baselineCards(page)).toContainText('not a healthy range, an alert verdict, or proof of what was known at Rewind time');
+});
+
+test('partial dashboard baseline evidence remains labelled and a missing latest bucket never falls back to an older value', async ({ page }) => {
+  await baselineSummaryFixture(page, 'partial');
+  await page.context().addCookies([{ name: 'dashboardObservationState', value: 'partial', url: origin }]);
+  await page.goto(`${href('health')}&healthSection=summary`);
+  const card = cpuBaselineCard(page);
+  await expect(card).toHaveAttribute('data-observation-state', 'partial');
+  await expect(card).toContainText('Partial SQL observations; this mean describes only available samples.');
+  await expect(card).toContainText('Reference quality: partial.');
+  await expect(card).toContainText('Source coverage 25%.');
+  await page.context().addCookies([{ name: 'dashboardObservationState', value: 'missing', url: origin }]);
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect(card).toHaveAttribute('data-observation-state', 'missing');
+  await expect(card).toContainText('Mean unavailable');
+  await expect(card).toContainText('Latest bucket has no usable samples.');
+  await expect(card.locator('.dashboard-baseline-value strong')).toHaveCount(0);
+});
+
+test('missing-hour foreign and failed dashboard baselines keep current observations but never substitute a reference', async ({ page }) => {
+  await baselineSummaryFixture(page);
+  for (const state of ['missing-hour', 'foreign', 'error']) {
+    await page.context().addCookies([{ name: 'dashboardBaselineState', value: state, url: origin }]);
+    // An identical hash URL is same-document navigation; reload to read each
+    // distinct synthetic reference failure rather than reusing the prior page.
+    if (state === 'missing-hour') await page.goto(`${href('health')}&healthSection=summary`);
+    else await page.reload();
+    const card = cpuBaselineCard(page);
+    await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('70');
+    await expect(card).toHaveAttribute('data-reference-state', 'missing');
+    await expect(card).toContainText('No matching hourly reference.');
+    await expect(card.locator('dd')).toHaveCount(0);
+    await baselineCards(page).getByText('Baseline reference coverage', { exact: true }).click();
+    await expect(baselineCards(page)).toContainText(state === 'missing-hour' ? 'SQL p10\u2013p90 bands use matching hourly history' : 'SQL baseline references are unavailable.');
+  }
+});
+
+test('a delayed old-server baseline cannot populate the new server KPI cards', async ({ page }) => {
+  await baselineSummaryFixture(page);
+  let release, pending = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/analytics/sql-baselines?*`, async route => {
+    const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response });
+  });
+  await page.goto(`${href('health')}&healthSection=summary`);
+  await expect.poll(() => pending).toBe(true);
+  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  const card = cpuBaselineCard(page);
+  await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('80');
+  await expect(card.locator('dd')).toHaveText(['55 %', '60 %', '65 %']);
+  release();
+  await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('80');
+  await expect(card.locator('dd')).toHaveText(['55 %', '60 %', '65 %']);
+  await card.getByText('SQL scheduler CPU source details', { exact: true }).click();
+  await expect(card).toContainText(second); await expect(card).not.toContainText(first);
+});
+
+test('a delayed old-window baseline response never overwrites the matching new-hour reference', async ({ page }) => {
+  await baselineSummaryFixture(page);
+  await page.goto(`${href('health')}&healthSection=summary`);
+  const card = cpuBaselineCard(page);
+  await expect(card.locator('dd')).toHaveText(['50 %', '55 %', '60 %']);
+  let release, pending = false, reads = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/analytics/sql-baselines?*`, async route => {
+    const response = await route.fetch();
+    if (new URL(route.request().url()).searchParams.get('metricKey') !== 'engine.sql_scheduler_cpu_percent' || ++reads !== 1) return route.fulfill({ response });
+    const body = await response.json();
+    const hour = body.items.find(item => item.statistics.hourOfWeek === 154).statistics;
+    Object.assign(hour, { p10: 85, median: 90, p90: 95 });
+    pending = true; await gate; await route.fulfill({ response, json: body });
+  });
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect.poll(() => pending).toBe(true);
+  await page.evaluate(hash => { location.hash = hash; }, `${href('health').substring(1)}&healthSection=summary`.replace(encodeURIComponent(from), encodeURIComponent('2026-09-26T09:00:00.000Z')).replace(encodeURIComponent(to), encodeURIComponent('2026-09-26T11:00:00.000Z')));
+  await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('69');
+  await expect(card.locator('dd')).toHaveText(['45 %', '50 %', '55 %']);
+  release();
+  await expect(card.locator('dd')).toHaveText(['45 %', '50 %', '55 %']);
+  await expect(card).not.toContainText('90 %');
+});
+
+test('Investigate first promotes plan comparisons with correctly scoped temporal context and evidence links', async ({ page }) => {
+  await timelineFixture(page);
+  await page.context().addCookies([{ name: 'investigationContextFixture', value: '1', url: origin }]);
+  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
+  const summary = attentionSummary(page), plan = planAttention(page, 6);
+  await expect(plan).toBeVisible();
+  await expect(summary.getByRole('link', { name: /^Plan regression comparison/ })).toHaveCount(2);
+  await expect(summary.locator('.dashboard-investigation-findings > li')).not.toHaveCount(0);
+  expect(await summary.locator('.dashboard-investigation-findings > li').count()).toBeLessThanOrEqual(5);
+  await plan.getByText('Observed temporal context (2)', { exact: true }).press('Enter');
+  await expect(plan).toContainText('Warehouse options detected');
+  await expect(plan).toContainText('Server configuration detected');
+  await expect(plan).not.toContainText('Reporting options detected');
+  await expect(plan).not.toContainText('Orders options detected');
+  await expect(plan).toContainText('Detected 8 min before this last observed query group');
+  await expect(plan).toContainText('Detected 7 min before this last observed query group');
+  await expect(plan).toContainText('10:52:00'); await expect(plan).toContainText('10:53:00');
+  const configuration = plan.getByRole('link', { name: 'Server configuration detected', exact: true });
+  const configScope = new URLSearchParams((await configuration.getAttribute('href')).split('?')[1]);
+  expect(Object.fromEntries(configScope)).toMatchObject({ target: first, range: 'custom', from, to, healthSection: 'summary', configurationRun: '22222222-2222-4222-8222-222222222222' });
+  const databaseScope = new URLSearchParams((await plan.getByRole('link', { name: 'Warehouse options detected', exact: true }).getAttribute('href')).split('?')[1]);
+  expect(Object.fromEntries(databaseScope)).toMatchObject({ target: first, range: 'custom', from, to, databaseId: '6' });
+  await expect(summary).toContainText('Temporal proximity does not establish causation or the actual change time.');
+  await workspaceDatabase(page).selectOption('6');
+  await expect(summary.getByRole('link', { name: /^Plan regression comparison/ })).toHaveCount(1);
+  await expect(planAttention(page, 6)).toBeVisible();
+  await expect(summary.getByRole('link', { name: /^Plan regression comparison/ })).toHaveAttribute('href', /queryView=regressed/);
+});
+
+test('Investigate first retains explicit source gaps and never attaches temporal context to an out-of-window current finding', async ({ page }) => {
+  await timelineFixture(page);
+  await page.context().addCookies([{ name: 'investigationContextFixture', value: '1', url: origin }]);
+  await page.route(`**/observation-targets/${first}/health/server-configuration-changes?*`, route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
+  await page.route('**/api/v1/overview?*', async route => {
+    if (new URL(route.request().url()).searchParams.get('targetId') !== first) return route.continue();
+    const response = await route.fetch(); const body = await response.json();
+    body.evidence[0].issues.unshift({ targetId: first, server: 'SYNTHETIC SQL 01', title: 'SYNTHETIC current-only exception', detail: 'Synthetic current snapshot outside selected history.', destination: 'activity', priority: 0, observedAtUtc: '2026-09-26T12:00:00.000001Z' });
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(`${href('health')}&healthSection=summary`);
+  const summary = attentionSummary(page);
+  const outside = summary.getByRole('link', { name: /^SYNTHETIC current-only exception/ }).locator('xpath=parent::li');
+  await expect(outside).toContainText('Latest overview evidence outside the selected history window');
+  await expect(outside.locator('details')).toHaveCount(0);
+  const plan = planAttention(page, 6);
+  await plan.getByText('Observed temporal context (1)', { exact: true }).click();
+  await expect(plan).toContainText('Warehouse options detected');
+  await expect(plan).not.toContainText('Server configuration detected');
+  await summary.getByText('Investigation source coverage', { exact: true }).click();
+  await expect(summary).toContainText('Server configuration change markers are unavailable.');
+});
 async function incidentWorkspaceFixture(page, retry = false) {
   await databaseFixture(page);
   await page.context().addCookies([{ name: 'incidentWorkspaceFixture', value: '1', url: origin }, ...(retry ? [{ name: 'incidentWorkspaceRetry', value: '1', url: origin }] : [])]);

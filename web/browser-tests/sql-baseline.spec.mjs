@@ -13,7 +13,7 @@ async function open(page, mode = 'normal', surface = 'resources') {
     { name: 'chartReferenceMode', value: mode, url: 'http://127.0.0.1:4321' },
   ]);
   await page.goto(href(surface));
-  await expect(page.getByText('SQL p10–p90 bands use matching hourly history', { exact: false })).toBeVisible();
+  await expect(page.locator('.activity-evidence').filter({ hasText: 'SQL p10–p90 bands use matching hourly history' })).toBeVisible();
 }
 const cpuChart = page => page.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true }) });
 const memoryChart = page => page.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'Memory pressure', exact: true }) });

@@ -41,6 +41,8 @@ test("baseline bands use UTC hour-of-week, convert bytes to GiB and leave missin
   assert.equal(bands.length,2);assert.equal(bands[0].fromUtc,"2026-09-30T10:30:00.000Z");
   assert.equal(bands[0].toUtc,"2026-09-30T11:00:00.000Z");assert.equal(bands[0].low,8);assert.equal(bands[0].median,10);
   assert.equal(bands[1].toUtc,"2026-09-30T12:00:00.000Z");assert.match(bands[0].label,/confidence 50%/);
+  assert.equal(bands[0].visibilityState,"complete");assert.equal(bands[0].coverage,1);assert.equal(bands[0].confidence,.5);
+  assert.equal(bands[0].sourceFromUtc,source.fromUtc);assert.equal(bands[0].sourceToUtc,source.toUtc);
   const sunday=memoryBaselineBands(target,[parseBaseline(baseline({hourOfWeek:0}))],"2026-10-04T00:00:00Z","2026-10-04T00:30:00Z");
   assert.equal(sunday.length,1);
 });

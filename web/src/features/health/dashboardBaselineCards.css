@@ -1,0 +1,21 @@
+.dashboard-baseline-summary { min-width: 0; margin-block: 1rem; }
+.dashboard-baseline-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.dashboard-baseline-card { min-width: 0; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere; }
+.dashboard-baseline-label { margin-bottom: .65rem; }
+.dashboard-baseline-value { margin-bottom: .5rem; font-variant-numeric: tabular-nums; }
+.dashboard-baseline-value strong { font-size: 1.5rem; color: var(--text); }
+.dashboard-baseline-value span { color: var(--muted); }
+.dashboard-baseline-note,
+.dashboard-baseline-observation,
+.dashboard-baseline-reference { color: var(--muted); font-size: .8rem; margin-bottom: .65rem; }
+.dashboard-baseline-percentiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; margin-block: .75rem; font-size: .8rem; }
+.dashboard-baseline-percentiles dt { color: var(--muted); }
+.dashboard-baseline-percentiles dd { margin: .25rem 0 0; font-variant-numeric: tabular-nums; }
+.dashboard-baseline-card details { font-size: .8rem; }
+.dashboard-baseline-card summary,
+.dashboard-baseline-source-status summary { cursor: pointer; color: var(--teal-deep); padding-block: .3rem; }
+.dashboard-baseline-card details p { margin-top: .65rem; }
+.dashboard-baseline-source-status { margin-top: .75rem; color: var(--muted); }
+@media (max-width: 1200px) { .dashboard-baseline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .dashboard-baseline-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (forced-colors: active) { .dashboard-baseline-card { border-color: CanvasText; } }

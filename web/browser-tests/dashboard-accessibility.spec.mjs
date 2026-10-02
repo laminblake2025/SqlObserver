@@ -545,3 +545,53 @@ for (const width of [320, 390, 768, 1440]) {
     await expect(page).toHaveURL(new RegExp(`#/waits\\?target=${target}`));
   });
 }
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`dashboard summaries disclose partial baseline and temporal context accessibly at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'databaseScopeFixture', value: '1', url: origin },
+      { name: 'timelineFixture', value: '1', url: origin },
+      { name: 'investigationContextFixture', value: '1', url: origin },
+      { name: 'baselineKpiFixture', value: '1', url: origin },
+      { name: 'dashboardBaselineState', value: 'partial', url: origin },
+      { name: 'dashboardObservationState', value: 'partial', url: origin },
+    ]);
+    await page.goto(`/#/health?${new URLSearchParams({ target: '11111111-1111-4111-8111-000000000001', range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', databaseId: '6', healthSection: 'summary' })}`);
+    await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
+    const cards = page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true });
+    const cpu = cards.getByRole('region', { name: 'SQL scheduler CPU baseline comparison', exact: true });
+    await expect(cpu.locator('.dashboard-baseline-value strong')).toHaveText('70');
+    await expect(cpu).toContainText('Reference quality: partial.');
+    await expect(cpu).toContainText('Partial SQL observations; this mean describes only available samples.');
+    const baselineDetails = cpu.getByText('SQL scheduler CPU source details', { exact: true });
+    await baselineDetails.focus(); await baselineDetails.press('Enter');
+    await expect(baselineDetails).toBeFocused();
+    await expect(cpu.locator('details')).toHaveAttribute('open', '');
+    await expect(cpu).toContainText('UTC hour 155');
+    const attention = page.getByRole('region', { name: 'What needs attention', exact: true });
+    const finding = attention.getByRole('link', { name: /^Plan regression comparison.*database 6/ }).locator('xpath=parent::li');
+    const temporalDetails = finding.getByText('Observed temporal context (2)', { exact: true });
+    await temporalDetails.focus(); await temporalDetails.press('Enter');
+    await expect(temporalDetails).toBeFocused();
+    await expect(finding.getByRole('link', { name: 'Warehouse options detected', exact: true })).toBeVisible();
+    await expect(finding.getByRole('link', { name: 'Server configuration detected', exact: true })).toBeVisible();
+    await expect(finding).toContainText('Detected 8 min before this last observed query group');
+    await expect(finding).toContainText('Temporal proximity does not establish causation or the actual change time.');
+    await auditResponsiveState(page, testInfo, 'dashboard-summaries-expanded');
+    await saveFullPage(page, `dashboard-summary-${width}.png`);
+    // Capture the expanded evidence itself in addition to the entire workspace.
+    const folder = resolve('../artifacts/dashboard-refactor/screenshots');
+    await mkdir(folder, { recursive: true });
+    // Element screenshots scroll the panel under the sticky mobile workspace.
+    // A document-space page clip preserves its unobscured scroll-top layout.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const clip = await attention.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x + scrollX, y: rect.y + scrollY, width: rect.width, height: rect.height };
+    });
+    await page.screenshot({ path: resolve(folder, `dashboard-investigation-detail-${width}.png`), fullPage: true, clip });
+  });
+}
