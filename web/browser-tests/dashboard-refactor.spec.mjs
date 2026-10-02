@@ -256,7 +256,7 @@ test('session inspection preserves its observation when filters remove the reque
   await inspect.click();
   await expect(inspect).toHaveAttribute('aria-pressed', 'true');
   const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
-  await expect(detail).toContainText('This observation is preserved when the request disappears.');
+  await expect(detail).toContainText('This observation is preserved when filters change or the request disappears.');
   await expect(detail).toContainText('synthetic_dba');
   const captured = await detail.getByText(/^Observed /).textContent();
   await live.getByRole('checkbox', { name: 'Blocked only', exact: true }).check();
@@ -322,4 +322,71 @@ test('changing the deadlock window clears the old detail while the same event re
   await expect(detail.getByRole('img', { name: 'Deadlock relationship diagram' })).toBeVisible();
   await expect(detail).toHaveAttribute('aria-busy', 'false');
   await expect(event).toHaveAttribute('aria-pressed', 'true');
+});
+
+
+test('blocking chains filter loaded rows locally and preserve an unrelated inspected observation', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.endsWith('/activity/live')) requests.push(request.url());
+  });
+  await page.context().addCookies([{ name: 'blockingChainFixture', value: '1', url: origin }]);
+  await open(page, 'activity', first, '1h');
+  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
+  const chain = live.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
+  await page.getByRole('button', { name: 'Pause live updates', exact: true }).click();
+  await table.getByRole('button', { name: 'Inspect 90/0', exact: true }).click();
+  const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
+  await expect(detail.getByRole('heading', { name: 'Session 90 / 0', exact: true })).toBeVisible();
+  const requestCount = requests.length;
+  const firstChain = live.getByRole('button', { name: 'Filter chain: Session 51', exact: true });
+  await firstChain.click();
+  await expect(firstChain).toHaveAttribute('aria-pressed', 'true');
+  await expect(chain).toHaveValue('session:51');
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
+  for (const id of [51, 72, 73]) await expect(table.getByRole('button', { name: `Inspect ${id}/0`, exact: true })).toBeVisible();
+  await expect(table.getByRole('button', { name: 'Inspect 90/0', exact: true })).toHaveCount(0);
+  await expect(detail.getByRole('heading', { name: 'Session 90 / 0', exact: true })).toBeVisible();
+  await chain.selectOption('session:81');
+  await expect(live.getByRole('button', { name: 'Filter chain: Session 81', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
+  for (const id of [81, 82, 83]) await expect(table.getByRole('button', { name: `Inspect ${id}/0`, exact: true })).toBeVisible();
+  await live.getByRole('button', { name: 'Clear chain filter', exact: true }).click();
+  await expect(chain).toHaveValue('');
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
+  expect(requests).toHaveLength(requestCount);
+  await firstChain.click();
+  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  await expect(chain).toHaveValue('');
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
+  await expect(detail).toHaveCount(0);
+});
+
+test('a selected chain disappearing from the next snapshot produces explicit zero matches', async ({ page }) => {
+  await page.context().addCookies([{ name: 'blockingChainFixture', value: '1', url: origin }]);
+  await open(page, 'activity', first, '1h');
+  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
+  const chain = live.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
+  await page.getByRole('button', { name: 'Pause live updates', exact: true }).click();
+  await live.getByRole('button', { name: 'Filter chain: Session 51', exact: true }).click();
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
+  await page.route(`**/${first}/activity/live?*`, async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.rows = body.rows.filter(row => ![51, 72, 73].includes(row.sessionId));
+    await route.fulfill({ response, json: body });
+  });
+  await live.getByRole('button', { name: 'Refresh now', exact: true }).click();
+  await expect(chain).toHaveValue('session:51');
+  await expect(chain.getByRole('option', { name: 'Selected chain unavailable: session:51', exact: true })).toHaveCount(1);
+  await expect(live.getByText(/^Showing 0 of 4 loaded session rows/)).toBeVisible();
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(0);
+  await expect(live.getByText('Selected blocking chain is not present in this loaded page. No rows match; clear the chain filter or browse another snapshot/page.', { exact: true })).toBeVisible();
+  await live.getByRole('button', { name: 'Clear chain filter', exact: true }).click();
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(4);
+  for (const id of [81, 82, 83, 90]) await expect(table.getByRole('button', { name: `Inspect ${id}/0`, exact: true })).toBeVisible();
 });

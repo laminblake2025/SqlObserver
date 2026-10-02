@@ -430,6 +430,10 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .live-filters label { display: grid; gap: 5px; color: var(--muted-deep); font-size: 12px; font-weight: 700; }
 .live-filters label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 40px; font-weight: 600; }
 .live-filters input[type="checkbox"] { width: 17px; min-height: 17px; accent-color: var(--teal); }
+.live-filters .blocking-chain-select { flex: 1 1 240px; min-width: 0; }
+.blocking-chain-select select { width: 100%; min-width: 0; }
+.blocking-chain-clear { align-self: end; }
+.blocking-chain-counts { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .live-table-scroll table { min-width: 1180px; }
 .live-table-scroll td, .live-table-scroll th { white-space: nowrap; }
 .live-details { position: relative; margin-top: 18px; padding: 18px; background: var(--surface-teal); border: 1px solid var(--border-teal); border-radius: 8px; }
@@ -441,6 +445,10 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .blocking-summary li span { display: block; color: var(--muted); font-size: 12px; }
 .blocking-tree-group { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-warning); }
 .blocking-tree-group h5 { margin: 0 0 6px; font-size: 13px; }
+.blocking-tree-group-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; margin-bottom: 8px; }
+.blocking-tree-group-heading h5 { flex: 1 1 180px; min-width: 0; margin: 0; }
+.blocking-chain-action { white-space: normal; overflow-wrap: anywhere; }
+.blocking-chain-action[aria-pressed="true"] { color: var(--teal-deep); background: var(--teal-soft); border-color: var(--border-teal); }
 .blocking-tree-group > p { margin: 0 0 6px; color: var(--muted); }
 .blocking-tree-group li ul { margin-top: 4px; border-left: 1px solid var(--border-warning); }
 .activity-evidence { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -651,6 +659,7 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .live-filters { align-items: stretch; }
   .live-filters label, .live-filters label input, .live-filters label select { width: 100%; }
   .live-filters label:has(input[type="checkbox"]) { width: auto; }
+  .blocking-chain-clear { align-self: start; }
   .wait-chart label { grid-template-columns: 1fr; }
   .event-list { grid-template-columns: 1fr; }
   .alerts-layout { grid-template-columns: 1fr; }
@@ -690,6 +699,7 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .chart text, .deadlock-node text, .deadlock-edge-label { fill: CanvasText; }
   .state-pill, .health-state, .capability-status, .evidence-status,
   .sidebar nav a[aria-current="page"], .selected-row { border: 1px solid CanvasText; }
+  .blocking-chain-action[aria-pressed="true"] { color: HighlightText; background: Highlight; border-color: Highlight; forced-color-adjust: none; }
 }
 
 .availability-evidence { display: grid; gap: 12px; }

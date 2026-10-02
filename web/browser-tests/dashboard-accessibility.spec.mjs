@@ -81,3 +81,34 @@ test('narrow alert evidence preserves readable columns and scrolls with the keyb
   await evidence.press('ArrowRight');
   await expect.poll(() => evidence.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
 });
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`selected blocking chain keeps keyboard controls and responsive evidence at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([{ name: 'blockingChainFixture', value: '1', url: origin }]);
+    await open(page, 'activity');
+    const chain = page.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+    const action = page.getByRole('button', { name: 'Filter chain: Session 51', exact: true });
+    await action.focus();
+    await action.press('Enter');
+    await expect(chain).toHaveValue('session:51');
+    await expect(action).toHaveAttribute('aria-pressed', 'true');
+    await expect(action).toBeFocused();
+    const clear = page.getByRole('button', { name: 'Clear chain filter', exact: true });
+    await clear.focus();
+    await clear.press('Enter');
+    await expect(chain).toHaveValue('');
+    await chain.selectOption('session:81');
+    await expect(page.getByRole('region', { name: 'Loaded session observations', exact: true })).toContainText('81');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+    await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
+    expect(results.violations).toEqual([]);
+    const folder = resolve('../artifacts/dashboard-refactor/screenshots');
+    await mkdir(folder, { recursive: true });
+    // Keyboard navigation scrolls the viewport; reset it before a full-page
+    // capture so sticky navigation is rendered at the top of the document.
+    await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+    await page.screenshot({ path: resolve(folder, `activity-chain-${width}.png`), fullPage: true });
+  });
+}

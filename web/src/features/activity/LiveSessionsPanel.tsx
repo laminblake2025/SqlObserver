@@ -3,7 +3,7 @@ import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { readLive, type LivePage, type LiveRow, type LiveSnapshot, type QueryDetail } from "./liveActivityApi";
 import { liveRequestKey, valueForLiveRequest } from "./liveEvidenceScope";
-import { buildBlockingTree, formatBlockingTarget, type BlockingTreeNode } from "./blockingModel";
+import { buildBlockingTree, formatBlockingTarget, rowsForBlockingGroup, type BlockingTreeGroup, type BlockingTreeNode } from "./blockingModel";
 
 // The trigger accepts recently discovered events for up to five minutes. Keep
 // enough room after the event time for that bounded discovery window plus
@@ -18,6 +18,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const [login, setLogin] = useState(""); const [application, setApplication] = useState(""); const [status, setStatus] = useState("");
   const [idle, setIdle] = useState(false); const [system, setSystem] = useState(false); const [blocked, setBlocked] = useState(false);
   const [sort, setSort] = useState("cpu"); const [descending, setDescending] = useState(true);
+  const [blockingGroupKey, setBlockingGroupKey] = useState("");
   const requestedHistoryEnd = parseHistoryAtUtc(initialHistoryAtUtc);
   const expiredEvent = requestedHistoryEnd !== undefined && requestedHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS <= Date.now() - 24 * 3600000;
   const sessionHistoryReason = expiredEvent ? "The linked deadlock is older than the 24-hour session snapshot retention window." : requestedHistoryEnd === undefined ? historyUnavailableReason : undefined;
@@ -54,6 +55,10 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   requestKeyRef.current = requestKey;
   const displayPage = valueForLiveRequest(page, pageKey, requestKey);
   const displayError = valueForLiveRequest(error, errorKey, requestKey);
+  const blockingGroups = buildBlockingTree(displayPage?.rows ?? []);
+  const selectedBlockingGroup = blockingGroups.find(group => group.key === blockingGroupKey);
+  const visibleRows = blockingGroupKey === "" ? displayPage?.rows ?? []
+    : rowsForBlockingGroup(displayPage?.rows ?? [], selectedBlockingGroup);
   useEffect(() => {
     const changed = () => setVisible(!document.hidden);
     document.addEventListener("visibilitychange", changed);
@@ -146,6 +151,12 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <label>Database <select value={database} onChange={event => setDatabase(event.target.value)}><option value="">All databases</option>{databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
       <label><input type="checkbox" checked={blocked} onChange={event => setBlocked(event.target.checked)} /> Blocked only</label>
       <label>Sort <select value={sort} onChange={event => setSort(event.target.value)}>{[["cpu", "CPU time"], ["memory", "Memory"], ["reads", "Reads"], ["writes", "Writes"], ["logicalReads", "Logical reads"], ["elapsed", "Elapsed time"], ["session", "Session ID"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label className="blocking-chain-select">Blocking chain (loaded page)<select value={blockingGroupKey} onChange={event => setBlockingGroupKey(event.target.value)}>
+        <option value="">All loaded session rows</option>
+        {blockingGroupKey !== "" && !selectedBlockingGroup ? <option value={blockingGroupKey}>Selected chain unavailable: {blockingGroupKey}</option> : null}
+        {blockingGroups.map(group => <option key={group.key} value={group.key}>{group.rootLabel}</option>)}
+      </select></label>
+      <button className="secondary-button blocking-chain-clear" type="button" disabled={blockingGroupKey === ""} onClick={() => setBlockingGroupKey("")}>Clear chain filter</button>
     </div>
     <details className="supporting-evidence"><summary>Advanced session filters{login || application || status || idle || system ? " · filters applied" : ""}</summary><div className="live-filters">
       <label>Login <input maxLength={128} value={login} onChange={event => setLogin(event.target.value)} /></label>
@@ -165,13 +176,15 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     <p role="status">{mode === "history" ? "Historical evidence · automatic refresh paused" : paused ? "Paused" : workspacePaused ? "Workspace live updates paused" : !visible ? "Hidden · refresh paused" : cursor ? "Browsing snapshot pages · refresh paused" : "Refresh every 10 seconds"}{loading ? " · Refreshing…" : ""}. Observed: {gap ? "No snapshot in this minute" : displayPage?.observedUtc ? timeLabel(displayPage.observedUtc) : "Unavailable"}. Snapshot: {displayPage?.snapshotId ?? "Unavailable"}. {selectedSnapshot?.deadlockEventId ? "Deadlock-triggered snapshot." : ""} {displayPage?.state === "stale" || (displayPage !== undefined && displayError) ? "Stale evidence." : ""}</p>
     {displayError && <p role="alert">{displayError}</p>}{displayPage?.truncated && <p role="status">Collection was truncated at 512 rows. Missing sessions may exist.</p>}
     <p>Cumulative CPU is milliseconds, not CPU percentage. Reads, writes and logical reads are cumulative counts. Memory is session memory for idle sessions and granted request memory for active requests. Short requests between samples may not appear.</p>
-    {displayPage && <BlockingSnapshot page={displayPage} />}
-    {gap ? <p className="empty-state">No successful snapshot was captured in this minute.</p> : <div className="live-table-scroll" tabIndex={0} role="region" aria-label="Loaded session observations"><table><caption>{mode === "history" ? "Historical" : "Live"} sessions · loaded snapshot for {displayName}</caption><thead><tr>{["Session / request", "Database", "Login", "Client host / application", "Status / command", "CPU ms", "Memory bytes", "Logical reads", "Reads / writes", "Elapsed ms", "Wait / blocker", "Details"].map(title => <th key={title} scope="col">{title}</th>)}</tr></thead><tbody>{displayPage?.rows.map(row => <tr key={row.identity}>
+    {displayPage && <BlockingSnapshot page={displayPage} groups={blockingGroups} selectedGroupKey={blockingGroupKey} onSelectGroup={setBlockingGroupKey} />}
+    {displayPage && <p className="blocking-chain-counts" role="status">Showing {visibleRows.length} of {displayPage.rows.length} loaded session rows{blockingGroupKey !== "" ? ` · Blocking chain: ${selectedBlockingGroup?.rootLabel ?? blockingGroupKey}` : ""}. Chain filtering is local to this loaded page and preserves the server-side filters and row order. Other pages, excluded sessions, and truncated capture can contain additional chain members.</p>}
+    {displayPage && blockingGroupKey !== "" && !selectedBlockingGroup ? <p role="status" className="empty-state">Selected blocking chain is not present in this loaded page. No rows match; clear the chain filter or browse another snapshot/page.</p> : null}
+    {gap ? <p className="empty-state">No successful snapshot was captured in this minute.</p> : <div className="live-table-scroll" tabIndex={0} role="region" aria-label="Loaded session observations"><table><caption>{mode === "history" ? "Historical" : "Live"} sessions · loaded snapshot for {displayName}</caption><thead><tr>{["Session / request", "Database", "Login", "Client host / application", "Status / command", "CPU ms", "Memory bytes", "Logical reads", "Reads / writes", "Elapsed ms", "Wait / blocker", "Details"].map(title => <th key={title} scope="col">{title}</th>)}</tr></thead><tbody>{visibleRows.map(row => <tr key={row.identity}>
       <td>{row.sessionId} / {row.requestId ?? "idle"}</td><td>{row.databaseName ?? row.databaseId ?? "—"}</td><td>{row.login ?? "—"}</td><td>{row.clientHost ?? "—"}<br/>{row.application ?? "—"}</td><td>{row.status}<br/>{row.command}</td><td>{row.cpuMs}</td><td>{row.memoryBytes}</td><td>{row.logicalReads}</td><td>{row.reads} / {row.writes}</td><td>{row.elapsedMs}</td><td>{row.waitType ?? "—"} / {formatBlockingTarget(row.blocker)}</td><td><button type="button" aria-pressed={selection?.row.identity === row.identity && selection.snapshot === displayPage?.snapshotId} aria-controls={selection ? "session-details" : undefined} onClick={() => void open(row)}>Inspect {row.sessionId}/{row.requestId ?? "idle"}</button></td>
-    </tr>)}</tbody></table>{displayPage?.rows.length === 0 && <p className="empty-state">{displayPage.state === "unavailable" ? "Collection evidence is unavailable for this observation." : "No sessions match these filters."}</p>}</div>}
+    </tr>)}</tbody></table>{displayPage && visibleRows.length === 0 && (blockingGroupKey === "" || selectedBlockingGroup) ? <p className="empty-state">{displayPage.state === "unavailable" ? "Collection evidence is unavailable for this observation." : "No sessions match these filters."}</p> : null}</div>}
     <nav aria-label="Live session pages"><button disabled={loading || cursorTrail.length === 0} onClick={() => { setCursor(cursorTrail.at(-1)); setCursorTrail(values => values.slice(0, -1)); }}>Previous page</button><button disabled={loading || gap || !displayPage?.nextCursor} onClick={() => { setCursorTrail(values => [...values, cursor]); setCursor(displayPage?.nextCursor ?? undefined); }}>Next page</button></nav>
     {selection && <aside id="session-details" className="live-details" aria-label="Session details"><div className="health-heading-row"><h4>Session {selection.row.sessionId} / {selection.row.requestId ?? "idle"}</h4><button type="button" onClick={() => { queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); }}>Close details</button></div>
-      <p>Observed {timeLabel(selection.observed)} on {displayName}. This observation is preserved when the request disappears.</p>
+      <p>Observed {timeLabel(selection.observed)} on {displayName}. This observation is preserved when filters change or the request disappears.</p>
       <p>Database: {selection.row.databaseName ?? selection.row.databaseId ?? "unknown"}; login: {selection.row.login ?? "unknown"}; client: {selection.row.clientHost ?? "unknown"} / {selection.row.application ?? "unknown"}.</p>
       <p>Engine startup: {selection.row.engineStartup}; session login: {selection.row.sessionLogin}; request start: {selection.row.requestStart ?? "idle"} (SQL Server local timestamps).</p>
       <p>Cumulative CPU {selection.row.cpuMs} ms · memory {selection.row.memoryBytes} bytes · logical reads {selection.row.logicalReads} · reads {selection.row.reads} · writes {selection.row.writes} · elapsed {selection.row.elapsedMs} ms.</p>
@@ -181,14 +194,15 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   </section>;
 }
 
-function BlockingSnapshot({ page }: { readonly page: LivePage }) {
-  const groups = buildBlockingTree(page.rows);
+function BlockingSnapshot({ page, groups, selectedGroupKey, onSelectGroup }: { readonly page: LivePage; readonly groups: readonly BlockingTreeGroup[]; readonly selectedGroupKey: string; readonly onSelectGroup: (key: string) => void }) {
   if (groups.length === 0) return <p className="table-note">{page.state === "unavailable"
     ? "Blocking relationships are unavailable for this observation."
     : "No blocking relationships occur in these loaded session rows. Filters, paging, and collection bounds can exclude other relationships."}</p>;
   return <section className="blocking-summary" aria-labelledby="blocking-summary-heading"><div className="section-heading"><div><h4 id="blocking-summary-heading">Blocking tree · loaded snapshot</h4><p>Chains use only the selected snapshot, filters, and loaded page. A missing blocker may be on another page or excluded by filters{page.truncated ? ", or absent from truncated collection" : ""}.</p></div></div>
     {groups.map(group => <div className="blocking-tree-group" key={group.key}>
-      <h5>{group.rootLabel}{group.key.startsWith("session:") ? group.rootLoaded ? " · row loaded" : " · row not loaded" : ""}</h5>
+      <div className="blocking-tree-group-heading"><h5>{group.rootLabel}{group.key.startsWith("session:") ? group.rootLoaded ? " · row loaded" : " · row not loaded" : ""}</h5>
+        <button type="button" className="secondary-button blocking-chain-action" aria-label={`Filter chain: ${group.rootLabel}`} aria-pressed={selectedGroupKey === group.key} onClick={() => onSelectGroup(group.key)}>Filter chain</button>
+      </div>
       {group.issue && <p>{group.issue}</p>}
       {group.nodes.length > 0 && <ul>{group.nodes.map(node => <BlockingTreeBranch key={node.sessionId} node={node} />)}</ul>}
       {group.unresolvedRows.length > 0 && <ul>{group.unresolvedRows.map(row => <li key={row.identity}>Session {row.sessionId}/{row.requestId ?? "idle"} waits on {formatBlockingTarget(row.blocker)}<span>{row.waitType ?? "Wait type unavailable"}</span></li>)}</ul>}

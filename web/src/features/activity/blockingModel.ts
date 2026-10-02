@@ -99,3 +99,22 @@ export function buildBlockingTree(rows: readonly LiveRow[]): readonly BlockingTr
     return { key, rootLabel: group.label, rootLoaded: key.startsWith("session:") && loaded.has(root), nodes: build(root), unresolvedRows: [] };
   });
 }
+
+// Filter complete loaded session membership, rather than just the blocking
+// request used to draw the tree. A head blocker can be idle or have several
+// requests. Missing heads stay missing; unresolved groups retain their members.
+export function rowsForBlockingGroup(rows: readonly LiveRow[], group: BlockingTreeGroup | undefined): readonly LiveRow[] {
+  if (group === undefined) return [];
+  const sessions = new Set(group.unresolvedRows.map(row => row.sessionId));
+  if (group.key.startsWith("session:")) {
+    const root = Number(group.key.slice("session:".length));
+    if (Number.isSafeInteger(root) && root > 0) sessions.add(root);
+  }
+  const pending = [...group.nodes];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    sessions.add(node.sessionId);
+    pending.push(...node.children);
+  }
+  return rows.filter(row => sessions.has(row.sessionId));
+}

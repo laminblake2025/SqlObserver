@@ -55,7 +55,10 @@ createServer(async(req,res)=>{try{
    if(surface==='activity/live/history')return send(res,[]);
    if(surface==='activity/live') {
     const row=(id,blocker)=>({identity:`synthetic-session-${id}`,sessionId:id,requestId:0,databaseId:5,databaseName:'Orders',login:'synthetic_dba',clientHost:'synthetic-app.invalid',application:'SYNTHETIC Orders',status:blocker?'suspended':'running',command:'SELECT',isUser:true,waitType:blocker?'LCK_M_X':null,blocker,cpuMs:'1200',memoryBytes:'1048576',reads:'100',writes:'0',logicalReads:'1000',elapsedMs:'12000',queryId:null,queryState:'unavailable',engineStartup:'2026-09-25T00:00:00',sessionLogin:'2026-09-26T00:00:00',requestStart:'2026-09-26T08:00:00',delta:null});
-    let rows=[row(51,null),row(72,51)];if(url.searchParams.get('blockedOnly')==='true')rows=rows.filter(item=>item.blocker!==null);
+    let rows=[row(51,null),row(72,51)];
+    // Independent blocking-filter fixture; ordinary dashboard screenshots keep their two rows.
+    if(req.headers.cookie?.includes('blockingChainFixture=1'))rows.push(row(73,72),row(81,null),row(82,81),row(83,82),row(90,null));
+    if(url.searchParams.get('blockedOnly')==='true')rows=rows.filter(item=>item.blocker!==null);
     return send(res,{snapshotId:evidence.runId,observedUtc:now,repositoryTimeUtc:now,state:'current',truncated:false,rows,databases:[{id:5,name:'Orders'}],nextCursor:null});
    }
    if(surface.startsWith('activity/'))return send(res,{instanceId,repositoryTimeUtc:now,evidence,items:surface==='activity/blocking/current'?[edge]:[],nextCursor:null,...(url.searchParams.has('fromUtc')?{fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc')}:{})});
