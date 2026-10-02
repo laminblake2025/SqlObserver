@@ -503,6 +503,40 @@ The existing repository policy, dependency, recovery, and authorization
 checks still govern each operation. This scheduling change does not retire
 canonical run identities or enable any retention policy.
 
+Migration 0325 adds a private reference gate for the canonical run cleanup
+unit: v2 header, identity bridge, outcome, and visibility gap. Its closed
+inventory includes 32 child relations, including the cascading deadlock alert
+snapshot and checkpoint and the receipt that references the outcome ledger.
+Each reviewed constraint must retain its column, parent, delete action,
+validation state, owner, and relation security profile. Missing, changed, or
+unknown references hold the run even when the child currently contains no rows.
+The gate also refuses an unindexed reference probe. Migrations 0326–0346 add
+leading run-key B-tree indexes to the 21 reviewed parents that lacked them,
+using concurrent builds and the existing resumable partition-index attachment
+path. The other reviewed parents already have qualifying indexes. Detached
+children must retain a usable local index as well as independent visibility.
+The original raw-metric parent retains its reviewed ACL isolation; unlike the
+other reviewed parents, that M2 parent does not enable row-level security.
+
+The gate's separate non-login dependency reader has only SELECT privileges
+and a bounded function with exact target scope and migrator-only execution.
+It bypasses row-level security to detect references whose target key disagrees
+with the canonical run, rather than treating hidden rows as absent. Detached
+registered children require a matching reviewed FK, migration ownership,
+verified visibility, and an independent probe. A newly detached relation
+without the reader grant holds the run; the future detach path must establish
+that visibility before canonical deletion is enabled. The scan refuses more
+than 128 top-level references.
+
+`no_known_reference` is a reference result, not deletion authorization. Root
+retirement still needs the permanent rollback seal, a policy
+and replay age floor, completed outcomes, recovery attestation, active-work
+and reader checks, analytics/report/incident holds, bounded row work, fenced
+ownership, a narrow append-only deletion exception, and an immutable audit.
+Deletion must lock the root rows and stabilize the FK catalog before checking
+references again in the same transaction. Until that operation exists, the
+gate is a migration-only diagnostic and changes no policy or history row.
+
 ## Implementation gates
 
 1. Migration 0160 adds an attached-grace lifecycle for diagnostic-event months

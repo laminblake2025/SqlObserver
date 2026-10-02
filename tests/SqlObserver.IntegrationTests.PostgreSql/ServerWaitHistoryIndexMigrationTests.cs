@@ -47,7 +47,10 @@ public sealed class ServerWaitHistoryIndexMigrationTests(PostgreSql18Fixture fix
         await AssertCompleteIndexAsync(database);
         MigrationBatchResult repeat = await migrations.ApplyPendingAsync(
             new MigrationApplyRequest(1, Timeout), CancellationToken.None);
-        Assert.Empty(repeat.Results);
+        // The catalog now contains later migrations; a repeat advances to the
+        // next migration rather than rebuilding or recording index 0136 again.
+        Assert.Equal(137, Assert.Single(repeat.Results).Migration.Number.Value);
+        await AssertCompleteIndexAsync(database);
     }
 
     [Fact]

@@ -434,9 +434,9 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         string prefix = table[1] + "_";
         string suffix = child.StartsWith(prefix, StringComparison.Ordinal)
             ? child[prefix.Length..] : string.Empty;
-        if (suffix.Length == 9 && suffix[0] == 'p') suffix = suffix[1..];
+        if ((suffix.Length is 7 or 9) && suffix[0] == 'p') suffix = suffix[1..];
         if (schema != table[0] || !child.StartsWith(prefix, StringComparison.Ordinal) ||
-            suffix.Length != 8 || !suffix.All(char.IsAsciiDigit))
+            suffix.Length is not (6 or 8) || !suffix.All(char.IsAsciiDigit))
             throw new InvalidOperationException("A partitioned-index child has an unexpected name or schema.");
         string name = parentIndex[1] + "_" + suffix;
         if (name.Length > 63) throw new InvalidOperationException("A partitioned child index name is too long.");
