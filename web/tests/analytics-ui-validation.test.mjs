@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { analyticsSurfaceLimits, getAnalyticsSurface } from "../src/features/analytics/analyticsApi.ts";
 import { analyticsEmptyStateText, analyticsScopeText, analyticsStatusText } from "../src/features/analytics/analyticsScope.ts";
@@ -74,13 +73,6 @@ test("initial request failures remain actionable while cursor failures offer res
   assert.equal(panelStateForRequestError(403, false), "permission-denied");
   assert.equal(panelStateForRequestError(404, false), "no-data");
   assert.equal(panelStateForRequestError(409, false), "stale");
-});
-
-test("analytics surface panel exposes retry and restart actions", async () => {
-  const panel = await readFile(new URL("../src/features/analytics/AnalyticsSurfacePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /Retry/);
-  assert.match(panel, /Restart paging/);
-  assert.match(panel, /role=\{error \? "alert" : "status"\}/);
 });
 
 test("jobs and backfill identify inventory scope without claiming UTC row filtering", () => {

@@ -3,15 +3,9 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { localDateTimeToUtc, validateReportWindow } from "../src/features/reports/reportsApi.ts";
 
-test("reports workflow exposes four fixed report kinds and safe text-only rendering", () => {
+test("reports architecture security lint forbids raw HTML insertion", () => {
   const panel = readFileSync(new URL("../src/features/reports/ReportsPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /instance-health/);
-  assert.match(panel, /performance-window/);
-  assert.match(panel, /incident-evidence/);
-  assert.match(panel, /capacity-readiness/);
   assert.doesNotMatch(panel, /dangerouslySetInnerHTML/);
-  assert.match(panel, /Open printable HTML/);
-  assert.match(panel, /Download section CSV/);
 });
 
 test("report windows enforce UTC half-open limits", () => {

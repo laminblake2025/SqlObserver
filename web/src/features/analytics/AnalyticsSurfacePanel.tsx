@@ -36,17 +36,17 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, refresh =
   const [paging, setPaging] = useState<Paging>({});
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
-  const activeWindow = useRef<string | undefined>(undefined);
+  const activeContext = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    const windowKey = `${timeWindow?.fromUtc ?? ""}:${timeWindow?.toUtc ?? ""}`;
-    if (activeWindow.current !== undefined && activeWindow.current !== windowKey) {
-      activeWindow.current = windowKey;
+    const contextKey = `${targetId}:${surface}:${timeWindow?.fromUtc ?? ""}:${timeWindow?.toUtc ?? ""}`;
+    if (activeContext.current !== undefined && activeContext.current !== contextKey) {
+      activeContext.current = contextKey;
       setPaging({});
       setState("loading"); setPage(null); setError(null);
       return;
     }
-    activeWindow.current = windowKey;
+    activeContext.current = contextKey;
     const controller = new AbortController();
     setState("loading"); setPage(null); setError(null);
     getAnalyticsSurface(targetId, surface, controller.signal, {...timeWindow,...paging}).then(value => {

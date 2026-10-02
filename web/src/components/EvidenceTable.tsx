@@ -9,5 +9,5 @@ export function EvidenceTable({ rows, label }: { readonly rows: readonly Readonl
     const wraps = typeof value === "string" && (value.length > 32 || isIdentifierColumn(name));
     return `evidence-scalar${wraps ? " evidence-wrap" : ""}`;
   };
-  return <div className="table-scroll evidence-table-scroll"><table className="evidence-table"><caption>{label} · {rows.length} loaded records</caption><thead><tr>{columns.map(name => <th scope="col" key={name}>{columnLabel(name)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{columns.map(name => <td key={name} className={cellClass(name, row[name])}>{cell(row[name])}</td>)}</tr>)}</tbody></table></div>;
+  return <div className="table-scroll evidence-table-scroll" tabIndex={0} role="region" aria-label={`${label} scrollable evidence`}><table className="evidence-table"><caption>{label} · {rows.length} loaded records</caption><thead><tr>{columns.map(name => <th scope="col" key={name}>{columnLabel(name)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{columns.map(name => <td key={name} className={cellClass(name, row[name])}>{cell(row[name])}</td>)}</tr>)}</tbody></table></div>;
 }

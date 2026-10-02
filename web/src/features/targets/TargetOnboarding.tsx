@@ -54,7 +54,7 @@ export function TargetOnboarding({onRegistered}: {readonly onRegistered: (target
 
           <label>
             Stable key
-            <input name="instanceKey" maxLength={256} pattern="[a-z0-9][a-z0-9._:-]*" required />
+            <input name="instanceKey" maxLength={256} pattern={"[a-z0-9][a-z0-9._:\\-]*"} required />
           </label>
           <label>
             Display name

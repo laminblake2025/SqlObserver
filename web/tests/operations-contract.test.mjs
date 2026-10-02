@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { parseOperationalPage, readBoundedJson } from "../src/features/operations/operationsParser.mjs";
 import { getOperationalPage, OperationalApiError } from "../src/features/operations/operationsApi.ts";
 import { initialOperationsState, operationsReducer } from "../src/features/operations/operationsState.ts";
@@ -58,13 +57,9 @@ test("Agent source execution start accepts only valid offset-free server clock v
   assert.throws(() => parse({ ...row, sourceLocalStart: null, SourceLocalStart: "2026-11-01T01:30:00" }), /agent source local start/);
 });
 
-test("M9 API and panel retain six distinct routes and no response reflection", async () => {
-  const api = await readFile(new URL("../src/features/operations/operationsApi.ts", import.meta.url), "utf8");
-  const panel = await readFile(new URL("../src/features/operations/OperationsPanel.tsx", import.meta.url), "utf8");
-  for (const route of ["backups", "sql-agent/failures", "tempdb", "tempdb/files", "availability-groups/replicas", "availability-groups/databases"]) assert.match(api, new RegExp(route.replaceAll("/", "\\/")));
-  for (const label of ["Backups", "SQL Agent failures", "TempDB summary", "TempDB files", "Availability Group replicas", "Availability Group databases"]) assert.match(panel, new RegExp(label));
-  assert.match(api, /readBoundedJson/); assert.doesNotMatch(api, /response\.json\(\)/);
-});
+// The six visible sources and safe error rendering are exercised through the
+// real grouped panel in component-tests/OperationsPanel.spec.mjs. Native reader
+// and production-client runtime coverage remains below and above this note.
 
 test("M9 production client replays cursors across all six surfaces", async () => {
   const originalFetch = globalThis.fetch; const seen = [];

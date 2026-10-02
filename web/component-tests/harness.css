@@ -1,6 +1,7 @@
 .component-harness { max-width: 730px; margin: 0 auto; padding: 20px; }
 .harness-controls { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0; padding: 16px; }
-.harness-controls label { display: grid; gap: 6px; min-width: 0; }
+.harness-controls label { display: grid; gap: 6px; min-width: 0; max-width: 100%; }
+.harness-controls select { min-width: 0; width: 100%; }
 .harness-controls .harness-checkbox { display: flex; align-items: center; }
 .harness-controls input[type="checkbox"] { flex: 0 0 auto; }
 .harness-observations { overflow-wrap: anywhere; }
