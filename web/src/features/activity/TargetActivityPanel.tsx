@@ -65,8 +65,8 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
         {snapshot.waits && <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />}
         {snapshot.blocking && <Evidence page={snapshot.blocking} />}
         {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "Root resolution"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
-        {snapshot.history && <BlockingHistory key={`${instanceId}/${window?.fromUtc}/${window?.toUtc}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
-        {snapshot.waitHistory && <WaitHistory key={`${instanceId}/${window?.fromUtc}/${window?.toUtc}/${snapshot.waitHistory.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.waitHistory} />}
+        {snapshot.history && <BlockingHistory key={`blocking/${instanceId}/${window?.fromUtc}/${window?.toUtc}/${snapshot.history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.history} />}
+        {snapshot.waitHistory && <WaitHistory key={`waits/${instanceId}/${window?.fromUtc}/${window?.toUtc}/${snapshot.waitHistory.repositoryTimeUtc}`} instanceId={instanceId} initialPage={snapshot.waitHistory} />}
       </>}
       </div></details>
     </section>

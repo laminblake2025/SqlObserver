@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { getActivitySnapshot } from "../src/features/activity/activityApi.ts";
+import { parseHistory } from "../src/features/activity/activityParser.mjs";
+import { blockingHistoryItem } from "../component-tests/activityFixture.mjs";
 
 const panelUrl = new URL("../src/features/activity/TargetActivityPanel.tsx", import.meta.url);
-const typesUrl = new URL("../src/features/activity/activityTypes.ts", import.meta.url);
 
 test("activity client requests all bounded target routes and validates untrusted pages", async () => {
   const target = "11111111-1111-4111-8111-111111111111";
@@ -33,13 +34,20 @@ test("activity client requests all bounded target routes and validates untrusted
   } finally { globalThis.fetch = original; }
 });
 
-test("activity UI renders history edge/evidence and reset/loss evidence", async () => {
+test("blocking history parser requires both native edge and evidence", () => {
+  const item = blockingHistoryItem();
+  assert.equal(parseHistory(item).edge.blockedSessionId, 71);
+  assert.equal(parseHistory(item).evidence.freshness, "stale");
+  for (const malformed of [{ evidence: item.evidence }, { edge: item.edge },
+    { ...item, edge: { ...item.edge, blockedSessionId: "71" } },
+    { ...item, evidence: { ...item.evidence, freshness: null } }]) {
+    assert.throws(() => parseHistory(malformed), /Activity evidence returned an invalid response/);
+  }
+});
+
+// Architecture/security lint: mounted inert-text checks cover fixture values,
+// while this ban prevents a raw-HTML rendering escape hatch in this module.
+test("activity panel security lint forbids raw HTML injection", async () => {
   const panel = await readFile(panelUrl, "utf8");
-  const types = await readFile(typesUrl, "utf8");
-  assert.match(types, /interface BlockingHistoryItem[\s\S]*readonly evidence: ActivityEvidence[\s\S]*readonly edge: BlockingEdge/);
-  assert.match(panel, /item\.edge\.blockedSessionId/);
-  assert.match(panel, /item\.evidence\.freshness/);
-  assert.match(panel, /resetDetected/);
-  assert.match(panel, /partial\/loss evidence/);
   assert.doesNotMatch(panel, /dangerouslySetInnerHTML/);
 });

@@ -18,17 +18,16 @@ test("deadlock lock modes are canonicalized to the reviewed allowlist", () => {
   assert.equal(normalizeDeadlockLockMode("provider-secret"), "OTHER");
 });
 
-test("deadlock panel is reachable from the target workflow and supports detail", () => {
+// Component behavior lives in component-tests/DeadlockPanel.spec.mjs. A direct
+// panel mount cannot establish App's destination and Activity prop wiring.
+test("lint: App wires the deadlock destination and Activity route provenance", () => {
   const onboarding = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const panel = readFileSync(new URL("../src/features/deadlocks/TargetDeadlockPanel.tsx", import.meta.url), "utf8");
   const activity = readFileSync(new URL("../src/features/activity/LiveSessionsPanel.tsx", import.meta.url), "utf8");
-  const api = readFileSync(new URL("../src/features/deadlocks/deadlockApi.ts", import.meta.url), "utf8");
   assert.match(onboarding, /TargetDeadlockPanel/);
   assert.match(onboarding, /route.page === "deadlocks"/);
   assert.match(onboarding, /initialHistoryAtUtc=\{route\.activityAtUtc\}/);
-  assert.match(panel, /getDeadlock\(/);
-  assert.match(panel, /activityHistoryHref\(/);
-  assert.match(panel, /View activity at event time/);
+  assert.match(onboarding, /initialHistoryEventId=\{route\.activityEventId\}/);
+  // Retain this copy contract as lint; panel/link tests do not establish the
+  // automatic deadlock-triggered capture selection behavior.
   assert.match(activity, /deadlock-triggered capture is selected automatically/);
-  assert.match(api, /readBoundedBody/);
 });
