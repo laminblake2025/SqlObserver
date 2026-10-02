@@ -2,7 +2,9 @@ import { apiFetch } from "../../apiClient.ts";
 export const pageLimit = 25;
 export const maximumResponseBytes = 256 * 1024;
 
-export class ActivityRequestError extends Error {}
+export class ActivityRequestError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
 
 export async function getPage(url, parseItem, expectedInstanceId, signal, maximumItems = pageLimit) {
   let response;

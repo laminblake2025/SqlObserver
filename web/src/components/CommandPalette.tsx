@@ -24,30 +24,39 @@ export function CommandPalette({ open, onClose, scope }: {
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const search = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<"servers" | "databases" | "queries" | "alerts">("servers");
+  const session = useRef({ open, number: 0 });
+  if (session.current.open !== open) session.current = { open, number: session.current.number + 1 };
+  const [category, setCategory] = useState<{ readonly session: number; readonly mode: "servers" | "databases" | "queries" | "alerts" }>({ session: 0, mode: "servers" });
+  const mode = category.session === session.current.number ? category.mode : "servers";
+  const setMode = (value: typeof category.mode) => setCategory({ session: session.current.number, mode: value });
   const [query, setQuery] = useState("");
-  const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
-  const [alerts, setAlerts] = useState<readonly FleetAlert[]>([]);
-  const [databases, setDatabases] = useState<readonly DatabaseHealthSummary[]>([]);
-  const [queryCatalog, setQueryCatalog] = useState<{ readonly context: string; readonly items: readonly QueryPerformanceDatabaseCatalog[]; readonly selectedMissing: boolean }>();
-  const [queryDatabase, setQueryDatabase] = useState<{ readonly context: string; readonly id: string }>();
-  const [queryLookup, setQueryLookup] = useState<"idle" | "loading" | "found" | "missing" | "error" | "window">("idle");
-  const [verifiedQuery, setVerifiedQuery] = useState<string>();
-  const [loading, setLoading] = useState(false);
-  const [moreAvailable, setMoreAvailable] = useState(false);
-  const [error, setError] = useState(false);
+  const context = JSON.stringify([open, mode, scope.target.toLowerCase(), scope.databaseId ?? null]);
+  const generation = useRef({ context, number: 0 });
+  if (generation.current.context !== context) generation.current = { context, number: generation.current.number + 1 };
+  const loadIdentity = JSON.stringify([context, generation.current.number]);
+  const currentLoad = useRef(loadIdentity); currentLoad.current = loadIdentity;
+  const [targets, setTargets] = useContextState<readonly ObservationTargetSummary[]>(loadIdentity, []);
+  const [alerts, setAlerts] = useContextState<readonly FleetAlert[]>(loadIdentity, []);
+  const [databases, setDatabases] = useContextState<readonly DatabaseHealthSummary[]>(loadIdentity, []);
+  const [queryCatalog, setQueryCatalog] = useContextState<{ readonly context: string; readonly items: readonly QueryPerformanceDatabaseCatalog[]; readonly selectedMissing: boolean } | undefined>(loadIdentity, undefined);
+  const [queryDatabase, setQueryDatabase] = useContextState<{ readonly context: string; readonly id: string } | undefined>(loadIdentity, undefined);
+  const [loading, setLoading] = useContextState(loadIdentity, open);
+  const [moreAvailable, setMoreAvailable] = useContextState(loadIdentity, false);
+  const [error, setError] = useContextState(loadIdentity, false);
   const queryContext = JSON.stringify([scope.target.toLowerCase(), scope.databaseId ?? null]);
   const queryDatabases = queryCatalog?.context === queryContext ? queryCatalog.items : [];
   const queryDatabaseId = queryDatabase?.context === queryContext ? queryDatabase.id : "";
   const selectedDatabaseMissing = queryCatalog?.context === queryContext && queryCatalog.selectedMissing;
-  const queryIdentity = JSON.stringify([open, mode, queryContext, queryDatabaseId, query.trim().toLowerCase(), scope.range, scope.from, scope.to]);
+  const queryIdentity = JSON.stringify([loadIdentity, queryDatabaseId, query.trim().toLowerCase(), scope.range, scope.from, scope.to]);
+  const currentQuery = useRef(queryIdentity); currentQuery.current = queryIdentity;
+  const [queryLookup, setQueryLookup] = useContextState<"idle" | "loading" | "found" | "missing" | "error" | "window">(queryIdentity, "idle");
+  const [verifiedQuery, setVerifiedQuery] = useContextState<string | undefined>(queryIdentity, undefined);
 
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement;
     dialog.current?.showModal();
     search.current?.focus();
-    setMode("servers");
     return () => {
       dialog.current?.close();
       if (previous instanceof HTMLElement) previous.focus();
@@ -57,6 +66,7 @@ export function CommandPalette({ open, onClose, scope }: {
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
+    const current = () => !controller.signal.aborted && currentLoad.current === loadIdentity;
     setQuery("");
     setTargets([]);
     setAlerts([]);
@@ -70,7 +80,7 @@ export function CommandPalette({ open, onClose, scope }: {
       if (mode === "queries") {
         if (!scope.target) return;
         const status = await getQueryPerformanceStatus(scope.target, undefined, undefined, controller.signal);
-        if (!controller.signal.aborted) {
+        if (current()) {
           if (status.targetId.toLowerCase() !== scope.target.toLowerCase()) throw new Error("Query database catalog target mismatch.");
           const selected = status.databaseCatalog.find(database => database.databaseId === scope.databaseId);
           setQueryCatalog({ context: queryContext, items: status.databaseCatalog, selectedMissing: scope.databaseId !== undefined && !selected });
@@ -85,7 +95,7 @@ export function CommandPalette({ open, onClose, scope }: {
         let cursor: string | undefined;
         for (let pageNumber = 0; pageNumber < maximumDatabasePages; pageNumber += 1) {
           const page = await getDatabaseHealth(scope.target, controller.signal, cursor);
-          if (controller.signal.aborted) return;
+          if (!current()) return;
           if (page.instanceId.toLowerCase() !== scope.target.toLowerCase()) throw new Error("Database page target mismatch.");
           collected.push(...page.items);
           setDatabases([...collected]);
@@ -103,7 +113,7 @@ export function CommandPalette({ open, onClose, scope }: {
         let cursor: string | undefined;
         for (let pageNumber = 0; pageNumber < maximumAlertPages; pageNumber += 1) {
           const page = await getFleetActiveAlerts(controller.signal, pageSize, cursor);
-          if (controller.signal.aborted) return;
+          if (!current()) return;
           collected.push(...page.items);
           setAlerts([...collected]);
           if (!page.nextCursor) return;
@@ -119,7 +129,7 @@ export function CommandPalette({ open, onClose, scope }: {
       let cursor: string | undefined;
       for (let pageNumber = 0; pageNumber < maximumPages; pageNumber += 1) {
         const page = await listObservationTargets(controller.signal, cursor, pageSize);
-        if (controller.signal.aborted) return;
+        if (!current()) return;
         collected.push(...page.items);
         setTargets([...collected]);
         if (!page.nextCursor) return;
@@ -129,12 +139,12 @@ export function CommandPalette({ open, onClose, scope }: {
         if (pageNumber === maximumPages - 1) setMoreAvailable(true);
       }
     })().catch(() => {
-      if (!controller.signal.aborted) setError(true);
+      if (current()) setError(true);
     }).finally(() => {
-      if (!controller.signal.aborted) setLoading(false);
+      if (current()) setLoading(false);
     });
     return () => controller.abort();
-  }, [open, mode, scope.target, scope.databaseId]);
+  }, [loadIdentity]);
 
   useEffect(() => {
     setQueryLookup("idle");
@@ -147,8 +157,8 @@ export function CommandPalette({ open, onClose, scope }: {
     const identity = queryIdentity;
     setQueryLookup("loading");
     void getQueryPerformanceHistory(scope.target, Number(queryDatabaseId), query.trim().toLowerCase(), window.window.fromUtc, window.window.toUtc, controller.signal)
-      .then(page => { if (!controller.signal.aborted) { setQueryLookup(page.items.length ? "found" : "missing"); if (page.items.length) setVerifiedQuery(identity); } })
-      .catch(() => { if (!controller.signal.aborted) setQueryLookup("error"); });
+      .then(page => { if (!controller.signal.aborted && currentQuery.current === identity) { setQueryLookup(page.items.length ? "found" : "missing"); if (page.items.length) setVerifiedQuery(identity); } })
+      .catch(() => { if (!controller.signal.aborted && currentQuery.current === identity) setQueryLookup("error"); });
     return () => controller.abort();
   }, [open, mode, queryIdentity]);
 
@@ -163,19 +173,22 @@ export function CommandPalette({ open, onClose, scope }: {
   const databaseMatches = useMemo(() => matchingDatabases(databases, query), [databases, query]);
 
   const jump = (target: ObservationTargetSummary) => {
+    if (!open || mode !== "servers" || currentLoad.current !== loadIdentity || !targets.includes(target)) return;
     location.hash = overviewHref(scope, "health", target.instanceId);
     onClose();
   };
   const jumpAlert = (alert: FleetAlert) => {
+    if (!open || mode !== "alerts" || currentLoad.current !== loadIdentity || !alerts.includes(alert)) return;
     location.hash = alertJumpHref(scope, alert);
     onClose();
   };
   const jumpDatabase = (database: DatabaseHealthSummary) => {
+    if (!open || mode !== "databases" || currentLoad.current !== loadIdentity || !databases.includes(database)) return;
     location.hash = databaseJumpHref(scope, scope.target, database.databaseId);
     onClose();
   };
   const jumpQuery = () => {
-    if (verifiedQuery !== queryIdentity) return;
+    if (!open || mode !== "queries" || currentQuery.current !== queryIdentity || verifiedQuery !== queryIdentity) return;
     location.hash = queryJumpHref(scope, scope.target, Number(queryDatabaseId), query.trim());
     onClose();
   };
@@ -244,4 +257,12 @@ export function CommandPalette({ open, onClose, scope }: {
       {mode !== "queries" && !loading && (mode === "servers" ? matches.length : mode === "databases" ? databaseMatches.length : alertMatches.length) === 0 && <p className="command-palette-empty">No matching {mode === "servers" ? "servers" : mode === "databases" ? "databases" : "current alerts"} in the loaded results.</p>}
     </div>
   </dialog>;
+}
+
+// Keep evidence and its status out of the first commit for another search
+// context, before passive effects cancel and replace the previous request.
+function useContextState<T>(context: string, empty: T): [T, (value: T) => void] {
+  const [receipt, setReceipt] = useState<{ readonly context: string; readonly value: T }>();
+  return [receipt?.context === context ? receipt.value : empty,
+    value => setReceipt({ context, value })];
 }

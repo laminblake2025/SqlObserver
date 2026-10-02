@@ -74,34 +74,34 @@ test('database search matches bounded loaded names and IDs', () => {
 
 test('query hash jump preserves time context and only accepts an exact database and hash', () => {
   const hash = 'A'.repeat(64);
-  const href = queryJumpHref(scope, 'target-b', 42, hash);
+  const href = queryJumpHref(scope, targetB, 42, hash);
   const params = new URLSearchParams(href.split('?')[1]);
-  assert.deepEqual(readRoute(href), { page: 'queries', target: 'target-b', databaseId: 42, queryFingerprint: hash.toLowerCase() });
+  assert.deepEqual(readRoute(href), { page: 'queries', target: targetB, databaseId: 42, queryFingerprint: hash.toLowerCase() });
   assert.equal(params.get('range'), 'custom');
   assert.equal(params.get('from'), scope.from);
   assert.equal(params.get('to'), scope.to);
-  assert.deepEqual(readRoute('#/queries?target=target-b&databaseId=42&queryFingerprint=abcd'), { page: 'queries', target: 'target-b', databaseId: 42 });
-  assert.deepEqual(readRoute(`#/queries?target=target-b&databaseId=0&queryFingerprint=${hash}`), { page: 'queries', target: 'target-b' });
+  assert.deepEqual(readRoute(`#/queries?target=${targetB}&databaseId=42&queryFingerprint=abcd`), { page: 'queries', target: targetB, databaseId: 42, querySelectionInvalid: true });
+  assert.deepEqual(readRoute(`#/queries?target=${targetB}&databaseId=0&queryFingerprint=${hash}`), { page: 'queries', target: targetB, querySelectionInvalid: true });
 });
 
 test('a Query Store plan jump preserves its exact query, plan, and time window', () => {
   const query = 'A'.repeat(64);
   const plan = 'B'.repeat(64);
-  const href = queryJumpHref(scope, 'target-b', 42, query, plan);
+  const href = queryJumpHref(scope, targetB, 42, query, plan);
   const params = new URLSearchParams(href.split('?')[1]);
   assert.deepEqual(readRoute(href), {
-    page: 'queries', target: 'target-b', databaseId: 42,
+    page: 'queries', target: targetB, databaseId: 42,
     queryFingerprint: query.toLowerCase(), planFingerprint: plan.toLowerCase(),
   });
   assert.equal(params.get('from'), scope.from);
   assert.equal(params.get('to'), scope.to);
-  assert.deepEqual(readRoute(`#/queries?target=target-b&databaseId=42&queryFingerprint=${query}&planFingerprint=short`),
-    { page: 'queries', target: 'target-b', databaseId: 42, queryFingerprint: query.toLowerCase() });
-  assert.throws(() => queryJumpHref(scope, 'target-b', 42, query, 'short'));
-  const selected = queryJumpHref(scope, 'target-b', 42, query, plan, 'query_store');
+  assert.deepEqual(readRoute(`#/queries?target=${targetB}&databaseId=42&queryFingerprint=${query}&planFingerprint=short`),
+    { page: 'queries', target: targetB, databaseId: 42, querySelectionInvalid: true });
+  assert.throws(() => queryJumpHref(scope, targetB, 42, query, 'short'));
+  const selected = queryJumpHref(scope, targetB, 42, query, plan, 'query_store');
   assert.equal(readRoute(selected).querySource, 'query_store');
-  assert.throws(() => queryJumpHref(scope, 'target-b', 42, query, plan, 'plan_cache'));
-  const cache = queryJumpHref(scope, 'target-b', 42, query, undefined, 'plan_cache');
+  assert.throws(() => queryJumpHref(scope, targetB, 42, query, plan, 'plan_cache'));
+  const cache = queryJumpHref(scope, targetB, 42, query, undefined, 'plan_cache');
   assert.equal(readRoute(cache).querySource, 'plan_cache');
 });
 

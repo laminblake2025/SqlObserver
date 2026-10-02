@@ -62,3 +62,26 @@ test("dashboard and Waits share ordered, precision-safe category values and gap 
     [{ timeUtc: earlier, value: 25, samples: 1 }, { timeUtc: later, value: null, samples: 1 }]);
   assert.equal(chart.series.find(series => series.category === "Memory").points[1].value, null);
 });
+
+test('wait trend binds native microseconds and includes the submillisecond final bucket', () => {
+  const precise = { fromUtc: '2026-09-25T07:55:00.000001Z', toUtc: '2026-09-25T08:00:00.000001Z' };
+  const value = { ...body(), ...precise, points: [...body().points, ...labels.map(category => ({ ...body().points[0], category, bucketStartUtc: '2026-09-25T08:00:00Z' }))] };
+  assert.equal(parseWaitTrend(value, instanceId, precise).points.length, 14);
+  assert.throws(() => parseWaitTrend({ ...value, fromUtc: '2026-09-25T07:55:00.000002Z' }, instanceId, precise));
+  assert.throws(() => parseWaitTrend({ ...value, toUtc: '2026-09-25T08:00:00.000002Z' }, instanceId, precise));
+  assert.equal(parseWaitTrend({ ...value, fromUtc: '2026-09-25T07:55:00.0000010+00:00' }, instanceId, precise).points.length, 14);
+  assert.throws(() => parseWaitTrend({ ...value, points: value.points.map(point => ({ ...point, bucketStartUtc: point.bucketStartUtc.replace('Z', '.000001Z') })) }, instanceId, precise));
+});
+
+test('wait trend refuses a one-microsecond cap overflow before dispatch and propagates authorization status', async () => {
+  const original = globalThis.fetch; let requests = 0;
+  try {
+    globalThis.fetch = async () => { requests++; return new Response('PROVIDER_SECRET', { status: 403 }); };
+    await assert.rejects(getServerWaitTrend(instanceId, { fromUtc: '2026-09-25T08:00:00Z', toUtc: '2026-09-26T08:00:00.000001Z' }, new AbortController().signal), { message: 'Invalid wait trend window.' });
+    assert.equal(requests, 0);
+    for (const status of [401, 403]) {
+      globalThis.fetch = async () => { requests++; return new Response('PROVIDER_SECRET', { status }); };
+      await assert.rejects(getServerWaitTrend(instanceId, window, new AbortController().signal), error => error.status === status && !error.message.includes('PROVIDER_SECRET'));
+    }
+  } finally { globalThis.fetch = original; }
+});

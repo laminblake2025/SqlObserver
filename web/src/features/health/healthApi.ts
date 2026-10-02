@@ -46,15 +46,51 @@ export async function getServerConfigurationSnapshot(instanceId: string,
 export async function setServerConfigurationCollection(instanceId: string,
   expectedTargetRevision: number, expectedEnabled: boolean, enabled: boolean,
   signal: AbortSignal): Promise<void> {
-  const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-collection`, {
-    method: "PUT", credentials: "same-origin",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ expectedTargetRevision, expectedEnabled, enabled }), signal,
-  });
-  if (!response.ok) throw new Error(response.status === 409
-    ? "Collection state changed. Reload before trying again."
-    : response.status === 403 ? "Target administrator access is required."
-      : "Configuration collection could not be updated.");
+  if (typeof instanceId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(instanceId)
+    || instanceId === '00000000-0000-0000-0000-000000000000' || !Number.isSafeInteger(expectedTargetRevision)
+    || expectedTargetRevision < 1 || typeof expectedEnabled !== 'boolean' || typeof enabled !== 'boolean')
+    throw new ConfigurationCollectionError('Choose a valid server, revision and collection state.', 400, false);
+  if (signal.aborted) throw signal.reason;
+  let response: Response;
+  try {
+    response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-collection`, {
+      method: "PUT", credentials: "same-origin",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedTargetRevision, expectedEnabled, enabled }), signal,
+    }, { maximumResponseBytes: 16_384 });
+  } catch {
+    throw new ConfigurationCollectionError(unknownConfigurationOutcome, undefined, true);
+  }
+  if (!response.ok) {
+    const message = response.status === 409 ? 'Collection state changed. Reload before trying again.'
+      : response.status === 403 ? 'Target Administrator access on this server is required.'
+      : response.status === 401 ? 'Your access could not be verified. Reload current state.'
+      : response.status === 404 ? 'This server is unavailable. Reload current state.'
+      : response.status === 400 ? 'The collection request was refused. Reload the current server revision.'
+      : response.status === 429 ? 'Too many administrative requests. Wait briefly and retry.'
+      : unknownConfigurationOutcome;
+    throw new ConfigurationCollectionError(message, response.status, ![400, 401, 403, 404, 409, 429].includes(response.status));
+  }
+  try {
+    if (signal.aborted || response.status !== 200 || !/^application\/json(?:\s*;|$)/iu.test(response.headers.get('content-type') ?? '')) throw new Error();
+    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await response.arrayBuffer()));
+    if (signal.aborted || !value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
+    const receipt = value as Record<string, unknown>;
+    if (typeof receipt.targetId !== 'string' || receipt.targetId.toLowerCase() !== instanceId.toLowerCase()
+      || receipt.targetRevision !== expectedTargetRevision || receipt.collectorEnabled !== enabled
+      || !Number.isSafeInteger(receipt.scheduleRevision) || (receipt.scheduleRevision as number) < 1) throw new Error();
+  } catch {
+    throw new ConfigurationCollectionError(unknownConfigurationOutcome, response.status, true);
+  }
+}
+
+const unknownConfigurationOutcome = 'The configuration collection outcome is unknown. Reload current state before another change.';
+export class ConfigurationCollectionError extends Error {
+  readonly status: number | undefined;
+  readonly outcomeUnknown: boolean;
+  constructor(message: string, status: number | undefined, outcomeUnknown: boolean) {
+    super(message); this.name = 'ConfigurationCollectionError'; this.status = status; this.outcomeUnknown = outcomeUnknown;
+  }
 }
 
 export class HealthRequestError extends Error {

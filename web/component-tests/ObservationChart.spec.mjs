@@ -247,7 +247,7 @@ test('uses the real time provider for local and UTC chart labels without changin
 });
 
 test('keeps chart values accessible at narrow and wide widths', async ({ page }, info) => {
-  const screenshotDirectory = fileURLToPath(new URL('../../artifacts/dashboard-fleet-timeline/screenshots/', import.meta.url));
+  const screenshotDirectory = fileURLToPath(new URL('../../artifacts/dashboard-context-search/screenshots/', import.meta.url));
   await mkdir(screenshotDirectory, { recursive: true });
   await page.getByLabel('Show reference values').check();
   await primary(page).getByText('View chart values', { exact: true }).click();
@@ -257,6 +257,13 @@ test('keeps chart values accessible at narrow and wide widths', async ({ page },
     const values = primary(page).getByRole('region', { name: 'Latency evidence chart values', exact: true });
     await values.focus();
     await expect(values).toBeFocused();
+    expect(await values.locator('td[title]').first().evaluate(element => {
+      const range = document.createRange(); range.selectNodeContents(element); return range.getClientRects().length;
+    }), 'Observation timestamps remain readable on one line').toBe(1);
+    if (await values.evaluate(element => element.scrollWidth > element.clientWidth)) {
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => values.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
     await info.attach(`observation-chart-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });

@@ -158,6 +158,7 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .command-palette-result { display: grid; gap: 3px; width: 100%; min-height: 58px; padding: 9px 12px; text-align: left; border-color: transparent; }
 .command-palette-result:hover, .command-palette-result:focus-visible { background: var(--surface-hover); border-color: var(--border-teal); }
 .command-palette-result span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.command-palette-result, .command-palette-result strong { min-width: 0; overflow-wrap: anywhere; }
 .command-palette-empty { padding: 14px; color: var(--muted); }
 .shell { width: 100%; max-width: 1840px; margin: 0 auto; padding: 30px 36px 38px; background: var(--canvas); }
 .page-heading { display: flex; align-items: end; justify-content: space-between; gap: 28px; margin-bottom: 28px; }
@@ -363,6 +364,8 @@ html:has(.workspace-fleet-strip) { scroll-padding-top: calc(var(--workspace-flee
 .overview-legend i { width: 8px; height: 8px; border-radius: 50%; }
 .chart-values { margin-top: 16px; color: var(--muted); font-size: 12px; }
 .chart-values .table-scroll { max-height: 280px; margin-top: 12px; }
+.chart-values .table-scroll table { min-width: 600px; }
+.chart-values td[title] { white-space: nowrap; }
 .overview-gap { display: grid; gap: 6px; padding: 13px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .overview-gap span { color: var(--muted); font-size: 12px; }
 .overview-gap small { margin: 0; }
@@ -485,7 +488,8 @@ html:has(.workspace-fleet-strip) { scroll-padding-top: calc(var(--workspace-flee
 .metric-observed, .metric-dimensions { color: var(--muted); font-size: 11px; }
 .metric-dimensions { display: flex; flex-wrap: wrap; gap: 5px; }
 .metric-dimensions span { padding: 3px 5px; background: var(--slate-soft); border-radius: 4px; }
-.bounded-health-section { margin-top: 20px; }
+.bounded-health-section { min-width: 0; margin-top: 20px; }
+.bounded-health-section li { overflow-wrap: anywhere; }
 .bounded-health-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .bounded-health-heading h4 { margin: 0; }
 .bounded-health-heading span, .page-boundary { color: var(--muted); font-size: 12px; }

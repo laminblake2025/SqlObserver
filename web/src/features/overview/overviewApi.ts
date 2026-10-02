@@ -11,6 +11,18 @@ function sameUtc(left: unknown, right: string): boolean {
   } catch { return false; }
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function nullableUtc(value: unknown): boolean {
+  if (value === null) return true;
+  try {
+    if (typeof value !== 'string') return false;
+    utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, '$1'));
+    return true;
+  } catch { return false; }
+}
+
 export async function getOverview(target: string, window: {fromUtc: string; toUtc: string}, signal: AbortSignal): Promise<OverviewSnapshot> {
   const params = new URLSearchParams({...window,useLatestStatus:'true'}); if (target) params.set('targetId',target);
   let response: Response;
@@ -28,27 +40,32 @@ export async function getOverview(target: string, window: {fromUtc: string; toUt
     if (signal.aborted) throw signal.reason;
     throw new Error('Overview evidence exceeded the response limit or could not be decoded.');
   }
-  if (!value || !Array.isArray(value.targets) || !Array.isArray(value.evidence) || (value.targetId ?? '') !== target || !sameUtc(value.fromUtc, window.fromUtc) || !sameUtc(value.toUtc, window.toUtc) || !Number.isFinite(Date.parse(value.refreshedAtUtc))) throw new Error('Overview returned a mismatched scope or time range.');
-  if (value.targets.some(item => typeof item.targetId !== 'string' || typeof item.displayName !== 'string'
+  if (!record(value) || !Array.isArray(value.targets) || !Array.isArray(value.evidence) || (value.targetId ?? '') !== target || !sameUtc(value.fromUtc, window.fromUtc) || !sameUtc(value.toUtc, window.toUtc) || !Number.isFinite(Date.parse(value.refreshedAtUtc))) throw new Error('Overview returned a mismatched scope or time range.');
+  if (value.targets.some(item => !record(item) || typeof item.targetId !== 'string' || typeof item.displayName !== 'string'
     || typeof item.lifecycle !== 'string' || (item.environment !== null && typeof item.environment !== 'string')
     || !Array.isArray(item.tags) || item.tags.length > 16 || item.tags.some((tag: unknown) => typeof tag !== 'string')
-    || !Number.isSafeInteger(item.groupingRevision) || item.groupingRevision < 0
+    || typeof item.groupingRevision !== 'number' || !Number.isSafeInteger(item.groupingRevision) || item.groupingRevision < 0
     || typeof item.canManageGrouping !== 'boolean')) throw new Error('Overview returned invalid target grouping.');
   const ids = new Set(value.targets.map(t => t.targetId));
-  if (value.evidence.some(e => !ids.has(e.targetId) || (target && e.targetId !== target) || !Array.isArray(e.series) || !Array.isArray(e.resources) || !Array.isArray(e.issues))) throw new Error('Overview returned invalid server evidence.');
+  if (value.evidence.some(e => !record(e) || !ids.has(e.targetId) || (target && e.targetId !== target) || !Array.isArray(e.series) || !Array.isArray(e.resources) || !Array.isArray(e.issues))) throw new Error('Overview returned invalid server evidence.');
   const timestamp = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v));
   const numeric = (v: unknown) => v === null || typeof v === 'number' && Number.isFinite(v) && v >= 0;
     for (const evidence of value.evidence) {
     evidence.backupSummary = parseOverviewBackupSummary(evidence.backupSummary, evidence.targetId, value.refreshedAtUtc);
     if (typeof evidence.displayName !== 'string' || typeof evidence.collectionState !== 'string' || !Array.isArray(evidence.gaps) || evidence.gaps.some((g:unknown)=>typeof g!=='string')) throw new Error('Invalid Overview coverage.');
     for (const measurement of [evidence.activeAlerts,evidence.blockedSessions,evidence.deadlocks])
-      if (!measurement || !numeric(measurement.value) || typeof measurement.state !== 'string') throw new Error('Invalid Overview summary.');
+      if (!record(measurement) || !numeric(measurement.value) || typeof measurement.state !== 'string') throw new Error('Invalid Overview summary.');
     for (const series of evidence.series)
-      if (series.targetId !== evidence.targetId || typeof series.metric !== 'string' || typeof series.label !== 'string' || typeof series.unit !== 'string' || typeof series.state !== 'string' || (series.dimension !== null && typeof series.dimension !== 'string') || !Array.isArray(series.points) || series.points.length>1000 || series.points.some((p:OverviewPoint)=>!timestamp(p.timeUtc)||!numeric(p.value)||!Number.isSafeInteger(p.samples)||p.samples<0)) throw new Error('Invalid Overview series.');
+      if (!record(series) || series.targetId !== evidence.targetId || typeof series.metric !== 'string' || typeof series.label !== 'string' || typeof series.unit !== 'string' || typeof series.state !== 'string' || (series.dimension !== null && typeof series.dimension !== 'string') || !Array.isArray(series.points) || series.points.length>1000 || series.points.some((p:OverviewPoint)=>!record(p)||!timestamp(p.timeUtc)||!numeric(p.value)||!Number.isSafeInteger(p.samples)||p.samples<0)) throw new Error('Invalid Overview series.');
     for (const resource of evidence.resources)
-      if (resource.targetId !== evidence.targetId || typeof resource.label !== 'string' || !numeric(resource.value)) throw new Error('Invalid Overview resource.');
+      if (!record(resource) || resource.targetId !== evidence.targetId || typeof resource.server !== 'string'
+        || typeof resource.label !== 'string' || typeof resource.unit !== 'string' || typeof resource.state !== 'string'
+        || !numeric(resource.value) || !nullableUtc(resource.observedAtUtc)) throw new Error('Invalid Overview resource.');
     for (const issue of evidence.issues)
-      if (issue.targetId !== evidence.targetId || !['alerts','activity','deadlocks','health','operations','analytics','queries'].includes(issue.destination) || typeof issue.title !== 'string' || typeof issue.detail !== 'string' || !Number.isSafeInteger(issue.priority)) throw new Error('Invalid Overview issue.');
+      if (!record(issue) || issue.targetId !== evidence.targetId || typeof issue.server !== 'string'
+        || typeof issue.destination !== 'string' || !['alerts','activity','deadlocks','health','operations','analytics','queries'].includes(issue.destination)
+        || typeof issue.title !== 'string' || typeof issue.detail !== 'string' || !Number.isSafeInteger(issue.priority)
+        || !nullableUtc(issue.observedAtUtc)) throw new Error('Invalid Overview issue.');
   }
   return value;
 }

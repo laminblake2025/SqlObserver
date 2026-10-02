@@ -2,7 +2,31 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest fleet grouping and timeline qualification
+## Latest search and diagnostic context qualification
+
+Command-palette rows, status and navigation now stay bound to their loaded server, database, category and search session before effects run. Exact query verification also follows the current hash and UTC window. Target/category changes, close/reopen, paging and unmount cancel old reads and fence late results. Reopening starts with Servers without dispatching a stale database search.
+
+Dashboard waits retain only a matching target and exact microsecond window during refresh or transient failure, with the original repository read time and window disclosed. A changed context hides old evidence immediately; actual 401/403 responses remove retained evidence. The wait reader now compares native microseconds and honors the exclusive end at five-minute bucket edges. Database option-history results/errors are keyed before rendering, including unsupported windows, and Refresh retries a fixed custom window. Overview validates resource display fields and nullable observed instants, issue server/time fields and nested records before rendering or sorting, producing safe errors for malformed receipts.
+
+Configuration collection changes have synchronous request ownership, duplicate guards, cancellation and context/authority/unmount fences. Cancel explains that a dispatched change may already have applied. Native applied receipts must match the target, unchanged target revision, requested enabled state and positive schedule revision; malformed success and uncertain transport outcomes require explicit current-state readback. Recovery persists across ordinary refresh. After denied access, Reload additionally requires fresh exact-target administrator access through the existing `/me` endpoint; a readable settings GET alone cannot unlock changes. Current settings retain their explicit latest-source semantics during Rewind. These frontend checks do not establish backend authorization enforcement.
+
+Three independent owners handled search, diagnostic state and configuration interactions with non-overlapping files. They reviewed each other's integrated areas; the lead owns shared readers, CSS, App composition and final validation. Independent review identified the permission recovery gap and long-name overflow. Runtime geometry then exposed the settings grid item's automatic minimum width; `min-width: 0` now keeps table scrolling local. Screenshot review improved chart-value timestamp readability with a bounded minimum table width and single-line time cells. Native long database names wrap inside option history and search.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent read-only reviews and lead integration. | Complete. |
+| Dark theme | Shared tokens, keyboard focus, bounded controls, long-name wrapping and readable time cells. | Passing in tested states. |
+| Diagnostic-screen review | Search, dashboard waits, database options, Overview reader and current configuration reviewed and repaired against native contracts. Remaining frontend findings below. | Review delivered; dashboard work remains. |
+| Interaction tests | **35 owning checks: 34 runtime/API/model and one explicit security lint**, **65 mounted cases**, **13 built-App cases**. | Complete final groups pass with no skips, flaky outcomes or retries. |
+| Accessibility and responsive checks | Keyboard activation/focus/local scrolling, axe, text bounds and document overflow at **320/390/768/1440**; App search and shared chart captures at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **475 frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **16 fresh reviewed captures**, [gallery](../../artifacts/dashboard-context-search/index.html), [case inventories, hashes and run evidence](../../artifacts/dashboard-context-search/completion.json). | Delivered locally and bound to the final local commit. |
+
+These are affected checks, not a rerun of the full dashboard suite. Complete earlier attempts remain in `initial-native`, `initial-components`, `before-grid-fix`, `dependency-load-failure` and `before-value-readability`. Initial native failures exposed strip-only TypeScript incompatibility and stale non-GUID route fixtures; both were corrected. Initial mounted setup failures involved implicit select-label locators, mouse versus keyboard focus, unconditional scrolling and physical SVG coordinate rounding. The next run exposed the real grid-width defect and the harness's missing App heading hierarchy, which were repaired while keeping axe enabled. One unchanged-code attempt passed 48 cases but Chromium failed to load a React dependency with `ERR_NO_BUFFER_SPACE` before one harness mounted; its trace is retained. The complete 49-case rerun passed before the screenshot readability improvement justified the additional 16 shared chart cases. Final counts come from complete final groups, never a union of repair cases. Product code remains unchanged between final native, mounted and App qualification; final input hashes are verified.
+
+All current captures and API interactions use synthetic native frontend fixtures. No connected SQL/backend mutation or authorization test was necessary for these frontend-only changes. The full dashboard refactor and repository plan remain incomplete. No GitHub upload was attempted.
+
+## Previous fleet grouping and timeline qualification
 
 The event timeline now selects the shared workspace window through a bounded drag rail or UTC keyboard form. Selections retain native microseconds, preserve database/comparison context and restore through reload and navigation. Captured gestures cancel on window changes and unmount. Overview and Observation charts also bind a drag to its original window and series; pointer mapping uses the actual SVG screen transform so centered drawings at wide widths select the correct time. Overview drawing and selection bounds now agree. The dashboard refuses callbacks from an obsolete hash context.
 
@@ -28,13 +52,10 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 These are frontend findings supported by existing native contracts, not backend scope requests. Check current sources before changing them:
 
-1. **Command palette database context:** key database results and jump actions to their loaded target before render; a changed-target commit can offer a previous target's names.
-2. **Overview response validation:** validate resource `server`/`unit`/`state` and issue `server`/`observedAtUtc` before rendering or sorting; malformed accepted display fields can throw.
-3. **Dashboard waits refresh:** retain only a matching target/window snapshot with refresh disclosure; the chart currently disappears on every poll and can render old data under a changed window before its effect clears.
-4. **Investigate-first head blocker:** use the existing current blocking graph/root/chain evidence for an explicitly current server-wide finding. Do not invent historical attribution or a session capture link.
-5. **Configuration mutations:** track enable/disable requests in `ServerConfigurationSnapshot` and cancel/fence closing, authority loss and context changes.
-6. **Database-option history:** key received result/error to target and exact window before render, including invalid or unsupported windows.
-7. **Diagnostic browsing during refresh:** preserve native continuation context where supported for resource files, AG streams, backups, Agent/configuration history and health databases until explicit latest or context change; distinguish mutable windows from snapshot contracts.
+1. **Investigate-first head blocker:** use the existing current blocking graph/root/chain evidence for a direct current head-blocker finding and navigation, rather than relying only on a historical aggregate. Preserve the source's latest versus selected-window distinction.
+2. **Refresh-retained native pagers:** preserve investigated pages/cursors for resource files, AG streams, backups, Agent/configuration history and health databases until explicit latest or context change; distinguish mutable windows from snapshot contracts.
+
+The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
 
 Current code already exposes database compatibility/read-only/log reuse options, configuration drift, per-replica AG data and backup RPO assessment. Do not repeat the original static review's stale missing-feature claims for those paths. Actual target OS-vs-SQL CPU, full wait attribution, current/long-running Agent jobs, complete restart/failover/resolved-alert history and the assistant remain source/backend decisions listed later. No backend scope expansion was made.
 
