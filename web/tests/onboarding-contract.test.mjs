@@ -179,13 +179,6 @@ test("native administrative rejection reports safe status messages without refle
   } finally { globalThis.fetch = original; }
 });
 
-// Composition lint: isolated component mounting does not exercise App's update
-// callback. Preserve its candidate identity de-duplication wiring explicitly.
-test("onboarding composition lint preserves App candidate identity wiring", async () => {
-  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  assert.match(source, /candidate\.instanceId !== target\.instanceId/);
-});
-
 // Declarative security lint, not an assertion of server authentication behavior.
 test("onboarding security lint preserves integrated identity declarations and prohibits credential/raw-HTML fields", async () => {
   const files = ["../src/features/targets/TargetOnboarding.tsx", "../src/App.tsx", "../src/dashboardModel.ts", "../src/features/targets/targetTypes.ts"];

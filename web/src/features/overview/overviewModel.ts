@@ -1,17 +1,21 @@
 import type { OverviewEvidence, OverviewResource, OverviewScope, OverviewValue, OverviewSnapshot } from './overviewTypes';
 import { canonicalUtcTimestamp, utcMicroseconds } from '../../utcTimestamp.ts';
 
+// Normalize native Guid identity without repairing malformed URL input.
+const canonicalTargetId = (value: string): string => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(value)
+  ? value.toLowerCase() : value;
+
 export function readOverviewScope(hash: string): OverviewScope {
   const params = new URLSearchParams(hash.split('?')[1]);
   const range = params.get('range');
-  const target = params.get('target') ?? '';
+  const target = canonicalTargetId(params.get('target') ?? '');
   const database = params.getAll('databaseId');
   const databaseId = target && database.length === 1 && /^[1-9]\d{0,4}$/.test(database[0]!) && Number(database[0]) <= 32767 ? Number(database[0]) : undefined;
   return { target, range: range === '1h' || range === '6h' || range === '7d' || range === 'custom' ? range : '24h', from: params.get('from') ?? undefined, to: params.get('to') ?? undefined, compare: params.get('compare') === '1', ...(databaseId !== undefined ? { databaseId } : {}) };
 }
 export function overviewHref(scope: OverviewScope, page = 'overview', target = scope.target): string {
   const query = new URLSearchParams();
-  if (target) query.set('target', target);
+  if (target) query.set('target', canonicalTargetId(target));
   if (target && target.toLowerCase() === scope.target.toLowerCase() && Number.isInteger(scope.databaseId) && scope.databaseId! >= 1 && scope.databaseId! <= 32767) query.set('databaseId', String(scope.databaseId));
   query.set('range', scope.range);
   if (scope.range === 'custom') { if (scope.from) query.set('from', scope.from); if (scope.to) query.set('to', scope.to); }

@@ -129,7 +129,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       </table></div>}
     </section>}
     <WaitCapturedSessionsPanel instanceId={instanceId} scope={scope} timeWindow={window} refresh={refresh} selectionHash={selectionHash} />
-    {scope.range !== "custom" && <CurrentWaits key={`${instanceId}:${refresh}`} instanceId={instanceId} refresh={refresh} />}
+    {scope.range !== "custom" && <CurrentWaits key={instanceId} instanceId={instanceId} refresh={refresh} />}
     <section className="panel" aria-label="Selected wait history">
       <h3>Selected-window history</h3>
       {window && <p className="activity-evidence">{formatDisplayTime(window.fromUtc, mode)} to {formatDisplayTime(window.toUtc, mode)}. Rows are paged; the table does not claim full-window coverage until its final page.</p>}
@@ -164,41 +164,70 @@ function CurrentWaits({ instanceId, refresh }: { readonly instanceId: string; re
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | undefined>(undefined);
+  const firstPage = useRef<ActivityPage<ActivityWait> | undefined>(undefined);
+  const browsing = useRef(false);
+  const [retained, setRetained] = useState(false);
+  const [latestRequest, setLatestRequest] = useState(0);
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
+    // Cursors belong to the retained native collector snapshot. Workspace ticks
+    // must neither replace its first page nor cancel a page already being read.
+    if (browsing.current) return;
     const controller = new AbortController();
     request.current = controller;
-    setPage(undefined); setPageIndex(0); setCursors([undefined]); setError(undefined); setLoading(true);
+    setError(undefined); setLoading(true);
     void getCurrentServerWaitPage(instanceId, controller.signal)
-      .then(value => { if (!controller.signal.aborted) setPage(value); })
+      .then(value => {
+        if (!controller.signal.aborted && request.current === controller) {
+          firstPage.current = value; setPage(value); setPageIndex(0); setCursors([undefined]);
+        }
+      })
       .catch((failure: unknown) => {
         if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Current waits are unavailable.");
       })
-      .finally(() => { if (!controller.signal.aborted) { request.current = undefined; setLoading(false); } });
+      .finally(() => { if (!controller.signal.aborted && request.current === controller) { request.current = undefined; setLoading(false); } });
     return () => controller.abort();
-  }, [instanceId, refresh]);
+  }, [instanceId, refresh, latestRequest]);
+
+  function returnToLatest() {
+    request.current?.abort(); request.current = undefined;
+    browsing.current = false; setRetained(false);
+    setLatestRequest(value => value + 1);
+  }
 
   async function navigate(index: number, cursor?: string) {
     if (request.current) return;
+    browsing.current = true; setRetained(true);
+    // An absent cursor asks the native endpoint for newest, not the first page
+    // of this snapshot. Restore its already validated first page locally.
+    if (index === 0) {
+      if (firstPage.current) { setPage(firstPage.current); setPageIndex(0); setError(undefined); }
+      return;
+    }
+    if (cursor === undefined) return;
     const controller = new AbortController();
     request.current = controller;
     setLoading(true); setError(undefined);
     try {
       const next = await getCurrentServerWaitPage(instanceId, controller.signal, cursor);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || request.current !== controller) return;
       setPage(next); setPageIndex(index);
       setCursors(previous => [...previous.slice(0, index), cursor]);
     } catch (failure: unknown) {
       if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Current waits could not be loaded.");
     } finally {
-      if (!controller.signal.aborted) { request.current = undefined; setLoading(false); }
+      if (!controller.signal.aborted && request.current === controller) { request.current = undefined; setLoading(false); }
     }
   }
 
   return <section className="panel" aria-label="Current server waits" aria-busy={loading}>
     <h3>Live wait snapshot</h3>
     {loading && !page && <p role="status">Loading current waits…</p>}
-    {error && <p role="alert">{error} Refresh or retry navigation.</p>}
+    {loading && page && <p role="status">{retained ? "Loading another page of the retained wait snapshot…" : "Refreshing the latest wait snapshot; previously loaded evidence remains displayed…"}</p>}
+    {error && <p role="alert">{error} {retained ? "Retry page navigation or return to latest; expired snapshots require a new snapshot." : "Refresh to retry the latest snapshot."} {page ? "Previously loaded evidence remains displayed." : ""}</p>}
+    {retained && <p role="status">Browsing retained snapshot · automatic wait snapshot refresh paused. First and Previous keep this snapshot.
+      {" "}<button type="button" onClick={returnToLatest}>Return to latest wait snapshot</button>
+    </p>}
     {page && <>
       <Evidence page={page} />
       <WaitCategoryChart page={page} />

@@ -79,9 +79,10 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => {
   expect(contexts.get(page).unexpected, 'All API traffic must be fulfilled locally, with no external requests or page errors').toEqual([]);
 });
-async function mount(page, handler, selectedId) {
+async function mount(page, handler, selectedId, scopeQuery = '') {
   contexts.get(page).handler = handler;
-  const hash = selectedId ? `#/alerts?target=${target}&alert=${selectedId}` : `#/alerts?target=${target}`;
+  const hash = (selectedId ? `#/alerts?target=${target}&alert=${selectedId}` : `#/alerts?target=${target}`)
+    + (scopeQuery ? `&${scopeQuery}` : '');
   await page.goto(`/component-tests/alerts.html${hash}`);
   await expect(page.getByRole('heading', { name: 'Alert panel harness' })).toBeVisible();
 }
@@ -283,4 +284,33 @@ test('changing the selected alert aborts acknowledgement without applying its la
   await expect(detail(page).getByRole('status')).toContainText('firing');
   await expect(detail(page).getByRole('button', { name: 'Acknowledge', exact: true })).toBeEnabled();
   expect(contexts.get(page).requests.map(request => request.method())).toEqual(['GET', 'POST']);
+});
+
+for (const fixture of [
+  { name: 'native fired timestamp', firstObservedUtc: '2026-08-24T08:00:00.000001Z',
+    firedUtc: '2026-08-24T09:00:00.123456Z', at: '2026-08-24T09:00:00.123456Z',
+    from: '2026-08-24T08:30:00.123Z', to: '2026-08-24T09:30:00.123Z' },
+  { name: 'first observed timestamp when fired is missing', firstObservedUtc: '2026-08-24T09:00:00.654321+00:00',
+    firedUtc: null, at: '2026-08-24T09:00:00.654321+00:00',
+    from: '2026-08-24T08:30:00.654Z', to: '2026-08-24T09:30:00.654Z' },
+]) test(`Open activity navigates to the ${fixture.name} with target and database context`, async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-08-24T12:00:00Z'));
+  await mount(page, async route => {
+    if (!isRead(route)) return false;
+    await json(route, pageData([alert({ firstObservedUtc: fixture.firstObservedUtc, firedUtc: fixture.firedUtc })]));
+    return true;
+  }, undefined, 'range=24h&databaseId=7&compare=1');
+  const link = detail(page).getByRole('link', { name: 'Open activity', exact: false });
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute('href');
+  expect(href.split('?')[0]).toBe('#/activity');
+  const params = new URLSearchParams(href.split('?')[1]);
+  expect(Object.fromEntries(params)).toEqual({ target, databaseId: '7', range: 'custom',
+    from: fixture.from, to: fixture.to, at: fixture.at });
+  expect(params.getAll('at')).toEqual([fixture.at]);
+  expect(params.has('event')).toBe(false);
+  await link.focus(); await expect(link).toBeFocused(); await page.keyboard.press('Enter');
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe(href);
+  expect(contexts.get(page).requests.map(request => request.method())).toEqual(['GET']);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });

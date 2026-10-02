@@ -3,6 +3,21 @@ import assert from 'node:assert/strict';
 import {readOverviewScope,overviewHref,issueHref,overviewWindow,aggregateValue,rankedIssues,overviewEvidenceFooter,overviewResourceObservationText} from '../src/features/overview/overviewModel.ts';
 import {readRoute} from '../src/dashboardModel.ts';
 const now=Date.parse('2026-09-05T12:00:00Z');
+test('valid target GUID casing is canonical across direct routes and generated investigation links',()=>{
+ const target='ABCD1234-ABCD-4ABC-8DEF-ABCDEF123456';
+ const scope={target,range:'custom',from:'2026-09-01T00:00:00.123456Z',to:'2026-09-02T00:00:00.123456Z',compare:true,databaseId:7};
+ const direct=`#/resources?target=${target}&databaseId=7&range=custom&from=${scope.from}&to=${scope.to}&compare=1`;
+ assert.deepEqual(readOverviewScope(direct),{...scope,target:target.toLowerCase()});
+ assert.equal(readRoute(direct).target,target.toLowerCase());
+ const href=overviewHref(scope,'resources');
+ assert.equal(new URLSearchParams(href.split('?')[1]).get('target'),target.toLowerCase());
+ assert.deepEqual(readOverviewScope(href),{...scope,target:target.toLowerCase()});
+ // Canonicalization must not trim or repair malformed identifiers into valid targets.
+ for(const malformed of [` ${target}`,`${target}-extra`,'not-A-GUID']) {
+  assert.equal(readOverviewScope(`#/health?target=${encodeURIComponent(malformed)}`).target,malformed);
+  assert.equal(new URLSearchParams(overviewHref({...scope,target:malformed},'health').split('?')[1]).get('target'),malformed);
+ }
+});
 test('scope, comparison and fixed UTC ranges survive drill-down and URL reload',()=>{
  const scope={target:'server-one',range:'custom',from:'2026-09-01T00:00:00Z',to:'2026-09-02T00:00:00Z',compare:true};
  assert.deepEqual(readOverviewScope(overviewHref(scope,'activity')),scope);

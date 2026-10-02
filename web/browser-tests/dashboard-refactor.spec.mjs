@@ -33,6 +33,169 @@ const fleetStrip = page => page.getByRole('navigation', { name: 'Loaded server s
 const sessionSnapshot = '88888888-8888-4888-8888-888888888888';
 const sessionObserved = '2026-09-26T11:30:00.123456Z';
 
+function nativeInteractionTarget(instanceId, overrides = {}) {
+  return { instanceId, instanceKey: 'synthetic-interaction', displayName: 'SYNTHETIC interaction server',
+    host: 'interaction.invalid', tcpPort: 1433, authenticationMode: 'windows_integrated_service_identity',
+    encryptionMode: 'mandatory_validated', lifecycle: 'active', capabilityStatus: 'supported', capabilityReasons: [],
+    configurationRevision: 1, discoveryRequestedAtUtc: '2026-09-25T12:00:00Z',
+    lastDiscoveryAtUtc: '2026-09-25T12:01:00Z', ...overrides };
+}
+
+test('uppercase native target URLs resolve catalog and direct identities while retaining exact report scope', async ({ page }) => {
+  const canonicalId = 'a1111111-b111-4c11-8d11-e00000000001';
+  const selected = nativeInteractionTarget(canonicalId);
+  const preciseFrom = '2026-09-26T08:00:00.123456Z', preciseTo = '2026-09-26T12:00:00.654321Z';
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  let directLookup = false;
+  const directReads = [];
+  await fixture(page);
+  await page.route('**/api/v1/observation-targets?*', route => route.fulfill({ status: 200,
+    contentType: 'application/json', json: { items: directLookup ? [] : [selected], nextCursor: null } }));
+  await page.route(`**/api/v1/observation-targets/${canonicalId}`, async route => {
+    directReads.push(route.request().url());
+    await route.fulfill({ status: 200, contentType: 'application/json', json: selected });
+  });
+  await page.goto(`/#/reports?${new URLSearchParams({ target: canonicalId.toUpperCase(), range: 'custom',
+    from: preciseFrom, to: preciseTo, databaseId: '6', reportKind: 'incident-evidence' })}`);
+  const reports = page.getByRole('region', { name: 'Reports for SYNTHETIC interaction server', exact: true });
+  let catalogDirectReads = 0;
+  for (const mode of ['catalog', 'direct']) {
+    if (mode === 'direct') { directLookup = true; await page.reload(); }
+    await expect(reports).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Target server', exact: true })).toHaveValue(canonicalId);
+    await expect(reports.getByRole('combobox', { name: 'Report type', exact: true })).toHaveValue('incident-evidence');
+    await expect(reports.locator('time').nth(0)).toHaveAttribute('datetime', preciseFrom);
+    await expect(reports.locator('time').nth(1)).toHaveAttribute('datetime', preciseTo);
+    expect(scope(page).get('target').toLowerCase()).toBe(canonicalId);
+    expect(Object.fromEntries(scope(page))).toMatchObject({ range: 'custom', from: preciseFrom, to: preciseTo,
+      databaseId: '6', reportKind: 'incident-evidence' });
+    await expect(page.getByRole('alert').filter({ hasText: /selected server is unavailable|target response is invalid/i })).toHaveCount(0);
+    if (mode === 'catalog') catalogDirectReads = directReads.length;
+    else expect(directReads.length).toBeGreaterThan(catalogDirectReads);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('native registration replaces a case-variant loaded identity once and closes the Add server drawer', async ({ page }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.text().includes('Encountered two children with the same key')) errors.push(message.text()); });
+  await fixture(page, 'admin');
+  let catalogReady, requestReady, finishRegistration;
+  let catalogRows = [];
+  let catalogReads = 0;
+  const catalog = new Promise(resolve => { catalogReady = resolve; });
+  const submitted = new Promise(resolve => { requestReady = resolve; });
+  const accepted = new Promise(resolve => { finishRegistration = resolve; });
+  await page.route('**/api/v1/observation-targets?*', async route => {
+    if (++catalogReads === 1) catalogReady(route);
+    else await route.fulfill({ status: 200, contentType: 'application/json', json: { items: catalogRows, nextCursor: null } });
+  });
+  await page.route('**/api/v1/observation-targets', async route => {
+    expect(route.request().method()).toBe('POST');
+    const body = route.request().postDataJSON(); requestReady(body);
+    await accepted;
+    const registered = nativeInteractionTarget(body.instanceId,
+      { instanceKey: body.instanceKey, displayName: body.displayName, host: body.host, tcpPort: body.tcpPort,
+        configurationRevision: 2, lifecycle: 'pending_discovery', capabilityStatus: 'pending', lastDiscoveryAtUtc: null });
+    catalogRows = [registered, catalogRows[1]];
+    await route.fulfill({ status: 200, contentType: 'application/json', json: registered });
+  });
+  await page.goto('/#/servers');
+  const initialCatalog = await catalog;
+  await page.getByRole('button', { name: '+ Add server', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: 'Add server', exact: true });
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole('textbox', { name: 'Stable key', exact: true }).fill('synthetic-registered');
+  await drawer.getByRole('textbox', { name: 'Display name', exact: true }).fill('SYNTHETIC accepted registration');
+  await drawer.getByRole('textbox', { name: 'Windows host', exact: true }).fill('registered.invalid');
+  await drawer.getByRole('button', { name: 'Register target', exact: true }).click();
+  const body = await submitted;
+  expect(body).toMatchObject({ instanceId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+    instanceKey: 'synthetic-registered', displayName: 'SYNTHETIC accepted registration', host: 'registered.invalid', tcpPort: 1433 });
+  catalogRows = [
+    nativeInteractionTarget(body.instanceId.toUpperCase(), { displayName: 'SYNTHETIC previous registration' }),
+    nativeInteractionTarget(first, { instanceKey: 'synthetic-unrelated', displayName: 'SYNTHETIC unrelated server' }),
+  ];
+  await initialCatalog.fulfill({ status: 200, contentType: 'application/json', json: { items: catalogRows, nextCursor: null } });
+  const serverTable = page.getByRole('table', { includeHidden: true }).filter({
+    has: page.getByRole('columnheader', { name: 'Server', exact: true, includeHidden: true }),
+  });
+  await expect(serverTable.getByRole('link', { name: 'SYNTHETIC previous registration', exact: true, includeHidden: true })).toHaveCount(1);
+  await expect(drawer.getByRole('button', { name: 'Registering…', exact: true })).toBeDisabled();
+  finishRegistration();
+  await expect(drawer).not.toBeVisible();
+  await expect(serverTable.getByRole('link', { name: 'SYNTHETIC accepted registration', exact: true })).toHaveCount(1);
+  await expect(serverTable.getByRole('link', { name: 'SYNTHETIC previous registration', exact: true })).toHaveCount(0);
+  await expect(serverTable.getByRole('link', { name: 'SYNTHETIC unrelated server', exact: true })).toHaveCount(1);
+  await expect(serverTable.getByRole('row')).toHaveCount(3);
+  await expect(page.locator('.kpi').filter({ hasText: 'Registered targets' }).locator('strong')).toHaveText('2');
+  const acceptedHref = await serverTable.getByRole('link', { name: 'SYNTHETIC accepted registration', exact: true }).getAttribute('href');
+  expect(new URLSearchParams(acceptedHref.split('?')[1]).get('target')).toBe(body.instanceId.toLowerCase());
+  await serverTable.getByRole('link', { name: 'SYNTHETIC accepted registration', exact: true }).click();
+  const selectedTarget = page.getByRole('combobox', { name: 'Target server', exact: true });
+  await expect(selectedTarget).toHaveValue(body.instanceId.toLowerCase());
+  const sameIdentityOptions = await selectedTarget.locator('option').evaluateAll((options, id) =>
+    options.filter(option => option.value.toLowerCase() === id.toLowerCase()).length, body.instanceId);
+  expect(sameIdentityOptions).toBe(1);
+  await expect(selectedTarget.locator('option')).toHaveCount(3);
+  expect(errors).toEqual([]);
+});
+
+test('deadlock-linked Activity chooses its matching native capture over a newer unrelated snapshot', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T12:00:00Z'));
+  await fixture(page);
+  const eventId = '33333333-3333-4333-8333-333333333333';
+  const matchedId = '88888888-8888-4888-8888-888888888889';
+  const unrelatedId = '99999999-9999-4999-8999-999999999999';
+  const matchedAt = '2026-09-26T10:00:00.123456Z';
+  const newerAt = '2026-09-26T10:05:00.654321Z';
+  const captureFrom = '2026-09-26T09:55:00.000Z', captureTo = '2026-09-26T10:10:00.000Z';
+  const reads = [], histories = [], errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const livePath = `/api/v1/observation-targets/${first}/activity/live`;
+  await page.route(url => url.origin === origin && [livePath, `${livePath}/history`].includes(url.pathname), async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/history')) {
+      histories.push(url);
+      await route.fulfill({ status: 200, contentType: 'application/json', json: [
+        { id: unrelatedId, observedUtc: newerAt, truncated: false, deadlockEventId: null, deadlockOccurredUtc: null },
+        { id: matchedId, observedUtc: matchedAt, truncated: false, deadlockEventId: eventId,
+          deadlockOccurredUtc: '2026-09-26T10:00:00.000Z' },
+      ] }); return;
+    }
+    if (!url.pathname.endsWith('/activity/live')) { await route.continue(); return; }
+    reads.push(url);
+    const matched = url.searchParams.get('snapshot') === matchedId;
+    const row = { identity: (matched ? 'a' : 'e').repeat(64), sessionId: matched ? 61 : 81, requestId: 0,
+      databaseId: 5, databaseName: 'Orders', login: 'synthetic_dba', clientHost: 'synthetic-app.invalid',
+      application: matched ? 'SYNTHETIC matched deadlock capture' : 'SYNTHETIC unrelated newer capture',
+      status: 'running', command: 'SELECT', isUser: true, waitType: null, blocker: null,
+      cpuMs: '1200', memoryBytes: '1048576', reads: '100', writes: '0', logicalReads: '1000', elapsedMs: '12000',
+      queryId: null, queryState: 'unavailable', engineStartup: '2026-09-25T00:00:00',
+      sessionLogin: '2026-09-26T00:00:00', requestStart: '2026-09-26T09:59:00', delta: null };
+    await route.fulfill({ status: 200, contentType: 'application/json', json: {
+      snapshotId: matched ? matchedId : unrelatedId, observedUtc: matched ? matchedAt : newerAt,
+      repositoryTimeUtc: '2026-09-26T12:00:00Z', state: 'current', truncated: false,
+      rows: [row], databases: [{ id: 5, name: 'Orders' }], nextCursor: null,
+    } });
+  });
+  await page.goto(href('deadlocks'));
+  await page.getByRole('region', { name: 'Selected deadlock detail', exact: true })
+    .getByRole('link', { name: /View activity at event time/ }).click();
+  await assertHistoricalScope(page);
+  expect(scope(page).get('event')).toBe(eventId);
+  const history = page.getByRole('region', { name: 'Session history', exact: true });
+  await expect(history.getByRole('table')).toContainText('SYNTHETIC matched deadlock capture');
+  await expect(history.getByRole('table')).not.toContainText('SYNTHETIC unrelated newer capture');
+  await expect(history.getByRole('button', { name: 'Inspect 61/0', exact: true })).toBeVisible();
+  expect(histories).toHaveLength(1);
+  expect(Object.fromEntries(histories[0].searchParams)).toEqual({ from: captureFrom, to: captureTo });
+  expect([matchedAt, newerAt].every(value => Date.parse(value) >= Date.parse(captureFrom) && Date.parse(value) < Date.parse(captureTo))).toBe(true);
+  expect(reads.length).toBeGreaterThan(0);
+  expect(reads.every(url => url.searchParams.get('snapshot') === matchedId)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 async function captureTargetResponseFailure(page, testInfo, name) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;

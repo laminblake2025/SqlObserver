@@ -59,11 +59,27 @@ test.afterEach(async ({ page }) => {
   expect(sessions.get(page).unexpected, 'Unexpected API/external traffic is aborted before the proxy/backend').toEqual([]);
 });
 
-async function open(page, section = 'Collection health') {
-  await page.goto('/component-tests/health.html');
+async function open(page, section = 'Collection health', query = '') {
+  await page.goto(`/component-tests/health.html${query}`);
   await expect(page.getByRole('heading', { name: 'Health panel harness' })).toBeVisible();
   await expect(panel(page).getByRole('tab', { name: 'Collection health' })).toBeVisible();
   if (section !== 'Collection health') await panel(page).getByRole('tab', { name: section, exact: true }).click();
+}
+
+async function auditRecovery(page, info, focus, prefix) {
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-components/screenshots/', import.meta.url));
+  await mkdir(directory, { recursive: true });
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await focus.focus(); await expect(focus).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+    await info.attach(`${prefix}-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
+    expect(violations).toEqual([]);
+    const path = `${directory}${prefix}-${width}.png`;
+    await page.screenshot({ path, fullPage: true });
+    await info.attach(`${prefix}-${width}`, { path, contentType: 'image/png' });
+  }
 }
 
 test('discloses native pending, stale and degraded collector evidence with loss and counters', async ({ page }) => {
@@ -95,6 +111,68 @@ test('discloses native pending, stale and degraded collector evidence with loss 
   await panel(page).getByRole('tab', { name: 'Summary', exact: true }).click();
   await panel(page).getByText('All latest core metric samples', { exact: true }).click();
   await expect(panel(page).getByText('No core metric samples are available.', { exact: true })).toBeVisible();
+});
+
+test('unavailable collector reasons offer scoped recovery guidance without granting administrator actions', async ({ page }, info) => {
+  const fixture = evidence();
+  const longId = `engine.${'timeout_visibility_'.repeat(6)}`;
+  fixture.target.state = 'unavailable';
+  fixture.target.collectors = [
+    collector('engine.permissions', { state: 'unavailable', reason: 'permission_denied', hasVisibilityGap: true }),
+    collector(longId, { state: 'unavailable', reason: 'timed_out', hasVisibilityGap: true }),
+    collector('engine.discovery', { state: 'pending', reason: 'capability_profile_missing', hasVisibilityGap: true }),
+    collector('engine.validation', { state: 'unavailable', reason: 'output_invalid', hasVisibilityGap: true }),
+    collector('engine.circuit', { state: 'unavailable', reason: 'circuit_open', circuitState: 'open', hasVisibilityGap: true }),
+    collector('engine.disabled', { state: 'disabled' }),
+  ];
+  fixture.databases.items = [database()];
+  sessions.get(page).fixtures.set(alpha, fixture);
+  await open(page, 'Databases');
+  await inventory(page).getByRole('button', { name: 'Use Synthetic inventory as database context', exact: true }).click();
+  await panel(page).getByRole('tab', { name: 'Collection health', exact: true }).click();
+  const card = id => panel(page).getByRole('article').filter({ has: page.getByRole('heading', { name: id, exact: true }) });
+  await expect(card('engine.permissions')).toContainText('collector Windows identity the required read permissions');
+  await expect(card('engine.permissions')).toContainText('Target Administrator access unlocks the permission script generator.');
+  await expect(panel(page).getByRole('link', { name: 'Generate permission script', exact: true })).toHaveCount(0);
+  await expect(card(longId)).toContainText('server connectivity, response time and collector load');
+  await expect(card('engine.discovery')).toContainText('current discovery profile');
+  await expect(card('engine.validation')).toContainText('output validation diagnostics');
+  await expect(card('engine.circuit')).toContainText('collector will probe for recovery');
+  await expect(card('engine.disabled')).toContainText('whether this collector should be enabled');
+  for (const source of fixture.target.collectors) {
+    const link = card(source.collectorId).getByRole('link', { name: 'Review collection health', exact: true });
+    const parameters = new URLSearchParams((await link.getAttribute('href')).split('?')[1]);
+    expect(Object.fromEntries(parameters)).toEqual({ target: alpha, databaseId: '7', range: 'custom',
+      from: '2026-01-15T12:00:00.000Z', to: '2026-01-15T13:00:00.000Z', healthSection: 'collection' });
+  }
+  await auditRecovery(page, info, card('engine.permissions').getByRole('link', { name: 'Review collection health', exact: true }), 'health-recovery');
+  expect(sessions.get(page).requests.every(path => !path.includes('/permissions'))).toBe(true);
+});
+
+test('the explicit administrator UI fixture exposes the scoped permission destination and partial-metric guidance', async ({ page }, info) => {
+  const fixture = evidence();
+  fixture.target.collectors = [collector('engine.permissions', { state: 'unavailable', reason: 'permission_denied', hasVisibilityGap: true })];
+  fixture.target.coreMetrics = [{ sampleId: '33333333-3333-4333-8333-333333333333', metricId: 'engine.user_connections', observedAtUtc: at, value: 12, dimensions: [] }];
+  fixture.databases.items = [database()];
+  sessions.get(page).fixtures.set(alpha, fixture);
+  await open(page, 'Databases', '?canManageConfiguration=true');
+  await inventory(page).getByRole('button', { name: 'Use Synthetic inventory as database context', exact: true }).click();
+  await panel(page).getByRole('tab', { name: 'Summary', exact: true }).click();
+  await expect(panel(page).locator('.health-metric-strip')).toContainText('Unavailable');
+  await expect(panel(page).getByText('For unavailable or incomplete core metrics, review', { exact: false })).toBeVisible();
+  await expect(panel(page).getByRole('link', { name: 'collection health', exact: true })).toHaveAttribute('href', /healthSection=collection/);
+  await panel(page).getByRole('tab', { name: 'Collection health', exact: true }).click();
+  const permission = panel(page).getByRole('link', { name: 'Generate permission script', exact: true });
+  await expect(permission).toBeVisible();
+  await expect(panel(page)).not.toContainText('Target Administrator access unlocks the permission script generator.');
+  const href = await permission.getAttribute('href');
+  expect(href.split('?')[0]).toBe('#/permissions');
+  expect(Object.fromEntries(new URLSearchParams(href.split('?')[1]))).toEqual({ target: alpha, databaseId: '7', range: 'custom',
+    from: '2026-01-15T12:00:00.000Z', to: '2026-01-15T13:00:00.000Z' });
+  await auditRecovery(page, info, permission, 'health-permission');
+  await permission.press('Enter');
+  await expect.poll(() => new URL(page.url()).hash).toBe(href);
+  expect(sessions.get(page).requests.every(path => !path.includes('/permissions'))).toBe(true);
 });
 
 test('empty rows establish absence only for a current succeeded loss-free collection', async ({ page }) => {

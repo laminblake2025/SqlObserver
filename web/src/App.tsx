@@ -165,7 +165,7 @@ export function App() {
   }, [cursor, slowRefresh]);
 
   const evidence = useFleetEvidence(targets, route.page === "servers");
-  const listedTarget = targets.find((target) => target.instanceId === route.target);
+  const listedTarget = targets.find((target) => target.instanceId.toLowerCase() === route.target.toLowerCase());
   const fleetAlertsPage = route.page === "alerts" && !route.target;
   const targetPage = route.page !== "overview" && route.page !== "servers" && !fleetAlertsPage;
   const directLookupRequired = targetPage && Boolean(route.target) && !listedTarget;
@@ -186,7 +186,7 @@ export function App() {
     void getObservationTarget(targetId, controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return;
-        if (value.instanceId !== targetId) {
+        if (value.instanceId.toLowerCase() !== targetId.toLowerCase()) {
           setDirectTargetLookup({ targetId, refresh: slowRefresh, state: "error", message: "The selected server is unavailable." });
           return;
         }
@@ -271,7 +271,7 @@ export function App() {
   };
   const incidentPage = ["overview", "health", "activity", "waits", "resources", "queries", "deadlocks", "operations", "alerts"].includes(route.page);
   const incidentContext = selected && incidentPage ? resolveWorkspaceIncidentWindow(location.hash, selected.instanceId, Date.now()) : undefined;
-  const targetOptions = selected && !targets.some((target) => target.instanceId === selected.instanceId)
+  const targetOptions = selected && !targets.some((target) => target.instanceId.toLowerCase() === selected.instanceId.toLowerCase())
     ? [selected, ...targets]
     : targets;
 
@@ -358,7 +358,7 @@ export function App() {
                       onChange={(event) => { location.hash = routeHref(route.page, event.target.value); }}
                     >
                       <option value="">Select server</option>
-                      {targetOptions.map((target) => <option key={target.instanceId} value={target.instanceId}>{target.displayName}</option>)}
+                      {targetOptions.map((target) => <option key={target.instanceId.toLowerCase()} value={target.instanceId.toLowerCase()}>{target.displayName}</option>)}
                     </select>
                   </label>
                 ) : null}
@@ -452,7 +452,7 @@ export function App() {
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} scope={scope} />
       <Drawer open={adding && canAddServer} onClose={() => setAdding(false)}>
         <TargetOnboarding onRegistered={(target) => {
-          setTargets((current) => [target, ...current.filter((candidate) => candidate.instanceId !== target.instanceId)].slice(0, 50));
+          setTargets((current) => [target, ...current.filter((candidate) => candidate.instanceId.toLowerCase() !== target.instanceId.toLowerCase())].slice(0, 50));
           setAdding(false);
         }} />
       </Drawer>

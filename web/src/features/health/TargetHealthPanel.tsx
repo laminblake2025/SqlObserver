@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { Tabs } from "../../components/DiagnosticUi";
+import { healthSectionHref } from "../../dashboardModel";
+import { overviewHref } from "../overview/overviewModel";
 import type { OverviewScope } from "../overview/overviewTypes";
+import { healthRecoveryAdvice } from "./healthRecoveryModel";
 import { ServerDashboard } from "./ServerDashboard";
 import { DatabaseOptionChanges } from "./DatabaseOptionChanges";
 import { ServerConfigurationChanges } from "./ServerConfigurationChanges";
@@ -61,6 +64,12 @@ const circuitLabels: Readonly<Record<CollectorCircuitState, string>> = {
   half_open: "Recovery probe",
 };
 
+interface RecoveryContext {
+  readonly instanceId: string;
+  readonly scope: OverviewScope;
+  readonly canGeneratePermissions: boolean;
+}
+
 export interface TargetHealthPanelProps {
   readonly instanceId: string;
   readonly displayName: string;
@@ -89,6 +98,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
   const [tab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases"));
   useEffect(() => { if (selectedSection) setTab(selectedSection); else if (selectedDatabaseId !== undefined) setTab("databases"); }, [selectedDatabaseId, selectedSection]);
   const snapshot = evidence?.target;
+  const recoveryContext: RecoveryContext = { instanceId, scope, canGeneratePermissions: canManageConfiguration };
 
   useEffect(() => {
     let active = true;
@@ -162,6 +172,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           </div>
           {tab === "summary" ? <>
             <HealthMetricStrip metrics={evidence.target.coreMetrics} />
+            <p className="detail-note">For unavailable or incomplete core metrics, review <a href={healthSectionHref(scope, instanceId, "collection")}>collection health</a> for source reasons and recovery guidance.</p>
             <details className="supporting-evidence"><summary>All latest core metric samples</summary>
               <CoreMetrics metrics={evidence.target.coreMetrics} />
             </details>
@@ -170,10 +181,10 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             <ServerConfigurationChanges selectedRunId={selectedConfigurationRunId} instanceId={instanceId} scope={scope} refresh={refresh}
               collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")}
               canManage={canManageConfiguration} />
-            <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
+            <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth key={instanceId} instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} /><DatabaseFileHealth page={evidence.files} selectedDatabaseId={selectedDatabaseId} /></> : null}
-          {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
+          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth key={instanceId} instanceId={instanceId} firstPage={evidence.databases} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} /><DatabaseFileHealth page={evidence.files} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} /></> : null}
+          {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div> : null}
         </>
       )}
     </section>
@@ -194,7 +205,7 @@ function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricS
   })}</div>;
 }
 
-function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId, onSelectDatabase }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage; readonly selectedDatabaseId?: number; readonly onSelectDatabase: (databaseId: number | undefined) => void }) {
+function DatabaseHealth({ instanceId, firstPage, recoveryContext, selectedDatabaseId, onSelectDatabase }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage; readonly recoveryContext: RecoveryContext; readonly selectedDatabaseId?: number; readonly onSelectDatabase: (databaseId: number | undefined) => void }) {
   const formatTimestamp = useTimeFormatter();
   const [page, setPage] = useState(firstPage);
   const [pageIndex, setPageIndex] = useState(0);
@@ -298,7 +309,7 @@ function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId, onSelectDat
         <h4 id="database-health-heading">Database health</h4>
         <span>Repository time: {formatTimestamp(page.repositoryTimeUtc)}</span>
       </div>
-      <PageCollectorHealth collector={page.collector} />
+      <PageCollectorHealth collector={page.collector} recoveryContext={recoveryContext} />
       <p className="table-note">Database context applies to database-scoped views. This inventory remains the loaded server snapshot.</p>
       {selectedDatabaseId !== undefined ? <p className="table-note">Selected database ID {selectedDatabaseId}. <button type="button" className="secondary-button" onClick={() => onSelectDatabase(undefined)}>Clear database context</button></p> : null}
       <p className="page-boundary">Page {pageIndex + 1} · {page.items.length} databases{page.nextCursor ? " · More available" : " · End of snapshot"}</p>
@@ -331,8 +342,8 @@ function DatabaseHealthCard({ database, selected, onSelect }: { readonly databas
   const formatTimestamp = useTimeFormatter();
   return (
     <article className={selected ? "bounded-health-card selected-row" : "bounded-health-card"}>
-      <div className="collector-title-row">
-        <h5>{database.name}</h5>
+      <div className="collector-title-row" style={{ flexWrap: "wrap" }}>
+        <h5 style={{ minWidth: 0, overflowWrap: "anywhere", flex: "1 1 160px" }}>{database.name}</h5>
         <span className={`health-state health-${database.collector.state}`}>
           {stateLabels[database.collector.state]}
         </span>
@@ -354,7 +365,7 @@ function DatabaseHealthCard({ database, selected, onSelect }: { readonly databas
   );
 }
 
-function DatabaseFileHealth({ page, selectedDatabaseId }: { readonly page: DatabaseFileHealthPage; readonly selectedDatabaseId?: number }) {
+function DatabaseFileHealth({ page, recoveryContext, selectedDatabaseId }: { readonly page: DatabaseFileHealthPage; readonly recoveryContext: RecoveryContext; readonly selectedDatabaseId?: number }) {
   const formatTimestamp = useTimeFormatter();
   const visibleFiles = selectedDatabaseId === undefined ? page.items : page.items.filter(file => file.databaseId === selectedDatabaseId);
   return (
@@ -363,7 +374,7 @@ function DatabaseFileHealth({ page, selectedDatabaseId }: { readonly page: Datab
         <h4 id="file-health-heading">Logical-file health</h4>
         <span>Repository time: {formatTimestamp(page.repositoryTimeUtc)}</span>
       </div>
-      <PageCollectorHealth collector={page.collector} />
+      <PageCollectorHealth collector={page.collector} recoveryContext={recoveryContext} />
       {selectedDatabaseId !== undefined ? <p className="table-note">Showing {visibleFiles.length} of {page.items.length} loaded logical files for database ID {selectedDatabaseId}. Other files may be on another page.</p> : null}
       {visibleFiles.length === 0 ? (
         <p className="empty-state">
@@ -392,8 +403,8 @@ function DatabaseFileHealthCard({ file }: { readonly file: DatabaseFileHealthSum
   const formatTimestamp = useTimeFormatter();
   return (
     <article className="bounded-health-card">
-      <div className="collector-title-row">
-        <h5>{file.logicalName}</h5>
+      <div className="collector-title-row" style={{ flexWrap: "wrap" }}>
+        <h5 style={{ minWidth: 0, overflowWrap: "anywhere", flex: "1 1 160px" }}>{file.logicalName}</h5>
         <span className={`health-state health-${file.collector.state}`}>
           {stateLabels[file.collector.state]}
         </span>
@@ -431,11 +442,11 @@ function VisibilityGap({ collector }: { readonly collector: CollectorHealthSumma
   ) : null;
 }
 
-function PageCollectorHealth({ collector }: { readonly collector: CollectorHealthSummary }) {
+function PageCollectorHealth({ collector, recoveryContext }: { readonly collector: CollectorHealthSummary; readonly recoveryContext: RecoveryContext }) {
   return (
     <div className="page-collector-health">
-      <div className="collector-title-row">
-        <strong>{collector.collectorId}</strong>
+      <div className="collector-title-row" style={{ flexWrap: "wrap" }}>
+        <strong style={{ minWidth: 0, overflowWrap: "anywhere", flex: "1 1 160px" }}>{collector.collectorId}</strong>
         <span className={`health-state health-${collector.state}`}>
           {stateLabels[collector.state]}
         </span>
@@ -446,6 +457,7 @@ function PageCollectorHealth({ collector }: { readonly collector: CollectorHealt
       <p>
         <strong>Sample loss:</strong> {formatLoss(collector)}
       </p>
+      <CollectorRecovery collector={collector} context={recoveryContext} />
     </div>
   );
 }
@@ -481,18 +493,19 @@ function CoreMetrics({ metrics }: { readonly metrics: readonly CoreMetricSummary
   );
 }
 
-function CollectorHealthCard({ collector }: { readonly collector: CollectorHealthSummary }) {
+function CollectorHealthCard({ collector, recoveryContext }: { readonly collector: CollectorHealthSummary; readonly recoveryContext: RecoveryContext }) {
   const formatTimestamp = useTimeFormatter();
   const formatOptionalTimestamp = (value: string | null) => formatTimestamp(value);
   return (
     <article className="collector-health-card">
-      <div className="collector-title-row">
-        <h4>{collector.collectorId}</h4>
+      <div className="collector-title-row" style={{ flexWrap: "wrap" }}>
+        <h4 style={{ minWidth: 0, overflowWrap: "anywhere", flex: "1 1 160px" }}>{collector.collectorId}</h4>
         <span className={`health-state health-${collector.state}`}>
           {stateLabels[collector.state]}
         </span>
       </div>
       <VisibilityGap collector={collector} />
+      <CollectorRecovery collector={collector} context={recoveryContext} />
       <dl className="health-facts">
         <HealthFact label="Last success" value={formatOptionalTimestamp(collector.lastSuccessAtUtc)} />
         <HealthFact label="Last attempt" value={formatOptionalTimestamp(collector.lastAttemptAtUtc)} />
@@ -520,6 +533,20 @@ function CollectorHealthCard({ collector }: { readonly collector: CollectorHealt
       </dl>
     </article>
   );
+}
+
+function CollectorRecovery({ collector, context }: { readonly collector: CollectorHealthSummary; readonly context: RecoveryContext }) {
+  const advice = healthRecoveryAdvice(collector);
+  if (advice === undefined) return null;
+  return <div className="health-recovery">
+    <p className="detail-note" style={{ fontSize: "14px", lineHeight: 1.5 }}><strong>Recovery:</strong> {advice.message}</p>
+    <p className="detail-note" style={{ fontSize: "14px", lineHeight: 1.5 }}>
+      <a href={healthSectionHref(context.scope, context.instanceId, "collection")}>Review collection health</a>
+      {advice.permissions ? <> · {context.canGeneratePermissions
+        ? <a href={overviewHref(context.scope, "permissions", context.instanceId)}>Generate permission script</a>
+        : <span>Target Administrator access unlocks the permission script generator.</span>}</> : null}
+    </p>
+  </div>;
 }
 
 function HealthFact({ label, value }: { readonly label: string; readonly value: string }) {

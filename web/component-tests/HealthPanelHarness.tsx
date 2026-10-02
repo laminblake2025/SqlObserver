@@ -10,6 +10,8 @@ const targets = {
   alpha: "11111111-1111-4111-8111-111111111111",
   beta: "22222222-2222-4222-8222-222222222222",
 };
+// Deliberate UI-role fixture only; this flag does not authorize any server API.
+const canManageConfiguration = new URLSearchParams(location.search).get("canManageConfiguration") === "true";
 
 function Harness() {
   const { mode, setMode } = useTimeDisplay();
@@ -38,7 +40,7 @@ function Harness() {
       instanceId={targets[target]} displayName={target === "alpha" ? "Alpha" : "Beta"}
       onClose={() => setClosed(true)} scope={scope} refresh={refresh} healthRefresh={refresh}
       blockingRefresh={refresh} selectedDatabaseId={databaseId} onSelectDatabase={setDatabaseId}
-      canManageConfiguration={false} targetRevision={1} selectionHash=""
+      canManageConfiguration={canManageConfiguration} targetRevision={1} selectionHash=""
       selectedSection={section} onSelectSection={setSection}
     />}
   </main>;
