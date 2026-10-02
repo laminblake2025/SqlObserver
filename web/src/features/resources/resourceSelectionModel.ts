@@ -1,0 +1,134 @@
+import { overviewHref, readOverviewScope } from "../overview/overviewModel.ts";
+import type { OverviewScope } from "../overview/overviewTypes";
+import { canonicalUtcTimestamp, utcMicroseconds } from "../../utcTimestamp.ts";
+import { resourceInspectionUtc } from "./resourceInspectionModel.ts";
+
+export interface ResourceFileSelection { readonly databaseId: number; readonly fileId: number }
+export interface ResourceSelection {
+  readonly file?: ResourceFileSelection;
+  readonly numaNodeId?: number;
+  readonly inspectionUtc?: string;
+  readonly issues?: readonly string[];
+  readonly invalidNode?: boolean;
+  readonly invalidContext?: boolean;
+}
+const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const validTarget = (value: string) => guid.test(value) && value.toLowerCase() !== "00000000-0000-0000-0000-000000000000";
+const inspectionTime = (value: string): string => {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6}|\.\d{6}0)?Z$/u.test(value)) throw new Error("Use a valid UTC timestamp.");
+  const normalized = value.replace(/(\.\d{6})0Z$/u, "$1Z");
+  utcMicroseconds(normalized);
+  return canonicalUtcTimestamp(normalized);
+};
+const integer = (value: string | null, min: number, max: number): number | undefined => {
+  if (value === null || !/^(?:0|[1-9]\d{0,4})$/u.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : undefined;
+};
+export function resourceWindowMatches(fromUtc: string, toUtc: string, expectedFromUtc: string, expectedToUtc: string): boolean {
+  const exact = (value: string) => utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
+  try { return exact(fromUtc) === exact(expectedFromUtc) && exact(toUtc) === exact(expectedToUtc); }
+  catch { return false; }
+}
+function validFile(file: ResourceFileSelection | undefined, scope: OverviewScope): boolean {
+  return file !== undefined && Number.isSafeInteger(file.databaseId) && file.databaseId >= 1 && file.databaseId <= 32767 &&
+    Number.isSafeInteger(file.fileId) && file.fileId >= 1 && file.fileId <= 65535 &&
+    (scope.databaseId === undefined || scope.databaseId === file.databaseId);
+}
+function validBaseContext(params: URLSearchParams, scope: OverviewScope): boolean {
+  if (["range", "from", "to", "databaseId", "compare"].some(key => params.getAll(key).length > 1)) return false;
+  if (params.has("range") && !["1h", "6h", "24h", "7d", "custom"].includes(params.get("range")!)) return false;
+  if (params.has("databaseId") && integer(params.get("databaseId"), 1, 32767) === undefined) return false;
+  if (params.has("compare") && !["0", "1"].includes(params.get("compare")!)) return false;
+  try {
+    if (params.has("from")) inspectionTime(params.get("from")!);
+    if (params.has("to")) inspectionTime(params.get("to")!);
+    if (scope.range === "custom") {
+      const from = inspectionTime(params.get("from") ?? ""), to = inspectionTime(params.get("to") ?? "");
+      resourceInspectionUtc(from, from, to);
+      if (utcMicroseconds(to) - utcMicroseconds(from) > 31n * 86400n * 1000000n) return false;
+    }
+    return true;
+  } catch { return false; }
+}
+
+/** Decode selections only on their target's Resources route; malformed fields never choose substitutes. */
+export function readResourceSelection(hash: string, expectedTarget?: string): ResourceSelection {
+  const [path, query] = hash.replace(/^#\/?/u, "").split("?");
+  if (path !== "resources") return {};
+  const params = new URLSearchParams(query);
+  const target = params.get("target");
+  if (params.getAll("target").length !== 1 || !target || !validTarget(target) ||
+    (expectedTarget !== undefined && target.toLowerCase() !== expectedTarget.toLowerCase())) return {};
+  const scope = readOverviewScope(hash);
+  const hasSelection = ["resourceDatabaseId", "resourceFileId", "numaNodeId", "resourceAt"].some(key => params.has(key));
+  if (hasSelection && !validBaseContext(params, scope)) return {
+    invalidContext: true,
+    issues: ["Requested resource selections have invalid or ambiguous database and time context. Clear resource selections before choosing new evidence."],
+    ...(params.has("numaNodeId") ? { invalidNode: true } : {}),
+  };
+  const issues: string[] = [];
+  let file: ResourceFileSelection | undefined;
+  let numaNodeId: number | undefined;
+  let inspectionUtc: string | undefined;
+  let invalidNode = false;
+  if (params.has("resourceDatabaseId") || params.has("resourceFileId")) {
+    const databaseId = integer(params.get("resourceDatabaseId"), 1, 32767);
+    const fileId = integer(params.get("resourceFileId"), 1, 65535);
+    if (params.getAll("resourceDatabaseId").length !== 1 || params.getAll("resourceFileId").length !== 1 || databaseId === undefined || fileId === undefined) {
+      issues.push("The requested resource file selection is invalid. Choose a file from the loaded snapshot or clear resource selections.");
+    } else if (scope.databaseId !== undefined && scope.databaseId !== databaseId) {
+      issues.push("The requested file belongs to a different database than the workspace context. No other file has been selected.");
+    } else file = { databaseId, fileId };
+  }
+  if (params.has("numaNodeId")) {
+    const node = integer(params.get("numaNodeId"), 0, 1023);
+    if (params.getAll("numaNodeId").length !== 1 || node === undefined) {
+      invalidNode = true;
+      issues.push("The requested NUMA node selection is invalid. Choose a node from the loaded inventory or clear resource selections.");
+    }
+    else numaNodeId = node;
+  }
+  if (params.has("resourceAt")) {
+    try {
+      if (params.getAll("resourceAt").length !== 1) throw new Error("Repeated inspection time.");
+      inspectionUtc = inspectionTime(params.get("resourceAt")!);
+      if (scope.range === "custom") inspectionUtc = resourceInspectionUtc(inspectionUtc, scope.from ?? "", scope.to ?? "");
+    } catch { inspectionUtc = undefined; issues.push("The requested resource inspection time is invalid or outside the shared window. Align another time or clear resource selections."); }
+  }
+  return { ...(file ? { file } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
+    ...(inspectionUtc ? { inspectionUtc } : {}), ...(issues.length ? { issues } : {}), ...(invalidNode ? { invalidNode: true } : {}) };
+}
+
+export function resourceSelectionHref(scope: OverviewScope, selection: ResourceSelection): string {
+  const href = overviewHref(scope, "resources");
+  if (!validTarget(scope.target)) return href;
+  const params = new URLSearchParams(href.split("?")[1]);
+  if (!validBaseContext(params, scope)) return href;
+  if (validFile(selection.file, scope)) {
+    params.set("resourceDatabaseId", String(selection.file!.databaseId));
+    params.set("resourceFileId", String(selection.file!.fileId));
+  }
+  if (selection.numaNodeId !== undefined && Number.isSafeInteger(selection.numaNodeId) && selection.numaNodeId >= 0 && selection.numaNodeId <= 1023) params.set("numaNodeId", String(selection.numaNodeId));
+  if (selection.inspectionUtc) {
+    try {
+      const utc = inspectionTime(selection.inspectionUtc);
+      params.set("resourceAt", scope.range === "custom" ? resourceInspectionUtc(utc, scope.from ?? "", scope.to ?? "") : utc);
+    } catch { /* Invalid or incompatible times are omitted; they never become alignment markers. */ }
+  }
+  return `#/resources?${params}`;
+}
+
+/** Preserve compatible selections while App changes this same server's time/database context. */
+export function retainResourceSelectionHref(href: string, currentHash: string): string {
+  const [path, query] = href.replace(/^#\/?/u, "").split("?");
+  if (path !== "resources") return href;
+  const destination = new URLSearchParams(query);
+  const target = destination.get("target");
+  if (!target || destination.getAll("target").length !== 1 || !validTarget(target)) return href;
+  const currentScope = readOverviewScope(currentHash);
+  if (currentScope.target.toLowerCase() !== target.toLowerCase()) return href;
+  const nextScope = readOverviewScope(href);
+  if (!validBaseContext(destination, nextScope)) return href;
+  return resourceSelectionHref(nextScope, readResourceSelection(currentHash, target));
+}

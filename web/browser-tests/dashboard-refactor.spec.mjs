@@ -27,6 +27,210 @@ async function assertHistoricalScope(page, target = first, start = from, end = t
 }
 const mainNavigation = page => page.getByRole('navigation', { name: 'Main navigation' });
 const fleetStrip = page => page.getByRole('navigation', { name: 'Loaded server status', exact: true });
+const sessionSnapshot = '88888888-8888-4888-8888-888888888888';
+const sessionObserved = '2026-09-26T11:30:00.123456Z';
+
+async function resourceUrlFixture(page) {
+  await databaseFixture(page);
+  await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });
+  await page.context().addCookies([{ name: 'resourceInspectionFixture', value: '1', url: origin }]);
+}
+async function sessionUrlFixture(page) {
+  await fixture(page);
+  await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });
+  await page.context().addCookies([{ name: 'sessionSelectionFixture', value: '1', url: origin }]);
+}
+const sessionHref = (identity, observed = sessionObserved, snapshot = sessionSnapshot) => `${href('activity', first, '1h')}&${new URLSearchParams({ sessionSnapshot: snapshot, sessionObserved: observed, ...(identity ? { sessionIdentity: identity } : {}) })}`;
+
+test('Resources URL restores file node and inspection while pointer stays transient and fixed investigation freezes only the loaded window', async ({ page }) => {
+  await resourceUrlFixture(page);
+  let loadedWindow;
+  page.on('response', async response => {
+    const url = new URL(response.url());
+    if (url.pathname === '/api/v1/overview' && url.searchParams.get('targetId') === first && response.ok()) {
+      const body = await response.json(); loadedWindow = { from: body.fromUtc, to: body.toUtc };
+    }
+  });
+  await page.goto(href('resources', first, '1h'));
+  const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 01', exact: true });
+  const file = resources.getByRole('button', { name: 'View read and write latency trend for database 5, file Orders_data', exact: true });
+  await file.click();
+  await resources.getByRole('combobox', { name: 'NUMA node', exact: true }).selectOption('1');
+  await resources.getByLabel('Resource inspection time (UTC)', { exact: true }).fill('2026-09-26T11:30:00.125');
+  await resources.getByRole('button', { name: 'Align resource charts', exact: true }).press('Enter');
+  await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ range: '1h', resourceDatabaseId: '5', resourceFileId: '1', numaNodeId: '1', resourceAt: '2026-09-26T11:30:00.125Z' });
+  const selectedUrl = page.url();
+  const cpu = resources.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true }) }).locator('.overview-chart');
+  await cpu.scrollIntoViewIfNeeded(); const box = await cpu.boundingBox(); expect(box).not.toBeNull();
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.5);
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+  expect(page.url()).toBe(selectedUrl);
+  await page.reload();
+  await expect(file).toHaveAttribute('aria-pressed', 'true');
+  await expect(resources.getByRole('combobox', { name: 'NUMA node', exact: true })).toHaveValue('1');
+  await expect(resources.getByRole('region', { name: 'Resource chart alignment', exact: true }).getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T11:30:00.125Z');
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+  await resources.getByRole('button', { name: 'Clear resource alignment', exact: true }).click();
+  await expect.poll(() => scope(page).get('resourceAt')).toBe(null);
+  await page.goBack();
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+  await page.goForward();
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
+  const fixed = resources.getByRole('link', { name: 'Open fixed resource investigation', exact: true });
+  await expect.poll(() => loadedWindow).toBeTruthy();
+  const fixedParams = new URLSearchParams((await fixed.getAttribute('href')).split('?')[1]);
+  expect(Object.fromEntries(fixedParams)).toMatchObject({ target: first, range: 'custom', ...loadedWindow, resourceDatabaseId: '5', resourceFileId: '1', numaNodeId: '1' });
+  expect(scope(page).get('range')).toBe('1h');
+  await fixed.press('Enter');
+  await assertHistoricalScope(page, first, fixedParams.get('from'), fixedParams.get('to'));
+  await expect(file).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('Resources missing file node and out-of-window inspection remain explicit through reload without substituting evidence', async ({ page }) => {
+  await resourceUrlFixture(page);
+  await page.goto(`${href('resources', first, '1h')}&resourceDatabaseId=5&resourceFileId=99&numaNodeId=99&resourceAt=2026-09-26T10%3A00%3A00.000Z`);
+  const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 01', exact: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(resources).toContainText('The selected file is not in the loaded snapshot page. Its identity is retained; no other file has been selected.');
+    await expect(resources).toContainText('Requested NUMA node 99 is not in the loaded node inventory. No other node has been selected.');
+    await expect(resources).toContainText('Requested resource inspection time is outside the loaded shared window.');
+    await expect(resources.getByRole('combobox', { name: 'NUMA node', exact: true })).toHaveValue('99');
+    await expect(resources.locator('button[aria-label^="View read and write latency trend"][aria-pressed="true"]')).toHaveCount(0);
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
+    expect(scope(page).get('resourceFileId')).toBe('99');
+    if (attempt === 0) await page.reload();
+  }
+  await resources.getByRole('button', { name: 'Clear resource selections', exact: true }).click();
+  await expect.poll(() => scope(page).get('resourceFileId')).toBe(null);
+  expect(scope(page).get('numaNodeId')).toBe(null);
+  expect(scope(page).get('resourceAt')).toBe(null);
+  expect(scope(page).get('range')).toBe('1h');
+});
+
+test('delayed old Resources file and NUMA evidence cannot repopulate selections on another server', async ({ page }) => {
+  await resourceUrlFixture(page);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let pending = 0;
+  await page.route(`**/observation-targets/${first}/resources/**`, async route => {
+    const response = await route.fetch(); pending++; await gate; await route.fulfill({ response });
+  });
+  await page.goto(`${href('resources', first, '1h')}&resourceDatabaseId=5&resourceFileId=1&numaNodeId=1&resourceAt=2026-09-26T11%3A30%3A00.000Z`);
+  await expect.poll(() => pending).toBeGreaterThanOrEqual(2);
+  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  await expect.poll(() => scope(page).get('target')).toBe(second);
+  await expect.poll(() => scope(page).get('resourceFileId')).toBe(null);
+  const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 02', exact: true });
+  await expect(resources.getByRole('combobox', { name: 'NUMA node', exact: true })).toHaveValue('0');
+  release();
+  const fileHistory = resources.getByRole('region', { name: 'Selected file latency history', exact: true });
+  await expect(fileHistory.getByText('Select a file in the table to inspect its history.', { exact: true })).toBeVisible();
+  await expect(fileHistory.locator('.overview-chart')).toHaveCount(0);
+  await expect(fileHistory).not.toContainText('Orders_data');
+  await expect(resources.getByRole('combobox', { name: 'NUMA node', exact: true })).toHaveValue('0');
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
+  expect(scope(page).get('numaNodeId')).toBe(null);
+  expect(scope(page).get('resourceAt')).toBe(null);
+});
+
+test('Activity URL finds the exact paged request identity rather than another row sharing its SPID and protects SQL behind an explicit action', async ({ page }) => {
+  await sessionUrlFixture(page);
+  const reads = [], protectedReads = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/activity/live')) reads.push(url);
+    if (url.pathname.endsWith('/activity/live/query')) protectedReads.push(url);
+  });
+  await page.goto(sessionHref('c'.repeat(64)));
+  const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
+  await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
+  const captureReads = reads.filter(url => url.searchParams.get('snapshot') === sessionSnapshot);
+  expect(captureReads).toHaveLength(2);
+  expect(new Set(captureReads.map(url => url.searchParams.get('cursor')))).toEqual(new Set([null, 'cGFnZTI=']));
+  expect(protectedReads).toHaveLength(0);
+  expect(scope(page).get('range')).toBe('1h');
+  await page.reload();
+  await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
+  expect(protectedReads).toHaveLength(0);
+  await detail.getByRole('button', { name: 'Load captured SQL', exact: true }).press('Enter');
+  await expect(detail.locator('pre.query-text')).toHaveText('SELECT 1 AS synthetic_fixture_only;');
+  expect(protectedReads).toHaveLength(1);
+  expect(protectedReads[0].searchParams.get('identity')).toBe('c'.repeat(64));
+  expect(protectedReads[0].searchParams.get('snapshot')).toBe(sessionSnapshot);
+});
+
+test('Activity loaded selection and chain survive reload and history navigation without exposing protected SQL', async ({ page }) => {
+  await sessionUrlFixture(page);
+  let protectedReads = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/live/query')) protectedReads++; });
+  await page.goto(href('activity', first, '1h'));
+  const table = page.getByRole('region', { name: 'Loaded session observations', exact: true });
+  await table.getByRole('button', { name: 'Inspect 51/0', exact: true }).press('Enter');
+  await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ sessionSnapshot, sessionObserved, sessionIdentity: 'a'.repeat(64), range: '1h' });
+  const chain = page.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+  await chain.selectOption('session:51');
+  await expect.poll(() => scope(page).get('sessionChain')).toBe('session:51');
+  await page.reload();
+  await expect(chain).toHaveValue('session:51');
+  await expect(page.getByRole('complementary', { name: 'Session details', exact: true }).getByRole('heading', { name: 'Session 51 / 0', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear chain filter', exact: true }).click();
+  await expect.poll(() => scope(page).get('sessionChain')).toBe(null);
+  await page.goBack(); await expect(chain).toHaveValue('session:51');
+  await page.goForward(); await expect(chain).toHaveValue('');
+  expect(protectedReads).toBe(0);
+});
+
+test('Activity missing snapshot identity or exact observed time never substitutes another selected session', async ({ page }) => {
+  await sessionUrlFixture(page);
+  let protectedReads = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/live/query')) protectedReads++; });
+  for (const url of [sessionHref('f'.repeat(64)), sessionHref('a'.repeat(64), sessionObserved, '77777777-7777-4777-8777-777777777777'), sessionHref('a'.repeat(64), '2026-09-26T11:30:00.123457Z')]) {
+    await page.goto(url);
+    await expect(page.getByRole('complementary', { name: 'Session details', exact: true })).toHaveCount(0);
+    await expect(page.locator('.live-sessions')).toContainText(/requested.*(?:not present|unavailable|not found|did not match|does not match|missing|outside the 24-hour retention)|Session snapshot did not match the requested capture and observation time/i);
+    await expect(page.locator('.live-sessions button[aria-pressed="true"]').filter({ hasText: /^Inspect / })).toHaveCount(0);
+    expect(scope(page).get('sessionIdentity')).toBeTruthy();
+  }
+  expect(protectedReads).toBe(0);
+});
+
+test('delayed old Activity selection cannot reappear after switching the workspace server', async ({ page }) => {
+  await sessionUrlFixture(page);
+  let release, pending = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/activity/live?*`, async route => {
+    const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response });
+  });
+  await page.goto(sessionHref('c'.repeat(64)));
+  await expect.poll(() => pending).toBe(true);
+  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  await expect.poll(() => scope(page).get('target')).toBe(second);
+  await expect.poll(() => scope(page).get('sessionIdentity')).toBe(null);
+  release();
+  await expect(page.getByRole('region', { name: 'Loaded session observations', exact: true }).getByRole('button', { name: 'Inspect 51/0', exact: true })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Session details', exact: true })).toHaveCount(0);
+});
+
+test('Waits URL restores a deliberate category and rejects invalid or duplicate selection without a substitute request', async ({ page }) => {
+  await fixture(page);
+  const requests = [];
+  page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/query-performance/waits/top')) requests.push(new URL(request.url())); });
+  await page.goto(`${href('waits')}&waitCategory=6`);
+  const category = page.getByRole('combobox', { name: 'Query Store category', exact: true });
+  await expect(category).toHaveValue('6');
+  await category.selectOption('3');
+  await expect.poll(() => scope(page).get('waitCategory')).toBe('3');
+  await page.reload(); await expect(category).toHaveValue('3');
+  await page.goBack(); await expect(category).toHaveValue('6');
+  await page.goForward(); await expect(category).toHaveValue('3');
+  for (const invalid of ['11', '3&waitCategory=6', 'not-a-category']) {
+    const before = requests.length;
+    await page.goto(`${href('waits')}&waitCategory=${invalid}`);
+    await expect(category).toHaveValue('');
+    await expect(page.getByText('The requested Query Store wait category is invalid. Choose a supported category; no other category has been selected.', { exact: true })).toBeVisible();
+    expect(requests).toHaveLength(before);
+  }
+});
 
 async function alertFixture(page, operator = false) {
   await databaseFixture(page);

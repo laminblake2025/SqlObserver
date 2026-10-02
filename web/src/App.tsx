@@ -5,6 +5,9 @@ import { Drawer } from "./components/Drawer";
 import { CommandPalette } from "./components/CommandPalette";
 import { alertJumpHref, alertSelectionFromHash, queryJumpHref, targetAlertHref } from "./components/commandPaletteModel";
 import { dashboardTimelineSelectionHref, readDashboardTimelineSelection } from "./components/dashboardTimelineSelectionModel.ts";
+import { retainResourceSelectionHref } from "./features/resources/resourceSelectionModel.ts";
+import { retainActivitySelectionHref } from "./features/activity/activitySelectionModel.ts";
+import { retainWaitCategoryHref } from "./features/activity/waitSelectionModel.ts";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { DatabaseScopeControls } from "./components/DatabaseScopeControls";
@@ -193,7 +196,7 @@ export function App() {
       : currentRoute.page === "operations" && currentRoute.healthCheck
       ? healthCheckHref(nextScope, currentRoute.target, currentRoute.healthCheck)
       : overviewHref(nextScope, currentRoute.page, currentRoute.target);
-    location.hash = queryViewHref(retainDashboardTimelineHref(href, location.hash), { ...readQueryViewSelection(location.hash), cacheSelection: undefined });
+    location.hash = queryViewHref(retainDiagnosticSelectionHref(href, location.hash), { ...readQueryViewSelection(location.hash), cacheSelection: undefined });
   };
   const changeTimeContext = (next: Partial<typeof scope>) => {
     const selectedScope = { ...readOverviewScope(location.hash), ...next };
@@ -213,7 +216,7 @@ export function App() {
       : selectedRoute.page === "operations" && selectedRoute.healthCheck
         ? healthCheckHref(selectedScope, selectedRoute.target, selectedRoute.healthCheck)
       : overviewHref(selectedScope, selectedRoute.page, selectedRoute.target);
-    location.hash = queryViewHref(retainDashboardTimelineHref(href, location.hash), readQueryViewSelection(location.hash));
+    location.hash = queryViewHref(retainDiagnosticSelectionHref(href, location.hash), readQueryViewSelection(location.hash));
   };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
   const canAddServer = canRegisterTarget(myAccess);
@@ -232,7 +235,7 @@ export function App() {
       ? healthSectionHref(scope, target, route.healthSection, route.configurationRunId)
       : page === "operations" && route.healthCheck
         ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target);
-    return queryViewHref(retainDashboardTimelineHref(href, location.hash), queryView);
+    return queryViewHref(retainDiagnosticSelectionHref(href, location.hash), queryView);
   };
   const closeTarget = () => {
     location.hash = route.page === "alerts" ? routeHref("alerts", "") :
@@ -361,8 +364,8 @@ export function App() {
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
                 onSelectSection={section => { location.hash = retainDashboardTimelineHref(healthSectionHref(readOverviewScope(location.hash), props.instanceId, section), location.hash); }}
                 canManageConfiguration={canManageRules} canSaveIncident={canSaveIncident(myAccess,props.instanceId)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
-              {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh}
+              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} selectionHash={location.hash} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} selectionHash={location.hash}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} canReadRules={canManageRules}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
@@ -404,6 +407,10 @@ export function App() {
       </Drawer>
     </div>
   );
+}
+
+function retainDiagnosticSelectionHref(href: string, currentHash: string): string {
+  return retainWaitCategoryHref(retainActivitySelectionHref(retainResourceSelectionHref(retainDashboardTimelineHref(href, currentHash), currentHash), currentHash), currentHash);
 }
 
 function retainDashboardTimelineHref(href: string, currentHash: string): string {

@@ -11,6 +11,9 @@ import {handleChartReferenceFixture} from './chart-reference-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
+// The ordinary live fixture exposes one synthetic capture. Filter/page reads
+// must retain that GUID's observation time even as repository read time moves.
+const ordinaryLiveCapturedUtc=new Date().toISOString();
 const alertSelectionRows=[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:'2026-09-30T09:00:00.000Z',firedUtc:'2026-09-30T09:01:00.000Z',value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false},{alertId:'66666666-6666-4666-8666-666666666666',ruleId:'77777777-7777-4777-8777-777777777777',ruleName:'SYNTHETIC paged alert',state:'firing',firstObservedUtc:'2026-09-30T10:00:00.000Z',firedUtc:'2026-09-30T10:01:00.000Z',value:7,reason:'Synthetic bounded second-page evidence',deliverySuppressed:false}];
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
 // Preserve the same microsecond precision as the native equal-width comparison contract.
@@ -98,9 +101,9 @@ createServer(async(req,res)=>{try{
     for(let at=Math.floor(start/3600000)*3600000;at<end;at+=3600000)buckets.push(new Date(at).toISOString());
     if(surface==='resources/buffer-nodes/ple') {
      const selectedNodeId=Number(url.searchParams.get('nodeId')??0);
-     if(![0,1].includes(selectedNodeId))return send(res,{},400);
+     if(!Number.isSafeInteger(selectedNodeId)||selectedNodeId<0||selectedNodeId>1023)return send(res,{},400);
      const gauges=offset=>buckets.map((bucketStartUtc,index)=>({bucketStartUtc,sampleCount:10,minimumSeconds:200+offset+index*10,averageSeconds:300+offset+index*10,maximumSeconds:400+offset+index*10}));
-     return send(res,{targetId:instanceId,fromUtc,toUtc,semantics:'numa_node_page_life_expectancy_gauge',unit:'seconds',revisionScope:'current',bucketSeconds:3600,selectedNodeId,visibilityGapCount:0,nodes:[0,1].map(nodeId=>({nodeId,sampleCount:buckets.length*10,lastObservedAtUtc:new Date(end-1).toISOString()})),points:gauges(selectedNodeId*100),aggregatePoints:gauges(200)});
+     return send(res,{targetId:instanceId,fromUtc,toUtc,semantics:'numa_node_page_life_expectancy_gauge',unit:'seconds',revisionScope:'current',bucketSeconds:3600,selectedNodeId,visibilityGapCount:0,nodes:[0,1].map(nodeId=>({nodeId,sampleCount:buckets.length*10,lastObservedAtUtc:new Date(end-1).toISOString()})),points:[0,1].includes(selectedNodeId)?gauges(selectedNodeId*100):[],aggregatePoints:gauges(200)});
     }
     return send(res,{targetId:instanceId,databaseId:Number(surface.split('/')[2]),fileId:1,fromUtc,toUtc,semantics:'file_counter_delta',revisionScope:'current',bucketSeconds:3600,points:buckets.map((bucketStartUtc,index)=>({bucketStartUtc,sourceRows:10,comparableRows:9,baselineRows:1,resetRows:0,gapRows:0,legacyRows:0,readOperations:'100',readStallMilliseconds:String(400+index*10),writeOperations:'200',writeStallMilliseconds:String(1600+index*20)}))});
    }
@@ -120,9 +123,23 @@ createServer(async(req,res)=>{try{
     }
     return send(res,{...identity,fromUtc:start,toUtc:end,snapshotUtc:end,revision:1,totalRows:1,nextCursor:null,semantics:'plan_cache_delta',coverage:'observed_entries_only',items:[{...counters,collectionRunId:evidence.runId,cacheEntryFingerprint:'d'.repeat(64),sourceEpoch:'e'.repeat(64),observedAtUtc:lastObservedAtUtc,committedAtUtc:lastObservedAtUtc,captureComplete:true,transition:'comparable',intervalFromUtc:firstObservedAtUtc,intervalToUtc:lastObservedAtUtc}]});
    }
+   if(req.headers.cookie?.includes('sessionSelectionFixture=1')&&surface.startsWith('activity/live')) {
+    const snapshotId='88888888-8888-4888-8888-888888888888',observedUtc='2026-09-26T11:30:00.123456Z';
+    const newerId='99999999-9999-4999-8999-999999999999',newerObserved='2026-09-26T11:31:00.123456Z';
+    if(surface==='activity/live/history')return send(res,[{id:snapshotId,observedUtc,truncated:false},{id:newerId,observedUtc:newerObserved,truncated:false}]);
+    if(surface==='activity/live/query')return send(res,{state:'available',text:'SELECT 1 AS synthetic_fixture_only;'});
+    if(surface==='activity/live') {
+     const requested=url.searchParams.get('snapshot'),cursor=url.searchParams.get('cursor');
+     if(requested&&![snapshotId,newerId].includes(requested))return send(res,{snapshotId:null,observedUtc:null,repositoryTimeUtc:now,state:'unavailable',truncated:false,rows:[],databases:[],nextCursor:null});
+     if(cursor&&cursor!=='cGFnZTI=')return send(res,{},400);
+     const row=(id,identity,requestId,blocker)=>({identity:identity.repeat(64),sessionId:id,requestId,databaseId:5,databaseName:'Orders',login:'synthetic_dba',clientHost:'synthetic-app.invalid',application:'SYNTHETIC Orders',status:blocker?'suspended':'running',command:'SELECT',isUser:true,waitType:blocker?'LCK_M_X':null,blocker,cpuMs:'1200',memoryBytes:'1048576',reads:'100',writes:'0',logicalReads:'1000',elapsedMs:'12000',queryId:'d'.repeat(64),queryState:'available',engineStartup:'2026-09-25T00:00:00',sessionLogin:'2026-09-26T00:00:00',requestStart:'2026-09-26T11:00:00',delta:null});
+     const newer=requested===newerId;
+     return send(res,{snapshotId:newer?newerId:snapshotId,observedUtc:newer?newerObserved:observedUtc,repositoryTimeUtc:now,state:'current',truncated:false,rows:cursor?[row(51,'c',1,null)]:[row(51,newer?'e':'a',0,null),row(72,'b',0,51)],databases:[{id:5,name:'Orders'}],nextCursor:cursor?null:'cGFnZTI='});
+    }
+   }
    if(surface==='activity/live/history')return send(res,[]);
    if(surface==='activity/live') {
-    const row=(id,blocker)=>({identity:`synthetic-session-${id}`,sessionId:id,requestId:0,databaseId:5,databaseName:'Orders',login:'synthetic_dba',clientHost:'synthetic-app.invalid',application:'SYNTHETIC Orders',status:blocker?'suspended':'running',command:'SELECT',isUser:true,waitType:blocker?'LCK_M_X':null,blocker,cpuMs:'1200',memoryBytes:'1048576',reads:'100',writes:'0',logicalReads:'1000',elapsedMs:'12000',queryId:null,queryState:'unavailable',engineStartup:'2026-09-25T00:00:00',sessionLogin:'2026-09-26T00:00:00',requestStart:'2026-09-26T08:00:00',delta:null});
+    const row=(id,blocker)=>({identity:id.toString(16).padStart(64,'0'),sessionId:id,requestId:0,databaseId:5,databaseName:'Orders',login:'synthetic_dba',clientHost:'synthetic-app.invalid',application:'SYNTHETIC Orders',status:blocker?'suspended':'running',command:'SELECT',isUser:true,waitType:blocker?'LCK_M_X':null,blocker,cpuMs:'1200',memoryBytes:'1048576',reads:'100',writes:'0',logicalReads:'1000',elapsedMs:'12000',queryId:null,queryState:'unavailable',engineStartup:'2026-09-25T00:00:00',sessionLogin:'2026-09-26T00:00:00',requestStart:'2026-09-26T08:00:00',delta:null});
     let rows=[row(51,null),row(72,51)];
     // Independent blocking-filter fixture; ordinary dashboard screenshots keep their two rows.
     if(req.headers.cookie?.includes('blockingChainFixture=1'))rows.push(row(73,72),row(81,null),row(82,81),row(83,82),row(90,null));
@@ -131,7 +148,7 @@ createServer(async(req,res)=>{try{
     if(databaseScoped)rows.push({...row(81,null),databaseId:6,databaseName:name('Warehouse')});
     if(databaseScoped&&url.searchParams.has('databaseId'))rows=rows.filter(item=>item.databaseId===Number(url.searchParams.get('databaseId')));
     if(url.searchParams.get('blockedOnly')==='true')rows=rows.filter(item=>item.blocker!==null);
-    return send(res,{snapshotId:evidence.runId,observedUtc:now,repositoryTimeUtc:now,state:'current',truncated:false,rows,databases:databaseScoped?[{id:5,name:name('Orders')},{id:6,name:name('Warehouse')}]:[{id:5,name:'Orders'}],nextCursor:null});
+    return send(res,{snapshotId:evidence.runId,observedUtc:ordinaryLiveCapturedUtc,repositoryTimeUtc:now,state:'current',truncated:false,rows,databases:databaseScoped?[{id:5,name:name('Orders')},{id:6,name:name('Warehouse')}]:[{id:5,name:'Orders'}],nextCursor:null});
    }
    if(surface.startsWith('activity/'))return send(res,{instanceId,repositoryTimeUtc:now,evidence,items:surface==='activity/blocking/current'?[edge]:[],nextCursor:null,...(url.searchParams.has('fromUtc')?{fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc')}:{})});
   }

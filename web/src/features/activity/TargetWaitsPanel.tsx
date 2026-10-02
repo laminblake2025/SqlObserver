@@ -14,6 +14,7 @@ import { getQueryStoreTopWaits } from "../queries/queryPerformanceApi";
 import type { QueryStoreWaitRanking } from "../queries/queryPerformanceTypes";
 import { queryStoreWaitCategories } from "../queries/queryStoreWaitCategories";
 import { queryJumpHref } from "../../components/commandPaletteModel";
+import { readWaitCategory, waitCategoryHref } from "./waitSelectionModel.ts";
 
 export interface TargetWaitsPanelProps {
   readonly instanceId: string;
@@ -22,63 +23,65 @@ export interface TargetWaitsPanelProps {
   readonly scope: OverviewScope;
   readonly refresh: number;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
+  readonly selectionHash?: string;
 }
 
-export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refresh, onSelectWindow }: TargetWaitsPanelProps) {
+export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refresh, onSelectWindow, selectionHash = location.hash }: TargetWaitsPanelProps) {
   const { mode } = useTimeDisplay();
   const selection = useMemo(() => resolveActivityWindow(scope, Date.now()),
     [scope.range, scope.from, scope.to, refresh]);
   const window = selection.state === "available" ? selection.window : undefined;
-  const [history, setHistory] = useState<ActivityPage<ServerWaitHistoryItem>>();
-  const [historyError, setHistoryError] = useState<string>();
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [trend, setTrend] = useState<WaitTrendResponse>();
-  const [trendError, setTrendError] = useState<string>();
-  const [trendLoading, setTrendLoading] = useState(false);
-  const [queryCategory, setQueryCategory] = useState(3);
-  const [queryRanking, setQueryRanking] = useState<QueryStoreWaitRanking>();
-  const [queryRankingError, setQueryRankingError] = useState<string>();
+  const requestIdentity = JSON.stringify([instanceId.toLowerCase(), window?.fromUtc, window?.toUtc, refresh]);
+  const [historyResult, setHistoryResult] = useState<{ key: string; page?: ActivityPage<ServerWaitHistoryItem>; error?: string; loading: boolean }>();
+  const [trendResult, setTrendResult] = useState<{ key: string; data?: WaitTrendResponse; error?: string; loading: boolean }>();
+  const history = historyResult?.key === requestIdentity ? historyResult.page : undefined;
+  const historyError = historyResult?.key === requestIdentity ? historyResult.error : undefined;
+  const historyLoading = Boolean(window && (historyResult?.key !== requestIdentity || historyResult.loading));
+  const trend = trendResult?.key === requestIdentity ? trendResult.data : undefined;
+  const trendError = trendResult?.key === requestIdentity ? trendResult.error : undefined;
+  const trendLoading = Boolean(window && (trendResult?.key !== requestIdentity || trendResult.loading));
+  const requestedCategory = readWaitCategory(selectionHash, instanceId);
+  const queryCategory = requestedCategory === undefined ? 3 : requestedCategory;
+  const rankingIdentity = JSON.stringify([requestIdentity, queryCategory]);
+  const [rankingResult, setRankingResult] = useState<{ key: string; data?: QueryStoreWaitRanking; error?: string }>();
+  const queryRanking = rankingResult?.key === rankingIdentity ? rankingResult.data : undefined;
+  const queryRankingError = rankingResult?.key === rankingIdentity ? rankingResult.error : undefined;
 
   useEffect(() => {
     const controller = new AbortController();
-    setHistory(undefined);
-    setHistoryError(undefined);
-    if (!window) { setHistoryLoading(false); return () => controller.abort(); }
-    setHistoryLoading(true);
+    setHistoryResult({ key: requestIdentity, loading: Boolean(window) });
+    if (!window) return () => controller.abort();
     void getServerWaitHistoryPage(instanceId, window, controller.signal)
-      .then(page => { if (!controller.signal.aborted) setHistory(page); })
+      .then(page => { if (!controller.signal.aborted) setHistoryResult({ key: requestIdentity, page, loading: false }); })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : "Wait history is unavailable.");
-      })
-      .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
+        if (!controller.signal.aborted) setHistoryResult({ key: requestIdentity, loading: false, error: error instanceof Error ? error.message : "Wait history is unavailable." });
+      });
     return () => controller.abort();
   }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setQueryRanking(undefined); setQueryRankingError(undefined);
-    if (!window) return () => controller.abort();
+    setRankingResult({ key: rankingIdentity });
+    if (!window || queryCategory === null) return () => controller.abort();
     void getQueryStoreTopWaits(instanceId, window.fromUtc, window.toUtc,
       controller.signal, queryCategory)
-      .then(value => { if (!controller.signal.aborted) setQueryRanking(value); })
+      .then(value => { if (!controller.signal.aborted) setRankingResult({ key: rankingIdentity, data: value }); })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setQueryRankingError(error instanceof Error
-          ? error.message : "Query Store plan wait ranking is unavailable.");
+        if (!controller.signal.aborted) setRankingResult({ key: rankingIdentity, error: error instanceof Error
+          ? error.message : "Query Store plan wait ranking is unavailable." });
       });
     return () => controller.abort();
   }, [instanceId, window?.fromUtc, window?.toUtc, queryCategory, refresh]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setTrend(undefined); setTrendError(undefined);
-    if (!window) { setTrendLoading(false); return () => controller.abort(); }
-    setTrendLoading(true);
+    setTrendResult({ key: requestIdentity, loading: Boolean(window) });
+    if (!window) return () => controller.abort();
     void getServerWaitTrend(instanceId, window, controller.signal)
-      .then(value => { if (!controller.signal.aborted) setTrend(value); })
+      .then(value => { if (!controller.signal.aborted) setTrendResult({ key: requestIdentity, data: value, loading: false }); })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setTrendError(error instanceof Error ? error.message : "Wait trend is unavailable.");
-      })
-      .finally(() => { if (!controller.signal.aborted) setTrendLoading(false); });
+        if (!controller.signal.aborted) setTrendResult({ key: requestIdentity, error: error instanceof Error ? error.message : "Wait trend is unavailable.", loading: false });
+      });
     return () => controller.abort();
   }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
 
@@ -97,12 +100,14 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
     {window && <section className="panel" aria-label="Query Store plans by wait category">
       <h3>Queries with matching Query Store waits</h3>
       <p>Query Store plan wait deltas are a separate source from the server wait trend above. They can point to queries worth investigating, but do not account for all server waits or identify a current waiting session.</p>
-      <label>Query Store category <select value={queryCategory} onChange={event => setQueryCategory(Number(event.target.value))}>
+      {queryCategory === null && <p role="status">The requested Query Store wait category is invalid. Choose a supported category; no other category has been selected.</p>}
+      <label>Query Store category <select value={queryCategory ?? ""} onChange={event => { location.hash = waitCategoryHref({ ...scope, target: instanceId }, Number(event.target.value)); }}>
+        {queryCategory === null && <option value="" disabled>Choose a supported category</option>}
         {queryStoreWaitCategories.map((name, category) => category === 11 ? null :
           <option key={category} value={category}>{name}</option>)}
       </select></label>
       {queryRankingError && <p role="alert">{queryRankingError} Refresh to retry.</p>}
-      {!queryRanking && !queryRankingError && <p role="status">Loading Query Store wait groups…</p>}
+      {queryCategory !== null && !queryRanking && !queryRankingError && <p role="status">Loading Query Store wait groups…</p>}
       {queryRanking && !queryRanking.items.some(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) && <p>No positive comparable Query Store wait delta for this database context is present in the loaded category ranking.</p>}
       {queryRanking && queryRanking.items.some(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) && <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store wait contributors"><table>
         <caption>Top 25 Query Store plans by comparable category wait milliseconds</caption>

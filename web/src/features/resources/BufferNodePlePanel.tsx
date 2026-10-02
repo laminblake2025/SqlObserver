@@ -7,20 +7,24 @@ import type { OverviewScope } from "../overview/overviewTypes";
 import { getBufferNodePleWindow, type BufferNodePleWindow } from "./bufferNodePleApi";
 import { bufferManagerPleSeries, bufferNodePleSeries } from "./bufferNodePleModel";
 
-export function BufferNodePlePanel({ instanceId, scope, refresh, onSelectWindow, crosshairUtc, onCrosshairChange }: {
+export function BufferNodePlePanel({ instanceId, scope, refresh, onSelectWindow, crosshairUtc, onCrosshairChange, selectedNodeId, onSelectNode, nodeSelectionInvalid = false }: {
   readonly instanceId: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly crosshairUtc?: string | null;
   readonly onCrosshairChange?: (utc: string | null) => void;
+  readonly selectedNodeId?: number;
+  readonly onSelectNode?: (nodeId: number | undefined) => void;
+  readonly nodeSelectionInvalid?: boolean;
 }) {
   const { mode } = useTimeDisplay();
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
+  const requestedNode = onSelectNode ? selectedNodeId ?? null : selectedNode;
   const [receivedData, setData] = useState<{ key: string; value: BufferNodePleWindow }>();
   const [receivedError, setError] = useState<{ key: string; message: string }>();
   const [receivedLoading, setLoading] = useState<{ key: string; value: boolean }>();
-  const key = JSON.stringify([instanceId, scope, refresh, selectedNode]);
+  const key = JSON.stringify([instanceId, scope, refresh, requestedNode, nodeSelectionInvalid]);
   const data = receivedData?.key === key ? receivedData.value : undefined;
   const error = receivedError?.key === key ? receivedError.message : undefined;
   const loading = receivedLoading?.key === key ? receivedLoading.value : true;
@@ -42,13 +46,9 @@ export function BufferNodePlePanel({ instanceId, scope, refresh, onSelectWindow,
     }
     setLoading({ key, value: true });
     void getBufferNodePleWindow(instanceId, window.fromUtc, window.toUtc,
-      selectedNode, controller.signal)
+      requestedNode, controller.signal)
       .then(value => {
         if (controller.signal.aborted) return;
-        if (selectedNode !== null && !value.nodes.some(node => node.nodeId === selectedNode)) {
-          setSelectedNode(null);
-          return;
-        }
         setData({ key, value });
       })
       .catch((failure: unknown) => {
@@ -65,16 +65,21 @@ export function BufferNodePlePanel({ instanceId, scope, refresh, onSelectWindow,
       average and maximum values for one node in the shared time window. It is separate from the Buffer Manager aggregate.</p>
     {loading && <p role="status">Loading Buffer Node history…</p>}
     {error && <p role="alert">{error}</p>}
+    {(requestedNode !== null || nodeSelectionInvalid) && <><p className="activity-evidence">{nodeSelectionInvalid ? "Requested NUMA selection is invalid; no other node has been selected." : `Requested NUMA node ${requestedNode}.`}</p>
+      <button type="button" className="secondary-button" onClick={() => onSelectNode ? onSelectNode(undefined) : setSelectedNode(null)}>Clear NUMA selection</button></>}
     {data && <>
       <p className="activity-evidence">{formatDisplayTime(data.fromUtc, mode)} to {formatDisplayTime(data.toUtc, mode)} ·
         {data.nodes.length} observed nodes · {data.visibilityGapCount} collector gaps.</p>
-      {data.nodes.length ? <label>NUMA node <select value={data.selectedNodeId ?? ""}
-        onChange={event => setSelectedNode(Number(event.target.value))}>
+      {data.nodes.length || requestedNode !== null || nodeSelectionInvalid ? <label>NUMA node <select value={nodeSelectionInvalid ? "" : requestedNode ?? data.selectedNodeId ?? ""}
+        onChange={event => onSelectNode ? onSelectNode(Number(event.target.value)) : setSelectedNode(Number(event.target.value))}>
+        {nodeSelectionInvalid && <option value="" disabled>Choose a NUMA node</option>}
+        {requestedNode !== null && !data.nodes.some(node => node.nodeId === requestedNode) && <option value={requestedNode}>{requestedNode} (not in loaded inventory)</option>}
         {data.nodes.map(node => <option key={node.nodeId} value={node.nodeId}>
           {node.nodeId} · {node.sampleCount} samples
         </option>)}
       </select></label> : <p>No Buffer Node samples were stored in this window. Check the collector schedule and SQL Server permissions.</p>}
-      {data.points.length ? <OverviewChart series={bufferNodePleSeries(data)}
+      {requestedNode !== null && !data.nodes.some(node => node.nodeId === requestedNode) && <p role="status">Requested NUMA node {requestedNode} is not in the loaded node inventory. No other node has been selected.</p>}
+      {data.points.length && !nodeSelectionInvalid && (requestedNode === null || data.nodes.some(node => node.nodeId === requestedNode)) ? <OverviewChart series={bufferNodePleSeries(data)}
         crosshairUtc={crosshairUtc} onCrosshairChange={onCrosshairChange}
         fromUtc={data.fromUtc} toUtc={data.toUtc} onSelectWindow={onSelectWindow} />
         : data.nodes.length > 0 && <p>No samples were stored for the selected node in this window.</p>}

@@ -6,6 +6,7 @@ import { overviewWindow } from "../overview/overviewModel";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { getDatabaseFileIoTrend, type DatabaseFileIoTrend } from "./databaseFileIoTrendApi";
 import { fileIoTrendSeries } from "./databaseFileIoTrendModel";
+import { resourceWindowMatches } from "./resourceSelectionModel.ts";
 
 export interface SelectedDatabaseFile {
   readonly databaseId: number;
@@ -53,8 +54,7 @@ export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onS
         if (controller.signal.aborted) return;
         if (value.targetId.toLowerCase() !== instanceId.toLowerCase() ||
             value.databaseId !== file.databaseId || value.fileId !== file.fileId ||
-            Date.parse(value.fromUtc) !== Date.parse(window.fromUtc) ||
-            Date.parse(value.toUtc) !== Date.parse(window.toUtc) ||
+            !resourceWindowMatches(value.fromUtc, value.toUtc, window.fromUtc, window.toUtc) ||
             value.semantics !== "file_counter_delta" || value.revisionScope !== "current" ||
             value.bucketSeconds !== 3600 || !Array.isArray(value.points) || value.points.length > 169)
           throw new Error("File trend evidence did not match the selected file.");

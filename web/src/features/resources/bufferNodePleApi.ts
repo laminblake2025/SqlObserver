@@ -1,4 +1,5 @@
 import { apiFetch } from "../../apiClient.ts";
+import { resourceWindowMatches } from "./resourceSelectionModel.ts";
 export interface BufferNodePleNode {
   readonly nodeId: number;
   readonly sampleCount: number;
@@ -41,8 +42,7 @@ export function parseBufferNodePleWindow(value: unknown, targetId: string,
   if (!object(value) || typeof value.targetId !== "string" ||
       value.targetId.toLowerCase() !== targetId.toLowerCase() ||
       typeof value.fromUtc !== "string" || typeof value.toUtc !== "string" ||
-      Date.parse(value.fromUtc) !== Date.parse(fromUtc) ||
-      Date.parse(value.toUtc) !== Date.parse(toUtc) ||
+      !resourceWindowMatches(value.fromUtc, value.toUtc, fromUtc, toUtc) ||
       value.semantics !== "numa_node_page_life_expectancy_gauge" ||
       value.unit !== "seconds" || value.revisionScope !== "current" ||
       value.bucketSeconds !== 3600 ||

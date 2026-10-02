@@ -54,6 +54,10 @@ for (const width of [320, 390, 768, 1440]) {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await open(page, surface);
+      if (surface === 'waits') {
+        await page.getByRole('combobox', { name: 'Query Store category', exact: true }).selectOption('6');
+        await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('waitCategory')).toBe('6');
+      }
       await expect(page.locator('main')).toBeVisible();
       expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'Page must fit; wide evidence scrolls locally').toBeLessThanOrEqual(1);
@@ -64,6 +68,12 @@ for (const width of [320, 390, 768, 1440]) {
       const folder = resolve('../artifacts/dashboard-refactor/screenshots');
       await mkdir(folder, { recursive: true });
       await page.screenshot({ path: resolve(folder, `${name}-${width}.png`), fullPage: true });
+      if (surface === 'waits') {
+        await page.evaluate(() => { location.hash += '&waitCategory=11'; });
+        await expect(page.getByText('The requested Query Store wait category is invalid. Choose a supported category; no other category has been selected.', { exact: true })).toBeVisible();
+        await auditResponsiveState(page, testInfo, 'waits-invalid-category');
+        await saveFullPage(page, `waits-invalid-${width}.png`);
+      }
     });
   }
 }
@@ -268,6 +278,10 @@ for (const width of [320, 390, 768, 1440]) {
     await expect(align).toBeFocused();
     await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
     await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+    await page.reload();
+    await expect(file).toHaveAttribute('aria-pressed', 'true');
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+    await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
     await auditResponsiveState(page, testInfo, 'resource-selected-inspection');
     await saveFullPage(page, `resource-inspection-${width}.png`);
     await input.fill('2026-09-26T12:00');
@@ -279,6 +293,60 @@ for (const width of [320, 390, 768, 1440]) {
     await saveFullPage(page, `resource-inspection-invalid-${width}.png`);
     const query = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
     expect(Object.fromEntries(query)).toMatchObject({ target, range: 'custom', from, to, databaseId: '6' });
+  });
+}
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`restored missing resource selections stay explicit and accessible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'resourceInspectionFixture', value: '1', url: origin },
+    ]);
+    await page.goto(`/#/resources?${new URLSearchParams({ target, range: '1h', resourceDatabaseId: '5', resourceFileId: '99', numaNodeId: '99', resourceAt: '2026-09-26T10:00:00.000Z' })}`);
+    const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 02', exact: true });
+    await expect(resources).toContainText('Requested NUMA node 99 is not in the loaded node inventory. No other node has been selected.');
+    await expect(resources).toContainText('The selected file is not in the loaded snapshot page.');
+    await expect(resources).toContainText('Requested resource inspection time is outside the loaded shared window.');
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
+    await auditResponsiveState(page, testInfo, 'resource-missing-url-selections');
+    await saveFullPage(page, `resource-unavailable-selection-${width}.png`);
+    const clear = resources.getByRole('button', { name: 'Clear resource selections', exact: true });
+    await clear.focus(); await clear.press('Enter');
+    await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('resourceFileId')).toBe(null);
+  });
+
+  test(`restored activity metadata and missing request remain accessible without protected SQL at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'sessionSelectionFixture', value: '1', url: origin },
+    ]);
+    let protectedReads = 0;
+    page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/live/query')) protectedReads++; });
+    const parameters = new URLSearchParams({ target, range: '1h', sessionSnapshot: '88888888-8888-4888-8888-888888888888', sessionObserved: '2026-09-26T11:30:00.123456Z', sessionIdentity: 'c'.repeat(64) });
+    await page.goto('/#/activity?' + parameters);
+    const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
+    await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
+    const load = detail.getByRole('button', { name: 'Load captured SQL', exact: true });
+    await load.focus(); await expect(load).toBeFocused();
+    expect(protectedReads).toBe(0);
+    await auditResponsiveState(page, testInfo, 'activity-restored-metadata');
+    await saveFullPage(page, `activity-restored-selection-${width}.png`);
+    parameters.set('sessionIdentity', 'f'.repeat(64));
+    await page.evaluate(query => { location.hash = '#/activity?' + query; }, parameters.toString());
+    await expect(detail).toHaveCount(0);
+    await expect(page.locator('.live-sessions')).toContainText('The requested session was not found in this captured snapshot.');
+    await auditResponsiveState(page, testInfo, 'activity-missing-request');
+    await saveFullPage(page, `activity-unavailable-selection-${width}.png`);
+    expect(protectedReads).toBe(0);
+    const clear = page.getByRole('button', { name: 'Clear session selection', exact: true });
+    await clear.focus(); await clear.press('Enter');
+    await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('sessionIdentity')).toBe(null);
   });
 }
 
