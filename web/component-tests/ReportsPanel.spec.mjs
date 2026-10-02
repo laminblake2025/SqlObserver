@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { target, otherTarget, runId, otherRunId, postPath, reportRun } from './reportsFixture.mjs';
+import { target, otherTarget, runId, otherRunId, postPath, reportRun, reportRunForRequest } from './reportsFixture.mjs';
 
 const contexts = new WeakMap();
 const panel = page => page.getByRole('region', { name: /^Reports for / });
@@ -85,7 +85,8 @@ test('renders the four fixed report kinds and inert server text; snapshot genera
   await expect(htmlLink(page)).toHaveAttribute('rel', 'noreferrer');
   await expect(csvLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/health.csv`);
   await expect(csvLink(page)).toHaveAttribute('download', '');
-  await expect(panel(page)).toContainText('14:00:00 UTC');
+  await expect(panel(page)).toContainText('08/25/2026');
+  await expect(panel(page)).toContainText('13:00:00 UTC');
   expect(contexts.get(page).requests).toHaveLength(1);
 });
 
@@ -95,7 +96,7 @@ test('submits UTC half-open bounded windows and selects each fixed export sectio
     const body = route.request().postDataJSON();
     assertOperation(body, body.reportKind, { fromUtc: '2026-08-01T13:45:00.000Z',
       toUtc: body.reportKind === 'capacity-readiness' ? '2026-09-01T13:45:00.000Z' : '2026-08-08T13:45:00.000Z' });
-    await json(route, reportRun({ reportKind: body.reportKind })); return true;
+    await json(route, reportRunForRequest(body)); return true;
   });
   for (const [value, section, days] of [['performance-window', 'performance', 7], ['incident-evidence', 'incidents', 7], ['capacity-readiness', 'capacity', 31]]) {
     await kind(page).selectOption(value);
@@ -115,7 +116,7 @@ test('rejects an oversized window before IO and reports safe failures before a f
     if (!isPost(route)) return false;
     bodies.push(route.request().postDataJSON());
     if (bodies.length === 1) await json(route, { detail: '<script>SECRET_BACKEND_FAILURE</script>' }, 403);
-    else await json(route, reportRun({ reportKind: 'performance-window' }));
+    else await json(route, reportRunForRequest(route.request().postDataJSON()));
     return true;
   });
   await kind(page).selectOption('performance-window');
@@ -138,7 +139,8 @@ test('rejects an oversized window before IO and reports safe failures before a f
 });
 
 test('changing report kind and unmounting abort pending generation and exclude late exports', async ({ page }) => {
-  const old = heldResponse(reportRun()); const next = heldResponse(reportRun({ reportKind: 'performance-window' }));
+  const old = heldResponse(reportRun()); const next = heldResponse(reportRunForRequest({ reportKind: 'performance-window',
+    fromUtc: '2026-08-01T13:45:00.000Z', toUtc: '2026-08-02T13:45:00.000Z' }));
   let posts = 0;
   await mount(page, async route => {
     if (!isPost(route)) return false;
@@ -199,7 +201,7 @@ for (const width of [320, 1440]) test(`report controls and exports remain access
   await page.setViewportSize({ width, height: 1000 });
   await mount(page, async route => {
     if (!isPost(route)) return false;
-    await json(route, reportRun({ reportKind: 'capacity-readiness' })); return true;
+    await json(route, reportRunForRequest(route.request().postDataJSON())); return true;
   });
   await kind(page).selectOption('capacity-readiness'); await fillWindow(page); await generate(page).click();
   await expect(csvLink(page)).toBeVisible();
@@ -216,5 +218,31 @@ for (const width of [320, 1440]) test(`report controls and exports remain access
   await mkdir(directory, { recursive: true }); const path = `${directory}reports-panel-${width}.png`;
   await page.screenshot({ path, fullPage: true }); await info.attach(`reports-panel-${width}`, { path, contentType: 'image/png' });
   await page.getByRole('combobox', { name: 'Time display', exact: true }).selectOption('local');
-  await expect(panel(page)).toContainText('10:00:00 EDT');
+  await expect(panel(page)).toContainText('09:00:00 EDT');
+});
+
+test('invalid success receipts expose a safe error without exports and a new attempt can recover', async ({ page }) => {
+  const changes = [() => null, value => ({ ...value, targetId: otherTarget }), value => ({ ...value, kind: 0 }),
+    value => ({ ...value, state: '<img src=x onerror=alert(1)>' }), value => ({ ...value, parameterDigest: 'a'.repeat(64) })];
+  let attempts = 0;
+  const operations = [];
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    const body = route.request().postDataJSON(); operations.push(body.operationId);
+    const value = reportRunForRequest(body);
+    const change = changes[Math.floor(attempts / 2)];
+    await json(route, attempts++ % 2 === 0 ? change(value) : value); return true;
+  });
+  await kind(page).selectOption('performance-window'); await fillWindow(page);
+  for (let index = 0; index < changes.length; index++) {
+    await generate(page).click();
+    await expect(panel(page).getByRole('alert')).toHaveText('The report response could not be verified.');
+    await expect(htmlLink(page)).toHaveCount(0); await expect(csvLink(page)).toHaveCount(0);
+    await expect(panel(page).locator('img, script')).toHaveCount(0);
+    await generate(page).click();
+    await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/html`);
+    await expect(csvLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/performance.csv`);
+    await expect(panel(page).getByRole('alert')).toHaveCount(0);
+  }
+  expect(operations).toHaveLength(10); expect(new Set(operations).size).toBe(10);
 });

@@ -20,7 +20,7 @@ import {handleWaitCapturedSessionFixture} from './wait-captured-session-fixture.
 import {handleDashboardNativeInsightsFixture} from './dashboard-native-insights-fixture.mjs';
 import {handleDashboardRetainedEvidenceFixture} from './dashboard-retained-evidence-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
-const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
+const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433,authenticationMode:'windows_integrated_service_identity',encryptionMode:'mandatory_validated',discoveryRequestedAtUtc:'2026-09-25T12:00:00Z',lastDiscoveryAtUtc:'2026-09-25T12:01:00Z'}));
 const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
 // The ordinary live fixture exposes one synthetic capture. Filter/page reads
 // must retain that GUID's observation time even as repository read time moves.
@@ -228,6 +228,11 @@ createServer(async(req,res)=>{try{
  if(await handleAgentHistoryFixture(url,res,targets,send))return;
  if(url.pathname==='/__fixture') {const mode=url.searchParams.get('mode');if(!['empty','partial','error','loading','ready','backup-expiry'].includes(mode))return send(res,{},400);res.writeHead(302,{'set-cookie':`overviewMode=${mode}; SameSite=Strict; Path=/`,location:'/'});res.end();return;}
  if(url.pathname==='/api/v1/observation-targets')return send(res,{items:targets,nextCursor:null});
+ const directTarget=/^\/api\/v1\/observation-targets\/([^/]+)$/.exec(url.pathname);
+ if(req.method==='GET'&&directTarget){
+  const target=targets.find(item=>item.instanceId===directTarget[1]);
+  return send(res,target??{},target?200:404);
+ }
  if(/^\/api\/v1\/observation-targets\/[^/]+\/health\/files$/.test(url.pathname)){
   const instanceId=url.pathname.split('/')[4];
   if(!targets.some(t=>t.instanceId===instanceId))return send(res,{},404);

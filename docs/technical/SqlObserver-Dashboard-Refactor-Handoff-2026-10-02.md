@@ -2,7 +2,7 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-Product checkpoint: `4482d348a5679240f2b3a8bd2aaf047bbd4cbc04` on `SQL-Diagnostic-Manager-Revamp`. The original full product validation below belongs to that immutable checkpoint. The integrated component follow-up changes six product files from that checkpoint; its current commit and separate results are bound in the follow-up record below.
+Product checkpoint: `4482d348a5679240f2b3a8bd2aaf047bbd4cbc04` on `SQL-Diagnostic-Manager-Revamp`. The original full product validation below belongs to that immutable checkpoint. The component checkpoint at `8e7d05c7` changes six product files from it. The later response-contract follow-up and its current commit have separate evidence below.
 
 The original [review and plan](SqlObserver-Review-and-Plan-2026-09-23.md) and [execution record](SqlObserver-Revamp-Execution.md) remain the full objective and historical record. They are local, untracked documents at this checkpoint. This file records current dashboard evidence without changing their historical claims.
 
@@ -21,7 +21,7 @@ Independent lanes owned theme/diagnostic work, interaction tests and accessibili
 
 The evidence is local and ignored by Git. It must be retained or transferred through an authorized artifact channel for another machine to inspect it. No connected database tests were needed for the frontend changes. This checkpoint does not establish SQL Server fleet behavior, collector performance or packaged release certification.
 
-### Mounted-component follow-up
+### Mounted-component checkpoint at `8e7d05c7`
 
 The current follow-up mounts chart, health, alert, Activity, deadlock, analytics, onboarding/loaded-servers, operations and reports through the [component harnesses](../../web/component-tests/README.md). **72/72 mounted cases** and the strict product-source/harness TypeScript check pass. This turn's targeted native suite passes **25/25 checks: 22 runtime and three explicit lint**. The final product edits also pass the owning onboarding/reports 7/7 subset. Existing dependencies remain unchanged.
 
@@ -50,6 +50,18 @@ The [follow-up record](../../artifacts/dashboard-components/completion.json), [c
 | Analytics Retry/Restart/role expressions | Real error/status roles, safe retry, invalid-cursor restart and context reset execute. |
 
 The retained health/Activity plaintext/rendering and deadlock App-wiring/capture-copy source constraints are explicitly named architecture/security lint. They do not count as behavioral proof. The reviewed UI bundles are migrated; retained lint and genuine native/model/rendered React tests remain separate. This is not a repository-wide coverage verdict.
+
+### Target/report response-contract follow-up
+
+This dashboard-only follow-up closes the success-response validation gap recorded above. Independent target and report lanes owned separate client/parser/spec files; a read-only reviewer compared their behavior with the current server DTOs, domain bounds, serializer and report SQL invariants. The lead integrated the work, corrected the incomplete Overview target fixture and added built-App refusal/recovery checks. No backend, collector, package, authentication or export endpoint was changed.
+
+Target list/get/registration/grouping now validate native DTO fields and exact requested identities where available, preserve nullable address/discovery fields, enforce the requested page limit and refuse duplicate identities. UTF-8, JSON and content type failures produce a fixed safe message. A 1 MiB transport bound retains valid 100-server pages: review caught an initial 256 KiB cap rejecting a 359,029-byte page whose maximum-length names use ASP.NET JSON escaping. The regression first failed, then passed with the corrected cap; the default 50-row limit still rejects that page. Registration refuses malformed, foreign or oversized success without invoking its callback and retains the failed attempt's identity for retry.
+
+Reports now validate native numeric kinds, target/run identity, definition version, revision, finalized state and precise UTC snapshot/expiry. Receipt size is bounded to 16 KiB, and SHA-256 equality binds the receipt to the exact requested kind/window using the server's ordered canonical JSON and seven-digit DateTimeOffset round-trip form. A wrong-window receipt cannot supply export links. Report fixtures now use the actual native DTO and finalized state. This validates receipt semantics; it does not establish backend export content, retry idempotency or connected authorization.
+
+Owning native suites pass **18/18 checks: 15 runtime and three explicit lint**, and the affected onboarding/report mounted suite passes **18/18**. Strict product/harness TypeScript, production build, permission templates and generated asset manifest pass; final assets are `entry-index-6d0fd620.js` and `index-dafc5816.css`. Independent final source review found no remaining actionable issues after the page-bound repair. The full dashboard run passed 198 cases and failed one new direct-lookup case because its synthetic route was missing. After adding that exact GET fixture route, the same test ID passed a focused rerun, including axe, overflow, safe refusal and recovery. All **199 product case identities have passing evidence: 110 accessibility/responsive and 89 workflow cases**. This is composed evidence rather than a single 199/199 green run. Production sources, assets, harnesses and specs were unchanged between runs; only the fixture route changed. The original failure and repair remain in separate [full-run](../../artifacts/dashboard-response-contracts/product-report/index.html) and [focused-repair](../../artifacts/dashboard-response-contracts/repair-report/index.html) reports and in the [response follow-up record](../../artifacts/dashboard-response-contracts/completion.json).
+
+The [current gallery](../../artifacts/dashboard-response-contracts/index.html) contains 182 captures with hashes: 176 product scenes, four affected component scenes and two new response failure states. Product widths are 320, 390, 768 and 1440 pixels; affected component widths are 320 and 1440. Error-state screenshots use full-page axe/overflow checks at 320/1440, while component onboarding axe remains registration-only. The previous `8e7d05c7` captures and completion record were preserved under [historical evidence](../../artifacts/dashboard-response-contracts/historical-8e7d05c7/completion.json). Current results are not a fresh run of the older 540/286 checks or all 74 defined component cases. The full original review plan and the backend dependencies below remain incomplete.
 
 ## Interface-plan accounting
 

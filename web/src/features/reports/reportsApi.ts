@@ -1,6 +1,54 @@
 import { apiFetch } from "../../apiClient.ts";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
+import { readBoundedBody } from "../activity/activityParser.mjs";
 export type ReportKind = "instance-health" | "performance-window" | "incident-evidence" | "capacity-readiness";
-export interface ReportRun { readonly runId: string; readonly targetId: string; readonly reportKind?: ReportKind; readonly kind?: string; readonly snapshotUtc: string; readonly expiresAtUtc: string; readonly state: string; }
+export interface ReportRun {
+  readonly runId: string; readonly targetId: string; readonly targetRevision: number;
+  readonly kind: 0 | 1 | 2 | 3; readonly definitionVersion: 1;
+  readonly snapshotUtc: string; readonly expiresAtUtc: string;
+  readonly parameterDigest: string; readonly state: "finalized";
+}
+
+const kindValues: Readonly<Record<ReportKind, 0 | 1 | 2 | 3>> = {
+  "instance-health": 0, "performance-window": 1, "incident-evidence": 2, "capacity-readiness": 3,
+};
+const receiptBytes = 16 * 1024;
+const reportLifetime = 24n * 3600n * 1_000_000n;
+function validId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value)
+    && value !== "00000000-0000-0000-0000-000000000000";
+}
+function knownKind(value: unknown): value is ReportKind {
+  return typeof value === "string" && Object.hasOwn(kindValues, value);
+}
+function invalidReceipt(): Error { return new Error("The report response could not be verified."); }
+
+function parseReceipt(value: unknown, targetId: string, reportKind: ReportKind, expectedDigest: string): ReportRun {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw invalidReceipt();
+  const run = value as Record<string, unknown>;
+  if (!validId(run.runId) || !validId(run.targetId) || run.targetId.toLowerCase() !== targetId.toLowerCase()
+    || run.kind !== kindValues[reportKind] || !Number.isSafeInteger(run.targetRevision) || (run.targetRevision as number) < 1
+    || run.definitionVersion !== 1 || run.state !== "finalized"
+    || run.parameterDigest !== expectedDigest
+    || typeof run.snapshotUtc !== "string" || typeof run.expiresAtUtc !== "string") throw invalidReceipt();
+  if (utcMicroseconds(run.expiresAtUtc) - utcMicroseconds(run.snapshotUtc) !== reportLifetime) throw invalidReceipt();
+  return { runId: run.runId, targetId: run.targetId, targetRevision: run.targetRevision as number,
+    kind: kindValues[reportKind], definitionVersion: 1, snapshotUtc: run.snapshotUtc, expiresAtUtc: run.expiresAtUtc,
+    parameterDigest: expectedDigest, state: "finalized" };
+}
+
+/** Match ReportRequestValidation.CanonicalDigest's UTC DateTimeOffset round-trip form. */
+function roundTripUtc(value: string): string {
+  utcMicroseconds(value);
+  const fraction = value.match(/\.(\d{1,6})Z$/)?.[1] ?? "";
+  return `${value.slice(0, 19)}.${fraction.padEnd(7, "0")}+00:00`;
+}
+async function requestDigest(reportKind: ReportKind, fromUtc?: string, toUtc?: string): Promise<string> {
+  const canonical = fromUtc === undefined || toUtc === undefined ? { reportKind }
+    : { fromUtc: roundTripUtc(fromUtc), reportKind, toUtc: roundTripUtc(toUtc) };
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(canonical)));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
 
 /** Convert a datetime-local control value as an explicit UTC wall-clock value. */
 export function localDateTimeToUtc(value: string): string {
@@ -13,17 +61,28 @@ export function localDateTimeToUtc(value: string): string {
 }
 
 export function validateReportWindow(reportKind: ReportKind, fromUtc?: string, toUtc?: string): void {
+  if (!knownKind(reportKind)) throw new Error("Choose a supported report type.");
   if (reportKind === "instance-health") { if (fromUtc !== undefined || toUtc !== undefined) throw new Error("Instance Health does not use a time window."); return; }
   if (fromUtc === undefined || toUtc === undefined || !fromUtc.endsWith("Z") || !toUtc.endsWith("Z")) throw new Error("Choose a UTC start and end time.");
-  const duration = Date.parse(toUtc) - Date.parse(fromUtc); const maximum = reportKind === "capacity-readiness" ? 31 : 7;
-  if (!Number.isFinite(duration) || duration <= 0 || duration > maximum * 86_400_000) throw new Error(`Choose a window of at most ${maximum} days.`);
+  const maximum = reportKind === "capacity-readiness" ? 31 : 7;
+  let duration: bigint;
+  try { duration = utcMicroseconds(toUtc) - utcMicroseconds(fromUtc); }
+  catch { throw new Error("Choose a UTC start and end time."); }
+  if (duration <= 0n || duration > BigInt(maximum) * 86_400_000_000n) throw new Error(`Choose a window of at most ${maximum} days.`);
 }
 
 export async function createReport(targetId: string, reportKind: ReportKind, signal: AbortSignal, fromUtc?: string, toUtc?: string): Promise<ReportRun> {
+  if (!validId(targetId)) throw new Error("Choose a valid server before generating a report.");
   validateReportWindow(reportKind, fromUtc, toUtc);
-  const response = await apiFetch(`/api/v1/observation-targets/${targetId}/reports`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reportKind, operationId: globalThis.crypto.randomUUID(), ...(fromUtc === undefined ? {} : { fromUtc, toUtc }) }), signal });
+  if (signal.aborted) throw signal.reason;
+  const expectedDigest = await requestDigest(reportKind, fromUtc, toUtc);
+  let response: Response;
+  try {
+    response = await apiFetch(`/api/v1/observation-targets/${targetId}/reports`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reportKind, operationId: globalThis.crypto.randomUUID(), ...(fromUtc === undefined ? {} : { fromUtc, toUtc }) }), signal }, { maximumResponseBytes: receiptBytes });
+  } catch (error) { if (signal.aborted) throw error; throw invalidReceipt(); }
   if (!response.ok) throw new Error(response.status === 403 ? "Report access is not authorized." : "The report could not be created.");
-  return (await response.json()) as ReportRun;
+  try { return parseReceipt(JSON.parse(await readBoundedBody(response, signal, receiptBytes)), targetId, reportKind, expectedDigest); }
+  catch (error) { if (signal.aborted) throw error; throw invalidReceipt(); }
 }
 
 export function reportHtmlUrl(targetId: string, runId: string): string { return `/api/v1/observation-targets/${targetId}/reports/${runId}/html`; }

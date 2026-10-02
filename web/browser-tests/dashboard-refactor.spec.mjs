@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 const first = '11111111-1111-4111-8111-000000000001';
 const second = '11111111-1111-4111-8111-000000000002';
@@ -29,6 +32,63 @@ const mainNavigation = page => page.getByRole('navigation', { name: 'Main naviga
 const fleetStrip = page => page.getByRole('navigation', { name: 'Loaded server status', exact: true });
 const sessionSnapshot = '88888888-8888-4888-8888-888888888888';
 const sessionObserved = '2026-09-26T11:30:00.123456Z';
+
+async function captureTargetResponseFailure(page, testInfo, name) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  await testInfo.attach(`${name}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
+  expect(violations).toEqual([]);
+  const directory = resolve('../artifacts/dashboard-response-contracts/screenshots');
+  await mkdir(directory, { recursive: true });
+  await page.screenshot({ path: resolve(directory, `${name}.png`), fullPage: true });
+}
+
+test('malformed server catalog fails visibly without rendering provider text and recovers through Refresh', async ({ page }, testInfo) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 320, height: 1000 });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  let malformed = true;
+  await page.route('**/api/v1/observation-targets?*', async route => {
+    if (!malformed) return route.continue();
+    await route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ items: { displayName: 'password=synthetic-secret <script>bad()</script>' }, nextCursor: null }) });
+  });
+  await page.goto('/#/servers');
+  await expect(page.getByRole('alert').filter({ hasText: 'SqlObserver target response is invalid. Refresh and retry.' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Search loaded servers', exact: true })).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText('synthetic-secret');
+  await captureTargetResponseFailure(page, testInfo, 'server-catalog-invalid-320');
+  malformed = false;
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect(page.getByRole('textbox', { name: 'Search loaded servers', exact: true })).toBeVisible();
+  await expect(page.getByRole('table').getByRole('link', { name: 'SYNTHETIC SQL 01', exact: true })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'SqlObserver target response is invalid.' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('foreign direct server response never opens diagnostics and a valid retry preserves the requested window', async ({ page }, testInfo) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/v1/observation-targets?*', route => route.fulfill({ status: 200,
+    contentType: 'application/json', body: JSON.stringify({ items: [], nextCursor: null }) }));
+  let foreign = true;
+  await page.route(`**/api/v1/observation-targets/${first}`, async route => {
+    const response = await route.fetch(); const target = await response.json();
+    await route.fulfill({ response, json: foreign ? { ...target, instanceId: second } : target });
+  });
+  await page.goto(href('resources'));
+  await expect(page.getByRole('alert').filter({ hasText: 'SqlObserver target response is invalid. Refresh and retry.' })).toBeVisible();
+  await expect(page.locator('.target-surface')).toHaveCount(0);
+  await assertHistoricalScope(page);
+  await captureTargetResponseFailure(page, testInfo, 'direct-target-invalid-1440');
+  foreign = false;
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect(page.locator('.target-surface')).toBeVisible();
+  await expect(page.locator('.page-heading')).toContainText('SYNTHETIC SQL 01');
+  await assertHistoricalScope(page);
+  expect(errors).toEqual([]);
+});
 
 async function resourceUrlFixture(page) {
   await databaseFixture(page);

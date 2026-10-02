@@ -119,6 +119,35 @@ test('uses the same client ID on safe 429 failure and retry, then creates a new 
   expect(session.requests[2].instanceId).not.toBe(session.requests[1].instanceId);
 });
 
+test('rejects foreign, malformed and oversized registration success bodies without callbacks and retries the same identity', async ({ page }) => {
+  const session = sessions.get(page);
+  let failure = 'foreign';
+  session.respond = async (route, body) => {
+    if (failure === 'foreign') return route.fulfill({ status: 201, contentType: 'application/json',
+      body: JSON.stringify(registeredTarget(body, { instanceId: beta })) });
+    if (failure === 'malformed') return route.fulfill({ status: 201, contentType: 'application/json',
+      body: '{"provider password=synthetic-secret":' });
+    if (failure === 'oversized') return route.fulfill({ status: 201, contentType: 'application/json',
+      body: JSON.stringify({ ...registeredTarget(body), padding: ' '.repeat(1024 * 1024) }) });
+    return json(route, body);
+  };
+  await open(page);
+  for (const [index, invalid] of ['foreign', 'malformed', 'oversized'].entries()) {
+    failure = invalid;
+    await fill(page, `retry-${index}`, `Retry server ${index}`);
+    await submit(page).click();
+    await expect(registration(page).getByRole('status')).toHaveText('SqlObserver target response is invalid. Refresh and retry.');
+    await expect(callbacks(page)).toHaveText(String(index));
+    await expect(submit(page)).toBeEnabled();
+    await expect(registration(page).getByRole('textbox', { name: 'Stable key', exact: true })).toHaveValue(`retry-${index}`);
+    await expect(page.locator('body')).not.toContainText('synthetic-secret');
+    failure = '';
+    await submit(page).click();
+    await expect(callbacks(page)).toHaveText(String(index + 1));
+    expect(session.requests[index * 2 + 1]).toEqual(session.requests[index * 2]);
+  }
+});
+
 test('disables pending submission and guards duplicate submit events until one callback completes', async ({ page }) => {
   const held = holdRegistration(page);
   await open(page); await fill(page);
