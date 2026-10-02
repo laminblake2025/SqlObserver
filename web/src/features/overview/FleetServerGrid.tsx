@@ -3,6 +3,7 @@ import { useBackupSummaryClock } from './useBackupSummaryClock';
 import { fleetServerRows, groupFleetServerRows, type FleetGrouping, type FleetSignal } from './fleetGridModel';
 import { FleetServerGroupingEditor } from './FleetServerGroupingEditor';
 import { backupAssessmentHref, overviewHref } from './overviewModel';
+import { healthCheckHref } from '../operations/agentHistoryModel';
 import type { OverviewScope, OverviewSnapshot, OverviewTarget, OverviewValue } from './overviewTypes';
 
 export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime, onGroupingUpdated }: {
@@ -40,12 +41,12 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
           {row.target.canManageGrouping && <button type="button" className="table-link" aria-label={`Edit grouping for ${row.target.displayName}`} onClick={() => setEditing(row.target)}>Edit labels</button>}
         </td>
         <td><a href={overviewHref(scope, 'alerts', row.target.targetId)}>{count(row.evidence?.activeAlerts)} active alerts</a><small>{row.attentionCount} observed issues · SQL core {row.evidence?.collectionState?.replaceAll('_', ' ') ?? 'unavailable'}</small></td>
-        <SignalCell label="SQL scheduler CPU" signal={row.signals.cpu} />
-        <SignalCell label="OS free via SQL" signal={row.signals.memory} />
-        <SignalCell label="Waits" signal={row.signals.waits} />
-        <SignalCell label="Blocking" signal={row.signals.blocking} />
+        <SignalCell label="SQL scheduler CPU" signal={row.signals.cpu} href={overviewHref(scope, 'resources', row.target.targetId)} />
+        <SignalCell label="OS free via SQL" signal={row.signals.memory} href={overviewHref(scope, 'resources', row.target.targetId)} />
+        <SignalCell label="Waits" signal={row.signals.waits} href={overviewHref(scope, 'waits', row.target.targetId)} />
+        <SignalCell label="Blocking" signal={row.signals.blocking} href={overviewHref(scope, 'activity', row.target.targetId)} />
         <SignalCell label="Backups" signal={row.signals.backups} href={backupAssessmentHref(scope, row.target.targetId, row.evidence?.backupSummary?.assessedAtUtc ?? null)} />
-        <SignalCell label="HA" signal={row.signals.ha} />
+        <SignalCell label="HA" signal={row.signals.ha} href={healthCheckHref(scope, row.target.targetId, 'availability')} />
         <td>{row.evidence?.lastObservedUtc ? formatTime(row.evidence.lastObservedUtc) : 'Unavailable'}</td>
       </tr>)}</tbody>)}
     </table></div>
@@ -58,7 +59,7 @@ function SignalCell({ label, signal, href }: { readonly label: string; readonly 
   const content = <span className={`fleet-signal fleet-signal-${signal.tone}`} title={signal.detail} aria-label={`${label}: ${signal.detail}`}>
     <span className="fleet-signal-dot" aria-hidden="true" />{signal.text}
   </span>;
-  return <td>{href ? <a href={href}>{content}</a> : content}</td>;
+  return <td>{href ? <a href={href} title={`Open ${label} evidence`}>{content}</a> : content}</td>;
 }
 
 function count(value: OverviewValue | undefined): string {

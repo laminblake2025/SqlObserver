@@ -6,15 +6,26 @@ import type { DatabaseHealthSummary } from "../features/health/healthTypes";
 export interface AlertSelection { readonly targetId: string; readonly alertId: string }
 
 export function alertSelectionFromHash(hash: string): AlertSelection | undefined {
+  if (hash.split("?")[0] !== "#/alerts") return undefined;
   const parameters = new URLSearchParams(hash.split("?")[1]);
-  const targetId = parameters.get("alertTarget");
+  if (["target", "alertTarget", "alert"].some(key => parameters.getAll(key).length > 1)) return undefined;
+  const selectedTarget = parameters.get("target");
+  const alertTarget = parameters.get("alertTarget");
+  const targetId = selectedTarget || alertTarget;
   const alertId = parameters.get("alert");
-  return targetId && alertId ? { targetId, alertId } : undefined;
+  const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+  if (!targetId || !alertId || !guid.test(targetId) || !guid.test(alertId)) return undefined;
+  if (selectedTarget && alertTarget && selectedTarget.toLowerCase() !== alertTarget.toLowerCase()) return undefined;
+  return { targetId: targetId.toLowerCase(), alertId: alertId.toLowerCase() };
 }
 
 export function alertJumpHref(scope: OverviewScope, alert: Pick<FleetAlert, "targetId" | "alertId">): string {
   const href = overviewHref(scope, "alerts", "");
   return `${href}&alertTarget=${encodeURIComponent(alert.targetId)}&alert=${encodeURIComponent(alert.alertId)}`;
+}
+
+export function targetAlertHref(scope: OverviewScope, targetId: string, alertId: string): string {
+  return `${overviewHref(scope, "alerts", targetId)}&alert=${encodeURIComponent(alertId)}`;
 }
 
 export function matchingAlerts(alerts: readonly FleetAlert[], query: string): readonly FleetAlert[] {

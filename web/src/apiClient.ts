@@ -84,7 +84,8 @@ async function readSnapshot(response: Response, maximumBytes: number, signal: Ab
 }
 
 function responseFrom(snapshot: Snapshot): Response {
-  return new Response(snapshot.bytes === null ? null : snapshot.bytes.slice(), {
+  const hasNoBody = snapshot.status === 204 || snapshot.status === 205 || snapshot.status === 304;
+  return new Response(hasNoBody || snapshot.bytes === null ? null : snapshot.bytes.slice(), {
     status: snapshot.status, statusText: snapshot.statusText, headers: snapshot.headers,
   });
 }
@@ -139,7 +140,11 @@ function subscribe(flight: Flight, key: string | null, signal?: AbortSignal | nu
     };
     const cancelled = () => { if (finish()) reject(abortReason(signal!)); };
     signal?.addEventListener("abort", cancelled, { once: true });
-    flight.result.then(snapshot => { if (finish()) resolve(responseFrom(snapshot)); },
+    flight.result.then(snapshot => {
+      if (!finish()) return;
+      try { resolve(responseFrom(snapshot)); }
+      catch (error) { reject(error); }
+    },
       error => { if (finish()) reject(error); });
     if (signal?.aborted) cancelled();
   });

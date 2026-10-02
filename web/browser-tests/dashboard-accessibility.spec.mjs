@@ -15,6 +15,20 @@ const screens = [
   ['alerts', 'alerts'],
 ];
 
+async function auditResponsiveState(page, testInfo, name) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), `${name} must fit its viewport`).toBeLessThanOrEqual(1);
+  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+  await testInfo.attach(`${name}-accessibility-results`, { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
+  expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
+}
+
+async function saveFullPage(page, filename) {
+  const folder = resolve('../artifacts/dashboard-refactor/screenshots');
+  await mkdir(folder, { recursive: true });
+  await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+  await page.screenshot({ path: resolve(folder, filename), fullPage: true });
+}
+
 async function open(page, surface) {
   await page.context().addCookies([
     { name: 'dashboardRefactor', value: '1', url: origin },
@@ -270,5 +284,100 @@ for (const width of [320, 390, 768, 1440]) {
     });
     await page.screenshot({ path: resolve(folder, `workspace-fleet-${width}.png`), fullPage: true });
     await fleet.screenshot({ path: resolve(folder, `workspace-fleet-detail-${width}.png`) });
+  });
+}
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`current alert URL selection preserves accessible target and fleet detail at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'alertSelectionFixture', value: '1', url: origin },
+    ]);
+    const firstTarget = '11111111-1111-4111-8111-000000000001';
+    const pagedAlert = '66666666-6666-4666-8666-666666666666';
+    for (const mode of ['target', 'fleet']) {
+      const params = new URLSearchParams({ range: 'custom', from: '2026-09-30T08:00:00.000Z', to: '2026-09-30T12:00:00.000Z', alert: pagedAlert });
+      params.set(mode === 'target' ? 'target' : 'alertTarget', mode === 'target' ? firstTarget : target);
+      await page.goto(`/#/alerts?${params}`);
+      const detail = page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true });
+      await expect(detail.getByRole('heading', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
+      await expect(detail).toContainText(pagedAlert);
+      const select = page.getByRole('button', { name: mode === 'target' ? 'SYNTHETIC paged alert' : 'Select SYNTHETIC paged alert on SYNTHETIC SQL 02', exact: true });
+      await expect(select).toHaveAttribute('aria-pressed', 'true');
+      await select.focus();
+      await select.press('Enter');
+      await expect(select).toBeFocused();
+      await expect(select).toHaveAttribute('aria-pressed', 'true');
+      await expect(detail).toBeVisible();
+      await auditResponsiveState(page, testInfo, `${mode}-selected-alert`);
+      await saveFullPage(page, `selected-alert-${mode}-${width}.png`);
+    }
+  });
+
+  test(`query palette context and unavailable database remain accessible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'databaseScopeFixture', value: '1', url: origin },
+      { name: 'paletteCatalogFixture', value: '1', url: origin },
+    ]);
+    for (const databaseId of ['6', '99']) {
+      await page.goto(`/#/health?${new URLSearchParams({ target, range: '1h', databaseId })}`);
+      await expect(page.getByRole('combobox', { name: 'Workspace database', exact: true })).toHaveValue(databaseId);
+      const search = page.getByRole('button', { name: /^Search/ });
+      await search.focus();
+      await search.press('Enter');
+      const dialog = page.getByRole('dialog', { name: 'Jump to evidence', exact: true });
+      await expect(dialog.getByRole('searchbox', { name: 'Search servers', exact: true })).toBeFocused();
+      const queryMode = dialog.getByRole('button', { name: 'Query hash', exact: true });
+      await queryMode.focus();
+      await queryMode.press('Enter');
+      await expect(queryMode).toHaveAttribute('aria-pressed', 'true');
+      const input = dialog.getByRole('spinbutton', { name: 'Database ID', exact: true });
+      await expect(input).toBeEnabled();
+      await expect(input).toHaveValue(databaseId === '6' ? '6' : '');
+      if (databaseId === '99') {
+        await expect(dialog.getByText("Workspace database ID 99 is absent from this server's query database catalog. Choose an available database or enter its ID to check history.", { exact: true })).toBeVisible();
+      }
+      await input.focus();
+      await expect(input).toBeFocused();
+      await auditResponsiveState(page, testInfo, `palette-database-${databaseId}`);
+      const folder = resolve('../artifacts/dashboard-refactor/screenshots');
+      await mkdir(folder, { recursive: true });
+      await dialog.screenshot({ path: resolve(folder, `palette-${databaseId === '6' ? 'context' : 'unavailable'}-detail-${width}.png`) });
+      await saveFullPage(page, `palette-${databaseId === '6' ? 'context' : 'unavailable'}-${width}.png`);
+      await page.keyboard.press('Escape');
+      await expect(dialog).not.toBeVisible();
+      await expect(search).toBeFocused();
+    }
+  });
+
+  test(`fleet signal evidence links support keyboard investigation at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+    ]);
+    await page.goto('/#/overview?range=1h');
+    const grid = page.getByRole('region', { name: 'Server health grid', exact: true });
+    const server = grid.getByRole('link', { name: 'SYNTHETIC SQL 02', exact: true });
+    await expect(server).toBeVisible();
+    const row = grid.getByRole('row').filter({ has: page.getByRole('link', { name: 'SYNTHETIC SQL 02', exact: true }) });
+    for (const [label, destination] of [['SQL scheduler CPU', 'resources'], ['OS free via SQL', 'resources'], ['Waits', 'waits'], ['Blocking', 'activity'], ['HA', 'operations']]) {
+      const link = row.getByRole('link', { name: new RegExp(`^${label}:`) });
+      await expect(link).toHaveCount(1);
+      await expect(link).toHaveAttribute('href', new RegExp(`#/${destination}\\?target=${target}`));
+      await link.focus();
+      await expect(link).toBeFocused();
+    }
+    await auditResponsiveState(page, testInfo, 'fleet-evidence-links');
+    await saveFullPage(page, `fleet-evidence-links-${width}.png`);
+    const waits = row.getByRole('link', { name: /^Waits:/ });
+    await waits.focus();
+    await waits.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`#/waits\\?target=${target}`));
   });
 }

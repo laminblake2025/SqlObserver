@@ -15,6 +15,6 @@ test("alert panel exposes loading/error states and protects pending load-more", 
   const panel = await readFile(new URL("../src/features/alerts/TargetAlertsPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /Loading target-scoped alerts/);
   assert.match(panel, /role="alert"/);
-  assert.match(panel, /disabled=\{!nextCursor \|\| loadingMore\}/);
+  assert.match(panel, /disabled=\{!nextCursor \|\| loading \|\| loadingMore\}/);
   assert.match(panel, /setError\(undefined\)/);
 });

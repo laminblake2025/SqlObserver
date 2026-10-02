@@ -10,9 +10,21 @@ import {handleAgentHistoryFixture} from './agent-history-fixture.mjs';
 import {handleChartReferenceFixture} from './chart-reference-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
+const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
+const alertSelectionRows=[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:'2026-09-30T09:00:00.000Z',firedUtc:'2026-09-30T09:01:00.000Z',value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false},{alertId:'66666666-6666-4666-8666-666666666666',ruleId:'77777777-7777-4777-8777-777777777777',ruleName:'SYNTHETIC paged alert',state:'firing',firstObservedUtc:'2026-09-30T10:00:00.000Z',firedUtc:'2026-09-30T10:01:00.000Z',value:7,reason:'Synthetic bounded second-page evidence',deliverySuppressed:false}];
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ if(req.headers.cookie?.includes('alertOperatorFixture=1')&&url.pathname==='/api/v1/me') {
+  const targetId=url.searchParams.get('targetId'),roles=['Viewer','Operator'];
+  return send(res,{active:true,targetId,grantedRoles:roles,allTargetRoles:roles,targetRoles:targetId?roles:[]});
+ }
+ if(req.headers.cookie?.includes('alertSelectionFixture=1')&&url.pathname==='/api/v1/alerts/active') {
+  const cursor=url.searchParams.get('cursor');
+  if(cursor!==null&&cursor!=='cGFnZTI=')return send(res,{},400);
+  const index=cursor?1:0;
+  return send(res,{snapshotUtc:alertSelectionSnapshot,items:[{...alertSelectionRows[index],targetId:targets[index].instanceId,targetName:targets[index].displayName}],nextCursor:cursor?null:'cGFnZTI='});
+ }
  if(await handleChartReferenceFixture(url,res,req,targets,send))return;
  // Opt-in dashboard interaction evidence, isolated from existing scenario contracts.
  if(req.headers.cookie?.includes('dashboardRefactor=1')) {
@@ -62,7 +74,16 @@ createServer(async(req,res)=>{try{
    const summary={eventId:'33333333-3333-4333-8333-333333333333',fingerprint:'a'.repeat(64),occurredAtUtc:new Date(deadlockTime).toISOString(),participantCount:2,relationCount:2,parseTruncated:false,collectedAtUtc:now};
    if(surface==='deadlocks')return send(res,{targetId:instanceId,repositoryTimeUtc:now,items:[summary],nextCursor:null});
    if(surface==='deadlocks/'+summary.eventId)return send(res,{summary,participants:[{sessionId:51,isVictim:true},{sessionId:72,isVictim:false}],relations:[{blockerSessionId:51,waiterSessionId:72,resourceCategory:'key',lockMode:'X'},{blockerSessionId:72,waiterSessionId:51,resourceCategory:'key',lockMode:'X'}]});
-   if(surface==='alerts/active')return send(res,{targetId:instanceId,snapshotUtc:now,items:[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:now,firedUtc:now,value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false}],nextCursor:null});
+   if(surface==='alerts/active') {
+    if(req.headers.cookie?.includes('alertSelectionFixture=1')) {
+     const cursor=url.searchParams.get('cursor');
+     if(cursor!==null&&cursor!=='cGFnZTI=')return send(res,{},400);
+     return send(res,{targetId:instanceId,snapshotUtc:alertSelectionSnapshot,items:cursor?alertSelectionRows:[alertSelectionRows[0]],nextCursor:cursor?null:'cGFnZTI='});
+    }
+    return send(res,{targetId:instanceId,snapshotUtc:now,items:[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:now,firedUtc:now,value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false}],nextCursor:null});
+   }
+   if(/^alerts\/[^/]+\/acknowledge$/.test(surface)&&req.method==='POST'&&req.headers.cookie?.includes('alertSelectionFixture=1')) {res.writeHead(204);res.end();return;}
+   if(surface==='query-performance/status'&&req.headers.cookie?.includes('paletteCatalogFixture=1'))return send(res,{targetId:instanceId,snapshotUtc:now,source:'query_store',sourceState:'read_write',coverage:'complete',fresh:true,truncated:false,contentAvailable:false,databaseStatuses:[],databaseCatalog:[{databaseId:5,databaseName:instanceId===targets[1].instanceId?'Orders 02':'Orders'},{databaseId:6,databaseName:instanceId===targets[1].instanceId?'Warehouse 02':'Warehouse'}]});
    if(surface==='query-performance/cache/top' || /^query-performance\/cache\/databases\/(?:5\/history\/b{64}\/plans\/c{64}|6\/history\/d{64}\/plans\/e{64})$/.test(surface)) {
     const start=url.searchParams.get('fromUtc'),end=url.searchParams.get('toUtc');
     // Ranking and history use half-open windows: a capture exactly at toUtc is excluded.

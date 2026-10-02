@@ -29,14 +29,18 @@ export function CommandPalette({ open, onClose, scope }: {
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [alerts, setAlerts] = useState<readonly FleetAlert[]>([]);
   const [databases, setDatabases] = useState<readonly DatabaseHealthSummary[]>([]);
-  const [queryDatabases, setQueryDatabases] = useState<readonly QueryPerformanceDatabaseCatalog[]>([]);
-  const [queryDatabaseId, setQueryDatabaseId] = useState("");
+  const [queryCatalog, setQueryCatalog] = useState<{ readonly context: string; readonly items: readonly QueryPerformanceDatabaseCatalog[]; readonly selectedMissing: boolean }>();
+  const [queryDatabase, setQueryDatabase] = useState<{ readonly context: string; readonly id: string }>();
   const [queryLookup, setQueryLookup] = useState<"idle" | "loading" | "found" | "missing" | "error" | "window">("idle");
   const [verifiedQuery, setVerifiedQuery] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [moreAvailable, setMoreAvailable] = useState(false);
   const [error, setError] = useState(false);
-  const queryIdentity = JSON.stringify([scope.target, queryDatabaseId, query.trim().toLowerCase(), scope.range, scope.from, scope.to]);
+  const queryContext = JSON.stringify([scope.target.toLowerCase(), scope.databaseId ?? null]);
+  const queryDatabases = queryCatalog?.context === queryContext ? queryCatalog.items : [];
+  const queryDatabaseId = queryDatabase?.context === queryContext ? queryDatabase.id : "";
+  const selectedDatabaseMissing = queryCatalog?.context === queryContext && queryCatalog.selectedMissing;
+  const queryIdentity = JSON.stringify([open, mode, queryContext, queryDatabaseId, query.trim().toLowerCase(), scope.range, scope.from, scope.to]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,8 +61,8 @@ export function CommandPalette({ open, onClose, scope }: {
     setTargets([]);
     setAlerts([]);
     setDatabases([]);
-    setQueryDatabases([]);
-    setQueryDatabaseId("");
+    setQueryCatalog(undefined);
+    setQueryDatabase({ context: queryContext, id: "" });
     setLoading(true);
     setMoreAvailable(false);
     setError(false);
@@ -66,7 +70,12 @@ export function CommandPalette({ open, onClose, scope }: {
       if (mode === "queries") {
         if (!scope.target) return;
         const status = await getQueryPerformanceStatus(scope.target, undefined, undefined, controller.signal);
-        if (!controller.signal.aborted) setQueryDatabases(status.databaseCatalog);
+        if (!controller.signal.aborted) {
+          if (status.targetId.toLowerCase() !== scope.target.toLowerCase()) throw new Error("Query database catalog target mismatch.");
+          const selected = status.databaseCatalog.find(database => database.databaseId === scope.databaseId);
+          setQueryCatalog({ context: queryContext, items: status.databaseCatalog, selectedMissing: scope.databaseId !== undefined && !selected });
+          setQueryDatabase({ context: queryContext, id: selected ? String(selected.databaseId) : "" });
+        }
         return;
       }
       if (mode === "databases") {
@@ -125,7 +134,7 @@ export function CommandPalette({ open, onClose, scope }: {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [open, mode, scope.target]);
+  }, [open, mode, scope.target, scope.databaseId]);
 
   useEffect(() => {
     setQueryLookup("idle");
@@ -182,8 +191,9 @@ export function CommandPalette({ open, onClose, scope }: {
       <button type="button" aria-pressed={mode === "queries"} onClick={() => setMode("queries")}>Query hash</button>
       <button type="button" aria-pressed={mode === "alerts"} onClick={() => setMode("alerts")}>Current alerts</button>
     </div>
-    {mode === "queries" && <label>Database ID <input type="number" min="1" max="32767" list="query-search-databases" value={queryDatabaseId} onChange={event => setQueryDatabaseId(event.target.value)} placeholder="Choose a database ID" /></label>}
+    {mode === "queries" && <label>Database ID <input type="number" min="1" max="32767" list="query-search-databases" value={queryDatabaseId} disabled={loading || !scope.target} onChange={event => setQueryDatabase({ context: queryContext, id: event.target.value })} placeholder="Choose a database ID" /></label>}
     {mode === "queries" && <datalist id="query-search-databases">{queryDatabases.map(database => <option key={database.databaseId} value={database.databaseId} label={database.databaseName} />)}</datalist>}
+    {mode === "queries" && selectedDatabaseMissing && <p className="command-palette-status" role="status">Workspace database ID {scope.databaseId} is absent from this server's query database catalog. Choose an available database or enter its ID to check history.</p>}
     <input ref={search} type="search" aria-label={mode === "servers" ? "Search servers" : mode === "databases" ? "Search databases" : mode === "queries" ? "Enter query hash" : "Search current alerts"}
       placeholder={mode === "servers" ? "Search servers…" : mode === "databases" ? "Search database name or ID…" : mode === "queries" ? "Paste a 64-character query hash…" : "Search alert, rule, or server…"} value={query}
       onChange={event => setQuery(event.target.value)}
@@ -199,10 +209,10 @@ export function CommandPalette({ open, onClose, scope }: {
         : mode === "databases"
           ? !scope.target ? "Select a server first, then search its databases." : loading ? `Searching databases on the selected server… ${databases.length} loaded` : error ? "Database search is incomplete. Try the server's Databases tab." : moreAvailable ? "Showing the first 500 databases on this server. Use the Databases tab to browse further." : `${databases.length} databases searched on the selected server`
         : mode === "queries"
-          ? !scope.target ? "Select a server first, then enter a database ID and query hash." : queryLookup === "loading" ? "Checking exact query history in the selected time window…" : queryLookup === "missing" ? "No history found for that database and hash in the selected window." : queryLookup === "error" ? "Query history could not be checked." : queryLookup === "window" ? "Choose a valid time range of up to seven days." : verifiedQuery === queryIdentity ? "Matching query history found." : error ? "Database suggestions are unavailable. You can enter its ID." : "Enter a database ID and a 64-character query hash."
+          ? !scope.target ? "Select a server first, then enter a database ID and query hash." : loading ? "Loading query database suggestions for the selected server…" : queryLookup === "loading" ? "Checking exact query history in the selected time window…" : queryLookup === "missing" ? "No history found for that database and hash in the selected window." : queryLookup === "error" ? "Query history could not be checked." : queryLookup === "window" ? "Choose a valid time range of up to seven days." : verifiedQuery === queryIdentity ? "Matching query history found." : error ? "Database suggestions are unavailable. You can enter its ID." : "Enter a database ID and a 64-character query hash."
         : loading ? `Searching current alerts… ${alerts.length} loaded` : error ? "Alert search is incomplete. Try the Alert inbox." : moreAvailable ? "Showing the first 500 current alerts. Use the Alert inbox to browse further." : `${alerts.length} current alerts searched`}
     </p>
-    <div className="command-palette-results" aria-label={mode === "servers" ? "Matching servers" : mode === "databases" ? "Matching databases" : mode === "queries" ? "Matching query hash" : "Matching current alerts"}>
+    <div className="command-palette-results" role="group" aria-label={mode === "servers" ? "Matching servers" : mode === "databases" ? "Matching databases" : mode === "queries" ? "Matching query hash" : "Matching current alerts"}>
       {mode === "servers" ? matches.map(target => <button key={target.instanceId} className="command-palette-result" type="button" onClick={() => jump(target)}
         onKeyDown={event => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;

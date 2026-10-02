@@ -14,6 +14,24 @@ const deferred = () => {
 };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('empty acknowledgement and null-body status streams restore a valid response without hanging subscribers', async () => {
+  for (const status of [204, 205, 304]) {
+    await withFetch(async () => ({ status, statusText: 'Synthetic empty response', headers: new Headers(), body: new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(0)); controller.close(); } }) }), async () => {
+      const response = await apiFetch('/api/v1/observation-targets/server/alerts/alert/acknowledge', { method: 'POST', body: '{}' });
+      assert.equal(response.status, status);
+      assert.equal(response.body, null);
+      assert.equal(await response.text(), '');
+      assert.equal(response.ok, status !== 304);
+    });
+  }
+});
+
+test('response reconstruction failures reject the subscriber instead of escaping its promise', async () => {
+  await withFetch(async () => ({ status: 0, statusText: '', headers: new Headers(), body: null }), async () => {
+    await assert.rejects(apiFetch(path), RangeError);
+  });
+});
+
 async function withFetch(handler, run) {
   const previous = globalThis.fetch;
   clearApiCache();

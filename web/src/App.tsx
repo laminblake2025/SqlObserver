@@ -3,7 +3,7 @@ import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { Drawer } from "./components/Drawer";
 import { CommandPalette } from "./components/CommandPalette";
-import { alertSelectionFromHash, queryJumpHref } from "./components/commandPaletteModel";
+import { alertJumpHref, alertSelectionFromHash, queryJumpHref, targetAlertHref } from "./components/commandPaletteModel";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { DatabaseScopeControls } from "./components/DatabaseScopeControls";
@@ -186,15 +186,23 @@ export function App() {
     const currentRoute = readRoute(location.hash);
     if (!selected || currentRoute.target.toLowerCase() !== selected.instanceId.toLowerCase()) return;
     const nextScope = { ...readOverviewScope(location.hash), databaseId };
-    const href = currentRoute.page === "operations" && currentRoute.healthCheck
+    const currentAlert = alertSelectionFromHash(location.hash);
+    const href = currentRoute.page === "alerts" && currentAlert
+      ? targetAlertHref(nextScope, currentRoute.target, currentAlert.alertId)
+      : currentRoute.page === "operations" && currentRoute.healthCheck
       ? healthCheckHref(nextScope, currentRoute.target, currentRoute.healthCheck)
       : overviewHref(nextScope, currentRoute.page, currentRoute.target);
     location.hash = queryViewHref(href, { ...readQueryViewSelection(location.hash), cacheSelection: undefined });
   };
   const changeTimeContext = (next: Partial<typeof scope>) => {
-    const selectedScope = { ...scope, ...next };
+    const selectedScope = { ...readOverviewScope(location.hash), ...next };
     const selectedRoute = readRoute(location.hash);
-    const href = selectedRoute.page === "activity" && selectedRoute.activityAtUtc
+    const currentAlert = alertSelectionFromHash(location.hash);
+    const href = selectedRoute.page === "alerts" && currentAlert
+      ? selectedRoute.target
+        ? targetAlertHref(selectedScope, selectedRoute.target, currentAlert.alertId)
+        : alertJumpHref(selectedScope, currentAlert)
+      : selectedRoute.page === "activity" && selectedRoute.activityAtUtc
       ? activityHistoryHref(selectedRoute.target, selectedRoute.activityAtUtc, selectedRoute.activityEventId, selectedScope)
       : selectedRoute.page === "queries" && selectedRoute.databaseId !== undefined && selectedRoute.queryFingerprint !== undefined
         ? queryJumpHref(selectedScope, selectedRoute.target, selectedRoute.databaseId,
@@ -216,11 +224,15 @@ export function App() {
   );
   const currentNavigation = route.page === "health" ? "servers" :
     route.page === "rules" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
-  const routeHref = (page: Destination, target = route.target) => queryViewHref(
-    page === "health" && route.healthSection
+  const routeHref = (page: Destination, target = route.target) => {
+    if (page === "alerts" && route.page === "alerts" && alertSelection && target.toLowerCase() === route.target.toLowerCase())
+      return target ? targetAlertHref(scope, target, alertSelection.alertId) : alertJumpHref(scope, alertSelection);
+    const href = page === "health" && route.healthSection
       ? healthSectionHref(scope, target, route.healthSection, route.configurationRunId)
-    : page === "operations" && route.healthCheck
-      ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target), queryView);
+      : page === "operations" && route.healthCheck
+        ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target);
+    return queryViewHref(href, queryView);
+  };
   const closeTarget = () => {
     location.hash = route.page === "alerts" ? routeHref("alerts", "") :
       route.page === "rules" || route.page === "maintenance" || route.page === "destinations"
@@ -369,7 +381,7 @@ export function App() {
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
               {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh} />}
-              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
+              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} selectedAlertId={alertSelection?.targetId === props.instanceId.toLowerCase() ? alertSelection.alertId : undefined} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} />}

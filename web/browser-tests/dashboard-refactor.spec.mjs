@@ -5,6 +5,8 @@ const second = '11111111-1111-4111-8111-000000000002';
 const from = '2026-09-26T08:00:00.000Z';
 const to = '2026-09-26T12:00:00.000Z';
 const origin = 'http://127.0.0.1:4322';
+const firstAlert = '44444444-4444-4444-8444-444444444444';
+const pagedAlert = '66666666-6666-4666-8666-666666666666';
 const href = (surface = 'overview', target = first, range = 'custom') =>
   `/#/${surface}?${new URLSearchParams({ target, range, ...(range === 'custom' ? { from, to } : {}) })}`;
 const scope = page => new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
@@ -25,6 +27,208 @@ async function assertHistoricalScope(page, target = first, start = from, end = t
 }
 const mainNavigation = page => page.getByRole('navigation', { name: 'Main navigation' });
 const fleetStrip = page => page.getByRole('navigation', { name: 'Loaded server status', exact: true });
+
+async function alertFixture(page, operator = false) {
+  await databaseFixture(page);
+  await page.context().addCookies([{ name: 'alertSelectionFixture', value: '1', url: origin }, ...(operator ? [{ name: 'alertOperatorFixture', value: '1', url: origin }] : [])]);
+}
+
+test('target alert URL restores a paged selection and preserves keyboard focus without refetching loaded rows', async ({ page }) => {
+  await alertFixture(page);
+  let reads = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname === `/api/v1/observation-targets/${first}/alerts/active`) reads++; });
+  await page.goto(`${href('alerts')}&databaseId=6&alert=${pagedAlert}`);
+  const observations = page.getByRole('region', { name: 'Target alert observations', exact: true });
+  const paged = observations.getByRole('button', { name: 'SYNTHETIC paged alert', exact: true });
+  await expect(paged).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
+  expect(reads).toBe(2);
+  await assertDatabaseScope(page, 6);
+  await assertHistoricalScope(page);
+  await expect(page.getByText(/Alerts show the latest target-scoped state, independently of the history window/)).toContainText('Repository snapshot:');
+  await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toHaveCount(0);
+  const loadedReads = reads;
+  const firstRow = observations.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true });
+  const originalButton = await firstRow.elementHandle();
+  await firstRow.focus();
+  await firstRow.press('Enter');
+  await expect.poll(() => scope(page).get('alert')).toBe(firstAlert);
+  await expect(firstRow).toHaveAttribute('aria-pressed', 'true');
+  await expect(firstRow).toBeFocused();
+  expect(await originalButton.evaluate(element => element.isConnected)).toBe(true);
+  expect(reads).toBe(loadedReads);
+  await paged.focus();
+  await paged.press('Enter');
+  await expect.poll(() => scope(page).get('alert')).toBe(pagedAlert);
+  await expect(paged).toBeFocused();
+  expect(reads).toBe(loadedReads);
+  await page.getByRole('textbox', { name: 'Filter by rule identifier', exact: true }).fill('55555555');
+  await expect(page.locator('.detail-pane.empty-state')).toContainText('The selected alert is hidden by the current filters.');
+  await expect(page.locator('aside.detail-pane')).toHaveCount(0);
+  expect(scope(page).get('alert')).toBe(pagedAlert);
+  await page.getByRole('button', { name: 'Show selected alert', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(paged).toHaveAttribute('aria-pressed', 'true');
+  await assertDatabaseScope(page, 6);
+  await page.goto(`${href('alerts')}&databaseId=6&alert=88888888-8888-4888-8888-888888888888`);
+  await expect(page.locator('.detail-pane.empty-state')).toContainText('The requested alert is not present in the bounded current server alerts.');
+  await expect(page.locator('aside.detail-pane')).toHaveCount(0);
+  await expect(observations.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('fleet alert URL restores an exact paged alert and filtered or missing selection never substitutes another detail', async ({ page }) => {
+  await alertFixture(page);
+  let reads = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/v1/alerts/active') reads++; });
+  await page.goto(`${href('alerts', '')}&alertTarget=${second}&alert=${pagedAlert}`);
+  const observations = page.getByRole('region', { name: 'Fleet alert observations', exact: true });
+  const paged = observations.getByRole('button', { name: 'Select SYNTHETIC paged alert on SYNTHETIC SQL 02', exact: true });
+  await expect(paged).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
+  expect(reads).toBe(2);
+  await expect(page.getByText(/Alerts show the latest fleet state, independently of the history window/)).toContainText('Repository snapshot:');
+  await page.getByRole('textbox', { name: 'Filter loaded alerts', exact: true }).fill('blocking');
+  await expect(page.locator('.detail-pane.empty-state')).toContainText('The selected alert is hidden by the current filters.');
+  await expect(page.locator('aside.detail-pane')).toHaveCount(0);
+  expect(scope(page).get('alert')).toBe(pagedAlert);
+  await page.getByRole('button', { name: 'Show selected alert', exact: true }).click();
+  await expect(paged).toHaveAttribute('aria-pressed', 'true');
+  const loadedReads = reads;
+  const firstRow = observations.getByRole('button', { name: 'Select SYNTHETIC sustained blocking on SYNTHETIC SQL 01', exact: true });
+  const originalButton = await firstRow.elementHandle();
+  await firstRow.focus();
+  await firstRow.press('Enter');
+  await expect.poll(() => scope(page).get('alert')).toBe(firstAlert);
+  await expect.poll(() => scope(page).get('alertTarget')).toBe(first);
+  await expect(firstRow).toBeFocused();
+  expect(await originalButton.evaluate(element => element.isConnected)).toBe(true);
+  expect(reads).toBe(loadedReads);
+  await page.reload();
+  await expect(firstRow).toHaveAttribute('aria-pressed', 'true');
+  await page.goto(`${href('alerts', '')}&alertTarget=${first}&alert=88888888-8888-4888-8888-888888888888`);
+  await expect(page.locator('.detail-pane.empty-state')).toContainText('The requested alert is not present in the bounded current inbox.');
+  await expect(page.locator('aside.detail-pane')).toHaveCount(0);
+});
+
+test('late acknowledgement from an old target alert selection cannot update another selected alert', async ({ page }) => {
+  await alertFixture(page, true);
+  let release, requested = false, returned = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/${first}/alerts/${firstAlert}/acknowledge`, async route => { requested = true; await gate; await route.fulfill({ status: 204 }).catch(() => {}); returned = true; });
+  try {
+    await page.goto(`${href('alerts')}&databaseId=6&alert=${pagedAlert}`);
+    const observations = page.getByRole('region', { name: 'Target alert observations', exact: true });
+    await observations.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true }).click();
+    await page.getByRole('button', { name: 'Acknowledge', exact: true }).click();
+    await expect.poll(() => requested).toBe(true);
+    await observations.getByRole('button', { name: 'SYNTHETIC paged alert', exact: true }).click();
+    await expect(page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toBeEnabled();
+  } finally { release(); }
+  await expect.poll(() => returned).toBe(true);
+  expect(scope(page).get('alert')).toBe(pagedAlert);
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true }) }).getByRole('cell').first()).toHaveText('firing');
+  await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement recorded.' })).toHaveCount(0);
+});
+
+test('acknowledgement from a prior firing cycle cannot mark refreshed alert evidence and a new cycle uses a new operation', async ({ page }) => {
+  await alertFixture(page, true);
+  let release, recycled = false, returned = false;
+  const operations = [];
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/${first}/alerts/active?*`, async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: recycled ? { ...body, snapshotUtc: '2026-10-01T12:00:00.000Z', items: body.items.map(item => item.alertId === firstAlert ? { ...item, firstObservedUtc: '2026-10-01T09:00:00.000Z', firedUtc: '2026-10-01T09:01:00.000Z', value: 99 } : item) } : body });
+  });
+  await page.route(`**/${first}/alerts/${firstAlert}/acknowledge`, async route => {
+    operations.push(route.request().postDataJSON().operationId);
+    if (operations.length === 1) { await gate; await route.fulfill({ status: 204 }).catch(() => {}); returned = true; }
+    else await route.fulfill({ status: 204 });
+  });
+  try {
+    await page.goto(`${href('alerts')}&databaseId=6&alert=${firstAlert}`);
+    await page.getByRole('button', { name: 'Acknowledge', exact: true }).click();
+    await expect.poll(() => operations.length).toBe(1);
+    recycled = true;
+    await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+    await expect(page.getByRole('complementary', { name: 'SYNTHETIC sustained blocking', exact: true }).locator('.alert-observed')).toContainText('99');
+    await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toBeEnabled();
+  } finally { release(); }
+  await expect.poll(() => returned).toBe(true);
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true }) }).getByRole('cell').first()).toHaveText('firing');
+  await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement recorded.' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Acknowledge', exact: true }).click();
+  await expect.poll(() => operations.length).toBe(2);
+  expect(operations[1]).not.toBe(operations[0]);
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true }) }).getByRole('cell').first()).toHaveText('acknowledged');
+});
+
+test('query palette prefills only a selected database in the current server catalog and explains missing context', async ({ page }) => {
+  await databaseFixture(page);
+  await page.context().addCookies([{ name: 'paletteCatalogFixture', value: '1', url: origin }]);
+  await page.goto(`${href('health')}&databaseId=6`);
+  await page.keyboard.press('Control+k');
+  const dialog = page.getByRole('dialog', { name: 'Jump to evidence' });
+  await dialog.getByRole('button', { name: 'Query hash', exact: true }).click();
+  await expect(dialog.getByRole('spinbutton', { name: 'Database ID', exact: true })).toHaveValue('6');
+  await expect(dialog.locator('#query-search-databases option[value="6"]')).toHaveAttribute('label', 'Warehouse');
+  await page.keyboard.press('Escape');
+  await page.goto(`${href('health')}&databaseId=99`);
+  await page.keyboard.press('Control+k');
+  await dialog.getByRole('button', { name: 'Query hash', exact: true }).click();
+  const database = dialog.getByRole('spinbutton', { name: 'Database ID', exact: true });
+  await expect(database).toBeEnabled();
+  await expect(database).toHaveValue('');
+  await expect(dialog.getByRole('status').filter({ hasText: 'Workspace database ID 99 is absent' })).toBeVisible();
+  await database.fill('6');
+  await expect(database).toHaveValue('6');
+  expect(scope(page).get('databaseId')).toBe('99');
+});
+
+test('delayed query palette catalog from a prior server cannot prefill the new server context', async ({ page }) => {
+  await databaseFixture(page);
+  await page.context().addCookies([{ name: 'paletteCatalogFixture', value: '1', url: origin }]);
+  let release, requested = false, returned = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/${first}/query-performance/status`, async route => { const response = await route.fetch(); requested = true; await gate; await route.fulfill({ response }).catch(() => {}); returned = true; });
+  const dialog = page.getByRole('dialog', { name: 'Jump to evidence' });
+  try {
+    await page.goto(`${href('health')}&databaseId=6`);
+    await page.keyboard.press('Control+k');
+    await dialog.getByRole('button', { name: 'Query hash', exact: true }).click();
+    await expect.poll(() => requested).toBe(true);
+    await expect(dialog.getByRole('spinbutton', { name: 'Database ID', exact: true })).toBeDisabled();
+    await page.evaluate(hash => { location.hash = hash; }, `${href('health', second).slice(1)}&databaseId=5`);
+    await expect(dialog.getByRole('spinbutton', { name: 'Database ID', exact: true })).toHaveValue('5');
+    await expect(dialog.locator('#query-search-databases option[value="5"]')).toHaveAttribute('label', 'Orders 02');
+  } finally { release(); }
+  await expect.poll(() => returned).toBe(true);
+  await expect(dialog.getByRole('spinbutton', { name: 'Database ID', exact: true })).toHaveValue('5');
+  await expect(dialog.locator('#query-search-databases option[value="6"]')).toHaveAttribute('label', 'Warehouse 02');
+  await expect(dialog.getByRole('searchbox', { name: 'Enter query hash', exact: true })).toHaveValue('');
+});
+
+test('fleet CPU memory waits blocking and HA cells open their diagnostic evidence in the shared window', async ({ page }) => {
+  await fixture(page);
+  const cases = [['SQL scheduler CPU', 'resources', null], ['OS free via SQL', 'resources', null], ['Waits', 'waits', null], ['Blocking', 'activity', null], ['HA', 'operations', 'availability']];
+  for (const [signal, destination, check] of cases) {
+    await page.goto(href('overview', ''));
+    const row = page.getByRole('region', { name: 'Server health grid', exact: true }).getByRole('row').filter({ has: page.getByRole('link', { name: 'SYNTHETIC SQL 01', exact: true }) });
+    const link = row.getByRole('link', { name: new RegExp(`^${signal}:`) });
+    const params = new URLSearchParams((await link.getAttribute('href')).split('?')[1]);
+    expect(params.get('target')).toBe(first);
+    expect(params.get('from')).toBe(from);
+    expect(params.get('to')).toBe(to);
+    expect(params.get('check')).toBe(check);
+    await link.focus();
+    await link.press('Enter');
+    await expect.poll(() => new URL(page.url()).hash.split('?')[0]).toBe(`#/${destination}`);
+    await assertHistoricalScope(page);
+    await expect(page.getByRole('combobox', { name: 'Target server', exact: true })).toHaveValue(first);
+  }
+});
 
 test('diagnostic navigation and server changes retain the selected historical window', async ({ page }) => {
   const errors = [];
