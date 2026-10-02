@@ -46,3 +46,18 @@ test("chart gap threshold follows the server's 15-minute and hourly buckets", ()
   assert.deepEqual(chartObservedPoints(points, "2026-09-24T00:00:00Z", "2026-09-26T00:00:00Z"),
     [points[0], points[1], points[2]]);
 });
+
+test('drag endpoints and interpolated windows preserve native microsecond instants', () => {
+  const start = '2026-09-24T10:00:00.1234560Z', end = '2026-09-24T12:00:00.654321+00:00';
+  assert.deepEqual(chartSelection(48, 620, start, end), { fromUtc: '2026-09-24T10:00:00.123456Z', toUtc: '2026-09-24T12:00:00.654321Z' });
+  assert.equal(chartUtcAtX(334, start, end), '2026-09-24T11:00:00.388889Z');
+  assert.deepEqual(chartSelection(620, 48, start, end), chartSelection(48, 620, start, end));
+  assert.equal(chartUtcAtX(48, '1960-01-01T00:00:00.123456Z', '1960-01-01T01:00:00.123456Z'), '1960-01-01T00:00:00.123456Z');
+});
+
+test('minimum drag duration is checked without rounding a native endpoint', () => {
+  assert.equal(chartSelection(48, 620, '2026-09-24T10:00:00.000001Z', '2026-09-24T10:01:00Z'), undefined);
+  assert.deepEqual(chartSelection(48, 620, '2026-09-24T10:00:00.000001Z', '2026-09-24T10:01:00.000001Z'), {
+    fromUtc: '2026-09-24T10:00:00.000001Z', toUtc: '2026-09-24T10:01:00.000001Z',
+  });
+});

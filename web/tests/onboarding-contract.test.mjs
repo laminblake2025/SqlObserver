@@ -106,7 +106,7 @@ test("native get and grouping results fence exact target identity and normalized
     for (const overrides of [{ instanceId: beta }, { tags: ["api", "api"] }, { tags: ["UPPER"] }, { tags: Array(17).fill("api") },
       { environment: " production " }, { groupingRevision: 0 }, { groupingRevision: Number.MAX_SAFE_INTEGER + 1 }, { tags: null }]) {
       value = { instanceId: alpha, environment: null, tags: [], groupingRevision: 1, ...overrides };
-      await assert.rejects(updateObservationTargetGrouping(alpha, 0, null, [], new AbortController().signal), { message: invalidTargetResponse });
+      await assert.rejects(updateObservationTargetGrouping(alpha, 0, null, [], new AbortController().signal), error => error.outcomeUnknown === true);
     }
     value = registeredTarget(registrationRequest(), { instanceId: beta });
     await assert.rejects(getObservationTarget(alpha, new AbortController().signal), { message: invalidTargetResponse });

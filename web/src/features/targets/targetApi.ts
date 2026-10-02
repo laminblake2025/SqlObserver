@@ -82,12 +82,60 @@ export async function updateObservationTargetGrouping(
   instanceId: string, expectedRevision: number, environment: string | null,
   tags: readonly string[], signal: AbortSignal,
 ): Promise<{ instanceId: string; environment: string | null; tags: readonly string[]; groupingRevision: number }> {
-  return getJson(`${targetsPath}/${encodeURIComponent(instanceId)}/grouping`, {
-    method: "PUT", credentials: "same-origin",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ expectedRevision, environment, tags }), signal,
-  }, signal, value => parseObservationTargetGrouping(value, instanceId));
+  let normalizedEnvironment: string | null, normalizedTags: string[];
+  try {
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(instanceId) ||
+      instanceId === "00000000-0000-0000-0000-000000000000" ||
+      !Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision >= Number.MAX_SAFE_INTEGER ||
+      !Array.isArray(tags) || tags.length > 16) throw new Error();
+    const normalize = (value: string | null): string | null => {
+      if (value === null) return null;
+      if (typeof value !== "string") throw new Error();
+      const label = value.trim().toLowerCase();
+      if (!label) return null;
+      if (label.length > 64 || !/^[a-z0-9][a-z0-9._:\-]*$/u.test(label)) throw new Error();
+      return label;
+    };
+    normalizedEnvironment = normalize(environment);
+    normalizedTags = tags.map(tag => { const label = normalize(tag); if (!label) throw new Error(); return label; }).sort();
+    if (new Set(normalizedTags).size !== normalizedTags.length) throw new Error();
+  } catch {
+    throw new TargetManagementError("Use a valid server revision and up to 16 unique labels of 1–64 letters, digits, dots, underscores, colons, or hyphens.", 400, false);
+  }
+  if (signal.aborted) throw signal.reason;
+  let response: Response;
+  try {
+    response = await apiFetch(`${targetsPath}/${encodeURIComponent(instanceId)}/grouping`, {
+      method: "PUT", credentials: "same-origin",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision, environment, tags }), signal,
+    }, { maximumResponseBytes: maximumTargetResponseBytes });
+  } catch {
+    throw new TargetManagementError(unknownGroupingOutcome, undefined, true);
+  }
+  if (!response.ok) {
+    const message = response.status === 409 ? "These labels changed elsewhere. Reload server labels before saving again."
+      : response.status === 403 ? "Editing server labels requires the Target Administrator role on this server."
+      : response.status === 400 ? "The server labels were refused. Check the labels and revision."
+      : response.status === 429 ? "Too many administrative requests. Wait briefly and retry."
+      : response.status === 401 ? "Your access could not be verified. Reload server labels."
+      : response.status === 404 ? "The selected server is unavailable. Reload server labels."
+      : unknownGroupingOutcome;
+    throw new TargetManagementError(message, response.status, ![400, 401, 403, 404, 409, 429].includes(response.status));
+  }
+  try {
+    if (response.status !== 200) throw invalidTargetResponse();
+    const receipt = parseObservationTargetGrouping(await readTargetResponse(response, signal), instanceId);
+    if (receipt.groupingRevision !== expectedRevision + 1 || receipt.environment !== normalizedEnvironment ||
+      receipt.tags.length !== normalizedTags.length || receipt.tags.some((tag, index) => tag !== normalizedTags[index]))
+      throw invalidTargetResponse();
+    return receipt;
+  } catch {
+    throw new TargetManagementError(unknownGroupingOutcome, response.status, true);
+  }
 }
+
+const unknownGroupingOutcome = "The server labels outcome is unknown. Reload server labels before saving again.";
 
 export class TargetManagementError extends Error {
   readonly status: number | undefined;

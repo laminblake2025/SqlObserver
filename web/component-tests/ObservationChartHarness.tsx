@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { TimeDisplayProvider, useTimeDisplay } from "../src/TimeDisplayContext";
 import { ObservationChart } from "../src/components/ObservationChart";
+import { OverviewChart } from "../src/features/overview/OverviewChart";
 import type { ObservationSeries } from "../src/components/observationChartModel";
 import "../src/styles.css";
 import "./harness.css";
@@ -46,8 +47,10 @@ function Harness() {
   const [window, setWindow] = useState<Window>(initialWindow);
   const [crosshairUtc, setCrosshairUtc] = useState<string | null>(null);
   const [selectionCount, setSelectionCount] = useState(0);
+  const [kind, setKind] = useState('observation');
+  const [target, setTarget] = useState('alpha');
   const series: readonly ObservationSeries[] = [
-    { id: "latency", label: "Latency", items: samples[preset] },
+    { id: `${target}:latency`, label: "Latency", items: samples[preset] },
     { id: "unavailable", label: "Uncollected", items: [] },
   ];
   function selectWindow(selected: Window) {
@@ -88,6 +91,9 @@ function Harness() {
       <label className="harness-checkbox"><input type="checkbox" checked={units}
         onChange={event => setUnits(event.target.checked)} />Format values in milliseconds</label>
       <button type="button" onClick={resetInteraction}>Reset interaction</button>
+      <label>Primary chart kind<select value={kind} onChange={event => setKind(event.target.value)}><option value="observation">Observation</option><option value="overview">Overview</option></select></label>
+      <button type="button" onClick={() => setWindow({ fromUtc: '2026-01-15T12:10:00.000Z', toUtc: '2026-01-15T13:10:00.000Z' })}>Advance chart window</button>
+      <button type="button" onClick={() => setTarget(value => value === 'alpha' ? 'beta' : 'alpha')}>Replace chart target</button>
     </fieldset>
     <section className="harness-observations" aria-label="Interaction results">
       <p>Shared pointer: <output aria-label="Shared crosshair UTC">{crosshairUtc ?? "None"}</output></p>
@@ -96,7 +102,10 @@ function Harness() {
       <p>Selections: <output aria-label="Selection callback count">{selectionCount}</output></p>
     </section>
     <section className="harness-chart-panel" aria-label="Primary chart">
-      <h2>Primary chart</h2><ObservationChart label="Latency evidence" series={series} {...chartProps} />
+      <h2>Primary chart</h2>{kind === 'observation' ? <ObservationChart label="Latency evidence" series={series} {...chartProps} />
+        : <OverviewChart series={[{ targetId: target, label: 'Latency', metric: 'latency', unit: 'ms', state: 'fresh', dimension: null,
+          points: samples[preset].map(item => ({ timeUtc: item.time, value: item.value, samples: 1 })) }]} {...window}
+          crosshairUtc={crosshairUtc} onCrosshairChange={setCrosshairUtc} onSelectWindow={selectWindow} />}
     </section>
     <section className="harness-chart-panel" aria-label="Companion chart">
       <h2>Companion chart</h2><ObservationChart label="Throughput evidence" series={companion} {...chartProps} />

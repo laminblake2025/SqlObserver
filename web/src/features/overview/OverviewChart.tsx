@@ -1,7 +1,8 @@
-import { useState, type PointerEvent } from 'react';
+import { type PointerEvent } from 'react';
 import { useTimeDisplay } from '../../TimeDisplayContext';
 import { formatDisplayTime } from '../../timeDisplay';
-import { chartObservedPoints, chartSelection, chartUtcAtX, chartX } from './chartTimeModel';
+import { chartObservedPoints, chartUtcAtX, chartSvgX } from './chartTimeModel';
+import { useChartGesture } from '../../components/useChartGesture';
 import { formatOverviewChartValue, overviewChartRange } from './overviewChartRange';
 import type { OverviewSeries } from './overviewTypes';
 import { matchingReferences, type ChartReferences } from './chartReferenceModel.ts';
@@ -26,14 +27,14 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
 }) {
   const {mode}=useTimeDisplay();
   const timeLabel=(value:string|number,compact=false)=>formatDisplayTime(value,mode,compact);
-  const [dragStart,setDragStart]=useState<number|null>(null);
-  const [dragEnd,setDragEnd]=useState<number|null>(null);
+  const gesture=useChartGesture(JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity)]),fromUtc,toUtc,onSelectWindow);
+  const dragStart=gesture.start,dragEnd=gesture.end;
   const from=Date.parse(fromUtc), to=Date.parse(toUtc);
   const selectedReferences=matchingReferences(series,references);
   const bands=selectedReferences.bands.filter(band=>Date.parse(band.fromUtc)<to&&Date.parse(band.toUtc)>from&&Date.parse(band.fromUtc)<Date.parse(band.toUtc));
   const range=overviewChartRange(series,previous,fromUtc,toUtc,selectedReferences);
   if (!range) return <p className="overview-empty">No comparable observations in this window. Missing samples are not plotted as zero.</p>;
-  const x=(time:string,shift=0)=>48+(Date.parse(time)+shift-from)/(to-from)*570;
+  const x=(time:string,shift=0)=>48+(Date.parse(time)+shift-from)/(to-from)*572;
   const y=(value:number)=>180-(value-range.minimum)/(range.maximum-range.minimum)*155;
   const ticks=[0,.25,.5,.75,1];
   const colorOrder=[...new Set([...series,...(previous??[])].map(seriesIdentity))].sort();
@@ -43,16 +44,15 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   const crosshairTime=crosshairUtc===null||crosshairUtc===undefined?NaN:Date.parse(crosshairUtc);
   const crosshairX=Number.isFinite(crosshairTime)&&crosshairTime>=from&&crosshairTime<=to?x(crosshairUtc!):null;
   const pointX=(event:PointerEvent<SVGSVGElement>)=>{
-    const bounds=event.currentTarget.getBoundingClientRect();
-    return bounds.width>0?chartX(event.clientX,bounds.left,bounds.width):null;
+    return chartSvgX(event.currentTarget,event.clientX,event.clientY);
   };
   return <figure><svg className={`chart overview-chart${onSelectWindow?' chart-interactive':''}`} viewBox="0 0 650 220" role="img" aria-label={`${series[0]?.unit} over the selected ${mode==='local'?'local-time display':'UTC'} window. Lines connect observations; missing samples remain gaps.${onSelectWindow?' Drag across the chart to select a shared time window.':''}`}
-    onPointerMove={event=>{if(!onCrosshairChange&&!onSelectWindow)return;const value=pointX(event);if(value===null)return;onCrosshairChange?.(chartUtcAtX(value,fromUtc,toUtc));if(dragStart!==null)setDragEnd(value);}}
-    onPointerDown={event=>{if(!onSelectWindow)return;const value=pointX(event);if(value===null)return;setDragStart(value);setDragEnd(value);event.currentTarget.setPointerCapture(event.pointerId);}}
-    onPointerUp={event=>{if(dragStart===null)return;const value=pointX(event);setDragStart(null);setDragEnd(null);if(value!==null){const selected=chartSelection(dragStart,value,fromUtc,toUtc);if(selected)onSelectWindow?.(selected);}}}
-    onPointerCancel={()=>{setDragStart(null);setDragEnd(null);}}
+    onPointerMove={event=>{if(!onCrosshairChange&&!onSelectWindow)return;const value=pointX(event);if(value===null)return;onCrosshairChange?.(chartUtcAtX(value,fromUtc,toUtc));gesture.move(value);}}
+    onPointerDown={event=>{if(!onSelectWindow)return;const value=pointX(event);if(value===null)return;gesture.begin(event.pointerId,value);event.currentTarget.setPointerCapture(event.pointerId);}}
+    onPointerUp={event=>{gesture.finish(event.pointerId,pointX(event));}}
+    onPointerCancel={gesture.cancel} onLostPointerCapture={gesture.cancel}
     onPointerLeave={()=>{if(dragStart===null)onCrosshairChange?.(null);}}>
-    {ticks.map(f=>{const value=range.minimum+f*(range.maximum-range.minimum);return <g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(value)} y2={y(value)}/><text x="0" y={y(value)+4}>{formatOverviewChartValue(value,range)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*570} x2={48+f*570} y1={25} y2={180}/></g>;})}
+    {ticks.map(f=>{const value=range.minimum+f*(range.maximum-range.minimum);return <g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(value)} y2={y(value)}/><text x="0" y={y(value)+4}>{formatOverviewChartValue(value,range)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*572} x2={48+f*572} y1={25} y2={180}/></g>;})}
     {bands.map((band,index)=>{const left=x(new Date(Math.max(from,Date.parse(band.fromUtc))).toISOString()),right=x(new Date(Math.min(to,Date.parse(band.toUtc))).toISOString());return <g className="chart-baseline-band" key={`${band.metric}:${band.fromUtc}:${index}`}>
       <rect x={left} y={y(band.high)} width={right-left} height={y(band.low)-y(band.high)}/>
       <line x1={left} x2={right} y1={y(band.median)} y2={y(band.median)}/><title>{`${band.label} · ${formatOverviewChartValue(band.low,range)}–${formatOverviewChartValue(band.high,range)} ${band.unit}`}</title>

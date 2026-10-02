@@ -1,7 +1,8 @@
 import { useState, type PointerEvent } from "react";
 import { useTimeDisplay } from "../TimeDisplayContext";
 import { formatDisplayTime } from "../timeDisplay";
-import { chartSelection, chartUtcAtX, chartX } from "../features/overview/chartTimeModel";
+import { chartUtcAtX, chartSvgX } from "../features/overview/chartTimeModel";
+import { useChartGesture } from "./useChartGesture";
 import {
   nearestObservation, observationSegments, prepareObservationChart,
   type ObservationBand, type ObservationSeries, type ObservationThreshold,
@@ -29,16 +30,15 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string | number, compact = false) => formatDisplayTime(value, mode, compact);
   const [hoverUtc, setHoverUtc] = useState<string | null>(null);
-  const [dragStart, setDragStart] = useState<number | null>(null);
-  const [dragEnd, setDragEnd] = useState<number | null>(null);
+  const gesture = useChartGesture(JSON.stringify([fromUtc, toUtc, label, series.map(entry => entry.id)]), fromUtc, toUtc, onSelectWindow);
+  const dragStart = gesture.start, dragEnd = gesture.end;
   const chart = prepareObservationChart(series, fromUtc, toUtc, baselineBand, threshold);
   if (chart === null) return <p className="empty-state">No numeric observations in this window. Missing values are not zero.</p>;
 
   const x = (timestamp: number) => left + (timestamp - chart.from) / (chart.to - chart.from) * (right - left);
   const y = (value: number) => bottom - (value - chart.minimum) / (chart.maximum - chart.minimum) * (bottom - top);
   const pointerX = (event: PointerEvent<SVGSVGElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    return bounds.width > 0 ? chartX(event.clientX, bounds.left, bounds.width) : null;
+    return chartSvgX(event.currentTarget, event.clientX, event.clientY);
   };
   const activeCrosshair = crosshairUtc === undefined ? hoverUtc : crosshairUtc;
   const crosshairTime = activeCrosshair === null ? NaN : Date.parse(activeCrosshair);
@@ -57,25 +57,20 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
         const position = pointerX(event);
         if (position === null) return;
         announceCrosshair(chartUtcAtX(position, fromUtc, toUtc));
-        if (dragStart !== null) setDragEnd(position);
+        gesture.move(position);
       }}
       onPointerDown={event => {
         if (!onSelectWindow) return;
         const position = pointerX(event);
         if (position === null) return;
-        setDragStart(position); setDragEnd(position);
+        gesture.begin(event.pointerId, position);
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerUp={event => {
-        if (dragStart === null) return;
-        const position = pointerX(event);
-        setDragStart(null); setDragEnd(null);
-        if (position !== null) {
-          const selected = chartSelection(dragStart, position, fromUtc, toUtc);
-          if (selected) onSelectWindow?.(selected);
-        }
+        gesture.finish(event.pointerId, pointerX(event));
       }}
-      onPointerCancel={() => { setDragStart(null); setDragEnd(null); }}
+      onPointerCancel={gesture.cancel}
+      onLostPointerCapture={gesture.cancel}
       onPointerLeave={() => { if (dragStart === null) announceCrosshair(null); }}>
       {[0, .5, 1].map(fraction => {
         const value = chart.minimum + fraction * (chart.maximum - chart.minimum);

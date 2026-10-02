@@ -61,6 +61,47 @@ async function drag(page, chart, from, to) {
   await page.mouse.up();
 }
 
+for (const kind of ['observation', 'overview']) {
+  for (const width of [320, 1440]) test(`${kind} maps the actual visible plot bounds to the full UTC window at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 }); await page.getByLabel('Primary chart kind').selectOption(kind);
+    const chart = primary(page), svg = chart.getByRole('img'); await svg.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+    const edge = async line => line.evaluate(element => {
+      const point = element.ownerSVGElement.createSVGPoint(); point.x = element.x1.baseVal.value;
+      point.y = (element.y1.baseVal.value + element.y2.baseVal.value) / 2;
+      const screen = point.matrixTransform(element.getScreenCTM()); return { x: screen.x, y: screen.y };
+    });
+    const axes = chart.locator('.chart-gridline-vertical'), start = await edge(axes.first()), end = await edge(axes.last());
+    // One pixel outside the painted plot remains within SVG, and clamps to its real boundary.
+    await page.mouse.move(start.x - 1, start.y); await page.mouse.down();
+    await page.mouse.move(end.x + 1, end.y, { steps: 8 }); await page.mouse.up();
+    await expect(result(page, 'Selection callback count')).toHaveText('1');
+    await expect(result(page, 'Selected from UTC')).toHaveText(initialFrom);
+    await expect(result(page, 'Selected to UTC')).toHaveText(initialTo);
+  });
+  for (const replacement of ['Advance chart window', 'Replace chart target']) {
+    test(`${kind} cancels a captured drag when ${replacement.toLowerCase()}`, async ({ page }) => {
+      await page.getByLabel('Primary chart kind').selectOption(kind);
+      const chart = primary(page), start = await pointAt(chart, .2), end = await pointAt(chart, .8);
+      await page.mouse.move(start.x, start.y); await page.mouse.down();
+      await page.mouse.move(end.x, end.y, { steps: 4 });
+      await expect(chart.locator('.chart-selection')).toHaveCount(1);
+      // Change the mounted props during pointer capture, as a workspace poll/navigation can.
+      await page.getByRole('button', { name: replacement, exact: true }).evaluate(button => button.click());
+      await expect(chart.locator('.chart-selection')).toHaveCount(0);
+      await page.mouse.up();
+      await expect(result(page, 'Selection callback count')).toHaveText('0');
+      await page.getByRole('button', { name: 'Reset interaction', exact: true }).click();
+      const svg = chart.getByRole('img'); await svg.scrollIntoViewIfNeeded();
+      await page.evaluate(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
+      const bounds = await svg.boundingBox();
+      await page.mouse.move(bounds.x + bounds.width * .2, bounds.y + bounds.height * .5); await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width * .8, bounds.y + bounds.height * .5, { steps: 6 }); await page.mouse.up();
+      await expect(result(page, 'Selection callback count')).toHaveText('1');
+    });
+  }
+}
+
 test('retains a numeric zero and excludes missing samples from accessible evidence', async ({ page }) => {
   const chart = primary(page);
   await expect(chart.locator('figcaption')).toContainText('3 plotted values');
@@ -206,7 +247,7 @@ test('uses the real time provider for local and UTC chart labels without changin
 });
 
 test('keeps chart values accessible at narrow and wide widths', async ({ page }, info) => {
-  const screenshotDirectory = fileURLToPath(new URL('../../artifacts/dashboard-components/screenshots/', import.meta.url));
+  const screenshotDirectory = fileURLToPath(new URL('../../artifacts/dashboard-fleet-timeline/screenshots/', import.meta.url));
   await mkdir(screenshotDirectory, { recursive: true });
   await page.getByLabel('Show reference values').check();
   await primary(page).getByText('View chart values', { exact: true }).click();
@@ -221,6 +262,9 @@ test('keeps chart values accessible at narrow and wide widths', async ({ page },
     await info.attach(`observation-chart-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
     expect(violations).toEqual([]);
     const path = `${screenshotDirectory}observation-chart-${width}.png`;
+    await values.evaluate(element => { element.scrollLeft = 0; element.blur(); });
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`observation-chart-${width}`, { path, contentType: 'image/png' });
   }

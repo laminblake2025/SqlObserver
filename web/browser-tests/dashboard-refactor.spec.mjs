@@ -1263,6 +1263,76 @@ test('investigate-first and blocking drill-downs keep the server, window and eve
   await expect(page.getByRole('heading', { name: 'Live sessions', exact: true })).toBeVisible();
 });
 
+test('timeline rail and keyboard range select the shared workspace and restore it after reload', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/v1/overview') requests.push(new URL(request.url())); });
+  await open(page, 'health', second);
+  const rail = page.getByRole('img', { name: /Timeline range selection/ });
+  await expect(rail).toBeVisible(); await rail.scrollIntoViewIfNeeded();
+  const box = await rail.boundingBox();
+  await page.mouse.move(box.x + box.width * .25, box.y + box.height * .5); await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .7, box.y + box.height * .5, { steps: 8 }); await page.mouse.up();
+  await expect.poll(() => Date.parse(scope(page).get('from')) > Date.parse(from) && Date.parse(scope(page).get('to')) < Date.parse(to)).toBe(true);
+  const selected = Object.fromEntries(scope(page));
+  await expect.poll(() => requests.some(url => url.searchParams.get('targetId') === second && url.searchParams.get('fromUtc') === selected.from && url.searchParams.get('toUtc') === selected.to)).toBe(true);
+  await page.reload(); await assertHistoricalScope(page, second, selected.from, selected.to);
+  const form = page.getByRole('form', { name: 'Select timeline window', exact: true });
+  await expect(form).toBeVisible();
+  const start = new Date(Date.parse(selected.from) + 60_000).toISOString(), end = new Date(Date.parse(selected.to) - 60_000).toISOString();
+  await form.getByLabel('Timeline from UTC', { exact: true }).fill(start);
+  await form.getByLabel('Timeline to UTC', { exact: true }).fill(end);
+  await form.getByRole('button', { name: 'Apply timeline window', exact: true }).focus(); await page.keyboard.press('Enter');
+  await assertHistoricalScope(page, second, start, end);
+  const resources = mainNavigation(page).getByRole('link', { name: 'Resources', exact: true });
+  await expect.poll(async () => new URLSearchParams((await resources.getAttribute('href')).split('?')[1]).get('from')).toBe(start);
+  await resources.click(); await assertHistoricalScope(page, second, start, end);
+});
+
+for (const width of [320, 1440]) test(`built dashboard timeline dark layout and keyboard range at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 }); await open(page, 'health', second);
+  const timeline = page.locator('.dashboard-timeline');
+  await expect(timeline.getByRole('img', { name: /Timeline range selection/ })).toBeVisible();
+  const form = timeline.getByRole('form', { name: 'Select timeline window', exact: true });
+  const start = form.getByLabel('Timeline from UTC', { exact: true }), end = form.getByLabel('Timeline to UTC', { exact: true });
+  await start.focus(); await page.keyboard.press('Tab'); await expect(end).toBeFocused();
+  await page.keyboard.press('Tab'); await expect(form.getByRole('button', { name: 'Apply timeline window' })).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+  const violations = (await new AxeBuilder({ page }).include('.dashboard-timeline').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
+  await info.attach(`built-timeline-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
+  const directory = resolve('../artifacts/dashboard-fleet-timeline/screenshots'); await mkdir(directory, { recursive: true });
+  await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo({ top: 0, behavior: 'instant' }); });
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  await timeline.locator('.dashboard-timeline-range').screenshot({ path: `${directory}/built-dashboard-timeline-${width}.png` });
+});
+
+test('fleet labels save in the built workspace and reload current revision without losing global time', async ({ page }) => {
+  let revision = 1, environment = 'production', tags = ['east', 'critical']; const mutations = [];
+  await page.route('**/api/v1/overview?*', async route => {
+    const response = await route.fetch(), value = await response.json();
+    value.targets = value.targets.map(target => target.targetId === first ? { ...target, environment, tags, groupingRevision: revision, canManageGrouping: true } : target);
+    await route.fulfill({ response, json: value });
+  });
+  await page.route(`**/api/v1/observation-targets/${first}/grouping`, async route => {
+    const body = route.request().postDataJSON(); mutations.push(body);
+    expect(body.expectedRevision).toBe(revision);
+    environment = body.environment.trim().toLowerCase(); tags = body.tags.map(tag => tag.trim().toLowerCase()).sort(); revision++;
+    await route.fulfill({ status: 200, contentType: 'application/json', json: { instanceId: first, environment, tags, groupingRevision: revision } });
+  });
+  await open(page, 'overview', '');
+  await page.getByRole('button', { name: 'Edit grouping for SYNTHETIC SQL 01', exact: true }).click();
+  const form = page.getByRole('form', { name: 'Server grouping labels', exact: true });
+  await form.getByLabel('Server environment').fill(' Staging '); await form.getByLabel('Server tags').fill('West, api');
+  await form.getByRole('button', { name: 'Save labels', exact: true }).click();
+  await expect(form).toHaveCount(0); await expect.poll(() => mutations.length).toBe(1);
+  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'SYNTHETIC SQL 01', exact: true }) });
+  await expect(row).toContainText('staging · api, west');
+  await page.getByRole('button', { name: 'Edit grouping for SYNTHETIC SQL 01', exact: true }).click();
+  await expect(form.getByLabel('Server environment')).toHaveValue('staging');
+  await form.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await assertHistoricalScope(page, '', from, to);
+});
+
 test('chart drag selects one shared window and the comparison toggle survives navigation', async ({ page }) => {
   const requests = [];
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/v1/overview') requests.push(new URL(request.url())); });
@@ -1989,8 +2059,8 @@ test('investigation timeline remains usable when dashboard metric series contain
   await comparison.focus();
   await comparison.press('Enter');
   await expect(comparison).toHaveAttribute('aria-pressed', 'true');
-  await expect(timeline.getByRole('status')).toContainText('Chart crosshair:');
-  await expect(timeline.getByRole('status').locator('time')).toHaveAttribute('datetime', eventTime);
+  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
+  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', eventTime);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   await expect(timeline.getByRole('button', { name: /^Align charts: Deadlock/ })).toHaveCount(1);
   await expect(page.locator('.server-dashboard-chart:has(.overview-empty) .chart-crosshair')).toHaveCount(0);
@@ -2016,8 +2086,8 @@ test('timeline category keyboard control aligns shared charts and clears hidden 
   await comparison.focus();
   await comparison.press('Enter');
   await expect(comparison).toHaveAttribute('aria-pressed', 'true');
-  await expect(timeline.getByRole('status')).toContainText('Chart crosshair:');
-  await expect(timeline.getByRole('status').locator('time')).toHaveAttribute('datetime', eventTime);
+  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
+  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', eventTime);
   await expect.poll(() => page.locator('.server-dashboard .chart-crosshair').count()).toBeGreaterThanOrEqual(4);
   await timeline.getByRole('button', { name: 'Clear timeline alignment', exact: true }).press('Enter');
   await expect(comparison).toHaveAttribute('aria-pressed', 'false');

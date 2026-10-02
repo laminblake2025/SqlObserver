@@ -103,6 +103,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "engine.os_available_memory_bytes" || item.metric === "host.memory.available_bytes")
     .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes" ? "SQL process used" : item.metric === "engine.os_available_memory_bytes" ? "OS available via SQL" : "Host available" })) ?? [];
   const change = (next: Partial<OverviewScope>) => {
+    if (location.hash !== selectionHash) return;
     const nextScope = { ...selectedScope, ...next };
     try { location.hash = dashboardTimelineSelectionHref(nextScope, requestedSelection ?? undefined); }
     catch { location.hash = overviewHref(nextScope, "health", instanceId); }
@@ -128,7 +129,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     <div className="section-heading"><div><p className="eyebrow">Server dashboard</p><h3 id="server-dashboard-heading">Investigate {displayName}</h3></div></div>
     <div className="overview-controls server-dashboard-controls">
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
-      <span className="server-dashboard-mode">Drag a chart to select a shared time window. Live ranges refresh every 60 seconds.</span>
+      <span className="server-dashboard-mode">Drag a chart or the timeline rail to select a shared time window. Live ranges refresh every 60 seconds.</span>
     </div>
     {result.loading && <p role="status">{data
       ? `Refreshing server timeline… Showing the previous snapshot window ${timeLabel(data.fromUtc)} to ${timeLabel(data.toUtc)}, refreshed ${timeLabel(data.refreshedAtUtc)}.`
@@ -149,6 +150,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <DashboardTimeline events={timelineEvents}
         fromUtc={data.fromUtc} toUtc={data.toUtc} crosshairUtc={crosshairUtc}
         selection={requestedSelection} onSelectionChange={selectTimeline} loading={result.loading || timeline.loading || alerts.loading || agentHistory.loading}
+        onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }}
         onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes} />
       {agentHistory.page && <section className="panel" aria-label="SQL Agent first-observed evidence">
         <h4>SQL Agent failures first observed in this window</h4>

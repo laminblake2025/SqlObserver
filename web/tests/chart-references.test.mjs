@@ -111,6 +111,7 @@ test("rendered chart contains bands, median and threshold lines with accessible 
   const replacements={react:pathToFileURL(require.resolve("react")).href,"react/jsx-runtime":pathToFileURL(require.resolve("react/jsx-runtime")).href,
     "../../TimeDisplayContext":timeStub,"../../timeDisplay":new URL("../src/timeDisplay.ts",import.meta.url).href,
     "./chartTimeModel":new URL("../src/features/overview/chartTimeModel.ts",import.meta.url).href,
+    "../../components/useChartGesture":new URL("../src/components/useChartGesture.ts",import.meta.url).href,
     "./overviewChartRange":new URL("../src/features/overview/overviewChartRange.ts",import.meta.url).href,
     "./chartReferenceModel.ts":new URL("../src/features/overview/chartReferenceModel.ts",import.meta.url).href};
   for(const [key,value] of Object.entries(replacements))javascript=javascript.replaceAll(JSON.stringify(key),JSON.stringify(value));

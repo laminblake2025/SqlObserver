@@ -2,7 +2,43 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest query/history and rule-form qualification
+## Latest fleet grouping and timeline qualification
+
+The event timeline now selects the shared workspace window through a bounded drag rail or UTC keyboard form. Selections retain native microseconds, preserve database/comparison context and restore through reload and navigation. Captured gestures cancel on window changes and unmount. Overview and Observation charts also bind a drag to its original window and series; pointer mapping uses the actual SVG screen transform so centered drawings at wide widths select the correct time. Overview drawing and selection bounds now agree. The dashboard refuses callbacks from an obsolete hash context.
+
+Fleet grouping edits resolve against the current overview target, revision and permission before rendering. Same-revision refresh preserves drafts; changed revisions or lost authority remove stale drafts. A delayed Alpha save cannot close Beta's newer editor. Requests have synchronous duplicate guards, tracked cancellation and late-result fences. Cancel stays available while pending. Unknown outcomes, conflicts and rejected access persist per target after closing the editor; explicit Reload discards the draft and waits for a fresh validated overview before editing resumes. Cancellation does not claim server rollback. Successful receipts must match the exact target, expected revision plus one and normalized submitted labels.
+
+Three independent owners reviewed diagnostic workflows, implemented grouping and timeline changes, authored interactions, and checked dark/responsive styles with non-overlapping ownership. The lead integrated API/UTC/chart behavior and App composition, resolved the independently identified SVG coordinate defect, and owns final validation. Fresh final read-only reviews found no remaining actionable issues in these integrated changes.
+
+| Requested requirement | Evidence | Completion for this pass |
+|---|---|---|
+| Multiple independent owners and one integration lead | Separate grouping product, mounted interaction, timeline/dark-layout lanes; lead owns shared contracts, charts, integration and final qualification. | Complete. |
+| Dark theme | Shared tokens and focus styles; bounded grouping fields, long native names, wrapping actions and timeline controls. | Passing in tested states. |
+| Diagnostic-screen review | Reviewed dashboard/timeline, fleet/search, Resources and Health workflows against current native contracts; fixed timeline selection, gesture/precision and grouping lifecycle findings. Remaining findings below. | Review delivered; dashboard work remains. |
+| Interaction tests | **54 owning checks: 53 runtime/API/model and one explicit security lint**, **41 mounted cases**, **16 built-App cases**. | All final groups pass, without skips, flaky outcomes or retries. |
+| Accessibility and responsive checks | Keyboard activation/focus, axe, field/control bounds, local grid scrolling and document overflow at **320/390/768/1440**; actual plot-bound drags at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **463 frozen inputs** and closed owned fixture ports. | Passing against final product code. |
+| Screenshots and requirement summary | **12 fresh reviewed captures**, [gallery](../../artifacts/dashboard-fleet-timeline/index.html), [case inventories/input hashes/run provenance](../../artifacts/dashboard-fleet-timeline/completion.json). | Delivered locally, bound to final local commit. |
+
+The mounted suite defines 236 cases; only the 41 affected cases ran. All 16 App cases ran as a complete final group. Initial component setup failures came from a nested select locator and fresh-drag coordinates affected by scrolling; corrected setup retained the product assertions. An independent source review then found the real SVG coordinate defect, prompting product repair, production rebuild and fresh native/mounted runs. Existing App crosshair checks required selecting the relevant status after the new preview introduced another status element. Visual review refined two built-App captures to the range controls so the pinned fleet strip does not obscure long stitched event-list screenshots. The only later frozen-input change is that owning App spec; product, native and mounted inputs remain unchanged. Complete attempts remain in `initial-run`, `before-coordinate-fix`, `initial-app` and `before-capture-refinement`. Counts come from complete final groups, not a union of repair cases.
+
+This qualification uses synthetic native frontend fixtures. It does not establish backend mutation execution/authorization, connected SQL behavior, full repository validation or GitHub upload. The original review plan and dashboard refactor remain incomplete.
+
+### Remaining source-reviewed dashboard work
+
+These are frontend findings supported by existing native contracts, not backend scope requests. Check current sources before changing them:
+
+1. **Command palette database context:** key database results and jump actions to their loaded target before render; a changed-target commit can offer a previous target's names.
+2. **Overview response validation:** validate resource `server`/`unit`/`state` and issue `server`/`observedAtUtc` before rendering or sorting; malformed accepted display fields can throw.
+3. **Dashboard waits refresh:** retain only a matching target/window snapshot with refresh disclosure; the chart currently disappears on every poll and can render old data under a changed window before its effect clears.
+4. **Investigate-first head blocker:** use the existing current blocking graph/root/chain evidence for an explicitly current server-wide finding. Do not invent historical attribution or a session capture link.
+5. **Configuration mutations:** track enable/disable requests in `ServerConfigurationSnapshot` and cancel/fence closing, authority loss and context changes.
+6. **Database-option history:** key received result/error to target and exact window before render, including invalid or unsupported windows.
+7. **Diagnostic browsing during refresh:** preserve native continuation context where supported for resource files, AG streams, backups, Agent/configuration history and health databases until explicit latest or context change; distinguish mutable windows from snapshot contracts.
+
+Current code already exposes database compatibility/read-only/log reuse options, configuration drift, per-replica AG data and backup RPO assessment. Do not repeat the original static review's stale missing-feature claims for those paths. Actual target OS-vs-SQL CPU, full wait attribution, current/long-running Agent jobs, complete restart/failover/resolved-alert history and the assistant remain source/backend decisions listed later. No backend scope expansion was made.
+
+## Previous query/history and rule-form qualification
 
 This dashboard pass closes the six source-reviewed frontend findings recorded in the preceding volume/admin checkpoint. Exact query and plan URL inspection survives ranking-page changes and ranking failures; refresh, target, window, database, metric and source changes cancel old continuations. Query ranking/status/history/plan receipts are keyed during render, so old evidence cannot appear under a changed context before effects clear it. Invalid duplicate, orphan or contradictory exact query fields visibly require repair; the ranking source filter remains independent.
 
