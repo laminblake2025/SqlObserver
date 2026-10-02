@@ -1,5 +1,6 @@
 import { overviewHref, overviewWindow } from "../overview/overviewModel.ts";
 import type { OverviewScope } from "../overview/overviewTypes";
+import { canonicalUtcTimestamp, utcMicroseconds } from "../../utcTimestamp.ts";
 
 const maximumQueryWindowMilliseconds = 7 * 24 * 60 * 60 * 1000;
 
@@ -11,21 +12,14 @@ export type QueryWindowResult =
   | { readonly state: "invalid"; readonly message: string };
 
 export function resolveQueryWindow(scope: OverviewScope, now: number): QueryWindowResult {
-  const customDuration = customWindowDuration(scope, now);
-  if (customDuration !== undefined && customDuration > maximumQueryWindowMilliseconds) {
-    return {
-      state: "unsupported",
-      message: "Query performance supports ranges up to 7 days. Choose a shorter range.",
-    };
-  }
-
   try {
-    const window = overviewWindow(scope, now);
-    const duration = Date.parse(window.toUtc) - Date.parse(window.fromUtc);
-    if (!Number.isFinite(duration) || duration <= 0) {
-      return invalidQueryWindow();
-    }
-    if (duration > maximumQueryWindowMilliseconds) {
+    const normalize = (value: string) => value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1");
+    const window = scope.range === "custom" ? {
+      fromUtc: canonicalUtcTimestamp(normalize(scope.from ?? "")), toUtc: canonicalUtcTimestamp(normalize(scope.to ?? "")),
+    } : overviewWindow(scope, now);
+    const from = utcMicroseconds(window.fromUtc), to = utcMicroseconds(window.toUtc), duration = to - from;
+    if (!Number.isFinite(now) || duration <= 0n || to > BigInt(Math.trunc(now + 60_000)) * 1000n) return invalidQueryWindow();
+    if (duration > BigInt(maximumQueryWindowMilliseconds) * 1000n) {
       return {
         state: "unsupported",
         message: "Query performance supports ranges up to 7 days. Choose a shorter range.",
@@ -43,15 +37,6 @@ export function queryPerformanceDefaultHref(scope: OverviewScope): string {
     "queries",
     scope.target,
   );
-}
-
-function customWindowDuration(scope: OverviewScope, now: number): number | undefined {
-  if (scope.range !== "custom") return undefined;
-  const from = Date.parse(scope.from ?? "");
-  const to = Date.parse(scope.to ?? "");
-  if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(now)) return undefined;
-  if (from >= to || to > now + 60_000) return undefined;
-  return to - from;
 }
 
 function invalidQueryWindow(): { readonly state: "invalid"; readonly message: string } {

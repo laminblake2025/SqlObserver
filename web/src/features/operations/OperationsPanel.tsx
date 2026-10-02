@@ -3,6 +3,7 @@ import { useTimeFormatter } from "../../TimeDisplayContext";
 import { AnalyticsSurfacePanel } from "../analytics/AnalyticsSurfacePanel";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
 import { EvidenceTable } from "../../components/EvidenceTable";
+import { healthSectionHref } from "../../dashboardModel";
 import { getOperationalPage, OperationalApiError } from "./operationsApi";
 import { initialOperationsState, operationKinds, operationsReducer } from "./operationsState";
 import { buildOperationsRenderModel, type OperationsRenderCard } from "./operationsRenderModel";
@@ -98,6 +99,11 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
   return <section className="operations-screen" aria-label="Health checks">
     <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB pressure, availability, and replication from collected evidence.</p></div></div>
     <Tabs label="Health check categories" tabs={tabs} value={tab} onChange={(value) => { setTab(value as OperationsTab); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
+    <nav className="toolbar" aria-label="Additional health checks">
+      <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
+      <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>
+    </nav>
+    <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
     {scope.range === "custom" && <p className="table-note">Rewind applies to backup assessments, per-replica AG evidence and SQL Agent first-observed history. Other operational cards show their latest source snapshots.</p>}
     {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
       : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />

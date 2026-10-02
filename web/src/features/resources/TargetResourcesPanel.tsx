@@ -15,6 +15,7 @@ import { useChartReferences } from "../overview/useChartReferences.ts";
 import { resourceInspectionInputUtc, resourceInspectionUtc } from "./resourceInspectionModel.ts";
 import { readResourceSelection, resourceSelectionHref, type ResourceSelection } from "./resourceSelectionModel.ts";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
+import { selectedFileAllocation } from "./selectedFileAllocationModel.ts";
 
 const memoryMetrics = new Set([
   "engine.process_physical_memory_bytes", "engine.os_available_memory_bytes",
@@ -96,7 +97,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       updateSelection({ inspectionUtc: undefined });
     }
   };
-  const fileContext = JSON.stringify([instanceId.toLowerCase(), refresh]);
+  const fileContext = JSON.stringify([instanceId.toLowerCase(), targetRevision, refresh]);
   const fileContextRef = useRef(fileContext);
   fileContextRef.current = fileContext;
   const [receivedFiles, setFiles] = useState<{ key: string; page: DatabaseFileHealthPage }>();
@@ -136,10 +137,10 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       })
       .finally(() => { if (!controller.signal.aborted && fileContextRef.current === fileContext) { fileRequest.current = undefined; setFilesLoading({ key: fileContext, loading: false }); } });
     return () => { controller.abort(); fileRequest.current?.abort(); fileRequest.current = undefined; };
-  }, [instanceId, refresh]);
+  }, [instanceId, targetRevision, refresh]);
 
   async function navigateFilePage(index: number, cursor?: string) {
-    if (fileRequest.current || !files) return;
+    if (fileContextRef.current !== fileContext || fileRequest.current || !files) return;
     const controller = new AbortController();
     fileRequest.current = controller;
     setFilesLoading({ key: fileContext, loading: true });
@@ -175,6 +176,11 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes"
       ? "SQL process used" : item.metric === "engine.os_available_memory_bytes"
         ? "OS available via SQL" : "Collector host available" })) ?? [];
+  const currentUrlScope = readOverviewScope(location.hash);
+  const allocation = selectedFileAllocation({ targetId: instanceId, selection: resourceSelection.file, databaseId: scope.databaseId,
+    page: files, loading: filesLoading, failed: Boolean(fileError), contextCurrent: !resourceSelection.invalidContext &&
+      currentUrlScope.target.toLowerCase() === instanceId.toLowerCase() && currentUrlScope.range === scope.range &&
+      currentUrlScope.from === scope.from && currentUrlScope.to === scope.to && currentUrlScope.databaseId === scope.databaseId });
 
   return <section className="activity-screen" aria-labelledby="resources-heading">
     <div className="screen-intro"><div><p className="eyebrow">Server · resources</p>
@@ -243,6 +249,27 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
           <button type="button" className="secondary-button" onClick={() => updateSelection({ file: undefined })}>Clear selected file</button></>}
         {filesLoading && <p role="status">Loading file snapshot…</p>}
         {fileError && <p role="alert">{fileError} Refresh or retry page navigation.</p>}
+        <details className="supporting-evidence" aria-label="Selected file allocation and autogrowth">
+          <summary>Selected file allocation and autogrowth{allocation.state === "unavailable"
+            ? <span> · {filesLoading ? "Loading" : "Unavailable"}</span> : allocation.attention ? <span> · Stale or incomplete evidence</span> : null}</summary>
+          <p className="table-note">This is allocation configuration from the latest loaded file snapshot, including in Rewind. It is not used log space, free disk space, a capacity forecast, or a guarantee that growth will succeed.</p>
+          {allocation.state === "unavailable" ? <p role="status">{allocation.notice}</p> : <>
+            <p className="activity-evidence">Database ID {allocation.file.databaseId} · file ID {allocation.file.fileId} · {allocation.file.logicalName}.</p>
+            {allocation.attention && <p role="status">Loaded file snapshot status: {files?.collector.state.replaceAll("_", " ")} · selected file status: {allocation.file.collector.state.replaceAll("_", " ")}. The evidence may be stale or incomplete. Configuration facts do not establish present capacity.</p>}
+            <dl className="health-facts">
+              <div><dt>File type</dt><dd>{({ rows: "Rows", log: "Log", filestream: "FILESTREAM", full_text: "Full text", other: "Other / unknown" })[allocation.file.fileType]}</dd></div>
+              <div><dt>File state</dt><dd>{allocation.file.state === "other" ? "Other / unknown" : allocation.file.state.replaceAll("_", " ")}</dd></div>
+              <div><dt>Allocated bytes</dt><dd>{allocation.file.sizeBytes} bytes · {fileSizeGib(allocation.file.sizeBytes)}</dd></div>
+              <div><dt>Reported maximum bytes</dt><dd>{allocation.maximum}{allocation.file.maximumSizeBytes !== null ? " bytes" : ""}</dd></div>
+              <div><dt>Autogrowth</dt><dd>{allocation.growth}</dd></div>
+              <div><dt>Observed</dt><dd><time dateTime={allocation.file.observedAtUtc}>{formatDisplayTime(allocation.file.observedAtUtc, mode)}</time></dd></div>
+              <div><dt>Collector status</dt><dd>{allocation.file.collector.state.replaceAll("_", " ")} · {allocation.file.collector.reason.replaceAll("_", " ")}</dd></div>
+              <div><dt>Snapshot checked</dt><dd>{files ? formatDisplayTime(files.repositoryTimeUtc, mode) : "Unavailable"}</dd></div>
+            </dl>
+            {allocation.file.collector.hasVisibilityGap && <p role="status">File collection has a visibility gap{allocation.file.collector.sampleLossKind ? ` (${allocation.file.collector.sampleLossKind.replaceAll("_", " ")})` : ""}. Missing file configuration is not inferred.</p>}
+            <p className="table-note">The native collector maps SQL max_size = -1 to a null maximum. This response does not distinguish an unlimited file setting from an unknown maximum. Zero maximum in SQL is normalized to the current allocated size. Growth settings are reported without calculating remaining free space.</p>
+          </>}
+        </details>
         {files && <><p className="table-note">Page {filePageIndex + 1} · {files.items.length} loaded files{files.nextCursor ? " · More files available" : " · End of file snapshot"}.</p>
           <EvidenceDisclosure label={`File snapshot evidence: ${files.collector.state.replaceAll("_", " ")}`} attention={files.collector.state !== "current"}>
             <p>Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)}. The table shows the latest source snapshot, including in Rewind; it does not follow the chart window.</p>

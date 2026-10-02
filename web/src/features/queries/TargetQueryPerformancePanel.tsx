@@ -8,6 +8,7 @@ import { formatDisplayTime } from "../../timeDisplay";
 import { useEffect, useRef, useState } from "react";
 import { getQueryPerformanceHistory, getQueryPerformancePlan, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend, getQueryStoreTopWaits, getQueryStorePlanRegressions } from "./queryPerformanceApi";
 import type { QueryRankingSource, QueryView, QueryViewSelection } from "./queryViewModel";
+import { queryPlanTrendContext } from "./queryViewModel";
 import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
 import { queryStoreWaitCategoryNames as waitCategoryNames } from "./queryStoreWaitCategories";
@@ -45,6 +46,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     readonly planFingerprint?: string; readonly sourceKind?: "query_store" | "plan_cache" };
 }) {
   const { mode } = useTimeDisplay();
+  const renderedPlanHash = typeof location === "undefined" ? "" : location.hash;
   const timeLabel = (value?: string) => value ? formatDisplayTime(value, mode) : "Time unavailable";
   const selectionRequest = useRef<AbortController | null>(null);
   const historyRequest = useRef<AbortController | null>(null);
@@ -100,7 +102,17 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     && contentObservations.current.has(binding.observation) && (!protectedContent || currentTextAccess.current);
   const bindContent = (item: QueryPerformanceItem): ContentBinding => ({ context: contentContext,
     observation: contentObservationKey(item), runId: item.collectionRunId });
-  const [groupTrend, setGroupTrend] = useState<GroupTrendState>();
+  const groupSelection = historySelection && expectedQuery?.databaseId === historySelection.databaseId
+    && expectedQuery.queryFingerprint === historySelection.queryFingerprint
+    && expectedQuery.planFingerprint === historySelection.planFingerprint && source === "query_store"
+    && contentTimeKey(historySelection.fromUtc) === contentTimeKey(timeWindow.fromUtc)
+    && contentTimeKey(historySelection.toUtc) === contentTimeKey(timeWindow.toUtc) ? historySelection : undefined;
+  const groupTrendKey = JSON.stringify([instanceId.toLowerCase(), selectedDatabaseId, expectedQuery?.databaseId,
+    expectedQuery?.queryFingerprint, expectedQuery?.planFingerprint, source,
+    contentTimeKey(timeWindow.fromUtc), contentTimeKey(timeWindow.toUtc), refresh]);
+  const currentGroupTrendKey = useRef(groupTrendKey); currentGroupTrendKey.current = groupTrendKey;
+  const [receivedGroupTrend, setGroupTrend] = useState<{ key: string; state: GroupTrendState }>();
+  const groupTrend = groupSelection && receivedGroupTrend?.key === groupTrendKey ? receivedGroupTrend.state : undefined;
   const [receivedPlan, setPlan] = useState<QueryPerformancePlan>();
   const plan = historySelection ? receivedPlan : undefined;
   const [message, setMessage] = useState<string>();
@@ -183,18 +195,18 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
   useEffect(() => {
     trendRequest.current?.abort();
-    const selection = historySelection;
+    const selection = groupSelection;
     if (!selection?.planFingerprint || selectedDatabaseId !== undefined && selection.databaseId !== selectedDatabaseId) { setGroupTrend(undefined); return; }
     const controller = new AbortController(); trendRequest.current = controller;
-    setGroupTrend({ status: "loading" });
+    setGroupTrend({ key: groupTrendKey, state: { status: "loading" } });
     void getQueryStoreGroupPlanTrend(instanceId, selection.databaseId,
       selection.queryFingerprint, selection.planFingerprint,
       selection.fromUtc, selection.toUtc, controller.signal)
-      .then(trend => { if (!controller.signal.aborted) setGroupTrend({ status: "ready", trend }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted) setGroupTrend({ status: "error",
-        message: error instanceof Error ? error.message : "Plan delta trend could not be loaded." }); });
+      .then(trend => { if (!controller.signal.aborted && trendRequest.current === controller && currentGroupTrendKey.current === groupTrendKey) setGroupTrend({ key: groupTrendKey, state: { status: "ready", trend } }); })
+      .catch((error: unknown) => { if (!controller.signal.aborted && trendRequest.current === controller && currentGroupTrendKey.current === groupTrendKey) setGroupTrend({ key: groupTrendKey, state: { status: "error",
+        message: error instanceof Error ? error.message : "Plan delta trend could not be loaded." } }); });
     return () => controller.abort();
-  }, [instanceId, historySelection, refresh, selectedDatabaseId]);
+  }, [groupTrendKey, groupSelection]);
   useEffect(() => {
     const previous = activeQuery.current;
     const queryChanged = previous === undefined || previous.instanceId !== instanceId || previous.ranking !== ranking ||
@@ -390,8 +402,13 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
         {selectedItem?.source === "query_store" && selectedItem.plan ? <button className="secondary-button" type="button" onClick={() => openWaits(selectedItem)}>Show plan waits for selected observation</button> : null}
         {historySelection && waitResult ? <div role="status" className="activity-evidence"><p>{waitResult.state === "loading" ? "Loading plan waits…" : waitResult.state === "unavailable" ? "Query Store wait capture was unavailable for this plan and run." : waitResult.state === "error" ? waitResult.message : `Query Store wait totals captured ${timeLabel(waitResult.capturedAtUtc)} for run ${waitResult.runId}. Repeated interval snapshots can overlap.`}</p>{waitResult.state === "available" && (waitResult.categories?.length ? <ul>{waitResult.categories.map(row => <li key={row.category}>{waitCategoryNames[row.category] ?? `Category ${row.category}`}: {row.waitMilliseconds} ms</li>)}</ul> : <p>No nonzero wait categories were captured for this plan and run.</p>)}</div> : null}
       </section></div>
-      {groupTrend && historySelection?.planFingerprint && <QueryStoreGroupTrendPanel state={groupTrend}
-        onSelectWindow={onSelectWindow} timeLabel={timeLabel} waitCategoryNames={waitCategoryNames} />}
+      {groupTrend && groupSelection?.planFingerprint && <QueryStoreGroupTrendPanel key={groupTrendKey} state={groupTrend}
+        onSelectWindow={onSelectWindow} timeLabel={timeLabel} waitCategoryNames={waitCategoryNames}
+        selection={viewSelection.planTrendSelection} onSelectionChange={selection => {
+          const context = queryPlanTrendContext(renderedPlanHash);
+          if (!context || typeof location !== "undefined" && location.hash !== renderedPlanHash) return;
+          onViewSelectionChange({ ...viewSelection, planTrendSelection: { ...selection, context } });
+        }} />}
 
 
       {history === undefined ? null : <div className="activity-evidence"><details><summary>Bounded history observations</summary>{history.items.length === 0 ? <p>No activity in the selected interval.</p> : history.items.map(x => <p key={`${x.collectionRunId}-${x.observationKey}`}>{timeLabel(x.intervalEndUtc)}: CPU {String(x.metrics.cpuMilliseconds ?? "—")} · duration {String(x.metrics.durationMilliseconds ?? "—")} · executions {String(x.metrics.executions ?? "—")} · reads {String(x.metrics.logicalReads ?? "—")} · writes {String(x.metrics.writes ?? "—")} · rows {String(x.metrics.rows ?? "—")} · {x.source} · {x.semantics} {canReadText && x.source === "query_store" ? <button className="secondary-button" type="button" onClick={() => openText(x)}>Open text for this run</button> : null} {canReadText && x.source === "query_store" && x.plan ? <button className="secondary-button" type="button" onClick={() => openPlan(x)}>Open plan XML for this run</button> : null} {x.source === "query_store" && x.plan ? <button className="secondary-button" type="button" onClick={() => openWaits(x)}>Show waits for this run</button> : null}</p>)}{history.nextCursor === undefined || historySelection === undefined ? null : <button className="secondary-button" type="button" onClick={() => loadHistory(historySelection, history.nextCursor)}>Next history page</button>}</details></div>}

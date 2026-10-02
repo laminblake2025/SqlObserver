@@ -31,3 +31,11 @@ test("range resolution is stable for unchanged inputs and keeps zero-duration re
   assert.deepEqual(first, second);
   assert.equal(resolveQueryWindow({ ...baseScope, from: baseScope.to }, now).state, "invalid");
 });
+
+test("query windows preserve native trailing-zero microseconds and reject precision-losing or oversized ranges", () => {
+  const precise = { ...baseScope, from: "2026-09-10T11:00:00.1234560Z", to: "2026-09-10T11:00:00.1234570Z" };
+  assert.deepEqual(resolveQueryWindow(precise, now), { state: "valid", window: { fromUtc: "2026-09-10T11:00:00.123456Z", toUtc: "2026-09-10T11:00:00.123457Z" } });
+  assert.equal(resolveQueryWindow({ ...precise, from: "2026-09-10T11:00:00.1234561Z" }, now).state, "invalid");
+  assert.equal(resolveQueryWindow({ ...baseScope, to: "2026-09-10T12:00:00.000001Z" }, now).state, "unsupported");
+  assert.equal(resolveQueryWindow({ ...precise, to: "2026-09-10T12:01:00.000001Z" }, now).state, "invalid");
+});

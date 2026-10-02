@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readQueryViewSelection, queryViewHref } from '../src/features/queries/queryViewModel.ts';
+import { readQueryViewSelection, queryViewHref, queryPlanTrendContext } from '../src/features/queries/queryViewModel.ts';
 
 test('every query view and ranking metric restores from a shared URL', () => {
   for (const view of ['top', 'regressed', 'cache']) for (const metric of ['cpu', 'duration', 'executions', 'logical_reads', 'writes', 'rows']) {
@@ -78,4 +78,41 @@ test('writer rejects contradictory source metadata and ignores source state on a
   assert.throws(() => queryViewHref('#/queries', { view: 'top', metric: 'cpu', sourceFilterInvalid: false }));
   assert.deepEqual(readQueryViewSelection('#/resources?querySource=plan_cache'), { view: 'top', metric: 'cpu' });
   assert.equal(queryViewHref('#/resources?target=a', { view: 'top', metric: 'cpu', sourceFilter: 'plan_cache' }), '#/resources?target=a');
+});
+
+const planUrl = '#/queries?' + new URLSearchParams({ target: '11111111-1111-4111-8111-000000000001', databaseId: '5', queryFingerprint: 'a'.repeat(64), planFingerprint: 'b'.repeat(64), source: 'query_store', range: 'custom', from: '2026-09-25T11:00:00.1234560Z', to: '2026-09-25T14:00:00.000001Z' });
+test('plan wait category and keyboard inspection restore exactly and survive unrelated ranking changes', () => {
+  const context = queryPlanTrendContext(planUrl);
+  const selected = { view: 'top', metric: 'cpu', planTrendSelection: { context, category: 3, inspectionUtc: '2026-09-25T11:00:00.123456Z' } };
+  const href = queryViewHref(planUrl, selected);
+  assert.deepEqual(readQueryViewSelection(href), selected);
+  const changed = queryViewHref(href, { ...selected, metric: 'duration', sourceFilter: 'plan_cache' });
+  assert.deepEqual(readQueryViewSelection(changed).planTrendSelection, selected.planTrendSelection);
+  assert.equal(new URLSearchParams(changed.split('?')[1]).get('source'), 'query_store');
+  for (const [key, value] of [['target', '11111111-1111-4111-8111-000000000002'], ['databaseId', '6'], ['queryFingerprint', 'c'.repeat(64)], ['planFingerprint', 'd'.repeat(64)], ['from', '2026-09-25T12:00:00Z']]) {
+    const parameters = new URLSearchParams(href.split('?')[1]); parameters.set(key, value);
+    const rebuilt = queryViewHref('#/queries?' + parameters, selected);
+    assert.equal(readQueryViewSelection(rebuilt).planTrendSelection, undefined);
+    assert.equal(new URLSearchParams(rebuilt.split('?')[1]).has('planInspectUtc'), false);
+  }
+});
+
+test('malformed duplicate out-of-window and missing-plan chart selections remain explicit and repair independently', () => {
+  for (const suffix of ['planWaitCategory=32', 'planWaitCategory=3&planWaitCategory=3', 'planWaitCategory=', 'planWaitCategory=Lock']) {
+    const invalid = readQueryViewSelection(planUrl + '&' + suffix);
+    assert.equal(invalid.planTrendSelection.categoryInvalid, true);
+    const retained = queryViewHref(planUrl, invalid);
+    assert.equal(readQueryViewSelection(retained).planTrendSelection.categoryInvalid, true);
+    const repaired = queryViewHref(retained, { ...invalid, planTrendSelection: { context: invalid.planTrendSelection.context, category: null } });
+    assert.equal(readQueryViewSelection(repaired).planTrendSelection.category, null);
+  }
+  for (const value of ['2026-09-25T14:00:00.000001Z', '2026-02-30T12:00:00Z', 'not-utc']) {
+    const result = readQueryViewSelection(planUrl + '&planWaitCategory=31&planInspectUtc=' + encodeURIComponent(value));
+    assert.equal(result.planTrendSelection.category, 31); assert.equal(result.planTrendSelection.inspectionInvalid, true);
+  }
+  assert.equal(readQueryViewSelection(planUrl + '&planInspectUtc=2026-09-25T12%3A00%3A00Z&planInspectUtc=2026-09-25T12%3A00%3A00Z').planTrendSelection.inspectionInvalid, true);
+  assert.equal(readQueryViewSelection(planUrl.replace('planFingerprint=' + 'b'.repeat(64), 'planFingerprint=bad') + '&planWaitCategory=3').planTrendSelection.categoryInvalid, true);
+  assert.equal(readQueryViewSelection(planUrl.replace('source=query_store', 'source=plan_cache') + '&planWaitCategory=3').planTrendSelection.categoryInvalid, true);
+  assert.equal(queryPlanTrendContext(planUrl + '&databaseId=5'), undefined);
+  assert.equal(queryPlanTrendContext(planUrl.replace('queries', 'resources')), undefined);
 });
