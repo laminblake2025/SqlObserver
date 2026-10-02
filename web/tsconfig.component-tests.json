@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["component-tests/**/*.ts", "component-tests/**/*.tsx", "src/vite-env.d.ts"],
+  "include": ["src", "component-tests/**/*.ts", "component-tests/**/*.tsx"],
   "references": []
 }

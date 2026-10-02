@@ -1,88 +1,66 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { getDatabaseHealth, HealthRequestError } from "../src/features/health/healthApi.ts";
+import { clearApiCache } from "../src/apiClient.ts";
+import { getTargetHealth, getTargetHealthEvidence, getDatabaseHealth, HealthRequestError } from "../src/features/health/healthApi.ts";
 import { syntheticCollector } from "../tools/health-contract-fixture.mjs";
+import { alpha, evidence, logicalFile } from "../component-tests/healthFixture.mjs";
 
-const panelUrl = new URL(
-  "../src/features/health/TargetHealthPanel.tsx",
-  import.meta.url,
-);
-const typesUrl = new URL("../src/features/health/healthTypes.ts", import.meta.url);
-const apiUrl = new URL("../src/features/health/healthApi.ts", import.meta.url);
-const onboardingUrl = new URL(
-  "../src/App.tsx",
-  import.meta.url,
-);
-
-test("target detail exposes bounded repository health evidence", async () => {
-  const panel = await readFile(panelUrl, "utf8");
-  const types = await readFile(typesUrl, "utf8");
-  const onboarding = await readFile(onboardingUrl, "utf8");
-  const servers = await readFile(new URL("../src/features/targets/ServersPage.tsx", import.meta.url), "utf8");
-
-  assert.match(servers, /routeHref\("health", target.instanceId\)/);
-  assert.match(onboarding, /<TargetHealthPanel/);
-  assert.match(panel, /No data yet/);
-  assert.match(panel, /Degraded visibility/);
-  assert.match(panel, /Stale evidence/);
-  assert.match(panel, /evidence_stale: "The latest successful evidence is overdue"/);
-  assert.match(panel, /Visibility gap:/);
-  assert.match(onboarding, /startWorkspaceClock/);
-  assert.doesNotMatch(panel, /setTimeout\(/);
-  assert.match(panel, /request\?\.abort\(\)/);
-  assert.match(types, /readonly sourceRows: number/);
-  assert.match(types, /readonly responseBytes: number/);
-  assert.match(types, /readonly sampleLossKind: CollectorLossKind \| null/);
-  assert.match(types, /readonly minimumLostItems: number \| null/);
-  assert.match(types, /readonly lossCountIsExact: boolean \| null/);
-  assert.match(types, /readonly retryCount: number/);
-  assert.match(types, /readonly circuitState: CollectorCircuitState/);
-  assert.match(types, /readonly lastSuccessAtUtc: string \| null/);
-  assert.match(types, /readonly coreMetrics: readonly CoreMetricSummary\[\]/);
-  assert.match(panel, /No core metric samples are available\./);
-  assert.match(types, /interface DatabaseHealthPage \{[^}]*readonly collector: CollectorHealthSummary/);
-  assert.match(types, /interface DatabaseFileHealthPage \{[^}]*readonly collector: CollectorHealthSummary/);
-  assert.match(panel, /<PageCollectorHealth collector=\{page\.collector\} \/>/);
-  assert.match(panel, /Collector reason:/);
-  assert.match(panel, /Sample loss:/);
-  assert.match(panel, /isCurrentLossFree\(page\.collector\)/);
-  assert.match(panel, /collector\.lastExecutionOutcome === "succeeded"/);
-  assert.match(panel, /collector\.minimumLostItems === null/);
-  assert.match(panel, /No database rows were reported by a current, loss-free collection\./);
-  assert.match(panel, /Database rows cannot be treated as complete for this snapshot\./);
-  assert.match(panel, /No logical-file rows were reported by a current, loss-free collection\./);
-  assert.match(panel, /Logical-file rows cannot be treated as complete for this snapshot\./);
-  assert.match(panel, /Next database page/);
-  assert.match(panel, /Previous database page/);
-  assert.match(panel, /Additional logical files exist; this view shows the bounded first page\./);
-  assert.match(panel, /BigInt\(value\)\.toLocaleString\(\)/);
-  assert.match(types, /readonly sizeBytes: string/);
-  assert.match(types, /readonly bytesRead: string/);
-  assert.match(types, /readonly ioStallMilliseconds: string/);
-  assert.doesNotMatch(`${panel}\n${types}`, /physicalPath/i);
-  assert.doesNotMatch(`${panel}\n${types}\n${onboarding}`, /dangerouslySetInnerHTML/);
+test("native health aggregation binds bounded same-origin reads and preserves exact counters and collector evidence", async () => {
+  const previous = globalThis.fetch, source = evidence(), calls = []; source.files.items = [logicalFile()]; clearApiCache();
+  globalThis.fetch = async (path, options) => {
+    const url = new URL(String(path), "https://fixture.invalid"); calls.push({ url, options });
+    const value = url.pathname.endsWith("/files") ? source.files : url.pathname.endsWith("/databases") ? source.databases : source.target;
+    return new Response(JSON.stringify(value), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  };
+  try {
+    const result = await getTargetHealthEvidence(alpha, new AbortController().signal);
+    assert.deepEqual(calls.map(call => call.url.pathname).sort(), ["", "/databases", "/files"].map(suffix => `/api/v1/observation-targets/${alpha}/health${suffix}`));
+    for (const { url, options } of calls) {
+      assert.equal(options.credentials, "same-origin"); assert.ok(options.signal instanceof AbortSignal);
+      assert.equal(new Headers(options.headers).get("accept"), "application/json");
+      if (url.pathname.endsWith("/files") || url.pathname.endsWith("/databases")) assert.equal(url.searchParams.get("limit"), "25");
+    }
+    assert.deepEqual(result.target.collectors, source.target.collectors);
+    assert.deepEqual(result.databases.collector, source.databases.collector); assert.deepEqual(result.files.collector, source.files.collector);
+    for (const field of ["sizeBytes", "bytesRead", "ioStallMilliseconds"]) assert.equal(result.files.items[0][field], source.files.items[0][field]);
+    assert.equal(result.files.nextCursor, null);
+  } finally { globalThis.fetch = previous; clearApiCache(); }
 });
 
-test("health fetch uses a target-scoped route and never reflects provider errors", async () => {
-  const api = await readFile(apiUrl, "utf8");
+test("native health client sanitizes HTTP and malformed target responses", async () => {
+  const previous = globalThis.fetch; clearApiCache();
+  try {
+    for (const [status, message] of [[403, "You are not authorized to view health for this target."], [504, "The health request exceeded its execution limit."], [500, "The health request failed safely."]]) {
+      globalThis.fetch = async () => new Response("password=synthetic-secret; provider stack", { status });
+      await assert.rejects(getTargetHealth(alpha, new AbortController().signal), error => error instanceof HealthRequestError && error.message === message);
+    }
+    for (const body of ["not JSON", JSON.stringify({ ...evidence().target, instanceId: "22222222-2222-4222-8222-222222222222" })]) {
+      globalThis.fetch = async () => new Response(body, { headers: { "content-type": "application/json" } });
+      await assert.rejects(getTargetHealth(alpha, new AbortController().signal), error => error instanceof HealthRequestError && error.message === "Health evidence returned an invalid or mismatched response. Refresh to retry.");
+    }
+  } finally { globalThis.fetch = previous; clearApiCache(); }
+});
 
-  assert.match(
-    api,
-    /\/api\/v1\/observation-targets\/\$\{encodeURIComponent\(instanceId\)\}\/health/,
-  );
-  assert.match(api, /\/health\/databases\?\$\{parameters\}/);
-  assert.match(api, /\/health\/files\?\$\{parameters\}/);
-  assert.match(api, /Promise\.allSettled\(\[/);
-  assert.match(api, /credentials: "same-origin"/);
-  assert.match(api, /signal,/);
-  assert.match(api, /You are not authorized to view health for this target\./);
-  assert.match(api, /The health request exceeded its execution limit\./);
-  assert.match(api, /The health service is temporarily unavailable\./);
-  assert.match(api, /class HealthRequestError extends Error/);
-  assert.doesNotMatch(api, /response\.(?:text|body)/);
-  assert.doesNotMatch(api, /status \$\{status\}/);
-  assert.doesNotMatch(api, /(?:password|connectionString|trustServerCertificate)\s*[?:]/i);
+test("already-cancelled health requests perform no provider I/O and preserve cancellation", async () => {
+  const previous = globalThis.fetch; let calls = 0; clearApiCache();
+  globalThis.fetch = async () => { calls++; throw new Error("Provider must not be reached"); };
+  try {
+    const controller = new AbortController(), reason = new Error("Workspace changed"); controller.abort(reason);
+    await assert.rejects(getTargetHealth(alpha, controller.signal), error => error === reason); assert.equal(calls, 0);
+  } finally { globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("architecture/security lint: health route wiring and prohibited plaintext/rendering constructs", async () => {
+  // Source constraints are lint; native API and mounted panel cases prove behavior.
+  const panel = await readFile(new URL("../src/features/health/TargetHealthPanel.tsx", import.meta.url), "utf8");
+  const types = await readFile(new URL("../src/features/health/healthTypes.ts", import.meta.url), "utf8");
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const servers = await readFile(new URL("../src/features/targets/ServersPage.tsx", import.meta.url), "utf8");
+  assert.match(servers, /routeHref\("health", target.instanceId\)/); assert.match(app, /<TargetHealthPanel/);
+  assert.match(app, /startWorkspaceClock/); assert.doesNotMatch(panel, /setTimeout\(/);
+  assert.doesNotMatch(`${panel}\n${types}`, /physicalPath/i); assert.doesNotMatch(`${panel}\n${types}\n${app}`, /dangerouslySetInnerHTML/);
+  assert.doesNotMatch(types, /(?:password|connectionString|trustServerCertificate)\s*[?:]/i);
 });
 
 test("database health paging encodes the target and continuation cursor", async () => {
