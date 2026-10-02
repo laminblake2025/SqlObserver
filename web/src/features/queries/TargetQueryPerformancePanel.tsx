@@ -1,4 +1,5 @@
 import { PlanCacheIntervalPanel } from "./PlanCacheIntervalPanel";
+import { invalidQuerySelectionMessage } from "../../dashboardModel";
 import { metricsForObservation, queryPerformanceDatabaseOptions } from "./querySelection";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
 import { ObservationChart } from "../../components/ObservationChart";
@@ -30,7 +31,15 @@ const contentTimeKey = (value: string) => value.replace(/(?:Z|\+00:00)$/u, "")
   .split(".").map((part, index) => index === 1 ? part.padEnd(7, "0") : part).join(".")
   + (value.includes(".") ? "Z" : ".0000000Z");
 
-export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, onSelectQuery, refresh, canReadText, initialQuerySelection, viewSelection, onViewSelectionChange, selectedDatabaseId, onSelectDatabase }: {
+// A receipt belongs to the render context that dispatched it. Hide old evidence
+// immediately when that context changes, before passive effects cancel reads.
+function useBoundState<T>(context: string): [T | undefined, (value: T | undefined) => void] {
+  const [received, setReceived] = useState<{ context: string; value: T }>();
+  return [received?.context === context ? received.value : undefined,
+    value => setReceived(value === undefined ? undefined : { context, value })];
+}
+
+export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, onSelectQuery, refresh, canReadText, initialQuerySelection, selectionInvalid = false, viewSelection, onViewSelectionChange, selectedDatabaseId, onSelectDatabase }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
   readonly selectedDatabaseId?: number;
   readonly onSelectDatabase: (databaseId: number | undefined) => void;
@@ -42,6 +51,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   readonly onViewSelectionChange: (selection: QueryViewSelection) => void;
   readonly refresh: number;
   readonly canReadText: boolean;
+  readonly selectionInvalid?: boolean;
   readonly initialQuerySelection?: { readonly databaseId: number; readonly queryFingerprint: string;
     readonly planFingerprint?: string; readonly sourceKind?: "query_store" | "plan_cache" };
 }) {
@@ -63,24 +73,39 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const [paging, setPaging] = useState(false);
   const database = selectedDatabaseId === undefined ? "" : String(selectedDatabaseId);
   const rankingSource = viewSelection.sourceFilterInvalid ? "invalid" : viewSelection.sourceFilter ?? "mixed";
+  const evidenceContext = JSON.stringify([instanceId.toLowerCase(), contentTimeKey(timeWindow.fromUtc), contentTimeKey(timeWindow.toUtc), refresh]);
+  const rankingContext = JSON.stringify([evidenceContext, ranking]);
+  const inspectionContext = JSON.stringify([evidenceContext, selectedDatabaseId, selectionInvalid,
+    initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint,
+    initialQuerySelection?.planFingerprint, initialQuerySelection?.sourceKind]);
+  const pagingContext = JSON.stringify([instanceId.toLowerCase(), ranking, contentTimeKey(timeWindow.fromUtc),
+    contentTimeKey(timeWindow.toUtc), refresh, selectedDatabaseId, rankingSource, view]);
+  const currentPagingContext = useRef(pagingContext); currentPagingContext.current = pagingContext;
+  useEffect(() => {
+    pagingRequest.current?.abort(); pagingRequest.current = null; setPaging(false);
+    return () => { pagingRequest.current?.abort(); pagingRequest.current = null; };
+  }, [pagingContext]);
   // The inspected history's source is independent of the loaded ranking filter.
   // A history response must never rewrite a deliberate filter or its URL.
   const [selectedSource, setSelectedSource] = useState("mixed");
   const source = initialQuerySelection?.planFingerprint ? "query_store" : initialQuerySelection?.sourceKind ?? selectedSource;
-  useEffect(() => () => { selectionRequest.current?.abort(); historyRequest.current?.abort(); pagingRequest.current?.abort(); textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); trendRequest.current?.abort(); }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc]);
-  const [page, setPage] = useState<QueryPerformancePage>();
-  const [status, setStatus] = useState<QueryPerformanceStatus>();
-  const [waitRanking, setWaitRanking] = useState<QueryStoreWaitRanking>();
-  const [waitRankingError, setWaitRankingError] = useState<string>();
-  const [regressions, setRegressions] = useState<QueryStorePlanRegressionList>();
-  const [regressionError, setRegressionError] = useState<string>();
-  const [receivedHistory, setHistory] = useState<QueryPerformanceHistoryPage>();
-  const [receivedHistorySelection, setHistorySelection] = useState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string; planFingerprint?: string }>();
-  const historySelection = selectedDatabaseId === undefined || receivedHistorySelection?.databaseId === selectedDatabaseId ? receivedHistorySelection : undefined;
+  useEffect(() => () => { selectionRequest.current?.abort(); historyRequest.current?.abort(); pagingRequest.current?.abort(); textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); trendRequest.current?.abort(); }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc]);
+  const [page, setPage] = useBoundState<QueryPerformancePage>(rankingContext);
+  const [status, setStatus] = useBoundState<QueryPerformanceStatus>(evidenceContext);
+  const [waitRanking, setWaitRanking] = useBoundState<QueryStoreWaitRanking>(evidenceContext);
+  const [waitRankingError, setWaitRankingError] = useBoundState<string>(evidenceContext);
+  const [regressions, setRegressions] = useBoundState<QueryStorePlanRegressionList>(evidenceContext);
+  const [regressionError, setRegressionError] = useBoundState<string>(evidenceContext);
+  const [receivedHistory, setHistory] = useBoundState<QueryPerformanceHistoryPage>(inspectionContext);
+  const [receivedHistorySelection, setHistorySelection] = useBoundState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string; planFingerprint?: string }>(inspectionContext);
+  const historySelection = !selectionInvalid && (selectedDatabaseId === undefined || receivedHistorySelection?.databaseId === selectedDatabaseId)
+    && (!initialQuerySelection || receivedHistorySelection?.databaseId === initialQuerySelection.databaseId
+      && receivedHistorySelection.queryFingerprint === initialQuerySelection.queryFingerprint
+      && receivedHistorySelection.planFingerprint === initialQuerySelection.planFingerprint) ? receivedHistorySelection : undefined;
   const history = historySelection ? receivedHistory : undefined;
   const expectedQuery = initialQuerySelection ?? historySelection;
   const contentContext = JSON.stringify([instanceId.toLowerCase(), contentTimeKey(timeWindow.fromUtc), contentTimeKey(timeWindow.toUtc), refresh,
-    selectedDatabaseId, initialQuerySelection !== undefined, expectedQuery?.databaseId,
+    selectedDatabaseId, selectionInvalid, initialQuerySelection !== undefined, expectedQuery?.databaseId,
     expectedQuery?.queryFingerprint, expectedQuery?.planFingerprint, source]);
   const currentContentContext = useRef(contentContext);
   currentContentContext.current = contentContext;
@@ -113,9 +138,9 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const currentGroupTrendKey = useRef(groupTrendKey); currentGroupTrendKey.current = groupTrendKey;
   const [receivedGroupTrend, setGroupTrend] = useState<{ key: string; state: GroupTrendState }>();
   const groupTrend = groupSelection && receivedGroupTrend?.key === groupTrendKey ? receivedGroupTrend.state : undefined;
-  const [receivedPlan, setPlan] = useState<QueryPerformancePlan>();
+  const [receivedPlan, setPlan] = useBoundState<QueryPerformancePlan>(inspectionContext);
   const plan = historySelection ? receivedPlan : undefined;
-  const [message, setMessage] = useState<string>();
+  const [message, setMessage] = useBoundState<string>(JSON.stringify([rankingContext, inspectionContext]));
   const [receivedTextResult, setTextResult] = useState<ContentBinding & { state: "loading" | "available" | "unavailable" | "error"; text?: string; message?: string }>();
   const [receivedPlanResult, setPlanResult] = useState<ContentBinding & { planFingerprint: string; state: "loading" | "available" | "unavailable" | "error"; xml?: string; message?: string }>();
   const [receivedWaitResult, setWaitResult] = useState<ContentBinding & { planFingerprint: string; state: "loading" | "available" | "unavailable" | "error"; capturedAtUtc?: string; categories?: readonly { readonly category: number; readonly waitMilliseconds: number }[]; message?: string }>();
@@ -212,8 +237,9 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     const queryChanged = previous === undefined || previous.instanceId !== instanceId || previous.ranking !== ranking ||
       (previous.refresh === refresh && (previous.fromUtc !== timeWindow.fromUtc || previous.toUtc !== timeWindow.toUtc));
     activeQuery.current = { instanceId, ranking, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc, refresh };
-    const c = new AbortController(); clearContent(); setPaging(false); setPage(undefined); setStatus(undefined); setMessage(undefined);
-    if (queryChanged) { setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); }
+    pagingRequest.current?.abort(); pagingRequest.current = null; setPaging(false);
+    const c = new AbortController(); setPage(undefined); setStatus(undefined); setMessage(undefined);
+    if (queryChanged && !initialQuerySelection) { setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); }
     void getQueryPerformanceTop(instanceId, ranking, undefined, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setPage(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance evidence is unavailable."); });
     void getQueryPerformanceStatus(instanceId, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setStatus(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance status is unavailable."); });
     return () => c.abort();
@@ -229,7 +255,11 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   }, [page, historySelection, waitRanking, regressions, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint]);
   useEffect(() => {
     clearContent();
-    if (!initialQuerySelection || selectedDatabaseId !== undefined && initialQuerySelection.databaseId !== selectedDatabaseId) return;
+    historyRequest.current?.abort(); selectionRequest.current?.abort();
+    if (selectionInvalid || !initialQuerySelection || selectedDatabaseId !== undefined && initialQuerySelection.databaseId !== selectedDatabaseId) {
+      setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); setGroupTrend(undefined); setSelectedSource("mixed");
+      return;
+    }
     const controller = new AbortController();
     const selection = { ...initialQuerySelection, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc };
     historyRequest.current?.abort();
@@ -259,7 +289,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     return () => controller.abort();
   }, [instanceId, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint,
       initialQuerySelection?.planFingerprint, initialQuerySelection?.sourceKind,
-      timeWindow.fromUtc, timeWindow.toUtc, ranking, refresh, selectedDatabaseId]);
+      timeWindow.fromUtc, timeWindow.toUtc, refresh, selectedDatabaseId, selectionInvalid]);
   const loadHistory = (selection: { databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string }, cursor?: string) => {
     historyRequest.current?.abort();
     const c = new AbortController(); historyRequest.current = c;
@@ -286,14 +316,16 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     if (planFingerprint !== undefined) void getQueryPerformancePlan(instanceId, databaseId, queryFingerprint, planFingerprint, c.signal).then(value => { if (!c.signal.aborted) setPlan(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Plan metadata is unavailable."); });
   };
   const loadMetricPage = () => {
-    if (!page?.nextCursor || paging) return;
-    const c = new AbortController(); pagingRequest.current?.abort(); pagingRequest.current = c;
+    if (!page?.nextCursor || pagingRequest.current) return;
+    const context = pagingContext;
+    const c = new AbortController(); pagingRequest.current = c;
+    const current = () => !c.signal.aborted && pagingRequest.current === c && currentPagingContext.current === context;
     setPaging(true); setMessage(undefined);
     void getQueryPerformanceTop(instanceId, ranking, page.nextCursor, page.fromUtc, page.toUtc, c.signal).then(next => {
-      if (c.signal.aborted) return;
-      selectionRequest.current?.abort(); historyRequest.current?.abort();
-      clearContent(); setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); setPage(next);
-    }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance page is unavailable."); }).finally(() => { if (!c.signal.aborted) setPaging(false); });
+      if (current()) setPage(next);
+    }).catch((e: unknown) => { if (current()) setMessage(e instanceof Error ? e.message : "Query performance page is unavailable."); }).finally(() => {
+      if (current()) { pagingRequest.current = null; setPaging(false); }
+    });
   };
   const selectedItem = page?.items.find(item => (selectedDatabaseId === undefined || item.query.databaseId === selectedDatabaseId) && item.query.databaseId === historySelection?.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint && (historySelection.planFingerprint === undefined || item.plan?.planFingerprint === historySelection.planFingerprint) && (source === "mixed" || item.source === source));
   const selectedMetrics = metricsForObservation(selectedItem, history);
@@ -325,6 +357,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     page?.items.map(item => `${item.collectionRunId}:${item.observationKey}`)]);
   return <RankingTrendProvider contextKey={rowTrendContext}><section className="query-performance-screen" aria-labelledby="query-performance-heading">
     <div className="health-heading-row"><div><p className="eyebrow">Server · queries</p><h2 id="query-performance-heading">Queries for {displayName}</h2></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+    {selectionInvalid ? <p role="alert" className="status-message">{invalidQuerySelectionMessage}</p> : null}
     {message === undefined || view === "cache" ? null : <p role="alert" className="status-message">{message}</p>}
     {status === undefined || view === "cache" ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><details className="supporting-evidence"><summary>Database collection attempts ({status.databaseStatuses.length})</summary><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></details></div>}
     <Tabs label="Query views" tabs={[{ value: "top", label: "Top queries" }, { value: "regressed", label: `Regressed${visibleRegressions.length ? ` (${visibleRegressions.length})` : ""}` }, { value: "cache", label: "Cache interval deltas" }]}
@@ -382,6 +415,9 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
           <td>{x.source} · {x.sourceState}</td><td>{x.semantics}</td><td>{x.metrics.cpuMilliseconds ?? "—"}</td><td>{x.metrics.durationMilliseconds ?? "—"}</td><td>{x.metrics.executions ?? "—"}</td><td>{x.metrics.logicalReads ?? "—"} / {x.metrics.writes ?? "—"} / {x.metrics.rows ?? "—"}</td><td>{timeLabel(x.intervalEndUtc)}</td><td>{x.coverage} · {x.fresh ? "fresh at snapshot" : "stale"}{x.truncated ? " · truncated" : ""}</td></tr>)}
       </tbody></table>{rows.length === 0 && !viewSelection.sourceFilterInvalid && <p className="empty-state">No {rankingSource === "mixed" ? "matching" : rankingSource.replaceAll("_", " ")} observations in this bounded page.</p>}</div>}
       {selectedItem && <div className="kpi-grid">{[["CPU ms", selectedMetrics?.cpuMilliseconds], ["Duration ms", selectedMetrics?.durationMilliseconds], ["Executions", selectedMetrics?.executions], ["Logical reads", selectedMetrics?.logicalReads]].map(([label,value]) => <section className="kpi" key={label}><p>{label}</p><strong>{value ?? "—"}</strong><small>Selected observation · {selectedItem.semantics}</small></section>)}</div>}
+    </>}
+    {view === "cache" ? null : <>
+      {historySelection && history && !selectedItem ? <p className="table-note">The selected query is outside this loaded ranking page; its exact history remains selected.</p> : null}
       <div className="query-investigation"><section className="panel"><h3>Query CPU and duration history</h3>
         {history ? (source === "mixed" ? <p>Select a query observation to chart one source with consistent semantics.</p> :
           <ObservationChart

@@ -21,6 +21,7 @@ import "./features/queries/rankingTrend.css";
 import { resolveWorkspaceIncidentWindow } from "./features/incidents/workspaceIncidentWindow.ts";
 import { formatDisplayTime } from "./timeDisplay";
 import { useTimeDisplay } from "./TimeDisplayContext";
+import { resolveActivityWindow } from "./features/activity/activityWindowModel";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetWaitsPanel } from "./features/activity/TargetWaitsPanel";
 import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
@@ -241,6 +242,16 @@ export function App() {
       : overviewHref(selectedScope, selectedRoute.page, selectedRoute.target);
     location.hash = queryViewHref(retainDiagnosticSelectionHref(href, location.hash), readQueryViewSelection(location.hash));
   };
+  const changeActivityTimeMode = (mode: "live" | "history") => {
+    const currentRoute = readRoute(location.hash);
+    if (!selected || currentRoute.page !== "activity" || currentRoute.target.toLowerCase() !== selected.instanceId.toLowerCase()) return;
+    const currentScope = readOverviewScope(location.hash);
+    const resolved = resolveActivityWindow(currentScope, Date.now());
+    if (mode === "history" && (resolved.state !== "available" || !resolved.liveSnapshotsAvailable)) return;
+    const nextScope = mode === "live" ? { ...currentScope, range: "1h" as const, from: undefined, to: undefined }
+      : resolved.state === "available" ? { ...currentScope, range: "custom" as const, from: resolved.window.fromUtc, to: resolved.window.toUtc } : currentScope;
+    location.hash = overviewHref(nextScope, "activity", selected.instanceId);
+  };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
   const canAddServer = canRegisterTarget(myAccess);
   const registrationAllowed = useRef(false);
@@ -421,12 +432,12 @@ export function App() {
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
                 onSelectSection={section => { location.hash = retainDashboardTimelineHref(healthSectionHref(readOverviewScope(location.hash), props.instanceId, section), location.hash); }}
                 canManageConfiguration={canManageRules} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} selectionHash={location.hash}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} canReadRules={canManageRules}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} viewSelection={queryView}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} viewSelection={queryView} selectionInvalid={route.querySelectionInvalid === true}
                 onViewSelectionChange={selection => {
                   const currentRoute = readRoute(location.hash);
                   if (location.hash !== renderedHash || currentRoute.page !== "queries" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;

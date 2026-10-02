@@ -268,6 +268,161 @@ test('declines an overlong history window while keeping current bounded supporti
   expect(historicalRequests()).toBe(2);
 });
 
+const histories = [
+  { kind: 'blocking/history', region: blockingHistory, older: 'Older history', first: 'First history page',
+    latest: 'Return to latest blocking history', original: '71', next: '82', newest: '94',
+    items: value => [blockingHistoryItem({ blockedSessionId: Number(value) })] },
+  { kind: 'waits/history', region: waitHistory, older: 'Older waits', first: 'First wait history page',
+    latest: 'Return to latest wait history', original: 'LCK_M_X', next: 'WRITELOG', newest: 'PAGEIOLATCH_SH',
+    items: value => [waitHistoryItem({ waitType: value })] },
+];
+async function refreshHistory(page, kind) {
+  const session = sessions.get(page), before = session.requests.filter(url => url.pathname.endsWith(kind) && !url.searchParams.has('cursor')).length;
+  const response = page.waitForResponse(value => value.url().includes(`/activity/${kind}?`) && !new URL(value.url()).searchParams.has('cursor'));
+  await page.getByRole('button', { name: 'Refresh activity evidence', exact: true }).click();
+  await response;
+  await expect.poll(() => session.requests.filter(url => url.pathname.endsWith(kind) && !url.searchParams.has('cursor')).length).toBe(before + 1);
+}
+for (const history of histories) {
+  test(`${history.kind} retains loaded pages and original cursor across refresh until explicit latest`, async ({ page }) => {
+    const session = sessions.get(page), fixture = session.fixtures.get(alpha), original = fixture[history.kind];
+    original.nextCursor = cursor;
+    session.intercept = async (route, url, _id, kind) => {
+      if (!url.searchParams.has('cursor')) return false;
+      expect(kind).toBe(history.kind); expect(url.searchParams.get('cursor')).toBe(cursor);
+      expect(url.searchParams.get('fromUtc')).toBe(fromUtc); expect(url.searchParams.get('toUtc')).toBe(toUtc);
+      await json(route, { ...responsePage(fixture, kind, url), items: history.items(history.next), nextCursor: null }); return true;
+    };
+    await open(page); const region = history.region(page);
+    await region.getByRole('button', { name: history.older, exact: true }).click();
+    await expect(region.getByRole('cell', { name: history.next, exact: true })).toBeVisible();
+    fixture[history.kind] = { ...original, repositoryTimeUtc: '2026-09-30T13:05:00.000Z', items: history.items(history.newest), nextCursor: null };
+    await refreshHistory(page, history.kind);
+    await expect(region.getByRole('cell', { name: history.next, exact: true })).toBeVisible();
+    await expect(region.getByRole('status').filter({ hasText: 'Page 2' })).toBeVisible();
+    await region.getByRole('button', { name: history.first, exact: true }).click();
+    // Window paging is mutable: First re-reads the retained window, rather than
+    // claiming an immutable cached history snapshot.
+    await expect(region.getByRole('cell', { name: history.newest, exact: true })).toBeVisible();
+    expect(session.requests.filter(url => url.pathname.endsWith(history.kind) && url.searchParams.has('cursor'))).toHaveLength(1);
+    await expect.poll(() => session.requests.filter(url => url.pathname.endsWith(history.kind) && !url.searchParams.has('cursor')).length).toBe(3);
+    await region.getByRole('button', { name: history.latest, exact: true }).click();
+    await expect(region.getByRole('cell', { name: history.newest, exact: true })).toBeVisible();
+    await expect(region.getByRole('status').filter({ hasText: 'Page 1' })).toBeVisible();
+    await expect(region.getByRole('cell', { name: history.original, exact: true })).toHaveCount(0);
+    await expect(region.getByRole('button', { name: history.older, exact: true })).toBeDisabled();
+    await expect.poll(() => session.requests.filter(url => url.pathname.endsWith(history.kind) && !url.searchParams.has('cursor')).length).toBe(4);
+  });
+
+  test(`${history.kind} refresh preserves held navigation while latest cancels and fences late history`, async ({ page }) => {
+    const session = sessions.get(page), fixture = session.fixtures.get(alpha);
+    fixture[history.kind].nextCursor = cursor;
+    await open(page); const region = history.region(page);
+    const held = holdResponse(page, (url, _id, kind) => kind === history.kind && url.searchParams.has('cursor'),
+      { ...fixture[history.kind], items: history.items(history.next), nextCursor: null });
+    await region.getByRole('button', { name: history.older, exact: true }).click(); await held.seen;
+    fixture[history.kind] = { ...fixture[history.kind], repositoryTimeUtc: '2026-09-30T13:05:00.000Z', items: history.items(history.newest), nextCursor: null };
+    await refreshHistory(page, history.kind);
+    await expect(region).toHaveAttribute('aria-busy', 'true');
+    expect(session.cancelled.filter(url => url.includes('cursor='))).toEqual([]);
+    await expect(region.getByRole('cell', { name: history.original, exact: true })).toBeVisible();
+    await region.getByRole('button', { name: history.latest, exact: true }).click();
+    await expect.poll(() => session.cancelled.filter(url => url.includes('cursor=')).length).toBe(1);
+    await expect(region.getByRole('cell', { name: history.newest, exact: true })).toBeVisible();
+    await held.finish(true);
+    await expect(region).toHaveAttribute('aria-busy', 'false');
+    await expect(region.getByRole('cell', { name: history.next, exact: true })).toHaveCount(0);
+    await expect(region.getByRole('cell', { name: history.newest, exact: true })).toBeVisible();
+    await expect(region.getByRole('alert')).toHaveCount(0);
+  });
+}
+
+test('a delayed supporting aggregate cannot replace explicit latest history, while a subsequent poll can advance it', async ({ page }) => {
+  const session = sessions.get(page), fixture = session.fixtures.get(alpha);
+  fixture['blocking/history'].nextCursor = cursor;
+  session.intercept = async (route, url, _id, kind) => {
+    if (!url.searchParams.has('cursor')) return false;
+    expect(kind).toBe('blocking/history'); expect(url.searchParams.get('cursor')).toBe(cursor);
+    expect(url.searchParams.get('fromUtc')).toBe(fromUtc); expect(url.searchParams.get('toUtc')).toBe(toUtc);
+    await json(route, { ...responsePage(fixture, kind, url), items: [blockingHistoryItem({ blockedSessionId: 82 })], nextCursor: null }); return true;
+  };
+  await open(page); const history = blockingHistory(page);
+  await history.getByRole('button', { name: 'Older history', exact: true }).click();
+  await expect(history.getByRole('cell', { name: '82', exact: true })).toBeVisible();
+  fixture['blocking/history'] = { ...fixture['blocking/history'], repositoryTimeUtc: '2026-09-30T13:05:00.000Z',
+    items: [blockingHistoryItem({ blockedSessionId: 94 })], nextCursor: null };
+  // The history subread finishes, but getActivitySnapshot cannot publish it
+  // until its separately held native Requests response finishes.
+  const aggregate = holdResponse(page, (_url, _id, kind) => kind === 'requests', fixture.requests);
+  await refreshHistory(page, 'blocking/history'); await aggregate.seen;
+  await expect(supporting(page).getByText('Loading bounded activity evidence…', { exact: true })).toBeVisible();
+  await expect(history.getByRole('cell', { name: '82', exact: true })).toBeVisible();
+  fixture['blocking/history'] = { ...fixture['blocking/history'], repositoryTimeUtc: '2026-09-30T13:10:00.000Z',
+    items: [blockingHistoryItem({ blockedSessionId: 96 })] };
+  await history.getByRole('button', { name: 'Return to latest blocking history', exact: true }).click();
+  await expect(history.getByRole('cell', { name: '96', exact: true })).toBeVisible();
+  await expect(history.getByRole('button', { name: 'Return to latest blocking history', exact: true })).toHaveCount(0);
+  await aggregate.finish();
+  await expect(supporting(page).getByText('Loading bounded activity evidence…', { exact: true })).toHaveCount(0);
+  await expect(supporting(page).getByRole('heading', { name: 'Server waits', exact: true })).toBeVisible();
+  await expect(history.getByRole('cell', { name: '96', exact: true })).toBeVisible();
+  await expect(history.getByRole('cell', { name: '94', exact: true })).toHaveCount(0);
+  expect(session.cancelled.filter(url => new URL(url).pathname.endsWith('/activity/requests'))).toEqual([]);
+  expect(session.requests.filter(url => url.pathname.endsWith('/blocking/history') && !url.searchParams.has('cursor'))).toHaveLength(3);
+
+  session.intercept = undefined;
+  fixture['blocking/history'] = { ...fixture['blocking/history'], repositoryTimeUtc: '2026-09-30T13:15:00.000Z',
+    items: [blockingHistoryItem({ blockedSessionId: 97 })] };
+  await refreshHistory(page, 'blocking/history');
+  await expect(history.getByRole('cell', { name: '97', exact: true })).toBeVisible();
+  await expect(history.getByRole('cell', { name: '96', exact: true })).toHaveCount(0);
+  await expect(history.getByRole('status').filter({ hasText: 'Page 1' })).toBeVisible();
+});
+
+for (const width of [320, 768, 1024, 1440]) test(`retained activity histories expose keyboard latest recovery and dark layout at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const session = sessions.get(page), fixture = session.fixtures.get(alpha);
+  for (const history of histories) fixture[history.kind].nextCursor = cursor;
+  session.intercept = async (route, url, _id, kind) => {
+    if (!url.searchParams.has('cursor')) return false;
+    const history = histories.find(item => item.kind === kind);
+    if (!history || url.searchParams.get('cursor') !== cursor) throw new Error('Unexpected history continuation');
+    await json(route, { ...responsePage(fixture, kind, url), items: history.items(history.next), nextCursor: null }); return true;
+  };
+  await open(page);
+  for (const history of histories) {
+    const region = history.region(page);
+    await region.getByRole('button', { name: history.older, exact: true }).click();
+    await expect(region.getByRole('cell', { name: history.next, exact: true })).toBeVisible();
+    const latest = region.getByRole('button', { name: history.latest, exact: true });
+    await region.getByRole('button', { name: history.first, exact: true }).focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(latest).toBeFocused();
+    expect(await latest.evaluate(element => element.matches(':focus-visible'))).toBe(true);
+    const box = await latest.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  await info.attach(`activity-retained-history-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
+  expect(violations).toEqual([]);
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-components/screenshots/', import.meta.url));
+  await mkdir(directory, { recursive: true });
+  await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo({ top: 0, behavior: 'instant' }); });
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  const path = `${directory}/activity-retained-history-${width}.png`;
+  await page.screenshot({ path, fullPage: true });
+  await info.attach(`activity-retained-history-${width}`, { path, contentType: 'image/png' });
+  for (const history of histories) {
+    const region = history.region(page);
+    await region.getByRole('button', { name: history.latest, exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(region.getByRole('cell', { name: history.original, exact: true })).toBeVisible();
+    await expect(region.getByRole('button', { name: history.latest, exact: true })).toHaveCount(0);
+  }
+});
+
 test('keeps activity history accessible and locally scrollable at 320 and 1440 pixels', async ({ page }, info) => {
   await open(page);
   await expect(blockingHistory(page).getByRole('cell', { name: '71', exact: true })).toBeVisible();

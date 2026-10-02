@@ -15,7 +15,7 @@ import { activitySelectionExpired, activitySelectionHref, activityUtc, loadActiv
 // repository/capture latency so the exact triggered snapshot is returned.
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
-export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, selectedDatabaseId, onSelectDatabase, historyUnavailableReason, scope, selectionHash, canReadText = false, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; selectedDatabaseId?: number; onSelectDatabase?: (databaseId: number | undefined) => void; historyUnavailableReason?: string; scope?: OverviewScope; selectionHash?: string; canReadText?: boolean; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean }) {
+export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, selectedDatabaseId, onSelectDatabase, historyUnavailableReason, scope, selectionHash, canReadText = false, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false, onSelectTimeMode }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; selectedDatabaseId?: number; onSelectDatabase?: (databaseId: number | undefined) => void; historyUnavailableReason?: string; scope?: OverviewScope; selectionHash?: string; canReadText?: boolean; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean; onSelectTimeMode?: (mode: "live" | "history") => void }) {
   const { mode: timeMode } = useTimeDisplay();
   const timeLabel = (value: string | number) => formatDisplayTime(value, timeMode);
   const urlEnabled = scope !== undefined && selectionHash !== undefined;
@@ -318,8 +318,8 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   }
   return <section className="live-sessions panel" aria-label={mode === "history" ? "Session history" : "Live sessions"} aria-busy={loading}>
     <div className="health-heading-row"><div><p className="eyebrow">Activity · {displayName}</p><h3>{mode === "history" ? "Session history" : "Live sessions"}</h3></div><div className="toolbar">
-      <button aria-pressed={mode === "live" && !capture} onClick={() => { clearSessionSelection(); setPreferredSnapshotId(null); setMode("live"); firstPage(); }}>Live</button>
-      <button aria-pressed={mode === "history" || Boolean(capture)} disabled={Boolean(sessionHistoryReason) && !capture} onClick={() => { clearSessionSelection(); setPreferredSnapshotId(null); if (!selectedHistoryWindow) setHistoryEnd(Date.now()); setMode("history"); }}>History</button>
+      <button aria-pressed={mode === "live" && !capture} onClick={() => { clearSessionSelection(); setPreferredSnapshotId(null); setMode("live"); firstPage(); onSelectTimeMode?.("live"); }}>Live</button>
+      <button aria-pressed={mode === "history" || Boolean(capture)} disabled={Boolean(sessionHistoryReason) && !capture} onClick={() => { clearSessionSelection(); setPreferredSnapshotId(null); if (!selectedHistoryWindow) setHistoryEnd(Date.now()); setMode("history"); onSelectTimeMode?.("history"); }}>History</button>
       <button disabled={mode !== "live"} aria-pressed={paused} onClick={() => { if (paused) firstPage(); setPaused(!paused); }}>{paused ? "Resume" : "Pause"}</button>
       <button disabled={loading || !visible} onClick={() => { manual.current = true; if (mode === "history" && !selectedHistoryWindow) setHistoryEnd(Date.now()); else { firstPage(); setRefresh(value => value + 1); } }}>Refresh now</button>
     </div></div>

@@ -70,7 +70,7 @@ export function TargetAlertRulesPanel({ instanceId, displayName, onClose, refres
       if (request.current === pending) request.current = undefined;
     }
   }
-  return <section className="alerts-screen" aria-labelledby="rules-heading">
+  return <section className="alerts-screen alert-rules-screen" aria-labelledby="rules-heading">
     <div className="screen-intro"><div><p className="eyebrow">Alerts · {displayName}</p><h2 id="rules-heading">Configured alert rules</h2><p>Review thresholds, confirmation, clear settings, and disabled rules for this server.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {loading ? <p role="status" className="status-message">Loading alert rules…</p> : null}
     {error ? <div role="alert" className="status-message">{error} <button className="secondary-button" type="button" onClick={() => list.retry()}>Retry</button></div> : null}

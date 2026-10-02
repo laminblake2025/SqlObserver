@@ -15,14 +15,18 @@ export interface DashboardRoute {
   readonly queryFingerprint?: string;
   readonly planFingerprint?: string;
   readonly querySource?: 'query_store' | 'plan_cache';
+  readonly querySelectionInvalid?: true;
   readonly healthCheck?: HealthCheckTab;
   readonly healthSection?: HealthSection;
   readonly configurationRunId?: string;
 }
 const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/;
 const guid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+export const invalidQuerySelectionMessage = 'The query selection in this URL is invalid. Select a query from the ranking.';
 export function readRoute(hash: string): DashboardRoute {
-  const [path, query] = hash.replace(/^#\/?/, '').split('?');
+  const route = hash.replace(/^#\/?/, ''), separator = route.indexOf('?');
+  const path = separator < 0 ? route : route.slice(0, separator);
+  const query = separator < 0 ? undefined : route.slice(separator + 1);
   const page = Object.hasOwn(destinations, path ?? '') ? path as Destination : 'overview';
   const params = new URLSearchParams(query);
   const scope = readOverviewScope(hash);
@@ -36,17 +40,23 @@ export function readRoute(hash: string): DashboardRoute {
   if (page === 'operations' && check) return { ...base, healthCheck: check };
   const databaseId = scope.databaseId;
   const queryFingerprint = params.get('queryFingerprint');
-  if (page === 'queries' && databaseId !== undefined
-      && queryFingerprint !== null && /^[0-9a-f]{64}$/i.test(queryFingerprint)) {
+  // `source` binds the inspected query; `querySource` independently filters its
+  // ranking. Invalid exact selections must never silently choose a first value.
+  if (page === 'queries' && ['queryFingerprint', 'planFingerprint', 'source'].some(key => params.has(key))) {
     const planFingerprint = params.get('planFingerprint');
-    const validPlan = planFingerprint !== null && /^[0-9a-f]{64}$/i.test(planFingerprint);
     const source = params.get('source');
-    const querySource = source === 'query_store' || source === 'plan_cache' && !validPlan
-      ? source : undefined;
+    const target = params.get('target');
+    if (['target', 'databaseId', 'queryFingerprint'].some(key => params.getAll(key).length !== 1)
+        || ['planFingerprint', 'source'].some(key => params.getAll(key).length > 1)
+        || target === null || !guid.test(target) || target === '00000000-0000-0000-0000-000000000000'
+        || databaseId === undefined || queryFingerprint === null || !/^[0-9a-f]{64}$/i.test(queryFingerprint)
+        || planFingerprint !== null && !/^[0-9a-f]{64}$/i.test(planFingerprint)
+        || source !== null && source !== 'query_store' && source !== 'plan_cache'
+        || planFingerprint !== null && source === 'plan_cache') return { ...base, querySelectionInvalid: true };
     return { ...base,
       queryFingerprint: queryFingerprint.toLowerCase(),
-      ...(validPlan ? { planFingerprint: planFingerprint.toLowerCase() } : {}),
-      ...(querySource ? { querySource } : {}) };
+      ...(planFingerprint !== null ? { planFingerprint: planFingerprint.toLowerCase() } : {}),
+      ...(source !== null ? { querySource: source } : {}) };
   }
   const activityAtUtc = params.get('at');
   if (page === 'activity' && activityAtUtc !== null && utcTimestamp.test(activityAtUtc) && Number.isFinite(Date.parse(activityAtUtc))) {

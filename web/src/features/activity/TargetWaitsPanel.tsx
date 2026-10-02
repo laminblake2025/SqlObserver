@@ -36,9 +36,11 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
     [scope.range, scope.from, scope.to, refresh]);
   const window = selection.state === "available" ? selection.window : undefined;
   const requestIdentity = JSON.stringify([instanceId.toLowerCase(), window?.fromUtc, window?.toUtc, refresh]);
+  const historyContext = JSON.stringify([instanceId.toLowerCase(), scope.range, scope.from, scope.to]);
+  const [retainedHistory, setRetainedHistory] = useState<{ key: string; generation: number; page: ActivityPage<ServerWaitHistoryItem> }>();
   const [historyResult, setHistoryResult] = useState<{ key: string; page?: ActivityPage<ServerWaitHistoryItem>; error?: string; loading: boolean }>();
   const [trendResult, setTrendResult] = useState<{ key: string; data?: WaitTrendResponse; error?: string; loading: boolean }>();
-  const history = historyResult?.key === requestIdentity ? historyResult.page : undefined;
+  const history = window && retainedHistory?.key === historyContext ? retainedHistory.page : undefined;
   const historyError = historyResult?.key === requestIdentity ? historyResult.error : undefined;
   const historyLoading = Boolean(window && (historyResult?.key !== requestIdentity || historyResult.loading));
   const trend = trendResult?.key === requestIdentity ? trendResult.data : undefined;
@@ -56,12 +58,12 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
     setHistoryResult({ key: requestIdentity, loading: Boolean(window) });
     if (!window) return () => controller.abort();
     void getServerWaitHistoryPage(instanceId, window, controller.signal)
-      .then(page => { if (!controller.signal.aborted) setHistoryResult({ key: requestIdentity, page, loading: false }); })
+      .then(page => { if (!controller.signal.aborted) { setHistoryResult({ key: requestIdentity, page, loading: false }); setRetainedHistory({ key: historyContext, generation: refresh, page }); } })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setHistoryResult({ key: requestIdentity, loading: false, error: error instanceof Error ? error.message : "Wait history is unavailable." });
       });
     return () => controller.abort();
-  }, [instanceId, window?.fromUtc, window?.toUtc, refresh]);
+  }, [instanceId, window?.fromUtc, window?.toUtc, refresh, historyContext]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -136,7 +138,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       {selection.state === "unavailable" && <p role="status">{selection.message}</p>}
       {historyLoading && <p role="status">Loading wait history…</p>}
       {historyError && <p role="alert">{historyError} Refresh to retry.</p>}
-      {history && <WaitHistory key={`${instanceId}:${history.fromUtc}:${history.toUtc}:${history.repositoryTimeUtc}`} instanceId={instanceId} initialPage={history} />}
+      {history && <WaitHistory key={historyContext} instanceId={instanceId} initialPage={history} latestWindow={window} initialGeneration={retainedHistory?.generation} latestGeneration={refresh} />}
     </section>
   </section>;
 }

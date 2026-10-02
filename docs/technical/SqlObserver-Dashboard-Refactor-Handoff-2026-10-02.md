@@ -2,6 +2,32 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
+## Latest query/history and rule-form qualification
+
+This dashboard pass closes the six source-reviewed frontend findings recorded in the preceding volume/admin checkpoint. Exact query and plan URL inspection survives ranking-page changes and ranking failures; refresh, target, window, database, metric and source changes cancel old continuations. Query ranking/status/history/plan receipts are keyed during render, so old evidence cannot appear under a changed context before effects clear it. Invalid duplicate, orphan or contradictory exact query fields visibly require repair; the ranking source filter remains independent.
+
+Wait and blocking history retain their loaded page, original target/window and cursor context through workspace polling. First/Newer re-read mutable history within that original window. Explicit Return to latest fetches a fresh first page, aborts held navigation and resets the cursor trail only on success. Failed recovery preserves the displayed page. Request generations prevent a delayed supporting aggregate from replacing a later explicit latest receipt; subsequent workspace refresh can resume updates. Target/window changes immediately fence supporting snapshots and errors. This is retained investigation context, not an immutable repository snapshot.
+
+Activity Live/History controls now update the shared Live/Rewind URL, preserve database context and restore through reload/back/forward. Explicit captured-session and linked-deadlock selections are separate valid evidence links; returning to Live clears either link. Expired or unsupported session-history windows retain their existing reason-specific latest-source disclosure. Query/activity transport guards and the Activity window model compare microseconds, preserve the native seventh-zero convention and exact caps, and require history response bounds to match the requested window.
+
+Rule create/edit requests now have synchronous ownership, duplicate guards, unmount/context cancellation and late-result fencing. Uncertain retries keep their original operation identities and native revisions. Closing or losing authority cancels consumption; role regrant cannot restore an old editor or draft. Cancellation does not claim server rollback. Screenshot review also corrected narrow Rules headers so action buttons wrap below a readable rule identity.
+
+Three independent owners handled contracts, query interactions/theme/accessibility, and rule forms/history tests. Fresh independent read-only reviews found and verified the aggregate-order and immediate-render gaps; the lead integrated shared history/time behavior, resolved the visual layout finding and owns final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Independent work and one integration lead | Non-overlapping file ownership and independent source reviews; lead resolves integration and validation. | Complete. |
+| Dark theme | Current tokens, readable controls, keyboard focus and retained-evidence disclosure; Rules header actions wrap without squeezing its identity. | Passing in tested states. |
+| Diagnostic-screen review | Recorded query, Activity/Waits, exact URL/time and rule-form findings addressed; protected run and native source contracts preserved. | Recorded frontend findings closed. |
+| Interaction tests | **73 owning checks: 72 runtime/API/model and one explicit security lint**, **75 mounted cases**, **28 built-App cases** across seven complete final groups. | All pass; no skips or retries in final runs. |
+| Accessibility/responsive checks | Axe, keyboard focus/activation, local table scrolling, control/header geometry and overflow at **320/390/768/1024/1440**; **24 fresh selected screenshots**. | Passing in tested states. |
+| Final integrated validation | Strict product/harness TypeScript, production build, asset generation/verification and frozen input checks; owned fixture servers stop after runs. | Passing against final integrated assets. |
+| Screenshots and requirement summary | [Gallery](../../artifacts/dashboard-query-history/index.html), [case/input/asset hashes and run provenance](../../artifacts/dashboard-query-history/completion.json), isolated reports and preserved attempts. | Delivered locally, bound to final local commit. |
+
+Only affected checks ran: the mounted suite defines **203 cases**, and this pass executes 75. Native owning source/test inputs are unchanged from their green run. The first shared-time App attempt exposed test setup errors: an omitted native database GET and an invalid combined capture/event URL. A later assertion used the wrong existing pin wording. Corrections preserved product assertions and prior reports. All browser groups passed before screenshot review; the narrow Rules header repair then triggered a production rebuild and fresh complete runs of all seven groups. Final reports do not combine failed attempts into passing counts. Complete earlier attempts remain under `initial-run`, `repair2` and `before-layout`; a partial intermediate archive hit the Windows path limit and is retained separately. Final screenshot review includes both mounted and built-App desktop/mobile states. No connected database/backend authorization test, whole-suite rerun, release certification or GitHub upload is claimed.
+
+The full original repository revamp and backend-dependent interface features remain incomplete. Snooze/assignment, recurring maintenance, group template deployment, wider saved-incident capture, the optional assistant and telemetry/collector gaps still need contracts or scope decisions. Earlier qualifications below retain their historical provenance.
+
 ## Latest volume-browsing and admin-interaction qualification
 
 Independent review identified existing-contract frontend defects beyond the historical qualification. Browsed SQL-volume pages now survive polling and pending continuation; already-read First/Previous/Next pages restore locally after cursor expiry. Retention is bounded to 40 pages/1,000 native rows. Explicit Return to latest re-enables refresh, while invalid or superseded unread continuation clears all old pages and requires authoritative reload. Target/revision/Rewind/unmount lifecycle cancels and clears this latest-only evidence; Rewind still does not claim historical capacity.
@@ -22,16 +48,9 @@ Three independent owners handled Rules/source review, dark-theme/admin keyboard 
 
 The first run passed volume/admin App workflows and exposed two test setup defects: missing Resources h2 in the isolated harness and two unregistered supporting GETs in registration fixtures. Those repairs preserved product behavior and assertions. Its reports remain under `initial-run`; all seven groups then passed. Screenshot review corrected scrolling/focus setup in three owning specs, preserved the passing pre-capture reports, and reran their complete 24/6/6 groups. The other four groups and 41 native checks exercise unchanged code/specs. The record preserves both 452-input manifests, their three capture-only differences and unchanged product/build hashes. No composed repair case count, connected database test, release certification or GitHub upload is claimed. Historical whole-dashboard counts were not rerun.
 
-The full original revamp remains incomplete. These changes close existing-contract volume browsing and admin keyboard/action defects; the following source-reviewed dashboard findings and backend-dependent interface requirements remain open.
+The full original revamp remains incomplete. The source-reviewed frontend findings open at this historical checkpoint are closed by the latest qualification above. Backend-dependent interface requirements remain open.
 
-The following source-reviewed dashboard findings remain implementation work, not completion claims:
-
-- **Query paging and selection ownership:** `TargetQueryPerformancePanel.tsx` clears selected detail on ranking-page navigation without clearing the exact URL selection, and its paging cleanup excludes refresh. A delayed ranking request can outlive a newer manual refresh. Preserve URL-selected query inspection and fence old paging results.
-- **Activity/Waits history browsing:** `TargetActivityPanel.tsx` and `TargetWaitsPanel.tsx` hide/remount history during workspace refresh and key it on repository check time, resetting browsed pages. Retain the browsed native target/window cursor context with an explicit latest action; native history paging does not imply an immutable backend snapshot.
-- **Ambiguous query URLs:** `dashboardModel.ts` picks a first duplicate fingerprint and discards contradictory plan/source fields. Refuse ambiguous exact selections visibly, with explicit repair; do not silently select another query or plan.
-- **Shared time and session mode:** inspect `LiveSessionsPanel.tsx` local Live/History selection against the global Rewind URL and reload behavior. Align the mode or give truthful latest-source semantics rather than an apparently historical current-session view.
-- **Microsecond request windows:** `activityApi.ts` and `queryPerformanceApi.ts` compare some endpoints through millisecond `Date.parse` guards, despite native and frontend UTC models accepting positive microsecond windows. Use exact UTC comparisons and targeted native-contract regressions.
-- **Rule form cancellation:** `RuleCreateForm.tsx` and `RuleEditForm.tsx` mutation controllers are still untracked. The changed Rules parent fences stale callbacks, but these separate form consumers need tracked cancellation and their own pending/unmount regressions.
+The six source-reviewed frontend findings below were open at this historical checkpoint and are now addressed by the query/history qualification above. Backend-dependent requirements remain listed later in this handoff.
 
 ## Previous saved-incident dashboard qualification
 

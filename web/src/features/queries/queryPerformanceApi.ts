@@ -1,4 +1,5 @@
 import { apiFetch } from "../../apiClient.ts";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 import type { PlanCacheContent, PlanCacheContentKind, PlanCacheContentReason } from "./queryPerformanceTypes";
 import { readBoundedBody } from "../activity/activityParser.mjs";
 import type { QueryPerformanceDatabaseCatalog, QueryPerformanceDatabaseStatus, QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformancePlanContent, QueryPerformancePlanWaits, QueryPerformanceStatus, QueryPerformanceText, QueryStoreGroupTrend, QueryStoreGroupTrendPoint, QueryStoreWaitRanking, QueryStorePlanRegressionList, PlanCacheIntervalRanking, PlanCacheHistorySelection, PlanCacheIntervalHistory } from "./queryPerformanceTypes";
@@ -17,7 +18,13 @@ function statusReasonCompatible(status: string, reason: string): boolean {
 }
 const digest = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{64}$/iu.test(value);
 const optionalDigest = (value: unknown): value is string | null | undefined => value === null || value === undefined || digest(value);
-const timestamp = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/u.test(value) && !Number.isNaN(Date.parse(value));
+const nativeTicks = (value: string): bigint => utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$)/u, "$1"));
+const timestamp = (value: unknown): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/u.test(value)) return false;
+  try { nativeTicks(value); return true; } catch { return false; }
+};
+const validWindow = (fromUtc: unknown, toUtc: unknown): boolean => timestamp(fromUtc) && timestamp(toUtc)
+  && nativeTicks(toUtc) > nativeTicks(fromUtc) && nativeTicks(toUtc) - nativeTicks(fromUtc) <= 7n * 86_400_000_000n;
 const canonicalInstant = (value: string): string => value.replace(/(?:\.(\d{1,7}))?Z$/u, (_match, fraction: string | undefined) => `.${(fraction ?? "").padEnd(7, "0")}Z`);
 const metric = (value: unknown): value is number | null | undefined => value === undefined || value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
@@ -137,11 +144,7 @@ export async function getQueryStoreGroupPlanTrend(instanceId: string, databaseId
     signal: AbortSignal): Promise<QueryStoreGroupTrend> {
   const ticks = (utc: unknown): bigint => {
     if (!timestamp(utc)) throw new Error("Query Store group trend timestamp was invalid.");
-    const normalized = canonicalInstant(utc), base = normalized.slice(0, 19);
-    const milliseconds = Date.parse(`${base}Z`);
-    if (utc.startsWith("0000-") || new Date(milliseconds).toISOString().slice(0, 19) !== base)
-      throw new Error("Query Store group trend timestamp was invalid.");
-    return BigInt(milliseconds) * 10000n + BigInt(normalized.slice(20, 27));
+    return nativeTicks(utc) * 10n;
   };
   const from = ticks(fromUtc), to = ticks(toUtc), hour = 36_000_000_000n;
   const firstBucket = from - (from % hour + hour) % hour;
@@ -207,12 +210,12 @@ const wholeCount = (value: unknown): value is string =>
 function item(value: unknown, metric: QueryPerformanceMetric = "cpu"): QueryPerformanceItem {
   if (typeof value !== "object" || value === null) throw new Error("Query performance item was invalid."); const i = value as Record<string, unknown>; const v = i.value;
   const source = String(i.source); const sourceState = String(i.sourceState); const semantic = String(i.semantics); const sourceMatrix = source === "query_store" && semantic === "query_store_interval" && (sourceState === "read_write" || sourceState === "read_only") || source === "plan_cache" && semantic !== "query_store_interval" && (sourceState === "disabled" || sourceState === "read_failure" || sourceState === "permission_denied" || sourceState === "timed_out" || sourceState === "unsupported");
-  if (typeof i.databaseId !== "number" || !Number.isInteger(i.databaseId) || i.databaseId <= 0 || i.databaseId > 32767 || !digest(i.queryFingerprint) || !optionalDigest(i.planFingerprint) || !sources.has(source) || source === "mixed" || source === "unavailable" || sourceState === "mixed" || sourceState === "unavailable" || !states.has(sourceState) || typeof i.metric !== "string" || i.metric !== metric || !semantics.has(semantic) || !sourceMatrix || typeof v !== "number" && v !== null || typeof v === "number" && (!Number.isSafeInteger(v) || v < 0) || !timestamp(i.intervalStartUtc) || !timestamp(i.intervalEndUtc) || Date.parse(String(i.intervalEndUtc)) <= Date.parse(String(i.intervalStartUtc)) || !coverage.has(String(i.coverage)) || typeof i.fresh !== "boolean" || typeof i.truncated !== "boolean" || i.contentAvailable !== false || typeof i.collectionRunId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(i.collectionRunId) || typeof i.observationKey !== "string" || !/^[0-9a-f]{32}$/iu.test(i.observationKey)) throw new Error("Query performance item was outside its bounds.");
+  if (typeof i.databaseId !== "number" || !Number.isInteger(i.databaseId) || i.databaseId <= 0 || i.databaseId > 32767 || !digest(i.queryFingerprint) || !optionalDigest(i.planFingerprint) || !sources.has(source) || source === "mixed" || source === "unavailable" || sourceState === "mixed" || sourceState === "unavailable" || !states.has(sourceState) || typeof i.metric !== "string" || i.metric !== metric || !semantics.has(semantic) || !sourceMatrix || typeof v !== "number" && v !== null || typeof v === "number" && (!Number.isSafeInteger(v) || v < 0) || !timestamp(i.intervalStartUtc) || !timestamp(i.intervalEndUtc) || nativeTicks(i.intervalEndUtc) <= nativeTicks(i.intervalStartUtc) || !coverage.has(String(i.coverage)) || typeof i.fresh !== "boolean" || typeof i.truncated !== "boolean" || i.contentAvailable !== false || typeof i.collectionRunId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(i.collectionRunId) || typeof i.observationKey !== "string" || !/^[0-9a-f]{32}$/iu.test(i.observationKey)) throw new Error("Query performance item was outside its bounds.");
   const metricKey = { cpu: "cpuMilliseconds", duration: "durationMilliseconds", executions: "executions", logical_reads: "logicalReads", writes: "writes", rows: "rows" }[metric];
   return { query: { databaseId: i.databaseId, queryFingerprint: i.queryFingerprint }, plan: typeof i.planFingerprint === "string" ? { planFingerprint: i.planFingerprint } : undefined, source: i.source as QueryPerformanceItem["source"], sourceState: String(i.sourceState), semantics: String(i.semantics), metrics: { [metricKey]: v as number | null }, intervalStartUtc: i.intervalStartUtc, intervalEndUtc: i.intervalEndUtc, coverage: String(i.coverage), fresh: i.fresh, truncated: i.truncated, contentAvailable: false, collectionRunId: i.collectionRunId, observationKey: i.observationKey };
 }
 export async function getQueryPerformanceTop(instanceId: string, metric: QueryPerformanceMetric, cursor?: string, fromUtc?: string, toUtc?: string, signal?: AbortSignal): Promise<QueryPerformancePage> {
-  if (!metrics.has(metric) || fromUtc !== undefined && (toUtc === undefined || !timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc) || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 24 * 60 * 60 * 1000)) throw new Error("Query performance top request bounds were invalid.");
+  if (!metrics.has(metric) || fromUtc !== undefined && (toUtc === undefined || !validWindow(fromUtc, toUtc))) throw new Error("Query performance top request bounds were invalid.");
   if (cursor !== undefined && (cursor.length === 0 || cursor.length > 1024)) throw new Error("Query performance cursor exceeded its bound.");
   if (cursor !== undefined && (fromUtc === undefined || toUtc === undefined)) throw new Error("Query performance cursor requires its bound window.");
   const windowQuery = fromUtc === undefined || toUtc === undefined ? "" : `&fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}`;
@@ -220,7 +223,7 @@ export async function getQueryPerformanceTop(instanceId: string, metric: QueryPe
   const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/top?metric=${metric}&limit=200${windowQuery}${cursorQuery}`, instanceId, signal) as { metric?: unknown; items?: unknown; snapshotUtc?: unknown; nextCursor?: unknown; fromUtc?: unknown; toUtc?: unknown };
   if (value.metric !== metric || !timestamp(value.snapshotUtc) || !Array.isArray(value.items) || value.items.length > 200 || value.nextCursor !== undefined && value.nextCursor !== null && (typeof value.nextCursor !== "string" || value.nextCursor.length === 0 || value.nextCursor.length > 1024) || typeof value.fromUtc !== "string" || typeof value.toUtc !== "string" || !timestamp(value.fromUtc) || !timestamp(value.toUtc) || fromUtc !== undefined && canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc) || toUtc !== undefined && canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)) throw new Error("Query performance top response was outside its bounds.");
   const effectiveFrom = value.fromUtc; const effectiveTo = value.toUtc;
-  const items = value.items.map(x => { const parsed = item(x, metric); if (effectiveFrom !== undefined && effectiveTo !== undefined && (Date.parse(parsed.intervalStartUtc) < Date.parse(effectiveFrom) || Date.parse(parsed.intervalEndUtc) > Date.parse(effectiveTo))) throw new Error("Query performance top item was outside its bound window."); return parsed; }); return { repositoryTimeUtc: value.snapshotUtc, items, nextCursor: typeof value.nextCursor === "string" ? value.nextCursor : undefined, fromUtc: effectiveFrom, toUtc: effectiveTo };
+  const items = value.items.map(x => { const parsed = item(x, metric); if (effectiveFrom !== undefined && effectiveTo !== undefined && (nativeTicks(parsed.intervalStartUtc) < nativeTicks(effectiveFrom) || nativeTicks(parsed.intervalEndUtc) > nativeTicks(effectiveTo))) throw new Error("Query performance top item was outside its bound window."); return parsed; }); return { repositoryTimeUtc: value.snapshotUtc, items, nextCursor: typeof value.nextCursor === "string" ? value.nextCursor : undefined, fromUtc: effectiveFrom, toUtc: effectiveTo };
 }
 export async function getQueryPerformance(instanceId: string, signal?: AbortSignal): Promise<QueryPerformancePage> {
   const metrics: QueryPerformanceMetric[] = ["cpu", "duration", "executions", "logical_reads", "writes", "rows"]; const to = new Date().toISOString(); const from = new Date(Date.parse(to) - 24 * 60 * 60 * 1000).toISOString(); const pages = await Promise.all(metrics.map(metric => getQueryPerformanceTop(instanceId, metric, undefined, from, to, signal))); const merged = new Map<string, QueryPerformanceItem>();
@@ -231,7 +234,7 @@ export async function getQueryPerformance(instanceId: string, signal?: AbortSign
   return { repositoryTimeUtc: firstPage.repositoryTimeUtc, items: [...merged.values()], nextCursor: firstPage.nextCursor, cursorsByMetric, fromUtc: firstPage.fromUtc, toUtc: firstPage.toUtc };
 }
 export async function getQueryPerformanceStatus(instanceId: string, fromUtc?: string, toUtc?: string, signal?: AbortSignal): Promise<QueryPerformanceStatus> {
-  if (fromUtc !== undefined && (toUtc === undefined || !timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc) || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 24 * 60 * 60 * 1000)) throw new Error("Query performance status window was invalid.");
+  if (fromUtc !== undefined && (toUtc === undefined || !validWindow(fromUtc, toUtc))) throw new Error("Query performance status window was invalid.");
   const query = fromUtc === undefined || toUtc === undefined ? "" : `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}`;
   const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/status${query}`, instanceId, signal) as Record<string, unknown>; const raw = value.databaseStatuses; const rawCatalog = value.databaseCatalog;
   const targetStatuses = new Set(["inventory_failure", "connection_failure", "deadline_exceeded", "circuit_open", "unsupported", "output_invalid", "lease_lost"]);
@@ -253,12 +256,12 @@ export async function getQueryPerformanceStatus(instanceId: string, fromUtc?: st
 }
 export async function getQueryPerformanceHistory(instanceId: string, databaseId: number, queryFingerprint: string, fromUtc: string, toUtc: string, signal?: AbortSignal, cursor?: string): Promise<QueryPerformanceHistoryPage> {
   if (!Number.isInteger(databaseId) || databaseId <= 0 || databaseId > 32767 || !digest(queryFingerprint)) throw new Error("Query identity was invalid.");
-  if (!timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc) || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 24 * 60 * 60 * 1000) throw new Error("Query performance history window was invalid.");
+  if (!validWindow(fromUtc, toUtc)) throw new Error("Query performance history window was invalid.");
   if (cursor !== undefined && (cursor.length === 0 || cursor.length > 1024)) throw new Error("Query performance history cursor was invalid.");
   const cursorQuery = cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`;
   const value = await readJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/databases/${databaseId}/history/${queryFingerprint}?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&limit=200${cursorQuery}`, instanceId, signal) as { databaseId?: unknown; queryFingerprint?: unknown; items?: unknown; snapshotUtc?: unknown; fromUtc?: unknown; toUtc?: unknown; nextCursor?: unknown };
   if (value.databaseId !== databaseId || value.queryFingerprint !== queryFingerprint || !timestamp(value.snapshotUtc) || typeof value.fromUtc !== "string" || typeof value.toUtc !== "string" || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc) || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc) || !timestamp(value.fromUtc) || !timestamp(value.toUtc) || !Array.isArray(value.items) || value.items.length > 200 || value.nextCursor !== undefined && value.nextCursor !== null && (typeof value.nextCursor !== "string" || value.nextCursor.length === 0 || value.nextCursor.length > 1024)) throw new Error("Query performance history response was outside its bounds.");
-  const items = value.items.map(raw => { const x = raw as Record<string, unknown>; if (x.databaseId !== databaseId || x.queryFingerprint !== queryFingerprint || !metric(x.cpuMilliseconds) || !metric(x.durationMilliseconds) || !metric(x.executions) || !metric(x.logicalReads) || !metric(x.writes) || !metric(x.rows)) throw new Error("Query performance history metrics were invalid."); const base = item({ ...x, metric: "cpu", value: x.cpuMilliseconds ?? null }, "cpu"); if (Date.parse(base.intervalStartUtc) < Date.parse(fromUtc) || Date.parse(base.intervalEndUtc) > Date.parse(toUtc)) throw new Error("Query performance history item was outside its bound window."); return { ...base, metrics: { cpuMilliseconds: x.cpuMilliseconds ?? null, durationMilliseconds: x.durationMilliseconds ?? null, executions: x.executions ?? null, logicalReads: x.logicalReads ?? null, writes: x.writes ?? null, rows: x.rows ?? null } }; });
+  const items = value.items.map(raw => { const x = raw as Record<string, unknown>; if (x.databaseId !== databaseId || x.queryFingerprint !== queryFingerprint || !metric(x.cpuMilliseconds) || !metric(x.durationMilliseconds) || !metric(x.executions) || !metric(x.logicalReads) || !metric(x.writes) || !metric(x.rows)) throw new Error("Query performance history metrics were invalid."); const base = item({ ...x, metric: "cpu", value: x.cpuMilliseconds ?? null }, "cpu"); if (nativeTicks(base.intervalStartUtc) < nativeTicks(fromUtc) || nativeTicks(base.intervalEndUtc) > nativeTicks(toUtc)) throw new Error("Query performance history item was outside its bound window."); return { ...base, metrics: { cpuMilliseconds: x.cpuMilliseconds ?? null, durationMilliseconds: x.durationMilliseconds ?? null, executions: x.executions ?? null, logicalReads: x.logicalReads ?? null, writes: x.writes ?? null, rows: x.rows ?? null } }; });
   return { repositoryTimeUtc: value.snapshotUtc, items, nextCursor: typeof value.nextCursor === "string" ? value.nextCursor : undefined };
 }
 export async function getQueryPerformancePlan(instanceId: string, databaseId: number, queryFingerprint: string, planFingerprint: string, signal?: AbortSignal): Promise<QueryPerformancePlan> {
@@ -270,8 +273,7 @@ export async function getQueryPerformancePlan(instanceId: string, databaseId: nu
 
 export async function getQueryStoreTopWaits(instanceId: string, fromUtc: string,
     toUtc: string, signal: AbortSignal, category?: number): Promise<QueryStoreWaitRanking> {
-  if (!timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc)
-      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000
+  if (!validWindow(fromUtc, toUtc)
       || category !== undefined && (!Number.isInteger(category) || category < 0 || category > 20))
     throw new Error("Query wait ranking window was invalid.");
   const path = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/waits/top`
@@ -297,8 +299,8 @@ export async function getQueryStoreTopWaits(instanceId: string, fromUtc: string,
         !/^(?:0|[1-9]\d{0,38})$/u.test(row.waitMilliseconds) ||
         !Number.isSafeInteger(row.comparableRows) || (row.comparableRows as number) < 1 ||
         !Number.isSafeInteger(row.sourceRows) || (row.sourceRows as number) < (row.comparableRows as number) ||
-        !timestamp(row.lastObservedAtUtc) || Date.parse(row.lastObservedAtUtc) < Date.parse(fromUtc) ||
-        Date.parse(row.lastObservedAtUtc) >= Date.parse(toUtc))
+        !timestamp(row.lastObservedAtUtc) || nativeTicks(row.lastObservedAtUtc) < nativeTicks(fromUtc) ||
+        nativeTicks(row.lastObservedAtUtc) >= nativeTicks(toUtc))
       throw new Error("Query wait ranking row was invalid.");
     const identity = `${row.databaseId}:${row.queryFingerprint}:${row.planFingerprint}`;
     const wait = BigInt(row.waitMilliseconds);
@@ -316,8 +318,7 @@ export async function getQueryStoreTopWaits(instanceId: string, fromUtc: string,
 
 export async function getQueryStorePlanRegressions(instanceId: string, fromUtc: string,
     toUtc: string, signal: AbortSignal): Promise<QueryStorePlanRegressionList> {
-  if (!timestamp(fromUtc) || !timestamp(toUtc) || Date.parse(toUtc) <= Date.parse(fromUtc)
-      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000)
+  if (!validWindow(fromUtc, toUtc))
     throw new Error("Plan regression window was invalid.");
   const path = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/regressions`
     + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&limit=25`;
@@ -325,7 +326,7 @@ export async function getQueryStorePlanRegressions(instanceId: string, fromUtc: 
   if (!timestamp(value.fromUtc) || !timestamp(value.toUtc) || !timestamp(value.comparisonFromUtc)
       || canonicalInstant(value.fromUtc) !== canonicalInstant(fromUtc)
       || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)
-      || Date.parse(value.comparisonFromUtc) !== Date.parse(fromUtc) - (Date.parse(toUtc) - Date.parse(fromUtc))
+      || nativeTicks(value.comparisonFromUtc) !== nativeTicks(fromUtc) - (nativeTicks(toUtc) - nativeTicks(fromUtc))
       || value.semantics !== "query_store_group_plan_comparison"
       || value.coverage !== "observed_groups_only" && value.coverage !== "no_qualifying_changes"
       || !Array.isArray(value.items) || value.items.length > 25)
@@ -352,8 +353,8 @@ export async function getQueryStorePlanRegressions(instanceId: string, fromUtc: 
         (row.previousSourceRows as number) < (row.previousComparableRows as number) ||
         !Number.isSafeInteger(row.currentSourceRows) ||
         (row.currentSourceRows as number) < (row.currentComparableRows as number) ||
-        !timestamp(row.lastObservedAtUtc) || Date.parse(row.lastObservedAtUtc) < Date.parse(fromUtc) ||
-        Date.parse(row.lastObservedAtUtc) >= Date.parse(toUtc) ||
+        !timestamp(row.lastObservedAtUtc) || nativeTicks(row.lastObservedAtUtc) < nativeTicks(fromUtc) ||
+        nativeTicks(row.lastObservedAtUtc) >= nativeTicks(toUtc) ||
         priorRatio !== undefined && ratio > priorRatio)
       throw new Error("Plan regression row was invalid.");
     const identity = `${row.databaseId}:${row.queryFingerprint}`;
@@ -371,9 +372,7 @@ export async function getQueryStorePlanRegressions(instanceId: string, fromUtc: 
 
 export async function getPlanCacheIntervalRanking(instanceId: string, fromUtc: string, toUtc: string,
     rankingMetric: QueryPerformanceMetric, signal: AbortSignal): Promise<PlanCacheIntervalRanking> {
-  if (!timestamp(fromUtc) || !timestamp(toUtc) || canonicalInstant(toUtc) <= canonicalInstant(fromUtc)
-      || !canonicalInstant(fromUtc).endsWith("0Z") || !canonicalInstant(toUtc).endsWith("0Z")
-      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 86400000 || !metrics.has(rankingMetric))
+  if (!validWindow(fromUtc, toUtc) || !metrics.has(rankingMetric))
     throw new Error("Cache ranking window or metric was invalid.");
   const path = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance/cache/top`
     + `?fromUtc=${encodeURIComponent(fromUtc)}&toUtc=${encodeURIComponent(toUtc)}&metric=${rankingMetric}&limit=25`;
@@ -428,9 +427,7 @@ export async function getPlanCacheIntervalHistory(selection: PlanCacheHistorySel
     signal: AbortSignal, cursor?: string): Promise<PlanCacheIntervalHistory> {
   const count = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
   const utc = (value: unknown): value is string => timestamp(value) && canonicalInstant(value).endsWith("0Z");
-  const ticks = (value: string): bigint => {
-    const canonical = canonicalInstant(value); return BigInt(Date.parse(canonical.slice(0, 19) + "Z")) * 10000n + BigInt(canonical.slice(20, 27));
-  };
+  const ticks = (value: string): bigint => nativeTicks(value) * 10n;
   if (!count(selection.databaseId) || selection.databaseId < 5 || selection.databaseId > 32766
       || ![selection.databaseIncarnation, selection.queryFingerprint, selection.planFingerprint].every(value => /^[0-9a-f]{64}$/u.test(value))
       || !utc(fromUtc) || !utc(toUtc) || ticks(toUtc) <= ticks(fromUtc) || ticks(toUtc) - ticks(fromUtc) > 6048000000000n

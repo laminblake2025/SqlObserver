@@ -1,9 +1,24 @@
 import type { ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem, ServerWaitHistoryItem } from "./activityTypes";
 import { getPage, parseEdge, parseHistory, parseRequest, parseSession, parseWait, parseWaitHistory } from "./activityParser.mjs";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 export { ActivityRequestError, safeStatusMessage } from "./activityParser.mjs";
 
 const pageLimit = 25;
 const blockingGraphLimit = 256;
+const nativeUtc = (value: unknown): bigint => utcMicroseconds(typeof value === "string"
+  ? value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1") : value);
+function validHistoryWindow(window: { readonly fromUtc: string; readonly toUtc: string }): boolean {
+  try {
+    const from = nativeUtc(window.fromUtc), to = nativeUtc(window.toUtc);
+    return to > from && to - from <= 24n * 3_600_000_000n;
+  } catch { return false; }
+}
+function bindHistoryWindow<T>(page: ActivityPage<T>, window: { readonly fromUtc: string; readonly toUtc: string }, message: string): ActivityPage<T> {
+  try {
+    if (nativeUtc(page.fromUtc) === nativeUtc(window.fromUtc) && nativeUtc(page.toUtc) === nativeUtc(window.toUtc)) return page;
+  } catch { /* Never reflect provider-controlled timestamp or parser detail. */ }
+  throw new Error(message);
+}
 
 export async function getCurrentServerWaitPage(instanceId: string, signal: AbortSignal, cursor?: string): Promise<ActivityPage<ActivityWait>> {
   const parameters = new URLSearchParams({ limit: String(pageLimit) });
@@ -12,19 +27,19 @@ export async function getCurrentServerWaitPage(instanceId: string, signal: Abort
 }
 
 export async function getBlockingHistoryPage(instanceId: string, window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal, cursor?: string): Promise<ActivityPage<BlockingHistoryItem>> {
-  const from = Date.parse(window.fromUtc), to = Date.parse(window.toUtc);
-  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 24 * 3_600_000) throw new Error("Invalid blocking history window.");
+  if (!validHistoryWindow(window)) throw new Error("Invalid blocking history window.");
   const parameters = new URLSearchParams({ limit: String(pageLimit), fromUtc: window.fromUtc, toUtc: window.toUtc });
   if (cursor !== undefined) parameters.set("cursor", cursor);
-  return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/history?${parameters}`, parseHistory, instanceId, signal);
+  const page = await getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/history?${parameters}`, parseHistory, instanceId, signal);
+  return bindHistoryWindow(page, window, "Blocking history response did not match the selected UTC window.");
 }
 
 export async function getServerWaitHistoryPage(instanceId: string, window: { readonly fromUtc: string; readonly toUtc: string }, signal: AbortSignal, cursor?: string): Promise<ActivityPage<ServerWaitHistoryItem>> {
-  const from = Date.parse(window.fromUtc), to = Date.parse(window.toUtc);
-  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 24 * 3_600_000) throw new Error("Invalid wait history window.");
+  if (!validHistoryWindow(window)) throw new Error("Invalid wait history window.");
   const parameters = new URLSearchParams({ limit: String(pageLimit), fromUtc: window.fromUtc, toUtc: window.toUtc });
   if (cursor !== undefined) parameters.set("cursor", cursor);
-  return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/waits/history?${parameters}`, parseWaitHistory, instanceId, signal);
+  const page = await getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/waits/history?${parameters}`, parseWaitHistory, instanceId, signal);
+  return bindHistoryWindow(page, window, "Wait history response did not match the selected UTC window.");
 }
 
 export async function getCurrentBlockingPage(instanceId: string, signal: AbortSignal): Promise<ActivityPage<BlockingEdge>> {

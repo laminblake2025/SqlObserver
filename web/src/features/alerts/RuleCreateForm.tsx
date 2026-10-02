@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createRule, getRuleCatalog, prepareRule, RuleAttempts,
   type RuleTemplate, type RuleValues } from "./alertRuleAdminActions";
 import { ruleExplanation, ruleSignalLabel } from "./alertRuleSignals.ts";
@@ -21,6 +21,19 @@ export function RuleCreateForm({ instanceId, onCreated }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<string>();
+  const request = useRef<AbortController | undefined>(undefined);
+  const currentTarget = useRef(instanceId);
+  currentTarget.current = instanceId;
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current?.abort();
+      request.current = undefined;
+    };
+  }, [instanceId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,24 +55,34 @@ export function RuleCreateForm({ instanceId, onCreated }: {
   const thresholdSignal = values?.kind === "metric_threshold" || blocking || deadlock;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !template || !values) return;
+    if (request.current || !template || !values) return;
+    const controller = new AbortController();
+    request.current = controller;
+    const acceptsResult = () => mounted.current && currentTarget.current === instanceId &&
+      request.current === controller && !controller.signal.aborted;
     setError(undefined); setMessage(undefined);
     try {
       const rule = prepareRule(values, template);
       const attempt = attempts.createFor(instanceId, rule);
       setBusy(true);
-      await createRule(instanceId, rule, attempt, new AbortController().signal);
+      await createRule(instanceId, rule, attempt, controller.signal);
+      if (!acceptsResult()) return;
       attempts.completeCreate(instanceId, rule);
       setMessage("Rule created. The list is refreshing.");
       onCreated(attempt.ruleId);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "The rule could not be created.");
-    } finally { setBusy(false); }
+      if (acceptsResult()) setError(failure instanceof Error ? failure.message : "The rule could not be created.");
+    } finally {
+      if (request.current === controller) {
+        request.current = undefined;
+        if (mounted.current && currentTarget.current === instanceId) setBusy(false);
+      }
+    }
   }
   const setNumber = (name: keyof RuleValues, value: string) =>
     setValues(current => current ? { ...current, [name]: Number(value) } : current);
 
-  return <form className="panel maintenance-form" onSubmit={(event) => void submit(event)}>
+  return <form className="panel maintenance-form" aria-label="Create an alert rule" onSubmit={(event) => void submit(event)}>
     <div><h3>Create an alert rule</h3><p>Choose a signal and its confirmation timing. Backup policy limits are configured per database in Health checks.</p></div>
     {catalogError ? <p role="alert">{catalogError} <button className="secondary-button" type="button" onClick={() => setCatalogRetry(value => value + 1)}>Retry</button></p> : null}
     {error ? <p role="alert">{error}</p> : null}

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activityHistoryHref, readRoute, routeHref, formatAddress } from '../src/dashboardModel.ts';
+import { activityHistoryHref, readRoute, routeHref, formatAddress, invalidQuerySelectionMessage } from '../src/dashboardModel.ts';
+import { readQueryViewSelection } from '../src/features/queries/queryViewModel.ts';
 test('hash routes preserve target identity and reject unknown destinations', () => {
   assert.deepEqual(readRoute(routeHref('queries', 'a b')), {page:'queries', target:'a b'});
   assert.deepEqual(readRoute(routeHref('waits', 'a b')), {page:'waits', target:'a b'});
@@ -34,4 +35,58 @@ test('nullable target addresses never invent a named instance or default port', 
   assert.equal(formatAddress({host:'lab',namedInstance:null,tcpPort:1433}), 'lab:1433');
   assert.equal(formatAddress({host:'lab',namedInstance:'SQL'}), 'lab\\SQL');
   assert.equal(formatAddress({host:'lab'}), 'lab:unavailable');
+});
+
+const queryTarget = 'abcdefab-abcd-4abc-8abc-abcdefabcdef';
+const queryId = 'a'.repeat(64), planId = 'b'.repeat(64);
+const queryHref = `#/queries?target=${queryTarget}&databaseId=6&queryFingerprint=${queryId}`;
+
+test('exact query URLs normalize native identities and keep ranking and selected sources independent', () => {
+  assert.deepEqual(readRoute(`#/queries?target=${queryTarget.toUpperCase()}&databaseId=6&queryFingerprint=${queryId.toUpperCase()}&planFingerprint=${planId.toUpperCase()}&source=query_store&querySource=plan_cache`),
+    { page: 'queries', target: queryTarget, databaseId: 6, queryFingerprint: queryId, planFingerprint: planId, querySource: 'query_store' });
+  assert.deepEqual(readRoute(`${queryHref}&source=plan_cache&querySource=query_store`),
+    { page: 'queries', target: queryTarget, databaseId: 6, queryFingerprint: queryId, querySource: 'plan_cache' });
+  assert.deepEqual(readRoute(`${queryHref}&planFingerprint=${planId}`),
+    { page: 'queries', target: queryTarget, databaseId: 6, queryFingerprint: queryId, planFingerprint: planId });
+  assert.equal(readQueryViewSelection(`${queryHref}&source=plan_cache&querySource=query_store`).sourceFilter, 'query_store');
+  assert.equal(readRoute(`${queryHref}&querySource=invalid`).querySelectionInvalid, undefined,
+    'An invalid ranking filter is represented by its own model, not the exact query selection.');
+});
+
+test('duplicate, malformed and contradictory exact query parameters refuse automatic selection', () => {
+  for (const suffix of [`&queryFingerprint=${queryId}`, '&queryFingerprint=short', '&planFingerprint=',
+    '&planFingerprint=invalid', `&planFingerprint=${planId}&planFingerprint=${planId}`,
+    '&source=query_store&source=query_store', '&source=mixed', '&source=',
+    `&planFingerprint=${planId}&source=plan_cache`]) {
+    const route = readRoute(`${queryHref}${suffix}`);
+    assert.equal(route.querySelectionInvalid, true, suffix);
+    assert.equal(route.queryFingerprint, undefined, suffix);
+    assert.equal(route.planFingerprint, undefined, suffix);
+    assert.equal(route.querySource, undefined, suffix);
+  }
+  for (const value of ['', 'short', 'g'.repeat(64), 'a'.repeat(65), `${queryId}?ignored`])
+    assert.equal(readRoute(`#/queries?target=${queryTarget}&databaseId=6&queryFingerprint=${value}`).querySelectionInvalid, true);
+  assert.equal(invalidQuerySelectionMessage, 'The query selection in this URL is invalid. Select a query from the ranking.');
+});
+
+test('exact query selection requires one valid target and database binding, without selecting a first duplicate', () => {
+  for (const binding of [`target=${queryTarget}`, `target=${queryTarget}&databaseId=6&databaseId=6`,
+    `target=${queryTarget}&databaseId=6&databaseId=7`, `target=${queryTarget}&databaseId=0`,
+    `target=${queryTarget}&databaseId=32768`, `target=${queryTarget}&databaseId=06`,
+    `target=${queryTarget}&databaseId=invalid`, `target=${queryTarget}&target=${queryTarget}&databaseId=6`,
+    'databaseId=6', 'target=&databaseId=6', 'target=not-a-guid&databaseId=6',
+    'target=00000000-0000-0000-0000-000000000000&databaseId=6']) {
+    const route = readRoute(`#/queries?${binding}&queryFingerprint=${queryId}`);
+    assert.equal(route.querySelectionInvalid, true, binding);
+    assert.equal(route.queryFingerprint, undefined, binding);
+  }
+  assert.equal(readRoute(`#/queries?target=${queryTarget}&databaseId=32767&queryFingerprint=${queryId}`).querySelectionInvalid, undefined);
+});
+
+test('orphan exact fields are invalid while ranking-only and other-screen URLs have no query refusal', () => {
+  for (const field of [`planFingerprint=${planId}`, 'source=query_store'])
+    assert.equal(readRoute(`#/queries?target=${queryTarget}&databaseId=6&${field}`).querySelectionInvalid, true);
+  assert.deepEqual(readRoute(`#/queries?target=${queryTarget}&querySource=plan_cache&queryView=cache`),
+    { page: 'queries', target: queryTarget });
+  assert.equal(readRoute(`#/waits?target=${queryTarget}&databaseId=6&queryFingerprint=bad&source=bad`).querySelectionInvalid, undefined);
 });
