@@ -7,7 +7,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class CanonicalRunReferenceGateTests(PostgreSql18Fixture fixture, Xunit.Abstractions.ITestOutputHelper output)
+public sealed partial class CanonicalRunReferenceGateTests(PostgreSql18Fixture fixture, Xunit.Abstractions.ITestOutputHelper output)
 {
     [Fact]
     public async Task SealedEmptyGraphHasNoReferenceAndReaderHasNoRuntimeMembershipOrWriteRights()
@@ -306,25 +306,27 @@ public sealed class CanonicalRunReferenceGateTests(PostgreSql18Fixture fixture, 
         catch { await database.DisposeAsync(); throw; }
     }
 
-    private static async Task<(Guid Target, Guid Run)> SeedRunAsync(RepositoryTestDatabase database)
+    private static async Task<(Guid Target, Guid Run)> SeedRunAsync(RepositoryTestDatabase database, DateTimeOffset? startedAt = null, Guid? instanceId = null)
     {
-        Guid target = Guid.NewGuid(), run = Guid.NewGuid();
+        Guid target = instanceId ?? Guid.NewGuid(), run = Guid.NewGuid();
         await using var seed = database.DataSource.CreateCommand("""
             INSERT INTO control.observation_target
               (instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,authentication_mode,
                transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
             VALUES(@target,@key,'run retention target','sql01',1433,interval '5 seconds',
               'windows_integrated_service_identity','mandatory_validated','active',1,
-              statement_timestamp(),statement_timestamp(),statement_timestamp());
+              statement_timestamp(),statement_timestamp(),statement_timestamp()) ON CONFLICT(instance_id) DO NOTHING;
+            SELECT control.ensure_collection_run_v2_day(@at::date);
             INSERT INTO telemetry.collection_run_v2
               (run_id,instance_id,collector_id,collector_version,output_schema_version,target_revision,schedule_revision,
                work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
-            VALUES(@run,@target,'engine.core',1,1,1,1,@work,@owner,1,decode(repeat('aa',32),'hex'),statement_timestamp(),statement_timestamp());
+            VALUES(@run,@target,'engine.core',1,1,1,1,@work,@owner,1,decode(repeat('aa',32),'hex'),@at,@at);
             """);
         seed.Parameters.AddWithValue("target", target); seed.Parameters.AddWithValue("run", run);
         seed.Parameters.AddWithValue("key", $"run-retention.{target:N}");
         seed.Parameters.AddWithValue("work", $"collector/run/engine.core/{target:N}");
         seed.Parameters.AddWithValue("owner", Guid.NewGuid());
+        seed.Parameters.AddWithValue("at", startedAt ?? DateTimeOffset.UtcNow);
         await seed.ExecuteNonQueryAsync();
         return (target, run);
     }

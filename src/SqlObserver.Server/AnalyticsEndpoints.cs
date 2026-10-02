@@ -33,7 +33,7 @@ public static class AnalyticsEndpoints
         "m9_backup_evidence", "m6_deadlock_read_receipts",
         "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
         "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas",
-        "m7_query_performance", "collection_run_original_copy", "sql_metric_baselines"
+        "m7_query_performance", "collection_run_original_copy", "collection_run_canonical", "sql_metric_baselines"
     };
     private static readonly HashSet<string> MutationReceiptStates = new(StringComparer.Ordinal)
     {
@@ -340,7 +340,7 @@ public static class AnalyticsEndpoints
             if (!authorization.HasRoleForAllTargets(ApplicationRole.SecurityAdministrator)) return Results.Forbid();
             using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false);
             RetentionExecutionBody? body = document.RootElement.Deserialize<RetentionExecutionBody>(MutationJsonOptions);
-            if (body is null || !RetentionDataClasses.Contains(body.DataClass) || body.DataClass == "collection_run_original_copy" || body.OperationId == Guid.Empty || body.ExecutionId == Guid.Empty || body.ExpectedPolicyRevision < 1 || body.CorrelationId == Guid.Empty || !SafeIdentifier(body.ParentSchema, 128) || !SafeIdentifier(body.ParentTable, 128) || !SafeIdentifier(body.PartitionName, 128) || body.ChangeReason is null || body.ChangeReason.Length is 0 or > 512 || body.RequestDigest is not { Length: 64 } digest || !digest.All(Uri.IsHexDigit) || body.Operation is not null && !string.Equals(body.Operation, operation, StringComparison.Ordinal)) return Results.BadRequest();
+            if (body is null || !RetentionDataClasses.Contains(body.DataClass) || (body.DataClass is "collection_run_original_copy" or "collection_run_canonical") || body.OperationId == Guid.Empty || body.ExecutionId == Guid.Empty || body.ExpectedPolicyRevision < 1 || body.CorrelationId == Guid.Empty || !SafeIdentifier(body.ParentSchema, 128) || !SafeIdentifier(body.ParentTable, 128) || !SafeIdentifier(body.PartitionName, 128) || body.ChangeReason is null || body.ChangeReason.Length is 0 or > 512 || body.RequestDigest is not { Length: 64 } digest || !digest.All(Uri.IsHexDigit) || body.Operation is not null && !string.Equals(body.Operation, operation, StringComparison.Ordinal)) return Results.BadRequest();
             byte[] computed = MutationDigestV1.Retention(operation, body.DataClass, body.ParentSchema, body.ParentTable, body.PartitionName, body.ExpectedPolicyRevision, body.ExecutionId, body.OperationId, authorization.ActorSid.Value, "all", body.CorrelationId, body.ChangeReason);
             VerifyDigest(body.RequestDigest, computed);
             RetentionExecutionRequest request = new(authorization, body.DataClass, body.ParentSchema, body.ParentTable, body.PartitionName, body.ExecutionId, RepositoryTimeout, body.ExpectedPolicyRevision, MutationDigestV1.Hex(computed), body.CorrelationId, body.ChangeReason, operation, body.OperationId);

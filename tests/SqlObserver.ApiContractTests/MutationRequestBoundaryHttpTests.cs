@@ -309,26 +309,48 @@ public sealed class MutationRequestBoundaryHttpTests
     }
 
     [Theory]
-    [InlineData(30, 2, false, HttpStatusCode.OK)]
-    [InlineData(30, 2, true, HttpStatusCode.Forbidden)]
-    [InlineData(29, 2, false, HttpStatusCode.BadRequest)]
-    [InlineData(30, 1, false, HttpStatusCode.BadRequest)]
-    public async Task DeadlockReceiptPolicyMaintainsReplayBoundsAndOriginProtection(int days, int floor, bool hostile, HttpStatusCode expected)
+    [InlineData("m6_deadlock_read_receipts", 30, 2, false, HttpStatusCode.OK)]
+    [InlineData("m6_deadlock_read_receipts", 30, 2, true, HttpStatusCode.Forbidden)]
+    [InlineData("m6_deadlock_read_receipts", 29, 2, false, HttpStatusCode.BadRequest)]
+    [InlineData("m6_deadlock_read_receipts", 30, 1, false, HttpStatusCode.BadRequest)]
+    [InlineData("collection_run_canonical", 90, 1, false, HttpStatusCode.OK)]
+    [InlineData("collection_run_canonical", 90, 1, true, HttpStatusCode.Forbidden)]
+    [InlineData("collection_run_canonical", 89, 1, false, HttpStatusCode.BadRequest)]
+    [InlineData("collection_run_canonical", 90, 2, false, HttpStatusCode.BadRequest)]
+    public async Task RunAndReceiptPoliciesMaintainReplayBoundsAndOriginProtection(string dataClass, int days, int floor, bool hostile, HttpStatusCode expected)
     {
         using var factory = new MutationBoundaryFactory();
         using HttpClient client = factory.Client();
         string json = JsonSerializer.Serialize(new
         {
-            dataClass = "m6_deadlock_read_receipts", enabled = true, retainFor = $"{days}.00:00:00",
+            dataClass, enabled = true, retainFor = $"{days}.00:00:00",
             minimumPartitionsToKeep = floor, expectedRevision = 1, changeReason = "Receipt retention contract test"
         });
-        using HttpRequestMessage request = Request("/api/v1/retention/policies/m6_deadlock_read_receipts", json);
+        using HttpRequestMessage request = Request($"/api/v1/retention/policies/{dataClass}", json);
         request.Method = HttpMethod.Put;
         BrowserHeaders(request, hostile ? "https://attacker.example" : SameOrigin, hostile ? "cross-site" : "same-origin");
         using HttpResponseMessage response = await client.SendAsync(request);
         Assert.Equal(expected, response.StatusCode);
         if (expected == HttpStatusCode.OK) Assert.Equal("policy-update", Assert.Single(factory.Ports.Mutations));
         else AssertNoPortCalls(factory.Ports);
+    }
+
+    [Theory]
+    [InlineData("detach")]
+    [InlineData("drop")]
+    public async Task CanonicalRunPolicyCannotAuthorizeManualPartitionMutation(string operation)
+    {
+        using var factory = new MutationBoundaryFactory();
+        using HttpClient client = factory.Client();
+        JsonObject body = Assert.IsType<JsonObject>(JsonNode.Parse(Payload(operation)));
+        body["dataClass"] = "collection_run_canonical";
+        body["parentSchema"] = "telemetry";
+        body["parentTable"] = "collection_run_v2";
+        using HttpRequestMessage request = Request($"/api/v1/retention/{operation}", body.ToJsonString());
+        BrowserHeaders(request, SameOrigin, "same-origin");
+        using HttpResponseMessage response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        AssertNoPortCalls(factory.Ports);
     }
 
     private static void AssertNoPortCalls(MutationBoundaryPorts ports)

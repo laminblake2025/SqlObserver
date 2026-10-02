@@ -121,7 +121,7 @@ const retentionDataClasses = new Set([
   "m9_backup_evidence", "m6_deadlock_read_receipts",
   "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
   "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas", "sql_metric_baselines",
-  "collection_run_original_copy",
+  "collection_run_original_copy", "collection_run_canonical",
 ]);
 const retentionBlockReasons = new Set(["disabled", "duration_unconfigured", "recovery_attestation_missing", "reader_lease_active", "backfill_incomplete", "dependency_pending", "checkpoint_active", "minimum_partition_floor", "utc_floor", "registry_missing", "lease_missing", "retention_disabled", "partition_not_attached", "within_retention_window", "grace_in_progress", "retention_failed"]);
 function retentionDuration(value: unknown, enabled: boolean): string | null { if (value === null) { if (enabled) throw new Error("Enabled retention policy requires a duration"); return null; } if (!enabled) throw new Error("Disabled retention policy must not carry a duration"); if (typeof value !== "string" || !/^(?:\d{1,4}\.)?\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?$/.test(value)) throw new Error("Invalid retention policy duration"); const match = /^(?:(\d{1,4})\.)?(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,7}))?$/.exec(value)!; const days = Number(match[1] ?? 0), hours = Number(match[2]), minutes = Number(match[3]), seconds = Number(match[4]); if (hours > 23 || minutes > 59 || seconds > 59 || days > 3650 || days * 86400 + hours * 3600 + minutes * 60 + seconds < 86400) throw new Error("Retention duration is outside its bounds"); return value; }

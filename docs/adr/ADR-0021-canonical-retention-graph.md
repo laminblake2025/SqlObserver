@@ -510,7 +510,7 @@ snapshot and checkpoint and the receipt that references the outcome ledger.
 Each reviewed constraint must retain its column, parent, delete action,
 validation state, owner, and relation security profile. Missing, changed, or
 unknown references hold the run even when the child currently contains no rows.
-The gate also refuses an unindexed reference probe. Migrations 0326–0346 add
+The gate also refuses an unindexed reference probe. Migrations 0326â€“0346 add
 leading run-key B-tree indexes to the 21 reviewed parents that lacked them,
 using concurrent builds and the existing resumable partition-index attachment
 path. The other reviewed parents already have qualifying indexes. Detached
@@ -534,8 +534,67 @@ and replay age floor, completed outcomes, recovery attestation, active-work
 and reader checks, analytics/report/incident holds, bounded row work, fenced
 ownership, a narrow append-only deletion exception, and an immutable audit.
 Deletion must lock the root rows and stabilize the FK catalog before checking
-references again in the same transaction. Until that operation exists, the
-gate is a migration-only diagnostic and changes no policy or history row.
+references again in the same transaction. Migration 0325 alone remains a
+migration-only diagnostic and changes no policy or history row.
+
+Migrations 0347â€“0348 add the private, migrator-only canonical retirement
+operation and a concurrent source-run index for evidence packets. Its policy
+is disabled with no duration by default and is anchored to the unpartitioned
+identity bridge, so the generic partition worker cannot detach the v2 run
+header through this policy. Enabling it requires the permanent rollback seal,
+90â€“3650 days of history, and a floor of one. The policy is exposed through the
+existing policy administration contract; manual partition detach/drop rejects
+this data class.
+
+Each call is scoped to one target, asserts the retention maintenance lease,
+pins the policy revision and a valid recovery attestation, and examines at
+most 32 completed run units in timestamp/UUID order. It keeps the latest
+completed outcome for every scheduled collector, including disabled or
+offline targets. The header, outcome, and most recent visibility-gap record
+must all precede the retention cutoff. Missing outcomes and windows longer
+than a day remain holds. Held runs advance the returned cursor so that an
+old retained reference does not starve later candidates. Callers must begin
+a later sweep from the start to reconsider released holds.
+
+The operation reuses the closed FK reference gate, including hidden
+cross-target references and cascading children. It also holds live partition
+readers, pending analytics dependencies, and attached or detached incident
+source packets. Verified detached relations receive SELECT access for the
+non-login dependency reader; unknown ownership, security, indexes, or
+constraints still hold cleanup. Legacy detached packet partitions without
+independent forced row-level security remain unverified. Detached metadata
+work is capped at 128 reviewed entries. Finalized report snapshots and copied
+saved-incident evidence are self-contained and do not pin the original run.
+
+Root table and row locks stabilize the FK catalog and prevent new references
+from binding an identity being retired. Legacy reader-lease, analytics-job,
+and packet writers have no per-run lock protocol, so this private operation
+uses SHARE locks with NOWAIT on those tables (including verified detached
+packet children) for the batch transaction. Existing writers defer cleanup;
+new writers wait until the transaction completes. Reads continue. Scheduling
+or enabling this operation requires evaluating that contention at fleet scale
+and ensuring the caller commits promptly; the current maintenance worker
+does not dispatch it.
+
+A transaction-private context, keyed by backend and transaction ID, permits
+only the selected run's gap, outcome, identity, and header deletions while
+the policy, recovery attestation, target scope, and fence remain valid.
+UPDATE rejection retains the trigger names required by fleet cutover checks.
+Setting a cleanup GUC cannot bypass the deletion guard. One immutable batch
+ledger and one audit row record counts, the run-ID digest, cursor, policy,
+recovery attestation, and fence. Exact replay returns the recorded result;
+different parameters conflict. Any deletion or audit failure rolls back the
+whole unit and private context. Idle and held-only scans create no retirement
+ledger or audit growth. This publishes a qualified primitive, not an active
+cleanup schedule or a change to any enabled policy.
+
+The focused qualification ran on local PostgreSQL 18: 40 integration cases
+cover the reference inventory and retirement operation, including atomic
+replay, held-run cursor progress, batch and target bounds, audit rollback,
+concurrent non-FK writers, detached visibility, and rejected role, scope,
+revision, fence, and cutoff requests. Policy unit and HTTP tests exercise
+replay floors, same-origin enforcement, and denial of manual partition
+mutation. This is not fleet-scale contention or backup-restore qualification.
 
 ## Implementation gates
 
