@@ -2,7 +2,7 @@ import type { OverviewScope } from './features/overview/overviewTypes';
 import { readOverviewScope, overviewHref } from './features/overview/overviewModel.ts';
 import { healthCheckTab, type HealthCheckTab } from './features/operations/agentHistoryModel.ts';
 
-export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', maintenance: 'Maintenance windows', destinations: 'Destinations', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
+export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', maintenance: 'Maintenance windows', destinations: 'Destinations', permissions: 'Permission script', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
 export type Destination = keyof typeof destinations;
 export type HealthSection = "summary" | "databases" | "collection";
 export const navigationDestinations = ['overview', 'servers', 'activity', 'waits', 'resources', 'queries', 'deadlocks', 'alerts', 'operations', 'analytics', 'reports'] as const satisfies readonly Destination[];

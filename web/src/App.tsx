@@ -40,6 +40,8 @@ import { TargetResourcesPanel } from "./features/resources/TargetResourcesPanel"
 import { queryPerformanceDefaultHref, resolveQueryWindow, type QueryWindowResult } from "./features/queries/queryWindowModel";
 import { ReportsPanel } from "./features/reports/ReportsPanel";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
+import { TargetPermissionScriptPanel } from "./features/targets/TargetPermissionScriptPanel";
+import "./features/targets/permissionScript.css";
 import { ServersPage } from "./features/targets/ServersPage";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
 import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
@@ -236,7 +238,7 @@ export function App() {
     () => resolveQueryWindow(scope, Date.now()),
     [route.page, scope.target, scope.range, scope.from, scope.to, slowRefresh],
   );
-  const currentNavigation = route.page === "health" ? "servers" :
+  const currentNavigation = route.page === "health" || route.page === "permissions" ? "servers" :
     route.page === "rules" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
   const routeHref = (page: Destination, target = route.target) => {
     if (page === "alerts" && route.page === "alerts" && alertSelection && target.toLowerCase() === route.target.toLowerCase())
@@ -248,7 +250,8 @@ export function App() {
     return queryViewHref(retainDiagnosticSelectionHref(href, location.hash), queryView);
   };
   const closeTarget = () => {
-    location.hash = route.page === "alerts" ? routeHref("alerts", "") :
+    location.hash = route.page === "permissions" ? healthSectionHref(scope, route.target, "summary") :
+      route.page === "alerts" ? routeHref("alerts", "") :
       route.page === "rules" || route.page === "maintenance" || route.page === "destinations"
         ? routeHref("alerts", route.target) : routeHref("overview", route.target);
   };
@@ -357,6 +360,8 @@ export function App() {
                 <button className="secondary-button" type="button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>
                   ↻ <span>Refresh</span>
                 </button>
+                {selected && route.page === "health" && canManageRules
+                  ? <a className="secondary-button" href={overviewHref(scope, "permissions", selected.instanceId)}>Generate permission script</a> : null}
                 {canAddServer ? <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button> : null}
               </div>
             }
@@ -420,6 +425,7 @@ export function App() {
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "rules", props.instanceId)} onSelect={id => selectAdminItem("rules", id)} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "maintenance", props.instanceId)} onSelect={id => selectAdminItem("maintenance", id)} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}
+              {route.page === "permissions" && <TargetPermissionScriptPanel key={props.instanceId} targetId={props.instanceId} displayName={props.displayName} host={selected!.host} canGenerate={canManageRules} onClose={closeTarget} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}

@@ -1,8 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { verifyPermissionTemplates } from "./tools/permission-template-catalog.mjs";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), { name: "sqlobserver-permission-templates", buildStart() { verifyPermissionTemplates(); } }],
   build: {
     outDir: "dist",
     sourcemap: true,
