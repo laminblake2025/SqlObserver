@@ -29,7 +29,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
     <p className="table-note">Showing {rows.length} of {snapshot.targets.length} authorized targets, with observed exceptions first within each group. Search covers this overview response only.{groupBy === 'tag' ? ' Servers with multiple tags appear in each matching group.' : ''}</p>
     {editing && <FleetServerGroupingEditor key={`${editing.targetId}:${editing.groupingRevision}`} target={editing}
       onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onGroupingUpdated(); }} />}
-    <div className="table-scroll"><table>
+    <div className="table-scroll" tabIndex={0} role="region" aria-label="Server health grid"><table>
       <caption>Current alerts, blocking, and backup policy checks; CPU and memory follow the selected window.</caption>
       <thead><tr><th scope="col">Server</th><th scope="col">Attention</th><th scope="col">SQL scheduler CPU</th><th scope="col">OS free via SQL</th><th scope="col">Waits</th><th scope="col">Blocking</th><th scope="col">Backups</th><th scope="col">HA</th><th scope="col">Last SQL core success</th></tr></thead>
       {groups.map(group => <tbody key={group.label ?? 'all'}>

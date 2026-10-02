@@ -142,7 +142,7 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
         <div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3>
           <p>Groups cover loaded alerts only; alerts within each group retain fired-time order. Severity is not supplied by the current rules.</p>
         </div></div>
-        <div className="table-scroll"><table>
+        <div className="table-scroll" tabIndex={0} role="region" aria-label="Fleet alert observations"><table>
           <caption>Current alerts on authorized servers</caption>
           <thead><tr><th scope="col">State</th><th scope="col">Server</th><th scope="col">Rule</th>
             <th scope="col">Fired</th><th scope="col">Value</th></tr></thead>

@@ -16,7 +16,7 @@ export function AgentFailureEvidence({ page, compact = false }: { readonly page:
     {page.state === "PermissionDenied" && <p role="status">The collector cannot read SQL Agent history. Have a Target Administrator review the server permission script.</p>}
     {page.state === "Unsupported" && <p role="status">SQL Agent history is unsupported for this target. Check the SQL Server edition and Agent availability.</p>}
     {page.state === "NoData" && <p role="status">No SQL Agent snapshot has been captured. Check that the Agent collector is enabled and can connect.</p>}
-    {rows.length ? <div className="table-scroll"><table><caption>{compact ? "Job failures first observed in this window" : "SQL Agent history first observed in the selected window"}</caption>
+    {rows.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="SQL Agent failure observations"><table><caption>{compact ? "Job failures first observed in this window" : "SQL Agent history first observed in the selected window"}</caption>
       <thead><tr><th>Job / history ID</th><th>Outcome / step</th><th>First observed</th><th>Source start (local, timezone unknown)</th><th>Duration (s)</th></tr></thead>
       <tbody>{rows.map(row => <tr key={`${row.jobId}:${row.historyInstanceId}`}><td>{row.jobId}<br />{row.historyInstanceId}</td>
         <td>{row.failureKind} · {row.stepId === 0 ? "Job outcome" : `Step ${row.stepId}`}</td>

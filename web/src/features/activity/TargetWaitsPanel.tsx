@@ -103,7 +103,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       {queryRankingError && <p role="alert">{queryRankingError} Refresh to retry.</p>}
       {!queryRanking && !queryRankingError && <p role="status">Loading Query Store wait groups…</p>}
       {queryRanking && queryRanking.items.length === 0 && <p>No positive comparable Query Store wait delta was observed for this category and window.</p>}
-      {queryRanking && queryRanking.items.length > 0 && <div className="table-scroll"><table>
+      {queryRanking && queryRanking.items.length > 0 && <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store wait contributors"><table>
         <caption>Top 25 Query Store plans by comparable category wait milliseconds</caption>
         <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait ms</th>
           <th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>

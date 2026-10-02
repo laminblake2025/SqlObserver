@@ -16,7 +16,7 @@ export function QueryStoreGroupTrendPanel({ state, onSelectWindow, timeLabel, wa
   const trend = state.status === "ready" ? state.trend : undefined;
   const summary = trend ? queryStoreGroupTrendSummary(trend) : undefined;
   return <section className="panel" aria-label="Selected plan delta trend" aria-busy={state.status === "loading"}>
-    <h2>Selected plan · hourly deltas</h2>
+    <h3>Selected plan · hourly deltas</h3>
     <p>Comparable Query Store group changes for the current target revision. This opt-in source shows only observed groups. Missing hours and buckets without comparable rows are gaps, not zero activity.</p>
     {state.status === "loading" && <p role="status">Loading plan deltas…</p>}
     {state.status === "error" && <p role="status">{state.message}</p>}
@@ -29,7 +29,7 @@ export function QueryStoreGroupTrendPanel({ state, onSelectWindow, timeLabel, wa
         <ul>{summary.waits.map(wait => <li key={wait.category}>{waitCategoryNames[wait.category] ?? `Category ${wait.category}`}: {wait.milliseconds} ms</li>)}</ul>
       </details>}
       {trend.points.length > 0 && <details className="supporting-evidence"><summary>Hourly evidence and coverage</summary>
-        <div className="table-scroll"><table><caption>Exact additive values from comparable rows; unavailable values are not zero</caption>
+        <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store comparable group values"><table><caption>Exact additive values from comparable rows; unavailable values are not zero</caption>
           <thead><tr><th scope="col">Hour</th><th scope="col">CPU ms</th><th scope="col">Duration ms</th><th scope="col">Executions</th><th scope="col">Runtime coverage</th><th scope="col">Wait coverage</th></tr></thead>
           <tbody>{trend.points.map(point => <tr key={point.bucketStartUtc}><td>{timeLabel(point.bucketStartUtc)}</td>
             <td>{point.cpuMilliseconds ?? "—"}</td><td>{point.durationMilliseconds ?? "—"}</td>

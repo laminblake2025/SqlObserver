@@ -66,7 +66,7 @@ export function ServerConfigurationSnapshot({ instanceId, refresh, canManage }: 
         {updating ? "Updating…" : result.collectorEnabled ? "Disable configuration collection" : "Enable configuration collection"}
       </button>{!result.collectorEnabled && <small> Verify SQL Server read permissions before enabling.</small>}</p>}
       {updateError && <p role="alert">{updateError} <button type="button" onClick={() => setRetry(value => value + 1)}>Reload current state</button></p>}
-      {result.items.length > 0 && <><div className="table-scroll"><table><thead><tr>
+      {result.items.length > 0 && <><div className="table-scroll" tabIndex={0} role="region" aria-label="Latest server configuration values"><table><thead><tr>
         <th>Setting</th><th>Configured</th><th>In use</th><th>Type</th>
       </tr></thead><tbody>{result.items.map(item => <tr key={item.configurationId}>
         <th scope="row">{item.configurationName}{item.isAdvanced ? " (advanced)" : ""}</th>

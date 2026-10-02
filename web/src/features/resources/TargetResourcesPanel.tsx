@@ -144,7 +144,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         {files && <><p className="activity-evidence">Collector: {files.collector.state.replaceAll("_", " ")} ·
           Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)} · Page {filePageIndex + 1} · {files.items.length} files
           {files.nextCursor ? " · More files available" : " · End of file snapshot"}.</p>
-          {files.items.length ? <div className="table-scroll"><table><caption>Latest SQL Server file counters</caption>
+          {files.items.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest database file counters"><table><caption>Latest SQL Server file counters</caption>
             <thead><tr><th scope="col">Database / file</th><th scope="col">Size</th>
               <th scope="col">Reads</th><th scope="col">Avg read stall (ms)</th>
               <th scope="col">Writes</th><th scope="col">Avg write stall (ms)</th>
@@ -154,7 +154,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
                 <td>{file.readCount}</td><td>{lifetimeAverageStallMilliseconds(file.readStallMilliseconds, file.readCount) ?? "—"}</td>
                 <td>{file.writeCount}</td><td>{lifetimeAverageStallMilliseconds(file.writeStallMilliseconds, file.writeCount) ?? "—"}</td>
                 <td>{formatDisplayTime(file.observedAtUtc, mode)}</td>
-                <td><button type="button" className="secondary-button" aria-pressed={selectedFile?.databaseId === file.databaseId && selectedFile?.fileId === file.fileId}
+                <td><button type="button" className="secondary-button" aria-label={`View read and write latency trend for database ${file.databaseId}, file ${file.logicalName}`} aria-pressed={selectedFile?.databaseId === file.databaseId && selectedFile?.fileId === file.fileId}
                   onClick={() => setSelectedFile({ databaseId: file.databaseId, fileId: file.fileId, logicalName: file.logicalName })}>View trend</button></td></tr>)}
             </tbody></table></div> : <p>No file rows were returned for this snapshot.</p>}
           <nav aria-label="Database file pages" className="pager">

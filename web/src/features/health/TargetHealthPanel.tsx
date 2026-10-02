@@ -78,7 +78,9 @@ export interface TargetHealthPanelProps {
 
 export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, canManageConfiguration, canSaveIncident, targetRevision, selectionHash }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
-  const [evidence, setEvidence] = useState<TargetHealthEvidence>();
+  const [receivedEvidence, setEvidence] = useState<TargetHealthEvidence>();
+  const evidence = receivedEvidence?.target.instanceId.toLowerCase() === instanceId.toLowerCase()
+    ? receivedEvidence : undefined;
   const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"summary" | "databases" | "collection">(selectedDatabaseId === undefined ? "summary" : "databases");
@@ -94,6 +96,10 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
       request = currentRequest;
       try {
         const next = await getTargetHealthEvidence(instanceId, currentRequest.signal);
+        if ([next.target.instanceId, next.databases.instanceId, next.files.instanceId]
+          .some(targetId => targetId.toLowerCase() !== instanceId.toLowerCase())) {
+          throw new HealthRequestError("Health evidence did not match the selected server. Refresh to retry.");
+        }
         if (active) {
           setEvidence(next);
           setMessage(undefined);
@@ -118,20 +124,20 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
 
   return (
     <section className="health-screen" aria-labelledby="health-heading">
-      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
-        canSaveIncident={canSaveIncident} targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
-        blockingRefresh={blockingRefresh}
-        configurationCollectorState={snapshot?.instanceId.toLowerCase() === instanceId.toLowerCase()
-          ? snapshot.collectors.find(item => item.collectorId === "engine.configurations")?.state : undefined} />
       <div className="health-heading-row">
         <div>
           <p className="eyebrow">Server summary · target-scoped snapshot</p>
-          <h3 id="health-heading">Health evidence for {displayName}</h3>
+          <h2 id="health-heading">Server summary for {displayName}</h2>
         </div>
         <button className="secondary-button" onClick={onClose} type="button">
           Close
         </button>
       </div>
+      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
+        canSaveIncident={canSaveIncident} targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
+        blockingRefresh={blockingRefresh}
+        configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
+      <p className="table-note">The dashboard follows the selected time window. Database, file, configuration, and collector summaries below show their latest snapshots, with source times alongside each observation.</p>
 
       {loading && snapshot === undefined ? <p role="status">Loading health evidence…</p> : null}
       {message === undefined ? null : <p role="alert" className="status-message">{message}</p>}
@@ -153,7 +159,9 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           </div>
           {tab === "summary" ? <>
             <HealthMetricStrip metrics={evidence.target.coreMetrics} />
-            <CoreMetrics metrics={evidence.target.coreMetrics} />
+            <details className="supporting-evidence"><summary>All latest core metric samples</summary>
+              <CoreMetrics metrics={evidence.target.coreMetrics} />
+            </details>
             <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh}
               canManage={canManageConfiguration} />
             <ServerConfigurationChanges instanceId={instanceId} scope={scope} refresh={refresh}
@@ -161,7 +169,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
               canManage={canManageConfiguration} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}
+          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth key={instanceId} instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}
           {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
         </>
       )}

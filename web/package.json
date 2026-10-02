@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit --pretty false",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:browser": "pnpm run build && playwright test",
+    "test:browser:dashboard": "pnpm run build && playwright test --config playwright.dashboard-refactor.config.mjs",
     "test:browser:development": "playwright test --config playwright.development.config.mjs",
     "assets:generate": "node tools/web-asset-manifest.mjs generate",
     "assets:verify": "node tools/web-asset-manifest.mjs verify",

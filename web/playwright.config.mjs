@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './browser-tests',
+  testIgnore: ['dashboard-refactor.spec.mjs', 'dashboard-accessibility.spec.mjs'],
   timeout: 30_000,
   workers: 1,
   retries: 0,

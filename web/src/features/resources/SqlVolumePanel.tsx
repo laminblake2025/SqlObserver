@@ -84,7 +84,7 @@ export function SqlVolumePanel({ instanceId, refresh, isRewind }: {
           {page.minimumLostItems ? ` At least ${page.minimumLostItems} items lost.` : ""}
           {` Page ${pageIndex + 1} · ${page.items.length} volumes`}
           {page.nextCursor ? " · More volumes available." : " · End of snapshot."}</p>
-        {page.items.length ? <div className="table-scroll"><table>
+        {page.items.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest SQL-reported volume capacity"><table>
           <caption>Latest SQL-reported volume capacity</caption>
           <thead><tr><th scope="col">Volume</th><th scope="col">Mapped files</th>
             <th scope="col">Total</th><th scope="col">Available</th>

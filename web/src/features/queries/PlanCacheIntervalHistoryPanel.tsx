@@ -73,7 +73,7 @@ export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, 
           series={trend.series} valueFormatter={formatCacheIntervalRate} onSelectWindow={onSelectWindow} />
         {result.nextCursor && result.items.length < 1000 ? <p>Load earlier cache samples to extend the loaded evidence.</p> : null}
       </section>}
-      {result.items.length === 0 ? <p>No samples for this query plan and database incarnation are available in this window.</p> : <div className="table-scroll"><table>
+      {result.items.length === 0 ? <p>No samples for this query plan and database incarnation are available in this window.</p> : <div className="table-scroll" tabIndex={0} role="region" aria-label="Plan cache interval history"><table>
         <caption>Measured intervals and comparison gaps, newest first</caption>
         <thead><tr><th scope="col">Capture / cache entry</th><th scope="col">Comparison / interval</th><th scope="col">CPU ms</th><th scope="col">Duration ms</th><th scope="col">Executions</th><th scope="col">Reads / writes / rows</th>{canReadText ? <th scope="col">Captured content</th> : null}</tr></thead>
         <tbody>{result.items.map(row => <tr key={`${row.collectionRunId}:${row.cacheEntryFingerprint}`}>

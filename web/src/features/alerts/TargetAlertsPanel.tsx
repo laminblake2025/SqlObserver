@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { DetailPane, EvidenceStatus } from "../../components/DiagnosticUi";
 import { overviewHref, readOverviewScope } from "../overview/overviewModel";
@@ -13,8 +13,12 @@ const acknowledgementAttempts = new AcknowledgementAttempts();
 
 export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowledge, canManageRules, canManageDestinations, refresh }: { readonly instanceId: string; readonly displayName: string; readonly onClose: () => void; readonly canAcknowledge: boolean; readonly canManageRules: boolean; readonly canManageDestinations: boolean; readonly refresh: number }) {
   const formatTime = useTimeFormatter();
-  const [items, setItems] = useState<readonly ActiveAlert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [receivedItems, setItems] = useState<readonly ActiveAlert[]>([]);
+  const [evidenceTargetId, setEvidenceTargetId] = useState(instanceId);
+  const [isLoading, setLoading] = useState(true);
+  const targetMatches = evidenceTargetId.toLowerCase() === instanceId.toLowerCase();
+  const items = targetMatches ? receivedItems : [];
+  const loading = isLoading || !targetMatches;
   const [loadingMore, setLoadingMore] = useState(false);
   const [reload, setReload] = useState(0);
   const [error, setError] = useState<string>();
@@ -24,18 +28,40 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowl
   const [busy, setBusy] = useState<string>();
   const [filter, setFilter] = useState<AlertFilter>("active");
   const [ruleFilter, setRuleFilter] = useState("");
+  const [snapshotUtc, setSnapshotUtc] = useState<string>();
+  const pagingRequest = useRef<AbortController | undefined>(undefined);
+  const acknowledgementRequest = useRef<AbortController | undefined>(undefined);
+
+  useEffect(() => {
+    setSelectedId(undefined);
+    setBusy(undefined);
+    return () => {
+      pagingRequest.current?.abort();
+      acknowledgementRequest.current?.abort();
+      acknowledgementRequest.current = undefined;
+    };
+  }, [instanceId]);
 
   useEffect(() => {
     const controller = new AbortController();
+    pagingRequest.current?.abort();
+    pagingRequest.current = undefined;
+    setLoadingMore(false);
     setLoading(true);
     setItems([]);
+    setEvidenceTargetId(instanceId);
     setNextCursor(undefined);
     setError(undefined);
     setMessage(undefined);
+    setSnapshotUtc(undefined);
     void getActiveAlerts(instanceId, controller.signal)
-      .then((page) => { if (!controller.signal.aborted) { setItems(page.items); setNextCursor(page.nextCursor); setError(undefined); setLoading(false); } })
+      .then((page) => {
+        if (controller.signal.aborted) return;
+        if (page.targetId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Alert evidence did not match the selected server.");
+        setItems(page.items); setNextCursor(page.nextCursor); setSnapshotUtc(page.snapshotUtc); setError(undefined); setLoading(false);
+      })
       .catch((failure: unknown) => { if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "Alerts are unavailable."); setLoading(false); } });
-    return () => controller.abort();
+    return () => { controller.abort(); pagingRequest.current?.abort(); };
   }, [instanceId, reload, refresh]);
 
   const visible = useMemo(() => items.filter((item) => {
@@ -49,36 +75,41 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowl
   }, [selected, selectedId]);
 
   async function nextPage() {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || pagingRequest.current) return;
     const controller = new AbortController();
+    pagingRequest.current = controller;
     setLoadingMore(true);
     try {
       const page = await getActiveAlerts(instanceId, controller.signal, 100, nextCursor);
+      if (controller.signal.aborted) return;
+      if (page.targetId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Alert evidence did not match the selected server.");
       setItems((current) => [...current, ...page.items.filter((item) => !current.some((candidate) => candidate.alertId === item.alertId))]);
       setNextCursor(page.nextCursor);
       setError(undefined);
     } catch (failure: unknown) {
-      setError(failure instanceof Error ? failure.message : "Alerts are unavailable.");
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Alerts are unavailable.");
     } finally {
-      setLoadingMore(false);
+      if (!controller.signal.aborted) { pagingRequest.current = undefined; setLoadingMore(false); }
     }
   }
 
   async function acknowledge(item: ActiveAlert) {
     const isFiring = item.state === "firing";
-    if (!isFiring || !canAcknowledge) return;
+    if (!isFiring || !canAcknowledge || acknowledgementRequest.current) return;
     const controller = new AbortController();
+    acknowledgementRequest.current = controller;
     setBusy(item.alertId);
     setMessage(undefined);
     try {
       await acknowledgeAlert(instanceId, item.alertId, acknowledgementAttempts.tokenFor(instanceId, item.alertId, item.firstObservedUtc), controller.signal);
+      if (controller.signal.aborted) return;
       acknowledgementAttempts.complete(instanceId, item.alertId, item.firstObservedUtc);
       setItems((current) => current.map((candidate) => candidate.alertId === item.alertId ? { ...candidate, state: "acknowledged" as AlertState } : candidate));
       setMessage("Acknowledgement recorded. Monitoring continues; the server-provided acknowledgement timestamp will appear on refresh.");
     } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : "The alert could not be acknowledged.");
+      if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The alert could not be acknowledged.");
     } finally {
-      setBusy(undefined);
+      if (!controller.signal.aborted) { acknowledgementRequest.current = undefined; setBusy(undefined); }
     }
   }
 
@@ -88,9 +119,10 @@ export function TargetAlertsPanel({ instanceId, displayName, onClose, canAcknowl
     {loading ? <p role="status" className="status-message">Loading target-scoped alerts…</p> : null}
     {error ? <div role="alert" className="status-message">{error} <button className="secondary-button" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></div> : null}
     {message ? <p role="status" className="status-message">{message}</p> : null}
+    {!loading && !error ? <p className="table-note">Alerts show the latest target-scoped state, independently of the history window. Repository snapshot: {snapshotUtc ? formatTime(snapshotUtc) : "Not returned"}. First observed and state-transition timestamps appear with each alert.</p> : null}
     <div className="alerts-layout">
-      <section className="alert-list panel" aria-label="Target alerts"><div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3><p>Alert severity is unavailable in this projection. Rule names are shown as configured.</p></div></div><div className="table-scroll"><table><caption>Target-scoped alert observations for {displayName}</caption><thead><tr><th scope="col">State</th><th scope="col">Alert / rule</th><th scope="col">Observed value</th><th scope="col">First observed</th><th scope="col">State timestamps</th></tr></thead><tbody>{visible.map((item) => <tr className={item.alertId === selected?.alertId ? "selected-row" : ""} key={item.alertId} onClick={() => setSelectedId(item.alertId)}><td><span className={`state-pill state-${item.state}`}>{item.state}</span></td><td><button className="table-link" type="button" onClick={() => setSelectedId(item.alertId)}>{item.ruleName}</button><small>Alert {item.alertId.slice(0, 12)}…</small></td><td>{formatObservedValue(item.value)}</td><td>{formatTime(item.firstObservedUtc)}</td><td>{formatAvailableTimestamps(item, formatTime)}</td></tr>)}</tbody></table></div>{!loading && !error && visible.length === 0 ? <p className="empty-state">No alert rows match the loaded target-scoped evidence.</p> : null}<div className="pager"><span>{nextCursor ? "More bounded alerts are available." : "End of loaded alert page."}</span><button className="secondary-button" type="button" disabled={!nextCursor || loadingMore} onClick={() => void nextPage()}>{loadingMore ? "Loading…" : "Load more"}</button></div></section>
-      {loading ? <div className="detail-pane status-message">Loading alert evidence…</div> : selected ? <DetailPane title={selected.ruleName} subtitle={`Alert ${selected.alertId} · ${displayName}`} actions={selected.state === "firing" && canAcknowledge ? <button className="primary" type="button" disabled={busy === selected.alertId} onClick={() => void acknowledge(selected)}>{busy === selected.alertId ? "Acknowledging…" : "Acknowledge"}</button> : undefined}><EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"} tone={selected.state === "firing" ? "critical" : selected.state === "acknowledged" ? "warning" : "neutral"} /><p className="detail-note">Acknowledgement records review. Monitoring continues and state changes remain server-owned.</p>{selected.state === "firing" && !canAcknowledge ? <p className="detail-note">An Operator or Target Administrator role on this server is required to acknowledge this alert.</p> : null}<section className="alert-observed"><h3>Observed value</h3><strong>{formatObservedValue(selected.value)}</strong></section><section className="alert-chronology"><h3>Available state timestamps</h3><TimelineItem label="First observed" value={selected.firstObservedUtc} /><TimelineItem label="Fired" value={selected.firedUtc} /><TimelineItem label="Acknowledged" value={selected.acknowledgedUtc} /></section><section className="related-evidence"><h3>Related evidence</h3><a href={overviewHref(scope, "activity", instanceId)}>Open activity <span aria-hidden="true">→</span></a><a href={overviewHref(scope, "deadlocks", instanceId)}>Open deadlocks <span aria-hidden="true">→</span></a><p>Related observations may share a time window without sharing a cause.</p></section><p className="table-note">Rule identifier: {selected.ruleId} · Observed alert state is not a severity classification.</p></DetailPane> : <div className="detail-pane empty-state">Select an alert to inspect its available evidence.</div>}
+      <section className="alert-list panel" aria-label="Target alerts"><div className="table-card-heading"><div><h3>Alerts ({visible.length})</h3><p>Alert severity is unavailable in this projection. Rule names are shown as configured.</p></div></div><div className="table-scroll" tabIndex={0} role="region" aria-label="Target alert observations"><table><caption>Target-scoped alert observations for {displayName}</caption><thead><tr><th scope="col">State</th><th scope="col">Alert / rule</th><th scope="col">Observed value</th><th scope="col">First observed</th><th scope="col">State timestamps</th></tr></thead><tbody>{visible.map((item) => <tr className={item.alertId === selected?.alertId ? "selected-row" : ""} key={item.alertId} onClick={() => setSelectedId(item.alertId)}><td><span className={`state-pill state-${item.state}`}>{item.state}</span></td><td><button className="table-link" type="button" aria-pressed={item.alertId === selected?.alertId} onClick={() => setSelectedId(item.alertId)}>{item.ruleName}</button><small>Alert {item.alertId.slice(0, 12)}…</small></td><td>{formatObservedValue(item.value)}</td><td>{formatTime(item.firstObservedUtc)}</td><td>{formatAvailableTimestamps(item, formatTime)}</td></tr>)}</tbody></table></div>{!loading && !error && visible.length === 0 ? <p className="empty-state">No alert rows match the loaded target-scoped evidence.</p> : null}<div className="pager"><span>{nextCursor ? "More bounded alerts are available." : "End of loaded alert page."}</span><button className="secondary-button" type="button" disabled={!nextCursor || loadingMore} onClick={() => void nextPage()}>{loadingMore ? "Loading…" : "Load more"}</button></div></section>
+      {loading ? <div className="detail-pane status-message">Loading alert evidence…</div> : selected ? <DetailPane title={selected.ruleName} subtitle={`Alert ${selected.alertId} · ${displayName}`} actions={selected.state === "firing" && canAcknowledge ? <button className="primary" type="button" disabled={busy !== undefined} onClick={() => void acknowledge(selected)}>{busy === selected.alertId ? "Acknowledging…" : "Acknowledge"}</button> : undefined}><EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"} tone={selected.state === "firing" ? "critical" : selected.state === "acknowledged" ? "warning" : "neutral"} /><p className="detail-note">Acknowledgement records review. Monitoring continues and state changes remain server-owned.</p>{selected.state === "firing" && !canAcknowledge ? <p className="detail-note">An Operator or Target Administrator role on this server is required to acknowledge this alert.</p> : null}<section className="alert-observed"><h3>Observed value</h3><strong>{formatObservedValue(selected.value)}</strong></section><section className="alert-chronology"><h3>Available state timestamps</h3><TimelineItem label="First observed" value={selected.firstObservedUtc} /><TimelineItem label="Fired" value={selected.firedUtc} /><TimelineItem label="Acknowledged" value={selected.acknowledgedUtc} /></section><section className="related-evidence"><h3>Related evidence</h3><a href={overviewHref(scope, "activity", instanceId)}>Open activity <span aria-hidden="true">→</span></a><a href={overviewHref(scope, "deadlocks", instanceId)}>Open deadlocks <span aria-hidden="true">→</span></a><p>Related observations may share a time window without sharing a cause.</p></section><p className="table-note">Rule identifier: {selected.ruleId} · Observed alert state is not a severity classification.</p></DetailPane> : <div className="detail-pane empty-state">Select an alert to inspect its available evidence.</div>}
     </div>
   </section>;
 }

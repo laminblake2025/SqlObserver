@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { AnalyticsSurfacePanel } from "../analytics/AnalyticsSurfacePanel";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
@@ -8,6 +8,7 @@ import { initialOperationsState, operationKinds, operationsReducer } from "./ope
 import { buildOperationsRenderModel, type OperationsRenderCard } from "./operationsRenderModel";
 import type { OperationalKind, OperationalPage } from "./operationsTypes";
 import type { OverviewScope } from "../overview/overviewTypes";
+import { overviewWindow } from "../overview/overviewModel";
 import { AvailabilityEvidencePanel } from "./AvailabilityEvidencePanel";
 import { BackupAssessmentPanel } from "./BackupAssessmentPanel";
 import { AgentFailureHistoryPanel } from "./AgentFailureHistoryPanel";
@@ -105,7 +106,7 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
       </details></> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
         <details className="supporting-evidence"><summary>Earlier backup observations (latest v1 snapshot)</summary>
           <div className="operations-stack">{activeKinds.map(kind => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>
-        </details></> : tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} />
+        </details></> : tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} scope={scope} />
         : <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>}
   </section>;
 }
@@ -121,9 +122,9 @@ function OperationCard({ card, onRetry, onLoadMore, onCancel }: { readonly card:
     {page ? <>
       <OperationCoverage page={page} kind={card.kind} />
       {card.kind === "tempdb-summary" ? <TempDbSummary page={page} /> : null}
-      {page.state === "NoData" ? <p className="empty-state">No data is available for this target.</p> : null}
-      {page.state === "Unsupported" ? <p className="empty-state">Unsupported by this target.</p> : null}
-      {page.state === "PermissionDenied" ? <p className="empty-state">Permission denied.</p> : null}
+      {page.state === "NoData" ? <p className="empty-state">No observation is available for this target. Check the collector status in Server summary.</p> : null}
+      {page.state === "Unsupported" ? <p className="empty-state">This collector is unsupported by the target. Check the discovered platform and version in Server summary.</p> : null}
+      {page.state === "PermissionDenied" ? <p className="empty-state">The collector could not read this evidence. Ask a Target Administrator to check the monitored SQL Server read permissions.</p> : null}
       {page.items.length ? <NamedOperationEvidence kind={card.kind} page={page} /> : card.kind !== "tempdb-summary" && page.state === "Complete" ? <p className="empty-state">No bounded rows were reported by this observation.</p> : null}
       {page.items.length ? <details className="evidence-disclosure"><summary>Secondary projection fields</summary><EvidenceTable label={`${card.label} secondary evidence`} rows={card.items} /></details> : null}
       {card.error ? <div className="operation-state"><p role="alert">{card.error}</p>{card.canRetry ? <button type="button" onClick={() => onRetry(card.kind)}>Retry</button> : null}</div> : null}
@@ -181,8 +182,15 @@ function namedRows(kind: OperationalKind, items: readonly Record<string, unknown
   });
 }
 
-function ReplicationTab({ instanceId, refresh }: { readonly instanceId: string; readonly refresh: number }) {
-  return <div className="replication-tab"><div className="evidence-callout">Replication retains the existing analytics client and rendering behavior. Status and historical evidence have independent snapshot and visibility states.</div><div className="replication-grid"><AnalyticsSurfacePanel targetId={instanceId} surface="replication/status" refresh={refresh} /><AnalyticsSurfacePanel targetId={instanceId} surface="replication/evidence" refresh={refresh} /></div></div>;
+function ReplicationTab({ instanceId, refresh, scope }: { readonly instanceId: string; readonly refresh: number; readonly scope: OverviewScope }) {
+  const window = useMemo(() => {
+    try {
+      const selected = overviewWindow(scope, Date.now());
+      return Date.parse(selected.toUtc) - Date.parse(selected.fromUtc) <= 7 * 86400000 ? selected : undefined;
+    } catch { return undefined; }
+  }, [scope.range, scope.from, scope.to, refresh]);
+  if (!window) return <p role="status">Replication evidence supports windows of up to seven days. Choose a shorter valid window in the time bar.</p>;
+  return <div className="replication-tab"><div className="evidence-callout">Replication observations follow the selected time window. Source timestamps and coverage remain explicit; missing observations do not establish healthy replication.</div><div className="replication-grid"><AnalyticsSurfacePanel targetId={instanceId} surface="replication/status" timeWindow={window} refresh={refresh} /><AnalyticsSurfacePanel targetId={instanceId} surface="replication/evidence" timeWindow={window} refresh={refresh} /></div></div>;
 }
 
 function formatValue(value: unknown): string {

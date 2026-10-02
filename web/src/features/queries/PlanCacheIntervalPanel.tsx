@@ -32,7 +32,7 @@ export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databa
   }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, metric, refresh, key]);
   const result = current?.result;
   return <section className="panel" aria-label="Cache interval deltas">
-    <h4>Cache interval deltas</h4>
+    <h3>Cache interval deltas</h3>
     <p>Activity measured between qualified cache captures in the selected window. First samples, resets and comparisons crossing the window boundary contribute no total. Database recreations are ranked separately. Cache eviction and incomplete captures can hide activity.</p>
     <label>Rank cache activity by <select value={metric} onChange={event => onMetricChange(event.target.value as QueryPerformanceMetric)}>
       {metrics.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -41,7 +41,7 @@ export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databa
     {current?.error ? <p role="alert">{current.error}</p> : null}
     {result && <>
       <p className="activity-evidence">{result.comparableRows} comparable samples · {result.unavailableRows} unavailable comparisons · {result.boundaryRows} boundary crossings excluded · {result.incompleteFrames} of {result.sourceFrames} captures incomplete</p>
-      {result.items.length === 0 ? <p>No comparable cache activity was recorded in this window. At least two qualified captures are needed; an empty result does not prove there was no activity.</p> : <div className="table-scroll"><table>
+      {result.items.length === 0 ? <p>No comparable cache activity was recorded in this window. At least two qualified captures are needed; an empty result does not prove there was no activity.</p> : <div className="table-scroll" tabIndex={0} role="region" aria-label="Plan cache interval ranking"><table>
         <caption>Top 25 observed cache query plans by {metrics.find(([value]) => value === metric)?.[1].toLowerCase()}</caption>
         <thead><tr><th scope="col">Database / query</th><th scope="col">Plan</th><th scope="col">CPU ms</th><th scope="col">Duration ms</th><th scope="col">Executions</th><th scope="col">Reads / writes / rows</th><th scope="col">Samples / latest</th></tr></thead>
         <tbody>{result.items.map(row => <tr key={`${row.databaseId}:${row.databaseIncarnation}:${row.queryFingerprint}:${row.planFingerprint}`}>

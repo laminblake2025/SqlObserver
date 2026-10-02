@@ -135,24 +135,26 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       if (!controller.signal.aborted) setDetail(value);
     } catch (failure) { if (!controller.signal.aborted) setDetailError(failure instanceof Error ? failure.message : "Query detail unavailable."); }
   }
-  return <section className="live-sessions panel" aria-label="Live sessions">
-    <div className="health-heading-row"><div><p className="eyebrow">Activity · {displayName}</p><h3>Live sessions</h3></div><div className="toolbar">
+  return <section className="live-sessions panel" aria-label={mode === "history" ? "Session history" : "Live sessions"} aria-busy={loading}>
+    <div className="health-heading-row"><div><p className="eyebrow">Activity · {displayName}</p><h3>{mode === "history" ? "Session history" : "Live sessions"}</h3></div><div className="toolbar">
       <button aria-pressed={mode === "live"} onClick={() => { setPreferredSnapshotId(null); setMode("live"); firstPage(); }}>Live</button>
       <button aria-pressed={mode === "history"} disabled={Boolean(sessionHistoryReason)} onClick={() => { setPreferredSnapshotId(null); if (!selectedHistoryWindow) setHistoryEnd(Date.now()); setMode("history"); }}>History</button>
-      <button disabled={mode !== "live"} onClick={() => { if (paused) firstPage(); setPaused(!paused); }}>{paused ? "Resume" : "Pause"}</button>
+      <button disabled={mode !== "live"} aria-pressed={paused} onClick={() => { if (paused) firstPage(); setPaused(!paused); }}>{paused ? "Resume" : "Pause"}</button>
       <button disabled={loading || !visible} onClick={() => { manual.current = true; if (mode === "history" && !selectedHistoryWindow) setHistoryEnd(Date.now()); else { firstPage(); setRefresh(value => value + 1); } }}>Refresh now</button>
     </div></div>
     <div className="live-filters">
       <label>Database <select value={database} onChange={event => setDatabase(event.target.value)}><option value="">All databases</option>{databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
+      <label><input type="checkbox" checked={blocked} onChange={event => setBlocked(event.target.checked)} /> Blocked only</label>
+      <label>Sort <select value={sort} onChange={event => setSort(event.target.value)}>{[["cpu", "CPU time"], ["memory", "Memory"], ["reads", "Reads"], ["writes", "Writes"], ["logicalReads", "Logical reads"], ["elapsed", "Elapsed time"], ["session", "Session ID"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    </div>
+    <details className="supporting-evidence"><summary>Advanced session filters{login || application || status || idle || system ? " · filters applied" : ""}</summary><div className="live-filters">
       <label>Login <input maxLength={128} value={login} onChange={event => setLogin(event.target.value)} /></label>
       <label>Client application <input maxLength={128} value={application} onChange={event => setApplication(event.target.value)} /></label>
       <label>Status <input maxLength={60} value={status} onChange={event => setStatus(event.target.value)} /></label>
       <label><input type="checkbox" checked={idle} onChange={event => setIdle(event.target.checked)} /> Include idle sessions</label>
       <label><input type="checkbox" checked={system} onChange={event => setSystem(event.target.checked)} /> Include system sessions</label>
-      <label><input type="checkbox" checked={blocked} onChange={event => setBlocked(event.target.checked)} /> Blocked only</label>
-      <label>Sort <select value={sort} onChange={event => setSort(event.target.value)}>{[["cpu", "CPU time"], ["memory", "Memory"], ["reads", "Reads"], ["writes", "Writes"], ["logicalReads", "Logical reads"], ["elapsed", "Elapsed time"], ["session", "Session ID"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label><input type="checkbox" checked={descending} onChange={event => setDescending(event.target.checked)} /> Descending</label>
-    </div>
+    </div></details>
     {mode === "history" && initialHistoryAtUtc && <p className="evidence-callout">Opened for the deadlock event at {timeLabel(initialHistoryAtUtc)}. Historical snapshots are minute-granular for cadence evidence; a deadlock-triggered capture is selected automatically when available.</p>}
     {sessionHistoryReason && mode === "live" && <p className="evidence-callout">{sessionHistoryReason} Showing current sessions.</p>}
     {mode === "history" && selectedHistoryWindow && <p className="evidence-callout">Session snapshots in the selected window: {timeLabel(selectedHistoryWindow.fromUtc)} to {timeLabel(selectedHistoryWindow.toUtc)}. Snapshots older than 24 hours are outside retention.</p>}
@@ -164,24 +166,26 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     {displayError && <p role="alert">{displayError}</p>}{displayPage?.truncated && <p role="status">Collection was truncated at 512 rows. Missing sessions may exist.</p>}
     <p>Cumulative CPU is milliseconds, not CPU percentage. Reads, writes and logical reads are cumulative counts. Memory is session memory for idle sessions and granted request memory for active requests. Short requests between samples may not appear.</p>
     {displayPage && <BlockingSnapshot page={displayPage} />}
-    {gap ? <p className="empty-state">No successful snapshot was captured in this minute.</p> : <div className="live-table-scroll"><table><thead><tr>{["Session / request", "Database", "Login", "Client host / application", "Status / command", "CPU ms", "Memory bytes", "Logical reads", "Reads / writes", "Elapsed ms", "Wait / blocker", "Details"].map(title => <th key={title} scope="col">{title}</th>)}</tr></thead><tbody>{displayPage?.rows.map(row => <tr key={row.identity}>
-      <td>{row.sessionId} / {row.requestId ?? "idle"}</td><td>{row.databaseName ?? row.databaseId ?? "—"}</td><td>{row.login ?? "—"}</td><td>{row.clientHost ?? "—"}<br/>{row.application ?? "—"}</td><td>{row.status}<br/>{row.command}</td><td>{row.cpuMs}</td><td>{row.memoryBytes}</td><td>{row.logicalReads}</td><td>{row.reads} / {row.writes}</td><td>{row.elapsedMs}</td><td>{row.waitType ?? "—"} / {formatBlockingTarget(row.blocker)}</td><td><button onClick={() => void open(row)}>Inspect {row.sessionId}/{row.requestId ?? "idle"}</button></td>
+    {gap ? <p className="empty-state">No successful snapshot was captured in this minute.</p> : <div className="live-table-scroll" tabIndex={0} role="region" aria-label="Loaded session observations"><table><caption>{mode === "history" ? "Historical" : "Live"} sessions · loaded snapshot for {displayName}</caption><thead><tr>{["Session / request", "Database", "Login", "Client host / application", "Status / command", "CPU ms", "Memory bytes", "Logical reads", "Reads / writes", "Elapsed ms", "Wait / blocker", "Details"].map(title => <th key={title} scope="col">{title}</th>)}</tr></thead><tbody>{displayPage?.rows.map(row => <tr key={row.identity}>
+      <td>{row.sessionId} / {row.requestId ?? "idle"}</td><td>{row.databaseName ?? row.databaseId ?? "—"}</td><td>{row.login ?? "—"}</td><td>{row.clientHost ?? "—"}<br/>{row.application ?? "—"}</td><td>{row.status}<br/>{row.command}</td><td>{row.cpuMs}</td><td>{row.memoryBytes}</td><td>{row.logicalReads}</td><td>{row.reads} / {row.writes}</td><td>{row.elapsedMs}</td><td>{row.waitType ?? "—"} / {formatBlockingTarget(row.blocker)}</td><td><button type="button" aria-pressed={selection?.row.identity === row.identity && selection.snapshot === displayPage?.snapshotId} aria-controls={selection ? "session-details" : undefined} onClick={() => void open(row)}>Inspect {row.sessionId}/{row.requestId ?? "idle"}</button></td>
     </tr>)}</tbody></table>{displayPage?.rows.length === 0 && <p className="empty-state">{displayPage.state === "unavailable" ? "Collection evidence is unavailable for this observation." : "No sessions match these filters."}</p>}</div>}
     <nav aria-label="Live session pages"><button disabled={loading || cursorTrail.length === 0} onClick={() => { setCursor(cursorTrail.at(-1)); setCursorTrail(values => values.slice(0, -1)); }}>Previous page</button><button disabled={loading || gap || !displayPage?.nextCursor} onClick={() => { setCursorTrail(values => [...values, cursor]); setCursor(displayPage?.nextCursor ?? undefined); }}>Next page</button></nav>
-    {selection && <aside className="live-details" aria-label="Session details"><div className="health-heading-row"><h4>Session {selection.row.sessionId} / {selection.row.requestId ?? "idle"}</h4><button onClick={() => { queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); }}>Close details</button></div>
+    {selection && <aside id="session-details" className="live-details" aria-label="Session details"><div className="health-heading-row"><h4>Session {selection.row.sessionId} / {selection.row.requestId ?? "idle"}</h4><button type="button" onClick={() => { queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); }}>Close details</button></div>
       <p>Observed {timeLabel(selection.observed)} on {displayName}. This observation is preserved when the request disappears.</p>
       <p>Database: {selection.row.databaseName ?? selection.row.databaseId ?? "unknown"}; login: {selection.row.login ?? "unknown"}; client: {selection.row.clientHost ?? "unknown"} / {selection.row.application ?? "unknown"}.</p>
       <p>Engine startup: {selection.row.engineStartup}; session login: {selection.row.sessionLogin}; request start: {selection.row.requestStart ?? "idle"} (SQL Server local timestamps).</p>
       <p>Cumulative CPU {selection.row.cpuMs} ms · memory {selection.row.memoryBytes} bytes · logical reads {selection.row.logicalReads} · reads {selection.row.reads} · writes {selection.row.writes} · elapsed {selection.row.elapsedMs} ms.</p>
       <p>{selection.row.delta ? `Changes over ${selection.row.delta.seconds}s: CPU +${selection.row.delta.cpuMs} ms; reads +${selection.row.delta.reads}; writes +${selection.row.delta.writes}; logical reads +${selection.row.delta.logicalReads}.` : "Interval changes unavailable: no matching complete baseline, restarted lifetime or reset counters."}</p>
-      <h4>Captured executing SQL</h4><p>{selection.row.queryState === "truncated" ? "Statement truncated to 16 KiB. " : ""}{detailError ?? detail?.state ?? "Loading protected query…"}</p>{detail?.text && <pre className="query-text">{detail.text}</pre>}
+      <h4>Captured executing SQL</h4><p role={detailError ? "alert" : "status"}>{selection.row.queryState === "truncated" ? "Statement truncated to 16 KiB. " : ""}{detailError ?? detail?.state ?? "Loading protected query…"}</p>{detail?.text && <pre className="query-text" tabIndex={0} aria-label="Captured executing SQL">{detail.text}</pre>}
     </aside>}
   </section>;
 }
 
 function BlockingSnapshot({ page }: { readonly page: LivePage }) {
   const groups = buildBlockingTree(page.rows);
-  if (groups.length === 0) return null;
+  if (groups.length === 0) return <p className="table-note">{page.state === "unavailable"
+    ? "Blocking relationships are unavailable for this observation."
+    : "No blocking relationships occur in these loaded session rows. Filters, paging, and collection bounds can exclude other relationships."}</p>;
   return <section className="blocking-summary" aria-labelledby="blocking-summary-heading"><div className="section-heading"><div><h4 id="blocking-summary-heading">Blocking tree · loaded snapshot</h4><p>Chains use only the selected snapshot, filters, and loaded page. A missing blocker may be on another page or excluded by filters{page.truncated ? ", or absent from truncated collection" : ""}.</p></div></div>
     {groups.map(group => <div className="blocking-tree-group" key={group.key}>
       <h5>{group.rootLabel}{group.key.startsWith("session:") ? group.rootLoaded ? " · row loaded" : " · row not loaded" : ""}</h5>

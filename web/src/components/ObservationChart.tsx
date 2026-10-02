@@ -122,8 +122,8 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
       const nearest = nearestObservation(entry.items, crosshairTime);
       return `${entry.label} ${nearest ? `${valueFormatter(nearest.value)} at ${timeLabel(nearest.timestamp)}` : "unavailable"}`;
     }).join(" · ")}</p>}
-    <small>Observed values only; lines do not imply samples between points.{onSelectWindow ? " Drag to narrow the workspace time range." : ""}</small>
-    <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table>
+    <small>Observed values only; lines do not imply samples between points.{onSelectWindow ? " Drag to narrow the workspace time range, or use Time range controls with the keyboard." : ""}</small>
+    <details className="chart-values"><summary>View chart values</summary><div className="table-scroll" role="region" aria-label={`${label} chart values`} tabIndex={0}><table>
       <thead><tr><th>Series</th><th>{mode === "local" ? "Local time" : "UTC"}</th><th>Value</th></tr></thead><tbody>
         {chart.series.flatMap((entry) => entry.items.filter((item): item is PlottedObservation => item !== null)
           .map((point, index) => <tr key={`${entry.id}:${point.time}:${index}`}><td>{entry.label}</td><td title={point.time}>{timeLabel(point.timestamp)}</td><td>{valueFormatter(point.value)}</td></tr>))}
