@@ -75,6 +75,27 @@ a:hover { text-decoration: underline; }
 
 .health-screen .detail-note a, .health-recovery a { text-decoration: underline; text-underline-offset: 3px; }
 
+.server-settings-link { display: inline-flex; align-items: center; min-height: 32px; margin-top: 4px; padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; white-space: normal; }
+.target-management-panel { margin-bottom: 24px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.target-management-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.target-management-heading > div, .target-management-summary > div { min-width: 0; }
+.target-management-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px; margin: 16px 0; }
+.target-management-summary dt { color: var(--muted); font-size: 13px; }
+.target-management-summary dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.target-management-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.target-management-form label, .target-management-form input, .target-management-form fieldset { min-width: 0; width: 100%; }
+.target-management-form fieldset, .target-management-actions { grid-column: 1 / -1; }
+.target-management-form .choice input { width: auto; }
+.target-form.target-management-form > fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.target-management-form > fieldset > fieldset { flex-wrap: wrap; }
+.target-management-form > fieldset > button { grid-column: 1 / -1; justify-self: start; }
+.target-management-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.target-management-actions button { white-space: normal; overflow-wrap: anywhere; }
+.target-management-retirement { margin-top: 20px; padding: 16px; border: 1px solid var(--border-warning); border-radius: var(--radius); background: var(--surface-warning); }
+.target-management-retirement input { display: block; width: 100%; margin: 8px 0 12px; }
+.target-management-panel p a { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 600px) { .target-management-form, .target-form.target-management-form > fieldset { grid-template-columns: minmax(0, 1fr); } }
+
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 
 h1, h2, h3, h4, h5, p { margin-top: 0; }

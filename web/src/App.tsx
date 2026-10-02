@@ -45,6 +45,8 @@ import { TargetOnboarding } from "./features/targets/TargetOnboarding";
 import { TargetPermissionScriptPanel } from "./features/targets/TargetPermissionScriptPanel";
 import "./features/targets/permissionScript.css";
 import { ServersPage } from "./features/targets/ServersPage";
+import { TargetManagementPanel } from "./features/targets/TargetManagementPanel";
+import { mergeManagedTarget, readServerManagementSelection, serverSettingsHref } from "./features/targets/serverManagementSelection.ts";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
 import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
@@ -80,6 +82,7 @@ export function App() {
   const alertSelection = alertSelectionFromHash(location.hash);
   const deadlockSelection = readDeadlockSelection(location.hash, route.target);
   const reportSelection = readReportSelection(location.hash);
+  const serverManagement = readServerManagementSelection(location.hash);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string>();
@@ -208,7 +211,10 @@ export function App() {
     if (!selected || currentRoute.target.toLowerCase() !== selected.instanceId.toLowerCase()) return;
     const nextScope = { ...readOverviewScope(location.hash), databaseId };
     const currentAlert = alertSelectionFromHash(location.hash);
-    const href = currentRoute.page === "alerts" && currentAlert
+    const currentSettings = readServerManagementSelection(location.hash);
+    const href = currentRoute.page === "servers" && currentSettings?.state === "selected"
+      ? serverSettingsHref(nextScope, currentSettings.instanceId)
+      : currentRoute.page === "alerts" && currentAlert
       ? targetAlertHref(nextScope, currentRoute.target, currentAlert.alertId)
       : currentRoute.page === "operations" && currentRoute.healthCheck
       ? healthCheckHref(nextScope, currentRoute.target, currentRoute.healthCheck)
@@ -391,7 +397,20 @@ export function App() {
 
           {route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
           {fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} selection={alertSelection} /> : null}
-          {route.page === "servers" && requestedCursor.current === cursor && !message && (!loading || targets.length > 0) ? <><ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} />{loading ? <p role="status">Refreshing server list…</p> : null}</> : null}
+          {route.page === "servers" && serverManagement?.state === "invalid" ? <section className="panel" aria-label="Server settings"><h2>Server settings</h2><p role="alert">{serverManagement.message}</p><a href={overviewHref({ ...scope, databaseId: undefined }, "servers", "")}>Return to server list</a></section> : null}
+          {route.page === "servers" && serverManagement?.state === "selected" ? <TargetManagementPanel
+            key={serverManagement.instanceId} instanceId={serverManagement.instanceId} scope={scope} access={myAccess}
+            onChanged={target => {
+              const current = readServerManagementSelection(location.hash);
+              if (current?.state !== "selected" || current.instanceId !== target.instanceId.toLowerCase()) return;
+              setTargets(targets => mergeManagedTarget(targets, target));
+            }}
+            onClose={() => {
+              const current = readServerManagementSelection(location.hash);
+              if (current?.state === "selected" && current.instanceId === serverManagement.instanceId)
+                location.hash = overviewHref(readOverviewScope(location.hash), "servers");
+            }} /> : null}
+          {route.page === "servers" && requestedCursor.current === cursor && !message && (!loading || targets.length > 0) ? <><ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} settingsHref={target => serverSettingsHref(scope, target)} />{loading ? <p role="status">Refreshing server list…</p> : null}</> : null}
           {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 
           {props ? (
