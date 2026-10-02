@@ -17,6 +17,20 @@ export interface ChartThreshold {
 }
 export interface ChartReferences { readonly bands: readonly ChartBaselineBand[]; readonly thresholds: readonly ChartThreshold[]; }
 
+/** Attention stays visible for partial evidence and gaps, even when some comparison bands can be plotted. */
+export function baselineBandsNeedAttention(bands: readonly ChartBaselineBand[], fromUtc: string, toUtc: string): boolean {
+  const from = utcMicroseconds(fromUtc.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
+  const to = utcMicroseconds(toUtc.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
+  if (!bands.length || bands.some(band => band.visibilityState !== "complete" || band.coverage === undefined || band.coverage < 1)) return true;
+  let covered = from;
+  for (const band of [...bands].sort((a, b) => utcMicroseconds(a.fromUtc) < utcMicroseconds(b.fromUtc) ? -1 : utcMicroseconds(a.fromUtc) > utcMicroseconds(b.fromUtc) ? 1 : 0)) {
+    const start = utcMicroseconds(band.fromUtc), end = utcMicroseconds(band.toUtc);
+    if (start > covered || end <= start) return true;
+    if (end > covered) covered = end;
+  }
+  return covered < to;
+}
+
 const gib = 1073741824;
 const preciseUtc = (value: string) => value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1");
 const chartWindow = (fromUtc: string, toUtc: string) => {

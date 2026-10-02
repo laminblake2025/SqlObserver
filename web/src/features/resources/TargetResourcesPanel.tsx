@@ -14,6 +14,7 @@ import { SqlVolumePanel } from "./SqlVolumePanel";
 import { useChartReferences } from "../overview/useChartReferences.ts";
 import { resourceInspectionInputUtc, resourceInspectionUtc } from "./resourceInspectionModel.ts";
 import { readResourceSelection, resourceSelectionHref, type ResourceSelection } from "./resourceSelectionModel.ts";
+import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 
 const memoryMetrics = new Set([
   "engine.process_physical_memory_bytes", "engine.os_available_memory_bytes",
@@ -160,6 +161,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
 
   const chart = (title: string, metric: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h3>{title}</h3>
+    <ChartEvidenceIndicator label={title} series={evidence?.series.filter(item => item.metric === metric) ?? []} />
     <OverviewChart series={evidence?.series.filter(item => item.metric === metric) ?? []}
       previous={previous?.series.filter(item => item.metric === metric)}
       fromUtc={result.data!.fromUtc} toUtc={result.data!.toUtc}
@@ -207,8 +209,6 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     {result.error && <p role="alert">{result.error}</p>}
     {result.data && !evidence && <p role="status">No authorized resource evidence was returned for this server.</p>}
     {result.data && evidence && <>
-      <p className="activity-evidence">{formatDisplayTime(result.data.fromUtc, mode)} to {formatDisplayTime(result.data.toUtc, mode)}.
-        {evidence.gaps.length ? ` ${evidence.gaps.length} collection gaps are reported below.` : ""}</p>
       <div className="server-dashboard-charts">
         {chart("SQL scheduler CPU", "engine.sql_scheduler_cpu_percent",
           "Percent of visible SQL scheduler capacity used by non-preemptive work between samples. Host CPU from the collector machine is not treated as target CPU.")}
@@ -217,6 +217,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         {chart("Memory grants pending", "engine.memory_grants_pending",
           "Queries waiting for execution memory grants at sample time.")}
         <section className="panel server-dashboard-chart"><h3>Memory pressure</h3>
+          <ChartEvidenceIndicator label="Memory pressure" series={memory(evidence)} />
           <OverviewChart series={memory(evidence)} previous={memory(previous)}
             references={chartReferences.references}
             crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
@@ -227,8 +228,6 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       {evidence.gaps.length > 0 && <details className="panel"><summary>Collection gaps ({evidence.gaps.length})</summary>
         <ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
-      <p className="activity-evidence">{chartReferences.baselineStatus}</p>
-      <p className="activity-evidence">{chartReferences.ruleStatus}</p>
     </>}
     {inspectionWindow && <BufferNodePlePanel instanceId={instanceId} scope={chartScope} refresh={refresh}
       nodeSelectionInvalid={resourceSelection.invalidNode}
@@ -244,9 +243,10 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
           <button type="button" className="secondary-button" onClick={() => updateSelection({ file: undefined })}>Clear selected file</button></>}
         {filesLoading && <p role="status">Loading file snapshot…</p>}
         {fileError && <p role="alert">{fileError} Refresh or retry page navigation.</p>}
-        {files && <><p className="activity-evidence">Collector: {files.collector.state.replaceAll("_", " ")} ·
-          Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)} · Page {filePageIndex + 1} · {files.items.length} files
-          {files.nextCursor ? " · More files available" : " · End of file snapshot"}.</p>
+        {files && <><p className="table-note">Page {filePageIndex + 1} · {files.items.length} loaded files{files.nextCursor ? " · More files available" : " · End of file snapshot"}.</p>
+          <EvidenceDisclosure label={`File snapshot evidence: ${files.collector.state.replaceAll("_", " ")}`} attention={files.collector.state !== "current"}>
+            <p>Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)}. The table shows the latest source snapshot, including in Rewind; it does not follow the chart window.</p>
+          </EvidenceDisclosure>
           {scope.databaseId !== undefined ? <p className="table-note">Showing {visibleFiles.length} of {files.items.length} loaded files for database ID {scope.databaseId}.</p> : null}
           {visibleFiles.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest database file counters"><table><caption>Latest SQL Server file counters</caption>
             <thead><tr><th scope="col">Database / file</th><th scope="col">Size</th>
@@ -271,5 +271,14 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     {inspectionWindow && <DatabaseFileIoTrendPanel instanceId={instanceId} file={activeSelectedFile} scope={chartScope}
       crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
       refresh={refresh} onSelectWindow={onSelectWindow} />}
+    {result.data && evidence && <section className="compact-evidence-footer" aria-label="Resources evidence status">
+      <p>Selected window: {formatDisplayTime(result.data.fromUtc, mode)} to {formatDisplayTime(result.data.toUtc, mode)}. Refreshed {formatDisplayTime(result.data.refreshedAtUtc, mode)}.</p>
+      <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} · {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
+      <EvidenceDisclosure label="Collection evidence details" attention={evidence.gaps.length > 0 || evidence.collectionState !== "current"}>
+        <p>CPU and memory history follow this loaded window. PLE and selected-file latency state their own coverage; file counters and volume capacity show latest snapshots even in Rewind. Missing observations are never filled with zero.</p>
+        <p>Last SQL core observation: {evidence.lastObservedUtc ? formatDisplayTime(evidence.lastObservedUtc, mode) : "unavailable"}. Source status does not establish a health verdict.</p>
+      </EvidenceDisclosure>
+      <ReferenceEvidenceStatus {...chartReferences} />
+    </section>}
   </section>;
 }

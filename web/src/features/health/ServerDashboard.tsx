@@ -20,6 +20,7 @@ import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, read
 import { utcMicroseconds } from "../../utcTimestamp.ts";
 import { DashboardBaselineCards } from "./DashboardBaselineCards.tsx";
 import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.tsx";
+import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules }: {
   readonly instanceId: string;
@@ -103,6 +104,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   };
   const chart = (metric: string, label: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h4>{label}</h4>
+    <ChartEvidenceIndicator label={label} series={evidence?.series.filter(series => series.metric === metric) ?? []} />
     <OverviewChart
       series={evidence?.series.filter(series => series.metric === metric) ?? []}
       previous={previous?.series.filter(series => series.metric === metric)}
@@ -129,7 +131,6 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     {result.error && <p role="alert" className="status-message">{result.error}</p>}
     {data && !evidence && <p className="empty-state">No authorized dashboard evidence was returned for this server.</p>}
     {data && evidence && <>
-      <p className="server-dashboard-window">Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. SQL core status: {evidence.collectionState.replaceAll("_", " ")}.</p>
       <div className="kpi-grid server-dashboard-kpis">
         <DashboardCount label="Active alerts now" value={evidence.activeAlerts} />
         <DashboardCount label="Blocked sessions now" value={evidence.blockedSessions} />
@@ -162,6 +163,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         {chart("engine.memory_grants_pending", "SQL memory grant pressure", "Queries waiting for execution memory grants. This is a point-in-time count; a zero means none were waiting at the sample time.")}
         <section className="panel server-dashboard-chart">
           <h4>Memory pressure</h4>
+          <ChartEvidenceIndicator label="Memory pressure" series={memorySeries(evidence)} />
           <OverviewChart
             series={memorySeries(evidence)}
             previous={memorySeries(previous)}
@@ -177,10 +179,16 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         </section>
       </div>
       <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={blockingRefresh} />
-      <p className="activity-evidence">{chartReferences.baselineStatus}</p>
-      <p className="activity-evidence">{chartReferences.ruleStatus}</p>
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
-      <p className="activity-evidence">{overviewEvidenceFooter(data, timeLabel)}</p>
+      <section className="compact-evidence-footer" aria-label="Dashboard evidence status">
+        <p>Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. Refreshed {timeLabel(data.refreshedAtUtc)}.</p>
+        <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} · {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
+        <EvidenceDisclosure label="Collection evidence details" attention={evidence.gaps.length > 0 || evidence.collectionState !== "current"}>
+          <p>{overviewEvidenceFooter(data, timeLabel)}</p>
+          <p>Last SQL core observation: {evidence.lastObservedUtc ? timeLabel(evidence.lastObservedUtc) : "unavailable"}. Source status does not establish a health verdict.</p>
+        </EvidenceDisclosure>
+        <ReferenceEvidenceStatus {...chartReferences} />
+      </section>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
   </section>;

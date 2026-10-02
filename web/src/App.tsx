@@ -8,6 +8,7 @@ import { dashboardTimelineSelectionHref, readDashboardTimelineSelection } from "
 import { retainResourceSelectionHref } from "./features/resources/resourceSelectionModel.ts";
 import { retainActivitySelectionHref } from "./features/activity/activitySelectionModel.ts";
 import { retainWaitCategoryHref } from "./features/activity/waitSelectionModel.ts";
+import { adminSelectionHref, readAdminSelection, retainAdminSelectionHref, type AdminPage } from "./features/alerts/adminSelectionModel.ts";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { DatabaseScopeControls } from "./components/DatabaseScopeControls";
@@ -27,6 +28,7 @@ import { TargetMaintenancePanel } from "./features/alerts/TargetMaintenancePanel
 import { TargetDestinationsPanel } from "./features/alerts/TargetDestinationsPanel";
 import { FleetAlertsPage } from "./features/alerts/FleetAlertsPage";
 import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
+import { deadlockSelectionHref, readDeadlockSelection, retainDeadlockSelectionHref } from "./features/deadlocks/deadlockSelectionModel.ts";
 import { TargetHealthPanel } from "./features/health/TargetHealthPanel";
 import { OverviewPage } from "./features/overview/OverviewPage";
 import { overviewHref, readOverviewScope } from "./features/overview/overviewModel";
@@ -72,6 +74,7 @@ export function App() {
   const scope = readOverviewScope(location.hash);
   const queryView = readQueryViewSelection(location.hash);
   const alertSelection = alertSelectionFromHash(location.hash);
+  const deadlockSelection = readDeadlockSelection(location.hash, route.target);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string>();
@@ -252,6 +255,12 @@ export function App() {
   const props = selected
     ? { instanceId: selected.instanceId, displayName: selected.displayName, onClose: closeTarget }
     : undefined;
+  const renderedHash = location.hash;
+  const selectAdminItem = (page: AdminPage, id: string) => {
+    const currentRoute = readRoute(location.hash);
+    if (!props || location.hash !== renderedHash || currentRoute.page !== page || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+    location.hash = adminSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, page, id);
+  };
   const incidentPage = ["overview", "health", "activity", "waits", "resources", "queries", "deadlocks", "operations", "alerts"].includes(route.page);
   const incidentContext = selected && incidentPage ? resolveWorkspaceIncidentWindow(location.hash, selected.instanceId, Date.now()) : undefined;
   const targetOptions = selected && !targets.some((target) => target.instanceId === selected.instanceId)
@@ -400,11 +409,17 @@ export function App() {
                 }}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
-              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh} />}
+              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh}
+                selectedEventId={deadlockSelection === null ? null : deadlockSelection?.eventId} selectedOccurredAtUtc={deadlockSelection?.occurredAtUtc}
+                onSelectEvent={selection => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "deadlocks" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  location.hash = deadlockSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, selection);
+                }} />}
               {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} selectedAlertId={alertSelection?.targetId === props.instanceId.toLowerCase() ? alertSelection.alertId : undefined} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
-              {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} />}
-              {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} />}
-              {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} />}
+              {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "rules", props.instanceId)} onSelect={id => selectAdminItem("rules", id)} />}
+              {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "maintenance", props.instanceId)} onSelect={id => selectAdminItem("maintenance", id)} />}
+              {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}
               {route.page === "reports" && <ReportsPanel {...props} />}
               {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
@@ -426,7 +441,7 @@ export function App() {
 }
 
 function retainDiagnosticSelectionHref(href: string, currentHash: string): string {
-  return retainWaitCategoryHref(retainActivitySelectionHref(retainResourceSelectionHref(retainDashboardTimelineHref(href, currentHash), currentHash), currentHash), currentHash);
+  return retainDeadlockSelectionHref(retainAdminSelectionHref(retainWaitCategoryHref(retainActivitySelectionHref(retainResourceSelectionHref(retainDashboardTimelineHref(href, currentHash), currentHash), currentHash), currentHash), currentHash), currentHash);
 }
 
 function retainDashboardTimelineHref(href: string, currentHash: string): string {

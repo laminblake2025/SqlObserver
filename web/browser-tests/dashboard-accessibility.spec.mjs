@@ -658,3 +658,70 @@ for (const width of [320, 390, 768, 1440]) {
     await saveFullPage(page, `query-cache-row-trends-${width}.png`);
   });
 }
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`retained deadlock selection and unavailable identity remain accessible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([{ name: 'dashboardRefactor', value: '1', url: origin }, { name: 'chartReferenceRole', value: 'viewer', url: origin }, { name: 'deadlockSelectionFixture', value: '1', url: origin }]);
+    const targetId = '11111111-1111-4111-8111-000000000001';
+    const url = `/#/deadlocks?${new URLSearchParams({ target: targetId, range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', deadlockEvent: '33333333-3333-4333-8333-333333333335', deadlockAt: '2026-09-26T09:00:00.000001Z' })}`;
+    await page.goto(url);
+    const detail = page.getByRole('region', { name: 'Selected deadlock detail', exact: true });
+    await expect(detail.getByRole('table')).toContainText('91');
+    await expect(detail).toContainText('Its retained detail is shown without selecting another event.');
+    const relationships = detail.getByRole('region', { name: 'Deadlock relationship table', exact: true });
+    await relationships.focus(); await expect(relationships).toBeFocused();
+    await auditResponsiveState(page, testInfo, 'retained-deadlock-selection');
+    await saveFullPage(page, `deadlock-url-selected-${width}.png`);
+    await page.evaluate(hash => { location.hash = hash; }, url.substring(1).replace('33333333-3333-4333-8333-333333333335', 'ffffffff-ffff-4fff-8fff-ffffffffffff'));
+    await expect(detail.getByRole('alert')).toContainText('The requested deadlock detail is unavailable.');
+    await expect(detail.getByRole('table')).toHaveCount(0);
+    const clear = page.getByRole('button', { name: 'Clear deadlock selection', exact: true });
+    await clear.focus(); await expect(clear).toBeFocused();
+    await auditResponsiveState(page, testInfo, 'unavailable-deadlock-selection');
+    await saveFullPage(page, `deadlock-url-unavailable-${width}.png`);
+  });
+
+  test(`administration retained IDs and unavailable detail remain accessible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([{ name: 'dashboardRefactor', value: '1', url: origin }, { name: 'chartReferenceRole', value: 'viewer', url: origin }, { name: 'adminSelectionFixture', value: '1', url: origin }]);
+    for (const config of [
+      { surface: 'rules', key: 'ruleId', id: '66666666-6666-4666-8666-000000000002', detail: 'SYNTHETIC rule 2', capture: 'rules-url-selected' },
+      { surface: 'maintenance', key: 'windowId', id: '77777777-7777-4777-8777-000000000002', detail: 'Maintenance window', capture: 'maintenance-url-selected' },
+      { surface: 'destinations', key: 'destinationId', id: '88888888-8888-4888-8888-000000000999', capture: 'destinations-url-unavailable' },
+    ]) {
+      await page.goto(`/#/${config.surface}?${new URLSearchParams({ target: '11111111-1111-4111-8111-000000000001', range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', [config.key]: config.id })}`);
+      if (config.detail) {
+        await expect(page.getByRole('complementary', { name: config.detail, exact: true })).toContainText(config.id);
+        const selected = page.locator('.alert-list button.table-link[aria-pressed=true]');
+        await selected.focus(); await expect(selected).toBeFocused();
+      } else {
+        await expect(page.getByText('The selected administration item is unavailable on this server. It may have been removed or fall outside your access. Select another item.', { exact: true })).toBeVisible();
+        await expect(page.locator('.detail-pane').getByRole('heading')).toHaveCount(0);
+      }
+      await auditResponsiveState(page, testInfo, config.capture);
+      await saveFullPage(page, `${config.capture}-${width}.png`);
+    }
+  });
+
+  test(`quiet evidence disclosures stay available on dashboard and Resources at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([{ name: 'dashboardRefactor', value: '1', url: origin }, { name: 'chartReferenceRole', value: 'admin', url: origin }, { name: 'baselineKpiFixture', value: '1', url: origin }, { name: 'resourceInspectionFixture', value: '1', url: origin }]);
+    for (const [surface, region, capture] of [['health', 'Dashboard evidence status', 'dashboard-evidence-expanded'], ['resources', 'Resources evidence status', 'resources-evidence-expanded']]) {
+      await page.goto(`/#/${surface}?${new URLSearchParams({ target: '11111111-1111-4111-8111-000000000001', range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', ...(surface === 'health' ? { healthSection: 'summary' } : {}) })}`);
+      const footer = page.getByRole('region', { name: region, exact: true });
+      await expect(footer).toContainText('SQL p10');
+      await expect(footer.locator('.compact-evidence-action')).toHaveCount(0);
+      for (const summary of ['Collection evidence details', 'Baseline reference details', 'Rule threshold details']) {
+        const control = footer.getByText(summary, { exact: true });
+        await control.focus(); await control.press('Enter'); await expect(control).toBeFocused();
+        await expect(control.locator('xpath=parent::details')).toHaveAttribute('open', '');
+      }
+      const chart = page.getByText('SQL scheduler CPU evidence: observed', { exact: true });
+      await chart.focus(); await chart.press('Enter');
+      await expect(chart.locator('xpath=parent::details')).toContainText('2 observed of 2 loaded sample buckets');
+      await auditResponsiveState(page, testInfo, capture);
+      await saveFullPage(page, `${capture}-${width}.png`);
+    }
+  });
+}

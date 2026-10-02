@@ -565,6 +565,8 @@ test('target alert URL restores a paged selection and preserves keyboard focus w
   await paged.focus();
   await paged.press('Enter');
   await expect.poll(() => scope(page).get('alert')).toBe(pagedAlert);
+  await expect(paged).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
   await expect(paged).toBeFocused();
   expect(reads).toBe(loadedReads);
   await page.getByRole('textbox', { name: 'Filter by rule identifier', exact: true }).fill('55555555');
@@ -2131,4 +2133,233 @@ test('ranking row trends discard delayed old target and window values', async ({
   await expect(row).toContainText('1120');
   await expect(row.locator('svg circle')).toHaveCount(1);
   await assertHistoricalScope(page, second, nextFrom, nextTo);
+});
+
+const selectedDeadlockIds = ['33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333334', '33333333-3333-4333-8333-333333333335'];
+const selectedDeadlockTimes = ['2026-09-26T11:00:00.123456Z', '2026-09-26T10:00:00.654321Z', '2026-09-26T09:00:00.000001Z'];
+const deadlockSelectionHref = (index, target = first) => `${href('deadlocks', target)}&${new URLSearchParams({ deadlockEvent: selectedDeadlockIds[index], deadlockAt: selectedDeadlockTimes[index], databaseId: '6' })}`;
+const retainedDeadlockDetail = page => page.getByRole('region', { name: 'Selected deadlock detail', exact: true });
+const retainedDeadlockEvents = page => page.getByRole('complementary', { name: 'Captured deadlock events', exact: true });
+async function deadlockUrlFixture(page) {
+  await databaseFixture(page); await page.context().addCookies([{ name: 'deadlockSelectionFixture', value: '1', url: origin }]);
+}
+
+test('deadlock URL selection preserves exact event time and loaded row focus through reload back and forward', async ({ page }) => {
+  await deadlockUrlFixture(page);
+  await page.goto(`${href('deadlocks')}&databaseId=6`);
+  const events = retainedDeadlockEvents(page), detail = retainedDeadlockDetail(page);
+  await expect(events.locator('button.event-card')).toHaveCount(2);
+  const secondEvent = events.locator('button.event-card').nth(1);
+  await secondEvent.focus(); await secondEvent.press('Enter');
+  await expect(secondEvent).toBeFocused();
+  await expect(secondEvent).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ deadlockEvent: selectedDeadlockIds[1], deadlockAt: selectedDeadlockTimes[1], databaseId: '6' });
+  await expect(detail.getByRole('table')).toContainText('81');
+  await page.reload(); await expect(detail.getByRole('table')).toContainText('81');
+  await expect(events.locator('button.event-card').nth(1)).toHaveAttribute('aria-pressed', 'true');
+  await events.locator('button.event-card').first().click();
+  await expect.poll(() => scope(page).get('deadlockEvent')).toBe(selectedDeadlockIds[0]);
+  await page.goBack(); await expect(detail.getByRole('table')).toContainText('81');
+  await expect.poll(() => scope(page).get('deadlockAt')).toBe(selectedDeadlockTimes[1]);
+  await page.goForward(); await expect(detail.getByRole('table')).toContainText('51');
+  await assertHistoricalScope(page); await assertDatabaseScope(page, 6);
+});
+
+test('deadlock URL restoration reads an exact off-page event without substituting the first listed event', async ({ page }) => {
+  await deadlockUrlFixture(page);
+  const lists = [], detailReads = [];
+  page.on('request', request => { const url = new URL(request.url()); if (url.pathname.endsWith('/deadlocks')) lists.push(url); else if (url.pathname.endsWith('/deadlocks/' + selectedDeadlockIds[2])) detailReads.push(url); });
+  await page.goto(deadlockSelectionHref(2));
+  const detail = retainedDeadlockDetail(page), events = retainedDeadlockEvents(page);
+  await expect(detail.getByRole('table')).toContainText('91');
+  await expect(page.getByText('The requested deadlock is not on the loaded event page. Its retained detail is shown without selecting another event.', { exact: true })).toBeVisible();
+  await expect(events.locator('button[aria-pressed=true]')).toHaveCount(0);
+  expect(lists).toHaveLength(1); expect(lists[0].searchParams.get('cursor')).toBe(null);
+  expect(detailReads).toHaveLength(1);
+  await events.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(events.locator('button.event-card')).toHaveCount(1);
+  await expect(events.locator('button.event-card')).toHaveAttribute('aria-pressed', 'true');
+  await expect(detail.getByRole('table')).toContainText('91');
+  await expect.poll(() => scope(page).get('deadlockAt')).toBe(selectedDeadlockTimes[2]);
+});
+
+test('missing invalid and mismatched deadlock URL identities never select a different event', async ({ page }) => {
+  await deadlockUrlFixture(page);
+  const unknown = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  await page.goto(`${href('deadlocks')}&${new URLSearchParams({ deadlockEvent: unknown, deadlockAt: selectedDeadlockTimes[0] })}`);
+  const unavailable = 'The requested deadlock detail is unavailable. It may have expired or access may have changed. No other event has been selected.';
+  await expect(page.getByRole('alert').filter({ hasText: unavailable })).toBeVisible();
+  await expect(retainedDeadlockDetail(page).getByRole('table')).toHaveCount(0);
+  await expect(retainedDeadlockEvents(page).locator('button[aria-pressed=true]')).toHaveCount(0);
+  await page.goto(deadlockSelectionHref(0, second));
+  await expect(page.getByRole('alert').filter({ hasText: unavailable })).toBeVisible();
+  await expect(retainedDeadlockDetail(page).getByRole('table')).toHaveCount(0);
+  await page.goto(`${href('deadlocks')}&deadlockEvent=${selectedDeadlockIds[0]}`);
+  await expect(page.getByText('The requested deadlock selection is invalid or contradicts the workspace context. Clear the deadlock selection to continue.', { exact: true })).toBeVisible();
+  await expect(retainedDeadlockDetail(page).getByRole('img')).toHaveCount(0);
+  await page.route(`**/deadlocks/${selectedDeadlockIds[0]}`, async route => {
+    const response = await route.fetch(), body = await response.json(); body.summary.occurredAtUtc = '2026-09-26T11:00:00.123457Z';
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(deadlockSelectionHref(0));
+  await expect(page.getByRole('alert').filter({ hasText: unavailable })).toBeVisible();
+  await expect(retainedDeadlockDetail(page).getByRole('table')).toHaveCount(0);
+  await page.unroute(`**/deadlocks/${selectedDeadlockIds[0]}`);
+  await page.getByRole('button', { name: 'Clear deadlock selection', exact: true }).click();
+  await expect.poll(() => scope(page).get('deadlockEvent')).toBe(null);
+  await expect.poll(() => scope(page).get('deadlockAt')).toBe(null);
+  await expect(retainedDeadlockDetail(page).getByRole('table')).toContainText('51');
+});
+
+test('delayed deadlock restoration cannot replace the selected event after target and window navigation', async ({ page }) => {
+  await deadlockUrlFixture(page);
+  let release, pending = false; const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/deadlocks/${selectedDeadlockIds[0]}`, async route => {
+    const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response });
+  });
+  await page.goto(deadlockSelectionHref(0)); await expect.poll(() => pending).toBe(true);
+  const nextFrom = '2026-09-26T09:30:00.000Z', nextTo = '2026-09-26T11:00:00.000Z';
+  await page.evaluate(hash => { location.hash = hash; }, `#/deadlocks?${new URLSearchParams({ target: second, range: 'custom', from: nextFrom, to: nextTo, deadlockEvent: '33333333-3333-4333-8333-333333333344', deadlockAt: selectedDeadlockTimes[1] })}`);
+  const detail = retainedDeadlockDetail(page);
+  await expect(detail.getByRole('table')).toContainText('181');
+  release(); await expect(detail.getByRole('table')).toContainText('181');
+  await expect(detail.getByRole('table')).not.toContainText('51');
+  await assertHistoricalScope(page, second, nextFrom, nextTo);
+});
+
+const adminSelections = [
+  { page: 'rules', parameter: 'ruleId', prefix: '66666666-6666-4666-8666-', list: 'Alert rule list', detail: 'SYNTHETIC rule 2' },
+  { page: 'maintenance', parameter: 'windowId', prefix: '77777777-7777-4777-8777-', list: 'Configured maintenance windows', detail: 'Maintenance window' },
+  { page: 'destinations', parameter: 'destinationId', prefix: '88888888-8888-4888-8888-', list: 'Configured destinations', detail: 'Windows Event Log' },
+];
+for (const admin of adminSelections) {
+  test(`exact ${admin.page} administration IDs restore across bounded pages reload and history without mutations`, async ({ page }) => {
+    await databaseFixture(page); await page.context().addCookies([{ name: 'adminSelectionFixture', value: '1', url: origin }]);
+    const mutations = [], reads = [];
+    page.on('request', request => { if (!['GET', 'HEAD'].includes(request.method())) mutations.push(request.url()); if (new URL(request.url()).pathname.endsWith('/alerts/' + admin.page)) reads.push(request.url()); });
+    const id = admin.prefix + '000000000002';
+    await page.goto(`${href(admin.page)}&databaseId=6&${admin.parameter}=${id.toUpperCase()}`);
+    const detail = page.getByRole('complementary', { name: admin.detail, exact: true });
+    await expect(detail).toContainText(id);
+    const list = page.getByRole('region', { name: admin.list, exact: true });
+    await expect(list.locator('button.table-link')).toHaveCount(2);
+    expect(reads).toHaveLength(2);
+    const firstItem = list.locator('button.table-link').first();
+    await firstItem.focus(); await firstItem.press('Enter');
+    await expect(firstItem).toBeFocused(); await expect(firstItem).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => scope(page).get(admin.parameter)).toBe(admin.prefix + '000000000001');
+    await page.goBack(); await expect(detail).toContainText(id);
+    await page.goForward(); await expect(list.locator('button.table-link').first()).toHaveAttribute('aria-pressed', 'true');
+    await page.goBack(); await page.reload(); await expect(detail).toContainText(id);
+    await page.goto(`${href(admin.page)}&${admin.parameter}=${admin.prefix}000000000999`);
+    await expect(page.getByText('The selected administration item is unavailable on this server. It may have been removed or fall outside your access. Select another item.', { exact: true })).toBeVisible();
+    await expect(page.locator('.detail-pane').getByRole('heading')).toHaveCount(0);
+    await expect(list.locator('button[aria-pressed=true]')).toHaveCount(0);
+    await page.goto(`${href(admin.page)}&${admin.parameter}=${id}&${admin.parameter}=${admin.prefix}000000000001`);
+    await expect(page.getByText('The administration selection in this URL is invalid. Select an item from the list.', { exact: true })).toBeVisible();
+    await expect(page.locator('.detail-pane').getByRole('heading')).toHaveCount(0);
+    const wrongParameter = adminSelections.find(candidate => candidate.parameter !== admin.parameter).parameter;
+    await page.goto(`${href(admin.page)}&${wrongParameter}=${id}`);
+    await expect(page.getByText('The administration selection in this URL is invalid. Select an item from the list.', { exact: true })).toBeVisible();
+    await expect(page.locator('.detail-pane').getByRole('heading')).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+    await expect.poll(() => scope(page).get(admin.parameter)).toBe(null);
+    await assertHistoricalScope(page, second); expect(mutations).toEqual([]);
+  });
+}
+
+test('deadlock exact microsecond list bounds and focused event survive a labelled same-context refresh', async ({ page }) => {
+  await deadlockUrlFixture(page);
+  const preciseFrom = '2026-09-26T08:00:00.0000010Z', preciseTo = '2026-09-26T12:00:00.0000010Z';
+  const lists = []; page.on('request', request => { const url = new URL(request.url()); if (url.pathname.endsWith('/deadlocks')) lists.push(url); });
+  await page.goto(`/#/deadlocks?${new URLSearchParams({ target: first, range: 'custom', from: preciseFrom, to: preciseTo, deadlockEvent: selectedDeadlockIds[0], deadlockAt: selectedDeadlockTimes[0] })}`);
+  const events = retainedDeadlockEvents(page), button = events.locator('button.event-card').first();
+  await expect(retainedDeadlockDetail(page).getByRole('table')).toContainText('51');
+  expect(lists[0].searchParams.get('fromUtc')).toBe('2026-09-26T08:00:00.000001Z');
+  expect(lists[0].searchParams.get('toUtc')).toBe('2026-09-26T12:00:00.000001Z');
+  const element = await button.elementHandle(); await button.focus();
+  let release, pending = false; const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/deadlocks?*`, async route => { const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response }); });
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).evaluate(element => element.click());
+  await expect.poll(() => pending).toBe(true);
+  await expect(button).toBeFocused(); expect(await element.evaluate(element => element.isConnected)).toBe(true);
+  await expect(page.getByRole('status').filter({ hasText: 'Refreshing deadlock events; showing the previously loaded event page for' })).toBeVisible();
+  release(); await expect(events).toHaveAttribute('aria-busy', 'false');
+  await expect(button).toBeFocused(); expect(await element.evaluate(element => element.isConnected)).toBe(true);
+  await expect.poll(() => scope(page).get('deadlockAt')).toBe(selectedDeadlockTimes[0]);
+  await assertHistoricalScope(page, first, preciseFrom, preciseTo);
+});
+
+test('bounded administration restoration stops at five pages and rejects a repeated cursor without selecting a fallback', async ({ page }) => {
+  await fixture(page); await page.context().addCookies([{ name: 'adminSelectionFixture', value: '1', url: origin }]);
+  const desired = '66666666-6666-4666-8666-000000000999';
+  let mode = 'bounded'; const reads = [];
+  await page.route(`**/observation-targets/${first}/alerts/rules?*`, async route => {
+    const url = new URL(route.request().url()), cursor = url.searchParams.get('cursor');
+    const index = cursor ? Number(Buffer.from(cursor, 'base64').toString('utf8').split(':')[1]) : 0;
+    reads.push({ mode, index }); url.searchParams.delete('cursor');
+    const response = await route.fetch({ url: url.toString() }), body = await response.json();
+    body.items[0].ruleId = mode === 'bounded' && index === 5 ? desired : '66666666-6666-4666-8666-' + String(index + 1).padStart(12, '0');
+    body.items[0].name = `SYNTHETIC bounded rule ${index + 1}`;
+    body.hasMore = mode === 'cyclic' || index < 5;
+    body.nextCursor = body.hasMore ? Buffer.from('page:' + (mode === 'cyclic' ? 1 : index + 1)).toString('base64') : null;
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(`${href('rules')}&ruleId=${desired}`);
+  await expect(page.getByText('The selected administration item is not in the loaded pages. Load more to continue searching, or select another item.', { exact: true })).toBeVisible();
+  expect(reads).toHaveLength(5); await expect(page.locator('.detail-pane').getByRole('heading')).toHaveCount(0);
+  await page.getByRole('region', { name: 'Alert rule list', exact: true }).getByRole('button', { name: 'Load more', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: 'SYNTHETIC bounded rule 6', exact: true })).toContainText(desired);
+  expect(reads).toHaveLength(6);
+  mode = 'cyclic'; await page.reload();
+  await expect(page.getByRole('alert').filter({ hasText: 'The listing repeated a page. Refresh to load it again.' })).toBeVisible();
+  expect(reads.filter(item => item.mode === 'cyclic')).toHaveLength(2);
+  await expect(page.locator('.detail-pane').getByRole('heading')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Alert rule list', exact: true }).locator('button[aria-pressed=true]')).toHaveCount(0);
+});
+
+test('destination history changes close the old editor and a delayed save cannot rewrite the new selection', async ({ page }) => {
+  await fixture(page); await page.context().addCookies([{ name: 'adminSelectionFixture', value: '1', url: origin }]);
+  const oldId = '88888888-8888-4888-8888-000000000002', nextId = '88888888-8888-4888-8888-000000000001';
+  await page.goto(`${href('destinations')}&destinationId=${oldId}`);
+  await page.getByRole('complementary', { name: 'Windows Event Log', exact: true }).getByRole('button', { name: 'Manage destination', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Manage destination', exact: true })).toBeVisible();
+  let release, command; const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/alerts/destinations/${oldId}`, async route => { command = route.request().postDataJSON(); await gate; await route.fulfill({ status: 204 }); });
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect.poll(() => Boolean(command)).toBe(true);
+  await page.evaluate(hash => { location.hash = hash; }, `${href('destinations').substring(1)}&destinationId=${nextId}`);
+  await expect(page.getByRole('heading', { name: 'Manage destination', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'HTTPS webhook', exact: true })).toContainText(nextId);
+  release(); await expect.poll(() => scope(page).get('destinationId')).toBe(nextId);
+  await expect(page.getByText('Destination updated. Approval is required for the new revision.', { exact: true })).toHaveCount(0);
+  await page.getByRole('complementary', { name: 'HTTPS webhook', exact: true }).getByRole('button', { name: 'Manage destination', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Manage destination', exact: true })).toBeVisible();
+  await page.evaluate(hash => { location.hash = hash; }, `${href('destinations').substring(1)}&destinationId=${nextId}&destinationId=${oldId}`);
+  await expect(page.getByRole('heading', { name: 'Manage destination', exact: true })).toHaveCount(0);
+  await expect(page.getByText('The administration selection in this URL is invalid. Select an item from the list.', { exact: true })).toBeVisible();
+});
+
+test('quiet dashboard and Resources evidence disclosures remain keyboard accessible and surface incomplete references', async ({ page }) => {
+  await fixture(page, 'admin');
+  await page.context().addCookies([{ name: 'baselineKpiFixture', value: '1', url: origin }, { name: 'resourceInspectionFixture', value: '1', url: origin }]);
+  for (const [surface, label] of [['health', 'Dashboard evidence status'], ['resources', 'Resources evidence status']]) {
+    await page.goto(`${href(surface)}&healthSection=summary`);
+    const footer = page.getByRole('region', { name: label, exact: true });
+    await expect(footer).toContainText('0 reported collection gaps');
+    await expect(footer.locator('.compact-evidence-action')).toHaveCount(0);
+    const baseline = footer.getByText('Baseline reference details', { exact: true });
+    await expect(baseline.locator('xpath=parent::details')).not.toHaveAttribute('open', '');
+    await baseline.focus(); await baseline.press('Enter'); await expect(baseline).toBeFocused();
+    await expect(footer.locator('.compact-evidence-content').filter({ hasText: 'SQL p10' })).toBeVisible();
+    const chart = page.getByText('SQL scheduler CPU evidence: observed', { exact: true });
+    await chart.focus(); await chart.press('Enter'); await expect(chart).toBeFocused();
+    await expect(chart.locator('xpath=parent::details')).toContainText('2 observed of 2 loaded sample buckets');
+    await expect(chart.locator('xpath=parent::details')).toContainText('They do not establish continuous coverage, freshness, or a health verdict.');
+    await assertHistoricalScope(page);
+  }
+  await page.context().addCookies([{ name: 'dashboardBaselineState', value: 'partial', url: origin }]);
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  const footer = page.getByRole('region', { name: 'Resources evidence status', exact: true });
+  await expect(footer.locator('.compact-evidence-action').filter({ hasText: 'Partial history remains labelled.' })).toBeVisible();
 });

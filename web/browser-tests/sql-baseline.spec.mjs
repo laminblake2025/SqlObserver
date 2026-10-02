@@ -13,7 +13,9 @@ async function open(page, mode = 'normal', surface = 'resources') {
     { name: 'chartReferenceMode', value: mode, url: 'http://127.0.0.1:4321' },
   ]);
   await page.goto(href(surface));
-  await expect(page.locator('.activity-evidence').filter({ hasText: 'SQL p10–p90 bands use matching hourly history' })).toBeVisible();
+  const summary = page.getByText('Baseline reference details', { exact: true });
+  await summary.click();
+  await expect(summary.locator('xpath=parent::details').getByText('SQL p10–p90 bands use matching hourly history', { exact: false })).toBeVisible();
 }
 const cpuChart = page => page.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true }) });
 const memoryChart = page => page.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'Memory pressure', exact: true }) });
@@ -53,7 +55,7 @@ for (const mode of ['unavailable', 'empty', 'foreign', 'error']) {
       { name: 'chartReferenceMode', value: mode, url: 'http://127.0.0.1:4321' },
     ]);
     await page.goto(href());
-    await expect(page.getByText(mode === 'foreign' || mode === 'error' ? 'SQL baseline references are unavailable.' : 'No SQL baseline covers these UTC hours.', { exact: false })).toBeVisible();
+    await expect(page.locator('.compact-evidence-action').filter({ hasText: mode === 'foreign' || mode === 'error' ? 'SQL baseline references are unavailable.' : 'No SQL baseline covers these UTC hours.' })).toBeVisible();
     await expect(cpuChart(page).locator('.chart-baseline-band')).toHaveCount(0);
     await expect(cpuChart(page).getByRole('img')).toBeVisible();
   });

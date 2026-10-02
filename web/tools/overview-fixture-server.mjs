@@ -12,12 +12,20 @@ import {handleChartReferenceFixture} from './chart-reference-fixture.mjs';
 import {handleDashboardSummaryFixture,dashboardSummaryCpuPoints} from './dashboard-summary-fixture.mjs';
 import {handleQueryRowTrendFixture} from './query-row-trend-fixture.mjs';
 import {syntheticCollector,syntheticFile} from './health-contract-fixture.mjs';
+import {handleWorkspaceSelectionFixture} from './workspace-selection-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
 // The ordinary live fixture exposes one synthetic capture. Filter/page reads
 // must retain that GUID's observation time even as repository read time moves.
 const ordinaryLiveCapturedUtc=new Date().toISOString();
+// A retained deadlock's occurrence belongs to the event, not its read time.
+const ordinaryDeadlockOccurredUtc='2026-09-26T10:00:00.000Z';
+const ordinaryDeadlocks=[
+ {eventId:'33333333-3333-4333-8333-333333333333',occurredAtUtc:ordinaryDeadlockOccurredUtc},
+ {eventId:'33333333-3333-4333-8333-333333333334',occurredAtUtc:new Date(Date.parse(ordinaryLiveCapturedUtc)-60000).toISOString()},
+].map(event=>({...event,fingerprint:'a'.repeat(64),participantCount:2,relationCount:2,parseTruncated:false,collectedAtUtc:ordinaryLiveCapturedUtc}));
+const timelineDeadlockOccurrences=new Map();
 const workspaceIncidents=new Map();
 for(const target of targets.slice(0,2)) {
  const tail=target.instanceId.slice(-12),operationId=`bbbbbbbb-bbbb-4bbb-8bbb-${tail}`;
@@ -34,6 +42,7 @@ const utcTicks=value=>{
 const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ if(handleWorkspaceSelectionFixture(url,res,req,targets,send))return;
  const incidentWorkspace=req.headers.cookie?.includes('incidentWorkspaceFixture=1');
  const queryTextReader=req.headers.cookie?.includes('activityQueryReaderFixture=1');
  if((incidentWorkspace||queryTextReader)&&url.pathname==='/api/v1/me') {
@@ -125,10 +134,14 @@ createServer(async(req,res)=>{try{
     return send(res,{instanceId,fromUtc,toUtc,repositoryTimeUtc:now,points});
    }
    const timelineStart=Date.parse(url.searchParams.get('fromUtc')),timelineEnd=Date.parse(url.searchParams.get('toUtc'));
-   const deadlockTime=req.headers.cookie?.includes('timelineFixture=1')&&Number.isFinite(timelineStart)&&Number.isFinite(timelineEnd)?timelineStart+(timelineEnd-timelineStart)/3:Date.parse(url.searchParams.get('toUtc')??now)-60000;
-   const summary={eventId:'33333333-3333-4333-8333-333333333333',fingerprint:'a'.repeat(64),occurredAtUtc:new Date(deadlockTime).toISOString(),participantCount:2,relationCount:2,parseTruncated:false,collectedAtUtc:now};
-   if(surface==='deadlocks')return send(res,{targetId:instanceId,repositoryTimeUtc:now,items:[summary],nextCursor:null});
-   if(surface==='deadlocks/'+summary.eventId)return send(res,{summary,participants:[{sessionId:51,isVictim:true},{sessionId:72,isVictim:false}],relations:[{blockerSessionId:51,waiterSessionId:72,resourceCategory:'key',lockMode:'X'},{blockerSessionId:72,waiterSessionId:51,resourceCategory:'key',lockMode:'X'}]});
+   const timelineDeadlock=req.headers.cookie?.includes('timelineFixture=1');
+   if(surface==='deadlocks'&&timelineDeadlock&&Number.isFinite(timelineStart)&&Number.isFinite(timelineEnd))timelineDeadlockOccurrences.set(instanceId,new Date(timelineStart+(timelineEnd-timelineStart)/3).toISOString());
+   const deadlockTime=timelineDeadlock?(timelineDeadlockOccurrences.get(instanceId)??ordinaryDeadlockOccurredUtc):ordinaryDeadlockOccurredUtc;
+   const summary={eventId:'33333333-3333-4333-8333-333333333333',fingerprint:'a'.repeat(64),occurredAtUtc:deadlockTime,participantCount:2,relationCount:2,parseTruncated:false,collectedAtUtc:now};
+   const retainedDeadlocks=timelineDeadlock?[summary]:ordinaryDeadlocks;
+   if(surface==='deadlocks')return send(res,{targetId:instanceId,repositoryTimeUtc:now,items:retainedDeadlocks.filter(event=>Date.parse(event.occurredAtUtc)>=timelineStart&&Date.parse(event.occurredAtUtc)<timelineEnd),nextCursor:null});
+   const retainedDeadlock=retainedDeadlocks.find(event=>surface==='deadlocks/'+event.eventId);
+   if(retainedDeadlock)return send(res,{summary:retainedDeadlock,participants:[{sessionId:51,isVictim:true},{sessionId:72,isVictim:false}],relations:[{blockerSessionId:51,waiterSessionId:72,resourceCategory:'key',lockMode:'X'},{blockerSessionId:72,waiterSessionId:51,resourceCategory:'key',lockMode:'X'}]});
    if(surface==='alerts/active') {
     if(req.headers.cookie?.includes('alertSelectionFixture=1')) {
      const cursor=url.searchParams.get('cursor');
