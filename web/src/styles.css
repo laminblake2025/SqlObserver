@@ -614,6 +614,7 @@ figure { margin: 0; }
 .table-card-heading h3 { margin: 0 0 4px; }
 .table-card-heading p { margin: 0; color: var(--muted); font-size: 12px; }
 .alert-list .table-scroll { max-height: 620px; overflow: auto; }
+.alert-list .table-scroll:focus-visible { outline-offset: -3px; }
 .alert-list table { min-width: 760px; }
 .alert-list .state-pill { white-space: nowrap; }
 .alert-list .pager { padding: 14px 19px 18px; }

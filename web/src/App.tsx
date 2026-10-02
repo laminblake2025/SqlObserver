@@ -243,6 +243,9 @@ export function App() {
   };
   const myAccess = access?.targetId === (route.target || null) ? access.value : undefined;
   const canAddServer = canRegisterTarget(myAccess);
+  const registrationAllowed = useRef(false);
+  registrationAllowed.current = adding && canAddServer;
+  useEffect(() => { if (!canAddServer) setAdding(false); }, [canAddServer]);
   const canManageRules = canManageAlertRules(myAccess, route.target);
   const canManageDestinations = canManageAlertDestinations(myAccess, route.target);
   const queryWindow = useMemo(
@@ -470,10 +473,11 @@ export function App() {
 
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} scope={scope} />
       <Drawer open={adding && canAddServer} onClose={() => setAdding(false)}>
-        <TargetOnboarding onRegistered={(target) => {
+        {adding && canAddServer && <TargetOnboarding onRegistered={(target) => {
+          if (!registrationAllowed.current) return;
           setTargets((current) => [target, ...current.filter((candidate) => candidate.instanceId.toLowerCase() !== target.instanceId.toLowerCase())].slice(0, 50));
           setAdding(false);
-        }} />
+        }} />}
       </Drawer>
     </div>
   );

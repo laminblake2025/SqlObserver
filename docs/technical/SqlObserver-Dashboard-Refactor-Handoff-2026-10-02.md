@@ -2,7 +2,38 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest saved-incident dashboard qualification
+## Latest volume-browsing and admin-interaction qualification
+
+Independent review identified existing-contract frontend defects beyond the historical qualification. Browsed SQL-volume pages now survive polling and pending continuation; already-read First/Previous/Next pages restore locally after cursor expiry. Retention is bounded to 40 pages/1,000 native rows. Explicit Return to latest re-enables refresh, while invalid or superseded unread continuation clears all old pages and requires authoritative reload. Target/revision/Rewind/unmount lifecycle cancels and clears this latest-only evidence; Rewind still does not claim historical capacity.
+
+Rules, Maintenance and Destinations now expose named keyboard-scroll regions with visible inset focus. Enter submits destination edits with the same native revision and stable uncertain-retry operation. Tracked controllers, duplicate guards and selection/permission generations cancel and fence old rule-disable/destination requests and status; role regrant does not reopen an editor. Registration consumers unmount and cancel on drawer Close, Escape or loss of verified access. Late receipts cannot merge into the loaded catalog, and regrant does not reopen the drawer. Cancellation does not claim rollback of a server-accepted mutation. No backend, collector, dependency or authentication scheme changed.
+
+Three independent owners handled Rules/source review, dark-theme/admin keyboard work, and volume interaction/accessibility tests. The lead owned volume runtime, registration composition, shared focus CSS, integration repairs and final validation. Fresh independent source reviews found no residual actionable issues in the changed paths.
+
+| Requested requirement | Final evidence | Status |
+|---|---|---|
+| Independent work with one integration lead | Non-overlapping product/harness/spec ownership; lead integrated and resolved source/capture findings. | Complete for this pass. |
+| Dark theme | Shared tokens, readable controls and retained-snapshot disclosure, inset keyboard focus for clipped admin tables. | Passing in tested states. |
+| Diagnostic-screen review | Native volume identity/size/refusal contract, retained browsing and explicit latest semantics reviewed; remaining Query/Activity findings listed below. | Concrete defects fixed; dashboard review remains ongoing. |
+| Interaction tests | **41 affected native checks**, **24 mounted cases**, **39 built-App/browser cases** across seven isolated groups. | All pass without failures, skips or retries. |
+| Accessibility/responsive checks | Axe, focus, keyboard table panning, control geometry and overflow at **320/390/768/1440**; **14 fresh captures** of volume/admin/Rules states. | Passing in tested states; manual assistive-technology certification remains separate. |
+| Final integrated validation | Strict product/harness TypeScript, production build and asset generation/verification. Assets: `entry-index-c798898a.js`, `index-f5156742.css`. | Passing; runtime inputs unchanged through final qualification. |
+| Screenshots and completion accounting | [Current gallery](../../artifacts/dashboard-interaction-review/index.html), [case inventories, hashes and run provenance](../../artifacts/dashboard-interaction-review/completion.json), isolated reports and preserved earlier attempts. | Complete locally and bound to the local commit. |
+
+The first run passed volume/admin App workflows and exposed two test setup defects: missing Resources h2 in the isolated harness and two unregistered supporting GETs in registration fixtures. Those repairs preserved product behavior and assertions. Its reports remain under `initial-run`; all seven groups then passed. Screenshot review corrected scrolling/focus setup in three owning specs, preserved the passing pre-capture reports, and reran their complete 24/6/6 groups. The other four groups and 41 native checks exercise unchanged code/specs. The record preserves both 452-input manifests, their three capture-only differences and unchanged product/build hashes. No composed repair case count, connected database test, release certification or GitHub upload is claimed. Historical whole-dashboard counts were not rerun.
+
+The full original revamp remains incomplete. These changes close existing-contract volume browsing and admin keyboard/action defects; the following source-reviewed dashboard findings and backend-dependent interface requirements remain open.
+
+The following source-reviewed dashboard findings remain implementation work, not completion claims:
+
+- **Query paging and selection ownership:** `TargetQueryPerformancePanel.tsx` clears selected detail on ranking-page navigation without clearing the exact URL selection, and its paging cleanup excludes refresh. A delayed ranking request can outlive a newer manual refresh. Preserve URL-selected query inspection and fence old paging results.
+- **Activity/Waits history browsing:** `TargetActivityPanel.tsx` and `TargetWaitsPanel.tsx` hide/remount history during workspace refresh and key it on repository check time, resetting browsed pages. Retain the browsed native target/window cursor context with an explicit latest action; native history paging does not imply an immutable backend snapshot.
+- **Ambiguous query URLs:** `dashboardModel.ts` picks a first duplicate fingerprint and discards contradictory plan/source fields. Refuse ambiguous exact selections visibly, with explicit repair; do not silently select another query or plan.
+- **Shared time and session mode:** inspect `LiveSessionsPanel.tsx` local Live/History selection against the global Rewind URL and reload behavior. Align the mode or give truthful latest-source semantics rather than an apparently historical current-session view.
+- **Microsecond request windows:** `activityApi.ts` and `queryPerformanceApi.ts` compare some endpoints through millisecond `Date.parse` guards, despite native and frontend UTC models accepting positive microsecond windows. Use exact UTC comparisons and targeted native-contract regressions.
+- **Rule form cancellation:** `RuleCreateForm.tsx` and `RuleEditForm.tsx` mutation controllers are still untracked. The changed Rules parent fences stale callbacks, but these separate form consumers need tracked cancellation and their own pending/unmount regressions.
+
+## Previous saved-incident dashboard qualification
 
 Saved investigations now summarize the existing copied analytics packets with recorded source references, coverage, confidence context, producer truncation, tombstones and complete source provenance. Unknown packet schemas retain a keyboard-accessible raw JSON disclosure. References remain opaque identities; the interface does not invent links to unrelated diagnostic selections or claim causation. Source digests are described as source metadata, not as verification of the entire JSON payload. Unsupported or unavailable evidence explains that reloading cannot replace the frozen capture.
 
