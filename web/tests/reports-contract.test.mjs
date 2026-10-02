@@ -105,3 +105,30 @@ test("report receipt digest binds the exact UTC request window including microse
       error => error.message === "The report response could not be verified.");
   });
 });
+
+test("caller-owned report operations survive uncertain transport and receipt outcomes unchanged", async () => {
+  const operationId = "33333333-3333-4333-8333-333333333333";
+  const bodies = [];
+  await withFetch(async (_url, options) => {
+    bodies.push(options.body);
+    if (bodies.length === 1) throw new Error("NETWORK_DETAIL_MUST_STAY_PRIVATE");
+    if (bodies.length === 2) return new Response(null, { status: 503 });
+    if (bodies.length === 3) return new Response(JSON.stringify(receipt({ targetId: runId })));
+    return new Response(JSON.stringify(receipt()));
+  }, async () => {
+    for (let attempt = 0; attempt < 3; attempt++)
+      await assert.rejects(() => createReport(target, "instance-health", new AbortController().signal, undefined, undefined, operationId));
+    assert.equal((await createReport(target, "instance-health", new AbortController().signal, undefined, undefined, operationId)).runId, runId);
+  });
+  assert.equal(new Set(bodies).size, 1);
+  assert.deepEqual(JSON.parse(bodies[0]), { reportKind: "instance-health", operationId });
+});
+
+test("invalid caller-owned report operation IDs are rejected before IO", async () => {
+  let calls = 0;
+  await withFetch(async () => { calls++; return new Response(JSON.stringify(receipt())); }, async () => {
+    for (const operationId of ["", "../../report", "00000000-0000-0000-0000-000000000000"])
+      await assert.rejects(() => createReport(target, "instance-health", new AbortController().signal, undefined, undefined, operationId));
+  });
+  assert.equal(calls, 0);
+});

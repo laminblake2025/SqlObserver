@@ -63,13 +63,33 @@ Owning native suites pass **18/18 checks: 15 runtime and three explicit lint**, 
 
 The [current gallery](../../artifacts/dashboard-response-contracts/index.html) contains 182 captures with hashes: 176 product scenes, four affected component scenes and two new response failure states. Product widths are 320, 390, 768 and 1440 pixels; affected component widths are 320 and 1440. Error-state screenshots use full-page axe/overflow checks at 320/1440, while component onboarding axe remains registration-only. The previous `8e7d05c7` captures and completion record were preserved under [historical evidence](../../artifacts/dashboard-response-contracts/historical-8e7d05c7/completion.json). Current results are not a fresh run of the older 540/286 checks or all 74 defined component cases. The full original review plan and the backend dependencies below remain incomplete.
 
+### Reports workflow follow-up
+
+The current follow-up improves the existing Reports screen within the dashboard frontend. Independent lanes owned the Reports form/client, Reports-only theme rules, and mounted interaction/accessibility tests; the lead owned built-App fixtures, integration and final validation. A separate read-only integration review found no actionable issues. No backend, collector, dependency or applied migration changed.
+
+The form now has readable dark controls, labels above each control, a named UTC fieldset, keyboard submission, responsive window fields and wrapping exports. Unchanged retries retain the same operation ID and immutable payload after HTTP/network failures or unverified receipts. Verified success, report-kind/window edits, target changes and unmount clear that attempt. Existing cancellation and duplicate-pending guards remain. The synthetic built-App fixture commits a native receipt before truncating the response, then returns the same run when the client retries the identical operation; a later explicit generation creates a new run.
+
+| Requested requirement | Current Reports evidence | Status and limits |
+|---|---|---|
+| Parallel work with one integration lead | Three non-overlapping implementation/theme/test lanes, plus read-only review; root integrated fixture/configuration changes. | Complete for this follow-up. |
+| Dark theme | Scoped Reports styles, readable controls, bordered window/result groups and inherited visible focus. | Four tested widths pass automated contrast checks. |
+| Diagnostic-screen review | Reviewed report kinds, native numeric receipt kind/finalized state, canonical request digest, target fencing, cancellation and retry behavior. | No actionable integration findings. Export content and backend authorization are not qualified here. |
+| Interaction tests | **10/10 native checks** (nine runtime, one explicit lint), **14/14 mounted cases**, **6/6 built-App cases**. | Exact retry identity/payload, existing-run recovery, new identity after success/context edits, Enter and duplicate-pending submission are exercised. |
+| Accessibility and responsive checks | Mounted control geometry, export hit size, focus/Tab, overflow and axe; built-App full-page axe/overflow/focus at **320, 390, 768 and 1440** pixels. | Tested states pass WCAG 2 A/AA, 2.1 AA and best-practice rules. Manual assistive-technology qualification remains separate. |
+| Final integration validation | Strict product and harness TypeScript, production build, generated asset manifest and final browser subprocesses pass. Assets: `entry-index-af8c0d86.js`, `index-92d0bdfe.css`. | Final 14/14 and 6/6 runs have no failures, skips or flaky cases. Historical full-dashboard counts were not rerun. |
+| Screenshots and requirement summary | [Eight-capture gallery](../../artifacts/dashboard-reports/index.html), [completion record](../../artifacts/dashboard-reports/completion.json), component/product HTML reports. | Four real-App and four mounted captures have fresh timestamps and hashes bound to the local commit. |
+
+The product runner first stopped before executing cases because port 4330 was occupied; the final runner uses verified free port 4331. Initial passing product screenshots were taken after keyboard focus had scrolled the page. The final six-case run resets focus/scroll before capture, consistent with the existing product gallery helper; product code/assets did not change. Validation input manifests preserve both harness adjustments. Screenshots are synthetic local evidence, not lab or database certification.
+
+**Remaining interface gap:** Reports window fields are independent of the global Live/Rewind context, and report kind/window selection is not restored from the workspace URL. Instance Health remains explicitly a current snapshot. The shared time requirement is therefore incomplete for Reports. Live PostgreSQL retry semantics, report export content, the other backend dependencies and the original full review plan remain open.
+
 ## Interface-plan accounting
 
 These statuses describe the original interface requirements rather than treating current source limitations as completion of the full plan. Source references point to the inspected product checkpoint; line numbers can move.
 
 | Plan requirement | Current delivery | Remaining scope or evidence |
 |---|---|---|
-| Global time, Live/Rewind, local/UTC and window selection | Shared frame, exact UTC bounds, fixed investigation URLs, timeline/keyboard selection. See [App](../../web/src/App.tsx), [window model](../../web/src/features/overview/overviewModel.ts) and [chart](../../web/src/components/ObservationChart.tsx). | Historical panels must keep declaring latest-only sources rather than claiming they follow Rewind historically. |
+| Global time, Live/Rewind, local/UTC and window selection | Shared frame, exact UTC bounds, fixed investigation URLs, timeline/keyboard selection. See [App](../../web/src/App.tsx), [window model](../../web/src/features/overview/overviewModel.ts) and [chart](../../web/src/components/ObservationChart.tsx). | Reports still has independent UTC fields and no restored report-kind/window selection. Historical panels must keep declaring latest-only sources rather than claiming they follow Rewind historically. |
 | Answer before evidence | Baseline KPIs, investigate-first findings, blocking evidence and scoped links. See [server dashboard](../../web/src/features/health/ServerDashboard.tsx). | Correlations are observations, not established causation. Additional sources are required for more complete diagnoses. |
 | Timeline events | Deadlocks, native current-inbox alert-fired times, Agent failure history, configuration/option observations and plan comparisons. | Complete alert lifecycle, restart and failover event coverage is incomplete; see source handoff below. |
 | Quiet evidence and recovery guidance | Named source dots, compact footer and expandable reference details; visible partial/missing/failed states. | Do not collapse errors or turn lack of evidence into a healthy verdict. |

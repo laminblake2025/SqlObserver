@@ -71,14 +71,15 @@ export function validateReportWindow(reportKind: ReportKind, fromUtc?: string, t
   if (duration <= 0n || duration > BigInt(maximum) * 86_400_000_000n) throw new Error(`Choose a window of at most ${maximum} days.`);
 }
 
-export async function createReport(targetId: string, reportKind: ReportKind, signal: AbortSignal, fromUtc?: string, toUtc?: string): Promise<ReportRun> {
+export async function createReport(targetId: string, reportKind: ReportKind, signal: AbortSignal, fromUtc?: string, toUtc?: string, operationId: string = globalThis.crypto.randomUUID()): Promise<ReportRun> {
   if (!validId(targetId)) throw new Error("Choose a valid server before generating a report.");
+  if (!validId(operationId)) throw new Error("The report operation is invalid. Start a new report.");
   validateReportWindow(reportKind, fromUtc, toUtc);
   if (signal.aborted) throw signal.reason;
   const expectedDigest = await requestDigest(reportKind, fromUtc, toUtc);
   let response: Response;
   try {
-    response = await apiFetch(`/api/v1/observation-targets/${targetId}/reports`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reportKind, operationId: globalThis.crypto.randomUUID(), ...(fromUtc === undefined ? {} : { fromUtc, toUtc }) }), signal }, { maximumResponseBytes: receiptBytes });
+    response = await apiFetch(`/api/v1/observation-targets/${targetId}/reports`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reportKind, operationId, ...(fromUtc === undefined ? {} : { fromUtc, toUtc }) }), signal }, { maximumResponseBytes: receiptBytes });
   } catch (error) { if (signal.aborted) throw error; throw invalidReceipt(); }
   if (!response.ok) throw new Error(response.status === 403 ? "Report access is not authorized." : "The report could not be created.");
   try { return parseReceipt(JSON.parse(await readBoundedBody(response, signal, receiptBytes)), targetId, reportKind, expectedDigest); }
