@@ -1,4 +1,9 @@
 import { apiFetch } from "../../apiClient.ts";
+import {
+  healthResponseMaximumBytes, parseTargetHealthResponse, parseDatabaseHealthResponse,
+  parseDatabaseFileHealthResponse, parseDatabaseOptionChangesResponse,
+  parseServerConfigurationChangesResponse, parseServerConfigurationSnapshotResponse,
+} from "./healthResponseModel.ts";
 import type {
   DatabaseFileHealthPage,
   DatabaseHealthPage,
@@ -16,7 +21,8 @@ export async function getDatabaseOptionChanges(instanceId: string,
   signal: AbortSignal): Promise<DatabaseOptionChangeResult> {
   const parameters = new URLSearchParams({ fromUtc: window.fromUtc,
     toUtc: window.toUtc, limit: "100" });
-  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/database-option-changes?${parameters}`, signal);
+  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/database-option-changes?${parameters}`, signal,
+    value => parseDatabaseOptionChangesResponse(value, instanceId, window));
 }
 
 export async function getServerConfigurationChanges(instanceId: string,
@@ -25,14 +31,16 @@ export async function getServerConfigurationChanges(instanceId: string,
   const parameters = new URLSearchParams({ fromUtc: window.fromUtc,
     toUtc: window.toUtc, limit: "100" });
   if (cursor !== undefined) parameters.set("cursor", cursor);
-  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-changes?${parameters}`, signal);
+  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-changes?${parameters}`, signal,
+    value => parseServerConfigurationChangesResponse(value, instanceId, window));
 }
 
 export async function getServerConfigurationSnapshot(instanceId: string,
   signal: AbortSignal, cursor?: string): Promise<ServerConfigurationSnapshotResult> {
   const parameters = new URLSearchParams({ limit: "100" });
   if (cursor !== undefined) parameters.set("cursor", cursor);
-  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-snapshot?${parameters}`, signal);
+  return getJson(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/server-configuration-snapshot?${parameters}`, signal,
+    value => parseServerConfigurationSnapshotResponse(value, instanceId));
 }
 
 export async function setServerConfigurationCollection(instanceId: string,
@@ -63,6 +71,7 @@ export async function getTargetHealth(
   return getJson(
     `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health`,
     signal,
+    value => parseTargetHealthResponse(value, instanceId),
   );
 }
 
@@ -76,6 +85,7 @@ export async function getDatabaseHealth(
   return getJson(
     `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/databases?${parameters}`,
     signal,
+    value => parseDatabaseHealthResponse(value, instanceId),
   );
 }
 
@@ -89,6 +99,7 @@ export async function getDatabaseFileHealth(
   return getJson(
     `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/health/files?${parameters}`,
     signal,
+    value => parseDatabaseFileHealthResponse(value, instanceId),
   );
 }
 
@@ -116,27 +127,39 @@ export async function getTargetHealthEvidence(
   return { target: target.value, databases: databases.value, files: files.value };
 }
 
-async function getJson<T>(path: string, signal: AbortSignal): Promise<T> {
+async function getJson<T>(path: string, signal: AbortSignal, parse: (value: unknown) => T): Promise<T> {
   let response: Response;
   try {
     response = await apiFetch(path, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
       signal,
-    });
+    }, { maximumResponseBytes: healthResponseMaximumBytes });
   } catch (error: unknown) {
     if (signal.aborted) {
       throw error;
     }
 
-    throw new HealthRequestError("The health service is temporarily unavailable.");
+    throw new HealthRequestError(error instanceof Error && /response is too large|invalid length/u.test(error.message)
+      ? "Health evidence returned an invalid or mismatched response. Refresh to retry."
+      : "The health service is temporarily unavailable.");
   }
 
+  if (signal.aborted) throw signal.reason;
   if (!response.ok) {
     throw new HealthRequestError(getSafeHealthFailure(response.status));
   }
 
-  return (await response.json()) as T;
+  try {
+    if (signal.aborted) throw signal.reason;
+    if (!/^application\/json(?:\s*;|$)/iu.test(response.headers.get("content-type") ?? "")) throw new Error("Invalid content type.");
+    const body = new TextDecoder("utf-8", { fatal: true }).decode(await response.arrayBuffer());
+    if (signal.aborted) throw signal.reason;
+    return parse(JSON.parse(body));
+  } catch (error) {
+    if (signal.aborted) throw signal.reason ?? error;
+    throw new HealthRequestError("Health evidence returned an invalid or mismatched response. Refresh to retry.");
+  }
 }
 
 function getSafeHealthFailure(status: number): string {

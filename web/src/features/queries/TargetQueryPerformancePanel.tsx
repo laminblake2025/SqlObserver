@@ -11,6 +11,9 @@ import type { QueryView, QueryViewSelection } from "./queryViewModel";
 import type { QueryWindow } from "./queryWindowModel";
 import type { QueryPerformanceHistoryPage, QueryPerformanceItem, QueryPerformanceMetric, QueryPerformancePage, QueryPerformancePlan, QueryPerformanceStatus, QueryStoreWaitRanking, QueryStorePlanRegressionList } from "./queryPerformanceTypes";
 import { queryStoreWaitCategoryNames as waitCategoryNames } from "./queryStoreWaitCategories";
+import { RankingTrend } from "./RankingTrend.tsx";
+import { RankingTrendProvider } from "./useRankingTrends.tsx";
+import { queryStoreRankingTrendRequest, rankingTrendIdentityCounts, rankingTrendRequestKey } from "./rankingTrendModel.ts";
 
 const metricLabels: Readonly<Record<QueryPerformanceMetric, string>> = {
   cpu: "CPU time (ms)", duration: "Duration (ms)", executions: "Executions",
@@ -250,7 +253,19 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const visibleRegressions = regressions?.items.filter(item => selectedDatabaseId === undefined || item.databaseId === selectedDatabaseId) ?? [];
   const displayDatabase = (databaseId: number | undefined) => databaseId === undefined ? "—" : databaseNames.get(databaseId) ?? `Database ID ${databaseId}`;
   const rows = page?.items.filter(item => (source === "mixed" || item.source === source) && (!database || String(item.query.databaseId) === database)) ?? [];
-  return <section className="query-performance-screen" aria-labelledby="query-performance-heading">
+  const runtimeRequests = rows.map(item => item.source === "query_store" ? queryStoreRankingTrendRequest(instanceId, item.query.databaseId, item.query.queryFingerprint, item.plan?.planFingerprint, timeWindow) : undefined);
+  const runtimeCounts = rankingTrendIdentityCounts(runtimeRequests);
+  const runtimeRequest = (index: number) => {
+    const request = runtimeRequests[index]; return request && runtimeCounts.get(rankingTrendRequestKey(request)) === 1 ? request : undefined;
+  };
+  const waitRequests = visibleWaitRanking.map(item => queryStoreRankingTrendRequest(instanceId, item.databaseId, item.queryFingerprint, item.planFingerprint, timeWindow));
+  const waitCounts = rankingTrendIdentityCounts(waitRequests);
+  const waitRequestFor = (index: number) => {
+    const request = waitRequests[index]; return request && waitCounts.get(rankingTrendRequestKey(request)) === 1 ? request : undefined;
+  };
+  const rowTrendContext = JSON.stringify([instanceId.toLowerCase(), timeWindow.fromUtc, timeWindow.toUtc, view, ranking, source, database, refresh,
+    page?.items.map(item => `${item.collectionRunId}:${item.observationKey}`)]);
+  return <RankingTrendProvider contextKey={rowTrendContext}><section className="query-performance-screen" aria-labelledby="query-performance-heading">
     <div className="health-heading-row"><div><p className="eyebrow">Server · queries</p><h2 id="query-performance-heading">Queries for {displayName}</h2></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {message === undefined || view === "cache" ? null : <p role="alert" className="status-message">{message}</p>}
     {status === undefined || view === "cache" ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><details className="supporting-evidence"><summary>Database collection attempts ({status.databaseStatuses.length})</summary><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></details></div>}
@@ -268,7 +283,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       {regressions && visibleRegressions.length > 0 ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Possible plan regression comparisons"><table>
         <caption>Possible Query Store plan regressions, ranked by increase in duration per execution</caption>
         <thead><tr><th scope="col">Database / query</th><th scope="col">Plan change</th>
-          <th scope="col">Average duration / execution</th><th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
+          <th scope="col">Current plan duration trend</th><th scope="col">Average duration / execution</th><th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
         <tbody>{visibleRegressions.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}`}>
           <td><button className="fingerprint" type="button" onClick={() => {
             setSource("query_store");
@@ -276,6 +291,9 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
               timeWindow.toUtc, item.currentPlanFingerprint, "query_store");
           }}>{displayDatabase(item.databaseId)} / {item.queryFingerprint.slice(0, 12)}…</button></td>
           <td className="fingerprint">{item.previousPlanFingerprint.slice(0, 12)}… → {item.currentPlanFingerprint.slice(0, 12)}…</td>
+          <td><RankingTrend request={queryStoreRankingTrendRequest(instanceId, item.databaseId, item.queryFingerprint, item.currentPlanFingerprint, timeWindow)} metric="duration"
+            label={`${displayDatabase(item.databaseId)} / ${item.queryFingerprint.slice(0, 12)}… / plan ${item.currentPlanFingerprint.slice(0, 12)}… / current plan duration`} formatTime={timeLabel}
+            onInspect={() => select(item.databaseId, item.queryFingerprint, timeWindow.fromUtc, timeWindow.toUtc, item.currentPlanFingerprint, "query_store")} /></td>
           <td>{item.previousAverageMilliseconds} → {item.currentAverageMilliseconds} ms · {item.slowdownRatio}×</td>
           <td>{item.previousComparableRows} / {item.previousSourceRows} → {item.currentComparableRows} / {item.currentSourceRows}</td>
           <td>{timeLabel(item.lastObservedAtUtc)}</td>
@@ -290,8 +308,14 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
         <label>Database <select value={database} onChange={event => { selectionRequest.current?.abort(); historyRequest.current?.abort(); clearContent(); onSelectDatabase(event.target.value === "" ? undefined : Number(event.target.value)); setPlan(undefined); setHistory(undefined); setHistorySelection(undefined); }}><option value="">All loaded databases</option>{databaseOptions.map(option => <option key={option.databaseId} value={option.databaseId}>{option.databaseName ?? `Database ID ${option.databaseId}`}</option>)}</select></label>
       </>}
       <label>Source <select value={source} onChange={event => { selectionRequest.current?.abort(); historyRequest.current?.abort(); clearContent(); setSource(event.target.value); setPlan(undefined); setHistory(undefined); setHistorySelection(undefined); }}><option value="mixed">All sources · evidence</option><option value="query_store">Query Store · interval</option><option value="plan_cache">Plan cache · row semantics</option></select></label>
-      {view === "top" && <div className="table-scroll" tabIndex={0} role="region" aria-label="Ranked query observations"><table><caption>Bounded ranked observations · CPU and duration in milliseconds · unavailable values are not zero</caption><thead><tr>{["Database / query", "Source", "Semantics", "CPU ms", "Duration ms", "Executions", "Reads / writes / rows", "Interval end", "Coverage"].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
-        {rows.map(x => <tr key={`${x.collectionRunId}-${x.observationKey}`} className={selectedItem?.observationKey === x.observationKey && selectedItem.collectionRunId === x.collectionRunId ? "selected-row" : ""}><td><button className="fingerprint" type="button" aria-pressed={selectedItem?.observationKey === x.observationKey && selectedItem.collectionRunId === x.collectionRunId} onClick={() => select(x.query.databaseId, x.query.queryFingerprint, x.intervalStartUtc, x.intervalEndUtc, x.plan?.planFingerprint, x.source)}>{displayDatabase(x.query.databaseId)} / {x.query.queryFingerprint.slice(0, 12)}…</button></td><td>{x.source} · {x.sourceState}</td><td>{x.semantics}</td><td>{x.metrics.cpuMilliseconds ?? "—"}</td><td>{x.metrics.durationMilliseconds ?? "—"}</td><td>{x.metrics.executions ?? "—"}</td><td>{x.metrics.logicalReads ?? "—"} / {x.metrics.writes ?? "—"} / {x.metrics.rows ?? "—"}</td><td>{timeLabel(x.intervalEndUtc)}</td><td>{x.coverage} · {x.fresh ? "fresh at snapshot" : "stale"}{x.truncated ? " · truncated" : ""}</td></tr>)}
+      {view === "top" && <p className="ranking-trend-coverage">Row trends load as they become visible, two reads at a time, for this bounded ranking page (up to 200 runtime rows and 25 wait plans). Query Store previews show qualified hourly deltas for the selected metric; they do not connect resets, ambiguous epochs or missing hours. Exact values and coverage remain available per row. Legacy cache latest rows do not supply a qualified database incarnation.</p>}
+      {view === "top" && <div className="table-scroll" tabIndex={0} role="region" aria-label="Ranked query observations"><table><caption>Bounded ranked observations · CPU and duration in milliseconds · unavailable values are not zero</caption><thead><tr>{["Database / query", "Selected metric trend", "Source", "Semantics", "CPU ms", "Duration ms", "Executions", "Reads / writes / rows", "Interval end", "Coverage"].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
+        {rows.map((x, index) => <tr key={`${x.collectionRunId}-${x.observationKey}`} className={selectedItem?.observationKey === x.observationKey && selectedItem.collectionRunId === x.collectionRunId ? "selected-row" : ""}><td><button className="fingerprint" type="button" aria-pressed={selectedItem?.observationKey === x.observationKey && selectedItem.collectionRunId === x.collectionRunId} onClick={() => select(x.query.databaseId, x.query.queryFingerprint, x.intervalStartUtc, x.intervalEndUtc, x.plan?.planFingerprint, x.source)}>{displayDatabase(x.query.databaseId)} / {x.query.queryFingerprint.slice(0, 12)}…</button></td>
+          <td><RankingTrend request={runtimeRequest(index)}
+            unavailableReason={x.source === "plan_cache" ? "Trend unavailable: this latest cache row lacks an exact database incarnation. Use Cache interval deltas for qualified history." : "Trend unavailable: exact plan identity is missing or duplicated in this ranking."}
+            metric={ranking} label={`${displayDatabase(x.query.databaseId)} / ${x.query.queryFingerprint.slice(0, 12)}… / plan ${x.plan?.planFingerprint.slice(0, 12) ?? "unavailable"}… / ${ranking}`} formatTime={timeLabel}
+            onInspect={() => select(x.query.databaseId, x.query.queryFingerprint, timeWindow.fromUtc, timeWindow.toUtc, x.plan?.planFingerprint, x.source)} /></td>
+          <td>{x.source} · {x.sourceState}</td><td>{x.semantics}</td><td>{x.metrics.cpuMilliseconds ?? "—"}</td><td>{x.metrics.durationMilliseconds ?? "—"}</td><td>{x.metrics.executions ?? "—"}</td><td>{x.metrics.logicalReads ?? "—"} / {x.metrics.writes ?? "—"} / {x.metrics.rows ?? "—"}</td><td>{timeLabel(x.intervalEndUtc)}</td><td>{x.coverage} · {x.fresh ? "fresh at snapshot" : "stale"}{x.truncated ? " · truncated" : ""}</td></tr>)}
       </tbody></table>{rows.length === 0 && <p className="empty-state">No {source.replaceAll("_", " ")} observations in this bounded page.</p>}</div>}
       {selectedItem && <div className="kpi-grid">{[["CPU ms", selectedMetrics?.cpuMilliseconds], ["Duration ms", selectedMetrics?.durationMilliseconds], ["Executions", selectedMetrics?.executions], ["Logical reads", selectedMetrics?.logicalReads]].map(([label,value]) => <section className="kpi" key={label}><p>{label}</p><strong>{value ?? "—"}</strong><small>Selected observation · {selectedItem.semantics}</small></section>)}</div>}
       <div className="query-investigation"><section className="panel"><h3>Query CPU and duration history</h3>
@@ -329,14 +353,17 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       {waitRanking && visibleWaitRanking.length === 0 ? <p>No comparable Query Store wait groups for this database context are present in the loaded ranking. This does not prove that queries had no waits.</p> : null}
       {waitRanking && visibleWaitRanking.length > 0 ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store wait ranking"><table>
         <caption>Top 25 plans by comparable Query Store wait milliseconds</caption>
-        <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait ms</th>
+        <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait trend</th><th scope="col">Wait ms</th>
           <th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
-        <tbody>{visibleWaitRanking.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
+        <tbody>{visibleWaitRanking.map((item, index) => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
           <td><button className="fingerprint" type="button" onClick={() => {
             setSource("query_store");
             select(item.databaseId, item.queryFingerprint, timeWindow.fromUtc,
               timeWindow.toUtc, item.planFingerprint, "query_store");
           }}>{displayDatabase(item.databaseId)} / {item.queryFingerprint.slice(0, 12)}… / {item.planFingerprint.slice(0, 12)}…</button></td>
+          <td><RankingTrend request={waitRequestFor(index)} unavailableReason="Trend unavailable: exact plan identity is missing or duplicated in this wait ranking." metric="waits" category={waitRanking.category}
+            label={`${displayDatabase(item.databaseId)} / ${item.queryFingerprint.slice(0, 12)}… / plan ${item.planFingerprint.slice(0, 12)}… / waits`} formatTime={timeLabel}
+            onInspect={() => select(item.databaseId, item.queryFingerprint, timeWindow.fromUtc, timeWindow.toUtc, item.planFingerprint, "query_store")} /></td>
           <td>{BigInt(item.waitMilliseconds).toLocaleString()}</td>
           <td>{item.comparableRows} / {item.sourceRows}</td>
           <td>{timeLabel(item.lastObservedAtUtc)}</td>
@@ -344,5 +371,5 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       </table></div> : null}
     </section>}
 
-  </section>;
+  </section></RankingTrendProvider>;
 }

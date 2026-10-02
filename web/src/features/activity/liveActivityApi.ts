@@ -52,7 +52,7 @@ function validatePage(value: LivePage, parameters: URLSearchParams): void {
 export async function readLive<T>(target: string, path: string, parameters: URLSearchParams, signal: AbortSignal): Promise<T> {
   const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(target)}/activity/live${path}?${parameters}`, {
     credentials: "same-origin", cache: "no-store", signal, headers: { Accept: "application/json" },
-  });
+  }, { maximumResponseBytes: 1024 * 1024 });
   if (!response.ok) throw new Error(response.status === 403 ? "You do not have permission to read this evidence." : "Collection evidence is unavailable. Displayed observations have been retained.");
   if (!(response.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) throw new Error("Invalid activity response.");
   const value = JSON.parse(await readBoundedBody(response, signal, 1024 * 1024));

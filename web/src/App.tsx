@@ -15,6 +15,7 @@ import { IncidentWorkspace } from "./features/incidents/IncidentWorkspace.tsx";
 import "./features/incidents/incidentWorkspace.css";
 import "./features/health/dashboardBaselineCards.css";
 import "./features/health/dashboardInvestigationSummary.css";
+import "./features/queries/rankingTrend.css";
 import { resolveWorkspaceIncidentWindow } from "./features/incidents/workspaceIncidentWindow.ts";
 import { formatDisplayTime } from "./timeDisplay";
 import { useTimeDisplay } from "./TimeDisplayContext";

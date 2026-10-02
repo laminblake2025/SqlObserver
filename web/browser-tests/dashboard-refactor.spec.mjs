@@ -1371,7 +1371,7 @@ test('database context scopes loaded cache and file rows without relabelling ser
   await page.goto(`${href('queries')}&queryView=cache&databaseId=6`);
   await assertDatabaseScope(page, 6);
   const ranking = page.getByRole('region', { name: 'Plan cache interval ranking', exact: true });
-  await expect(ranking.getByRole('button', { name: /^Inspect / })).toHaveCount(1);
+  await expect(ranking.getByRole('button', { name: /^Inspect [0-9a-f]{12}\u2026$/ })).toHaveCount(1);
   await expect(ranking).toContainText('dddddddddddd');
   await expect(ranking).not.toContainText('bbbbbbbbbbbb');
   await ranking.getByRole('button', { name: 'Inspect eeeeeeeeeeee\u2026', exact: true }).click();
@@ -1930,4 +1930,205 @@ test('timeline plan comparisons clear during a window read and reject its delaye
     expect(Date.parse(params.get('from'))).toBe(Date.parse('2026-09-26T10:00:00Z'));
     expect(Date.parse(params.get('to'))).toBe(Date.parse('2026-09-26T11:00:00Z'));
   }
+});
+
+const healthContractFailure = 'Health evidence returned an invalid or mismatched response. Refresh to retry.';
+test('malformed foreign and oversized Health evidence fails visibly without crashing the dashboard', async ({ page }) => {
+  await fixture(page);
+  const crashes = []; page.on('pageerror', error => crashes.push(error.message));
+  let mode = 'malformed';
+  await page.route(`**/observation-targets/${first}/health`, async route => {
+    const response = await route.fetch(), body = await response.json();
+    if (mode === 'malformed') body.coreMetrics = null;
+    else if (mode === 'foreign') body.instanceId = second;
+    else return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'content-length': String(9 * 1024 * 1024) }, body: '{}' });
+    await route.fulfill({ response, json: body });
+  });
+  for (const next of ['malformed', 'foreign', 'oversized']) {
+    mode = next;
+    if (next === 'malformed') await page.goto(`${href('health')}&healthSection=summary`);
+    else await page.reload();
+    await expect(page.getByRole('alert').filter({ hasText: healthContractFailure })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true })).toBeVisible();
+    await expect(page.getByText('Evaluated using repository time:', { exact: false })).toHaveCount(0);
+    await assertHistoricalScope(page);
+  }
+  expect(crashes).toEqual([]);
+});
+
+test('Resources rejects a malformed refreshed file snapshot while retaining independent authorized charts', async ({ page }) => {
+  await resourceUrlFixture(page);
+  const crashes = []; page.on('pageerror', error => crashes.push(error.message));
+  await page.goto(href('resources'));
+  const files = page.getByRole('region', { name: 'Latest database file counters', exact: true });
+  await expect(files).toContainText('Orders_data');
+  await page.route(`**/observation-targets/${first}/health/files?*`, async route => {
+    const response = await route.fetch(), body = await response.json();
+    body.items[0].readCount = '-1'; body.items[0].logicalName = 'SYNTHETIC rejected file';
+    await route.fulfill({ response, json: body });
+  });
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect(page.getByRole('alert').filter({ hasText: healthContractFailure })).toBeVisible();
+  await expect(files).toHaveCount(0);
+  await expect(page.getByText('SYNTHETIC rejected file', { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Per-NUMA page life expectancy', exact: true }).locator('.overview-chart')).toHaveCount(2);
+  await assertHistoricalScope(page); expect(crashes).toEqual([]);
+});
+
+test('malformed database option and mismatched configuration history remain explicit gaps in Health', async ({ page }) => {
+  await timelineFixture(page);
+  const crashes = []; page.on('pageerror', error => crashes.push(error.message));
+  await page.route(`**/observation-targets/${first}/health/database-option-changes?*`, async route => {
+    const response = await route.fetch(), body = await response.json(); body.items = null;
+    await route.fulfill({ response, json: body });
+  });
+  await page.route(`**/observation-targets/${first}/health/server-configuration-changes?*`, async route => {
+    const response = await route.fetch(), body = await response.json(); body.fromUtc = '2026-09-26T08:00:00.000001Z';
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(`${href('health')}&healthSection=databases`);
+  await expect(page.getByRole('region', { name: 'Database option changes', exact: true })).toContainText('Option history is unavailable.');
+  await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Server configuration changes', exact: true })).toContainText('Configuration history is unavailable or changed while paging.');
+  await expect(page.getByRole('region', { name: 'Investigation timeline', exact: true })).not.toContainText('Server configuration detected');
+  expect(crashes).toEqual([]);
+});
+
+async function queryRowFixture(page, state = 'normal') {
+  await databaseFixture(page);
+  await page.context().addCookies([{ name: 'queryRowTrendFixture', value: '1', url: origin }, { name: 'queryRowTrendState', value: state, url: origin }]);
+}
+const runtimeTrendRows = page => page.getByRole('region', { name: 'Ranked query observations', exact: true }).getByRole('group', { name: /^Ranking trend:/ });
+const waitTrendRows = page => page.getByRole('region', { name: 'Query Store wait ranking', exact: true }).getByRole('group', { name: /^Ranking trend:/ });
+const cacheTrendRows = page => page.getByRole('region', { name: 'Plan cache interval ranking', exact: true }).getByRole('group', { name: /^Ranking trend:/ });
+const trendRequests = request => /\/history\/[0-9a-f]{64}\/plans\/[0-9a-f]{64}\/trend$/.test(new URL(request.url()).pathname);
+const protectedQueryRequest = request => /\/runs\/.*(?:\/text|\/content)$/.test(new URL(request.url()).pathname);
+
+test('ranking row trends load only visible plans with two concurrent reads and shared runtime wait evidence', async ({ page }) => {
+  await queryRowFixture(page);
+  await page.context().addCookies([{ name: 'queryRowTrendCount', value: '35', url: origin }]);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const requests = [], protectedReads = [];
+  page.on('request', request => { if (trendRequests(request)) requests.push(request.url()); if (protectedQueryRequest(request)) protectedReads.push(request.url()); });
+  let release, active = 0, maximumActive = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/query-performance/databases/*/history/*/plans/*/trend?*', async route => {
+    active++; maximumActive = Math.max(maximumActive, active);
+    const response = await route.fetch(); await gate;
+    active--; await route.fulfill({ response });
+  });
+  await page.goto(href('queries'));
+  await expect(runtimeTrendRows(page)).toHaveCount(35);
+  await runtimeTrendRows(page).first().scrollIntoViewIfNeeded();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests.length).toBeLessThan(35);
+  await expect(runtimeTrendRows(page).nth(34)).toContainText('Trend loads when visible.');
+  release();
+  // Make the bounded current page visible; every loaded plan can obtain evidence.
+  await page.setViewportSize({ width: 1440, height: 20000 });
+  await expect.poll(() => requests.length).toBe(35);
+  await expect(runtimeTrendRows(page).nth(34).getByRole('img')).toBeVisible();
+  await expect(waitTrendRows(page).first().getByRole('img')).toBeVisible();
+  expect(maximumActive).toBe(2);
+  expect(new Set(requests).size).toBe(35);
+  expect(requests.every(value => { const query = new URL(value).searchParams; return query.get('fromUtc') === from && query.get('toUtc') === to; })).toBe(true);
+  expect(protectedReads).toEqual([]);
+});
+
+test('ranking row trends expose partial hourly sums and gap reset coverage then allow unavailable evidence to retry', async ({ page }) => {
+  await queryRowFixture(page, 'partial');
+  const protectedReads = []; page.on('request', request => { if (protectedQueryRequest(request)) protectedReads.push(request.url()); });
+  await page.goto(href('queries'));
+  let row = runtimeTrendRows(page).first();
+  await row.scrollIntoViewIfNeeded();
+  await expect(row.locator('svg circle')).toHaveCount(2);
+  await expect(row.locator('svg path')).toHaveCount(0);
+  await row.getByText('Trend values and coverage', { exact: true }).click();
+  await expect(row).toContainText('2 comparable groups; 4 excluded groups; 1 missing hourly buckets.');
+  await expect(row).toContainText('No observed groups; gap');
+  await expect(row).toContainText('120'); await expect(row).toContainText('240');
+  const waits = waitTrendRows(page).first();
+  await waits.scrollIntoViewIfNeeded();
+  await expect(waits.locator('svg circle')).toHaveCount(2);
+  await waits.getByText('Trend values and coverage', { exact: true }).click();
+  await expect(waits).toContainText('All-category waits ms/hour bucket');
+  await expect(waits).toContainText('100'); await expect(waits).toContainText('220');
+  await page.context().addCookies([{ name: 'queryRowTrendState', value: 'unavailable', url: origin }]);
+  await page.reload(); row = runtimeTrendRows(page).first();
+  await row.scrollIntoViewIfNeeded();
+  await expect(row).toContainText('Row trend is unavailable.');
+  await expect(row.getByRole('img')).toHaveCount(0);
+  await page.context().addCookies([{ name: 'queryRowTrendState', value: 'normal', url: origin }]);
+  await row.getByRole('button', { name: 'Retry row trend', exact: true }).click();
+  await expect(row.locator('svg circle')).toHaveCount(2);
+  expect(protectedReads).toEqual([]);
+});
+
+test('ranking row trends show cache interval rates with reset gaps and inspect the exact incarnation', async ({ page }) => {
+  await queryRowFixture(page);
+  const reads = [], protectedReads = [];
+  page.on('request', request => {
+    if (/\/query-performance\/cache\/databases\/.*\/history\//.test(request.url())) reads.push(request.url());
+    if (protectedQueryRequest(request)) protectedReads.push(request.url());
+  });
+  await page.goto(`${href('queries')}&queryView=cache`);
+  const row = cacheTrendRows(page).first(); await row.scrollIntoViewIfNeeded();
+  await expect(row.locator('svg path')).toHaveCount(2);
+  await expect(row.locator('svg circle')).toHaveCount(4);
+  const disclosure = row.getByText('Trend values and coverage', { exact: true });
+  await disclosure.focus(); await disclosure.press('Enter');
+  await expect(disclosure).toBeFocused();
+  await expect(row).toContainText('CPU ms/s');
+  await expect(row).toContainText('2 plotted qualified intervals; 2 unavailable comparisons; 0 invalid intervals. Newest 4 of 4 rows');
+  await expect(row).toContainText('reset'); await expect(row).toContainText('stale'); await expect(row).toContainText('partial capture');
+  expect(reads.every(value => new URL(value).searchParams.get('limit') === '100' && !new URL(value).searchParams.has('cursor'))).toBe(true);
+  await row.getByRole('button', { name: 'Inspect trend', exact: true }).click();
+  await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ target: first, databaseId: '5', queryView: 'cache', cacheDatabaseId: '5', cacheQuery: '000000001000' + '0'.repeat(52), cachePlan: '000000002000' + '0'.repeat(52), cacheIncarnation: '000000003000' + '0'.repeat(52) });
+  await assertHistoricalScope(page); expect(protectedReads).toEqual([]);
+});
+
+test('ranking row trends cannot publish an old metric after a delayed read', async ({ page }) => {
+  await queryRowFixture(page);
+  let release, pending = false, firstRead = true;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/query-performance/databases/*/history/*/plans/*/trend?*', async route => {
+    const response = await route.fetch();
+    if (firstRead) { firstRead = false; pending = true; await gate; }
+    await route.fulfill({ response });
+  });
+  await page.goto(href('queries'));
+  await runtimeTrendRows(page).first().scrollIntoViewIfNeeded();
+  await expect.poll(() => pending).toBe(true);
+  await page.getByRole('combobox', { name: 'Rank by', exact: true }).selectOption('logical_reads');
+  const row = runtimeTrendRows(page).first(); await row.scrollIntoViewIfNeeded();
+  await expect(row.getByRole('img')).toHaveAccessibleName(/Logical reads\/hour bucket/);
+  await row.getByText('Trend values and coverage', { exact: true }).click();
+  await expect(row).toContainText('4000'); await expect(row).toContainText('7000');
+  release();
+  await expect(row).toContainText('Logical reads/hour bucket');
+  await expect(row).not.toContainText('CPU ms/hour bucket');
+  await expect.poll(() => scope(page).get('queryMetric')).toBe('logical_reads');
+});
+
+test('ranking row trends discard delayed old target and window values', async ({ page }) => {
+  await queryRowFixture(page);
+  let release, pending = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/query-performance/databases/*/history/*/plans/*/trend?*`, async route => {
+    const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response });
+  });
+  await page.goto(href('queries'));
+  await runtimeTrendRows(page).first().scrollIntoViewIfNeeded();
+  await expect.poll(() => pending).toBe(true);
+  const nextFrom = '2026-09-26T09:00:00.000Z', nextTo = '2026-09-26T11:00:00.000Z';
+  await page.evaluate(hash => { location.hash = hash; }, `#/queries?${new URLSearchParams({ target: second, range: 'custom', from: nextFrom, to: nextTo })}`);
+  const row = runtimeTrendRows(page).first(); await row.scrollIntoViewIfNeeded();
+  await expect(row.locator('svg circle')).toHaveCount(1);
+  await expect(row).toContainText('One point; no trend line');
+  await row.getByText('Trend values and coverage', { exact: true }).click();
+  await expect(row).toContainText('1120');
+  release();
+  await expect(row).toContainText('1120');
+  await expect(row.locator('svg circle')).toHaveCount(1);
+  await assertHistoricalScope(page, second, nextFrom, nextTo);
 });

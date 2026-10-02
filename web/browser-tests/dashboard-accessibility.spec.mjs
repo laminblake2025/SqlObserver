@@ -595,3 +595,66 @@ for (const width of [320, 390, 768, 1440]) {
     await page.screenshot({ path: resolve(folder, `dashboard-investigation-detail-${width}.png`), fullPage: true, clip });
   });
 }
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`invalid Health response keeps a readable accessible error and independent dashboard at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([{ name: 'dashboardRefactor', value: '1', url: origin }, { name: 'chartReferenceRole', value: 'viewer', url: origin }]);
+    const crashes = []; page.on('pageerror', error => crashes.push(error.message));
+    await page.route(`**/observation-targets/${target}/health`, async route => {
+      const response = await route.fetch(), body = await response.json();
+      body.coreMetrics = null;
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto(`/#/health?${new URLSearchParams({ target, range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', healthSection: 'summary' })}`);
+    await expect(page.getByRole('alert').filter({ hasText: 'Health evidence returned an invalid or mismatched response. Refresh to retry.' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true })).toBeVisible();
+    await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).focus();
+    await expect(page.locator('.page-actions').getByRole('button', { name: /Refresh/ })).toBeFocused();
+    await auditResponsiveState(page, testInfo, 'health-invalid-response');
+    expect(crashes).toEqual([]);
+    await saveFullPage(page, `health-invalid-${width}.png`);
+  });
+}
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`query row trends expose gaps and coverage accessibly at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'databaseScopeFixture', value: '1', url: origin },
+      { name: 'queryRowTrendFixture', value: '1', url: origin },
+      { name: 'queryRowTrendState', value: 'partial', url: origin },
+    ]);
+    const crashes = []; page.on('pageerror', error => crashes.push(error.message));
+    const url = `/#/queries?${new URLSearchParams({ target: '11111111-1111-4111-8111-000000000001', range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z' })}`;
+    await page.goto(url);
+    const runtime = page.getByRole('region', { name: 'Ranked query observations', exact: true });
+    const row = runtime.getByRole('group', { name: /^Ranking trend:/ }).first();
+    await row.scrollIntoViewIfNeeded(); await expect(row.locator('svg circle')).toHaveCount(2);
+    const disclosure = row.getByText('Trend values and coverage', { exact: true });
+    await disclosure.focus(); await disclosure.press('Enter');
+    await expect(disclosure).toBeFocused();
+    await expect(row).toContainText('1 missing hourly buckets');
+    await expect(row).toContainText('No observed groups; gap');
+    const waits = page.getByRole('region', { name: 'Query Store wait ranking', exact: true }).getByRole('group', { name: /^Ranking trend:/ }).first();
+    await waits.scrollIntoViewIfNeeded(); await expect(waits.locator('svg circle')).toHaveCount(2);
+    await waits.getByText('Trend values and coverage', { exact: true }).click();
+    await expect(waits).toContainText('All-category waits ms/hour bucket');
+    await auditResponsiveState(page, testInfo, 'query-runtime-wait-row-trends');
+    await saveFullPage(page, `query-row-trends-${width}.png`);
+    await page.goto(url + '&queryView=cache');
+    const cache = page.getByRole('region', { name: 'Plan cache interval ranking', exact: true });
+    const cacheRow = cache.getByRole('group', { name: /^Ranking trend:/ }).first();
+    await cacheRow.scrollIntoViewIfNeeded(); await expect(cacheRow.locator('svg path')).toHaveCount(2);
+    const cacheDisclosure = cacheRow.getByText('Trend values and coverage', { exact: true });
+    await cacheDisclosure.focus(); await cacheDisclosure.press('Enter');
+    await expect(cacheDisclosure).toBeFocused();
+    await expect(cacheRow).toContainText('2 unavailable comparisons');
+    await expect(cacheRow).toContainText('reset'); await expect(cacheRow).toContainText('partial capture');
+    await auditResponsiveState(page, testInfo, 'query-cache-row-trends');
+    expect(crashes).toEqual([]);
+    await saveFullPage(page, `query-cache-row-trends-${width}.png`);
+  });
+}

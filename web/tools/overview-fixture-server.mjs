@@ -10,6 +10,8 @@ import {handleSavedIncidentFixture} from './saved-incident-fixture.mjs';
 import {handleAgentHistoryFixture} from './agent-history-fixture.mjs';
 import {handleChartReferenceFixture} from './chart-reference-fixture.mjs';
 import {handleDashboardSummaryFixture,dashboardSummaryCpuPoints} from './dashboard-summary-fixture.mjs';
+import {handleQueryRowTrendFixture} from './query-row-trend-fixture.mjs';
+import {syntheticCollector,syntheticFile} from './health-contract-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433}));
 const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
@@ -74,6 +76,7 @@ createServer(async(req,res)=>{try{
   const index=cursor?1:0;
   return send(res,{snapshotUtc:alertSelectionSnapshot,items:[{...alertSelectionRows[index],targetId:targets[index].instanceId,targetName:targets[index].displayName}],nextCursor:cursor?null:'cGFnZTI='});
  }
+ if(handleQueryRowTrendFixture(url,res,req,targets,send))return;
  if(handleDashboardSummaryFixture(url,res,req,targets,send))return;
  if(await handleChartReferenceFixture(url,res,req,targets,send))return;
  // Opt-in dashboard interaction evidence, isolated from existing scenario contracts.
@@ -86,7 +89,7 @@ createServer(async(req,res)=>{try{
    const collector={collectorId:'engine.core',manifestVersion:1,outputSchemaVersion:1,state:'current',reason:'none',lastExecutionOutcome:'succeeded',circuitState:'closed',durationMilliseconds:20,retryCount:0,sourceRows:2,outputRows:2,insertedRows:2,duplicateRows:0,rejectedRows:0,responseBytes:1024,persistedBytes:1024,hasVisibilityGap:false,sampleLossKind:null,minimumLostItems:null,minimumLostBytes:null,lossCountIsExact:null,lastSuccessAtUtc:now,lastAttemptAtUtc:now,scheduledAtUtc:now,nextDueAtUtc:now};
    const evidence={runId:'22222222-2222-4222-8222-222222222222',targetRevision:'1',collectorId:'blocking.current',freshness:'current',outcome:'succeeded',reason:'none',isPartial:false,completedAtUtc:now};
    const edge={blockedSessionId:72,blockerKind:'session',blockerSessionId:51,rootBlockerSessionId:51,waitType:'LCK_M_X',waitingTaskCount:'1',waitDurationMilliseconds:'12000',chainDepth:1,chainState:'resolved',observedAtUtc:now};
-   if(surface==='health')return send(res,{instanceId,state:'current',repositoryTimeUtc:now,collectors:[collector],coreMetrics:[{sampleId:'1',metricId:'engine.user_connections',observedAtUtc:now,value:428,dimensions:[]}]});
+   if(surface==='health')return send(res,{instanceId,state:'current',repositoryTimeUtc:now,collectors:[collector],coreMetrics:[{sampleId:'33333333-3333-4333-8333-000000000001',metricId:'engine.user_connections',observedAtUtc:now,value:428,dimensions:[]}]});
    if(surface==='health/databases') {
     const scoped=req.headers.cookie?.includes('databaseScopeFixture=1');
     const database=(id,name)=>({databaseId:id,name:scoped&&instanceId===targets[1].instanceId?`${name} 02`:name,state:'online',recoveryModel:'full',userAccess:'multi_user',isReadOnly:false,compatibilityLevel:160,logReuseWaitDescription:'nothing',observedAtUtc:now,collector});
@@ -205,12 +208,14 @@ createServer(async(req,res)=>{try{
   if(!targets.some(t=>t.instanceId===instanceId))return send(res,{},404);
   const cursor=url.searchParams.get('cursor');
   if(cursor!==null&&cursor!=='synthetic-file-page-2')return send(res,{},400);
-  return send(res,{instanceId,repositoryTimeUtc:new Date().toISOString(),collector:{state:'current'},nextCursor:cursor===null?'synthetic-file-page-2':null,items:cursor===null?[
-   {databaseId:5,fileId:1,logicalName:'Orders_data',sizeBytes:'8589934592',readCount:'120000',writeCount:'80000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:new Date().toISOString()},
-   {databaseId:5,fileId:2,logicalName:'Orders_log',sizeBytes:'2147483648',readCount:'4000',writeCount:'35000',readStallMilliseconds:'8000',writeStallMilliseconds:'175000',observedAtUtc:new Date().toISOString()},
+  const observedAtUtc=new Date().toISOString(),collector=syntheticCollector(observedAtUtc);
+  const items=cursor===null?[
+   {databaseId:5,fileId:1,logicalName:'Orders_data',sizeBytes:'8589934592',readCount:'120000',writeCount:'80000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000'},
+   {databaseId:5,fileId:2,logicalName:'Orders_log',sizeBytes:'2147483648',readCount:'4000',writeCount:'35000',readStallMilliseconds:'8000',writeStallMilliseconds:'175000'},
   ]:[
-   {databaseId:7,fileId:1,logicalName:'Warehouse_data',sizeBytes:'17179869184',readCount:'90000',writeCount:'24000',readStallMilliseconds:'450000',writeStallMilliseconds:'96000',observedAtUtc:new Date().toISOString()},
-  ]});
+   {databaseId:7,fileId:1,logicalName:'Warehouse_data',sizeBytes:'17179869184',readCount:'90000',writeCount:'24000',readStallMilliseconds:'450000',writeStallMilliseconds:'96000'},
+  ];
+  return send(res,{instanceId,repositoryTimeUtc:observedAtUtc,collector,nextCursor:cursor===null?'synthetic-file-page-2':null,items:items.map(value=>syntheticFile(value,observedAtUtc,collector))});
  }
  if(url.pathname==='/api/v1/overview'){
   const mode=req.headers.cookie?.match(/overviewMode=([a-z-]+)/)?.[1] ?? process.env.SQLOBSERVER_OVERVIEW_FIXTURE_MODE;

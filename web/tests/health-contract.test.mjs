@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { getDatabaseHealth } from "../src/features/health/healthApi.ts";
+import { getDatabaseHealth, HealthRequestError } from "../src/features/health/healthApi.ts";
+import { syntheticCollector } from "../tools/health-contract-fixture.mjs";
 
 const panelUrl = new URL(
   "../src/features/health/TargetHealthPanel.tsx",
@@ -87,17 +88,25 @@ test("health fetch uses a target-scoped route and never reflects provider errors
 test("database health paging encodes the target and continuation cursor", async () => {
   const originalFetch = globalThis.fetch;
   const paths = [];
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const repositoryTimeUtc = "2026-09-26T12:00:00.000Z";
   globalThis.fetch = async (path) => {
     paths.push(String(path));
-    return new Response(JSON.stringify({ instanceId: "target", items: [], nextCursor: null }), {
+    return new Response(JSON.stringify({ instanceId: targetId, repositoryTimeUtc,
+      collector: syntheticCollector(repositoryTimeUtc, "inventory.databases"), items: [], nextCursor: null }), {
       headers: { "Content-Type": "application/json" },
     });
   };
   try {
-    await getDatabaseHealth("server / one", new AbortController().signal);
-    await getDatabaseHealth("server / one", new AbortController().signal, "page+/=two");
-    assert.equal(paths[0], "/api/v1/observation-targets/server%20%2F%20one/health/databases?limit=25");
-    assert.equal(paths[1], "/api/v1/observation-targets/server%20%2F%20one/health/databases?limit=25&cursor=page%2B%2F%3Dtwo");
+    await getDatabaseHealth(targetId, new AbortController().signal);
+    await getDatabaseHealth(targetId, new AbortController().signal, "page+/=two");
+    assert.equal(paths[0], `/api/v1/observation-targets/${targetId}/health/databases?limit=25`);
+    assert.equal(paths[1], `/api/v1/observation-targets/${targetId}/health/databases?limit=25&cursor=page%2B%2F%3Dtwo`);
+    // Even rejected target input remains escaped into one local path segment.
+    await assert.rejects(getDatabaseHealth("server / one", new AbortController().signal), HealthRequestError);
+    await assert.rejects(getDatabaseHealth("server / one", new AbortController().signal, "page+/=two"), HealthRequestError);
+    assert.equal(paths[2], "/api/v1/observation-targets/server%20%2F%20one/health/databases?limit=25");
+    assert.equal(paths[3], "/api/v1/observation-targets/server%20%2F%20one/health/databases?limit=25&cursor=page%2B%2F%3Dtwo");
   } finally {
     globalThis.fetch = originalFetch;
   }

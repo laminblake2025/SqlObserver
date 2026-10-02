@@ -135,11 +135,19 @@ export async function getQueryPerformancePlanWaits(instanceId: string, databaseI
 export async function getQueryStoreGroupPlanTrend(instanceId: string, databaseId: number,
     queryFingerprint: string, planFingerprint: string, fromUtc: string, toUtc: string,
     signal: AbortSignal): Promise<QueryStoreGroupTrend> {
+  const ticks = (utc: unknown): bigint => {
+    if (!timestamp(utc)) throw new Error("Query Store group trend timestamp was invalid.");
+    const normalized = canonicalInstant(utc), base = normalized.slice(0, 19);
+    const milliseconds = Date.parse(`${base}Z`);
+    if (utc.startsWith("0000-") || new Date(milliseconds).toISOString().slice(0, 19) !== base)
+      throw new Error("Query Store group trend timestamp was invalid.");
+    return BigInt(milliseconds) * 10000n + BigInt(normalized.slice(20, 27));
+  };
+  const from = ticks(fromUtc), to = ticks(toUtc), hour = 36_000_000_000n;
+  const firstBucket = from - (from % hour + hour) % hour;
   if (!Number.isInteger(databaseId) || databaseId <= 0 || databaseId > 32767
       || !digest(queryFingerprint) || !digest(planFingerprint)
-      || !timestamp(fromUtc) || !timestamp(toUtc)
-      || Date.parse(toUtc) <= Date.parse(fromUtc)
-      || Date.parse(toUtc) - Date.parse(fromUtc) > 7 * 24 * 60 * 60 * 1000)
+      || to <= from || to - from > 7n * 24n * hour)
     throw new Error("Query Store group trend request was invalid.");
   const url = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/query-performance`
     + `/databases/${databaseId}/history/${queryFingerprint}/plans/${planFingerprint}/trend`
@@ -154,17 +162,16 @@ export async function getQueryStoreGroupPlanTrend(instanceId: string, databaseId
       || canonicalInstant(value.toUtc) !== canonicalInstant(toUtc)
       || !Array.isArray(value.points) || value.points.length > 169)
     throw new Error("Query Store group trend response was outside its bounds.");
-  let previousBucket = -Infinity;
+  let previousBucket: bigint | undefined;
   const points = value.points.map(raw => {
     if (typeof raw !== "object" || raw === null)
       throw new Error("Query Store group trend point was invalid.");
     const point = raw as Record<string, unknown>;
     if (!timestamp(point.bucketStartUtc))
       throw new Error("Query Store group trend bucket was invalid.");
-    const bucket = Date.parse(point.bucketStartUtc);
-    if (bucket % 3_600_000 !== 0 || bucket <= previousBucket
-        || bucket < Math.floor(Date.parse(fromUtc) / 3_600_000) * 3_600_000
-        || bucket >= Date.parse(toUtc))
+    const bucket = ticks(point.bucketStartUtc);
+    if (bucket % hour !== 0n || previousBucket !== undefined && bucket <= previousBucket
+        || bucket < firstBucket || bucket >= to)
       throw new Error("Query Store group trend bucket was outside its window.");
     previousBucket = bucket;
     const counts = [point.sourceRows, point.runtimeComparableRows,

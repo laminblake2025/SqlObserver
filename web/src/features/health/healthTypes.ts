@@ -110,7 +110,9 @@ export type CollectorLossKind =
   | "source_row_limit"
   | "response_byte_limit"
   | "output_validation_failure"
-  | "ingestion_rejection";
+  | "ingestion_rejection"
+  | "duplicate_overlap"
+  | "visibility_incomplete";
 
 export type CollectorCircuitState = "closed" | "open" | "half_open";
 

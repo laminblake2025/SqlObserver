@@ -1,5 +1,6 @@
 import type { ObservationSample, ObservationSeries } from "../../components/observationChartModel";
 import type { PlanCacheIntervalHistory, PlanCacheIntervalHistoryItem, QueryPerformanceMetric } from "./queryPerformanceTypes";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 
 const metricFields = { cpu: "cpuMilliseconds", duration: "durationMilliseconds", executions: "executions",
   logical_reads: "logicalReads", writes: "writes", rows: "rows" } as const;
@@ -64,13 +65,8 @@ export function planCacheIntervalTrend(history: PlanCacheIntervalHistory, metric
 }
 
 function microseconds(value: string | null): bigint | null {
-  const match = value?.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,7}))?Z$/u);
-  if (!match) return null;
-  const fraction = (match[2] ?? "").padEnd(7, "0");
-  const milliseconds = Date.parse(`${match[1]}Z`);
-  if (fraction[6] !== "0" || !Number.isSafeInteger(milliseconds)
-      || new Date(milliseconds).toISOString().slice(0,19) !== match[1]) return null;
-  return BigInt(milliseconds) * 1000n + BigInt(fraction.slice(0,6));
+  if (value === null) return null;
+  try { return utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1")); } catch { return null; }
 }
 
 function nativeCounter(value: string | null, milliseconds: boolean): bigint | null {
