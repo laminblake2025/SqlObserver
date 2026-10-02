@@ -378,6 +378,31 @@ caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 
 .server-dashboard-chart { min-width: 0; }
 .server-dashboard-chart > small { color: var(--muted); }
 .server-dashboard-gaps ul { margin-bottom: 0; }
+.dashboard-timeline { padding: 20px; }
+.dashboard-timeline-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 12px 20px; }
+.dashboard-timeline-heading > div { flex: 1 1 360px; min-width: 0; }
+.dashboard-timeline-heading h4 { margin-bottom: 8px; }
+.dashboard-timeline-heading p { margin: 0; color: var(--muted); font-size: 12px; }
+.dashboard-timeline-heading label { display: grid; flex: 0 1 240px; min-width: 0; gap: 5px; color: var(--muted-deep); font-size: 12px; font-weight: 700; }
+.dashboard-timeline-heading select { width: 100%; min-width: 0; }
+.dashboard-timeline-status { margin: 14px 0 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.dashboard-timeline-clear { margin-bottom: 12px; }
+.dashboard-timeline-events { display: grid; margin: 0; padding: 0; list-style: none; }
+.dashboard-timeline-event { display: grid; grid-template-columns: minmax(150px, .6fr) minmax(0, 2fr); gap: 12px 20px; padding: 16px 0; border-top: 1px solid var(--border); }
+.dashboard-timeline-event.is-selected { padding-inline: 12px; background: var(--teal-soft); border-inline-start: 3px solid var(--teal); }
+.dashboard-timeline-event-time { min-width: 0; color: var(--muted-deep); font-size: 12px; overflow-wrap: anywhere; }
+.dashboard-timeline-event-time > span, .dashboard-timeline-event-time time { display: block; margin-bottom: 5px; }
+.dashboard-timeline-event-time > span { font-weight: 700; }
+.dashboard-timeline-event-time small { color: var(--muted); }
+.dashboard-timeline-event-evidence { min-width: 0; }
+.dashboard-timeline-align { max-width: 100%; min-height: 40px; padding: 8px 10px; color: var(--text); text-align: left; font-weight: 700; white-space: normal; overflow-wrap: anywhere; }
+.dashboard-timeline-align[aria-pressed="true"] { color: var(--teal-deep); background: var(--surface-teal); border-color: var(--border-teal); }
+.dashboard-timeline-event-evidence p { margin: 9px 0; color: var(--muted-deep); font-size: 12px; overflow-wrap: anywhere; }
+.dashboard-timeline-event-evidence a { display: inline-block; min-height: 32px; padding-block: 6px; font-size: 12px; font-weight: 700; }
+.dashboard-timeline-coverage { margin-top: 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.dashboard-timeline-coverage summary { min-height: 40px; padding-block: 12px; color: var(--teal-deep); cursor: pointer; font-weight: 700; }
+.dashboard-timeline-coverage ul { padding-left: 20px; }
+.dashboard-timeline-coverage li { margin-block: 6px; }
 .server-dashboard-blocking { padding: 20px; }
 .server-dashboard-blocking .section-heading { align-items: baseline; }
 .server-dashboard-blocking h4, .server-dashboard-blocking h5 { margin: 0; }
@@ -679,6 +704,9 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 480px) {
+  .dashboard-timeline { padding: 14px; }
+  .dashboard-timeline-heading label { flex-basis: 100%; }
+  .dashboard-timeline-event { grid-template-columns: 1fr; gap: 8px; }
   .query-performance-screen > .panel { padding: 12px; }
   .section-heading, .bounded-health-heading { flex-wrap: wrap; align-items: start; }
   .section-heading > div, .bounded-health-heading > div { min-width: 0; }
@@ -705,6 +733,8 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .state-pill, .health-state, .capability-status, .evidence-status,
   .sidebar nav a[aria-current="page"], .selected-row { border: 1px solid CanvasText; }
   .blocking-chain-action[aria-pressed="true"] { color: HighlightText; background: Highlight; border-color: Highlight; forced-color-adjust: none; }
+  .dashboard-timeline-event.is-selected { border-color: Highlight; }
+  .dashboard-timeline-align[aria-pressed="true"] { color: HighlightText; background: Highlight; border-color: Highlight; forced-color-adjust: none; }
 }
 
 .availability-evidence { display: grid; gap: 12px; }

@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { supportsChangeTimelineWindow } from "../../components/dashboardTimelineModel.ts";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { overviewWindow } from "../overview/overviewModel";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { getServerConfigurationChanges } from "./healthApi";
 import type { CollectorHealthSummary, ServerConfigurationChange, ServerConfigurationChangeResult } from "./healthTypes";
 
-export function ServerConfigurationChanges({ instanceId, scope, refresh, collector, canManage }: {
+export function ServerConfigurationChanges({ instanceId, scope, refresh, collector, canManage, selectedRunId }: {
+  readonly selectedRunId?: string;
   readonly instanceId: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
@@ -16,7 +18,7 @@ export function ServerConfigurationChanges({ instanceId, scope, refresh, collect
   const selection = useMemo(() => {
     try {
       const window = overviewWindow(scope, Date.now());
-      return Date.parse(window.toUtc) - Date.parse(window.fromUtc) <= 7 * 86400000
+      return supportsChangeTimelineWindow(window.fromUtc, window.toUtc)
         ? { window } : { error: "Configuration history supports windows up to seven days." };
     } catch { return { error: "Choose a valid UTC window for configuration history." }; }
   }, [scope.range, scope.from, scope.to, refresh]);
@@ -58,6 +60,22 @@ export function ServerConfigurationChanges({ instanceId, scope, refresh, collect
   }, [instanceId, selection.window?.fromUtc, selection.window?.toUtc,
     disabled, requestKey, current.index, cursor]);
 
+  const sectionRef = useRef<HTMLElement>(null);
+  const focusedSelection = useRef<string | undefined>(undefined);
+  const rowOwnedFocus = useRef(false);
+  const focusKey = selectedRunId ? `${instanceId}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}:${selectedRunId}` : undefined;
+  useEffect(() => {
+    if (!focusKey) { focusedSelection.current = undefined; return; }
+    const restoreOwnedFocus = rowOwnedFocus.current && document.activeElement === document.body;
+    if (focusedSelection.current === focusKey && !restoreOwnedFocus || !result && !failed && !disabled && !selection.error) return;
+    const row = [...(sectionRef.current?.querySelectorAll<HTMLElement>("[data-configuration-run]") ?? [])]
+      .find(item => item.dataset.configurationRun === selectedRunId?.toLowerCase());
+    const destination = row ?? sectionRef.current?.querySelector<HTMLElement>("h4");
+    destination?.focus({ preventScroll: true });
+    destination?.scrollIntoView({ block: "center" });
+    focusedSelection.current = focusKey;
+  }, [focusKey, selectedRunId, result, failed, disabled, selection.error]);
+
   const restart = () => setRetry(value => value + 1);
   const previous = () => setPaging({ ...current, index: current.index - 1 });
   const next = () => {
@@ -66,8 +84,9 @@ export function ServerConfigurationChanges({ instanceId, scope, refresh, collect
         cursors: [...current.cursors.slice(0, current.index + 1), result.nextCursor] });
   };
 
-  return <section className="bounded-health-section" aria-labelledby="server-configuration-changes-heading">
-    <div className="bounded-health-heading"><h4 id="server-configuration-changes-heading">Server configuration changes</h4></div>
+  return <section ref={sectionRef} onFocusCapture={event => { rowOwnedFocus.current = event.target instanceof HTMLElement && event.target.dataset.configurationRun === selectedRunId?.toLowerCase(); }}
+    onBlurCapture={event => { if (event.relatedTarget !== null) rowOwnedFocus.current = false; }} className="bounded-health-section" aria-labelledby="server-configuration-changes-heading">
+    <div className="bounded-health-heading"><h4 tabIndex={-1} id="server-configuration-changes-heading">Server configuration changes</h4></div>
     <p>Changes are detected between complete scans. Detection time is the later observation, not the exact time a setting changed.</p>
     {disabled && <p role="status">Configuration collection is disabled for this server. {canManage
       ? "Verify SQL Server read permissions, then enable it under Current server settings."
@@ -75,9 +94,10 @@ export function ServerConfigurationChanges({ instanceId, scope, refresh, collect
     {selection.error && <p role="status">{selection.error}</p>}
     {failed && <p role="alert">Configuration history is unavailable or changed while paging. <button type="button" onClick={restart}>Restart from latest</button></p>}
     {!disabled && !selection.error && !failed && !result && <p role="status">Loading configuration history…</p>}
+    {selectedRunId && result && !result.items.some(item => item.runId.toLowerCase() === selectedRunId.toLowerCase()) && <p role="status">The selected configuration scan is not in this loaded page. Check the selected window or additional history pages.</p>}
     {result && (result.items.length === 0
       ? <p>{result.coverage === "never_collected" ? "No configuration change evidence has been published yet." : "No configuration changes were recorded in this window. Collection gaps may exist."}</p>
-      : <><ul>{result.items.map(item => <li key={`${item.runId}:${item.configurationId}`}>
+      : <><ul>{result.items.map(item => <li tabIndex={-1} data-configuration-run={item.runId.toLowerCase()} key={`${item.runId}:${item.configurationId}`}>
           <strong>{item.configurationName}</strong> · {changeText(item)}
           <small> · Detected {formatTime(item.detectedAtUtc)}; compared with {formatTime(item.previousObservedAtUtc)}</small>
         </li>)}</ul><nav className="pager" aria-label="Server configuration change pages">

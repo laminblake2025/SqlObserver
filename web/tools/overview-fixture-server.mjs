@@ -34,9 +34,22 @@ createServer(async(req,res)=>{try{
     const file={databaseId:5,fileId:1,logicalName:'Orders_data',fileType:'rows',state:'online',sizeBytes:'8589934592',maximumSizeBytes:null,growthBytes:'67108864',growthPercent:0,readCount:'120000',writeCount:'80000',bytesRead:'12000000',bytesWritten:'8000000',ioStallMilliseconds:'1040000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:now,collector};
     return send(res,{instanceId,repositoryTimeUtc:now,collector,items:req.headers.cookie?.includes('databaseScopeFixture=1')?[file,{...file,databaseId:6,logicalName:'Warehouse_data',sizeBytes:'17179869184'}]:[file],nextCursor:null});
    }
-   if(surface==='health/database-option-changes')return send(res,{targetId:instanceId,fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc'),semantics:'observed_changes_only',items:[]});
-   if(surface==='health/server-configuration-changes')return send(res,{targetId:instanceId,targetRevision:1,publicationGeneration:0,fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc'),coverage:'never_collected',items:[],nextCursor:null});
+   if(surface==='health/database-option-changes'||surface==='health/server-configuration-changes') {
+    const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc'),start=Date.parse(fromUtc),end=Date.parse(toUtc);
+    const populated=req.headers.cookie?.includes('timelineFixture=1')&&Number.isFinite(start)&&Number.isFinite(end)&&end>start;
+    const times={previousObservedAtUtc:new Date((populated?start:Date.parse(now))-60000).toISOString(),observedAtUtc:new Date(populated?start+(end-start)/4:Date.parse(now)).toISOString(),detectedAtUtc:new Date(populated?start+(end-start)/4+1000:Date.parse(now)).toISOString()};
+    if(surface==='health/database-option-changes')return send(res,{targetId:instanceId,fromUtc,toUtc,semantics:'detected_between_consecutive_complete_inventory_runs',items:populated?[{...times,databaseId:5,databaseName:'Orders',optionKey:'compatibility_level',previousValue:'150',currentValue:'160',collectionRunId:evidence.runId},{...times,databaseId:6,databaseName:'Warehouse',optionKey:'is_read_only',previousValue:'false',currentValue:'true',collectionRunId:evidence.runId}]:[]});
+    return send(res,{targetId:instanceId,targetRevision:1,publicationGeneration:populated?1:0,fromUtc,toUtc,coverage:populated?'observed_changes_only':'never_collected',items:populated?[{...times,configurationId:1539,configurationName:'cost threshold for parallelism',sourceType:'int',previousConfiguredValue:'5',configuredValue:'50',previousInUseValue:'5',inUseValue:'50',configuredChanged:true,inUseChanged:true,runId:evidence.runId}]:[],nextCursor:null});
+   }
    if(surface==='health/server-configuration-snapshot')return send(res,{targetId:instanceId,targetRevision:1,runId:null,observedAtUtc:null,serverMajorVersion:16,collectorEnabled:false,lastOutcome:null,coverage:'never_collected',items:[],nextCursor:null});
+
+   if(surface==='query-performance/regressions' && req.headers.cookie?.includes('timelineFixture=1')) {
+    const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc');
+    const start=Date.parse(fromUtc),end=Date.parse(toUtc),duration=end-start;
+    if(!Number.isFinite(start)||!Number.isFinite(end)||duration<=0||duration>7*86400000||url.searchParams.get('limit')!=='25')return send(res,{},400);
+    const comparison=(databaseId,query,previous,current,ratio,fraction)=>({databaseId,queryFingerprint:query.repeat(64),previousPlanFingerprint:previous.repeat(64),currentPlanFingerprint:current.repeat(64),previousAverageMilliseconds:'100.000',currentAverageMilliseconds:`${ratio*100}.000`,slowdownRatio:`${ratio}.000`,previousExecutions:'20',currentExecutions:'25',previousComparableRows:2,currentComparableRows:3,previousSourceRows:2,currentSourceRows:3,lastObservedAtUtc:new Date(start+duration*fraction).toISOString()});
+    return send(res,{targetId:instanceId,fromUtc,toUtc,comparisonFromUtc:new Date(start-duration).toISOString(),semantics:'query_store_group_plan_comparison',coverage:'observed_groups_only',items:[comparison(5,instanceId===targets[0].instanceId?'b':'7','a','c',4,0.5),comparison(6,instanceId===targets[0].instanceId?'d':'8','f','e',3,0.75)]});
+   }
 
    if(surface==='activity/waits/trend') {
     const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc'),points=[];
@@ -44,7 +57,9 @@ createServer(async(req,res)=>{try{
      for(const category of ['Lock','I/O','CPU/signal','Memory','Parallelism','Log','Other'])points.push({bucketStartUtc:new Date(at).toISOString(),category,waitMilliseconds:category==='Lock'?'12000':category==='I/O'?'5000':'0',runCount:10,missingSummaryRuns:0,partialRuns:0,incomparableTypes:0,comparableTypes:2});
     return send(res,{instanceId,fromUtc,toUtc,repositoryTimeUtc:now,points});
    }
-   const summary={eventId:'33333333-3333-4333-8333-333333333333',fingerprint:'a'.repeat(64),occurredAtUtc:new Date(Date.parse(url.searchParams.get('toUtc')??now)-60000).toISOString(),participantCount:2,relationCount:2,parseTruncated:false,collectedAtUtc:now};
+   const timelineStart=Date.parse(url.searchParams.get('fromUtc')),timelineEnd=Date.parse(url.searchParams.get('toUtc'));
+   const deadlockTime=req.headers.cookie?.includes('timelineFixture=1')&&Number.isFinite(timelineStart)&&Number.isFinite(timelineEnd)?timelineStart+(timelineEnd-timelineStart)/3:Date.parse(url.searchParams.get('toUtc')??now)-60000;
+   const summary={eventId:'33333333-3333-4333-8333-333333333333',fingerprint:'a'.repeat(64),occurredAtUtc:new Date(deadlockTime).toISOString(),participantCount:2,relationCount:2,parseTruncated:false,collectedAtUtc:now};
    if(surface==='deadlocks')return send(res,{targetId:instanceId,repositoryTimeUtc:now,items:[summary],nextCursor:null});
    if(surface==='deadlocks/'+summary.eventId)return send(res,{summary,participants:[{sessionId:51,isVictim:true},{sessionId:72,isVictim:false}],relations:[{blockerSessionId:51,waiterSessionId:72,resourceCategory:'key',lockMode:'X'},{blockerSessionId:72,waiterSessionId:51,resourceCategory:'key',lockMode:'X'}]});
    if(surface==='alerts/active')return send(res,{targetId:instanceId,snapshotUtc:now,items:[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:now,firedUtc:now,value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false}],nextCursor:null});

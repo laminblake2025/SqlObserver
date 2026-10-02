@@ -32,7 +32,7 @@ import { getObservationTarget, listObservationTargets } from "./features/targets
 import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
-import { activityHistoryHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
+import { activityHistoryHref, healthSectionHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
 import { refreshCadence, startWorkspaceClock, wakeLiveTick } from "./liveRefreshSchedule";
 
 const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], string>> = {
@@ -198,6 +198,8 @@ export function App() {
       : selectedRoute.page === "queries" && selectedRoute.databaseId !== undefined && selectedRoute.queryFingerprint !== undefined
         ? queryJumpHref(selectedScope, selectedRoute.target, selectedRoute.databaseId,
             selectedRoute.queryFingerprint, selectedRoute.planFingerprint, selectedRoute.querySource)
+      : selectedRoute.page === "health" && selectedRoute.healthSection
+        ? healthSectionHref(selectedScope, selectedRoute.target, selectedRoute.healthSection, selectedRoute.configurationRunId)
       : selectedRoute.page === "operations" && selectedRoute.healthCheck
         ? healthCheckHref(selectedScope, selectedRoute.target, selectedRoute.healthCheck)
       : overviewHref(selectedScope, selectedRoute.page, selectedRoute.target);
@@ -214,7 +216,9 @@ export function App() {
   const currentNavigation = route.page === "health" ? "servers" :
     route.page === "rules" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
   const routeHref = (page: Destination, target = route.target) => queryViewHref(
-    page === "operations" && route.healthCheck
+    page === "health" && route.healthSection
+      ? healthSectionHref(scope, target, route.healthSection, route.configurationRunId)
+    : page === "operations" && route.healthCheck
       ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target), queryView);
   const closeTarget = () => {
     location.hash = route.page === "alerts" ? routeHref("alerts", "") :
@@ -339,7 +343,9 @@ export function App() {
 
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
-              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} canManageConfiguration={canManageRules} canSaveIncident={canSaveIncident(myAccess,props.instanceId)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
+              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
+                onSelectSection={section => { location.hash = healthSectionHref(readOverviewScope(location.hash), props.instanceId, section); }}
+                canManageConfiguration={canManageRules} canSaveIncident={canSaveIncident(myAccess,props.instanceId)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}

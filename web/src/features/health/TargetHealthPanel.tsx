@@ -75,17 +75,20 @@ export interface TargetHealthPanelProps {
   readonly canSaveIncident: boolean;
   readonly targetRevision: number;
   readonly selectionHash: string;
+  readonly selectedConfigurationRunId?: string;
+  readonly selectedSection?: "summary" | "databases" | "collection";
+  readonly onSelectSection?: (section: "summary" | "databases" | "collection") => void;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, canSaveIncident, targetRevision, selectionHash }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, canSaveIncident, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const [receivedEvidence, setEvidence] = useState<TargetHealthEvidence>();
   const evidence = receivedEvidence?.target.instanceId.toLowerCase() === instanceId.toLowerCase()
     ? receivedEvidence : undefined;
   const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"summary" | "databases" | "collection">(selectedDatabaseId === undefined ? "summary" : "databases");
-  useEffect(() => { if (selectedDatabaseId !== undefined) setTab("databases"); }, [selectedDatabaseId]);
+  const [tab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases"));
+  useEffect(() => { if (selectedSection) setTab(selectedSection); else if (selectedDatabaseId !== undefined) setTab("databases"); }, [selectedDatabaseId, selectedSection]);
   const snapshot = evidence?.target;
 
   useEffect(() => {
@@ -148,7 +151,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             label="Server summary sections"
             tabs={[{ value: "summary", label: "Summary" }, { value: "databases", label: "Databases" }, { value: "collection", label: "Collection health" }]}
             value={tab}
-            onChange={(value) => setTab(value as "summary" | "databases" | "collection")}
+            onChange={(value) => { const section = value as "summary" | "databases" | "collection"; setTab(section); onSelectSection?.(section); }}
           />
           <div className="health-summary">
             <span className={`health-state health-${evidence.target.state}`}>
@@ -165,7 +168,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             </details>
             <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh}
               canManage={canManageConfiguration} />
-            <ServerConfigurationChanges instanceId={instanceId} scope={scope} refresh={refresh}
+            <ServerConfigurationChanges selectedRunId={selectedConfigurationRunId} instanceId={instanceId} scope={scope} refresh={refresh}
               collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")}
               canManage={canManageConfiguration} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>

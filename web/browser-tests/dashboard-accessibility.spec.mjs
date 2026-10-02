@@ -155,3 +155,57 @@ for (const width of [320, 390, 768, 1440]) {
     });
   }
 }
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`investigation timeline supports keyboard alignment and responsive evidence at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'timelineFixture', value: '1', url: origin },
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'databaseScopeFixture', value: '1', url: origin },
+    ]);
+    const timelineTarget = '11111111-1111-4111-8111-000000000001';
+    const from = '2026-09-26T08:00:00.000Z';
+    const to = '2026-09-26T12:00:00.000Z';
+    await page.goto(`/#/health?${new URLSearchParams({ target: timelineTarget, range: 'custom', from, to, databaseId: '6' })}`);
+    const timeline = page.getByRole('region', { name: 'Investigation timeline', exact: true });
+    await expect(timeline.getByRole('heading', { name: 'Investigation timeline', exact: true })).toBeVisible();
+    const category = timeline.getByRole('combobox', { name: 'Timeline event category', exact: true });
+    await category.selectOption('plan_regression');
+    const align = timeline.getByRole('button', { name: /^Align charts: Plan regression comparison/ });
+    await expect(align).toHaveCount(1);
+    await align.focus();
+    await align.press('Enter');
+    await expect(align).toBeFocused();
+    await expect(align).toHaveAttribute('aria-pressed', 'true');
+    await expect(timeline.getByRole('status')).toContainText('Chart crosshair:');
+    await expect(timeline.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
+    const evidence = timeline.getByRole('link', { name: /^Open evidence: Plan regression comparison/ });
+    await expect(evidence).toBeVisible();
+    await expect(evidence).toHaveAttribute('href', /databaseId=6/);
+    await evidence.focus();
+    await expect(evidence).toBeFocused();
+    const coverage = timeline.getByText('Timeline coverage', { exact: true });
+    await coverage.focus();
+    await coverage.press('Enter');
+    await expect(coverage).toBeFocused();
+    await expect(timeline.locator('details')).toHaveAttribute('open', '');
+    await expect(timeline.locator('details')).toContainText('different time meanings');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'Timeline evidence must fit; timestamps and links must wrap locally').toBeLessThanOrEqual(1);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+    await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
+    expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
+    const folder = resolve('../artifacts/dashboard-refactor/screenshots');
+    await mkdir(folder, { recursive: true });
+    await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+    await page.screenshot({ path: resolve(folder, `timeline-${width}.png`), fullPage: true });
+    const timelineBounds = await timeline.boundingBox();
+    expect(timelineBounds).not.toBeNull();
+    // Keep the full-page capture at the tested viewport. A taller viewport for
+    // this detail capture gives the sticky navigation room above the section.
+    await page.setViewportSize({ width, height: Math.ceil(timelineBounds.height) + 400 });
+    await timeline.evaluate(element => element.scrollIntoView({ block: 'center' }));
+    await timeline.screenshot({ path: resolve(folder, `timeline-detail-${width}.png`) });
+  });
+}

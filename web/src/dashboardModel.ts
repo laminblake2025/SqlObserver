@@ -4,6 +4,7 @@ import { healthCheckTab, type HealthCheckTab } from './features/operations/agent
 
 export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', maintenance: 'Maintenance windows', destinations: 'Destinations', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
 export type Destination = keyof typeof destinations;
+export type HealthSection = "summary" | "databases" | "collection";
 export const navigationDestinations = ['overview', 'servers', 'activity', 'waits', 'resources', 'queries', 'deadlocks', 'alerts', 'operations', 'analytics', 'reports'] as const satisfies readonly Destination[];
 export interface DashboardRoute {
   readonly page: Destination;
@@ -15,6 +16,8 @@ export interface DashboardRoute {
   readonly planFingerprint?: string;
   readonly querySource?: 'query_store' | 'plan_cache';
   readonly healthCheck?: HealthCheckTab;
+  readonly healthSection?: HealthSection;
+  readonly configurationRunId?: string;
 }
 const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/;
 const guid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -25,6 +28,11 @@ export function readRoute(hash: string): DashboardRoute {
   const scope = readOverviewScope(hash);
   const base = { page, target: scope.target, ...(scope.databaseId !== undefined ? { databaseId: scope.databaseId } : {}) };
   const check = healthCheckTab(params.get('check'));
+  const section = params.get('healthSection');
+  if (page === 'health' && (section === 'summary' || section === 'databases' || section === 'collection')) {
+    const run = params.get('configurationRun');
+    return { ...base, healthSection: section, ...(section === 'summary' && run && guid.test(run) ? { configurationRunId: run.toLowerCase() } : {}) };
+  }
   if (page === 'operations' && check) return { ...base, healthCheck: check };
   const databaseId = scope.databaseId;
   const queryFingerprint = params.get('queryFingerprint');
@@ -50,6 +58,11 @@ export function readRoute(hash: string): DashboardRoute {
   return base;
 }
 export function routeHref(page: Destination, target: string): string { return `#/${page}${target ? `?target=${encodeURIComponent(target)}` : ''}`; }
+export function healthSectionHref(scope: OverviewScope, target: string, section: HealthSection, configurationRunId?: string): string {
+  const selection = section === "summary" && target.toLowerCase() === scope.target.toLowerCase() && configurationRunId && guid.test(configurationRunId)
+    ? `&configurationRun=${configurationRunId.toLowerCase()}` : "";
+  return `${overviewHref(scope, 'health', target)}&healthSection=${section}${selection}`;
+}
 export function activityHistoryHref(target: string, occurredAtUtc: string, eventId?: string, scope?: OverviewScope): string {
   const query = new URLSearchParams(scope ? overviewHref(scope, 'activity', target).split('?')[1] : undefined);
   if (target) query.set('target', target);
