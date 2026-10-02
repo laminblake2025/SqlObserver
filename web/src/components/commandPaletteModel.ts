@@ -24,7 +24,7 @@ export function matchingAlerts(alerts: readonly FleetAlert[], query: string): re
 }
 
 export function databaseJumpHref(scope: OverviewScope, targetId: string, databaseId: number): string {
-  return `${overviewHref(scope, "health", targetId)}&databaseId=${databaseId}`;
+  return overviewHref({ ...scope, target: targetId, databaseId }, "health", targetId);
 }
 
 export function matchingDatabases(databases: readonly DatabaseHealthSummary[], query: string): readonly DatabaseHealthSummary[] {
@@ -40,7 +40,7 @@ export function queryJumpHref(scope: OverviewScope, targetId: string, databaseId
     throw new Error("Plan fingerprint is invalid.");
   if (planFingerprint !== undefined && source === "plan_cache")
     throw new Error("A Query Store plan cannot use a plan-cache source.");
-  return `${overviewHref(scope, "queries", targetId)}&databaseId=${databaseId}&queryFingerprint=${queryFingerprint.toLowerCase()}`
+  return `${overviewHref({ ...scope, target: targetId, databaseId }, "queries", targetId)}&queryFingerprint=${queryFingerprint.toLowerCase()}`
     + (planFingerprint === undefined ? "" : `&planFingerprint=${planFingerprint.toLowerCase()}`)
     + (source === undefined ? "" : `&source=${source}`);
 }

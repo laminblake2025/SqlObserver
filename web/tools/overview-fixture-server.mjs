@@ -25,8 +25,15 @@ createServer(async(req,res)=>{try{
    const evidence={runId:'22222222-2222-4222-8222-222222222222',targetRevision:'1',collectorId:'blocking.current',freshness:'current',outcome:'succeeded',reason:'none',isPartial:false,completedAtUtc:now};
    const edge={blockedSessionId:72,blockerKind:'session',blockerSessionId:51,rootBlockerSessionId:51,waitType:'LCK_M_X',waitingTaskCount:'1',waitDurationMilliseconds:'12000',chainDepth:1,chainState:'resolved',observedAtUtc:now};
    if(surface==='health')return send(res,{instanceId,state:'current',repositoryTimeUtc:now,collectors:[collector],coreMetrics:[{sampleId:'1',metricId:'engine.user_connections',observedAtUtc:now,value:428,dimensions:[]}]});
-   if(surface==='health/databases')return send(res,{instanceId,repositoryTimeUtc:now,collector,items:[{databaseId:5,name:'Orders',state:'online',recoveryModel:'full',userAccess:'multi_user',isReadOnly:false,compatibilityLevel:160,logReuseWaitDescription:'nothing',observedAtUtc:now,collector}],nextCursor:null});
-   if(surface==='health/files')return send(res,{instanceId,repositoryTimeUtc:now,collector,items:[{databaseId:5,fileId:1,logicalName:'Orders_data',fileType:'rows',state:'online',sizeBytes:'8589934592',maximumSizeBytes:null,growthBytes:'67108864',growthPercent:0,readCount:'120000',writeCount:'80000',bytesRead:'12000000',bytesWritten:'8000000',ioStallMilliseconds:'1040000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:now,collector}],nextCursor:null});
+   if(surface==='health/databases') {
+    const scoped=req.headers.cookie?.includes('databaseScopeFixture=1');
+    const database=(id,name)=>({databaseId:id,name:scoped&&instanceId===targets[1].instanceId?`${name} 02`:name,state:'online',recoveryModel:'full',userAccess:'multi_user',isReadOnly:false,compatibilityLevel:160,logReuseWaitDescription:'nothing',observedAtUtc:now,collector});
+    return send(res,{instanceId,repositoryTimeUtc:now,collector,items:scoped?[database(5,'Orders'),database(6,'Warehouse')]:[database(5,'Orders')],nextCursor:null});
+   }
+   if(surface==='health/files') {
+    const file={databaseId:5,fileId:1,logicalName:'Orders_data',fileType:'rows',state:'online',sizeBytes:'8589934592',maximumSizeBytes:null,growthBytes:'67108864',growthPercent:0,readCount:'120000',writeCount:'80000',bytesRead:'12000000',bytesWritten:'8000000',ioStallMilliseconds:'1040000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:now,collector};
+    return send(res,{instanceId,repositoryTimeUtc:now,collector,items:req.headers.cookie?.includes('databaseScopeFixture=1')?[file,{...file,databaseId:6,logicalName:'Warehouse_data',sizeBytes:'17179869184'}]:[file],nextCursor:null});
+   }
    if(surface==='health/database-option-changes')return send(res,{targetId:instanceId,fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc'),semantics:'observed_changes_only',items:[]});
    if(surface==='health/server-configuration-changes')return send(res,{targetId:instanceId,targetRevision:1,publicationGeneration:0,fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc'),coverage:'never_collected',items:[],nextCursor:null});
    if(surface==='health/server-configuration-snapshot')return send(res,{targetId:instanceId,targetRevision:1,runId:null,observedAtUtc:null,serverMajorVersion:16,collectorEnabled:false,lastOutcome:null,coverage:'never_collected',items:[],nextCursor:null});
@@ -41,15 +48,20 @@ createServer(async(req,res)=>{try{
    if(surface==='deadlocks')return send(res,{targetId:instanceId,repositoryTimeUtc:now,items:[summary],nextCursor:null});
    if(surface==='deadlocks/'+summary.eventId)return send(res,{summary,participants:[{sessionId:51,isVictim:true},{sessionId:72,isVictim:false}],relations:[{blockerSessionId:51,waiterSessionId:72,resourceCategory:'key',lockMode:'X'},{blockerSessionId:72,waiterSessionId:51,resourceCategory:'key',lockMode:'X'}]});
    if(surface==='alerts/active')return send(res,{targetId:instanceId,snapshotUtc:now,items:[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:now,firedUtc:now,value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false}],nextCursor:null});
-   if(surface==='query-performance/cache/top' || /^query-performance\/cache\/databases\/5\/history\/b{64}\/plans\/c{64}$/.test(surface)) {
+   if(surface==='query-performance/cache/top' || /^query-performance\/cache\/databases\/(?:5\/history\/b{64}\/plans\/c{64}|6\/history\/d{64}\/plans\/e{64})$/.test(surface)) {
     const start=url.searchParams.get('fromUtc'),end=url.searchParams.get('toUtc');
     // Ranking and history use half-open windows: a capture exactly at toUtc is excluded.
     const duration=Date.parse(end)-Date.parse(start);
     const firstObservedAtUtc=new Date(Date.parse(start)+duration/4).toISOString();
     const lastObservedAtUtc=new Date(Date.parse(start)+duration*3/4).toISOString();
-    const identity={targetId:instanceId,databaseId:5,databaseIncarnation:'a'.repeat(64),queryFingerprint:'b'.repeat(64),planFingerprint:'c'.repeat(64)};
-    const counters={cpuMilliseconds:'100.000',durationMilliseconds:'200.000',executions:'10',logicalReads:'1000',writes:'10',rows:'100'};
-    if(surface==='query-performance/cache/top')return send(res,{targetId:instanceId,fromUtc:start,toUtc:end,metric:url.searchParams.get('metric'),semantics:'plan_cache_delta',coverage:'observed_entries_only',sourceFrames:2,incompleteFrames:0,comparableRows:1,unavailableRows:0,boundaryRows:0,hasMore:false,items:[{...identity,...counters,comparableRows:1,firstObservedAtUtc,lastObservedAtUtc}]});
+    const warehouse=surface.includes('/databases/6/');
+    const identity={targetId:instanceId,databaseId:warehouse?6:5,databaseIncarnation:(warehouse?'f':'a').repeat(64),queryFingerprint:(warehouse?'d':'b').repeat(64),planFingerprint:(warehouse?'e':'c').repeat(64)};
+    const counters=warehouse?{cpuMilliseconds:'200.000',durationMilliseconds:'400.000',executions:'20',logicalReads:'2000',writes:'20',rows:'200'}:{cpuMilliseconds:'100.000',durationMilliseconds:'200.000',executions:'10',logicalReads:'1000',writes:'10',rows:'100'};
+    if(surface==='query-performance/cache/top') {
+     const items=[{...identity,...counters,comparableRows:1,firstObservedAtUtc,lastObservedAtUtc}];
+     if(req.headers.cookie?.includes('databaseScopeFixture=1'))items.unshift({...items[0],databaseId:6,databaseIncarnation:'f'.repeat(64),queryFingerprint:'d'.repeat(64),planFingerprint:'e'.repeat(64),cpuMilliseconds:'200.000',durationMilliseconds:'400.000',executions:'20',logicalReads:'2000',writes:'20',rows:'200'});
+     return send(res,{targetId:instanceId,fromUtc:start,toUtc:end,metric:url.searchParams.get('metric'),semantics:'plan_cache_delta',coverage:'observed_entries_only',sourceFrames:2,incompleteFrames:0,comparableRows:items.length,unavailableRows:0,boundaryRows:0,hasMore:false,items});
+    }
     return send(res,{...identity,fromUtc:start,toUtc:end,snapshotUtc:end,revision:1,totalRows:1,nextCursor:null,semantics:'plan_cache_delta',coverage:'observed_entries_only',items:[{...counters,collectionRunId:evidence.runId,cacheEntryFingerprint:'d'.repeat(64),sourceEpoch:'e'.repeat(64),observedAtUtc:lastObservedAtUtc,committedAtUtc:lastObservedAtUtc,captureComplete:true,transition:'comparable',intervalFromUtc:firstObservedAtUtc,intervalToUtc:lastObservedAtUtc}]});
    }
    if(surface==='activity/live/history')return send(res,[]);
@@ -58,8 +70,12 @@ createServer(async(req,res)=>{try{
     let rows=[row(51,null),row(72,51)];
     // Independent blocking-filter fixture; ordinary dashboard screenshots keep their two rows.
     if(req.headers.cookie?.includes('blockingChainFixture=1'))rows.push(row(73,72),row(81,null),row(82,81),row(83,82),row(90,null));
+    const databaseScoped=req.headers.cookie?.includes('databaseScopeFixture=1');
+    const name=base=>databaseScoped&&instanceId===targets[1].instanceId?`${base} 02`:base;
+    if(databaseScoped)rows.push({...row(81,null),databaseId:6,databaseName:name('Warehouse')});
+    if(databaseScoped&&url.searchParams.has('databaseId'))rows=rows.filter(item=>item.databaseId===Number(url.searchParams.get('databaseId')));
     if(url.searchParams.get('blockedOnly')==='true')rows=rows.filter(item=>item.blocker!==null);
-    return send(res,{snapshotId:evidence.runId,observedUtc:now,repositoryTimeUtc:now,state:'current',truncated:false,rows,databases:[{id:5,name:'Orders'}],nextCursor:null});
+    return send(res,{snapshotId:evidence.runId,observedUtc:now,repositoryTimeUtc:now,state:'current',truncated:false,rows,databases:databaseScoped?[{id:5,name:name('Orders')},{id:6,name:name('Warehouse')}]:[{id:5,name:'Orders'}],nextCursor:null});
    }
    if(surface.startsWith('activity/'))return send(res,{instanceId,repositoryTimeUtc:now,evidence,items:surface==='activity/blocking/current'?[edge]:[],nextCursor:null,...(url.searchParams.has('fromUtc')?{fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc')}:{})});
   }

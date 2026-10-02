@@ -145,6 +145,10 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .page-actions > .primary, .page-actions > .secondary-button { align-self: end; }
 .scope-control, .surface-selector { display: grid; gap: 5px; color: var(--muted-deep); font-size: 11px; font-weight: 700; }
 .scope-control select { min-width: 190px; }
+.database-scope-controls { flex: 1 1 230px; min-width: 0; max-width: 360px; }
+.database-scope-controls .scope-control select { min-width: 0; width: 100%; }
+.database-scope-status { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.database-scope-status[role="alert"] { color: var(--amber); }
 .surface-selector { width: min(100%, 280px); margin-bottom: 18px; }
 .surface-selector select { margin-top: 2px; }
 
@@ -638,6 +642,7 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .page-actions { align-items: stretch; }
   .scope-control { flex: 1 1 180px; }
   .scope-control select { width: 100%; min-width: 0; }
+  .database-scope-controls { max-width: none; width: 100%; }
   h1 { font-size: 30px; }
   .kpi-grid, .server-dashboard-kpis, .health-metric-strip, .operation-metrics { grid-template-columns: 1fr; }
   .overview-grid { grid-template-columns: 1fr; }

@@ -70,13 +70,14 @@ export interface TargetHealthPanelProps {
   readonly healthRefresh: number;
   readonly blockingRefresh: number;
   readonly selectedDatabaseId?: number;
+  readonly onSelectDatabase: (databaseId: number | undefined) => void;
   readonly canManageConfiguration: boolean;
   readonly canSaveIncident: boolean;
   readonly targetRevision: number;
   readonly selectionHash: string;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, canManageConfiguration, canSaveIncident, targetRevision, selectionHash }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, canSaveIncident, targetRevision, selectionHash }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const [receivedEvidence, setEvidence] = useState<TargetHealthEvidence>();
   const evidence = receivedEvidence?.target.instanceId.toLowerCase() === instanceId.toLowerCase()
@@ -169,7 +170,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
               canManage={canManageConfiguration} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth key={instanceId} instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} /><DatabaseFileHealth page={evidence.files} /></> : null}
+          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth key={instanceId} instanceId={instanceId} firstPage={evidence.databases} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} /><DatabaseFileHealth page={evidence.files} selectedDatabaseId={selectedDatabaseId} /></> : null}
           {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} key={collector.collectorId} />)}</div> : null}
         </>
       )}
@@ -191,7 +192,7 @@ function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricS
   })}</div>;
 }
 
-function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage; readonly selectedDatabaseId?: number }) {
+function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId, onSelectDatabase }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage; readonly selectedDatabaseId?: number; readonly onSelectDatabase: (databaseId: number | undefined) => void }) {
   const formatTimestamp = useTimeFormatter();
   const [page, setPage] = useState(firstPage);
   const [pageIndex, setPageIndex] = useState(0);
@@ -220,6 +221,10 @@ function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId }: { readonl
     request.current = controller;
     setSelectionMissing(false);
     if (firstPage.items.some(item => item.databaseId === selectedDatabaseId)) {
+      setPage(firstPage);
+      setPageIndex(0);
+      setCursors([undefined]);
+      setLoading(false);
       request.current = undefined;
       return;
     }
@@ -292,6 +297,8 @@ function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId }: { readonl
         <span>Repository time: {formatTimestamp(page.repositoryTimeUtc)}</span>
       </div>
       <PageCollectorHealth collector={page.collector} />
+      <p className="table-note">Database context applies to database-scoped views. This inventory remains the loaded server snapshot.</p>
+      {selectedDatabaseId !== undefined ? <p className="table-note">Selected database ID {selectedDatabaseId}. <button type="button" className="secondary-button" onClick={() => onSelectDatabase(undefined)}>Clear database context</button></p> : null}
       <p className="page-boundary">Page {pageIndex + 1} · {page.items.length} databases{page.nextCursor ? " · More available" : " · End of snapshot"}</p>
       {loading ? <p role="status">Loading database page…</p> : null}
       {error ? <p role="alert">Database page is unavailable. Try again.</p> : null}
@@ -305,7 +312,7 @@ function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId }: { readonl
       ) : (
         <div className="bounded-health-grid">
           {page.items.map((database) => (
-            <div id={`database-health-${database.databaseId}`} key={database.databaseId}><DatabaseHealthCard database={database} /></div>
+            <div id={`database-health-${database.databaseId}`} key={database.databaseId}><DatabaseHealthCard database={database} selected={database.databaseId === selectedDatabaseId} onSelect={() => onSelectDatabase(database.databaseId)} /></div>
           ))}
         </div>
       )}
@@ -318,10 +325,10 @@ function DatabaseHealth({ instanceId, firstPage, selectedDatabaseId }: { readonl
   );
 }
 
-function DatabaseHealthCard({ database }: { readonly database: DatabaseHealthSummary }) {
+function DatabaseHealthCard({ database, selected, onSelect }: { readonly database: DatabaseHealthSummary; readonly selected: boolean; readonly onSelect: () => void }) {
   const formatTimestamp = useTimeFormatter();
   return (
-    <article className="bounded-health-card">
+    <article className={selected ? "bounded-health-card selected-row" : "bounded-health-card"}>
       <div className="collector-title-row">
         <h5>{database.name}</h5>
         <span className={`health-state health-${database.collector.state}`}>
@@ -329,6 +336,7 @@ function DatabaseHealthCard({ database }: { readonly database: DatabaseHealthSum
         </span>
       </div>
       <VisibilityGap collector={database.collector} />
+      <button type="button" className="secondary-button" aria-pressed={selected} onClick={onSelect}>Use {database.name} as database context</button>
       <dl className="health-facts">
         <HealthFact label="Database ID" value={String(database.databaseId)} />
         <HealthFact label="State" value={formatToken(database.state)} />
@@ -344,8 +352,9 @@ function DatabaseHealthCard({ database }: { readonly database: DatabaseHealthSum
   );
 }
 
-function DatabaseFileHealth({ page }: { readonly page: DatabaseFileHealthPage }) {
+function DatabaseFileHealth({ page, selectedDatabaseId }: { readonly page: DatabaseFileHealthPage; readonly selectedDatabaseId?: number }) {
   const formatTimestamp = useTimeFormatter();
+  const visibleFiles = selectedDatabaseId === undefined ? page.items : page.items.filter(file => file.databaseId === selectedDatabaseId);
   return (
     <section className="bounded-health-section" aria-labelledby="file-health-heading">
       <div className="bounded-health-heading">
@@ -353,15 +362,16 @@ function DatabaseFileHealth({ page }: { readonly page: DatabaseFileHealthPage })
         <span>Repository time: {formatTimestamp(page.repositoryTimeUtc)}</span>
       </div>
       <PageCollectorHealth collector={page.collector} />
-      {page.items.length === 0 ? (
+      {selectedDatabaseId !== undefined ? <p className="table-note">Showing {visibleFiles.length} of {page.items.length} loaded logical files for database ID {selectedDatabaseId}. Other files may be on another page.</p> : null}
+      {visibleFiles.length === 0 ? (
         <p className="empty-state">
-          {isCurrentLossFree(page.collector)
+          {selectedDatabaseId !== undefined ? "No logical-file rows for this database are present in the bounded first page. Open Resources to browse the file pages." : isCurrentLossFree(page.collector)
             ? "No logical-file rows were reported by a current, loss-free collection."
             : "Logical-file rows cannot be treated as complete for this snapshot."}
         </p>
       ) : (
         <div className="bounded-health-grid">
-          {page.items.map((file) => (
+          {visibleFiles.map((file) => (
             <DatabaseFileHealthCard
               file={file}
               key={`${String(file.databaseId)}:${String(file.fileId)}`}

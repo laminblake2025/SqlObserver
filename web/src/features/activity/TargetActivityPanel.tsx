@@ -20,9 +20,10 @@ export interface TargetActivityPanelProps {
   readonly manualRefresh: number;
   readonly sessionTick: number;
   readonly livePaused: boolean;
+  readonly onSelectDatabase: (databaseId: number | undefined) => void;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused }: TargetActivityPanelProps) {
+export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused, onSelectDatabase }: TargetActivityPanelProps) {
   const { mode } = useTimeDisplay();
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof getActivitySnapshot>>>();
   const [message, setMessage] = useState<string>();
@@ -30,6 +31,8 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
   const window = selected.state === "available" ? selected.window : undefined;
   const historyUnavailableReason = selected.state === "unavailable" ? selected.message : selected.liveSnapshotsAvailable ? undefined : "Session snapshots are retained for 24 hours; this selected window is older. Wait and blocking history may still be available below.";
   const historySelection = window ?? null;
+  const sessions = snapshot?.sessions?.items.filter(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) ?? [];
+  const requests = snapshot?.requests?.items.filter(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) ?? [];
   useEffect(() => {
     const controller = new AbortController();
     setSnapshot(undefined);
@@ -43,17 +46,18 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
   return (
     <section className="activity-screen" aria-labelledby="activity-heading">
       <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Wait and blocking history follow the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
-      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} />
+      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} selectedDatabaseId={scope.databaseId} onSelectDatabase={onSelectDatabase} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} />
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
       <p className="activity-evidence">{window ? `Selected activity-history window: ${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}.` : selected.state === "unavailable" ? selected.message : null}</p>
+      {scope.databaseId !== undefined ? <p className="table-note">Supporting sessions and requests are filtered within their loaded pages for database ID {scope.databaseId}. Server wait and blocking summaries remain server-wide; they have no database attribution.</p> : null}
       {message === undefined ? null : <p role="alert" className="status-message">{message}</p>}
       {snapshot === undefined && message === undefined ? <p role="status">Loading bounded activity evidence…</p> : null}
       {snapshot === undefined ? null : <>
         {snapshot.errors.map(error => <p role="status" key={error}>{error} Refresh to retry this section.</p>)}
         {snapshot.sessions && <Evidence page={snapshot.sessions} />}
         {snapshot.requests && <Evidence page={snapshot.requests} />}
-        {snapshot.sessions && <ActivityTable title="Sessions" columns={["Session", "Status", "Database", "CPU ms", "Memory pages", "Reads/writes", "Elapsed ms"]} rows={snapshot.sessions.items.map((item) => [String(item.sessionId), item.status, String(item.databaseId ?? "—"), item.cpuMilliseconds, item.memoryUsagePages, `${item.reads}/${item.writes}`, item.totalElapsedMilliseconds])} />}
-        {snapshot.requests && <ActivityTable title="Active requests" columns={["Session/request", "Status", "Command", "CPU ms", "Reads/writes", "Rows", "% complete"]} rows={snapshot.requests.items.map((item) => [`${String(item.sessionId)}/${String(item.requestId)}`, item.status, item.command, item.cpuMilliseconds, `${item.reads}/${item.writes}`, item.rowCount, String(item.percentComplete)])} />}
+        {snapshot.sessions && <ActivityTable title="Sessions" columns={["Session", "Status", "Database", "CPU ms", "Memory pages", "Reads/writes", "Elapsed ms"]} rows={sessions.map((item) => [String(item.sessionId), item.status, String(item.databaseId ?? "—"), item.cpuMilliseconds, item.memoryUsagePages, `${item.reads}/${item.writes}`, item.totalElapsedMilliseconds])} />}
+        {snapshot.requests && <ActivityTable title="Active requests" columns={["Session/request", "Status", "Command", "CPU ms", "Reads/writes", "Rows", "% complete"]} rows={requests.map((item) => [`${String(item.sessionId)}/${String(item.requestId)}`, item.status, item.command, item.cpuMilliseconds, `${item.reads}/${item.writes}`, item.rowCount, String(item.percentComplete)])} />}
         {snapshot.waits && <Evidence page={snapshot.waits} />}
         {snapshot.waits && <WaitCategoryChart page={snapshot.waits} />}
         {snapshot.waits && <ActivityTable title="Server waits" columns={["Wait type", "Tasks", "Wait ms", "Max/signal", "Deltas", "Baseline"]} rows={snapshot.waits.items.map((item) => [item.waitType, item.waitingTasksCount, item.waitTimeMilliseconds, `${item.maximumWaitTimeMilliseconds}/${item.signalWaitTimeMilliseconds}`, item.resetDetected ? "reset" : `${item.waitingTasksDelta ?? "—"}/${item.waitTimeMillisecondsDelta ?? "—"}/${item.signalWaitTimeMillisecondsDelta ?? "—"}`, item.baselineAvailable ? "available" : "not available"])} />}

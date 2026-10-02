@@ -86,6 +86,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
     <div className="screen-intro"><div><p className="eyebrow">Server · waits</p><h2 id="waits-heading">Waits for {displayName}</h2>
       <p>Wait totals are cumulative SQL Server counters. Historical rows show a delta only when the preceding collector run is comparable; a reset or missing baseline remains unknown.</p>
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+    {scope.databaseId !== undefined ? <p className="table-note">Server wait totals and trends remain server-wide. Query Store contributors are filtered within the loaded ranking for database ID {scope.databaseId}.</p> : null}
     {window && <section className="panel" aria-label="Wait categories over time">
       <h3>Wait categories over time</h3>
       <p>Five-minute deltas across the selected window. Empty, partial, legacy, and incomparable buckets remain gaps. Older history may need new collector runs before summaries become available.</p>
@@ -102,12 +103,12 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       </select></label>
       {queryRankingError && <p role="alert">{queryRankingError} Refresh to retry.</p>}
       {!queryRanking && !queryRankingError && <p role="status">Loading Query Store wait groups…</p>}
-      {queryRanking && queryRanking.items.length === 0 && <p>No positive comparable Query Store wait delta was observed for this category and window.</p>}
-      {queryRanking && queryRanking.items.length > 0 && <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store wait contributors"><table>
+      {queryRanking && !queryRanking.items.some(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) && <p>No positive comparable Query Store wait delta for this database context is present in the loaded category ranking.</p>}
+      {queryRanking && queryRanking.items.some(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) && <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store wait contributors"><table>
         <caption>Top 25 Query Store plans by comparable category wait milliseconds</caption>
         <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait ms</th>
           <th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
-        <tbody>{queryRanking.items.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
+        <tbody>{queryRanking.items.filter(item => scope.databaseId === undefined || item.databaseId === scope.databaseId).map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
           <td><a className="fingerprint" href={queryJumpHref(
             { ...scope, range: "custom", from: window.fromUtc, to: window.toUtc },
             instanceId, item.databaseId, item.queryFingerprint, item.planFingerprint, "query_store")}>

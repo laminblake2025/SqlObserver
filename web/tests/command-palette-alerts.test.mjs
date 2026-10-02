@@ -55,7 +55,7 @@ test('query hash jump preserves time context and only accepts an exact database 
   assert.equal(params.get('range'), 'custom');
   assert.equal(params.get('from'), scope.from);
   assert.equal(params.get('to'), scope.to);
-  assert.deepEqual(readRoute('#/queries?target=target-b&databaseId=42&queryFingerprint=abcd'), { page: 'queries', target: 'target-b' });
+  assert.deepEqual(readRoute('#/queries?target=target-b&databaseId=42&queryFingerprint=abcd'), { page: 'queries', target: 'target-b', databaseId: 42 });
   assert.deepEqual(readRoute(`#/queries?target=target-b&databaseId=0&queryFingerprint=${hash}`), { page: 'queries', target: 'target-b' });
 });
 

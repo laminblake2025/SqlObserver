@@ -17,8 +17,10 @@ const metricLabels: Readonly<Record<QueryPerformanceMetric, string>> = {
   logical_reads: "Logical reads", writes: "Writes", rows: "Rows",
 };
 
-export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, onSelectQuery, refresh, canReadText, initialQuerySelection, viewSelection, onViewSelectionChange }: {
+export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, timeWindow, onSelectWindow, onSelectQuery, refresh, canReadText, initialQuerySelection, viewSelection, onViewSelectionChange, selectedDatabaseId, onSelectDatabase }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
+  readonly selectedDatabaseId?: number;
+  readonly onSelectDatabase: (databaseId: number | undefined) => void;
   readonly timeWindow: QueryWindow;
   readonly onSelectWindow: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly onSelectQuery: (databaseId: number, queryFingerprint: string,
@@ -45,7 +47,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const view = viewSelection.view;
   const setView = (next: QueryView) => onViewSelectionChange({ ...viewSelection, view: next });
   const [paging, setPaging] = useState(false);
-  const [database, setDatabase] = useState("");
+  const database = selectedDatabaseId === undefined ? "" : String(selectedDatabaseId);
   // The live collector can legitimately fall back to plan cache when Query Store
   // is empty or unavailable. Show the bounded evidence from both sources by
   // default so an environment with that fallback does not look like it has no
@@ -58,16 +60,23 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const [waitRankingError, setWaitRankingError] = useState<string>();
   const [regressions, setRegressions] = useState<QueryStorePlanRegressionList>();
   const [regressionError, setRegressionError] = useState<string>();
-  const [history, setHistory] = useState<QueryPerformanceHistoryPage>();
-  const [historySelection, setHistorySelection] = useState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string; planFingerprint?: string }>();
+  const [receivedHistory, setHistory] = useState<QueryPerformanceHistoryPage>();
+  const [receivedHistorySelection, setHistorySelection] = useState<{ databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string; planFingerprint?: string }>();
+  const historySelection = selectedDatabaseId === undefined || receivedHistorySelection?.databaseId === selectedDatabaseId ? receivedHistorySelection : undefined;
+  const history = historySelection ? receivedHistory : undefined;
   const [groupTrend, setGroupTrend] = useState<GroupTrendState>();
-  const [plan, setPlan] = useState<QueryPerformancePlan>();
+  const [receivedPlan, setPlan] = useState<QueryPerformancePlan>();
+  const plan = historySelection ? receivedPlan : undefined;
   const [message, setMessage] = useState<string>();
   const [textResult, setTextResult] = useState<{ runId: string; state: "loading" | "available" | "unavailable" | "error"; text?: string; message?: string }>();
   const [planResult, setPlanResult] = useState<{ runId: string; planFingerprint: string; state: "loading" | "available" | "unavailable" | "error"; xml?: string; message?: string }>();
   const [waitResult, setWaitResult] = useState<{ runId: string; planFingerprint: string; state: "loading" | "available" | "unavailable" | "error"; capturedAtUtc?: string; categories?: readonly { readonly category: number; readonly waitMilliseconds: number }[]; message?: string }>();
   useEffect(() => { if (!canReadText) { textRequest.current?.abort(); planContentRequest.current?.abort(); setTextResult(undefined); setPlanResult(undefined); } }, [canReadText]);
   const clearContent = () => { textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); setTextResult(undefined); setPlanResult(undefined); setWaitResult(undefined); };
+  useEffect(() => {
+    selectionRequest.current?.abort(); historyRequest.current?.abort();
+    clearContent(); setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); setGroupTrend(undefined);
+  }, [selectedDatabaseId]);
   const openText = (item: QueryPerformanceItem) => {
     if (!canReadText || item.source !== "query_store") return;
     planContentRequest.current?.abort(); setPlanResult(undefined);
@@ -132,7 +141,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   useEffect(() => {
     trendRequest.current?.abort();
     const selection = historySelection;
-    if (!selection?.planFingerprint) { setGroupTrend(undefined); return; }
+    if (!selection?.planFingerprint || selectedDatabaseId !== undefined && selection.databaseId !== selectedDatabaseId) { setGroupTrend(undefined); return; }
     const controller = new AbortController(); trendRequest.current = controller;
     setGroupTrend({ status: "loading" });
     void getQueryStoreGroupPlanTrend(instanceId, selection.databaseId,
@@ -142,7 +151,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       .catch((error: unknown) => { if (!controller.signal.aborted) setGroupTrend({ status: "error",
         message: error instanceof Error ? error.message : "Plan delta trend could not be loaded." }); });
     return () => controller.abort();
-  }, [instanceId, historySelection, refresh]);
+  }, [instanceId, historySelection, refresh, selectedDatabaseId]);
   useEffect(() => {
     const previous = activeQuery.current;
     const queryChanged = previous === undefined || previous.instanceId !== instanceId || previous.ranking !== ranking ||
@@ -164,14 +173,13 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     setPlan(undefined);
   }, [page, historySelection, waitRanking, regressions, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint]);
   useEffect(() => {
-    if (!initialQuerySelection) return;
+    if (!initialQuerySelection || selectedDatabaseId !== undefined && initialQuerySelection.databaseId !== selectedDatabaseId) return;
     const controller = new AbortController();
     const selection = { ...initialQuerySelection, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc };
     historyRequest.current?.abort();
     historyRequest.current = controller;
     selectionRequest.current?.abort();
     selectionRequest.current = controller;
-    setDatabase(String(selection.databaseId));
     if (selection.planFingerprint || selection.sourceKind === "query_store") setSource("query_store");
     else if (selection.sourceKind === "plan_cache") setSource("plan_cache");
     setHistorySelection(selection);
@@ -194,7 +202,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     return () => controller.abort();
   }, [instanceId, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint,
       initialQuerySelection?.planFingerprint, initialQuerySelection?.sourceKind,
-      timeWindow.fromUtc, timeWindow.toUtc, ranking, refresh]);
+      timeWindow.fromUtc, timeWindow.toUtc, ranking, refresh, selectedDatabaseId]);
   const loadHistory = (selection: { databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string }, cursor?: string) => {
     historyRequest.current?.abort();
     const c = new AbortController(); historyRequest.current = c;
@@ -228,34 +236,40 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       clearContent(); setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); setPage(next);
     }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance page is unavailable."); }).finally(() => { if (!c.signal.aborted) setPaging(false); });
   };
-  const selectedItem = page?.items.find(item => item.query.databaseId === historySelection?.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint && (historySelection.planFingerprint === undefined || item.plan?.planFingerprint === historySelection.planFingerprint) && (source === "mixed" || item.source === source));
+  const selectedItem = page?.items.find(item => (selectedDatabaseId === undefined || item.query.databaseId === selectedDatabaseId) && item.query.databaseId === historySelection?.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint && (historySelection.planFingerprint === undefined || item.plan?.planFingerprint === historySelection.planFingerprint) && (source === "mixed" || item.source === source));
   const selectedMetrics = metricsForObservation(selectedItem, history);
   const databaseOptions = queryPerformanceDatabaseOptions(page, status);
   if (initialQuerySelection && !databaseOptions.some(option => option.databaseId === initialQuerySelection.databaseId)) {
     databaseOptions.push({ databaseId: initialQuerySelection.databaseId, databaseName: undefined });
   }
+  if (selectedDatabaseId !== undefined && !databaseOptions.some(option => option.databaseId === selectedDatabaseId)) {
+    databaseOptions.push({ databaseId: selectedDatabaseId, databaseName: undefined });
+  }
   const databaseNames = new Map(databaseOptions.map(option => [option.databaseId, option.databaseName]));
+  const visibleWaitRanking = waitRanking?.items.filter(item => selectedDatabaseId === undefined || item.databaseId === selectedDatabaseId) ?? [];
+  const visibleRegressions = regressions?.items.filter(item => selectedDatabaseId === undefined || item.databaseId === selectedDatabaseId) ?? [];
   const displayDatabase = (databaseId: number | undefined) => databaseId === undefined ? "—" : databaseNames.get(databaseId) ?? `Database ID ${databaseId}`;
   const rows = page?.items.filter(item => (source === "mixed" || item.source === source) && (!database || String(item.query.databaseId) === database)) ?? [];
   return <section className="query-performance-screen" aria-labelledby="query-performance-heading">
     <div className="health-heading-row"><div><p className="eyebrow">Server · queries</p><h2 id="query-performance-heading">Queries for {displayName}</h2></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {message === undefined || view === "cache" ? null : <p role="alert" className="status-message">{message}</p>}
     {status === undefined || view === "cache" ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><details className="supporting-evidence"><summary>Database collection attempts ({status.databaseStatuses.length})</summary><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></details></div>}
-    <Tabs label="Query views" tabs={[{ value: "top", label: "Top queries" }, { value: "regressed", label: `Regressed${regressions?.items.length ? ` (${regressions.items.length})` : ""}` }, { value: "cache", label: "Cache interval deltas" }]}
+    <Tabs label="Query views" tabs={[{ value: "top", label: "Top queries" }, { value: "regressed", label: `Regressed${visibleRegressions.length ? ` (${visibleRegressions.length})` : ""}` }, { value: "cache", label: "Cache interval deltas" }]}
       value={view} onChange={value => setView(value as QueryView)} />
-    {view === "cache" && <PlanCacheIntervalPanel canReadText={canReadText} instanceId={instanceId} timeWindow={timeWindow} refresh={refresh} databaseNames={databaseNames} metric={ranking} onMetricChange={setRanking} selection={viewSelection.cacheSelection} onSelectWindow={onSelectWindow} onSelect={cacheSelection => onViewSelectionChange({ ...viewSelection, cacheSelection })} />}
+    {selectedDatabaseId !== undefined ? <p className="table-note">Database ID {selectedDatabaseId} · query rankings, wait contributors, and regression leads are filtered within their loaded responses. Other matching observations may be outside the bounded ranking.</p> : null}
+    {view === "cache" && <PlanCacheIntervalPanel canReadText={canReadText} instanceId={instanceId} selectedDatabaseId={selectedDatabaseId} timeWindow={timeWindow} refresh={refresh} databaseNames={databaseNames} metric={ranking} onMetricChange={setRanking} selection={viewSelection.cacheSelection} onSelectWindow={onSelectWindow} onSelect={cacheSelection => onViewSelectionChange({ ...viewSelection, cacheSelection })} />}
     {view === "regressed" && <section className="panel" aria-label="Possible plan regressions">
       <h3>Possible plan regressions</h3>
       <p>Compare this window with the immediately preceding window of the same length. A lead appears when the dominant Query Store plan changes and comparable duration per execution is at least twice as high and 50 ms slower, with at least two groups and ten executions per plan. This is a correlation, not proof that the plan caused the slowdown.</p>
       {regressionError ? <p role="alert">{regressionError}</p> : null}
       {!regressions && !regressionError ? <p role="status">Comparing Query Store plans…</p> : null}
       {regressions && <p className="activity-evidence">Earlier: {timeLabel(regressions.comparisonFromUtc)} to {timeLabel(regressions.fromUtc)} · Current: {timeLabel(regressions.fromUtc)} to {timeLabel(regressions.toUtc)}. Only observed comparable groups contribute; missing or reset groups can hide changes.</p>}
-      {regressions && regressions.items.length === 0 ? <p>No qualifying plan change was found in the observed groups.</p> : null}
-      {regressions && regressions.items.length > 0 ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Possible plan regression comparisons"><table>
+      {regressions && visibleRegressions.length === 0 ? <p>No qualifying plan change for this database context is present in the loaded comparison.</p> : null}
+      {regressions && visibleRegressions.length > 0 ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Possible plan regression comparisons"><table>
         <caption>Possible Query Store plan regressions, ranked by increase in duration per execution</caption>
         <thead><tr><th scope="col">Database / query</th><th scope="col">Plan change</th>
           <th scope="col">Average duration / execution</th><th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
-        <tbody>{regressions.items.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}`}>
+        <tbody>{visibleRegressions.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}`}>
           <td><button className="fingerprint" type="button" onClick={() => {
             setSource("query_store");
             select(item.databaseId, item.queryFingerprint, timeWindow.fromUtc,
@@ -273,7 +287,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       {view === "top" && <>
         <p className="activity-evidence">Query Store and plan-cache rows are explicitly labelled; interval and cumulative semantics are not mixed. Protected Query Store text and plan XML can be opened by a QueryTextReader. Repository time: {timeLabel(page.repositoryTimeUtc)}.</p><div className="toolbar"><label>Rank by <select value={ranking} onChange={event => setRanking(event.target.value as QueryPerformanceMetric)}>{metrics.map(metric => <option key={metric} value={metric}>{metricLabels[metric]}</option>)}</select></label><button disabled={!page.nextCursor || paging} onClick={loadMetricPage}>Next ranking page</button></div>
         <p className="activity-evidence">Ranking window: {timeLabel(page.fromUtc)} to {timeLabel(page.toUtc)} · each row is the latest observation for one query/plan/source identity in this window. History retains every observation. Only the selected ranking metric is loaded; other metrics remain unavailable.</p>
-        <label>Database <select value={database} onChange={event => { selectionRequest.current?.abort(); historyRequest.current?.abort(); clearContent(); setDatabase(event.target.value); setPlan(undefined); setHistory(undefined); setHistorySelection(undefined); }}><option value="">All loaded databases</option>{databaseOptions.map(option => <option key={option.databaseId} value={option.databaseId}>{option.databaseName ?? `Database ID ${option.databaseId}`}</option>)}</select></label>
+        <label>Database <select value={database} onChange={event => { selectionRequest.current?.abort(); historyRequest.current?.abort(); clearContent(); onSelectDatabase(event.target.value === "" ? undefined : Number(event.target.value)); setPlan(undefined); setHistory(undefined); setHistorySelection(undefined); }}><option value="">All loaded databases</option>{databaseOptions.map(option => <option key={option.databaseId} value={option.databaseId}>{option.databaseName ?? `Database ID ${option.databaseId}`}</option>)}</select></label>
       </>}
       <label>Source <select value={source} onChange={event => { selectionRequest.current?.abort(); historyRequest.current?.abort(); clearContent(); setSource(event.target.value); setPlan(undefined); setHistory(undefined); setHistorySelection(undefined); }}><option value="mixed">All sources · evidence</option><option value="query_store">Query Store · interval</option><option value="plan_cache">Plan cache · row semantics</option></select></label>
       {view === "top" && <div className="table-scroll" tabIndex={0} role="region" aria-label="Ranked query observations"><table><caption>Bounded ranked observations · CPU and duration in milliseconds · unavailable values are not zero</caption><thead><tr>{["Database / query", "Source", "Semantics", "CPU ms", "Duration ms", "Executions", "Reads / writes / rows", "Interval end", "Coverage"].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>
@@ -294,11 +308,11 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
           />) : <p>Select a query to load its bounded history.</p>}
       </section><section className="panel"><h3>Selected query</h3><p className="fingerprint">{historySelection?.queryFingerprint ?? "No query selected"}</p><p>{displayDatabase(historySelection?.databaseId)} · {source.replaceAll("_", " ")}</p><p>{selectedItem?.semantics ?? history?.items[0]?.semantics ?? "Semantics unavailable"} · {selectedItem?.coverage ?? history?.items[0]?.coverage ?? "Coverage unavailable"}</p><p className="fingerprint">Plan: {plan?.planFingerprint ?? "Metadata unavailable"}</p>
         {selectedItem?.source === "query_store" && canReadText ? <button className="secondary-button" type="button" onClick={() => openText(selectedItem)}>Open query text for selected observation</button> : selectedItem ? <p>{selectedItem.source === "query_store" ? "Query text requires the QueryTextReader role on this server." : "Inspect captured cache text and plans in Cache interval deltas history."}</p> : null}
-        {canReadText && textResult ? <div role="status" className="query-text-result"><p>{textResult.state === "loading" ? "Opening query text…" : textResult.state === "available" ? `Query text from run ${textResult.runId}` : textResult.state === "unavailable" ? "Query text was not captured for this observation. Check the collector key, Query Store permissions, or source text restrictions." : textResult.message}</p>{textResult.state === "available" && <pre tabIndex={0} aria-label="Captured Query Store text">{textResult.text}</pre>}</div> : null}
+        {canReadText && historySelection && textResult ? <div role="status" className="query-text-result"><p>{textResult.state === "loading" ? "Opening query text…" : textResult.state === "available" ? `Query text from run ${textResult.runId}` : textResult.state === "unavailable" ? "Query text was not captured for this observation. Check the collector key, Query Store permissions, or source text restrictions." : textResult.message}</p>{textResult.state === "available" && <pre tabIndex={0} aria-label="Captured Query Store text">{textResult.text}</pre>}</div> : null}
         {selectedItem?.source === "query_store" && selectedItem.plan && canReadText ? <button className="secondary-button" type="button" onClick={() => openPlan(selectedItem)}>Open plan XML for selected observation</button> : selectedItem?.source === "query_store" && selectedItem.plan && !canReadText ? <p>Plan XML requires the QueryTextReader role on this server.</p> : null}
-        {canReadText && planResult ? <div role="status" className="query-text-result"><p>{planResult.state === "loading" ? "Opening plan XML…" : planResult.state === "available" ? `Plan XML from run ${planResult.runId}` : planResult.state === "unavailable" ? "Plan XML was not captured for this observation. Check the collector key, Query Store permissions, source restrictions, or plan size limit." : planResult.message}</p>{planResult.state === "available" && <pre tabIndex={0} aria-label="Captured Query Store plan XML">{planResult.xml}</pre>}</div> : null}
+        {canReadText && historySelection && planResult ? <div role="status" className="query-text-result"><p>{planResult.state === "loading" ? "Opening plan XML…" : planResult.state === "available" ? `Plan XML from run ${planResult.runId}` : planResult.state === "unavailable" ? "Plan XML was not captured for this observation. Check the collector key, Query Store permissions, source restrictions, or plan size limit." : planResult.message}</p>{planResult.state === "available" && <pre tabIndex={0} aria-label="Captured Query Store plan XML">{planResult.xml}</pre>}</div> : null}
         {selectedItem?.source === "query_store" && selectedItem.plan ? <button className="secondary-button" type="button" onClick={() => openWaits(selectedItem)}>Show plan waits for selected observation</button> : null}
-        {waitResult ? <div role="status" className="activity-evidence"><p>{waitResult.state === "loading" ? "Loading plan waits…" : waitResult.state === "unavailable" ? "Query Store wait capture was unavailable for this plan and run." : waitResult.state === "error" ? waitResult.message : `Query Store wait totals captured ${timeLabel(waitResult.capturedAtUtc)} for run ${waitResult.runId}. Repeated interval snapshots can overlap.`}</p>{waitResult.state === "available" && (waitResult.categories?.length ? <ul>{waitResult.categories.map(row => <li key={row.category}>{waitCategoryNames[row.category] ?? `Category ${row.category}`}: {row.waitMilliseconds} ms</li>)}</ul> : <p>No nonzero wait categories were captured for this plan and run.</p>)}</div> : null}
+        {historySelection && waitResult ? <div role="status" className="activity-evidence"><p>{waitResult.state === "loading" ? "Loading plan waits…" : waitResult.state === "unavailable" ? "Query Store wait capture was unavailable for this plan and run." : waitResult.state === "error" ? waitResult.message : `Query Store wait totals captured ${timeLabel(waitResult.capturedAtUtc)} for run ${waitResult.runId}. Repeated interval snapshots can overlap.`}</p>{waitResult.state === "available" && (waitResult.categories?.length ? <ul>{waitResult.categories.map(row => <li key={row.category}>{waitCategoryNames[row.category] ?? `Category ${row.category}`}: {row.waitMilliseconds} ms</li>)}</ul> : <p>No nonzero wait categories were captured for this plan and run.</p>)}</div> : null}
       </section></div>
       {groupTrend && historySelection?.planFingerprint && <QueryStoreGroupTrendPanel state={groupTrend}
         onSelectWindow={onSelectWindow} timeLabel={timeLabel} waitCategoryNames={waitCategoryNames} />}
@@ -312,12 +326,12 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       <p>Measured Query Store wait deltas across comparable plan groups in this window. Missing baselines, resets, and unavailable waits are excluded from totals; coverage shows how many observed groups contributed.</p>
       {waitRankingError ? <p role="alert">{waitRankingError}</p> : null}
       {!waitRanking && !waitRankingError ? <p role="status">Loading query wait ranking…</p> : null}
-      {waitRanking && waitRanking.items.length === 0 ? <p>No comparable Query Store wait groups were observed in this window. This does not prove that queries had no waits.</p> : null}
-      {waitRanking && waitRanking.items.length > 0 ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store wait ranking"><table>
+      {waitRanking && visibleWaitRanking.length === 0 ? <p>No comparable Query Store wait groups for this database context are present in the loaded ranking. This does not prove that queries had no waits.</p> : null}
+      {waitRanking && visibleWaitRanking.length > 0 ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Query Store wait ranking"><table>
         <caption>Top 25 plans by comparable Query Store wait milliseconds</caption>
         <thead><tr><th scope="col">Database / query / plan</th><th scope="col">Wait ms</th>
           <th scope="col">Comparable groups</th><th scope="col">Latest group</th></tr></thead>
-        <tbody>{waitRanking.items.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
+        <tbody>{visibleWaitRanking.map(item => <tr key={`${item.databaseId}:${item.queryFingerprint}:${item.planFingerprint}`}>
           <td><button className="fingerprint" type="button" onClick={() => {
             setSource("query_store");
             select(item.databaseId, item.queryFingerprint, timeWindow.fromUtc,

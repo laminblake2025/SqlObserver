@@ -23,6 +23,8 @@ export function DatabaseOptionChanges({ instanceId, scope, refresh }: {
   }, [scope.range, scope.from, scope.to, refresh]);
   const [result, setResult] = useState<DatabaseOptionChangeResult>();
   const [error, setError] = useState<string>();
+  const visibleItems = scope.databaseId === undefined ? result?.items ?? []
+    : result?.items.filter(item => item.databaseId === scope.databaseId) ?? [];
 
   useEffect(() => {
     if (!selection.window) {
@@ -46,12 +48,13 @@ export function DatabaseOptionChanges({ instanceId, scope, refresh }: {
   return <section className="bounded-health-section" aria-labelledby="database-option-changes-heading">
     <div className="bounded-health-heading"><h4 id="database-option-changes-heading">Database option changes</h4></div>
     <p>Detected between consecutive complete inventory runs. The change may have happened any time between observations.</p>
+    {scope.databaseId !== undefined ? <p className="table-note">Database ID {scope.databaseId} · filtering the loaded option-change response only.</p> : null}
     {selection.error && <p role="status">{selection.error}</p>}
     {error && <p role="alert">{error}</p>}
     {!selection.error && !error && !result && <p role="status">Loading option history…</p>}
-    {result && (result.items.length === 0
-      ? <p>No changes were detected in this window.</p>
-      : <><ul>{result.items.map((item, index) => <li key={`${item.collectionRunId}:${item.databaseId}:${item.optionKey}:${index}`}>
+    {result && (visibleItems.length === 0
+      ? <p>No changes for the selected database context are present in this bounded window response.</p>
+      : <><ul>{visibleItems.map((item, index) => <li key={`${item.collectionRunId}:${item.databaseId}:${item.optionKey}:${index}`}>
           <strong>{item.databaseName}</strong> · {labels[item.optionKey] ?? item.optionKey}: {item.previousValue} → {item.currentValue}
           <small> · Detected {formatTime(item.detectedAtUtc)}</small>
         </li>)}</ul>{result.items.length === 100 && <p>Showing the latest 100 changes. Narrow the time range to see more.</p>}</>)}

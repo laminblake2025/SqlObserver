@@ -4,11 +4,15 @@ import { canonicalUtcTimestamp, utcMicroseconds } from '../../utcTimestamp.ts';
 export function readOverviewScope(hash: string): OverviewScope {
   const params = new URLSearchParams(hash.split('?')[1]);
   const range = params.get('range');
-  return { target: params.get('target') ?? '', range: range === '1h' || range === '6h' || range === '7d' || range === 'custom' ? range : '24h', from: params.get('from') ?? undefined, to: params.get('to') ?? undefined, compare: params.get('compare') === '1' };
+  const target = params.get('target') ?? '';
+  const database = params.getAll('databaseId');
+  const databaseId = target && database.length === 1 && /^[1-9]\d{0,4}$/.test(database[0]!) && Number(database[0]) <= 32767 ? Number(database[0]) : undefined;
+  return { target, range: range === '1h' || range === '6h' || range === '7d' || range === 'custom' ? range : '24h', from: params.get('from') ?? undefined, to: params.get('to') ?? undefined, compare: params.get('compare') === '1', ...(databaseId !== undefined ? { databaseId } : {}) };
 }
 export function overviewHref(scope: OverviewScope, page = 'overview', target = scope.target): string {
   const query = new URLSearchParams();
   if (target) query.set('target', target);
+  if (target && target.toLowerCase() === scope.target.toLowerCase() && Number.isInteger(scope.databaseId) && scope.databaseId! >= 1 && scope.databaseId! <= 32767) query.set('databaseId', String(scope.databaseId));
   query.set('range', scope.range);
   if (scope.range === 'custom') { if (scope.from) query.set('from', scope.from); if (scope.to) query.set('to', scope.to); }
   if (scope.compare) query.set('compare', '1');

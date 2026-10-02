@@ -6,6 +6,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { alertSelectionFromHash, queryJumpHref } from "./components/commandPaletteModel";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
+import { DatabaseScopeControls } from "./components/DatabaseScopeControls";
 import { useTimeDisplay } from "./TimeDisplayContext";
 import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
 import { TargetWaitsPanel } from "./features/activity/TargetWaitsPanel";
@@ -178,6 +179,17 @@ export function App() {
   }, [listedTarget, slowRefresh, route.target, targetPage]);
 
   const selected = listedTarget ?? (directTargetLookup?.targetId === route.target && directTargetLookup.state !== "error" ? directTargetLookup.target : undefined);
+  const changeDatabaseContext = (databaseId: number | undefined) => {
+    // A native selection can arrive before the preceding hashchange render.
+    // Use the current URL so it cannot restore the view we just left.
+    const currentRoute = readRoute(location.hash);
+    if (!selected || currentRoute.target.toLowerCase() !== selected.instanceId.toLowerCase()) return;
+    const nextScope = { ...readOverviewScope(location.hash), databaseId };
+    const href = currentRoute.page === "operations" && currentRoute.healthCheck
+      ? healthCheckHref(nextScope, currentRoute.target, currentRoute.healthCheck)
+      : overviewHref(nextScope, currentRoute.page, currentRoute.target);
+    location.hash = queryViewHref(href, { ...readQueryViewSelection(location.hash), cacheSelection: undefined });
+  };
   const changeTimeContext = (next: Partial<typeof scope>) => {
     const selectedScope = { ...scope, ...next };
     const selectedRoute = readRoute(location.hash);
@@ -252,7 +264,7 @@ export function App() {
             <a
               key={key}
               aria-current={currentNavigation === key ? "page" : undefined}
-              href={routeHref(key, key === "alerts" ? "" : route.target)}
+              href={routeHref(key, key === "alerts" && scope.databaseId === undefined ? "" : route.target)}
             >
               <span aria-hidden="true">{navigationIcons[key]}</span>
               {destinations[key]}
@@ -310,6 +322,11 @@ export function App() {
             }
           />
 
+          {selected && <DatabaseScopeControls targetId={selected.instanceId} databaseId={scope.databaseId} onChange={changeDatabaseContext} refresh={slowRefresh} />}
+          {scope.databaseId !== undefined && selected && <p className="muted database-context-notice" data-testid="database-context-notice">
+            Database ID {scope.databaseId} stays selected across this server’s views. Supported session, query and file rows follow this context; server-wide metrics, waits, blocking history, deadlocks, alerts and health checks remain server-wide.
+          </p>}
+
           {route.page !== "overview" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
           {route.page !== "overview" && !fleetAlertsPage && message ? <p role="alert" className="status-message">{message}</p> : null}
           {targetPage && !props && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
@@ -322,14 +339,19 @@ export function App() {
 
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
-              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={route.databaseId} canManageConfiguration={canManageRules} canSaveIncident={canSaveIncident(myAccess,props.instanceId)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} canManageConfiguration={canManageRules} canSaveIncident={canSaveIncident(myAccess,props.instanceId)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
+              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} canReadRules={canManageRules}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
-              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} viewSelection={queryView}
-                onViewSelectionChange={selection => { location.hash = queryViewHref(location.hash, selection); }} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
+              {route.page === "queries" && queryWindow.state === "valid" && <TargetQueryPerformancePanel {...props} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} viewSelection={queryView}
+                onViewSelectionChange={selection => {
+                  const href = selection.cacheSelection
+                    ? overviewHref({ ...scope, databaseId: selection.cacheSelection.databaseId }, "queries", props.instanceId)
+                    : location.hash;
+                  location.hash = queryViewHref(href, selection);
+                }} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
                 onSelectQuery={(databaseId, queryFingerprint, planFingerprint, sourceKind) => {
                   const href = queryViewHref(queryJumpHref(scope, props.instanceId, databaseId, queryFingerprint,
                     planFingerprint, sourceKind), queryView);

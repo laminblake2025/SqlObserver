@@ -38,6 +38,8 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   const [filePageIndex, setFilePageIndex] = useState(0);
   const [fileCursors, setFileCursors] = useState<readonly (string | undefined)[]>([undefined]);
   const [selectedFile, setSelectedFile] = useState<SelectedDatabaseFile | null>(null);
+  const activeSelectedFile = scope.databaseId === undefined || selectedFile?.databaseId === scope.databaseId ? selectedFile : null;
+  const visibleFiles = files?.items.filter(file => scope.databaseId === undefined || file.databaseId === scope.databaseId) ?? [];
   const fileRequest = useRef<AbortController | undefined>(undefined);
   const isRewind = scope.range === "custom";
 
@@ -65,6 +67,9 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   }, [instanceId, refresh]);
 
   useEffect(() => { setSelectedFile(null); }, [instanceId]);
+  useEffect(() => {
+    setSelectedFile(current => scope.databaseId !== undefined && current?.databaseId !== scope.databaseId ? null : current);
+  }, [scope.databaseId]);
 
   async function navigateFilePage(index: number, cursor?: string) {
     if (fileRequest.current || !files) return;
@@ -107,6 +112,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       <h2 id="resources-heading">Resources for {displayName}</h2>
       <p>SQL Server CPU, memory, per-NUMA page life expectancy, and selected-file latency follow the shared time window. The file table shows the latest cumulative counters.</p>
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
+    <p className="table-note">CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.</p>
     {result.loading && <p role="status">Loading resource history…</p>}
     {result.error && <p role="alert">{result.error}</p>}
     {result.data && !evidence && <p role="status">No authorized resource evidence was returned for this server.</p>}
@@ -144,19 +150,20 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         {files && <><p className="activity-evidence">Collector: {files.collector.state.replaceAll("_", " ")} ·
           Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)} · Page {filePageIndex + 1} · {files.items.length} files
           {files.nextCursor ? " · More files available" : " · End of file snapshot"}.</p>
-          {files.items.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest database file counters"><table><caption>Latest SQL Server file counters</caption>
+          {scope.databaseId !== undefined ? <p className="table-note">Showing {visibleFiles.length} of {files.items.length} loaded files for database ID {scope.databaseId}.</p> : null}
+          {visibleFiles.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest database file counters"><table><caption>Latest SQL Server file counters</caption>
             <thead><tr><th scope="col">Database / file</th><th scope="col">Size</th>
               <th scope="col">Reads</th><th scope="col">Avg read stall (ms)</th>
               <th scope="col">Writes</th><th scope="col">Avg write stall (ms)</th>
               <th scope="col">Observed</th><th scope="col">History</th></tr></thead><tbody>
-              {files.items.map(file => <tr key={`${file.databaseId}:${file.fileId}`}>
+              {visibleFiles.map(file => <tr key={`${file.databaseId}:${file.fileId}`}>
                 <td>{file.databaseId} / {file.logicalName}</td><td title={`${file.sizeBytes} bytes`}>{fileSizeGib(file.sizeBytes) ?? "—"}</td>
                 <td>{file.readCount}</td><td>{lifetimeAverageStallMilliseconds(file.readStallMilliseconds, file.readCount) ?? "—"}</td>
                 <td>{file.writeCount}</td><td>{lifetimeAverageStallMilliseconds(file.writeStallMilliseconds, file.writeCount) ?? "—"}</td>
                 <td>{formatDisplayTime(file.observedAtUtc, mode)}</td>
-                <td><button type="button" className="secondary-button" aria-label={`View read and write latency trend for database ${file.databaseId}, file ${file.logicalName}`} aria-pressed={selectedFile?.databaseId === file.databaseId && selectedFile?.fileId === file.fileId}
+                <td><button type="button" className="secondary-button" aria-label={`View read and write latency trend for database ${file.databaseId}, file ${file.logicalName}`} aria-pressed={activeSelectedFile?.databaseId === file.databaseId && activeSelectedFile?.fileId === file.fileId}
                   onClick={() => setSelectedFile({ databaseId: file.databaseId, fileId: file.fileId, logicalName: file.logicalName })}>View trend</button></td></tr>)}
-            </tbody></table></div> : <p>No file rows were returned for this snapshot.</p>}
+            </tbody></table></div> : <p>{scope.databaseId === undefined ? "No file rows were returned for this snapshot." : "No file rows for the selected database are present in this loaded page. Browse other file pages to continue."}</p>}
           <nav aria-label="Database file pages" className="pager">
             <button type="button" disabled={filesLoading || filePageIndex === 0} onClick={() => void navigateFilePage(0)}>First file page</button>{" "}
             <button type="button" disabled={filesLoading || filePageIndex === 0} onClick={() => void navigateFilePage(filePageIndex - 1, fileCursors[filePageIndex - 1])}>Previous file page</button>{" "}
@@ -164,7 +171,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
           </nav>
         </>}
     </section>
-    <DatabaseFileIoTrendPanel instanceId={instanceId} file={selectedFile} scope={scope}
+    <DatabaseFileIoTrendPanel instanceId={instanceId} file={activeSelectedFile} scope={scope}
       refresh={refresh} onSelectWindow={onSelectWindow} />
   </section>;
 }

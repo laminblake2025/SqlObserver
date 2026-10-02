@@ -26,7 +26,7 @@ export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd
   // Keep the authorized selector choices while evidence reloads; no old evidence is shown under a new selection.
   const [choices,setChoices]=useState(data?.targets??[]);
   if (data && choices!==data.targets) setChoices(data.targets);
-  const navigate=(change:Partial<typeof scope>)=>{setCrosshairUtc(null);location.hash=overviewHref({...scope,...change});};
+  const navigate=(change:Partial<typeof scope>)=>{setCrosshairUtc(null);location.hash=overviewHref({...scope,...change,...(change.target !== undefined && change.target.toLowerCase() !== scope.target.toLowerCase() ? {databaseId:undefined} : {})});};
   const href=(page:string,target:string)=>overviewHref(scope,page,target);
   const resources=data?.evidence.flatMap(e=>e.resources)??[];
   const allSeries=data?.evidence.flatMap(e=>e.series)??[];

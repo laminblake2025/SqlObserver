@@ -1,4 +1,5 @@
 import type { OverviewScope } from './features/overview/overviewTypes';
+import { readOverviewScope, overviewHref } from './features/overview/overviewModel.ts';
 import { healthCheckTab, type HealthCheckTab } from './features/operations/agentHistoryModel.ts';
 
 export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', maintenance: 'Maintenance windows', destinations: 'Destinations', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
@@ -21,21 +22,20 @@ export function readRoute(hash: string): DashboardRoute {
   const [path, query] = hash.replace(/^#\/?/, '').split('?');
   const page = Object.hasOwn(destinations, path ?? '') ? path as Destination : 'overview';
   const params = new URLSearchParams(query);
+  const scope = readOverviewScope(hash);
+  const base = { page, target: scope.target, ...(scope.databaseId !== undefined ? { databaseId: scope.databaseId } : {}) };
   const check = healthCheckTab(params.get('check'));
-  if (page === 'operations' && check) return { page, target: params.get('target') ?? '', healthCheck: check };
-  const databaseId = params.get('databaseId');
-  if (page === 'health' && databaseId !== null && /^[1-9]\d{0,4}$/.test(databaseId) && Number(databaseId) <= 32767) {
-    return { page, target: params.get('target') ?? '', databaseId: Number(databaseId) };
-  }
+  if (page === 'operations' && check) return { ...base, healthCheck: check };
+  const databaseId = scope.databaseId;
   const queryFingerprint = params.get('queryFingerprint');
-  if (page === 'queries' && databaseId !== null && /^[1-9]\d{0,4}$/.test(databaseId) && Number(databaseId) <= 32767
+  if (page === 'queries' && databaseId !== undefined
       && queryFingerprint !== null && /^[0-9a-f]{64}$/i.test(queryFingerprint)) {
     const planFingerprint = params.get('planFingerprint');
     const validPlan = planFingerprint !== null && /^[0-9a-f]{64}$/i.test(planFingerprint);
     const source = params.get('source');
     const querySource = source === 'query_store' || source === 'plan_cache' && !validPlan
       ? source : undefined;
-    return { page, target: params.get('target') ?? '', databaseId: Number(databaseId),
+    return { ...base,
       queryFingerprint: queryFingerprint.toLowerCase(),
       ...(validPlan ? { planFingerprint: planFingerprint.toLowerCase() } : {}),
       ...(querySource ? { querySource } : {}) };
@@ -44,14 +44,14 @@ export function readRoute(hash: string): DashboardRoute {
   if (page === 'activity' && activityAtUtc !== null && utcTimestamp.test(activityAtUtc) && Number.isFinite(Date.parse(activityAtUtc))) {
     const activityEventId = params.get('event');
     return activityEventId !== null && guid.test(activityEventId)
-      ? { page, target: params.get('target') ?? '', activityAtUtc, activityEventId }
-      : { page, target: params.get('target') ?? '', activityAtUtc };
+      ? { ...base, activityAtUtc, activityEventId }
+      : { ...base, activityAtUtc };
   }
-  return { page, target: params.get('target') ?? '' };
+  return base;
 }
 export function routeHref(page: Destination, target: string): string { return `#/${page}${target ? `?target=${encodeURIComponent(target)}` : ''}`; }
 export function activityHistoryHref(target: string, occurredAtUtc: string, eventId?: string, scope?: OverviewScope): string {
-  const query = new URLSearchParams();
+  const query = new URLSearchParams(scope ? overviewHref(scope, 'activity', target).split('?')[1] : undefined);
   if (target) query.set('target', target);
   if (scope) {
     query.set('range', scope.range);

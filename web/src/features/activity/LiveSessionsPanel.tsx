@@ -10,11 +10,12 @@ import { buildBlockingTree, formatBlockingTarget, rowsForBlockingGroup, type Blo
 // repository/capture latency so the exact triggered snapshot is returned.
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
-export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, historyUnavailableReason, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; historyUnavailableReason?: string; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean }) {
+export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, selectedDatabaseId, onSelectDatabase, historyUnavailableReason, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; selectedDatabaseId?: number; onSelectDatabase?: (databaseId: number | undefined) => void; historyUnavailableReason?: string; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean }) {
   const { mode: timeMode } = useTimeDisplay();
   const timeLabel = (value: string | number) => formatDisplayTime(value, timeMode);
   const [page, setPage] = useState<LivePage>();
-  const [database, setDatabase] = useState("");
+  const [localDatabase, setLocalDatabase] = useState(selectedDatabaseId === undefined ? "" : String(selectedDatabaseId));
+  const database = onSelectDatabase ? selectedDatabaseId === undefined ? "" : String(selectedDatabaseId) : localDatabase;
   const [login, setLogin] = useState(""); const [application, setApplication] = useState(""); const [status, setStatus] = useState("");
   const [idle, setIdle] = useState(false); const [system, setSystem] = useState(false); const [blocked, setBlocked] = useState(false);
   const [sort, setSort] = useState("cpu"); const [descending, setDescending] = useState(true);
@@ -148,7 +149,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <button disabled={loading || !visible} onClick={() => { manual.current = true; if (mode === "history" && !selectedHistoryWindow) setHistoryEnd(Date.now()); else { firstPage(); setRefresh(value => value + 1); } }}>Refresh now</button>
     </div></div>
     <div className="live-filters">
-      <label>Database <select value={database} onChange={event => setDatabase(event.target.value)}><option value="">All databases</option>{databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
+      <label>Database <select value={database} onChange={event => { const value = event.target.value; if (onSelectDatabase) onSelectDatabase(value === "" ? undefined : Number(value)); else setLocalDatabase(value); }}><option value="">All databases</option>{database !== "" && !databaseOptions.some(db => String(db.id) === database) ? <option value={database}>Database ID {database} · name unavailable</option> : null}{databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
       <label><input type="checkbox" checked={blocked} onChange={event => setBlocked(event.target.checked)} /> Blocked only</label>
       <label>Sort <select value={sort} onChange={event => setSort(event.target.value)}>{[["cpu", "CPU time"], ["memory", "Memory"], ["reads", "Reads"], ["writes", "Writes"], ["logicalReads", "Logical reads"], ["elapsed", "Elapsed time"], ["session", "Session ID"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="blocking-chain-select">Blocking chain (loaded page)<select value={blockingGroupKey} onChange={event => setBlockingGroupKey(event.target.value)}>
@@ -185,6 +186,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     <nav aria-label="Live session pages"><button disabled={loading || cursorTrail.length === 0} onClick={() => { setCursor(cursorTrail.at(-1)); setCursorTrail(values => values.slice(0, -1)); }}>Previous page</button><button disabled={loading || gap || !displayPage?.nextCursor} onClick={() => { setCursorTrail(values => [...values, cursor]); setCursor(displayPage?.nextCursor ?? undefined); }}>Next page</button></nav>
     {selection && <aside id="session-details" className="live-details" aria-label="Session details"><div className="health-heading-row"><h4>Session {selection.row.sessionId} / {selection.row.requestId ?? "idle"}</h4><button type="button" onClick={() => { queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); }}>Close details</button></div>
       <p>Observed {timeLabel(selection.observed)} on {displayName}. This observation is preserved when filters change or the request disappears.</p>
+      {selectedDatabaseId !== undefined && selection.row.databaseId !== selectedDatabaseId ? <p className="table-note">This preserved observation is outside the current database context.</p> : null}
       <p>Database: {selection.row.databaseName ?? selection.row.databaseId ?? "unknown"}; login: {selection.row.login ?? "unknown"}; client: {selection.row.clientHost ?? "unknown"} / {selection.row.application ?? "unknown"}.</p>
       <p>Engine startup: {selection.row.engineStartup}; session login: {selection.row.sessionLogin}; request start: {selection.row.requestStart ?? "idle"} (SQL Server local timestamps).</p>
       <p>Cumulative CPU {selection.row.cpuMs} ms · memory {selection.row.memoryBytes} bytes · logical reads {selection.row.logicalReads} · reads {selection.row.reads} · writes {selection.row.writes} · elapsed {selection.row.elapsedMs} ms.</p>

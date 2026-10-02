@@ -390,3 +390,198 @@ test('a selected chain disappearing from the next snapshot produces explicit zer
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(4);
   for (const id of [81, 82, 83, 90]) await expect(table.getByRole('button', { name: `Inspect ${id}/0`, exact: true })).toBeVisible();
 });
+
+
+async function databaseFixture(page) {
+  await fixture(page);
+  await page.context().addCookies([{ name: 'databaseScopeFixture', value: '1', url: origin }]);
+}
+const workspaceDatabase = page => page.getByRole('combobox', { name: 'Workspace database', exact: true });
+async function assertDatabaseScope(page, databaseId) {
+  await expect.poll(() => scope(page).get('databaseId')).toBe(String(databaseId));
+  await expect(workspaceDatabase(page)).toHaveValue(String(databaseId));
+}
+
+test('workspace database follows diagnostic navigation, time edits, reload and browser history', async ({ page }) => {
+  await databaseFixture(page);
+  await page.goto(href('health'));
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse / })).toHaveCount(1);
+  await workspaceDatabase(page).selectOption('6');
+  await assertDatabaseScope(page, 6);
+  for (const label of ['Activity', 'Query performance', 'Resources', 'Waits', 'Deadlocks', 'Health checks']) {
+    await mainNavigation(page).getByRole('link', { name: label, exact: true }).click();
+    await assertDatabaseScope(page, 6);
+    await assertHistoricalScope(page);
+    await expect(page.getByTestId('database-context-notice')).toContainText('server-wide metrics, waits, blocking history, deadlocks, alerts and health checks remain server-wide.');
+  }
+  await mainNavigation(page).getByRole('link', { name: 'Resources', exact: true }).click();
+  await assertDatabaseScope(page, 6);
+  await page.reload();
+  await assertDatabaseScope(page, 6);
+  await assertHistoricalScope(page);
+  await expect(page.getByRole('heading', { name: 'Resources for SYNTHETIC SQL 01' })).toBeVisible();
+  await mainNavigation(page).getByRole('link', { name: 'Waits', exact: true }).click();
+  await assertDatabaseScope(page, 6);
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/resources\?/);
+  await assertDatabaseScope(page, 6);
+  await page.goForward();
+  await expect(page).toHaveURL(/#\/waits\?/);
+  await assertDatabaseScope(page, 6);
+  await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
+  await page.getByLabel('From (UTC)', { exact: true }).fill('2026-09-26T09:00');
+  await page.getByLabel('To (UTC)', { exact: true }).fill('2026-09-26T11:00');
+  await page.getByRole('button', { name: 'Apply range', exact: true }).click();
+  await assertDatabaseScope(page, 6);
+  await assertHistoricalScope(page, first, '2026-09-26T09:00:00.000Z', '2026-09-26T11:00:00.000Z');
+  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  await expect.poll(() => scope(page).get('databaseId')).toBe(null);
+  await expect(workspaceDatabase(page)).toHaveValue('');
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse 02 / })).toHaveCount(1);
+  await workspaceDatabase(page).selectOption('6');
+  await assertDatabaseScope(page, 6);
+  await mainNavigation(page).getByRole('link', { name: 'Alerts', exact: true }).click();
+  await assertDatabaseScope(page, 6);
+  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption('');
+  await expect.poll(() => scope(page).get('target')).toBe(null);
+  await expect.poll(() => scope(page).get('databaseId')).toBe(null);
+  await expect(workspaceDatabase(page)).toHaveCount(0);
+});
+
+test('live database selection updates the URL and sends the selected database to collection reads', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/live')) requests.push(new URL(request.url())); });
+  await databaseFixture(page);
+  await page.goto(href('activity', first, '1h'));
+  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
+  await live.getByRole('combobox', { name: 'Database', exact: true }).selectOption('6');
+  await assertDatabaseScope(page, 6);
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(1);
+  await expect(table.getByRole('button', { name: 'Inspect 81/0', exact: true })).toBeVisible();
+  await expect.poll(() => requests.some(url => url.searchParams.get('databaseId') === '6')).toBe(true);
+  await workspaceDatabase(page).selectOption('5');
+  await assertDatabaseScope(page, 5);
+  await expect(live.getByRole('combobox', { name: 'Database', exact: true })).toHaveValue('5');
+  await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(2);
+  await expect(table).not.toContainText('Warehouse');
+});
+
+test('database context scopes loaded cache and file rows without relabelling server resources', async ({ page }) => {
+  await databaseFixture(page);
+  await page.goto(`${href('queries')}&queryView=cache&databaseId=6`);
+  await assertDatabaseScope(page, 6);
+  const ranking = page.getByRole('region', { name: 'Plan cache interval ranking', exact: true });
+  await expect(ranking.getByRole('button', { name: /^Inspect / })).toHaveCount(1);
+  await expect(ranking).toContainText('dddddddddddd');
+  await expect(ranking).not.toContainText('bbbbbbbbbbbb');
+  await ranking.getByRole('button', { name: 'Inspect eeeeeeeeeeee\u2026', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Cache query interval history', exact: true }).getByRole('table')).toBeVisible();
+  await workspaceDatabase(page).selectOption('5');
+  await assertDatabaseScope(page, 5);
+  for (const key of ['cacheDatabaseId', 'cacheIncarnation', 'cacheQuery', 'cachePlan']) expect(scope(page).get(key)).toBe(null);
+  await expect(page.getByRole('region', { name: 'Cache query interval history', exact: true })).toHaveCount(0);
+  await mainNavigation(page).getByRole('link', { name: 'Resources', exact: true }).click();
+  await workspaceDatabase(page).selectOption('6');
+  await assertDatabaseScope(page, 6);
+  const files = page.getByRole('region', { name: 'Database file I/O', exact: true });
+  await expect(files.getByRole('table')).toContainText('Warehouse_data');
+  await expect(files.getByRole('table')).not.toContainText('Orders_data');
+  await expect(page.getByText('CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true })).toBeVisible();
+  await expect(files).toContainText('Showing 1 of 2 loaded files for database ID 6');
+  await files.getByRole('button', { name: 'View read and write latency trend for database 6, file Warehouse_data', exact: true }).click();
+  const selectedFile = page.getByRole('region', { name: 'Selected file latency history', exact: true });
+  await expect(selectedFile).toContainText('Database 6 / Warehouse_data');
+  await workspaceDatabase(page).selectOption('5');
+  await assertDatabaseScope(page, 5);
+  await expect(selectedFile).toContainText('Select a file in the table to inspect its history.');
+  await expect(selectedFile).not.toContainText('Warehouse_data');
+});
+
+test('unknown database scope stays explicit through missing inventory and clears safely', async ({ page }) => {
+  await databaseFixture(page);
+  await page.goto(`${href('resources')}&databaseId=99`);
+  await assertDatabaseScope(page, 99);
+  await expect(workspaceDatabase(page).getByRole('option', { name: 'Database ID 99 (not in loaded inventory)', exact: true })).toHaveCount(1);
+  await expect(page.locator('.database-scope-status')).toContainText('2 databases loaded');
+  await expect(page.getByText('No file rows for the selected database are present in this loaded page. Browse other file pages to continue.', { exact: true })).toBeVisible();
+  await page.route(`**/${first}/health/databases?*`, route => route.fulfill({ status: 503, json: {} }));
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await expect(page.locator('.database-scope-status')).toContainText('Database inventory unavailable.');
+  await assertDatabaseScope(page, 99);
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse / })).toHaveCount(1);
+  await workspaceDatabase(page).selectOption('');
+  await expect.poll(() => scope(page).get('databaseId')).toBe(null);
+  await expect(workspaceDatabase(page)).toHaveValue('');
+  await expect(page.getByRole('region', { name: 'Database file I/O', exact: true }).getByRole('table')).toContainText('Orders_data');
+  await page.goto(`${href('resources')}&databaseId=32768`);
+  await expect(workspaceDatabase(page)).toHaveValue('');
+});
+
+test('delayed database inventory from an old target never supplies names for the new server', async ({ page }) => {
+  await databaseFixture(page);
+  let release, requested = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/${first}/health/databases?*`, async route => { requested = true; await gate; await route.continue().catch(() => {}); });
+  try {
+    await page.goto(href('health'));
+    await expect.poll(() => requested).toBe(true);
+    await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+    await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse 02 / })).toHaveCount(1);
+    await expect(workspaceDatabase(page).getByRole('option', { name: /^Orders 02 / })).toHaveCount(1);
+  } finally { release(); }
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse \u00b7/ })).toHaveCount(0);
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Orders \u00b7/ })).toHaveCount(0);
+  await expect(page.locator('.database-scope-status')).toContainText('2 databases loaded');
+  await expect(page.getByRole('combobox', { name: 'Target server', exact: true })).toHaveValue(second);
+});
+
+
+test('changing database context clears contradictory query and event selections', async ({ page }) => {
+  await databaseFixture(page);
+  await page.goto(`${href('queries')}&databaseId=5&queryFingerprint=${'b'.repeat(64)}&planFingerprint=${'c'.repeat(64)}&source=query_store`);
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse / })).toHaveCount(1);
+  await workspaceDatabase(page).selectOption('6');
+  await assertDatabaseScope(page, 6);
+  for (const key of ['queryFingerprint', 'planFingerprint', 'source']) expect(scope(page).get(key)).toBe(null);
+  const at = new Date(Date.now() - 60_000).toISOString();
+  await page.goto(`${href('activity', first, '1h')}&databaseId=5&at=${encodeURIComponent(at)}&event=33333333-3333-4333-8333-333333333333`);
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse / })).toHaveCount(1);
+  await workspaceDatabase(page).selectOption('6');
+  await assertDatabaseScope(page, 6);
+  expect(scope(page).get('at')).toBe(null);
+  expect(scope(page).get('event')).toBe(null);
+  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  await expect(live.getByRole('button', { name: 'Inspect 81/0', exact: true })).toBeVisible();
+});
+
+
+test('obsolete database change events cannot restore scope during a server or fleet navigation', async ({ page }) => {
+  await databaseFixture(page);
+  await page.goto(`${href('resources')}&databaseId=5`);
+  await assertDatabaseScope(page, 5);
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse / })).toHaveCount(1);
+  // Hash navigation and the old select event run in one browser task. React has
+  // not rendered the new target when the obsolete control dispatches change.
+  await workspaceDatabase(page).evaluate((select, nextHash) => {
+    location.hash = nextHash;
+    select.value = '6';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }, href('resources', second).slice(1));
+  await expect.poll(() => scope(page).get('target')).toBe(second);
+  await expect.poll(() => scope(page).get('databaseId')).toBe(null);
+  await expect(workspaceDatabase(page)).toHaveValue('');
+  await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse 02 / })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'Resources for SYNTHETIC SQL 02' })).toBeVisible();
+  await workspaceDatabase(page).evaluate((select, nextHash) => {
+    location.hash = nextHash;
+    select.value = '6';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }, href('overview', '').slice(1));
+  await expect.poll(() => scope(page).get('target')).toBe('');
+  await expect.poll(() => scope(page).get('databaseId')).toBe(null);
+  await expect(workspaceDatabase(page)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Fleet overview', exact: true })).toBeVisible();
+});

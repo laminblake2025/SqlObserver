@@ -9,4 +9,4 @@ export interface OverviewBackupSummary { targetId: string; assessedAtUtc: string
 export interface OverviewEvidence { targetId: string; displayName: string; collectionState: string; lastObservedUtc: string | null; activeAlerts: OverviewValue; blockedSessions: OverviewValue; deadlocks: OverviewValue; issues: readonly OverviewIssue[]; resources: readonly OverviewResource[]; series: readonly OverviewSeries[]; gaps: readonly string[]; backupSummary?: OverviewBackupSummary | null; }
 export interface OverviewSnapshot { refreshedAtUtc: string; fromUtc: string; toUtc: string; targetId: string | null; targets: readonly OverviewTarget[]; excludedTargets: number; evidence: readonly OverviewEvidence[]; }
 export type OverviewRange = '1h' | '6h' | '24h' | '7d' | 'custom';
-export interface OverviewScope { target: string; range: OverviewRange; from?: string; to?: string; compare: boolean; }
+export interface OverviewScope { target: string; range: OverviewRange; from?: string; to?: string; compare: boolean; databaseId?: number; }

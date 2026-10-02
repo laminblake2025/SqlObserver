@@ -112,3 +112,46 @@ for (const width of [320, 390, 768, 1440]) {
     await page.screenshot({ path: resolve(folder, `activity-chain-${width}.png`), fullPage: true });
   });
 }
+
+for (const width of [320, 390, 768, 1440]) {
+  for (const surface of ['activity', 'resources']) {
+    test(`database context on ${surface} supports keyboard use and responsive evidence at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.context().addCookies([
+        { name: 'dashboardRefactor', value: '1', url: origin },
+        { name: 'chartReferenceRole', value: 'viewer', url: origin },
+        { name: 'databaseScopeFixture', value: '1', url: origin },
+      ]);
+      await page.goto(`/#/${surface}?${new URLSearchParams({ target, range: '1h', databaseId: '6' })}`);
+      const database = page.getByRole('combobox', { name: 'Workspace database', exact: true });
+      await expect(database).toHaveValue('6');
+      await expect(database.locator('option:checked')).toHaveText('Warehouse 02 · ID 6');
+      const notice = page.getByTestId('database-context-notice');
+      await expect(notice).toContainText('Database ID 6');
+      await expect(notice).toContainText('server-wide');
+
+      // Native select navigation must update shared context without a mouse.
+      await database.focus();
+      await expect(database).toBeFocused();
+      await database.press('Home');
+      await database.press('Enter');
+      await expect(database).toHaveValue('');
+      await expect(notice).toHaveCount(0);
+      await database.press('End');
+      await database.press('Enter');
+      await expect(database).toHaveValue('6');
+      await expect(database).toBeFocused();
+      await expect(notice).toContainText('Database ID 6');
+      await page.waitForLoadState('networkidle');
+
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'Selected database context must fit the viewport').toBeLessThanOrEqual(1);
+      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+      await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
+      expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
+      const folder = resolve('../artifacts/dashboard-refactor/screenshots');
+      await mkdir(folder, { recursive: true });
+      await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+      await page.screenshot({ path: resolve(folder, `database-${surface}-${width}.png`), fullPage: true });
+    });
+  }
+}
