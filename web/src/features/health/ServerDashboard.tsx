@@ -16,6 +16,9 @@ import { useAgentHistory } from "../operations/useAgentHistory.ts";
 import { healthCheckHref } from "../operations/agentHistoryModel.ts";
 import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx";
 import { useChartReferences } from "../overview/useChartReferences.ts";
+import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, readDashboardTimelineSelection,
+  type DashboardTimelineSelection } from "../../components/dashboardTimelineSelectionModel.ts";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, canSaveIncident, targetRevision, selectionHash, canReadRules }: {
   readonly instanceId: string;
@@ -31,7 +34,10 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
-  const [crosshairUtc, setCrosshairUtc] = useState<string | null>(null);
+  const inspectionKey = JSON.stringify([instanceId.toLowerCase(), scope.range, scope.from, scope.to, scope.databaseId]);
+  const [hover, setHover] = useState<{ readonly key: string; readonly utc: string | null }>();
+  const setCrosshairUtc = (utc: string | null) => setHover({ key: inspectionKey, utc });
+  const requestedSelection = readDashboardTimelineSelection(selectionHash, instanceId);
   const selectedScope = { ...scope, target: instanceId };
   const result = useOverviewAnalytics(selectedScope, refresh);
   const data = result.data;
@@ -52,17 +58,36 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       detail: `First observed by collection. Server-local job start: ${row.sourceLocalStart ?? "unavailable"}; no UTC execution time is inferred.`,
       href: healthCheckHref(fixedTimelineScope, instanceId, "agent"),
     })) ?? []),
-    ...issues.filter(issue => issue.observedAtUtc && issue.title !== "SQL Agent failures").map((issue, index) => ({
-      id: `finding:${issue.destination}:${index}:${issue.observedAtUtc}`, kind: "finding" as const,
+    ...issues.filter(issue => issue.observedAtUtc && issue.title !== "SQL Agent failures").map(issue => ({
+      id: `finding:${issue.destination}:${encodeURIComponent(issue.title)}:${issue.observedAtUtc}`, kind: "finding" as const,
       timeUtc: issue.observedAtUtc!, title: issue.title, timeBasis: "snapshot" as const,
       detail: `${issue.detail} This is an evidence snapshot, not a condition-start or alert-trigger timestamp.`,
       href: issueHref(fixedTimelineScope, instanceId, issue.destination, issue.observedAtUtc, issue.title),
     })),
   ], timelineWindow.fromUtc, timelineWindow.toUtc) : [];
+  const restoredEvent = requestedSelection && timelineEvents.find(event => matchesDashboardTimelineSelection(requestedSelection, event));
+  const hoveredUtc = hover?.key === inspectionKey ? hover.utc : null;
+  const inWindow = (value: string | null | undefined) => {
+    if (!value || !timelineWindow) return false;
+    try {
+      const utc = (time: string) => utcMicroseconds(time.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
+      return utc(value) >= utc(timelineWindow.fromUtc) && utc(value) < utc(timelineWindow.toUtc);
+    } catch { return false; }
+  };
+  const crosshairUtc = inWindow(hoveredUtc) ? hoveredUtc : restoredEvent?.timeUtc ?? null;
+  const selectTimeline = (selection: DashboardTimelineSelection | undefined) => {
+    setCrosshairUtc(null);
+    const current = readDashboardTimelineSelection(location.hash, instanceId);
+    if (selection && !timelineEvents.some(event => matchesDashboardTimelineSelection(selection, event))) return;
+    if (selection && current && matchesDashboardTimelineSelection(current, { id: selection.eventId, timeUtc: selection.timeUtc })) return;
+    const href = dashboardTimelineSelectionHref(selection ? fixedTimelineScope : selectedScope, selection);
+    location.hash = selection ? href : `${href}&healthSection=summary`;
+  };
   const markers = timelineEvents.map(event => ({ timeUtc: event.timeUtc, label: `${event.title} · ${event.timeBasis.replaceAll("_", " ")}` }));
   const timelineNotes = [
     ...timeline.notes,
     agentHistory.error ? `SQL Agent first-observed markers are unavailable: ${agentHistory.error}`
+      : agentHistory.refreshing ? `Refreshing SQL Agent markers; showing the previous first-page snapshot from ${agentHistory.page!.observedAtUtc} in this same window.`
       : agentHistory.loading ? "Loading SQL Agent first-observed markers…"
       : `SQL Agent: first ${agentHistory.page?.rows.length ?? 0} of up to 50 history rows${agentHistory.page?.hasMore ? "; additional pages are available in SQL Agent history" : ""}${agentHistory.page?.truncated ? "; capture was truncated" : ""}. Only failed job-outcome rows become markers.`,
     "The timeline retains the latest 120 loaded events. Database options and plan comparisons follow the selected database; deadlocks, job failures, configuration and snapshot findings remain server-wide.",
@@ -72,7 +97,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "engine.os_available_memory_bytes" || item.metric === "host.memory.available_bytes")
     .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes" ? "SQL process used" : item.metric === "engine.os_available_memory_bytes" ? "OS available via SQL" : "Host available" })) ?? [];
   const change = (next: Partial<OverviewScope>) => {
-    location.hash = overviewHref({ ...selectedScope, ...next }, "health", instanceId);
+    const nextScope = { ...selectedScope, ...next };
+    try { location.hash = dashboardTimelineSelectionHref(nextScope, requestedSelection ?? undefined); }
+    catch { location.hash = overviewHref(nextScope, "health", instanceId); }
   };
   const chart = (metric: string, label: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h4>{label}</h4>
@@ -99,7 +126,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
       <span className="server-dashboard-mode">Drag a chart to select a shared time window. Live ranges refresh every 60 seconds.</span>
     </div>
-    {result.loading && <p role="status">Loading server timeline…</p>}
+    {result.loading && <p role="status">{data
+      ? `Refreshing server timeline… Showing the previous snapshot window ${timeLabel(data.fromUtc)} to ${timeLabel(data.toUtc)}, refreshed ${timeLabel(data.refreshedAtUtc)}.`
+      : "Loading server timeline…"}</p>}
     {result.error && <p role="alert" className="status-message">{result.error}</p>}
     {data && !evidence && <p className="empty-state">No authorized dashboard evidence was returned for this server.</p>}
     {data && evidence && <>
@@ -115,11 +144,13 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
           <a href={issueHref(selectedScope, instanceId, issue.destination, issue.observedAtUtc, issue.title)}><strong>{issue.title}</strong><span>{issue.detail}</span><small>{issue.observedAtUtc ? timeLabel(issue.observedAtUtc) : "Observation time unavailable"} · Open evidence →</small></a>
         </li>)}</ol> : <p className="empty-state">No ranked exceptions in the available evidence. Check collection gaps before treating this as all clear.</p>}
       </section>
-      <DashboardTimeline key={`${instanceId}:${data.fromUtc}:${data.toUtc}`} events={timelineEvents}
+      <DashboardTimeline events={timelineEvents}
         fromUtc={data.fromUtc} toUtc={data.toUtc} crosshairUtc={crosshairUtc}
+        selection={requestedSelection} onSelectionChange={selectTimeline} loading={result.loading || timeline.loading || agentHistory.loading}
         onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes} />
       {agentHistory.page && <section className="panel" aria-label="SQL Agent first-observed evidence">
         <h4>SQL Agent failures first observed in this window</h4>
+        {agentHistory.refreshing && <p role="status">Refreshing SQL Agent evidence; showing the previously loaded first-page snapshot from {timeLabel(agentHistory.page.observedAtUtc)} in this same window.</p>}
         <AgentFailureEvidence page={agentHistory.page} compact />
         <a href={healthCheckHref({ ...selectedScope, range: "custom", from: data.fromUtc, to: data.toUtc }, instanceId, "agent")}>Open SQL Agent history for this window →</a>
       </section>}

@@ -13,6 +13,8 @@ const screens = [
   ['deadlocks', 'deadlocks'],
   ['health-checks', 'operations'],
   ['alerts', 'alerts'],
+  ['resources', 'resources'],
+  ['waits', 'waits'],
 ];
 
 async function auditResponsiveState(page, testInfo, name) {
@@ -33,6 +35,7 @@ async function open(page, surface) {
   await page.context().addCookies([
     { name: 'dashboardRefactor', value: '1', url: origin },
     { name: 'chartReferenceRole', value: 'viewer', url: origin },
+    ...(surface === 'resources' ? [{ name: 'resourceInspectionFixture', value: '1', url: origin }] : []),
   ]);
   await page.goto(`/#/${surface}?${new URLSearchParams({ target, range: '1h', ...(surface === 'queries' ? { queryView: 'cache' } : {}) })}`);
   if (surface === 'alerts') await expect(page.getByRole('heading', { name: 'Alert triage', exact: true })).toBeVisible();
@@ -40,6 +43,8 @@ async function open(page, surface) {
   await page.waitForLoadState('networkidle');
   if (surface === 'deadlocks') await expect(page.getByRole('img', { name: 'Deadlock relationship diagram' })).toBeVisible();
   if (surface === 'queries') await expect(page.getByRole('region', { name: 'Plan cache interval ranking', exact: true })).toContainText('bbbbbbbbbbbb');
+  if (surface === 'resources') await expect(page.getByRole('region', { name: 'Per-NUMA page life expectancy', exact: true }).locator('.overview-chart')).toHaveCount(2);
+  if (surface === 'waits') await expect(page.getByRole('region', { name: 'Wait categories over time', exact: true }).getByRole('img', { name: /^Server wait time by category/ })).toHaveCount(1);
 }
 
 for (const width of [320, 390, 768, 1440]) {
@@ -195,6 +200,13 @@ for (const width of [320, 390, 768, 1440]) {
     await expect(align).toHaveAttribute('aria-pressed', 'true');
     await expect(timeline.getByRole('status')).toContainText('Chart crosshair:');
     await expect(timeline.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
+    const selectionQuery = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+    expect(selectionQuery.get('timelineEvent')).toMatch(/^plan:/);
+    expect(selectionQuery.get('timelineAt')).toBe('2026-09-26T11:00:00.000Z');
+    await page.reload();
+    await expect(align).toHaveAttribute('aria-pressed', 'true');
+    await expect(timeline.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
+    expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('databaseId')).toBe('6');
     const evidence = timeline.getByRole('link', { name: /^Open evidence: Plan regression comparison/ });
     await expect(evidence).toBeVisible();
     await expect(evidence).toHaveAttribute('href', /databaseId=6/);
@@ -221,6 +233,52 @@ for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: Math.ceil(timelineBounds.height) + 400 });
     await timeline.evaluate(element => element.scrollIntoView({ block: 'center' }));
     await timeline.screenshot({ path: resolve(folder, `timeline-detail-${width}.png`) });
+  });
+}
+
+for (const width of [320, 390, 768, 1440]) {
+  test(`shared resource keyboard inspection is accessible and responsive at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.context().addCookies([
+      { name: 'dashboardRefactor', value: '1', url: origin },
+      { name: 'chartReferenceRole', value: 'viewer', url: origin },
+      { name: 'databaseScopeFixture', value: '1', url: origin },
+      { name: 'resourceInspectionFixture', value: '1', url: origin },
+    ]);
+    const from = '2026-09-26T08:00:00.000Z', to = '2026-09-26T12:00:00.000Z';
+    await page.goto(`/#/resources?${new URLSearchParams({ target, range: 'custom', from, to, databaseId: '6' })}`);
+    const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 02', exact: true });
+    const file = resources.getByRole('button', { name: 'View read and write latency trend for database 6, file Warehouse_data', exact: true });
+    await file.focus();
+    await file.scrollIntoViewIfNeeded();
+    await expect(file).toBeVisible();
+    await expect(file).toBeInViewport();
+    const fileActionBounds = await file.boundingBox();
+    expect(fileActionBounds).not.toBeNull();
+    expect(fileActionBounds.width).toBeGreaterThan(0);
+    expect(fileActionBounds.height).toBeGreaterThan(0);
+    expect(fileActionBounds.height, 'File history action must remain a readable compact button').toBeLessThanOrEqual(64);
+    await file.press('Enter');
+    await expect(resources.locator('.overview-chart')).toHaveCount(7);
+    const alignment = resources.getByRole('region', { name: 'Resource chart alignment', exact: true });
+    const input = alignment.getByLabel('Resource inspection time (UTC)', { exact: true });
+    await input.fill('2026-09-26T10:30:00.125');
+    const align = alignment.getByRole('button', { name: 'Align resource charts', exact: true });
+    await align.focus(); await align.press('Enter');
+    await expect(align).toBeFocused();
+    await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+    await auditResponsiveState(page, testInfo, 'resource-selected-inspection');
+    await saveFullPage(page, `resource-inspection-${width}.png`);
+    await input.fill('2026-09-26T12:00');
+    await align.press('Enter');
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(alignment.getByRole('alert')).toContainText('before its end');
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
+    await auditResponsiveState(page, testInfo, 'resource-invalid-inspection');
+    await saveFullPage(page, `resource-inspection-invalid-${width}.png`);
+    const query = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+    expect(Object.fromEntries(query)).toMatchObject({ target, range: 'custom', from, to, databaseId: '6' });
   });
 }
 

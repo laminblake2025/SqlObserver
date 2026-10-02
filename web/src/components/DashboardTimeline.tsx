@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTimeFormatter } from "../TimeDisplayContext";
 import { timelineEventsInWindow, type TimelineEvent } from "./dashboardTimelineModel";
+import { matchesDashboardTimelineSelection, type DashboardTimelineSelection } from "./dashboardTimelineSelectionModel.ts";
 
 const categories: readonly { value: "all" | TimelineEvent["kind"]; label: string }[] = [
   { value: "all", label: "All events" },
@@ -19,42 +20,52 @@ const timeBasisLabels: Readonly<Record<TimelineEvent["timeBasis"], string>> = {
   snapshot: "Evidence snapshot",
 };
 
-export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSelectTime, sourceNotes }: {
+export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSelectTime, sourceNotes,
+  selection, onSelectionChange, loading = false }: {
   readonly events: readonly TimelineEvent[];
   readonly fromUtc: string;
   readonly toUtc: string;
   readonly crosshairUtc?: string | null;
   readonly onSelectTime: (utc: string | null) => void;
   readonly sourceNotes: readonly string[];
+  readonly selection?: DashboardTimelineSelection | null;
+  readonly onSelectionChange?: (selection: DashboardTimelineSelection | undefined) => void;
+  readonly loading?: boolean;
 }) {
   const headingId = useId();
   const timeLabel = useTimeFormatter();
   const [category, setCategory] = useState<"all" | TimelineEvent["kind"]>("all");
-  const [selection, setSelection] = useState<{ readonly id: string; readonly windowKey: string }>();
+  const [localSelection, setLocalSelection] = useState<DashboardTimelineSelection & { readonly windowKey: string }>();
   const callback = useRef(onSelectTime);
   const ownsAlignment = useRef(false);
   const windowKey = JSON.stringify([fromUtc, toUtc]);
   const loaded = useMemo(() => timelineEventsInWindow(events, fromUtc, toUtc), [events, fromUtc, toUtc]);
   const visible = loaded.filter(event => category === "all" || event.kind === category);
-  const selected = selection?.windowKey === windowKey ? visible.find(event => event.id === selection.id) : undefined;
+  const controlled = onSelectionChange !== undefined;
+  const requested = controlled ? selection : localSelection?.windowKey === windowKey ? localSelection : undefined;
+  const loadedSelection = requested ? loaded.find(event => matchesDashboardTimelineSelection(requested, event)) : undefined;
+  const selected = loadedSelection && (category === "all" || loadedSelection.kind === category) ? loadedSelection : undefined;
   useEffect(() => { callback.current = onSelectTime; }, [onSelectTime]);
   useEffect(() => {
-    if (selection && !selected) {
-      setSelection(undefined);
+    if (!controlled && localSelection && !selected) {
+      setLocalSelection(undefined);
       ownsAlignment.current = false;
       callback.current(null);
     }
-  }, [selection, selected]);
+  }, [controlled, localSelection, selected]);
   useEffect(() => () => {
     if (ownsAlignment.current) callback.current(null);
   }, []);
   const align = (event: TimelineEvent) => {
-    setSelection({ id: event.id, windowKey });
-    ownsAlignment.current = true;
+    const next = { eventId: event.id, timeUtc: event.timeUtc };
+    if (controlled) onSelectionChange(next);
+    else setLocalSelection({ ...next, windowKey });
+    ownsAlignment.current = !controlled;
     onSelectTime(event.timeUtc);
   };
   const clearAlignment = () => {
-    setSelection(undefined);
+    setLocalSelection(undefined);
+    onSelectionChange?.(undefined);
     ownsAlignment.current = false;
     onSelectTime(null);
   };
@@ -64,7 +75,11 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
         <p>Loaded evidence from {timeLabel(fromUtc)} to {timeLabel(toUtc)}. Align charts to an event, then open its evidence. Events sharing a time do not establish a common cause.</p>
       </div>
       <label>Timeline event category
-        <select value={category} onChange={event => setCategory(event.target.value as "all" | TimelineEvent["kind"])}>
+        <select value={category} onChange={event => {
+          const next = event.target.value as "all" | TimelineEvent["kind"];
+          setCategory(next);
+          if (selected && next !== "all" && selected.kind !== next) clearAlignment();
+        }}>
           {categories.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}
         </select>
       </label>
@@ -74,9 +89,17 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
       {selected && <> Selected event: {selected.title}.</>}
       {crosshairUtc && Number.isFinite(Date.parse(crosshairUtc)) && <> Chart crosshair: <time dateTime={crosshairUtc} title={crosshairUtc}>{timeLabel(crosshairUtc)}</time>.</>}
     </p>
-    {selected && <button className="secondary-button dashboard-timeline-clear" type="button" onClick={clearAlignment}>Clear timeline alignment</button>}
+    {controlled && selection === null && <p className="empty-state" role="status">The requested timeline selection is invalid for this server and window. No other event has been selected.</p>}
+    {controlled && requested && !loadedSelection && <p className="empty-state" role="status">{loading
+      ? "Loading the requested timeline event…"
+      : "The requested timeline event is not present in the loaded evidence for this window. No other event has been selected."}</p>}
+    {controlled && loadedSelection && !selected && <p className="empty-state" role="status">
+      The selected timeline event is hidden by this category. Show all events or clear the selection.{" "}
+      <button className="secondary-button" type="button" onClick={() => setCategory("all")}>Show selected timeline event</button>
+    </p>}
+    {(selected || controlled && selection !== undefined) && <button className="secondary-button dashboard-timeline-clear" type="button" onClick={clearAlignment}>Clear timeline alignment</button>}
     {visible.length === 0 ? <p className="empty-state">{loaded.length === 0
-      ? "No timeline events were loaded in this window. Missing or partial sources do not prove there were no events."
+      ? loading ? "Timeline sources are loading for this window." : "No timeline events were loaded in this window. Missing or partial sources do not prove there were no events."
       : "No loaded events match this category. Other categories and unloaded sources may contain evidence."}</p>
       : <ol className="dashboard-timeline-events" role="list">{visible.map(event => <li key={event.id} className={selected?.id === event.id ? "dashboard-timeline-event is-selected" : "dashboard-timeline-event"}>
         <div className="dashboard-timeline-event-time">

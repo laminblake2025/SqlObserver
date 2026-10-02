@@ -47,7 +47,9 @@ export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd
       <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={e=>navigate({compare:e.target.checked})}/>Compare previous period</label>
       <span className="server-dashboard-mode">Drag a chart to select a shared time window.</span>
     </div>
-    {result.loading&&<p role="status" className="overview-coverage">Loading analytics for {scope.target?'the selected server':'all authorized servers'}…</p>}
+    {result.loading&&<p role="status" className="overview-coverage">{data
+      ? `Refreshing analytics… Showing the previous snapshot window ${timeLabel(data.fromUtc)} to ${timeLabel(data.toUtc)}, refreshed ${timeLabel(data.refreshedAtUtc)}.`
+      : `Loading analytics for ${scope.target?'the selected server':'all authorized servers'}…`}</p>}
     {result.error&&<p role="alert" className="status-message">{result.error}</p>}
     {data&&<><div className="overview-coverage" role="status"><span className={current===data.evidence.length?'coverage-dot':'coverage-dot partial'}/><strong>{current}/{data.evidence.length} servers reporting current SQL core evidence</strong><span>{data.excludedTargets} disabled/retired excluded from All servers</span><small>Refreshed {timeLabel(data.refreshedAtUtc)} · SQL core freshness does not imply coverage for other sources</small></div>
       {data.targets.length===0?<section className="panel overview-panel"><h2>Start monitoring your SQL environment</h2><p>{canAddServer ? "Add a server to see workload trends, contention, and operational evidence." : "A Target Administrator with all-target access can add a server."}</p>{canAddServer ? <button onClick={onAdd}>+ Add server</button> : null}</section>:<>

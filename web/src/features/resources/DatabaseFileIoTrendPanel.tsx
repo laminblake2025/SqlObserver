@@ -13,24 +13,29 @@ export interface SelectedDatabaseFile {
   readonly logicalName: string;
 }
 
-export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onSelectWindow }: {
+export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onSelectWindow, crosshairUtc, onCrosshairChange }: {
   readonly instanceId: string;
   readonly file: SelectedDatabaseFile | null;
   readonly scope: OverviewScope;
   readonly refresh: number;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
+  readonly crosshairUtc?: string | null;
+  readonly onCrosshairChange?: (utc: string | null) => void;
 }) {
   const { mode } = useTimeDisplay();
-  const [trend, setTrend] = useState<DatabaseFileIoTrend>();
-  const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(false);
+  const [receivedTrend, setTrend] = useState<{ key: string; value: DatabaseFileIoTrend }>();
+  const [receivedError, setError] = useState<{ key: string; message: string }>();
+  const [receivedLoading, setLoading] = useState<{ key: string; value: boolean }>();
   const key = JSON.stringify([instanceId, file?.databaseId, file?.fileId, scope, refresh]);
+  const trend = receivedTrend?.key === key ? receivedTrend.value : undefined;
+  const error = receivedError?.key === key ? receivedError.message : undefined;
+  const loading = receivedLoading?.key === key ? receivedLoading.value : true;
 
   useEffect(() => {
     const controller = new AbortController();
     setTrend(undefined);
     setError(undefined);
-    setLoading(false);
+    setLoading({ key, value: false });
     if (file === null) return () => controller.abort();
     let window: { fromUtc: string; toUtc: string };
     try {
@@ -38,10 +43,10 @@ export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onS
       if (Date.parse(window.toUtc) - Date.parse(window.fromUtc) > 7 * 86400000)
         throw new Error("File latency history supports windows of seven days or less.");
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "The selected window is invalid.");
+      setError({ key, message: failure instanceof Error ? failure.message : "The selected window is invalid." });
       return () => controller.abort();
     }
-    setLoading(true);
+    setLoading({ key, value: true });
     void getDatabaseFileIoTrend(instanceId, file.databaseId, file.fileId,
       window.fromUtc, window.toUtc, controller.signal)
       .then(value => {
@@ -53,13 +58,13 @@ export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onS
             value.semantics !== "file_counter_delta" || value.revisionScope !== "current" ||
             value.bucketSeconds !== 3600 || !Array.isArray(value.points) || value.points.length > 169)
           throw new Error("File trend evidence did not match the selected file.");
-        setTrend(value);
+        setTrend({ key, value });
       })
       .catch((failure: unknown) => {
         if (!controller.signal.aborted)
-          setError(failure instanceof Error ? failure.message : "File I/O history is unavailable.");
+          setError({ key, message: failure instanceof Error ? failure.message : "File I/O history is unavailable." });
       })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .finally(() => { if (!controller.signal.aborted) setLoading({ key, value: false }); });
     return () => controller.abort();
   }, [key]);
 
@@ -75,6 +80,7 @@ export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onS
           {trend.points.reduce((sum, point) => sum + point.resetRows + point.gapRows + point.legacyRows + point.baselineRows, 0)} samples
           {' '}could not be compared because of a reset, gap, missing directional counters, or missing baseline.</p>
         {trend.points.length ? <OverviewChart series={fileIoTrendSeries(trend)}
+          crosshairUtc={crosshairUtc} onCrosshairChange={onCrosshairChange}
           fromUtc={trend.fromUtc} toUtc={trend.toUtc} onSelectWindow={onSelectWindow} />
           : <p>No file samples were stored in this window.</p>}
       </>}

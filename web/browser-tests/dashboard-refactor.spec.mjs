@@ -986,6 +986,225 @@ async function timelineFixture(page) {
   await page.context().addCookies([{ name: 'timelineFixture', value: '1', url: origin }]);
 }
 
+test('timeline URL restores the selected event with exact window and database context after reload', async ({ page }) => {
+  await timelineFixture(page);
+  const exactFrom = '2026-09-26T08:00:00.123456Z', exactTo = '2026-09-26T12:00:00.654321Z';
+  await page.goto(`/#/health?${new URLSearchParams({ target: first, range: 'custom', from: exactFrom, to: exactTo, databaseId: '6', compare: '1', healthSection: 'summary' })}`);
+  const selected = planTimelineButtons(page);
+  await expect(selected).toHaveCount(1);
+  await selected.focus();
+  await selected.press('Enter');
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
+  const selectedId = scope(page).get('timelineEvent'), selectedTime = scope(page).get('timelineAt');
+  await assertHistoricalScope(page, first, exactFrom, exactTo);
+  await assertDatabaseScope(page, 6);
+  await page.reload();
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect(investigationTimeline(page).getByRole('status').locator('time')).toHaveAttribute('datetime', selectedTime);
+  await expect.poll(() => page.locator('.server-dashboard .chart-crosshair').count()).toBeGreaterThanOrEqual(4);
+  await assertHistoricalScope(page, first, exactFrom, exactTo);
+  await assertDatabaseScope(page, 6);
+  expect(scope(page).get('timelineEvent')).toBe(selectedId);
+  expect(scope(page).get('compare')).toBe('1');
+  await investigationTimeline(page).getByRole('button', { name: 'Clear timeline alignment', exact: true }).press('Enter');
+  await expect.poll(() => scope(page).get('timelineEvent')).toBe(null);
+  expect(scope(page).get('timelineAt')).toBe(null);
+  await assertHistoricalScope(page, first, exactFrom, exactTo);
+});
+
+test('aligning a Live timeline event freezes its loaded window and retains keyboard focus before reload', async ({ page }) => {
+  await timelineFixture(page);
+  await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });
+  let loadedWindow;
+  page.on('response', async response => {
+    const url = new URL(response.url());
+    if (url.pathname === '/api/v1/overview' && url.searchParams.get('targetId') === first && response.ok()) {
+      const body = await response.json();
+      loadedWindow = { from: body.fromUtc, to: body.toUtc };
+    }
+  });
+  await page.goto(`${href('health', first, '1h')}&databaseId=6`);
+  await expect(planTimelineButtons(page)).toHaveCount(1);
+  await expect.poll(() => loadedWindow).toBeTruthy();
+  const window = { ...loadedWindow };
+  const align = planTimelineButtons(page);
+  const button = await align.elementHandle();
+  const eventTime = await align.locator('xpath=ancestor::li').locator('time').getAttribute('datetime');
+  await align.focus();
+  await align.press('Enter');
+  await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ target: first, databaseId: '6', range: 'custom', from: window.from, to: window.to, timelineAt: eventTime });
+  await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
+  await expect(align).toHaveAttribute('aria-pressed', 'true');
+  await expect(align).toBeFocused();
+  expect(await button.evaluate(element => element.isConnected)).toBe(true);
+  await expect(page.getByRole('combobox', { name: 'Time range', exact: true })).toHaveValue('custom');
+  await page.reload();
+  await expect(align).toHaveAttribute('aria-pressed', 'true');
+  await expect(investigationTimeline(page).getByRole('status').locator('time')).toHaveAttribute('datetime', eventTime);
+  await assertHistoricalScope(page, first, window.from, window.to);
+  await assertDatabaseScope(page, 6);
+});
+
+test('selected Agent timeline marker retains its focused button during a pending refresh and becomes explicitly missing after failure', async ({ page }) => {
+  await timelineFixture(page);
+  await page.goto(`${href('health')}&healthSection=summary`);
+  const timeline = investigationTimeline(page);
+  const selected = timeline.getByRole('button', { name: /^Align charts: SQL Agent job failure/ }).first();
+  await expect(selected).toBeVisible();
+  await selected.focus(); await selected.press('Enter');
+  await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^agent:/);
+  const selectionId = scope(page).get('timelineEvent');
+  const original = await selected.elementHandle();
+  let release, pending = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route(`**/observation-targets/${first}/sql-agent/failures?*`, async route => {
+    pending = true; await gate;
+    await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+  });
+  // Native click() activates refresh without moving keyboard focus from the selected marker.
+  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).evaluate(element => element.click());
+  await expect.poll(() => pending).toBe(true);
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect(selected).toBeFocused();
+  expect(await original.evaluate(element => element.isConnected)).toBe(true);
+  expect(scope(page).get('timelineEvent')).toBe(selectionId);
+  release();
+  await expect(timeline).toContainText('The requested timeline event is not present in the loaded evidence for this window. No other event has been selected.');
+  await expect(timeline.getByRole('button', { name: /^Align charts: SQL Agent job failure/ })).toHaveCount(0);
+  await expect(timeline.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  expect(scope(page).get('timelineEvent')).toBe(selectionId);
+  await timeline.getByText('Timeline coverage', { exact: true }).click();
+  await expect(timeline).toContainText('SQL Agent first-observed markers are unavailable');
+});
+
+test('Overview rejects response bounds shifted by one microsecond from the fixed workspace window', async ({ page }) => {
+  await timelineFixture(page);
+  const exactFrom = '2026-09-26T08:00:00.123456Z', exactTo = '2026-09-26T12:00:00.654321Z';
+  await page.route('**/api/v1/overview?*', async route => {
+    if (new URL(route.request().url()).searchParams.get('targetId') !== first) return route.continue();
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, fromUtc: '2026-09-26T08:00:00.123457Z' } });
+  });
+  await page.goto(`/#/health?${new URLSearchParams({ target: first, range: 'custom', from: exactFrom, to: exactTo, healthSection: 'summary' })}`);
+  await expect(page.getByText('Overview returned a mismatched scope or time range.', { exact: true })).toBeVisible();
+  await expect(investigationTimeline(page)).toHaveCount(0);
+  await expect(page.locator('.server-dashboard .overview-chart')).toHaveCount(0);
+  await assertHistoricalScope(page, first, exactFrom, exactTo);
+});
+
+test('Overview previous-period comparison requests retain the exact microsecond duration', async ({ page }) => {
+  await timelineFixture(page);
+  const exactFrom = '2026-09-26T08:00:00.123456Z', exactTo = '2026-09-26T12:00:00.654321Z';
+  const expectedPrevious = '2026-09-26T03:59:59.592591Z';
+  let comparison;
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/v1/overview' && url.searchParams.get('targetId') === first && url.searchParams.get('toUtc') === exactFrom)
+      comparison = Object.fromEntries(url.searchParams);
+  });
+  await page.goto(`/#/health?${new URLSearchParams({ target: first, range: 'custom', from: exactFrom, to: exactTo, compare: '1', healthSection: 'summary' })}`);
+  await expect.poll(() => comparison).toMatchObject({ targetId: first, fromUtc: expectedPrevious, toUtc: exactFrom });
+  await expect(planTimelineButtons(page)).toHaveCount(2);
+  await expect(page.getByText('Previous-period evidence is unavailable.', { exact: true })).toHaveCount(0);
+  await assertHistoricalScope(page, first, exactFrom, exactTo);
+});
+
+test('requested timeline selection remains explicit when hidden or absent and never selects another event', async ({ page }) => {
+  await timelineFixture(page);
+  await page.goto(`${href('health')}&databaseId=6`);
+  const timeline = investigationTimeline(page), category = timeline.getByRole('combobox', { name: 'Timeline event category', exact: true });
+  await expect(planTimelineButtons(page)).toHaveCount(1);
+  await planTimelineButtons(page).click();
+  await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
+  const selectedHash = new URL(page.url()).hash;
+  await category.selectOption('deadlock');
+  await expect.poll(() => scope(page).get('timelineEvent')).toBe(null);
+  // An externally restored selection is kept even when the user's category hides it.
+  await page.evaluate(hash => { location.hash = hash; }, selectedHash);
+  await expect(timeline).toContainText('The selected timeline event is hidden by this category.');
+  await expect(timeline.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  await timeline.getByRole('button', { name: 'Show selected timeline event', exact: true }).press('Enter');
+  await expect(category).toHaveValue('all');
+  await expect(planTimelineButtons(page)).toHaveAttribute('aria-pressed', 'true');
+  const parameters = scope(page); parameters.set('timelineEvent', 'plan:missing');
+  await page.evaluate(query => { location.hash = '#/health?' + query; }, parameters.toString());
+  await expect(timeline).toContainText('The requested timeline event is not present in the loaded evidence for this window. No other event has been selected.');
+  await expect(timeline.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  await expect(page.locator('.server-dashboard .chart-crosshair')).toHaveCount(0);
+  expect(scope(page).get('timelineEvent')).toBe('plan:missing');
+  await page.reload();
+  await expect(timeline).toContainText('No other event has been selected.');
+  await expect(timeline.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  await timeline.getByRole('button', { name: 'Clear timeline alignment', exact: true }).click();
+  await expect.poll(() => scope(page).get('timelineEvent')).toBe(null);
+});
+
+test('delayed requested timeline evidence cannot restore a selection after switching servers', async ({ page }) => {
+  await timelineFixture(page);
+  await page.goto(`${href('health')}&databaseId=6`);
+  await expect(planTimelineButtons(page)).toHaveCount(1);
+  await planTimelineButtons(page).click();
+  await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let delayed = false;
+  await page.route(`**/observation-targets/${first}/query-performance/regressions?*`, async route => {
+    const response = await route.fetch(); delayed = true; await gate;
+    await route.fulfill({ response });
+  });
+  await page.reload();
+  await expect.poll(() => delayed).toBe(true);
+  await expect(investigationTimeline(page)).toContainText('Loading the requested timeline event');
+  await page.evaluate(hash => { location.hash = hash; }, href('health', second).substring(1));
+  await expect.poll(() => scope(page).get('target')).toBe(second);
+  await expect.poll(() => scope(page).get('timelineEvent')).toBe(null);
+  await expect(planTimelineButtons(page)).toHaveCount(2);
+  release();
+  await expect(investigationTimeline(page).locator('button[aria-pressed="true"]')).toHaveCount(0);
+  await expect(investigationTimeline(page)).not.toContainText('Loading the requested timeline event');
+  expect(scope(page).get('target')).toBe(second);
+  expect(scope(page).get('timelineAt')).toBe(null);
+});
+
+test('Resources pointer and keyboard inspection align CPU memory PLE and file latency without changing the workspace window', async ({ page }) => {
+  await databaseFixture(page);
+  await page.context().addCookies([{ name: 'resourceInspectionFixture', value: '1', url: origin }]);
+  await page.goto(`${href('resources')}&databaseId=5`);
+  const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 01', exact: true });
+  await resources.getByRole('button', { name: 'View read and write latency trend for database 5, file Orders_data', exact: true }).click();
+  const charts = resources.locator('.overview-chart');
+  await expect(charts).toHaveCount(7);
+  const cpu = resources.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true }) }).locator('.overview-chart');
+  await cpu.scrollIntoViewIfNeeded();
+  const box = await cpu.boundingBox(); expect(box).not.toBeNull();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+  const pointerLabels = await resources.locator('.chart-crosshair text').allTextContents();
+  expect(new Set(pointerLabels).size).toBe(1);
+  await assertHistoricalScope(page); await assertDatabaseScope(page, 5);
+  const input = resources.getByLabel('Resource inspection time (UTC)', { exact: true });
+  await input.fill('2026-09-26T10:30:00.125');
+  await resources.getByRole('button', { name: 'Align resource charts', exact: true }).press('Enter');
+  await expect(resources.getByRole('region', { name: 'Resource chart alignment', exact: true }).getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+  expect(new Set(await resources.locator('.chart-crosshair text').allTextContents()).size).toBe(1);
+  await assertHistoricalScope(page); await assertDatabaseScope(page, 5);
+  await input.fill('2026-09-26T12:00');
+  await resources.getByRole('button', { name: 'Align resource charts', exact: true }).press('Enter');
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
+  await expect(resources.getByRole('alert')).toHaveText('Choose an inspection time inside the shared window, before its end.');
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
+  await input.fill('2026-09-26T09:00');
+  await resources.getByRole('button', { name: 'Align resource charts', exact: true }).press('Enter');
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+  await resources.getByRole('button', { name: 'Clear resource alignment', exact: true }).press('Enter');
+  await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
+  await expect(resources.getByRole('region', { name: 'Resource chart alignment', exact: true }).getByRole('status')).toContainText('No resource alignment selected.');
+  await assertHistoricalScope(page); await assertDatabaseScope(page, 5);
+});
+
 test('periodic live configuration history refresh preserves the user current keyboard focus', async ({ page }) => {
   await timelineFixture(page);
   await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });

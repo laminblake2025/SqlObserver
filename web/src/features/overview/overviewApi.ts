@@ -2,6 +2,14 @@ import { apiFetch } from "../../apiClient.ts";
 import type { OverviewSnapshot, OverviewPoint } from './overviewTypes';
 import { readBoundedBody } from '../activity/activityParser.mjs';
 import { parseOverviewBackupSummary } from './overviewBackupSummary.ts';
+import { utcMicroseconds } from '../../utcTimestamp.ts';
+
+function sameUtc(left: unknown, right: string): boolean {
+  try {
+    const normalized = (value: unknown) => typeof value === 'string' ? value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, '$1') : value;
+    return utcMicroseconds(normalized(left)) === utcMicroseconds(normalized(right));
+  } catch { return false; }
+}
 
 export async function getOverview(target: string, window: {fromUtc: string; toUtc: string}, signal: AbortSignal): Promise<OverviewSnapshot> {
   const params = new URLSearchParams({...window,useLatestStatus:'true'}); if (target) params.set('targetId',target);
@@ -13,7 +21,7 @@ export async function getOverview(target: string, window: {fromUtc: string; toUt
     if (signal.aborted) throw signal.reason;
     throw new Error('Overview evidence exceeded the response limit or could not be decoded.');
   }
-  if (!value || !Array.isArray(value.targets) || !Array.isArray(value.evidence) || (value.targetId ?? '') !== target || Date.parse(value.fromUtc) !== Date.parse(window.fromUtc) || Date.parse(value.toUtc) !== Date.parse(window.toUtc) || !Number.isFinite(Date.parse(value.refreshedAtUtc))) throw new Error('Overview returned a mismatched scope or time range.');
+  if (!value || !Array.isArray(value.targets) || !Array.isArray(value.evidence) || (value.targetId ?? '') !== target || !sameUtc(value.fromUtc, window.fromUtc) || !sameUtc(value.toUtc, window.toUtc) || !Number.isFinite(Date.parse(value.refreshedAtUtc))) throw new Error('Overview returned a mismatched scope or time range.');
   if (value.targets.some(item => typeof item.targetId !== 'string' || typeof item.displayName !== 'string'
     || typeof item.lifecycle !== 'string' || (item.environment !== null && typeof item.environment !== 'string')
     || !Array.isArray(item.tags) || item.tags.length > 16 || item.tags.some((tag: unknown) => typeof tag !== 'string')

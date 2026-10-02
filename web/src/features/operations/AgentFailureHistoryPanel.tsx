@@ -29,6 +29,7 @@ export function AgentFailureEvidence({ page, compact = false }: { readonly page:
 export function AgentFailureHistoryPanel({ instanceId, targetRevision, scope, refresh }: {
   readonly instanceId: string; readonly targetRevision: number; readonly scope: OverviewScope; readonly refresh: number;
 }) {
+  const formatTime = useTimeFormatter();
   const selection = useMemo(() => {
     try { return { window: resolveAgentWindow(scope, Date.now()), error: undefined }; }
     catch (error) { return { window: undefined, error: error instanceof Error ? error.message : "Choose a valid SQL Agent history window." }; }
@@ -37,7 +38,9 @@ export function AgentFailureHistoryPanel({ instanceId, targetRevision, scope, re
   return <section className="panel operation-card" aria-label="SQL Agent failures" aria-busy={history.loading}>
     <h3>SQL Agent failures</h3>
     {selection.error && <p role="status">{selection.error}</p>}
-    {history.loading && <p role="status">Loading SQL Agent history for the selected window…</p>}
+    {history.loading && <p role="status">{history.refreshing && history.page
+      ? `Refreshing SQL Agent history; the previous first-page snapshot from ${formatTime(history.page.observedAtUtc)} remains visible for ${formatTime(history.page.window.fromUtc)} to ${formatTime(history.page.window.toUtc)}.`
+      : "Loading SQL Agent history for the selected window…"}</p>}
     {history.error && <p role="alert">{history.error} Refresh the history from the first page.</p>}
     {history.page && <AgentFailureEvidence page={history.page} />}
     {selection.window && <nav className="pager" aria-label="SQL Agent history pages">

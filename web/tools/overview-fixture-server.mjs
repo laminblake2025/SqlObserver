@@ -13,6 +13,13 @@ const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-811
 const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
 const alertSelectionRows=[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:'2026-09-30T09:00:00.000Z',firedUtc:'2026-09-30T09:01:00.000Z',value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false},{alertId:'66666666-6666-4666-8666-666666666666',ruleId:'77777777-7777-4777-8777-777777777777',ruleName:'SYNTHETIC paged alert',state:'firing',firstObservedUtc:'2026-09-30T10:00:00.000Z',firedUtc:'2026-09-30T10:01:00.000Z',value:7,reason:'Synthetic bounded second-page evidence',deliverySuppressed:false}];
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
+// Preserve the same microsecond precision as the native equal-width comparison contract.
+const utcTicks=value=>{
+ const match=/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?Z$/.exec(value??'');
+ if(!match)throw new Error('Synthetic UTC bounds must retain at most six fractional digits.');
+ return BigInt(Date.parse(match[1]+'Z'))*1000n+BigInt((match[2]??'').padEnd(6,'0'));
+};
+const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
  if(req.headers.cookie?.includes('alertOperatorFixture=1')&&url.pathname==='/api/v1/me') {
@@ -60,7 +67,7 @@ createServer(async(req,res)=>{try{
     const start=Date.parse(fromUtc),end=Date.parse(toUtc),duration=end-start;
     if(!Number.isFinite(start)||!Number.isFinite(end)||duration<=0||duration>7*86400000||url.searchParams.get('limit')!=='25')return send(res,{},400);
     const comparison=(databaseId,query,previous,current,ratio,fraction)=>({databaseId,queryFingerprint:query.repeat(64),previousPlanFingerprint:previous.repeat(64),currentPlanFingerprint:current.repeat(64),previousAverageMilliseconds:'100.000',currentAverageMilliseconds:`${ratio*100}.000`,slowdownRatio:`${ratio}.000`,previousExecutions:'20',currentExecutions:'25',previousComparableRows:2,currentComparableRows:3,previousSourceRows:2,currentSourceRows:3,lastObservedAtUtc:new Date(start+duration*fraction).toISOString()});
-    return send(res,{targetId:instanceId,fromUtc,toUtc,comparisonFromUtc:new Date(start-duration).toISOString(),semantics:'query_store_group_plan_comparison',coverage:'observed_groups_only',items:[comparison(5,instanceId===targets[0].instanceId?'b':'7','a','c',4,0.5),comparison(6,instanceId===targets[0].instanceId?'d':'8','f','e',3,0.75)]});
+    return send(res,{targetId:instanceId,fromUtc,toUtc,comparisonFromUtc:ticksUtc(2n*utcTicks(fromUtc)-utcTicks(toUtc)),semantics:'query_store_group_plan_comparison',coverage:'observed_groups_only',items:[comparison(5,instanceId===targets[0].instanceId?'b':'7','a','c',4,0.5),comparison(6,instanceId===targets[0].instanceId?'d':'8','f','e',3,0.75)]});
    }
 
    if(surface==='activity/waits/trend') {
@@ -84,6 +91,19 @@ createServer(async(req,res)=>{try{
    }
    if(/^alerts\/[^/]+\/acknowledge$/.test(surface)&&req.method==='POST'&&req.headers.cookie?.includes('alertSelectionFixture=1')) {res.writeHead(204);res.end();return;}
    if(surface==='query-performance/status'&&req.headers.cookie?.includes('paletteCatalogFixture=1'))return send(res,{targetId:instanceId,snapshotUtc:now,source:'query_store',sourceState:'read_write',coverage:'complete',fresh:true,truncated:false,contentAvailable:false,databaseStatuses:[],databaseCatalog:[{databaseId:5,databaseName:instanceId===targets[1].instanceId?'Orders 02':'Orders'},{databaseId:6,databaseName:instanceId===targets[1].instanceId?'Warehouse 02':'Warehouse'}]});
+   if(req.headers.cookie?.includes('resourceInspectionFixture=1')&&(surface==='resources/buffer-nodes/ple'||/^resources\/files\/(5|6)\/1\/trend$/.test(surface))) {
+    const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc'),start=Date.parse(fromUtc),end=Date.parse(toUtc);
+    if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||end-start>7*86400000)return send(res,{},400);
+    const buckets=[];
+    for(let at=Math.floor(start/3600000)*3600000;at<end;at+=3600000)buckets.push(new Date(at).toISOString());
+    if(surface==='resources/buffer-nodes/ple') {
+     const selectedNodeId=Number(url.searchParams.get('nodeId')??0);
+     if(![0,1].includes(selectedNodeId))return send(res,{},400);
+     const gauges=offset=>buckets.map((bucketStartUtc,index)=>({bucketStartUtc,sampleCount:10,minimumSeconds:200+offset+index*10,averageSeconds:300+offset+index*10,maximumSeconds:400+offset+index*10}));
+     return send(res,{targetId:instanceId,fromUtc,toUtc,semantics:'numa_node_page_life_expectancy_gauge',unit:'seconds',revisionScope:'current',bucketSeconds:3600,selectedNodeId,visibilityGapCount:0,nodes:[0,1].map(nodeId=>({nodeId,sampleCount:buckets.length*10,lastObservedAtUtc:new Date(end-1).toISOString()})),points:gauges(selectedNodeId*100),aggregatePoints:gauges(200)});
+    }
+    return send(res,{targetId:instanceId,databaseId:Number(surface.split('/')[2]),fileId:1,fromUtc,toUtc,semantics:'file_counter_delta',revisionScope:'current',bucketSeconds:3600,points:buckets.map((bucketStartUtc,index)=>({bucketStartUtc,sourceRows:10,comparableRows:9,baselineRows:1,resetRows:0,gapRows:0,legacyRows:0,readOperations:'100',readStallMilliseconds:String(400+index*10),writeOperations:'200',writeStallMilliseconds:String(1600+index*20)}))});
+   }
    if(surface==='query-performance/cache/top' || /^query-performance\/cache\/databases\/(?:5\/history\/b{64}\/plans\/c{64}|6\/history\/d{64}\/plans\/e{64})$/.test(surface)) {
     const start=url.searchParams.get('fromUtc'),end=url.searchParams.get('toUtc');
     // Ranking and history use half-open windows: a capture exactly at toUtc is excluded.

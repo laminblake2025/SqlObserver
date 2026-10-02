@@ -10,33 +10,44 @@ import type { OverviewScope } from "../overview/overviewTypes";
 import type { TargetHealthState } from "./healthTypes";
 
 type Source = "deadlocks" | "options" | "configuration" | "plans";
-interface SourceState { readonly events: readonly TimelineEvent[]; readonly note: string; }
+interface SourceState { readonly events: readonly TimelineEvent[]; readonly note: string; readonly loading?: boolean; }
 type Sources = Record<Source, SourceState>;
 const utc = (value: string) => utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
 
 export function useDashboardTimeline(targetId: string, targetRevision: number, scope: OverviewScope,
     window: { readonly fromUtc: string; readonly toUtc: string } | undefined,
     refresh: number, configurationCollectorState?: TargetHealthState) {
-  const key = JSON.stringify([targetId.toLowerCase(), targetRevision, window?.fromUtc, window?.toUtc,
-    scope.databaseId, refresh, configurationCollectorState]);
-  const [state, setState] = useState<{ readonly key: string; readonly sources: Sources }>();
+  const scopeKey = JSON.stringify([targetId.toLowerCase(), targetRevision, window?.fromUtc, window?.toUtc,
+    scope.databaseId, configurationCollectorState]);
+  const key = JSON.stringify([scopeKey, refresh]);
+  const [state, setState] = useState<{ readonly key: string; readonly scopeKey: string; readonly sources: Sources }>();
   useEffect(() => {
     const controller = new AbortController();
     const long = window && !supportsChangeTimelineWindow(window.fromUtc, window.toUtc);
     const sources: Sources = {
-      deadlocks: { events: [], note: "Loading deadlock event markers…" },
-      options: { events: [], note: long ? "Database option markers support windows up to seven days." : "Loading database option change markers…" },
-      configuration: { events: [], note: configurationCollectorState === "disabled"
+      deadlocks: { events: [], loading: Boolean(window), note: "Loading deadlock event markers…" },
+      options: { events: [], loading: Boolean(window && !long), note: long ? "Database option markers support windows up to seven days." : "Loading database option change markers…" },
+      configuration: { events: [], loading: Boolean(window && !long && configurationCollectorState !== "disabled"), note: configurationCollectorState === "disabled"
         ? "Server configuration collection is disabled; enable its collector to obtain change markers."
         : long ? "Server configuration markers support windows up to seven days." : "Loading server configuration change markers…" },
-      plans: { events: [], note: long ? "Plan comparison markers support windows up to seven days." : "Loading plan comparison markers…" },
+      plans: { events: [], loading: Boolean(window && !long), note: long ? "Plan comparison markers support windows up to seven days." : "Loading plan comparison markers…" },
     };
-    setState({ key, sources });
+    setState(previous => {
+      if (previous?.scopeKey === scopeKey) {
+        for (const source of Object.keys(sources) as Source[]) {
+          if (sources[source].loading && previous.sources[source].events.length) sources[source] = {
+            ...sources[source], events: previous.sources[source].events,
+            note: `Refreshing ${source}; showing previously loaded markers in this same window.`,
+          };
+        }
+      }
+      return { key, scopeKey, sources };
+    });
     if (!window) return () => controller.abort();
     const fixedScope: OverviewScope = { ...scope, target: targetId, range: "custom", from: window.fromUtc, to: window.toUtc };
     const publish = (source: Source, value: SourceState) => {
       if (!controller.signal.aborted) setState(previous => previous?.key === key
-        ? { key, sources: { ...previous.sources, [source]: value } } : previous);
+        ? { key, scopeKey, sources: { ...previous.sources, [source]: value } } : previous);
     };
     const read = (source: Source, promise: Promise<SourceState>, failure: string) => {
       void promise.then(value => publish(source, value)).catch(() => publish(source, { events: [], note: failure }));
@@ -74,7 +85,10 @@ export function useDashboardTimeline(targetId: string, targetRevision: number, s
     }
     return () => controller.abort();
   }, [key]);
-  const current = state?.key === key ? state.sources : undefined;
+  const current = state?.scopeKey === scopeKey ? state.sources : undefined;
+  const refreshing = state?.key !== key;
   return { events: current ? Object.values(current).flatMap(source => source.events) : [],
-    notes: current ? Object.values(current).map(source => source.note) : ["Loading timeline sources…"] };
+    loading: Boolean(window && (!current || refreshing || Object.values(current).some(source => source.loading))),
+    notes: current ? refreshing ? ["Refreshing timeline sources; showing previously loaded markers in this same window."]
+      : Object.values(current).map(source => source.note) : ["Loading timeline sources…"] };
 }
