@@ -54,24 +54,24 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
     <svg className={`chart observation-chart${onSelectWindow ? " chart-interactive" : ""}`} viewBox="0 0 650 225"
       role="img" aria-label={`${label}. ${chart.series.length} series in the selected ${mode === "local" ? "local-time display" : "UTC"} window. Missing samples remain gaps.${onSelectWindow ? " Drag to select a shared time window." : ""}`}
       onPointerMove={event => {
+        if (!event.isPrimary || !gesture.acceptsPointer(event.pointerId)) return;
         const position = pointerX(event);
         if (position === null) return;
         announceCrosshair(chartUtcAtX(position, fromUtc, toUtc));
-        gesture.move(position);
+        gesture.move(event.pointerId, position);
       }}
       onPointerDown={event => {
-        if (!onSelectWindow) return;
+        if (!onSelectWindow || event.button !== 0 || !event.isPrimary) return;
         const position = pointerX(event);
         if (position === null) return;
-        gesture.begin(event.pointerId, position);
-        event.currentTarget.setPointerCapture(event.pointerId);
+        if (gesture.begin(event.pointerId, position)) event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerUp={event => {
         gesture.finish(event.pointerId, pointerX(event));
       }}
-      onPointerCancel={gesture.cancel}
-      onLostPointerCapture={gesture.cancel}
-      onPointerLeave={() => { if (dragStart === null) announceCrosshair(null); }}>
+      onPointerCancel={event => gesture.cancel(event.pointerId)}
+      onLostPointerCapture={event => gesture.cancel(event.pointerId)}
+      onPointerLeave={event => { if (event.isPrimary && gesture.acceptsPointer(event.pointerId) && dragStart === null) announceCrosshair(null); }}>
       {[0, .5, 1].map(fraction => {
         const value = chart.minimum + fraction * (chart.maximum - chart.minimum);
         return <g key={fraction}><line className="chart-gridline" x1={left} x2={right} y1={y(value)} y2={y(value)} />

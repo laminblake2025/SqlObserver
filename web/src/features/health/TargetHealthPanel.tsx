@@ -99,8 +99,13 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
   const [failure, setMessage] = useState<{ key: string; message: string }>();
   const message = failure?.key === evidenceKey ? failure.message : undefined;
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases"));
-  useEffect(() => { if (selectedSection) setTab(selectedSection); else if (selectedDatabaseId !== undefined) setTab("databases"); }, [selectedDatabaseId, selectedSection]);
+  const [localTab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases"));
+  // Route-owned sections are resolved during render, including an absent URL
+  // selection restored by Back. Local state remains available to standalone consumers.
+  const tab = onSelectSection ? selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases") : localTab;
+  useEffect(() => { if (!onSelectSection) {
+    if (selectedSection) setTab(selectedSection); else if (selectedDatabaseId !== undefined) setTab("databases");
+  } }, [selectedDatabaseId, selectedSection, onSelectSection]);
   const snapshot = evidence?.target;
   const recoveryContext: RecoveryContext = { instanceId, scope, canGeneratePermissions: canManageConfiguration };
 
@@ -166,7 +171,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             label="Server summary sections"
             tabs={[{ value: "summary", label: "Summary" }, { value: "databases", label: "Databases" }, { value: "collection", label: "Collection health" }]}
             value={tab}
-            onChange={(value) => { const section = value as "summary" | "databases" | "collection"; setTab(section); onSelectSection?.(section); }}
+            onChange={(value) => { const section = value as "summary" | "databases" | "collection"; if (onSelectSection) onSelectSection(section); else setTab(section); }}
           />
           <div className="health-summary">
             <span className={`health-state health-${evidence.target.state}`}>

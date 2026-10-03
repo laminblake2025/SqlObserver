@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
+import { useActivityBoundary, useActivitySource, type ActivityReadBoundary } from "./activityAccess.ts";
 import { useHistoryPaging } from "./useHistoryPaging";
 import { LiveSessionsPanel } from "./LiveSessionsPanel";
 
-import { getActivitySnapshot, getBlockingHistoryPage, getServerWaitHistoryPage } from "./activityApi";
+import { ActivityRequestError, getActivitySnapshot, getBlockingHistoryPage, getServerWaitHistoryPage } from "./activityApi";
 import { resolveActivityWindow } from "./activityWindowModel";
 import { groupWaitDeltas } from "./waitCategoryModel";
 import type { ActivityPage, ActivityWait, BlockingHistoryItem, ServerWaitHistoryItem } from "./activityTypes";
@@ -18,6 +19,7 @@ export interface TargetActivityPanelProps {
   readonly initialHistoryEventId?: string;
   readonly scope: OverviewScope;
   readonly refresh: number;
+  readonly targetRevision?: number;
   readonly manualRefresh: number;
   readonly sessionTick: number;
   readonly livePaused: boolean;
@@ -27,44 +29,53 @@ export interface TargetActivityPanelProps {
   readonly onSelectTimeMode?: (mode: "live" | "history") => void;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused, onSelectDatabase, selectionHash, canReadText = false, onSelectTimeMode }: TargetActivityPanelProps) {
+export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused, onSelectDatabase, selectionHash, canReadText = false, onSelectTimeMode, targetRevision }: TargetActivityPanelProps) {
   const { mode } = useTimeDisplay();
   const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to, refresh]);
   const window = selected.state === "available" ? selected.window : undefined;
   const historyUnavailableReason = selected.state === "unavailable" ? selected.message : selected.liveSnapshotsAvailable ? undefined : "Session snapshots are retained for 24 hours; this selected window is older. Wait and blocking history may still be available below.";
   const historySelection = window ?? null;
-  const historyContext = JSON.stringify([instanceId.toLowerCase(), scope.range, scope.from, scope.to]);
-  const snapshotContext = JSON.stringify([historyContext, window?.fromUtc, window?.toUtc, refresh]);
-  const [snapshotResult, setSnapshotResult] = useState<{ key: string; value: Awaited<ReturnType<typeof getActivitySnapshot>> }>();
-  const [messageResult, setMessageResult] = useState<{ key: string; value: string }>();
-  const snapshot = snapshotResult?.key === snapshotContext ? snapshotResult.value : undefined;
-  const message = messageResult?.key === snapshotContext ? messageResult.value : undefined;
-  const [histories, setHistories] = useState<{ key: string; generation: number; blocking?: ActivityPage<BlockingHistoryItem>; waits?: ActivityPage<ServerWaitHistoryItem> }>();
-  const visibleHistories = histories?.key === historyContext && window ? histories : undefined;
+  const historyContext = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
+  const access = useActivityBoundary(historyContext);
+  const supportingSource = useActivitySource(access, "supporting", historyContext, refresh,
+    async (signal, explicit) => {
+      const next = await getActivitySnapshot(instanceId, signal, historySelection, () => access.deny(),
+        explicit ? undefined : ["sessions", "requests", "waits", "blocking", ...(access.allowed("blocking-history") ? ["history" as const] : []), ...(access.allowed("wait-history") ? ["waitHistory" as const] : [])]);
+      if (!next.sessions && !next.requests && !next.waits && !next.blocking && !next.history && !next.waitHistory)
+        throw new ActivityRequestError("Supporting activity evidence is unavailable. Retry this read.");
+      return next;
+    }, window,
+    next => [...(next.sessions || next.requests || next.waits || next.blocking ? ["supporting"] : []), ...(next.history ? ["blocking-history"] : []), ...(next.waitHistory ? ["wait-history"] : [])]);
+  const snapshot = supportingSource.value, message = supportingSource.error;
+  const [histories, setHistories] = useState<{ boundary: ActivityReadBoundary; epoch: number; generation: number; blocking?: ActivityPage<BlockingHistoryItem>; waits?: ActivityPage<ServerWaitHistoryItem> }>();
+  const visibleHistories = histories?.boundary === access && histories.epoch === access.epoch && window ? histories : undefined;
   const sessions = snapshot?.sessions?.items.filter(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) ?? [];
   const requests = snapshot?.requests?.items.filter(item => scope.databaseId === undefined || item.databaseId === scope.databaseId) ?? [];
+  useLayoutEffect(() => access.subscribeInvalidation(() => setHistories(undefined)), [access]);
   useEffect(() => {
-    const controller = new AbortController();
-    setSnapshotResult(undefined);
-    setMessageResult(undefined);
-    void getActivitySnapshot(instanceId, controller.signal, historySelection)
-      .then((next) => { if (!controller.signal.aborted) { setSnapshotResult({ key: snapshotContext, value: next }); setMessageResult(undefined);
-        setHistories(previous => ({ key: historyContext, generation: refresh,
-          blocking: next.history ?? (previous?.key === historyContext ? previous.blocking : undefined),
-          waits: next.waitHistory ?? (previous?.key === historyContext ? previous.waits : undefined) })); } })
-      .catch((error: unknown) => { if (!controller.signal.aborted) { setMessageResult({ key: snapshotContext, value: error instanceof Error ? error.message : "Activity evidence is unavailable." }); } });
-    return () => controller.abort();
-  }, [instanceId, window?.fromUtc, window?.toUtc, refresh, historyContext]);
+    const receipt = supportingSource.receipt;
+    if (!receipt) return;
+    const next = receipt.value;
+    setHistories(previous => ({ boundary: access, epoch: access.epoch, generation: receipt.refresh,
+      blocking: next.history ?? (previous?.boundary === access && previous.epoch === access.epoch && access.allowed("blocking-history") ? previous.blocking : undefined),
+      waits: next.waitHistory ?? (previous?.boundary === access && previous.epoch === access.epoch && access.allowed("wait-history") ? previous.waits : undefined) }));
+  }, [supportingSource.receipt, access]);
 
   return (
     <section className="activity-screen" aria-labelledby="activity-heading">
       <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Wait and blocking history follow the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
-      <LiveSessionsPanel key={`${instanceId}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}:${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} instanceId={instanceId} displayName={displayName} scope={scope} selectionHash={selectionHash} canReadText={canReadText} selectedDatabaseId={scope.databaseId} onSelectDatabase={onSelectDatabase} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} onSelectTimeMode={onSelectTimeMode} />
+      {access.allowed("supporting") && <LiveSessionsPanel key={`${historyContext}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}`} instanceId={instanceId} displayName={displayName} scope={scope} selectionHash={selectionHash} canReadText={canReadText} selectedDatabaseId={scope.databaseId} onSelectDatabase={onSelectDatabase} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} onSelectTimeMode={onSelectTimeMode} />}
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
       <p className="activity-evidence">{window ? `Selected activity-history window: ${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}.` : selected.state === "unavailable" ? selected.message : null}</p>
       {scope.databaseId !== undefined ? <p className="table-note">Supporting sessions and requests are filtered within their loaded pages for database ID {scope.databaseId}. Server wait and blocking summaries remain server-wide; they have no database attribution.</p> : null}
+      {access.denied && <p role="alert">Activity access was denied. Supporting snapshots, received history and captured sessions were removed. Each explicit retry restores only its validated read sources.</p>}
+      {(access.denied || message) && <button type="button" disabled={supportingSource.loading} onClick={supportingSource.retry}>Retry activity evidence</button>}
       {message === undefined ? null : <p role="alert" className="status-message">{message}</p>}
-      {snapshot === undefined && message === undefined ? <p role="status">Loading bounded activity evidence…</p> : null}
+      {snapshot === undefined && message === undefined && supportingSource.loading ? <p role="status">Loading bounded activity evidence…</p> : null}
+      {snapshot && supportingSource.loading && <p role="status">Refreshing bounded activity evidence; previously received snapshots remain displayed…</p>}
+      {snapshot && (supportingSource.loading || message) && <p className="table-note">Previously received supporting evidence remains displayed while its latest read is pending or unavailable.</p>}
+      {access.denied && !access.allowed("blocking-history") && <p role="status">Blocking history has not been restored. Retry activity evidence to read it explicitly.</p>}
+      {access.denied && !access.allowed("wait-history") && <p role="status">Wait history has not been restored. Retry activity evidence to read it explicitly.</p>}
       {snapshot === undefined ? null : <>
         {snapshot.errors.map(error => <p role="status" key={error}>{error} Refresh to retry this section.</p>)}
         {snapshot.sessions && <Evidence page={snapshot.sessions} />}
@@ -77,8 +88,8 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
         {snapshot.blocking && <Evidence page={snapshot.blocking} />}
         {snapshot.blocking && <ActivityTable title="Current blocking" columns={["Blocked", "Blocker/root", "Wait type", "Tasks/duration", "Depth", "Root resolution"]} rows={snapshot.blocking.items.map((item) => [String(item.blockedSessionId), item.blockerSessionId === undefined ? item.blockerKind : `${String(item.blockerSessionId)}/${String(item.rootBlockerSessionId ?? "—")}`, item.waitType, `${item.waitingTaskCount}/${item.waitDurationMilliseconds}`, String(item.chainDepth), item.chainState])} />}
       </>}
-      {visibleHistories?.blocking && <BlockingHistory key={`blocking/${historyContext}`} instanceId={instanceId} initialPage={visibleHistories.blocking} latestWindow={window} initialGeneration={visibleHistories.generation} latestGeneration={refresh} />}
-      {visibleHistories?.waits && <WaitHistory key={`waits/${historyContext}`} instanceId={instanceId} initialPage={visibleHistories.waits} latestWindow={window} initialGeneration={visibleHistories.generation} latestGeneration={refresh} />}
+      {access.allowed("blocking-history") && visibleHistories?.blocking && <BlockingHistory key={`blocking/${historyContext}`} instanceId={instanceId} access={access} accessSource="blocking-history" initialPage={visibleHistories.blocking} latestWindow={window} initialGeneration={visibleHistories.generation} latestGeneration={refresh} />}
+      {access.allowed("wait-history") && visibleHistories?.waits && <WaitHistory key={`waits/${historyContext}`} instanceId={instanceId} access={access} accessSource="wait-history" initialPage={visibleHistories.waits} latestWindow={window} initialGeneration={visibleHistories.generation} latestGeneration={refresh} />}
       </div></details>
     </section>
   );
@@ -96,9 +107,10 @@ export function WaitCategoryChart({ page }: { readonly page: ActivityPage<Activi
   </section>;
 }
 
-function BlockingHistory({ instanceId, initialPage, latestWindow, initialGeneration = 0, latestGeneration = 0 }: { readonly instanceId: string; readonly initialPage: ActivityPage<BlockingHistoryItem>; readonly latestWindow?: { readonly fromUtc: string; readonly toUtc: string }; readonly initialGeneration?: number; readonly latestGeneration?: number }) {
+function BlockingHistory({ instanceId, initialPage, latestWindow, initialGeneration = 0, latestGeneration = 0, access, accessSource = "history" }: { readonly access?: ActivityReadBoundary; readonly accessSource?: string; readonly instanceId: string; readonly initialPage: ActivityPage<BlockingHistoryItem>; readonly latestWindow?: { readonly fromUtc: string; readonly toUtc: string }; readonly initialGeneration?: number; readonly latestGeneration?: number }) {
   const { mode } = useTimeDisplay();
-  const { page, pageIndex, loading, error, retained, window, navigate, previousCursor, returnToLatest, latestAvailable } = useHistoryPaging(instanceId, initialPage, latestWindow ?? (initialPage.fromUtc && initialPage.toUtc ? { fromUtc: initialPage.fromUtc, toUtc: initialPage.toUtc } : undefined), getBlockingHistoryPage, initialGeneration, latestGeneration);
+  const { page, pageIndex, loading, error, retained, window, navigate, previousCursor, returnToLatest, latestAvailable, denied } = useHistoryPaging(instanceId, initialPage, latestWindow ?? (initialPage.fromUtc && initialPage.toUtc ? { fromUtc: initialPage.fromUtc, toUtc: initialPage.toUtc } : undefined), getBlockingHistoryPage, initialGeneration, latestGeneration, access, accessSource);
+  if (!page) return <section aria-label="Blocking history" aria-busy={loading}><p role="alert">{denied ? "Blocking history access was denied. Received rows and page navigation were removed." : "Blocking history is unavailable."}</p><button type="button" disabled={loading || !latestAvailable} onClick={() => void returnToLatest()}>Return to latest blocking history</button></section>;
   return <section aria-label="Blocking history" aria-busy={loading}>
     <HistoryEvidence page={page} />
     <ActivityTable title="Blocking history" columns={[mode === "local" ? "Observed local" : "Observed UTC", "Blocked", "Blocker", "Wait type", "Tasks/duration", "Depth", "Root resolution/evidence"]} rows={page.items.map(item => [formatDisplayTime(item.edge.observedAtUtc, mode), String(item.edge.blockedSessionId), item.edge.blockerSessionId === undefined ? item.edge.blockerKind : String(item.edge.blockerSessionId), item.edge.waitType, `${item.edge.waitingTaskCount}/${item.edge.waitDurationMilliseconds}`, String(item.edge.chainDepth), `${item.edge.chainState} (${item.evidence.freshness}/${item.evidence.outcome})`])} />
@@ -114,9 +126,10 @@ function BlockingHistory({ instanceId, initialPage, latestWindow, initialGenerat
   </section>;
 }
 
-export function WaitHistory({ instanceId, initialPage, latestWindow, initialGeneration = 0, latestGeneration = 0 }: { readonly instanceId: string; readonly initialPage: ActivityPage<ServerWaitHistoryItem>; readonly latestWindow?: { readonly fromUtc: string; readonly toUtc: string }; readonly initialGeneration?: number; readonly latestGeneration?: number }) {
+export function WaitHistory({ instanceId, initialPage, latestWindow, initialGeneration = 0, latestGeneration = 0, access, accessSource = "history" }: { readonly access?: ActivityReadBoundary; readonly accessSource?: string; readonly instanceId: string; readonly initialPage: ActivityPage<ServerWaitHistoryItem>; readonly latestWindow?: { readonly fromUtc: string; readonly toUtc: string }; readonly initialGeneration?: number; readonly latestGeneration?: number }) {
   const { mode } = useTimeDisplay();
-  const { page, pageIndex, loading, error, retained, window, navigate, previousCursor, returnToLatest, latestAvailable } = useHistoryPaging(instanceId, initialPage, latestWindow ?? (initialPage.fromUtc && initialPage.toUtc ? { fromUtc: initialPage.fromUtc, toUtc: initialPage.toUtc } : undefined), getServerWaitHistoryPage, initialGeneration, latestGeneration);
+  const { page, pageIndex, loading, error, retained, window, navigate, previousCursor, returnToLatest, latestAvailable, denied } = useHistoryPaging(instanceId, initialPage, latestWindow ?? (initialPage.fromUtc && initialPage.toUtc ? { fromUtc: initialPage.fromUtc, toUtc: initialPage.toUtc } : undefined), getServerWaitHistoryPage, initialGeneration, latestGeneration, access, accessSource);
+  if (!page) return <section aria-label="Server wait history" aria-busy={loading}><p role="alert">{denied ? "Wait history access was denied. Received rows and page navigation were removed." : "Wait history is unavailable."}</p><button type="button" disabled={loading || !latestAvailable} onClick={() => void returnToLatest()}>Return to latest wait history</button></section>;
   return <section aria-label="Server wait history" aria-busy={loading}>
     <p className="activity-evidence">Wait history window: {window ? `${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}` : "bounded window unavailable"}. Rows use the preceding comparable collector run as a baseline; totals remain available when a baseline is missing or resets. {page.nextCursor ? "More bounded history is available." : ""}</p>
     <ActivityTable title="Server wait history" columns={[mode === "local" ? "Observed local" : "Observed UTC", "Wait type", "Tasks", "Total wait ms", "Wait delta ms", "Signal delta ms", "Baseline/evidence"]} rows={page.items.map(item => [formatDisplayTime(item.wait.observedAtUtc, mode), item.wait.waitType, item.wait.waitingTasksCount, item.wait.waitTimeMilliseconds, item.wait.waitTimeMillisecondsDelta ?? "—", item.wait.signalWaitTimeMillisecondsDelta ?? "—", `${item.wait.resetDetected ? "reset" : item.wait.baselineAvailable ? "comparable" : "no baseline"} · ${item.evidence.freshness}/${item.evidence.outcome}${item.evidence.isPartial ? " · partial" : ""}`])} />

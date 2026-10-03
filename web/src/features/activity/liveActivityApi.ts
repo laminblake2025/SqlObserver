@@ -1,5 +1,5 @@
 import { apiFetch } from "../../apiClient.ts";
-import { readBoundedBody } from "./activityParser.mjs";
+import { ActivityRequestError, readBoundedBody } from "./activityParser.mjs";
 import { utcMicroseconds } from "../../utcTimestamp.ts";
 export interface LiveRow {
   identity: string; sessionId: number; requestId: number | null; databaseId: number | null; databaseName: string | null;
@@ -53,7 +53,7 @@ export async function readLive<T>(target: string, path: string, parameters: URLS
   const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(target)}/activity/live${path}?${parameters}`, {
     credentials: "same-origin", cache: "no-store", signal, headers: { Accept: "application/json" },
   }, { maximumResponseBytes: 1024 * 1024 });
-  if (!response.ok) throw new Error(response.status === 403 ? "You do not have permission to read this evidence." : "Collection evidence is unavailable. Displayed observations have been retained.");
+  if (!response.ok) throw new ActivityRequestError(response.status === 403 ? "You do not have permission to read this evidence." : "Collection evidence is unavailable. Displayed observations have been retained.", response.status);
   if (!(response.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) throw new Error("Invalid activity response.");
   const value = JSON.parse(await readBoundedBody(response, signal, 1024 * 1024));
   if (path === "") validatePage(value as LivePage, parameters);

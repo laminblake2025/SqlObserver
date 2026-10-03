@@ -47,11 +47,11 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     return chartSvgX(event.currentTarget,event.clientX,event.clientY);
   };
   return <figure><svg className={`chart overview-chart${onSelectWindow?' chart-interactive':''}`} viewBox="0 0 650 220" role="img" aria-label={`${series[0]?.unit} over the selected ${mode==='local'?'local-time display':'UTC'} window. Lines connect observations; missing samples remain gaps.${onSelectWindow?' Drag across the chart to select a shared time window.':''}`}
-    onPointerMove={event=>{if(!onCrosshairChange&&!onSelectWindow)return;const value=pointX(event);if(value===null)return;onCrosshairChange?.(chartUtcAtX(value,fromUtc,toUtc));gesture.move(value);}}
-    onPointerDown={event=>{if(!onSelectWindow)return;const value=pointX(event);if(value===null)return;gesture.begin(event.pointerId,value);event.currentTarget.setPointerCapture(event.pointerId);}}
+    onPointerMove={event=>{if((!onCrosshairChange&&!onSelectWindow)||!event.isPrimary||!gesture.acceptsPointer(event.pointerId))return;const value=pointX(event);if(value===null)return;onCrosshairChange?.(chartUtcAtX(value,fromUtc,toUtc));gesture.move(event.pointerId,value);}}
+    onPointerDown={event=>{if(!onSelectWindow||event.button!==0||!event.isPrimary)return;const value=pointX(event);if(value===null)return;if(gesture.begin(event.pointerId,value))event.currentTarget.setPointerCapture(event.pointerId);}}
     onPointerUp={event=>{gesture.finish(event.pointerId,pointX(event));}}
-    onPointerCancel={gesture.cancel} onLostPointerCapture={gesture.cancel}
-    onPointerLeave={()=>{if(dragStart===null)onCrosshairChange?.(null);}}>
+    onPointerCancel={event=>gesture.cancel(event.pointerId)} onLostPointerCapture={event=>gesture.cancel(event.pointerId)}
+    onPointerLeave={event=>{if(event.isPrimary&&gesture.acceptsPointer(event.pointerId)&&dragStart===null)onCrosshairChange?.(null);}}>
     {ticks.map(f=>{const value=range.minimum+f*(range.maximum-range.minimum);return <g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(value)} y2={y(value)}/><text x="0" y={y(value)+4}>{formatOverviewChartValue(value,range)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*572} x2={48+f*572} y1={25} y2={180}/></g>;})}
     {bands.map((band,index)=>{const left=x(new Date(Math.max(from,Date.parse(band.fromUtc))).toISOString()),right=x(new Date(Math.min(to,Date.parse(band.toUtc))).toISOString());return <g className="chart-baseline-band" key={`${band.metric}:${band.fromUtc}:${index}`}>
       <rect x={left} y={y(band.high)} width={right-left} height={y(band.low)-y(band.high)}/>

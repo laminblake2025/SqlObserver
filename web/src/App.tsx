@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiRequestError, clearApiCache } from "./apiClient";
+import { TargetCatalogAccess } from "./features/targets/targetCatalogAccess";
 import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { analyticsSurfaceCatalog } from "./features/analytics/analyticsSurfaceCatalog";
@@ -105,6 +107,30 @@ export function App() {
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
   const requestedCursor = useRef<string | undefined>(undefined);
+  const catalogAccess = useRef(new TargetCatalogAccess());
+  const [catalogDenied, setCatalogDenied] = useState(false);
+  const acceptWorkspaceReceipt = catalogAccess.current.receiptGuard();
+  const denyCatalogAccess = useCallback(() => {
+    catalogAccess.current.deny();
+    clearApiCache();
+    setCatalogDenied(true);
+    setTargets([]);
+    setNextCursor(undefined);
+    setDirectTargetLookup(undefined);
+    setAccess(undefined);
+    setCommandPaletteOpen(false);
+    setAdding(false);
+    setLoading(false);
+    setMessage("Server access could not be verified. Received server labels and evidence have been cleared. Refresh to retry with your current access.");
+  }, []);
+  const refreshWorkspace = () => {
+    if (catalogDenied) {
+      catalogAccess.current.retry();
+      setCatalogDenied(false);
+    }
+    setRefresh(value => value + 1);
+  };
+  useEffect(() => () => catalogAccess.current.dispose(), []);
 
   useEffect(() => {
     const change = () => setRoute(readRoute(location.hash));
@@ -116,12 +142,12 @@ export function App() {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        if (!event.repeat) setCommandPaletteOpen(true);
+        if (!event.repeat && !catalogDenied) setCommandPaletteOpen(true);
       }
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, []);
+  }, [catalogDenied]);
 
   useEffect(() => {
     if (livePaused || isRewind) return;
@@ -135,45 +161,51 @@ export function App() {
   }, [livePaused, isRewind]);
 
   useEffect(() => {
+    const read = catalogAccess.current.begin();
+    if (!read) return;
     const targetId = route.target || null;
-    const controller = new AbortController();
     setAccess(current => current?.targetId === targetId ? current : undefined);
-    void getMyAccess(targetId, controller.signal)
-      .then(value => { if (!controller.signal.aborted) setAccess({ targetId, value }); })
-      .catch(() => { if (!controller.signal.aborted) setAccess(undefined); });
-    return () => controller.abort();
-  }, [route.target, slowRefresh]);
+    void getMyAccess(targetId, read.signal)
+      .then(value => { if (read.current()) setAccess({ targetId, value }); })
+      .catch((error: unknown) => {
+        if (!read.current()) return;
+        if (isAccessDenial(error)) denyCatalogAccess();
+        else setAccess(undefined);
+      });
+    return read.cancel;
+  }, [route.target, slowRefresh, catalogDenied, denyCatalogAccess]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    const read = catalogAccess.current.begin();
+    if (!read) return;
     setLoading(true);
     setMessage(undefined);
     if (requestedCursor.current !== cursor) setTargets([]);
     requestedCursor.current = cursor;
     setNextCursor(undefined);
-    void listObservationTargets(controller.signal, cursor)
+    void listObservationTargets(read.signal, cursor)
       .then((page) => {
-        if (!controller.signal.aborted) {
+        if (read.current()) {
           setTargets(page.items);
           setNextCursor(page.nextCursor ?? undefined);
         }
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setMessage(error instanceof Error ? error.message : "Servers are unavailable.");
-        }
+        if (!read.current()) return;
+        if (isAccessDenial(error)) denyCatalogAccess();
+        else setMessage(`${error instanceof Error ? error.message : "The server list could not be refreshed."} Any received server labels remain from the last successful read.`);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (read.current()) setLoading(false);
       });
-    return () => controller.abort();
-  }, [cursor, slowRefresh]);
+    return read.cancel;
+  }, [cursor, slowRefresh, catalogDenied, denyCatalogAccess]);
 
   const evidence = useFleetEvidence(targets, route.page === "servers");
   const listedTarget = targets.find((target) => target.instanceId.toLowerCase() === route.target.toLowerCase());
   const fleetAlertsPage = route.page === "alerts" && !route.target;
   const targetPage = route.page !== "overview" && route.page !== "servers" && !fleetAlertsPage;
-  const directLookupRequired = targetPage && Boolean(route.target) && !listedTarget;
+  const directLookupRequired = !catalogDenied && targetPage && Boolean(route.target) && !listedTarget;
   const currentDirectTargetLookup = directLookupRequired
     ? directTargetLookup?.targetId === route.target && directTargetLookup.refresh === slowRefresh
       ? directTargetLookup
@@ -182,15 +214,16 @@ export function App() {
 
   useEffect(() => {
     if (!targetPage || !route.target || listedTarget) return;
+    const read = catalogAccess.current.begin();
+    if (!read) return;
     const targetId = route.target;
-    const controller = new AbortController();
     setDirectTargetLookup((previous) => ({
       targetId, refresh: slowRefresh, state: "loading",
       target: previous?.targetId === targetId && previous.state !== "error" ? previous.target : undefined,
     }));
-    void getObservationTarget(targetId, controller.signal)
+    void getObservationTarget(targetId, read.signal)
       .then((value) => {
-        if (controller.signal.aborted) return;
+        if (!read.current()) return;
         if (value.instanceId.toLowerCase() !== targetId.toLowerCase()) {
           setDirectTargetLookup({ targetId, refresh: slowRefresh, state: "error", message: "The selected server is unavailable." });
           return;
@@ -198,14 +231,14 @@ export function App() {
         setDirectTargetLookup({ targetId, refresh: slowRefresh, state: "resolved", target: value });
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
+        if (read.current()) {
           setDirectTargetLookup({ targetId, refresh: slowRefresh, state: "error", message: targetLookupError(error) });
         }
       });
-    return () => controller.abort();
-  }, [listedTarget, slowRefresh, route.target, targetPage]);
+    return read.cancel;
+  }, [listedTarget, slowRefresh, route.target, targetPage, catalogDenied]);
 
-  const selected = listedTarget ?? (directTargetLookup?.targetId === route.target && directTargetLookup.state !== "error" ? directTargetLookup.target : undefined);
+  const selected = catalogDenied ? undefined : listedTarget ?? (directTargetLookup?.targetId === route.target && directTargetLookup.state !== "error" ? directTargetLookup.target : undefined);
   const changeDatabaseContext = (databaseId: number | undefined) => {
     // A native selection can arrive before the preceding hashchange render.
     // Use the current URL so it cannot restore the view we just left.
@@ -300,7 +333,7 @@ export function App() {
   };
   const incidentPage = ["overview", "health", "activity", "waits", "resources", "queries", "deadlocks", "operations", "alerts"].includes(route.page);
   const incidentContext = selected && incidentPage ? resolveWorkspaceIncidentWindow(location.hash, selected.instanceId, Date.now()) : undefined;
-  const targetOptions = selected && !targets.some((target) => target.instanceId.toLowerCase() === selected.instanceId.toLowerCase())
+  const targetOptions = catalogDenied ? [] : selected && !targets.some((target) => target.instanceId.toLowerCase() === selected.instanceId.toLowerCase())
     ? [selected, ...targets]
     : targets;
 
@@ -356,7 +389,7 @@ export function App() {
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">{timeDisplayMode === "local" ? "Local time" : "UTC"} <span className="topbar-separator">·</span> Read-only evidence</span></div>
-          <button className="secondary-button topbar-search" type="button" onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search <kbd>Ctrl+K</kbd></button>
+          <button className="secondary-button topbar-search" type="button" disabled={catalogDenied} onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search <kbd>Ctrl+K</kbd></button>
           <button className="secondary-button" type="button" aria-label={timeDisplayMode === "local" ? "Show UTC time" : "Show local time"}
             onClick={() => setTimeDisplayMode(timeDisplayMode === "local" ? "utc" : "local")}>
             {timeDisplayMode === "local" ? "Local time" : "UTC"}
@@ -371,7 +404,7 @@ export function App() {
           }}>{livePaused ? "Resume live updates" : "Pause live updates"}</button>}
         </header>
         <main id="main-content" tabIndex={-1} className="shell">
-          <WorkspaceFleetStrip scope={scope} refresh={slowRefresh} />
+          {!catalogDenied && <WorkspaceFleetStrip scope={scope} refresh={slowRefresh} />}
           <PageHeading
             eyebrow={route.page === "overview" ? "SQL OBSERVER / OVERVIEW" : `SQL OBSERVER / ${destinations[route.page].toUpperCase()}`}
             title={pageTitle}
@@ -383,6 +416,7 @@ export function App() {
                     <span>Target</span>
                     <select
                       aria-label="Target server"
+                      disabled={catalogDenied}
                       value={route.target}
                       onChange={(event) => { location.hash = routeHref(route.page, event.target.value); }}
                     >
@@ -391,7 +425,7 @@ export function App() {
                     </select>
                   </label>
                 ) : null}
-                <button className="secondary-button" type="button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>
+                <button className="secondary-button" type="button" disabled={loading} onClick={refreshWorkspace}>
                   ↻ <span>Refresh</span>
                 </button>
                 {selected && route.page === "health" && canManageRules
@@ -414,16 +448,17 @@ export function App() {
           </section>}
 
           {route.page !== "overview" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
-          {route.page !== "overview" && !fleetAlertsPage && message ? <p role="alert" className="status-message">{message}</p> : null}
+          {message ? <p role="alert" className="status-message">{message}</p> : null}
           {targetPage && !props && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
 
-          {route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
-          {fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} selection={alertSelection} /> : null}
+          {!catalogDenied && route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
+          {!catalogDenied && fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} selection={alertSelection} /> : null}
           {route.page === "servers" && serverManagement?.state === "invalid" ? <section className="panel" aria-label="Server settings"><h2>Server settings</h2><p role="alert">{serverManagement.message}</p><a href={overviewHref({ ...scope, databaseId: undefined }, "servers", "")}>Return to server list</a></section> : null}
-          {route.page === "servers" && serverManagement?.state === "selected" ? <TargetManagementPanel
+          {!catalogDenied && route.page === "servers" && serverManagement?.state === "selected" ? <TargetManagementPanel
             key={serverManagement.instanceId} instanceId={serverManagement.instanceId} scope={scope} access={myAccess}
             onChanged={target => {
+              if (!acceptWorkspaceReceipt()) return;
               const current = readServerManagementSelection(location.hash);
               if (current?.state !== "selected" || current.instanceId !== target.instanceId.toLowerCase()) return;
               setTargets(targets => mergeManagedTarget(targets, target));
@@ -433,16 +468,16 @@ export function App() {
               if (current?.state === "selected" && current.instanceId === serverManagement.instanceId)
                 location.hash = overviewHref(readOverviewScope(location.hash), "servers");
             }} /> : null}
-          {route.page === "servers" && requestedCursor.current === cursor && !message && (!loading || targets.length > 0) ? <><ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} settingsHref={target => serverSettingsHref(scope, target)} />{loading ? <p role="status">Refreshing server list…</p> : null}</> : null}
-          {targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
+          {!catalogDenied && route.page === "servers" && requestedCursor.current === cursor && (!message || targets.length > 0) && (!loading || targets.length > 0) ? <><ServersPage targets={targets} evidence={evidence} cursor={cursor} nextCursor={nextCursor} setCursor={setCursor} routeHref={routeHref} settingsHref={target => serverSettingsHref(scope, target)} />{loading ? <p role="status">Refreshing server list…</p> : null}</> : null}
+          {!catalogDenied && targetPage && !loading && !props && !message && currentDirectTargetLookup?.state !== "loading" && currentDirectTargetLookup?.state !== "error" ? <p className="empty-state">Select an authorized server. An unavailable selection may have been removed or may fall outside your access.</p> : null}
 
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
               {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
                 onSelectSection={section => { location.hash = retainDashboardTimelineHref(healthSectionHref(readOverviewScope(location.hash), props.instanceId, section), location.hash); }}
                 canManageConfiguration={canManageRules} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
-              {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} selectionHash={location.hash}
+              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} targetRevision={selected!.configurationRevision} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} selectionHash={location.hash}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} canReadRules={canManageRules}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
@@ -502,10 +537,10 @@ export function App() {
         <footer className="app-footer">SQL Observer <span>·</span> Bounded evidence <span>·</span> Stored in UTC <span>·</span> Pre-release validation</footer>
       </div>
 
-      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} scope={scope} />
+      <CommandPalette open={!catalogDenied && commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} scope={scope} />
       <Drawer open={adding && canAddServer} onClose={() => setAdding(false)}>
         {adding && canAddServer && <TargetOnboarding onRegistered={(target) => {
-          if (!registrationAllowed.current) return;
+          if (!acceptWorkspaceReceipt() || !registrationAllowed.current) return;
           setTargets((current) => [target, ...current.filter((candidate) => candidate.instanceId.toLowerCase() !== target.instanceId.toLowerCase())].slice(0, 50));
           setAdding(false);
         }} />}
@@ -555,6 +590,10 @@ function QueryPerformanceRangeMessage({
       <a href={queryPerformanceDefaultHref(scope)}>Use the last 24 hours</a>
     </section>
   );
+}
+
+function isAccessDenial(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
 }
 
 function targetLookupError(error: unknown): string {

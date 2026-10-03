@@ -169,14 +169,14 @@ test('shows bounded loading, isolates a sanitized failed section, and recovers t
   session.intercept = async (route, _url, _id, kind) => {
     if (kind !== 'waits' || !fail) return false;
     started(); await held;
-    await route.fulfill({ status: 403, contentType: 'text/html', body: '<script>window.activityInjected=true</script> password=synthetic-secret' });
+    await route.fulfill({ status: 503, contentType: 'text/html', body: '<script>window.activityInjected=true</script> password=synthetic-secret' });
     return true;
   };
   await open(page); await seen;
   await expect(supporting(page).getByText('Loading bounded activity evidence…', { exact: true })).toBeVisible();
   release();
   await expect(supporting(page).getByRole('status').filter({ hasText: 'Waits:' })).toHaveText(
-    'Waits: You are not authorized to view activity for this target. Refresh to retry this section.');
+    'Waits: The activity request failed safely. Refresh to retry this section.');
   await expect(blockingHistory(page).getByRole('cell', { name: '71', exact: true })).toBeVisible();
   await expect(supporting(page).getByRole('heading', { name: 'Server waits', exact: true })).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText('synthetic-secret');
@@ -355,7 +355,7 @@ test('a delayed supporting aggregate cannot replace explicit latest history, whi
   // until its separately held native Requests response finishes.
   const aggregate = holdResponse(page, (_url, _id, kind) => kind === 'requests', fixture.requests);
   await refreshHistory(page, 'blocking/history'); await aggregate.seen;
-  await expect(supporting(page).getByText('Loading bounded activity evidence…', { exact: true })).toBeVisible();
+  await expect(supporting(page).getByRole('status').filter({ hasText: 'Refreshing bounded activity evidence; previously received snapshots remain displayed…' })).toBeVisible();
   await expect(history.getByRole('cell', { name: '82', exact: true })).toBeVisible();
   fixture['blocking/history'] = { ...fixture['blocking/history'], repositoryTimeUtc: '2026-09-30T13:10:00.000Z',
     items: [blockingHistoryItem({ blockedSessionId: 96 })] };
@@ -363,7 +363,7 @@ test('a delayed supporting aggregate cannot replace explicit latest history, whi
   await expect(history.getByRole('cell', { name: '96', exact: true })).toBeVisible();
   await expect(history.getByRole('button', { name: 'Return to latest blocking history', exact: true })).toHaveCount(0);
   await aggregate.finish();
-  await expect(supporting(page).getByText('Loading bounded activity evidence…', { exact: true })).toHaveCount(0);
+  await expect(supporting(page).getByRole('status').filter({ hasText: 'Refreshing bounded activity evidence; previously received snapshots remain displayed…' })).toHaveCount(0);
   await expect(supporting(page).getByRole('heading', { name: 'Server waits', exact: true })).toBeVisible();
   await expect(history.getByRole('cell', { name: '96', exact: true })).toBeVisible();
   await expect(history.getByRole('cell', { name: '94', exact: true })).toHaveCount(0);

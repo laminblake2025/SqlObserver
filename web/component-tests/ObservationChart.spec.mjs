@@ -61,7 +61,121 @@ async function drag(page, chart, from, to) {
   await page.mouse.up();
 }
 
+async function plotPoint(chart, fraction) {
+  await chart.getByRole('img').scrollIntoViewIfNeeded();
+  const axes = chart.locator('.chart-gridline-vertical');
+  const edge = line => line.evaluate(element => {
+    const point = element.ownerSVGElement.createSVGPoint();
+    point.x = element.x1.baseVal.value;
+    point.y = (element.y1.baseVal.value + element.y2.baseVal.value) / 2;
+    const screen = point.matrixTransform(element.getScreenCTM());
+    return { x: screen.x, y: screen.y };
+  });
+  const start = await edge(axes.first()), end = await edge(axes.last());
+  return { x: start.x + (end.x - start.x) * fraction, y: start.y };
+}
+
+async function observePointerOwner(svg) {
+  await svg.evaluate(element => element.addEventListener('pointerdown', event => {
+    element.dataset.testPointerOwner = String(event.pointerId);
+  }, { once: true }));
+}
+
 for (const kind of ['observation', 'overview']) {
+  test(`${kind} ignores right and middle mouse drags and secondary touch starts`, async ({ page }) => {
+    await page.getByLabel('Primary chart kind').selectOption(kind);
+    const chart = primary(page), svg = chart.getByRole('img');
+    const start = await plotPoint(chart, .25), end = await plotPoint(chart, .75);
+    for (const button of ['right', 'middle']) {
+      await page.mouse.move(start.x, start.y); await page.mouse.down({ button });
+      await page.mouse.move(end.x, end.y, { steps: 4 });
+      await expect(chart.locator('.chart-selection')).toHaveCount(0);
+      await page.mouse.up({ button }); await page.keyboard.press('Escape');
+      await expect(result(page, 'Selection callback count')).toHaveText('0');
+    }
+    // Exercise a secondary PointerEvent on the mounted chart without granting capture.
+    const secondary = { pointerId: 900, pointerType: 'touch', isPrimary: false, button: 0, buttons: 1,
+      clientX: start.x, clientY: start.y };
+    await svg.dispatchEvent('pointerdown', secondary);
+    await svg.dispatchEvent('pointermove', { ...secondary, clientX: end.x });
+    await svg.dispatchEvent('pointerup', { ...secondary, clientX: end.x, buttons: 0 });
+    await expect(chart.locator('.chart-selection')).toHaveCount(0);
+    await expect(result(page, 'Selection callback count')).toHaveText('0');
+    await page.mouse.move(start.x, start.y); await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 4 }); await page.mouse.up();
+    await expect(result(page, 'Selection callback count')).toHaveText('1');
+  });
+
+  test(`${kind} preserves the owning drag across foreign starts, movement and termination`, async ({ page }) => {
+    await page.getByLabel('Primary chart kind').selectOption(kind);
+    const chart = primary(page), svg = chart.getByRole('img');
+    const start = await plotPoint(chart, .25), end = await plotPoint(chart, .75);
+    await observePointerOwner(svg);
+    await page.mouse.move(start.x, start.y); await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 4 });
+    const owner = Number(await svg.getAttribute('data-test-pointer-owner'));
+    expect(owner).toBeGreaterThan(0);
+    const selection = chart.locator('.chart-selection');
+    await expect(selection).toHaveCount(1);
+    const preview = await selection.evaluate(element => [element.getAttribute('x'), element.getAttribute('width')]);
+    const crosshair = await result(page, 'Shared crosshair UTC').textContent();
+    for (const isPrimary of [false, true]) {
+      const foreign = { pointerId: owner + 100, pointerType: 'touch', isPrimary, button: 0, buttons: 1,
+        clientX: start.x, clientY: start.y };
+      for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'pointerleave']) {
+        await svg.dispatchEvent(type, foreign);
+        await expect(selection).toHaveCount(1);
+        expect(await selection.evaluate(element => [element.getAttribute('x'), element.getAttribute('width')])).toEqual(preview);
+        await expect(result(page, 'Shared crosshair UTC')).toHaveText(crosshair);
+        await expect(result(page, 'Selection callback count')).toHaveText('0');
+      }
+    }
+    await page.mouse.up();
+    await expect(result(page, 'Selection callback count')).toHaveText('1');
+    await expect(chart.locator('.chart-selection')).toHaveCount(0);
+    expect(Math.abs(Date.parse(await result(page, 'Selected from UTC').textContent()) - Date.parse('2026-01-15T12:15:00Z'))).toBeLessThan(1000);
+    expect(Math.abs(Date.parse(await result(page, 'Selected to UTC').textContent()) - Date.parse('2026-01-15T12:45:00Z'))).toBeLessThan(1000);
+  });
+
+  for (const type of ['pointercancel', 'lostpointercapture']) test(`${kind} cancels only the owning ${type}`, async ({ page }) => {
+    await page.getByLabel('Primary chart kind').selectOption(kind);
+    const chart = primary(page), svg = chart.getByRole('img');
+    const start = await plotPoint(chart, .25), end = await plotPoint(chart, .75);
+    await observePointerOwner(svg);
+    await page.mouse.move(start.x, start.y); await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 4 });
+    await expect(chart.locator('.chart-selection')).toHaveCount(1);
+    const pointerId = Number(await svg.getAttribute('data-test-pointer-owner'));
+    await svg.dispatchEvent(type, { pointerId, pointerType: 'mouse', isPrimary: true });
+    await expect(chart.locator('.chart-selection')).toHaveCount(0);
+    await page.mouse.up();
+    await expect(result(page, 'Selection callback count')).toHaveText('0');
+    await expect(result(page, 'Selected from UTC')).toHaveText(initialFrom);
+    await expect(result(page, 'Selected to UTC')).toHaveText(initialTo);
+  });
+
+  test(`${kind} selects a shared window with native primary touch input`, async ({ page }) => {
+    await page.getByLabel('Primary chart kind').selectOption(kind);
+    const chart = primary(page), start = await plotPoint(chart, .25), end = await plotPoint(chart, .75);
+    const session = await page.context().newCDPSession(page);
+    let touching = false;
+    try {
+      await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...start, id: 1 }] });
+      touching = true;
+      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...end, id: 1 }] });
+      await expect(chart.locator('.chart-selection')).toHaveCount(1);
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      touching = false;
+      await expect(result(page, 'Selection callback count')).toHaveText('1');
+      await expect(chart.locator('.chart-selection')).toHaveCount(0);
+      expect(Math.abs(Date.parse(await result(page, 'Selected from UTC').textContent()) - Date.parse('2026-01-15T12:15:00Z'))).toBeLessThan(1000);
+      expect(Math.abs(Date.parse(await result(page, 'Selected to UTC').textContent()) - Date.parse('2026-01-15T12:45:00Z'))).toBeLessThan(1000);
+    } finally {
+      if (touching) await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+      await session.detach();
+    }
+  });
+
   for (const width of [320, 1440]) test(`${kind} maps the actual visible plot bounds to the full UTC window at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 }); await page.getByLabel('Primary chart kind').selectOption(kind);
     const chart = primary(page), svg = chart.getByRole('img'); await svg.scrollIntoViewIfNeeded();
@@ -246,17 +360,24 @@ test('uses the real time provider for local and UTC chart labels without changin
   await expect(chart.getByRole('columnheader', { name: 'UTC', exact: true })).toBeVisible();
 });
 
-test('keeps chart values accessible at narrow and wide widths', async ({ page }, info) => {
-  const screenshotDirectory = fileURLToPath(new URL('../../artifacts/dashboard-context-search/screenshots/', import.meta.url));
+test('keeps chart values accessible at four dashboard widths', async ({ page }, info) => {
+  const screenshotDirectory = fileURLToPath(new URL('../../artifacts/dashboard-access-navigation/screenshots/', import.meta.url));
   await mkdir(screenshotDirectory, { recursive: true });
   await page.getByLabel('Show reference values').check();
   await primary(page).getByText('View chart values', { exact: true }).click();
-  for (const width of [320, 1440]) {
+  for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await expect(primary(page).getByRole('img')).toBeVisible();
     const values = primary(page).getByRole('region', { name: 'Latency evidence chart values', exact: true });
-    await values.focus();
+    await primary(page).getByText('View chart values', { exact: true }).focus();
+    await page.keyboard.press('Tab');
     await expect(values).toBeFocused();
+    const focus = await values.evaluate(element => {
+      const style = getComputedStyle(element);
+      return { outlineStyle: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth) };
+    });
+    expect(focus.outlineStyle).not.toBe('none');
+    expect(focus.outlineWidth).toBeGreaterThanOrEqual(2);
     expect(await values.locator('td[title]').first().evaluate(element => {
       const range = document.createRange(); range.selectNodeContents(element); return range.getClientRects().length;
     }), 'Observation timestamps remain readable on one line').toBe(1);
@@ -268,8 +389,8 @@ test('keeps chart values accessible at narrow and wide widths', async ({ page },
     const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
     await info.attach(`observation-chart-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
     expect(violations).toEqual([]);
-    const path = `${screenshotDirectory}observation-chart-${width}.png`;
-    await values.evaluate(element => { element.scrollLeft = 0; element.blur(); });
+    const path = `${screenshotDirectory}chart-pointer-${width}.png`;
+    await values.evaluate(element => { element.scrollLeft = 0; });
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
     await page.screenshot({ path, fullPage: true });

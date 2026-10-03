@@ -2,7 +2,31 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest retained Deadlock investigation qualification (2026-10-03)
+## Latest access, navigation and pointer qualification (2026-10-03)
+
+Waits and Activity now share definitive caller-denial ownership across their retained sources. Native HTTP 401/403 cancels pending reads, clears current/history/trend/ranking/captured receipts and local First caches, and stops automatic retry loops. Explicit successful recovery restores only the sources actually validated; a history-only Activity response cannot reopen failed supporting sources. Ordinary transient failures retain received evidence with disclosure, and a successful collector `PermissionDenied` receipt remains coverage evidence rather than caller denial. Target, known revision, exact window and selection changes fence late results. Retained Activity refreshes disclose that previous snapshots remain displayed.
+
+Workspace catalog or identity denial clears retained server names, selected diagnostics, fleet evidence, search and pending registration/settings subtrees. Synchronous receipt guards reject late native mutation callbacks even before a subtree unmounts. Automatic ticks cannot reopen access; explicit Refresh starts a new read generation and preserves the URL. Ordinary catalog failure retains received labels with a visible last-successful-read disclosure. A direct target lookup still has its own scoped failure boundary.
+
+Health resolves route-owned default sections during render: absent section means Summary, or Databases when database context is present. Back/Forward, reload and clearing database context now agree; explicit sections remain authoritative. Observation and Overview charts admit only a primary left-button start and preserve one pointer owner through movement, finish, cancellation and lost capture. Foreign pointer events cannot overwrite or cancel that owner's drag. Native primary touch and keyboard chart evidence remain supported.
+
+Three non-overlapping owners covered Waits/Activity lifecycle and dark-theme recovery checks, Health diagnostic/navigation review and responsive checks, and chart pointer/interaction checks. Independent source peer reviews covered App callback races and recovery/context fences. One lead integrated App/native fixtures, resolved review findings, ran final qualification and reviewed captures.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent source reviews and one lead. | Complete. |
+| Dark theme | Existing shared tokens, readable denial/retained-evidence messages, visible keyboard focus and bounded diagnostic scrolling. | Passing in tested states. |
+| Diagnostic-screen review | Waits/Activity caller-denial recovery, catalog/identity races, Health URL defaults and chart pointer ownership repaired. | Four recorded findings closed. |
+| Interaction tests | **102 owning checks**, **109 mounted cases**, **18 new built-App cases** and **13 affected existing App regressions**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Actual keyboard navigation, axe and document overflow checks at **320/390/768/1440**, including denial and recovery states. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **559 unchanged final frozen inputs**, closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **16 fresh captures**, representative mobile/desktop review, [gallery](../../artifacts/dashboard-access-navigation/index.html), [case inventories, hashes and provenance](../../artifacts/dashboard-access-navigation/completion.json). | Delivered locally, bound to the final local commit. |
+
+Complete attempts are preserved in `initial-browser` and `before-keyboard-focus`. Initial setup used an invalid captured-session state and tried to click through a registration modal; the corrected App case triggers the real scheduled workspace refresh. The Activity pending assertion exposed a missing retained-refresh disclosure, which triggered a rebuild and fresh owning/browser groups. A subsequent four-width focus check used programmatic focus after mouse input; it now reaches the retry button with Tab and retains focus-visible, outline, axe, overflow and Enter-recovery assertions. All browsers stopped before repairs. Only the owning mounted spec changed after the passing build/native/App runs; all other frozen inputs remained unchanged. The complete mounted group reran, rather than assembling passing repair subsets.
+
+Owning checks include runtime/API/model behavior and the existing captured-session category check that also compares SQL source tokens; no SQL executes. All HTTP traffic and screenshots use synthetic native frontend fixtures. No connected database, backend authorization/mutation, manual assistive-technology or cross-browser certification is claimed. Report expiry is the next existing-contract frontend finding; backend-dependent requirements and the broader repository revamp remain open. No GitHub upload occurred.
+
+## Previous retained Deadlock investigation qualification (2026-10-03)
 
 Deadlock event pages now retain the received window and collected cutoff through workspace polling, moving Live ticks, failed continuation and cancellation. First/Previous/visited Next restore locally; unread continuation keeps the native cursor and exact bounds. Return to latest replaces the investigation and resumes future polling only after a validated successful read. Retry repeats the failed/cancelled request. Browser retention is bounded to 20 pages / 500 events, independently of repository retention.
 
@@ -174,12 +198,8 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 The legacy Operations projection pagination, direct current head-blocker, canonical native pager, workspace triage/context, Analytics and recorded Deadlock findings are closed by the qualifications above. Analytics incidents use the native bounded legacy list rather than an invented paginated surface contract. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
 
-Fresh source review identified the following existing-contract frontend findings for focused regression and implementation next. They are not closed by the Deadlock qualification, and do not authorize backend expansion:
+The Health default-section, workspace target-catalog denial, Waits retained-read denial and chart pointer-ownership findings are closed by the latest access/navigation qualification. The remaining existing-contract frontend finding is:
 
-- **Health default-section restoration:** [TargetHealthPanel](../../web/src/features/health/TargetHealthPanel.tsx) keeps its local tab when the route drops `healthSection` and database context. Summary → Collection → browser Back to a bare Health URL can leave Collection selected; reload of that same URL selects Summary. Cover absent-section/default Databases and removal of database context.
-- **Workspace target-catalog denial:** [App target loading](../../web/src/App.tsx) catches same-cursor refresh failures without removing the previous target catalog; [targetApi](../../web/src/features/targets/targetApi.ts) preserves native HTTP status. Distinguish definitive 401/403 from transient failure, cancel late catalog reads and test labels/subtree removal and explicit authorized recovery.
-- **Waits retained-read denial:** [TargetWaitsPanel](../../web/src/features/activity/TargetWaitsPanel.tsx) and [useHistoryPaging](../../web/src/features/activity/useHistoryPaging.ts) keep prior pages after typed Activity 401/403. Cover current/history/outer retained evidence and prevent local First navigation from reviving refused content. Ordinary transient read failure remains separate.
-- **Chart pointer ownership:** [ObservationChart](../../web/src/components/ObservationChart.tsx), [OverviewChart](../../web/src/features/overview/OverviewChart.tsx) and the shared gesture hook admit secondary/right/middle pointer gestures. The timeline already requires primary left-button ownership. Verify only the owning primary pointer can commit a shared range.
 - **Report expiry:** [ReportsPanel](../../web/src/features/reports/ReportsPanel.tsx) continues displaying export links after native `expiresAtUtc`. Reuse the existing saved-investigation report's expiry/wake semantics, preserve exact uncertain-retry identity, and distinguish explicit fresh generation from expired receipt recovery.
 
 Check paths and current native contracts before changing these sources. This does not complete the dashboard refactor or repository plan.

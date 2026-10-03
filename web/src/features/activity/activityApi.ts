@@ -1,5 +1,5 @@
 import type { ActivityPage, ActivityRequest, ActivitySession, ActivityWait, BlockingEdge, BlockingHistoryItem, ServerWaitHistoryItem } from "./activityTypes";
-import { getPage, parseEdge, parseHistory, parseRequest, parseSession, parseWait, parseWaitHistory } from "./activityParser.mjs";
+import { ActivityRequestError, getPage, parseEdge, parseHistory, parseRequest, parseSession, parseWait, parseWaitHistory } from "./activityParser.mjs";
 import { utcMicroseconds } from "../../utcTimestamp.ts";
 export { ActivityRequestError, safeStatusMessage } from "./activityParser.mjs";
 
@@ -46,7 +46,8 @@ export async function getCurrentBlockingPage(instanceId: string, signal: AbortSi
   return getPage(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity/blocking/current?limit=${String(blockingGraphLimit)}`, parseEdge, instanceId, signal, blockingGraphLimit);
 }
 
-export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historySelection: 1 | 6 | 24 | { readonly fromUtc: string; readonly toUtc: string } | null = 1): Promise<{
+export type ActivitySnapshotSource = "sessions" | "requests" | "waits" | "blocking" | "history" | "waitHistory";
+export async function getActivitySnapshot(instanceId: string, signal: AbortSignal, historySelection: 1 | 6 | 24 | { readonly fromUtc: string; readonly toUtc: string } | null = 1, onAccessDenied?: () => void, readSources?: readonly ActivitySnapshotSource[]): Promise<{
   readonly sessions?: ActivityPage<ActivitySession>; readonly requests?: ActivityPage<ActivityRequest>;
   readonly waits?: ActivityPage<ActivityWait>; readonly blocking?: ActivityPage<BlockingEdge>;
   readonly history?: ActivityPage<BlockingHistoryItem>; readonly waitHistory?: ActivityPage<ServerWaitHistoryItem>; readonly errors: readonly string[];
@@ -55,17 +56,27 @@ export async function getActivitySnapshot(instanceId: string, signal: AbortSigna
   const base = `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/activity`;
   const now = Date.now();
   const errors: string[] = [];
-  const read = async <T,>(name: string, operation: Promise<T>): Promise<T | undefined> => { try { return await operation; } catch (error) { if (signal.aborted) throw error; errors.push(`${name}: ${error instanceof Error ? error.message : "Evidence unavailable."}`); return undefined; } };
+  const read = async <T,>(name: string, operation: Promise<T>): Promise<T | undefined> => {
+    try { return await operation; }
+    catch (error) {
+      if (signal.aborted) throw error;
+      if (onAccessDenied && error instanceof ActivityRequestError && (error.status === 401 || error.status === 403)) {
+        onAccessDenied(); throw error;
+      }
+      errors.push(`${name}: ${error instanceof Error ? error.message : "Evidence unavailable."}`); return undefined;
+    }
+  };
   const historyWindow = typeof historySelection === "number"
     ? { fromUtc: new Date(now - historySelection * 3_600_000).toISOString(), toUtc: new Date(now).toISOString() }
     : historySelection;
+  const included = (source: ActivitySnapshotSource) => readSources === undefined || readSources.includes(source);
   const [sessions, requests, waits, blocking, history, waitHistory] = await Promise.all([
-    read("Sessions", getPage(`${base}/sessions?limit=${String(pageLimit)}`, parseSession, instanceId, signal)),
-    read("Requests", getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal)),
-    read("Waits", getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal)),
-    read("Current blocking", getCurrentBlockingPage(instanceId, signal)),
-    historyWindow === null ? Promise.resolve(undefined) : read("Blocking history", getBlockingHistoryPage(instanceId, historyWindow, signal)),
-    historyWindow === null ? Promise.resolve(undefined) : read("Wait history", getServerWaitHistoryPage(instanceId, historyWindow, signal)),
+    included("sessions") ? read("Sessions", getPage(`${base}/sessions?limit=${String(pageLimit)}`, parseSession, instanceId, signal)) : undefined,
+    included("requests") ? read("Requests", getPage(`${base}/requests?limit=${String(pageLimit)}`, parseRequest, instanceId, signal)) : undefined,
+    included("waits") ? read("Waits", getPage(`${base}/waits?limit=${String(pageLimit)}`, parseWait, instanceId, signal)) : undefined,
+    included("blocking") ? read("Current blocking", getCurrentBlockingPage(instanceId, signal)) : undefined,
+    historyWindow === null || !included("history") ? undefined : read("Blocking history", getBlockingHistoryPage(instanceId, historyWindow, signal)),
+    historyWindow === null || !included("waitHistory") ? undefined : read("Wait history", getServerWaitHistoryPage(instanceId, historyWindow, signal)),
   ]);
   return { sessions, requests, waits, blocking, history, waitHistory, errors };
 }
