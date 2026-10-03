@@ -16,17 +16,27 @@ export function handleWorkspaceSelectionFixture(url, response, request, targets,
   const targetId = target.instanceId, surface = route[2];
   if (deadlocks && (surface === 'deadlocks' || surface.startsWith('deadlocks/'))) {
     const targetOffset = targets.indexOf(target) * 10;
-    const summaries = deadlockSelectionIds.map((eventId, index) => ({ eventId: eventId.slice(0, -3) + String(333 + index + targetOffset), fingerprint: 'abc'[index].repeat(64), occurredAtUtc: deadlockSelectionTimes[index], participantCount: 2, relationCount: 2, parseTruncated: false, collectedAtUtc: listingStartedUtc }));
+    const exact = deadlockSelectionIds.map((eventId, index) => ({ eventId: eventId.slice(0, -3) + String(333 + index + targetOffset), fingerprint: 'abc'[index].repeat(64), occurredAtUtc: deadlockSelectionTimes[index], participantCount: 2, relationCount: 2, parseTruncated: false, collectedAtUtc: listingStartedUtc }));
+    // Native continuation is emitted only after a full 25-row page. Keep the
+    // third exact occurrence off that page with distinct intervening evidence.
+    const fillers = Array.from({ length: 23 }, (_, index) => ({ ...exact[1],
+      eventId: `44444444-4444-4444-8444-${String(targetOffset + index + 1).padStart(12, '0')}`,
+      fingerprint: 'd'.repeat(64), occurredAtUtc: `2026-09-26T10:00:00.${String(654320 - index).padStart(6, '0')}Z` }));
+    const summaries = [exact[0], exact[1], ...fillers, exact[2]];
     if (surface === 'deadlocks') {
       const cursor = url.searchParams.get('cursor');
-      if (cursor && cursor !== 'cGFnZTI=') { send(response, {}, 400); return true; }
-      const start = Date.parse(url.searchParams.get('fromUtc')), end = Date.parse(url.searchParams.get('toUtc'));
-      const items = (cursor ? summaries.slice(2) : summaries.slice(0, 2)).filter(item => Date.parse(item.occurredAtUtc) >= start && Date.parse(item.occurredAtUtc) < end);
-      send(response, { targetId, repositoryTimeUtc: listingStartedUtc, items, nextCursor: cursor ? null : 'cGFnZTI=' }); return true;
+      const from = url.searchParams.get('fromUtc'), to = url.searchParams.get('toUtc');
+      const micros = value => BigInt(Date.parse(value.slice(0, 19) + 'Z')) * 1000n + BigInt((value.split('.')[1]?.replace(/(?:Z|\+00:00)$/, '') ?? '').padEnd(6, '0'));
+      const rows = summaries.filter(item => micros(item.occurredAtUtc) >= micros(from) && micros(item.occurredAtUtc) < micros(to));
+      const tail = rows[24];
+      const next = rows.length > 25 ? Buffer.from(JSON.stringify([targetId, tail.occurredAtUtc, tail.eventId, listingStartedUtc, from, to])).toString('base64') : null;
+      if (cursor && cursor !== next) { send(response, {}, 400); return true; }
+      const items = cursor ? rows.slice(25) : rows.slice(0, 25);
+      send(response, { targetId, repositoryTimeUtc: listingStartedUtc, items, nextCursor: cursor ? null : next }); return true;
     }
     const summary = summaries.find(item => surface === 'deadlocks/' + item.eventId);
     if (!summary) { send(response, {}, 404); return true; }
-    const index = summaries.indexOf(summary), offset = targets.indexOf(target) * 100;
+    const index = Math.max(0, exact.indexOf(summary)), offset = targets.indexOf(target) * 100;
     const victim = [51, 81, 91][index] + offset, blocker = [72, 82, 92][index] + offset;
     send(response, { summary, participants: [{ sessionId: victim, isVictim: true }, { sessionId: blocker, isVictim: false }], relations: [{ blockerSessionId: victim, waiterSessionId: blocker, resourceCategory: 'key', lockMode: 'X' }, { blockerSessionId: blocker, waiterSessionId: victim, resourceCategory: 'key', lockMode: 'X' }] }); return true;
   }

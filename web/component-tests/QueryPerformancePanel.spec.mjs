@@ -9,6 +9,9 @@ const queryA = 'a'.repeat(64), queryB = 'b'.repeat(64), queryC = 'c'.repeat(64),
 const run = '99999999-9999-4999-8999-000000000001', cursor = 'cXVlcnk6bmF0aXZlOnAy';
 const from = '2026-10-02T10:00:00.123456Z', to = '2026-10-02T11:00:00.123456Z';
 const secret = '<img src="https://unexpected.invalid/steal" onerror="window.queryInjected=true"> SYNTHETIC protected SQL';
+const cacheIncarnation = '9'.repeat(64), cacheEntry = 'f'.repeat(64), cacheCursor = 'Y2FjaGU.cDI';
+const cacheRun = index => '88888888-8888-4888-8888-' + (101-index).toString(16).padStart(12,'0');
+const cacheSelection = { queryView: 'cache', cacheDatabaseId: '5', cacheIncarnation, cacheQuery: queryA, cachePlan: planA };
 const contexts = new WeakMap();
 const panel = page => page.getByRole('region', { name: /^Queries for / });
 const next = page => panel(page).getByRole('button', { name: 'Next ranking page', exact: true });
@@ -35,6 +38,10 @@ function nativeTop(item, context) {
 }
 function nativeValue(item, context) {
   const common = { targetId: item.id, ...item.window };
+  if(item.kind==='cache_top')return {...common,metric:item.metric,semantics:'plan_cache_delta',coverage:'no_comparable_rows',sourceFrames:101,incompleteFrames:0,comparableRows:0,unavailableRows:101,boundaryRows:0,hasMore:false,items:[]};
+  if(item.kind==='cache_history')return {...common,databaseId:5,databaseIncarnation:cacheIncarnation,queryFingerprint:queryA,planFingerprint:planA,snapshotUtc:item.window.toUtc,revision:1,totalRows:101,nextCursor:item.cursor?null:cacheCursor,semantics:'plan_cache_delta',coverage:'observed_entries_only',
+    items:Array.from({length:item.cursor?1:100},(_,offset)=>{const index=item.cursor?100:offset;return{collectionRunId:cacheRun(index),cacheEntryFingerprint:index===0?cacheEntry:'e'.repeat(52)+index.toString(16).padStart(12,'0'),sourceEpoch:'8'.repeat(64),observedAtUtc:new Date(Date.parse('2026-10-02T10:50:00Z')-index*1000).toISOString(),committedAtUtc:new Date(Date.parse('2026-10-02T10:50:00Z')-index*1000+1).toISOString(),captureComplete:true,transition:'baseline_unavailable',intervalFromUtc:null,intervalToUtc:null,cpuMilliseconds:null,durationMilliseconds:null,executions:null,logicalReads:null,writes:null,rows:null};})};
+  if(item.kind==='cache_content')return{targetId:item.id,databaseId:5,databaseIncarnation:cacheIncarnation,queryFingerprint:queryA,planFingerprint:planA,collectionRunId:cacheRun(0),cacheEntryFingerprint:cacheEntry,payloadKind:item.payloadKind,status:'available',reason:'available',observedAtUtc:'2026-10-02T10:50:00.000Z',text:item.payloadKind==='text'?secret:null,xml:item.payloadKind==='plan'?'<ShowPlanXML> SYNTHETIC protected cache plan </ShowPlanXML>':null};
   if (item.kind === 'top') return nativeTop(item, context);
   if (item.kind === 'status') return { ...common, snapshotUtc: item.window.toUtc, source: 'query_store', sourceState: 'read_write', coverage: 'complete', fresh: true,
     truncated: false, contentAvailable: false, databaseStatuses: [], databaseCatalog: [{ databaseId: 5, databaseName: 'SYNTHETIC Orders' }, { databaseId: 6, databaseName: 'SYNTHETIC Warehouse' }] };
@@ -65,6 +72,9 @@ function registered(url) {
     if (!['cpu', 'duration', 'executions', 'logical_reads', 'writes', 'rows'].includes(item.metric) || params.get('limit') !== '200' || item.cursor && item.cursor !== cursor) return undefined; }
   else if (suffix === 'status') { item = { kind: 'status' }; keys = ['fromUtc', 'toUtc']; }
   else if (suffix === 'waits/top' || suffix === 'regressions') { item = { kind: suffix === 'regressions' ? 'regressions' : 'waits' }; keys = ['fromUtc', 'toUtc', 'limit']; if (params.get('limit') !== '25') return undefined; }
+  else if(suffix==='cache/top'){item={kind:'cache_top',metric:params.get('metric')};keys=['fromUtc','toUtc','metric','limit'];if(params.get('limit')!=='25'||!['cpu','duration','executions','logical_reads','writes','rows'].includes(item.metric))return undefined;}
+  else if(suffix===`cache/databases/5/history/${queryA}/plans/${planA}`){item={kind:'cache_history',cursor:params.get('cursor')??undefined};keys=['databaseIncarnation','fromUtc','toUtc','limit','cursor'];if(params.get('databaseIncarnation')!==cacheIncarnation||params.get('limit')!=='100'||item.cursor&&item.cursor!==cacheCursor)return undefined;}
+  else if(suffix.startsWith(`cache/databases/5/history/${queryA}/plans/${planA}/runs/${cacheRun(0)}/entries/${cacheEntry}/content/`)){const kind=suffix.split('/').at(-1);if(!['text','plan'].includes(kind)||params.get('databaseIncarnation')!==cacheIncarnation)return undefined;item={kind:'cache_content',payloadKind:kind};keys=['databaseIncarnation'];}
   else {
     const selected = /^databases\/(5|6)\/history\/([a-c]{64})(?:\/plans\/([d]{64})\/trend|\/runs\/(99999999-9999-4999-8999-000000000001)\/(text|plans\/([d]{64})\/content))?$/.exec(suffix);
     const metadata = /^databases\/(5|6)\/plans\/([d]{64})$/.exec(suffix);
@@ -216,6 +226,53 @@ test('a continuation outside the native window fails safely while verified exact
   await expect(ranking(page)).toContainText('bbbbbbbbbbbb'); await expectSelected(page); await expect(panel(page)).not.toContainText('SECRET_FOREIGN_WINDOW');
 });
 
+for(const status of [401,403])for(const kind of ['text','content'])test(`ranking continuation HTTP${status} clears received ${kind}, fences sibling200 and requires explicit access recovery`,async({page})=>{
+ const context=contexts.get(page),pending=held(item=>item.kind==='regressions');context.handler=async(route,item,state)=>{if(item.kind==='top'&&item.cursor){await pending.started;await json(route,{detail:'PRIVATE_DENIAL_BODY'},status);return true;}return pending.handle(route,item,state);};
+ await mount(page);const sibling=await pending.started;await openHistory(page);await panel(page).getByRole('button',{name:kind==='text'?'Open text for this run':'Open plan XML for this run',exact:true}).click();
+ await expect(panel(page).getByLabel(kind==='text'?'Captured Query Store text':'Captured Query Store plan XML',{exact:true})).toBeVisible();
+ await next(page).click();const denied=page.getByRole('region',{name:'Query evidence access',exact:true});await expect(denied).toContainText('Retained rankings, history, waits, trends, and protected content were removed');await expect.poll(()=>sibling.failure()?.errorText).toContain('ERR_ABORTED');await pending.finish();
+ await expect(ranking(page)).toHaveCount(0);await expect(history(page)).toHaveCount(0);await expect(page.getByLabel('Captured Query Store text',{exact:true})).toHaveCount(0);await expect(page.getByLabel('Captured Query Store plan XML',{exact:true})).toHaveCount(0);await expect(denied).not.toContainText('PRIVATE_DENIAL_BODY');
+ const count=context.requests.length;await page.getByRole('button',{name:'Refresh query workspace',exact:true}).click();await page.getByRole('button',{name:'Change bounded window',exact:true}).click();await expect(denied).toBeVisible();expect(context.requests).toHaveLength(count);
+ context.handler=undefined;await denied.getByRole('button',{name:'Retry query access',exact:true}).click();await expectSelected(page);await expect(ranking(page)).toContainText('bbbbbbbbbbbb');await expect(page.getByLabel('Captured Query Store text',{exact:true})).toHaveCount(0);await expect(page.getByLabel('Captured Query Store plan XML',{exact:true})).toHaveCount(0);
+ await openHistory(page);await panel(page).getByRole('button',{name:kind==='text'?'Open text for this run':'Open plan XML for this run',exact:true}).click();await expect(panel(page).getByLabel(kind==='text'?'Captured Query Store text':'Captured Query Store plan XML',{exact:true})).toBeVisible();
+});
+
+for(const status of [401,403])test(`cache history continuation HTTP${status} purges captured content and blocks a late Query Store sibling`,async({page})=>{
+ const context=contexts.get(page),pending=held(item=>item.kind==='regressions');context.handler=async(route,item,state)=>{if(item.kind==='cache_history'&&item.cursor){await pending.started;await json(route,{detail:'PRIVATE_CACHE_DENIAL'},status);return true;}return pending.handle(route,item,state);};
+ await page.goto('/component-tests/queries.html'+href(cacheSelection));const sibling=await pending.started;const cache=panel(page).getByRole('region',{name:'Cache query interval history',exact:true});await expect(cache).toContainText('100 of 101 observed samples');await cache.getByRole('button',{name:'Open text',exact:true}).first().click();await expect(cache.getByLabel('Captured query text',{exact:true})).toHaveText(secret);
+ await cache.getByRole('button',{name:'Load earlier cache samples',exact:true}).click();const denied=page.getByRole('region',{name:'Query evidence access',exact:true});await expect(denied).toContainText('protected content were removed');await expect.poll(()=>sibling.failure()?.errorText).toContain('ERR_ABORTED');await pending.finish();
+ await expect(page.getByRole('region',{name:'Cache query interval history',exact:true})).toHaveCount(0);await expect(page.getByLabel('Captured query text',{exact:true})).toHaveCount(0);await expect(history(page)).toHaveCount(0);await expect(denied).not.toContainText('PRIVATE_CACHE_DENIAL');const count=context.requests.length;
+ await page.getByRole('button',{name:'Refresh query workspace',exact:true}).click();await expect(denied).toBeVisible();expect(context.requests).toHaveLength(count);
+ context.handler=undefined;await denied.getByRole('button',{name:'Retry query access',exact:true}).click();await expect(cache).toContainText('100 of 101 observed samples');await expect(cache.getByLabel('Captured query text',{exact:true})).toHaveCount(0);
+ await cache.getByRole('button',{name:'Load earlier cache samples',exact:true}).click();await expect(cache).toContainText('101 of 101 observed samples');expect(reads(page,'cache_history').at(-1).cursor).toBe(cacheCursor);await cache.getByRole('button',{name:'Open text',exact:true}).first().click();await expect(cache.getByLabel('Captured query text',{exact:true})).toHaveText(secret);
+});
+
+test('ordinary cache continuation503 retains received history and protected content without inventing access denial',async({page})=>{
+ await page.goto('/component-tests/queries.html'+href(cacheSelection));const cache=panel(page).getByRole('region',{name:'Cache query interval history',exact:true});await expect(cache).toContainText('100 of 101 observed samples');await cache.getByRole('button',{name:'Open text',exact:true}).first().click();await expect(cache.getByLabel('Captured query text',{exact:true})).toHaveText(secret);
+ contexts.get(page).handler=async(route,item)=>item.kind==='cache_history'&&item.cursor?(await json(route,{detail:'PRIVATE_TRANSIENT_ERROR'},503),true):false;
+ await cache.getByRole('button',{name:'Load earlier cache samples',exact:true}).click();await expect(cache.getByRole('alert')).toContainText('More history could not be loaded');await expect(cache).toContainText('100 of 101 observed samples');await expect(cache.getByLabel('Captured query text',{exact:true})).toHaveText(secret);await expect(page.getByRole('region',{name:'Query evidence access',exact:true})).toHaveCount(0);await expect(cache).not.toContainText('PRIVATE_TRANSIENT_ERROR');
+ contexts.get(page).handler=undefined;await cache.getByRole('button',{name:'Load earlier cache samples',exact:true}).click();await expect(cache).toContainText('101 of 101 observed samples');
+});
+
+test('ordinary ranking continuation503 retains protected SQL and exact history while explicit retry uses the same cursor',async({page})=>{
+ await mount(page);await openHistory(page);await panel(page).getByRole('button',{name:'Open text for this run',exact:true}).click();const text=panel(page).getByLabel('Captured Query Store text',{exact:true});await expect(text).toHaveText(secret);
+ contexts.get(page).handler=async(route,item)=>item.kind==='top'&&item.cursor?(await json(route,{detail:'PRIVATE_TRANSIENT_RANKING'},503),true):false;
+ await next(page).click();await expect(panel(page).getByRole('alert')).toHaveText('Query performance request failed.');await expect(ranking(page)).toContainText('bbbbbbbbbbbb');await expectSelected(page);await expect(text).toHaveText(secret);await expect(page.getByRole('region',{name:'Query evidence access',exact:true})).toHaveCount(0);await expect(panel(page)).not.toContainText('PRIVATE_TRANSIENT_RANKING');
+ contexts.get(page).handler=undefined;await next(page).click();await expect(ranking(page)).toContainText('cccccccccccc');expect(reads(page,'top').at(-1).cursor).toBe(cursor);await expect(text).toHaveText(secret);
+});
+
+test('protected-text403 removes that content while independently authorized query metadata and history remain',async({page})=>{
+ await mount(page);await openHistory(page);const open=panel(page).getByRole('button',{name:'Open text for this run',exact:true});await open.click();await expect(panel(page).getByLabel('Captured Query Store text',{exact:true})).toHaveText(secret);
+ contexts.get(page).handler=async(route,item)=>item.kind==='text'?(await json(route,{detail:'PRIVATE_TEXT_DENIAL'},403),true):false;await open.click();await expect(panel(page)).toContainText('Query performance request failed.');await expect(panel(page).getByLabel('Captured Query Store text',{exact:true})).toHaveCount(0);await expectSelected(page);await expect(ranking(page)).toContainText('bbbbbbbbbbbb');await expect(panel(page)).toContainText('CPU 7201');await expect(page.getByRole('region',{name:'Query evidence access',exact:true})).toHaveCount(0);await expect(panel(page)).not.toContainText('PRIVATE_TEXT_DENIAL');
+ contexts.get(page).handler=undefined;await open.click();await expect(panel(page).getByLabel('Captured Query Store text',{exact:true})).toHaveText(secret);
+});
+
+test('protected-plan401 is authentication loss and clears the shared query receipt until explicit access recovery',async({page})=>{
+ await mount(page);await openHistory(page);const open=panel(page).getByRole('button',{name:'Open plan XML for this run',exact:true});await open.click();await expect(panel(page).getByLabel('Captured Query Store plan XML',{exact:true})).toBeVisible();
+ contexts.get(page).handler=async(route,item)=>item.kind==='content'?(await json(route,{detail:'PRIVATE_AUTHENTICATION_DENIAL'},401),true):false;await open.click();const denied=page.getByRole('region',{name:'Query evidence access',exact:true});await expect(denied).toContainText('protected content were removed');await expect(ranking(page)).toHaveCount(0);await expect(history(page)).toHaveCount(0);await expect(page.getByLabel('Captured Query Store plan XML',{exact:true})).toHaveCount(0);await expect(denied).not.toContainText('PRIVATE_AUTHENTICATION_DENIAL');
+ contexts.get(page).handler=undefined;await denied.getByRole('button',{name:'Retry query access',exact:true}).click();await expectSelected(page);await expect(panel(page).getByLabel('Captured Query Store plan XML',{exact:true})).toHaveCount(0);await openHistory(page);await panel(page).getByRole('button',{name:'Open plan XML for this run',exact:true}).click();await expect(panel(page).getByLabel('Captured Query Store plan XML',{exact:true})).toBeVisible();
+});
+
 for (const change of ['target', 'window', 'unmount']) test(`a protected run receipt cannot follow a changed ${change} inspection context`, async ({ page }) => {
   await mount(page); await openHistory(page); const pending = held(item => item.kind === 'text'); contexts.get(page).handler = pending.handle;
   await panel(page).getByRole('button', { name: 'Open text for this run', exact: true }).click(); const request = await pending.started;
@@ -245,7 +302,7 @@ for (const width of [320, 390, 768, 1440]) test(`off-page query history remains 
   }
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
-  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
   await info.attach(`query-mounted-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
   const directory = fileURLToPath(new URL('../../artifacts/dashboard-query-selection/screenshots', import.meta.url)); await mkdir(directory, { recursive: true });
   await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); document.querySelectorAll('.table-scroll').forEach(element => { element.scrollLeft = 0; }); window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); });

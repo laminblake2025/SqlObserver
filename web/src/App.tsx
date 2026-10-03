@@ -406,7 +406,7 @@ export function App() {
           <button className="secondary-button topbar-search" type="button" disabled={catalogDenied} onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search <kbd>Ctrl+K</kbd></button>
           <button className="secondary-button" type="button" aria-label={timeDisplayMode === "local" ? "Show UTC time" : "Show local time"}
             onClick={() => setTimeDisplayMode(timeDisplayMode === "local" ? "utc" : "local")}>
-            {timeDisplayMode === "local" ? "Local time" : "UTC"}
+            {timeDisplayMode === "local" ? "Show UTC time" : "Show local time"}
           </button>
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
             <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={maxTimeRangeDays} />

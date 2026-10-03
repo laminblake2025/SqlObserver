@@ -97,14 +97,14 @@ export function BufferNodePlePanel({ instanceId, targetRevision = 0, scope, refr
         {data.nodes.length} observed nodes · {data.visibilityGapCount} collector gaps.</p>
       {!data.nodes.length && requestedNode === null && !nodeSelectionInvalid && <p>No Buffer Node samples were stored in this window. Check the collector schedule and SQL Server permissions.</p>}
       {requestedNode !== null && !data.nodes.some(node => node.nodeId === requestedNode) && <p role="status">Requested NUMA node {requestedNode} is not in the loaded node inventory. No other node has been selected.</p>}
-      {data.points.length && !nodeSelectionInvalid && (requestedNode === null || data.nodes.some(node => node.nodeId === requestedNode)) ? <OverviewChart series={bufferNodePleSeries(data)}
+      {data.points.length && !nodeSelectionInvalid && (requestedNode === null || data.nodes.some(node => node.nodeId === requestedNode)) ? <OverviewChart scrollablePlotLabel="Buffer Node page life expectancy plot" series={bufferNodePleSeries(data)}
         crosshairUtc={crosshairUtc} onCrosshairChange={onCrosshairChange}
         fromUtc={data.fromUtc} toUtc={data.toUtc} onSelectWindow={onSelectWindow} />
         : data.nodes.length > 0 && <p>No samples were stored for the selected node in this window.</p>}
       <h4>Buffer Manager aggregate PLE</h4>
       <p className="activity-evidence">The SQL Server Buffer Manager counter covers the instance overall. Its hourly values
         are charted separately from each NUMA node.</p>
-      {data.aggregatePoints.length ? <OverviewChart series={bufferManagerPleSeries(data)}
+      {data.aggregatePoints.length ? <OverviewChart scrollablePlotLabel="Buffer Manager aggregate page life expectancy plot" series={bufferManagerPleSeries(data)}
         crosshairUtc={crosshairUtc} onCrosshairChange={onCrosshairChange}
         fromUtc={data.fromUtc} toUtc={data.toUtc} onSelectWindow={onSelectWindow} />
         : <p>No Buffer Manager PLE samples were stored in this window. Check the collector schedule and SQL Server permissions, or choose a window with collected samples.</p>}

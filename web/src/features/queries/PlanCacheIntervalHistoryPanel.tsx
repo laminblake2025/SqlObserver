@@ -7,6 +7,7 @@ import { useTimeFormatter } from "../../TimeDisplayContext";
 import { getPlanCacheIntervalHistory } from "./queryPerformanceApi";
 import type { PlanCacheHistorySelection, PlanCacheIntervalHistory, PlanCacheIntervalHistoryItem, QueryPerformanceMetric } from "./queryPerformanceTypes";
 import type { QueryWindow } from "./queryWindowModel";
+import { QueryReadAccessContext, useQueryReadBoundary, useSharedQueryReadAccess } from "./useQueryReadAccess.tsx";
 
 const states = { comparable: "Measured", window_boundary: "Crosses window boundary", baseline_unavailable: "First qualified sample",
   reset: "Counters reset", stale: "Out-of-order capture", comparison_window_expired: "Comparison gap exceeds seven days" };
@@ -25,19 +26,20 @@ export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, 
   const { targetId, databaseId, databaseIncarnation, queryFingerprint, planFingerprint } = selection;
   const key = JSON.stringify([selection, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
   const current = state?.key === key ? state : undefined;
+  const localAccess=useQueryReadBoundary(targetId,()=>{setState(undefined);setContentSelection(undefined);},key),readAccess=useSharedQueryReadAccess()??localAccess;
   useEffect(() => { setContentSelection(undefined); }, [key, canReadText]);
   useEffect(() => {
-    request.current?.abort(); const controller = new AbortController(); request.current = controller;
+    request.current?.abort(); const controller = readAccess.begin(); if (!controller) return; request.current = controller;
     void getPlanCacheIntervalHistory({ targetId, databaseId, databaseIncarnation, queryFingerprint, planFingerprint }, timeWindow.fromUtc, timeWindow.toUtc, controller.signal)
       .then(result => { if (!controller.signal.aborted) setState({ key, result }); })
-      .catch(() => { if (!controller.signal.aborted) setState({ key, error: "Cache history is unavailable. Retry when collection and repository access are available." }); });
+      .catch((failure: unknown) => { if (readAccess.failed(failure,controller)) return; if (!controller.signal.aborted) setState({ key, error: "Cache history is unavailable. Retry when collection and repository access are available." }); });
     return () => controller.abort();
-  }, [targetId, databaseId, databaseIncarnation, queryFingerprint, planFingerprint, timeWindow.fromUtc, timeWindow.toUtc, refresh, key]);
+  }, [targetId, databaseId, databaseIncarnation, queryFingerprint, planFingerprint, timeWindow.fromUtc, timeWindow.toUtc, refresh, key, readAccess.revision]);
   const result = current?.result;
   const trend = result ? planCacheIntervalTrend(result, metric) : undefined;
   const more = () => {
     if (!result?.nextCursor || current?.loading || result.items.length >= 1000) return;
-    request.current?.abort(); const controller = new AbortController(); request.current = controller;
+    request.current?.abort(); const controller = readAccess.begin(); if (!controller) return; request.current = controller;
     setState({ key, result, loading: true });
     void getPlanCacheIntervalHistory(selection, timeWindow.fromUtc, timeWindow.toUtc, controller.signal, result.nextCursor)
       .then(page => {
@@ -48,9 +50,10 @@ export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, 
             || first && last && keyOf(first) >= keyOf(last) || page.items.some(row => seen.has(`${row.collectionRunId}:${row.cacheEntryFingerprint}`)))
           throw new Error("Cache history snapshot changed.");
         setState({ key, result: { ...page, items: [...result.items, ...page.items] } });
-      }).catch(() => { if (!controller.signal.aborted) setState({ key, result, error: "More history could not be loaded. Refresh to restart if the snapshot expired, the server configuration changed or evidence was retired." }); });
+      }).catch((failure: unknown) => { if(readAccess.failed(failure,controller))return; if (!controller.signal.aborted) setState({ key, result, error: "More history could not be loaded. Refresh to restart if the snapshot expired, the server configuration changed or evidence was retired." }); });
   };
-  return <section className="panel" aria-label="Cache query interval history">
+  if(readAccess.denied)return <section className="panel" aria-label="Query evidence access"><h4>Cache query interval history</h4><p role="alert">Query evidence access was denied. Retained history and protected content were removed. Restore read access, then explicitly retry.</p><button type="button" onClick={readAccess.retry}>Retry query access</button></section>;
+  return <QueryReadAccessContext.Provider value={readAccess}><section className="panel" aria-label="Cache query interval history">
     <div className="toolbar"><h4>Cache query interval history</h4><button type="button" onClick={onClose}>Close cache history</button></div>
     <p>Database ID {selection.databaseId} · query {selection.queryFingerprint.slice(0, 12)}… · plan {selection.planFingerprint.slice(0, 12)}… · database incarnation {selection.databaseIncarnation.slice(0, 12)}…</p>
     <p>Each row belongs to one cache entry. Measured counters cover the full interval shown. Unavailable comparisons and boundary crossings supply no counters; an absent row does not prove inactivity.</p>
@@ -88,5 +91,5 @@ export function PlanCacheIntervalHistoryPanel({ selection, timeWindow, refresh, 
       {result.nextCursor && result.items.length < 1000 ? <button type="button" disabled={current?.loading} onClick={more}>{current?.loading ? "Loading earlier samples…" : "Load earlier cache samples"}</button> : null}
       {result.nextCursor && result.items.length >= 1000 ? <p>The view is limited to 1,000 samples. Select a smaller time window to inspect earlier activity.</p> : null}
     </>}
-  </section>;
+  </section></QueryReadAccessContext.Provider>;
 }

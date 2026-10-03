@@ -48,6 +48,7 @@ function Harness() {
   const [crosshairUtc, setCrosshairUtc] = useState<string | null>(null);
   const [selectionCount, setSelectionCount] = useState(0);
   const [kind, setKind] = useState('observation');
+  const [scrollable, setScrollable] = useState(false);
   const [target, setTarget] = useState('alpha');
   const series: readonly ObservationSeries[] = [
     { id: `${target}:latency`, label: "Latency", items: samples[preset] },
@@ -92,6 +93,7 @@ function Harness() {
         onChange={event => setUnits(event.target.checked)} />Format values in milliseconds</label>
       <button type="button" onClick={resetInteraction}>Reset interaction</button>
       <label>Primary chart kind<select value={kind} onChange={event => setKind(event.target.value)}><option value="observation">Observation</option><option value="overview">Overview</option></select></label>
+      <label className="harness-checkbox"><input type="checkbox" checked={scrollable} onChange={event => setScrollable(event.target.checked)} />Scrollable resource plot</label>
       <button type="button" onClick={() => setWindow({ fromUtc: '2026-01-15T12:10:00.000Z', toUtc: '2026-01-15T13:10:00.000Z' })}>Advance chart window</button>
       <button type="button" onClick={() => setTarget(value => value === 'alpha' ? 'beta' : 'alpha')}>Replace chart target</button>
     </fieldset>
@@ -105,6 +107,7 @@ function Harness() {
       <h2>Primary chart</h2>{kind === 'observation' ? <ObservationChart label="Latency evidence" series={series} {...chartProps} />
         : <OverviewChart series={[{ targetId: target, label: 'Latency', metric: 'latency', unit: 'ms', state: 'fresh', dimension: null,
           points: samples[preset].map(item => ({ timeUtc: item.time, value: item.value, samples: 1 })) }]} {...window}
+          scrollablePlotLabel={scrollable ? 'Resource evidence plot' : undefined}
           crosshairUtc={crosshairUtc} onCrosshairChange={setCrosshairUtc} onSelectWindow={selectWindow} />}
     </section>
     <section className="harness-chart-panel" aria-label="Companion chart">

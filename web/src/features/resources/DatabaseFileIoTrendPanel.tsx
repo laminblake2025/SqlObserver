@@ -85,7 +85,7 @@ export function DatabaseFileIoTrendPanel({ instanceId, targetRevision = 0, file,
         <p className="activity-evidence">{formatDisplayTime(trend.fromUtc, mode)} to {formatDisplayTime(trend.toUtc, mode)}.
           {trend.points.reduce((sum, point) => sum + point.resetRows + point.gapRows + point.legacyRows + point.baselineRows, 0)} samples
           {' '}could not be compared because of a reset, gap, missing directional counters, or missing baseline.</p>
-        {trend.points.length ? <OverviewChart series={fileIoTrendSeries(trend)}
+        {trend.points.length ? <OverviewChart scrollablePlotLabel="Selected file read and write latency plot" series={fileIoTrendSeries(trend)}
           crosshairUtc={crosshairUtc} onCrosshairChange={onCrosshairChange}
           fromUtc={trend.fromUtc} toUtc={trend.toUtc} onSelectWindow={onSelectWindow} />
           : <p>No file samples were stored in this window.</p>}

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { activityAccessDenied, useActivityBoundary, useBoundarySnapshot, type ActivityReadBoundary } from "./activityAccess.ts";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { readLive, type LivePage, type LiveRow, type LiveSnapshot, type QueryDetail } from "./liveActivityApi";
@@ -15,7 +16,7 @@ import { activitySelectionExpired, activitySelectionHref, activityUtc, loadActiv
 // repository/capture latency so the exact triggered snapshot is returned.
 const DEADLOCK_CAPTURE_LOOKAHEAD_MS = 10 * 60 * 1000;
 
-export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, selectedDatabaseId, onSelectDatabase, historyUnavailableReason, scope, selectionHash, canReadText = false, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false, onSelectTimeMode }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; selectedDatabaseId?: number; onSelectDatabase?: (databaseId: number | undefined) => void; historyUnavailableReason?: string; scope?: OverviewScope; selectionHash?: string; canReadText?: boolean; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean; onSelectTimeMode?: (mode: "live" | "history") => void }) {
+export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc, initialHistoryEventId, selectedWindow, selectedDatabaseId, onSelectDatabase, historyUnavailableReason, scope, selectionHash, canReadText = false, defaultHistorical = false, refreshToken = 0, clockTick = 0, workspacePaused = false, onSelectTimeMode, access: sharedAccess }: { instanceId: string; displayName: string; initialHistoryAtUtc?: string; initialHistoryEventId?: string; selectedWindow?: { readonly fromUtc: string; readonly toUtc: string }; selectedDatabaseId?: number; onSelectDatabase?: (databaseId: number | undefined) => void; historyUnavailableReason?: string; scope?: OverviewScope; selectionHash?: string; canReadText?: boolean; defaultHistorical?: boolean; refreshToken?: number; clockTick?: number; workspacePaused?: boolean; onSelectTimeMode?: (mode: "live" | "history") => void; access?: ActivityReadBoundary }) {
   const { mode: timeMode } = useTimeDisplay();
   const timeLabel = (value: string | number) => formatDisplayTime(value, timeMode);
   const urlEnabled = scope !== undefined && selectionHash !== undefined;
@@ -24,6 +25,14 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const captureKey = capture ? JSON.stringify([capture.snapshotId, capture.observedUtc]) : "";
   const selectionKey = JSON.stringify([captureKey, capture?.identity]);
   const contextKey = JSON.stringify([instanceId.toLowerCase(), scope?.range, scope?.from, scope?.to, selectedDatabaseId]);
+  const localAccess = useActivityBoundary(contextKey), access = sharedAccess ?? localAccess;
+  useBoundarySnapshot(access);
+  const ownerId = useId(), accessEpoch = access.epoch;
+  const metadataAllowed = access.allowed("live-sessions"), historyAllowed = access.allowed("session-history");
+  const [accessRetry, setAccessRetry] = useState(0);
+  const [historyAccessRetry, setHistoryAccessRetry] = useState(0);
+  const retrySources = useRef({ metadata: false, history: false });
+  const [independentMinute, setIndependentMinute] = useState(false);
   const expiredSelection = capture !== undefined && activitySelectionExpired(capture, Date.now());
   const invalidSelection = requested === null;
   const [page, setPage] = useState<LivePage>();
@@ -41,11 +50,12 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const [visible, setVisible] = useState(!document.hidden); const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(false); const [error, setError] = useState<string>(); const [errorKey, setErrorKey] = useState<string>();
   const [hours, setHours] = useState(0.25); const [history, setHistory] = useState<LiveSnapshot[]>([]);
+  const [historyReceived, setHistoryReceived] = useState(false);
   const [historyEnd, setHistoryEnd] = useState(() => requestedHistoryEnd === undefined ? Date.now() : requestedHistoryEnd + DEADLOCK_CAPTURE_LOOKAHEAD_MS); const [minute, setMinute] = useState<number>();
   const [preferredSnapshotId, setPreferredSnapshotId] = useState<string | null | undefined>(undefined);
   const [cursor, setCursor] = useState<string>(); const [cursorTrail, setCursorTrail] = useState<(string | undefined)[]>([]);
   const [storedSelection, setSelection] = useState<{ row: LiveRow; observed: string; snapshot: string; contextKey: string; selectionKey?: string }>();
-  const selection = storedSelection?.contextKey === contextKey && !invalidSelection && !expiredSelection &&
+  const selection = metadataAllowed && storedSelection?.contextKey === contextKey && !invalidSelection && !expiredSelection &&
     (storedSelection.selectionKey === undefined || storedSelection.selectionKey === selectionKey) ? storedSelection : undefined;
   const [selectionMessage, setSelectionMessage] = useState<string>();
   const [restoration, setRestoration] = useState<{ key: string; loading: boolean; message?: string }>();
@@ -62,7 +72,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   if (textAccessRef.current.allowed !== canReadText) textAccessRef.current = {
     allowed: canReadText, generation: textAccessRef.current.generation + 1,
   };
-  const visibleDetail = canReadText && detailAccessGeneration === textAccessRef.current.generation ? detail : undefined;
+  const visibleDetail = metadataAllowed && canReadText && detailAccessGeneration === textAccessRef.current.generation ? detail : undefined;
   const inspectionKeyRef = useRef(`${contextKey}/${selectionKey}`);
   inspectionKeyRef.current = `${contextKey}/${selectionKey}`;
   const loadedPageScope = useRef<{ filterKey: string; cursor?: string } | undefined>(undefined);
@@ -70,6 +80,20 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const manual = useRef(false);
   const consecutiveFailures = useRef(0);
   const retryAfter = useRef(0);
+  const lastRequestKey = useRef("");
+  useLayoutEffect(() => {
+    const clear = () => {
+      queryRequest.current?.abort(); queryRequest.current = undefined;
+      setPage(undefined); setPageKey(undefined); setHistory([]); setHistoryReceived(false); setSelection(undefined);
+      setDetail(undefined); setDetailError(undefined); setDetailAccessGeneration(undefined); setQueryLoading(false);
+      setDatabaseOptions([]); setCursor(undefined); setCursorTrail([]); setRestoration(undefined);
+      setSelectionMessage(undefined); setBlockingGroupKey(""); setLoading(false); setError(undefined); setErrorKey(undefined);
+      setPreferredSnapshotId(undefined); setMinute(undefined); loadedPageScope.current = undefined;
+      lastRequestKey.current = ""; consecutiveFailures.current = 0; retryAfter.current = 0;
+      retrySources.current = { metadata: false, history: false };
+    };
+    return access.subscribeInvalidation(clear);
+  }, [access]);
   useEffect(() => { manual.current = true; }, [refreshToken]);
   useEffect(() => {
     if (!canReadText) {
@@ -77,13 +101,14 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       setDetail(undefined); setDetailError(undefined); setDetailAccessGeneration(undefined); setQueryLoading(false);
     }
   }, [canReadText]);
-  const lastRequestKey = useRef("");
   const filterKey = JSON.stringify({ database, login, application, status, idle, system, blocked, sort, descending });
-  const snapshots = new Map(history.map(value => [Math.floor(Date.parse(value.observedUtc) / 60000), value]));
-  const eventSnapshot = initialHistoryEventId === undefined ? undefined : history.find(snapshot => snapshot.deadlockEventId === initialHistoryEventId);
+  const readableHistory = historyAllowed ? history : [];
+  const snapshots = new Map(readableHistory.map(value => [Math.floor(Date.parse(value.observedUtc) / 60000), value]));
+  const eventSnapshot = initialHistoryEventId === undefined ? undefined : readableHistory.find(snapshot => snapshot.deadlockEventId?.toLowerCase() === initialHistoryEventId.toLowerCase());
+  const missingEventAssociation = initialHistoryEventId !== undefined && !eventSnapshot && !capture && !independentMinute;
   const selectedSnapshot: LiveSnapshot | undefined = capture ? { id: capture.snapshotId, observedUtc: capture.observedUtc, truncated: false } : preferredSnapshotId === undefined
-    ? eventSnapshot ?? (minute === undefined ? undefined : snapshots.get(minute))
-    : preferredSnapshotId === null ? (minute === undefined ? undefined : snapshots.get(minute)) : history.find(snapshot => snapshot.id === preferredSnapshotId);
+    ? eventSnapshot ?? (missingEventAssociation || minute === undefined ? undefined : snapshots.get(minute))
+    : preferredSnapshotId === null ? (missingEventAssociation || minute === undefined ? undefined : snapshots.get(minute)) : readableHistory.find(snapshot => snapshot.id === preferredSnapshotId);
   const requestMode = capture ? "history" : mode;
   const requestKey = liveRequestKey({ mode: requestMode, filterKey, snapshotId: selectedSnapshot?.id, cursor, windowKey: capture ? captureKey : mode === "history" ? `${historyFrom}/${historyTo}` : undefined });
   const activeTick = requestMode === "live" && !cursor && !paused && !workspacePaused ? clockTick : 0;
@@ -91,7 +116,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   requestKeyRef.current = requestKey;
   const matchingCapture = Boolean(capture && page?.snapshotId?.toLowerCase() === capture.snapshotId && page.observedUtc &&
     sameObservation(page.observedUtc, capture.observedUtc));
-  const displayPage = invalidSelection || expiredSelection ? undefined : valueForLiveRequest(page, pageKey, requestKey) ??
+  const displayPage = !metadataAllowed || invalidSelection || expiredSelection ? undefined : valueForLiveRequest(page, pageKey, requestKey) ??
     (matchingCapture && loadedPageScope.current?.filterKey === filterKey && loadedPageScope.current.cursor === cursor ? page : undefined);
   const displayError = valueForLiveRequest(error, errorKey, requestKey);
   const blockingGroups = buildBlockingTree(displayPage?.rows ?? []);
@@ -99,7 +124,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   const visibleRows = blockingGroupKey === "" ? displayPage?.rows ?? []
     : rowsForBlockingGroup(displayPage?.rows ?? [], selectedBlockingGroup);
   const restoreKey = `${contextKey}/${selectionKey}`;
-  const currentRestoration = restoration?.key === restoreKey ? restoration : undefined;
+  const currentRestoration = metadataAllowed && restoration?.key === restoreKey ? restoration : undefined;
   const apiFilters = (allRows = false) => {
     const parameters = new URLSearchParams({ includeIdle: String(allRows || idle), includeSystem: String(allRows || system),
       blockedOnly: String(!allRows && blocked), sort, descending: String(descending) });
@@ -124,6 +149,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   }, []);
   useEffect(() => { setCursor(undefined); setCursorTrail([]); }, [filterKey, mode, capture ? undefined : minute]);
   useEffect(() => {
+    if (!metadataAllowed && !retrySources.current.metadata) return;
     const controller = new AbortController();
     if (!capture || expiredSelection || invalidSelection) {
       queryRequest.current?.abort();
@@ -154,9 +180,12 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     setLogin(""); setApplication(""); setStatus(""); setBlocked(false); setIdle(true); setSystem(true);
     const filters = apiFilters(true);
     const restoredFilterKey = JSON.stringify({ database, login: "", application: "", status: "", idle: true, system: true, blocked: false, sort, descending });
-    void loadActivitySelection(capture, filters, (parameters, signal) => readLive<LivePage>(instanceId, "", parameters, signal), controller.signal)
+    const ticket = access.begin("live-sessions", `${ownerId}-restore`, retrySources.current.metadata);
+    if (!ticket) return () => controller.abort();
+    retrySources.current.metadata = false;
+    void loadActivitySelection(capture, filters, (parameters, signal) => readLive<LivePage>(instanceId, "", parameters, signal), ticket.controller.signal)
       .then(result => {
-        if (controller.signal.aborted || !stillCurrent()) return;
+        if (!access.current(ticket) || !stillCurrent() || !access.recover(ticket)) return;
         const row = result.row && (selectedDatabaseId === undefined || result.row.databaseId === selectedDatabaseId) ? result.row : undefined;
         // The bounded metadata lookup has already fulfilled this read. Do not
         // treat the restored cursor as a second manual page request.
@@ -171,18 +200,19 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
           result.page.snapshotId === null ? "The requested session snapshot is unavailable or no longer retained. No current snapshot has been substituted."
           : `The requested session was not found in this captured snapshot. Filters, paging bounds, and truncated capture can exclude evidence; no other request has been selected.${result.limited ? " The 11-page / 512-row lookup bound was reached." : ""}` });
       }).catch((failure: unknown) => {
-        if (controller.signal.aborted || !stillCurrent()) return;
+        if (!access.current(ticket) || !stillCurrent()) return;
+        if (activityAccessDenied(failure)) { access.deny(); return; }
         setPage(undefined); setPageKey(undefined); setSelection(undefined);
         setRestoration({ key: restoreKey, loading: false, message: failure instanceof Error ? failure.message : "The requested session snapshot is unavailable." });
-      });
-    return () => controller.abort();
-  }, [restoreKey, expiredSelection, invalidSelection, refreshToken]);
+      }).finally(() => access.finish(ticket));
+    return () => { controller.abort(); access.cancel(ticket); };
+  }, [access, accessEpoch, accessRetry, restoreKey, expiredSelection, invalidSelection, refreshToken]);
   useEffect(() => {
     if (appliedHistoryAtUtc.current === initialHistoryAtUtc) return;
     appliedHistoryAtUtc.current = initialHistoryAtUtc;
     const nextHistoryEnd = parseHistoryAtUtc(initialHistoryAtUtc);
     setCursor(undefined); setCursorTrail([]); setHistory([]); setMinute(undefined); setError(undefined); setErrorKey(undefined);
-    setPreferredSnapshotId(undefined);
+    setPreferredSnapshotId(undefined); setIndependentMinute(false);
     if (nextHistoryEnd === undefined) {
       setMode("live"); setHistoryEnd(Date.now());
     } else {
@@ -191,14 +221,29 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
   }, [initialHistoryAtUtc]);
   useEffect(() => {
     if (mode !== "history") return;
-    const controller = new AbortController(); setHistory([]); setError(undefined); setErrorKey(undefined);
+    const ticket = access.begin("session-history", `${ownerId}-history`, retrySources.current.history);
+    if (!ticket) return;
+    retrySources.current.history = false;
+    const controller = ticket.controller; setHistory([]); setHistoryReceived(false); setError(undefined); setErrorKey(undefined);
     void readLive<LiveSnapshot[]>(instanceId, "/history", new URLSearchParams({ from: selectedHistoryWindow?.fromUtc ?? new Date(historyFrom).toISOString(), to: selectedHistoryWindow?.toUtc ?? new Date(historyTo).toISOString() }), controller.signal)
-      .then(value => { if (!controller.signal.aborted) { const event = initialHistoryEventId === undefined ? undefined : value.find(snapshot => snapshot.deadlockEventId === initialHistoryEventId); const latest = selectedHistoryWindow ? value.reduce<LiveSnapshot | undefined>((last, item) => !last || Date.parse(item.observedUtc) > Date.parse(last.observedUtc) ? item : last, undefined) : undefined; setHistory(value); setPreferredSnapshotId(capture?.snapshotId ?? event?.id ?? latest?.id ?? null); setMinute(Math.floor(Date.parse(capture?.observedUtc ?? event?.observedUtc ?? latest?.observedUtc ?? initialHistoryAtUtc ?? new Date(historyTo).toISOString()) / 60000)); } })
-      .catch(() => { if (!controller.signal.aborted) { setError("Historical snapshots are unavailable."); setErrorKey(requestKeyRef.current); } });
-    return () => controller.abort();
-  }, [instanceId, mode, captureKey, historyFrom, historyTo, initialHistoryAtUtc, initialHistoryEventId, refresh, refreshToken]);
+      .then(value => {
+        if (!access.current(ticket) || !access.recover(ticket)) return;
+        const event = initialHistoryEventId === undefined ? undefined : value.find(snapshot => snapshot.deadlockEventId?.toLowerCase() === initialHistoryEventId.toLowerCase());
+        const latest = selectedHistoryWindow && initialHistoryEventId === undefined ? value.reduce<LiveSnapshot | undefined>((last, item) => !last || Date.parse(item.observedUtc) > Date.parse(last.observedUtc) ? item : last, undefined) : undefined;
+        setHistory(value); setHistoryReceived(true);
+        setPreferredSnapshotId(capture?.snapshotId ?? (independentMinute ? null : event?.id ?? latest?.id ?? null));
+        if (!independentMinute) setMinute(Math.floor(Date.parse(capture?.observedUtc ?? event?.observedUtc ?? latest?.observedUtc ?? initialHistoryAtUtc ?? new Date(historyTo).toISOString()) / 60000));
+      })
+      .catch((failure: unknown) => {
+        if (!access.current(ticket)) return;
+        if (activityAccessDenied(failure)) { access.deny(); return; }
+        setError("Historical snapshots are unavailable."); setErrorKey(requestKeyRef.current);
+      }).finally(() => access.finish(ticket));
+    return () => access.cancel(ticket);
+  }, [access, accessEpoch, historyAccessRetry, instanceId, mode, captureKey, historyFrom, historyTo, initialHistoryAtUtc, initialHistoryEventId, refresh, refreshToken]);
   useEffect(() => {
     if (invalidSelection || expiredSelection || capture?.identity && !selection || !visible || (requestMode === "history" && !selectedSnapshot)) { setLoading(false); return; }
+    if (!metadataAllowed && !retrySources.current.metadata) { setLoading(false); return; }
     if (capture && displayPage && loadedPageScope.current?.filterKey === filterKey && loadedPageScope.current.cursor === cursor &&
         !manual.current) {
       setPageKey(requestKey); lastRequestKey.current = requestKey; setLoading(false); return;
@@ -209,7 +254,11 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     lastRequestKey.current = requestKey;
     manual.current = false;
     let disposed = false;
-    const controller = new AbortController();
+    const pendingTicket = access.begin("live-sessions", `${ownerId}-metadata`, retrySources.current.metadata);
+    if (!pendingTicket) return;
+    const ticket = pendingTicket;
+    retrySources.current.metadata = false;
+    const controller = ticket.controller;
     async function poll() {
       setLoading(true);
       const filters = JSON.parse(filterKey) as { database: string; login: string; application: string; status: string; idle: boolean; system: boolean; blocked: boolean; sort: string; descending: boolean };
@@ -218,7 +267,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       try {
         const next = await readLive<LivePage>(instanceId, "", parameters, controller.signal);
         if (capture) validateActivitySelectionPage(next, capture);
-        if (!disposed && requestKeyRef.current === requestKey) {
+        if (!disposed && access.current(ticket) && requestKeyRef.current === requestKey && access.recover(ticket)) {
           loadedPageScope.current = { filterKey, cursor };
           setPage(next); setPageKey(requestKey); setError(undefined); setErrorKey(undefined);
           setDatabaseOptions(previous => mergeDatabaseOptions(previous, next.databases));
@@ -227,24 +276,26 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
         }
       }
       finally {
-        if (!disposed) {
+        if (!disposed && access.current(ticket)) {
           setLoading(false);
         }
       }
     }
     void poll().then(() => {
+      if (!access.current(ticket)) return;
       consecutiveFailures.current = 0;
       retryAfter.current = 0;
-    }).catch(() => {
-      if (!disposed && !controller.signal.aborted && requestKeyRef.current === requestKey) {
+    }).catch((failure: unknown) => {
+      if (!disposed && access.current(ticket) && requestKeyRef.current === requestKey) {
+        if (activityAccessDenied(failure)) { access.deny(); return; }
         consecutiveFailures.current++;
         retryAfter.current = Date.now() + Math.min(60_000, 10_000 * 2 ** consecutiveFailures.current);
         setError("Refresh failed for the current request; retrying with backoff.");
         setErrorKey(requestKey);
       }
-    });
-    return () => { disposed = true; controller.abort(); };
-  }, [instanceId, filterKey, mode, captureKey, invalidSelection, expiredSelection, selectedSnapshot?.id, selection?.selectionKey, paused, workspacePaused, visible, refresh, refreshToken, activeTick, cursor, hours, historyEnd]);
+    }).finally(() => access.finish(ticket));
+    return () => { disposed = true; access.cancel(ticket); };
+  }, [access, accessEpoch, accessRetry, instanceId, filterKey, mode, captureKey, invalidSelection, expiredSelection, selectedSnapshot?.id, selection?.selectionKey, paused, workspacePaused, visible, refresh, refreshToken, activeTick, cursor, hours, historyEnd]);
   const earliestMinute = Math.floor(historyFrom / 60000);
   const latestMinute = Math.floor(historyTo / 60000);
   const minuteOptions = Array.from({ length: latestMinute - earliestMinute + 1 }, (_, index) => latestMinute - index);
@@ -284,27 +335,36 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       selectionKey: JSON.stringify([JSON.stringify([next.snapshotId.toLowerCase(), canonicalObservation(next.observedUtc)]), next.identity?.toLowerCase()]) });
   }
   function selectMinute(value: number) {
-    setPreferredSnapshotId(null); setMinute(value); firstPage();
+    setIndependentMinute(true); setPreferredSnapshotId(null); setMinute(value); firstPage();
+    if (!metadataAllowed) { retrySources.current.metadata = true; setAccessRetry(value => value + 1); }
     queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); setDetailError(undefined); setBlockingGroupKey("");
     const snapshot = snapshots.get(value);
     if (snapshot) publishCapture({ snapshotId: snapshot.id, observedUtc: snapshot.observedUtc });
     else publishCapture(undefined);
   }
   async function loadCapturedSql(observation: NonNullable<typeof selection>) {
-    if (!textAccessRef.current.allowed || !stillCurrent()) return;
-    queryRequest.current?.abort(); const controller = new AbortController(); queryRequest.current = controller;
+    if (!metadataAllowed || !textAccessRef.current.allowed || !stillCurrent()) return;
+    queryRequest.current?.abort();
+    const ticket = access.begin("live-sessions", `${ownerId}-query`);
+    if (!ticket) return;
+    const controller = ticket.controller; queryRequest.current = controller;
     const expected = inspectionKeyRef.current;
     const accessGeneration = textAccessRef.current.generation;
-    const mayPublish = () => !controller.signal.aborted && textAccessRef.current.allowed &&
+    const mayPublish = () => access.current(ticket) && access.allowed("live-sessions") && textAccessRef.current.allowed &&
       textAccessRef.current.generation === accessGeneration && inspectionKeyRef.current === expected && stillCurrent();
     setDetail(undefined); setDetailError(undefined); setQueryLoading(true);
-    if (!observation.row.queryId) { setDetail({ state: observation.row.queryState, text: null }); setDetailAccessGeneration(accessGeneration); setQueryLoading(false); return; }
+    if (!observation.row.queryId) { setDetail({ state: observation.row.queryState, text: null }); setDetailAccessGeneration(accessGeneration); setQueryLoading(false); access.finish(ticket); return; }
     try {
       const value = await readLive<QueryDetail>(instanceId, "/query", new URLSearchParams({ snapshot: observation.snapshot, identity: observation.row.identity }), controller.signal);
       if (mayPublish()) { setDetail(value); setDetailAccessGeneration(accessGeneration); }
     } catch (failure) {
-      if (mayPublish()) setDetailError(failure instanceof Error ? failure.message : "Query detail unavailable.");
-    } finally { if (mayPublish()) setQueryLoading(false); }
+      if (mayPublish()) {
+        // Query Text Reader denial is narrower than the shared metadata role.
+        if (activityAccessDenied(failure) && (failure as { status?: number }).status === 401) { access.deny(); return; }
+        setDetail(undefined); setDetailAccessGeneration(undefined);
+        setDetailError(failure instanceof Error ? failure.message : "Query detail unavailable.");
+      }
+    } finally { if (mayPublish()) setQueryLoading(false); access.finish(ticket); }
   }
   async function open(row: LiveRow) {
     if (!displayPage?.snapshotId || !displayPage.observedUtc) return;
@@ -316,7 +376,13 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       ...(published ? { selectionKey: JSON.stringify([JSON.stringify([next.snapshotId.toLowerCase(), canonicalObservation(next.observedUtc)]), row.identity.toLowerCase()]) } : {}) };
     setSelection(observation); setDetail(undefined); setDetailError(undefined); setQueryLoading(false);
   }
+  function retrySessionAccess() {
+    retrySources.current = { metadata: !metadataAllowed, history: mode === "history" && !historyAllowed };
+    manual.current = true; setAccessRetry(value => value + 1);
+    if (retrySources.current.history) setHistoryAccessRetry(value => value + 1);
+  }
   return <section className="live-sessions panel" aria-label={mode === "history" ? "Session history" : "Live sessions"} aria-busy={loading}>
+    {(!metadataAllowed || mode === "history" && !historyAllowed) && <p role="alert">Session access was denied. Received sessions, history, selected details and captured SQL were removed. Automatic reads stay stopped until this source is explicitly retried. <button type="button" disabled={loading} onClick={retrySessionAccess}>Retry session access</button></p>}
     <div className="health-heading-row"><div><p className="eyebrow">Activity · {displayName}</p><h3>{mode === "history" ? "Session history" : "Live sessions"}</h3></div><div className="toolbar">
       <button aria-pressed={mode === "live" && !capture} onClick={() => { clearSessionSelection(); setPreferredSnapshotId(null); setMode("live"); firstPage(); onSelectTimeMode?.("live"); }}>Live</button>
       <button aria-pressed={mode === "history" || Boolean(capture)} disabled={Boolean(sessionHistoryReason) && !capture} onClick={() => { clearSessionSelection(); setPreferredSnapshotId(null); if (!selectedHistoryWindow) setHistoryEnd(Date.now()); setMode("history"); onSelectTimeMode?.("history"); }}>History</button>
@@ -324,7 +390,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <button disabled={loading || !visible} onClick={() => { manual.current = true; if (mode === "history" && !selectedHistoryWindow) setHistoryEnd(Date.now()); else { firstPage(); setRefresh(value => value + 1); } }}>Refresh now</button>
     </div></div>
     <div className="live-filters">
-      <label>Database <select value={database} onChange={event => { const value = event.target.value; if (onSelectDatabase) onSelectDatabase(value === "" ? undefined : Number(value)); else setLocalDatabase(value); }}><option value="">All databases</option>{database !== "" && !databaseOptions.some(db => String(db.id) === database) ? <option value={database}>Database ID {database} · name unavailable</option> : null}{databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
+      <label>Database <select value={database} onChange={event => { const value = event.target.value; if (onSelectDatabase) onSelectDatabase(value === "" ? undefined : Number(value)); else setLocalDatabase(value); }}><option value="">All databases</option>{database !== "" && (!metadataAllowed || !databaseOptions.some(db => String(db.id) === database)) ? <option value={database}>Database ID {database} · name unavailable</option> : null}{metadataAllowed && databaseOptions.map(db => <option key={db.id} value={db.id}>{db.name ?? `Database ${db.id}`}</option>)}</select></label>
       <label><input type="checkbox" checked={blocked} onChange={event => setBlocked(event.target.checked)} /> Blocked only</label>
       <label>Sort <select value={sort} onChange={event => setSort(event.target.value)}>{[["cpu", "CPU time"], ["memory", "Memory"], ["reads", "Reads"], ["writes", "Writes"], ["logicalReads", "Logical reads"], ["elapsed", "Elapsed time"], ["session", "Session ID"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="blocking-chain-select">Blocking chain (loaded page)<select value={blockingGroupKey} onChange={event => selectChain(event.target.value)}>
@@ -343,6 +409,8 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
       <label><input type="checkbox" checked={descending} onChange={event => setDescending(event.target.checked)} /> Descending</label>
     </div></details>
     {mode === "history" && initialHistoryAtUtc && <p className="evidence-callout">Opened for the deadlock event at {timeLabel(initialHistoryAtUtc)}. Historical snapshots are minute-granular for cadence evidence; a deadlock-triggered capture is selected automatically when available.</p>}
+    {mode === "history" && missingEventAssociation && historyAllowed && historyReceived && <p role="status">No retained capture is associated with the requested deadlock event. No same-minute snapshot has been substituted. Choose a minute deliberately to inspect an independent capture.</p>}
+    {mode === "history" && initialHistoryEventId && independentMinute && <p className="table-note">Independent minute capture selected deliberately. Its observation does not establish an association with the requested deadlock event.</p>}
     {sessionHistoryReason && mode === "live" && <p className="evidence-callout">{sessionHistoryReason} Showing current sessions.</p>}
     {mode === "history" && selectedHistoryWindow && <p className="evidence-callout">Session snapshots in the selected window: {timeLabel(selectedHistoryWindow.fromUtc)} to {timeLabel(selectedHistoryWindow.toUtc)}. Snapshots older than 24 hours are outside retention.</p>}
     {mode === "history" && <div className="toolbar">{!selectedHistoryWindow && <label>History window <select value={hours} onChange={event => setHours(Number(event.target.value))}><option value={0.25}>15 minutes</option><option value={1}>1 hour</option><option value={6}>6 hours</option><option value={24}>24 hours</option></select></label>}
@@ -364,10 +432,10 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     {displayPage && <BlockingSnapshot page={displayPage} groups={blockingGroups} selectedGroupKey={blockingGroupKey} onSelectGroup={selectChain} />}
     {displayPage && <p className="blocking-chain-counts" role="status">Showing {visibleRows.length} of {displayPage.rows.length} loaded session rows{blockingGroupKey !== "" ? ` · Blocking chain: ${selectedBlockingGroup?.rootLabel ?? blockingGroupKey}` : ""}. Chain filtering is local to this loaded page and preserves the server-side filters and row order. Other pages, excluded sessions, and truncated capture can contain additional chain members.</p>}
     {displayPage && blockingGroupKey !== "" && !selectedBlockingGroup ? <p role="status" className="empty-state">Selected blocking chain is not present in this loaded page. No rows match; clear the chain filter or browse another snapshot/page.</p> : null}
-    {gap ? <p className="empty-state">No successful snapshot was captured in this minute.</p> : <div className="live-table-scroll" tabIndex={0} role="region" aria-label="Loaded session observations"><table><caption>{mode === "history" ? "Historical" : "Live"} sessions · loaded snapshot for {displayName}</caption><thead><tr>{["Session / request", "Database", "Login", "Client host / application", "Status / command", "CPU ms", "Memory bytes", "Logical reads", "Reads / writes", "Elapsed ms", "Wait / blocker", "Details"].map(title => <th key={title} scope="col">{title}</th>)}</tr></thead><tbody>{visibleRows.map(row => <tr key={row.identity}>
+    {!metadataAllowed ? null : gap ? <p className="empty-state">No successful snapshot was captured in this minute.</p> : <div className="live-table-scroll" tabIndex={0} role="region" aria-label="Loaded session observations"><table><caption>{mode === "history" ? "Historical" : "Live"} sessions · loaded snapshot for {displayName}</caption><thead><tr>{["Session / request", "Database", "Login", "Client host / application", "Status / command", "CPU ms", "Memory bytes", "Logical reads", "Reads / writes", "Elapsed ms", "Wait / blocker", "Details"].map(title => <th key={title} scope="col">{title}</th>)}</tr></thead><tbody>{visibleRows.map(row => <tr key={row.identity}>
       <td>{row.sessionId} / {row.requestId ?? "idle"}</td><td>{row.databaseName ?? row.databaseId ?? "—"}</td><td>{row.login ?? "—"}</td><td>{row.clientHost ?? "—"}<br/>{row.application ?? "—"}</td><td>{row.status}<br/>{row.command}</td><td>{row.cpuMs}</td><td>{row.memoryBytes}</td><td>{row.logicalReads}</td><td>{row.reads} / {row.writes}</td><td>{row.elapsedMs}</td><td>{row.waitType ?? "—"} / {formatBlockingTarget(row.blocker)}</td><td><button type="button" aria-pressed={selection?.row.identity === row.identity && selection.snapshot === displayPage?.snapshotId} aria-controls={selection ? "session-details" : undefined} onClick={() => void open(row)}>Inspect {row.sessionId}/{row.requestId ?? "idle"}</button></td>
     </tr>)}</tbody></table>{displayPage && visibleRows.length === 0 && (blockingGroupKey === "" || selectedBlockingGroup) ? <p className="empty-state">{displayPage.state === "unavailable" ? "Collection evidence is unavailable for this observation." : "No sessions match these filters."}</p> : null}</div>}
-    <nav aria-label="Live session pages"><button disabled={loading || cursorTrail.length === 0} onClick={() => { setCursor(cursorTrail.at(-1)); setCursorTrail(values => values.slice(0, -1)); }}>Previous page</button><button disabled={loading || gap || !displayPage?.nextCursor} onClick={() => { setCursorTrail(values => [...values, cursor]); setCursor(displayPage?.nextCursor ?? undefined); }}>Next page</button></nav>
+    {metadataAllowed && <nav aria-label="Live session pages"><button disabled={loading || cursorTrail.length === 0} onClick={() => { setCursor(cursorTrail.at(-1)); setCursorTrail(values => values.slice(0, -1)); }}>Previous page</button><button disabled={loading || gap || !displayPage?.nextCursor} onClick={() => { setCursorTrail(values => [...values, cursor]); setCursor(displayPage?.nextCursor ?? undefined); }}>Next page</button></nav>}
     {selection && <aside id="session-details" className="live-details" aria-label="Session details"><div className="health-heading-row"><h4>Session {selection.row.sessionId} / {selection.row.requestId ?? "idle"}</h4><button type="button" onClick={() => {
       queryRequest.current?.abort(); setSelection(undefined); setDetail(undefined); setDetailError(undefined); setQueryLoading(false);
       if (capture) publishCapture({ snapshotId: capture.snapshotId, observedUtc: capture.observedUtc, ...(capture.chain ? { chain: capture.chain } : {}) });

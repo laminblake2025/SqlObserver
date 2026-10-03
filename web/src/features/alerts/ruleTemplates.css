@@ -1,5 +1,5 @@
 .rule-templates-page { min-width: 0; overflow-wrap: anywhere; }
-.rule-templates-page > .panel { margin-block: 1rem; }
+.rule-templates-page > .panel { margin-block: 1rem; padding: 20px; }
 .template-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
 .template-fields label, .rule-templates-page label { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
 .template-fields input, .template-fields select, .rule-templates-page textarea { min-width: 0; max-width: 100%; width: 100%; }
@@ -7,7 +7,7 @@
 .template-fields .template-checkbox { flex-direction: row; align-items: center; }
 .template-fields .template-checkbox input { width: auto; }
 .rule-templates-page .table-scroll { max-height: 30rem; }
-.rule-templates-page .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.rule-templates-page .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 .rule-templates-page .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .5rem; }
 @media (max-width: 900px) { .template-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .template-fields { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .template-fields { grid-template-columns: minmax(0, 1fr); } .rule-templates-page > .panel { padding: 14px; } }

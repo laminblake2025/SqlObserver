@@ -209,7 +209,7 @@ for (const width of [320, 390, 768, 1440]) test(`long grouping labels support ke
   await expect.poll(() => region.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
-  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
   await info.attach(`fleet-grouping-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
   const directory = fileURLToPath(new URL('../../artifacts/dashboard-fleet-timeline/screenshots/', import.meta.url));
   await mkdir(directory, { recursive: true }); await region.evaluate(element => { element.scrollLeft = 0; element.blur(); });

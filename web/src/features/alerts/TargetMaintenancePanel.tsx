@@ -26,6 +26,12 @@ export function TargetMaintenancePanel({ instanceId, displayName, onClose, refre
   const scope = readOverviewScope(renderedHash);
   const seriesContext = JSON.stringify([instanceId.toLowerCase(), selectedId, scope.range, scope.from, scope.to, scope.databaseId, scope.compare]);
   const scopeRef = useRef(seriesContext); scopeRef.current = seriesContext;
+  // The server list has no selected-window or global-time parameters.
+  const listIdentity = useRef({ target: instanceId.toLowerCase(), allowed: canManage, generation: 0 });
+  if (listIdentity.current.target !== instanceId.toLowerCase() || listIdentity.current.allowed !== canManage)
+    listIdentity.current = { target: instanceId.toLowerCase(), allowed: canManage, generation: listIdentity.current.generation + 1 };
+  const listContext = JSON.stringify([listIdentity.current.target, canManage, listIdentity.current.generation]);
+  const listContextRef = useRef(listContext); listContextRef.current = listContext;
   const mounted = useRef(false), request = useRef<AbortController | undefined>(undefined);
   const [, redrawLane] = useState(0), [denial, setDenial] = useState(0);
   const deniedContext = useRef<string | undefined>(undefined);
@@ -35,26 +41,27 @@ export function TargetMaintenancePanel({ instanceId, displayName, onClose, refre
   lane.setContext(laneKey);
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const refuseAccess = () => {
-    if (!mounted.current || scopeRef.current !== seriesContext) return;
-    deniedContext.current = seriesContext; request.current?.abort(); if (request.current) lane.release(request.current); request.current = undefined;
+    if (!mounted.current || scopeRef.current !== seriesContext || listContextRef.current !== listContext) return;
+    deniedContext.current = listContext; request.current?.abort(); if (request.current) lane.release(request.current); request.current = undefined;
     setDenial(value => value + 1);
   };
   const denialCallback = useRef(refuseAccess); denialCallback.current = refuseAccess;
   const allowedRef = useRef(canManage); allowedRef.current = canManage;
   const loadWindows = useCallback(async (target: string, signal: AbortSignal, cursor?: string) => {
-    const sourceContext = scopeRef.current;
+    const sourceContext = listContext;
+    if (sourceContext !== listContextRef.current) throw new Error("This maintenance read no longer owns the context.");
     if (!allowedRef.current || deniedContext.current === sourceContext) throw new ApiRequestError("Maintenance access is unavailable. Restore Target Administrator access and retry.", 403);
     try {
       const page = await getOneOffMaintenanceForSeries(target, signal, cursor);
-      if (signal.aborted || sourceContext !== scopeRef.current || deniedContext.current === sourceContext) throw new Error("This maintenance read no longer owns the context.");
+      if (signal.aborted || sourceContext !== listContextRef.current || deniedContext.current === sourceContext) throw new Error("This maintenance read no longer owns the context.");
       return page;
     } catch (failure) {
-      if (!signal.aborted && sourceContext === scopeRef.current && failure instanceof ApiRequestError && [401, 403].includes(failure.status)) denialCallback.current();
+      if (!signal.aborted && sourceContext === listContextRef.current && failure instanceof ApiRequestError && [401, 403].includes(failure.status)) denialCallback.current();
       throw failure;
     }
-  }, [instanceId, canManage, seriesContext]);
+  }, [listContext]);
   const receivedList = useAlertAdminList(instanceId, refresh, loadWindows, windowId, selectedId);
-  const protectedAllowed = canManage && deniedContext.current !== seriesContext;
+  const protectedAllowed = canManage && deniedContext.current !== listContext;
   const list = { ...receivedList, items: protectedAllowed ? receivedList.items : [], nextCursor: protectedAllowed ? receivedList.nextCursor : undefined };
   const selected = selectedId === undefined ? list.items[0] : list.items.find(item => item.windowId.toLowerCase() === selectedId?.toLowerCase());
   const peerBusy = lane.busy(laneKey);
@@ -193,7 +200,7 @@ export function TargetMaintenancePanel({ instanceId, displayName, onClose, refre
 
   return <section className="alerts-screen" aria-labelledby="maintenance-heading">
     <div className="screen-intro"><div><p className="eyebrow">Alerts · {displayName}</p><h2 id="maintenance-heading">Maintenance windows</h2><p>Review scheduled and cancelled windows and recurring series. These windows suppress delivery, while collection and alert evaluation continue.</p></div><button className="secondary-button" onClick={onClose} type="button">Back to alerts</button></div>
-    {deniedContext.current === seriesContext && <p role="alert">Maintenance access was denied. Protected windows and series were removed. <button type="button" onClick={() => { deniedContext.current = undefined; setDenial(value => value + 1); receivedList.retry(); }}>Retry maintenance access</button></p>}
+    {deniedContext.current === listContext && <p role="alert">Maintenance access was denied. Protected windows and series were removed. <button type="button" onClick={() => { deniedContext.current = undefined; setDenial(value => value + 1); receivedList.retry(); }}>Retry maintenance access</button></p>}
     <MaintenanceSeriesControls key={JSON.stringify([seriesContext, denial])} instanceId={instanceId} allowed={protectedAllowed} mutationLane={lane} mutationKey={laneKey}
       selectedSeriesId={selectedSeriesId} onSelectSeries={onSelectSeries} onSelectWindow={onSelect} onCommitted={receivedList.retry} onDenied={refuseAccess} />
     {list.loading ? <p role="status" className="status-message">Loading maintenance windows…</p> : null}

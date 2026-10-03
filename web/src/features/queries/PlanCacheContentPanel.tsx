@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { getPlanCacheContent } from "./queryPerformanceApi";
 import type { PlanCacheContent, PlanCacheContentKind, PlanCacheContentReason, PlanCacheHistorySelection, PlanCacheIntervalHistoryItem } from "./queryPerformanceTypes";
+import { ApiRequestError } from "../../apiClient.ts";
+import { useSharedQueryReadAccess } from "./useQueryReadAccess.tsx";
 
 const missing: Record<Exclude<PlanCacheContentReason, "available">, string> = {
   evidence_unavailable: "This exact observation is no longer available under the current server configuration. Select a retained sample from the current configuration.",
@@ -21,12 +23,13 @@ export function PlanCacheContentPanel({ selection, row, kind, onClose }: {
   readonly kind: PlanCacheContentKind; readonly onClose: () => void;
 }) {
   const timeLabel = useTimeFormatter();
+  const access=useSharedQueryReadAccess();
   const [state, setState] = useState<{ readonly result?: PlanCacheContent; readonly error?: string }>();
   useEffect(() => {
-    const controller = new AbortController();
+    const controller = access?access.begin():new AbortController(); if(!controller)return;
     void getPlanCacheContent(selection, row.collectionRunId, row.cacheEntryFingerprint, kind, controller.signal)
       .then(result => { if (!controller.signal.aborted) setState({ result }); })
-      .catch(() => { if (!controller.signal.aborted) setState({ error: "Content could not be opened. Check your QueryTextReader access and repository availability, then reopen the sample." }); });
+      .catch((failure:unknown) => { if(failure instanceof ApiRequestError&&failure.status===401&&access?.failed(failure,controller))return; if (!controller.signal.aborted) setState({ error: "Content could not be opened. Check your QueryTextReader access and repository availability, then reopen the sample." }); });
     return () => controller.abort();
   }, [selection.targetId, selection.databaseId, selection.databaseIncarnation, selection.queryFingerprint,
     selection.planFingerprint, row.collectionRunId, row.cacheEntryFingerprint, kind]);

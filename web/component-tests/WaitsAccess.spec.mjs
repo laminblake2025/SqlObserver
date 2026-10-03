@@ -181,7 +181,8 @@ test('Activity partial recovery displays its validated history without reopening
   await expect(history(page).getByRole('table')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Blocking history', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Live sessions', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Live sessions', exact: true }).getByRole('table')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retry session access', exact: true })).toBeVisible();
   const count = session.reads.length; await poll(page); expect(session.reads).toHaveLength(count);
   await expect(history(page).getByRole('table')).toBeVisible();
 });
@@ -198,7 +199,7 @@ for (const width of [320, 390, 768, 1440]) test(`denied Waits recovery stays key
   expect(focus.style).not.toBe('none'); expect(focus.width).toBeGreaterThanOrEqual(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
-  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
   await info.attach(`waits-access-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
   const directory = fileURLToPath(new URL('../../artifacts/dashboard-access-navigation/screenshots/', import.meta.url)); await mkdir(directory, { recursive: true });
   await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })); await page.screenshot({ path: `${directory}/waits-access-${width}.png`, fullPage: true });

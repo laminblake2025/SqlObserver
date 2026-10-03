@@ -19,7 +19,7 @@ const screens = [
 
 async function auditResponsiveState(page, testInfo, name) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), `${name} must fit its viewport`).toBeLessThanOrEqual(1);
-  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
   await testInfo.attach(`${name}-accessibility-results`, { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
   expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
 }
@@ -59,9 +59,23 @@ for (const width of [320, 390, 768, 1440]) {
         await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('waitCategory')).toBe('6');
       }
       await expect(page.locator('main')).toBeVisible();
+      if (surface === 'resources') {
+        const plots = page.locator('.overview-plot-scroll');
+        expect(await plots.count()).toBeGreaterThanOrEqual(6);
+        const geometry = await plots.evaluateAll(elements => elements.map(element => ({
+          named: Boolean(element.getAttribute('aria-label')), focusable: element.tabIndex === 0,
+          axisSizes: [...element.querySelectorAll('svg text')].map(text =>
+            Number.parseFloat(getComputedStyle(text).fontSize) * Math.abs(text.getScreenCTM()?.a ?? 0)),
+        })));
+        for (const plot of geometry) {
+          expect(plot.named && plot.focusable).toBe(true);
+          expect(plot.axisSizes.length).toBeGreaterThan(0);
+          expect(Math.min(...plot.axisSizes)).toBeGreaterThanOrEqual(10);
+        }
+      }
       expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'Page must fit; wide evidence scrolls locally').toBeLessThanOrEqual(1);
-      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
       await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
       expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
       expect(errors).toEqual([]);
@@ -94,11 +108,11 @@ test('keyboard skip link, chart evidence, time editor and palette remain accessi
   await expect(values).toBeFocused();
   await page.getByRole('combobox', { name: 'Time range', exact: true }).selectOption('custom');
   await expect(page.getByLabel('From (UTC)', { exact: true })).toBeFocused();
-  expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations).toEqual([]);
+  expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations).toEqual([]);
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /^Search/ }).click();
   await expect(page.getByRole('searchbox', { name: 'Search servers' })).toBeFocused();
-  expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations).toEqual([]);
+  expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations).toEqual([]);
 });
 
 test('narrow alert evidence preserves readable columns and scrolls with the keyboard', async ({ page }) => {
@@ -130,7 +144,7 @@ for (const width of [320, 390, 768, 1440]) {
     await chain.selectOption('session:81');
     await expect(page.getByRole('region', { name: 'Loaded session observations', exact: true })).toContainText('81');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
     await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
     expect(results.violations).toEqual([]);
     const folder = resolve('../artifacts/dashboard-refactor/screenshots');
@@ -174,7 +188,7 @@ for (const width of [320, 390, 768, 1440]) {
       await page.waitForLoadState('networkidle');
 
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'Selected database context must fit the viewport').toBeLessThanOrEqual(1);
-      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
       await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
       expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
       const folder = resolve('../artifacts/dashboard-refactor/screenshots');
@@ -208,14 +222,14 @@ for (const width of [320, 390, 768, 1440]) {
     await align.press('Enter');
     await expect(align).toBeFocused();
     await expect(align).toHaveAttribute('aria-pressed', 'true');
-    await expect(timeline.getByRole('status')).toContainText('Chart crosshair:');
-    await expect(timeline.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
+    await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
+    await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
     const selectionQuery = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
     expect(selectionQuery.get('timelineEvent')).toMatch(/^plan:/);
     expect(selectionQuery.get('timelineAt')).toBe('2026-09-26T11:00:00.000Z');
     await page.reload();
     await expect(align).toHaveAttribute('aria-pressed', 'true');
-    await expect(timeline.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
+    await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
     expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('databaseId')).toBe('6');
     const evidence = timeline.getByRole('link', { name: /^Open evidence: Plan regression comparison/ });
     await expect(evidence).toBeVisible();
@@ -229,7 +243,7 @@ for (const width of [320, 390, 768, 1440]) {
     await expect(timeline.locator('details')).toHaveAttribute('open', '');
     await expect(timeline.locator('details')).toContainText('different time meanings');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'Timeline evidence must fit; timestamps and links must wrap locally').toBeLessThanOrEqual(1);
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
     await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
     expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
     const folder = resolve('../artifacts/dashboard-refactor/screenshots');
@@ -433,7 +447,7 @@ for (const width of [320, 390, 768, 1440]) {
       return control && pinned ? control.y - (pinned.y + pinned.height) : -1;
     }, { message: 'A focused workspace control must remain visible below pinned fleet navigation' }).toBeGreaterThanOrEqual(-1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
-    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
     await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
     expect(results.violations, JSON.stringify(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })))).toEqual([]);
     const folder = resolve('../artifacts/dashboard-refactor/screenshots');
@@ -668,7 +682,7 @@ for (const width of [320, 390, 768, 1440]) {
     await page.goto(url);
     const detail = page.getByRole('region', { name: 'Selected deadlock detail', exact: true });
     await expect(detail.getByRole('table')).toContainText('91');
-    await expect(detail).toContainText('Its retained detail is shown without selecting another event.');
+    await expect(detail).toContainText('This exact occurrence is read independently of the event-list collected cutoff.');
     const relationships = detail.getByRole('region', { name: 'Deadlock relationship table', exact: true });
     await relationships.focus(); await expect(relationships).toBeFocused();
     await auditResponsiveState(page, testInfo, 'retained-deadlock-selection');

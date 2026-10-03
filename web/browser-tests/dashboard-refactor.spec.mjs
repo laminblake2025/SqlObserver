@@ -199,7 +199,7 @@ test('deadlock-linked Activity chooses its matching native capture over a newer 
 
 async function captureTargetResponseFailure(page, testInfo, name) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
-  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
   await testInfo.attach(`${name}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
   expect(violations).toEqual([]);
   const directory = resolve('../artifacts/dashboard-response-contracts/screenshots');
@@ -774,8 +774,8 @@ test('target alert URL restores a paged selection and preserves keyboard focus w
   expect(reads).toBe(2);
   await assertDatabaseScope(page, 6);
   await assertHistoricalScope(page);
-  await expect(page.locator('.alert-triage-receipt')).toContainText('Native row-time cutoff:');
-  await expect(page.locator('.alert-triage-note')).toContainText('independent of Rewind and database selection');
+  await expect(page.locator('.alert-triage-receipt').filter({ hasText: 'Native row-time cutoff:' })).toContainText('Native row-time cutoff:');
+  await expect(page.locator('.alert-triage-note').filter({ hasText: 'Retained alert investigation;' })).toContainText('independent of Rewind and database selection');
   await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toHaveCount(0);
   const loadedReads = reads;
   const firstRow = observations.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true });
@@ -819,8 +819,8 @@ test('fleet alert URL restores an exact paged alert and filtered or missing sele
   await expect(paged).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
   expect(reads).toBe(2);
-  await expect(page.locator('.alert-triage-receipt')).toContainText('Native row-time cutoff:');
-  await expect(page.locator('.alert-triage-note')).toContainText('independent of Rewind and database selection');
+  await expect(page.locator('.alert-triage-receipt').filter({ hasText: 'Native row-time cutoff:' })).toContainText('Native row-time cutoff:');
+  await expect(page.locator('.alert-triage-note').filter({ hasText: 'Retained alert investigation;' })).toContainText('independent of Rewind and database selection');
   await page.getByRole('textbox', { name: 'Filter loaded alerts', exact: true }).fill('blocking');
   await expect(page.locator('.detail-pane.empty-state')).toContainText('The selected alert is hidden by the current filters.');
   await expect(page.locator('aside.detail-pane')).toHaveCount(0);
@@ -1326,7 +1326,7 @@ for (const width of [320, 1440]) test(`built dashboard timeline dark layout and 
   await page.keyboard.press('Tab'); await expect(form.getByRole('button', { name: 'Apply timeline window' })).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
-  const violations = (await new AxeBuilder({ page }).include('.dashboard-timeline').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations;
+  const violations = (await new AxeBuilder({ page }).include('.dashboard-timeline').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations;
   await info.attach(`built-timeline-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
   const directory = resolve('../artifacts/dashboard-fleet-timeline/screenshots'); await mkdir(directory, { recursive: true });
   await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo({ top: 0, behavior: 'instant' }); });
@@ -1917,7 +1917,8 @@ test('Overview rejects response bounds shifted by one microsecond from the fixed
   });
   await page.goto(`/#/health?${new URLSearchParams({ target: first, range: 'custom', from: exactFrom, to: exactTo, healthSection: 'summary' })}`);
   await expect(page.getByText('Overview returned a mismatched scope or time range.', { exact: true })).toBeVisible();
-  await expect(investigationTimeline(page)).toHaveCount(0);
+  await expect(investigationTimeline(page)).toBeVisible();
+  await expect(page.locator('.server-dashboard-kpis')).toHaveCount(0);
   await expect(page.locator('.server-dashboard .overview-chart')).toHaveCount(0);
   await assertHistoricalScope(page, first, exactFrom, exactTo);
 });
@@ -2476,7 +2477,7 @@ test('deadlock URL selection preserves exact event time and loaded row focus thr
   await deadlockUrlFixture(page);
   await page.goto(`${href('deadlocks')}&databaseId=6`);
   const events = retainedDeadlockEvents(page), detail = retainedDeadlockDetail(page);
-  await expect(events.locator('button.event-card')).toHaveCount(2);
+  await expect(events.locator('button.event-card')).toHaveCount(25);
   const secondEvent = events.locator('button.event-card').nth(1);
   await secondEvent.focus(); await secondEvent.press('Enter');
   await expect(secondEvent).toBeFocused();
@@ -2611,7 +2612,7 @@ test('deadlock exact microsecond list bounds and focused event survive a labelle
   await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).evaluate(element => element.click());
   await expect.poll(() => pending).toBe(true);
   await expect(button).toBeFocused(); expect(await element.evaluate(element => element.isConnected)).toBe(true);
-  await expect(page.getByRole('status').filter({ hasText: 'Refreshing deadlock events; showing the previously loaded event page for' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Reading deadlock evidence; received event pages remain displayed...' })).toBeVisible();
   release(); await expect(events).toHaveAttribute('aria-busy', 'false');
   await expect(button).toBeFocused(); expect(await element.evaluate(element => element.isConnected)).toBe(true);
   await expect.poll(() => scope(page).get('deadlockAt')).toBe(selectedDeadlockTimes[0]);

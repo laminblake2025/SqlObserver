@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiRequestError } from "../../apiClient.ts";
 import { getSqlVolumeHistory } from "./sqlVolumeHistoryApi.ts";
-import { previousVolumeHistoryWindow, volumeHistoryWindow, type VolumeHistoryBinding, type VolumeHistoryIdentity, type VolumeHistoryReadPage } from "./sqlVolumeHistoryModel.ts";
+import { previousVolumeHistoryWindow, volumeHistoryWindow, volumeHistoryContextIdentity, type VolumeHistoryBinding, type VolumeHistoryIdentity, type VolumeHistoryReadPage } from "./sqlVolumeHistoryModel.ts";
 export type VolumeHistorySource = "catalog" | "selected" | "previous";
 export interface VolumeHistoryReadState { readonly pages: readonly VolumeHistoryReadPage[]; readonly index: number; readonly loading: boolean;
   readonly error?: string; readonly attempt?: { readonly cursor?: string; readonly replace: boolean; readonly index: number } }
 const empty = (): Record<VolumeHistorySource, VolumeHistoryReadState> => ({ catalog: { pages: [], index: 0, loading: false }, selected: { pages: [], index: 0, loading: false }, previous: { pages: [], index: 0, loading: false } });
 export function useSqlVolumeHistory(instanceId: string, targetRevision: number, fromUtc: string, toUtc: string, compare: boolean, selectedVolume: VolumeHistoryIdentity | null | undefined) {
-  const context = JSON.stringify([instanceId.toLowerCase(), targetRevision, fromUtc, toUtc, compare, selectedVolume]), latest = useRef(context); latest.current = context;
+  const context = volumeHistoryContextIdentity(instanceId,targetRevision,fromUtc,toUtc,compare,selectedVolume), latest = useRef(context); latest.current = context;
   const epoch = useRef(0), mounted = useRef(false), deniedRef = useRef(false), owners = useRef(new Map<VolumeHistorySource, AbortController>());
   const [denied, setDenied] = useState(false), [reads, setReads] = useState(empty), received = useRef(reads), previousContext = useRef(context);
   const deniedContext = useRef<string | undefined>(undefined), authorityContext = JSON.stringify([instanceId.toLowerCase(), targetRevision]);

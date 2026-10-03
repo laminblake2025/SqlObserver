@@ -25,7 +25,7 @@ test.beforeEach(async({page})=>{
   if(!match||![alpha,beta].includes(match[1]))return reject();session.requests.push(request);
   const target=match[1],parts=match[2].split('/').filter(Boolean),isSeries=parts[0]==='series',id=isSeries?parts[1]:parts[0],resource=isSeries?parts[2]:parts[1];
   let item;
-  if(!isSeries&&!id&&request.method()==='GET'&&url.search==='?limit=100')item={type:'windows',target};
+  if(!isSeries&&!id&&request.method()==='GET'&&url.searchParams.get('limit')==='100'&&[...url.searchParams.keys()].every(key=>['limit','cursor'].includes(key)))item={type:'windows',target,cursor:url.searchParams.get('cursor')??undefined};
   else if(!isSeries&&['POST','PUT'].includes(request.method())&&!url.search){const body=request.postDataJSON(),kind=resource==='cancel'?'oneoff-cancel':request.method()==='PUT'?'oneoff-edit':'oneoff-create';
    item={type:'oneoff',target,id:id??body.windowId,kind,body};session.oneOffPosts.push(item);}
   else if(isSeries&&id==='preview'&&request.method()==='POST'&&!url.search){item={type:'preview',target,body:request.postDataJSON()};session.previews.push(item);}
@@ -60,6 +60,23 @@ async function draft(page,changes={}){
 }
 async function ready(page,changes={}){await draft(page,changes);await button(page,'Preview maintenance series').click();await expect(region(page).getByRole('region',{name:'Server maintenance preview',exact:true})).toBeVisible();await expect(button(page,'Create maintenance series')).toBeEnabled();}
 async function create(page){await ready(page);await button(page,'Create maintenance series').click();await expect(current(page)).toContainText('revision 1');}
+test('keyboard window selection retains loaded pages and the focused row across selection and time changes',async({page})=>{
+ const session=sessions.get(page),first=windowId(seriesId,'2026-11-02'),second=windowId(seriesId,'2026-11-01'),cursor='cGFnZTI=';
+ const row=(id,date)=>({windowId:id,startsAtUtc:nativeUtc(date+'T05:30:00Z'),endsAtUtc:nativeUtc(date+'T06:30:00Z'),reason:'Keyboard selection '+date,revision:1,cancelledAtUtc:null});
+ session.handler=async(route,item)=>{
+  if(item.type!=='windows')return false;
+  expect(item.cursor).toBe(item.cursor?cursor:undefined);
+  await json(route,{targetId:item.target,listingStartedUtc:now,items:[item.cursor?row(second,'2026-11-01'):row(first,'2026-11-02')],hasMore:!item.cursor,nextCursor:item.cursor?null:cursor});return true;
+ };
+ await mount(page,'&windowId='+second);
+ const detail=panel(page).getByRole('complementary',{name:'Maintenance window',exact:true}),table=panel(page).getByRole('region',{name:'Configured maintenance windows table',exact:true});
+ await expect(detail).toContainText(second);await expect(table.locator('tbody tr')).toHaveCount(2);expect(session.windows).toHaveLength(2);
+ const select=table.locator('tbody tr').first().getByRole('button'),original=await select.elementHandle();
+ await select.focus();await select.press('Enter');await expect(detail).toContainText(first);await expect(select).toBeFocused();
+ expect(await original.evaluate(node=>node.isConnected&&document.activeElement===node)).toBe(true);expect(session.windows).toHaveLength(2);
+ await page.getByRole('combobox',{name:'Window context',exact:true}).selectOption('custom');await expect(table.locator('tbody tr')).toHaveCount(2);expect(session.windows).toHaveLength(2);
+});
+
 test('server preview precedes creation; daily fold policy and exact native commands/readback remain separate',async({page})=>{
  const session=sessions.get(page);await mount(page);await draft(page);await expect(button(page,'Create maintenance series')).toBeDisabled();
  await button(page,'Preview maintenance series').click();await expect(region(page)).toContainText('2026-11-01T05:30:00.000000Z');await expect(region(page)).toContainText('2026-11-02T06:30:00.000000Z');
@@ -145,15 +162,15 @@ test('invalid explicit series URL cannot select the first received series',async
  const session=sessions.get(page);session.backend.change(alpha,{kind:'create',body:{operationId:auditId,seriesId,definition:definition()}});
  await mount(page,'&seriesId=bad');await expect(region(page)).toContainText('series URL selection is invalid');await expect(current(page)).toHaveCount(0);expect(session.reads).toHaveLength(0);
 });
-test('selecting another window during a held initial administrative read starts a correctly owned replacement',async({page})=>{
+test('selecting another window during a held initial administrative read retains the server read and uses the current selection',async({page})=>{
  const session=sessions.get(page);session.backend.change(alpha,{kind:'create',body:{operationId:auditId,seriesId,definition:definition()}});
  const first=windowId(seriesId,'2026-11-01'),second=windowId(seriesId,'2026-11-02'),pending=held();
  session.handler=(route,item)=>item.type==='windows'&&session.windows.length===1?pending.handle(route,session.backend.oneOff(alpha)):false;
  await mount(page,'&seriesId='+seriesId+'&windowId='+first);const request=await pending.started;
  await page.evaluate(id=>{const q=new URLSearchParams(location.hash.split('?')[1]);q.set('windowId',id);location.hash='#/maintenance?'+q;},second);
- await expect.poll(()=>request.failure()?.errorText).toContain('ERR_ABORTED');await pending.release();
+ await pending.release();
  await expect(panel(page).getByRole('complementary',{name:'Maintenance window',exact:true})).toContainText(second);
- expect(session.windows).toHaveLength(2);await expect(panel(page)).not.toContainText('This maintenance read no longer owns the context');
+ expect(request.failure()).toBeNull();expect(session.windows).toHaveLength(1);await expect(panel(page)).not.toContainText('This maintenance read no longer owns the context');
  expect(new URL(page.url()).hash).toContain('windowId='+second);expect(session.posts).toHaveLength(0);
 });
 test('selecting another series cancels a held listing refresh without latching its controls',async({page})=>{
@@ -207,6 +224,8 @@ for(const source of ['preview','mutation','status','occurrences','windows'])for(
  await expect(panel(page).getByRole('alert').filter({hasText:/^Maintenance access was denied\. Protected windows and series were removed\./u})).toBeVisible();await expect(current(page)).toHaveCount(0);
  await expect(panel(page).getByRole('complementary',{name:'Maintenance window',exact:true})).toHaveCount(0);await expect(button(page,'Create maintenance series')).toHaveCount(0);
  await expect(panel(page)).not.toContainText('PRIVATE_PROVIDER_DETAIL');const count=session.requests.length;await page.getByRole('button',{name:'Workspace tick',exact:true}).click();expect(session.requests).toHaveLength(count);
+ await page.getByRole('combobox',{name:'Window context',exact:true}).selectOption('custom');
+ await expect(panel(page).getByRole('button',{name:'Retry maintenance access',exact:true})).toBeVisible();await expect(panel(page).getByRole('complementary',{name:'Maintenance window',exact:true})).toHaveCount(0);expect(session.requests).toHaveLength(count);
 });
 for(const context of ['target','window','role','unmount'])test('held series mutation aborts and fences late success across '+context,async({page})=>{
  const session=sessions.get(page);await mount(page);await ready(page);const pending=held();

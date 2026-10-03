@@ -1,3 +1,5 @@
+import { ApiRequestError } from "../../apiClient.ts";
+import { QueryReadAccessContext, useQueryReadBoundary } from "./useQueryReadAccess.tsx";
 import { PlanCacheIntervalPanel } from "./PlanCacheIntervalPanel";
 import { invalidQuerySelectionMessage } from "../../dashboardModel";
 import { metricsForObservation, queryPerformanceDatabaseOptions } from "./querySelection";
@@ -147,6 +149,11 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const textResult = receivedTextResult && currentBinding(receivedTextResult, true) ? receivedTextResult : undefined;
   const planResult = receivedPlanResult && currentBinding(receivedPlanResult, true) ? receivedPlanResult : undefined;
   const waitResult = receivedWaitResult && currentBinding(receivedWaitResult) ? receivedWaitResult : undefined;
+  const readAccess = useQueryReadBoundary(instanceId, () => {
+    setPage(undefined); setStatus(undefined); setWaitRanking(undefined); setWaitRankingError(undefined); setRegressions(undefined); setRegressionError(undefined);
+    setHistory(undefined); setHistorySelection(undefined); setPlan(undefined); setGroupTrend(undefined); setMessage(undefined); clearContent();
+    selectionRequest.current?.abort(); historyRequest.current?.abort(); pagingRequest.current?.abort(); waitRequest.current?.abort(); trendRequest.current?.abort(); setPaging(false);
+  }, evidenceContext);
   useEffect(() => { if (!canReadText) { textRequest.current?.abort(); planContentRequest.current?.abort(); setTextResult(undefined); setPlanResult(undefined); } }, [canReadText]);
   const clearContent = () => { textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); setTextResult(undefined); setPlanResult(undefined); setWaitResult(undefined); };
   useEffect(() => { clearContent(); }, [contentContext]);
@@ -159,30 +166,30 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     if (!currentBinding(binding, true) || item.source !== "query_store") return;
     planContentRequest.current?.abort(); setPlanResult(undefined);
     textRequest.current?.abort();
-    const controller = new AbortController(); textRequest.current = controller;
+    const controller = readAccess.begin(); if (!controller) return; textRequest.current = controller;
     setTextResult({ ...binding, state: "loading" });
     void getQueryPerformanceText(instanceId, item.query.databaseId, item.query.queryFingerprint, item.collectionRunId, controller.signal)
       .then(result => { if (!controller.signal.aborted && textRequest.current === controller && currentBinding(binding, true)) setTextResult({ ...binding, state: result.status, text: result.text ?? undefined }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && textRequest.current === controller && currentBinding(binding, true)) setTextResult({ ...binding, state: "error", message: error instanceof Error ? error.message : "Query text could not be opened." }); });
+      .catch((error: unknown) => { if (textRequest.current !== controller || !currentBinding(binding, true)) return; if (error instanceof ApiRequestError && error.status === 401 && readAccess.failed(error, controller)) return; if (!controller.signal.aborted && textRequest.current === controller && currentBinding(binding, true)) setTextResult({ ...binding, state: "error", message: error instanceof Error ? error.message : "Query text could not be opened." }); });
   };
   const openPlan = (item: QueryPerformanceItem) => {
     const binding = bindContent(item);
     if (!currentBinding(binding, true) || item.source !== "query_store" || !item.plan) return;
     textRequest.current?.abort(); setTextResult(undefined);
     planContentRequest.current?.abort();
-    const controller = new AbortController(); planContentRequest.current = controller;
+    const controller = readAccess.begin(); if (!controller) return; planContentRequest.current = controller;
     const planFingerprint = item.plan.planFingerprint;
     setPlanResult({ ...binding, planFingerprint, state: "loading" });
     void getQueryPerformancePlanContent(instanceId, item.query.databaseId,
       item.query.queryFingerprint, planFingerprint, item.collectionRunId, controller.signal)
       .then(result => { if (!controller.signal.aborted && planContentRequest.current === controller && currentBinding(binding, true)) setPlanResult({ ...binding, planFingerprint, state: result.status, xml: result.xml ?? undefined }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && planContentRequest.current === controller && currentBinding(binding, true)) setPlanResult({ ...binding, planFingerprint, state: "error", message: error instanceof Error ? error.message : "Query plan could not be opened." }); });
+      .catch((error: unknown) => { if (planContentRequest.current !== controller || !currentBinding(binding, true)) return; if (error instanceof ApiRequestError && error.status === 401 && readAccess.failed(error, controller)) return; if (!controller.signal.aborted && planContentRequest.current === controller && currentBinding(binding, true)) setPlanResult({ ...binding, planFingerprint, state: "error", message: error instanceof Error ? error.message : "Query plan could not be opened." }); });
   };
   const openWaits = (item: QueryPerformanceItem) => {
     const binding = bindContent(item);
     if (!currentBinding(binding) || item.source !== "query_store" || !item.plan) return;
     waitRequest.current?.abort();
-    const controller = new AbortController(); waitRequest.current = controller;
+    const controller = readAccess.begin(); if (!controller) return; waitRequest.current = controller;
     const planFingerprint = item.plan.planFingerprint;
     setWaitResult({ ...binding, planFingerprint, state: "loading" });
     void getQueryPerformancePlanWaits(instanceId, item.query.databaseId,
@@ -190,60 +197,60 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       .then(result => { if (!controller.signal.aborted && waitRequest.current === controller && currentBinding(binding)) setWaitResult({ ...binding,
         planFingerprint, state: result.status, capturedAtUtc: result.capturedAtUtc ?? undefined,
         categories: result.categories ?? undefined }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && waitRequest.current === controller && currentBinding(binding)) setWaitResult({ ...binding,
+      .catch((error: unknown) => { if (waitRequest.current !== controller || !currentBinding(binding)) return; if (readAccess.failed(error, controller)) return; if (!controller.signal.aborted && waitRequest.current === controller && currentBinding(binding)) setWaitResult({ ...binding,
         planFingerprint, state: "error", message: error instanceof Error ? error.message : "Query waits could not be opened." }); });
   };
   const metrics: QueryPerformanceMetric[] = ["cpu", "duration", "executions", "logical_reads", "writes", "rows"];
   useEffect(() => {
-    const controller = new AbortController();
+    const controller = readAccess.begin(); if (!controller) return;
     setWaitRanking(undefined);
     setWaitRankingError(undefined);
     void getQueryStoreTopWaits(instanceId, timeWindow.fromUtc, timeWindow.toUtc, controller.signal)
       .then(value => { if (!controller.signal.aborted) setWaitRanking(value); })
-      .catch((error: unknown) => {
+      .catch((error: unknown) => { if (readAccess.failed(error, controller)) return;
         if (!controller.signal.aborted) setWaitRankingError(error instanceof Error
           ? error.message : "Query wait ranking is unavailable.");
       });
     return () => controller.abort();
-  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
+  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh, readAccess.revision]);
   useEffect(() => {
-    const controller = new AbortController();
+    const controller = readAccess.begin(); if (!controller) return;
     setRegressions(undefined);
     setRegressionError(undefined);
     void getQueryStorePlanRegressions(instanceId, timeWindow.fromUtc, timeWindow.toUtc, controller.signal)
       .then(value => { if (!controller.signal.aborted) setRegressions(value); })
-      .catch((error: unknown) => {
+      .catch((error: unknown) => { if (readAccess.failed(error, controller)) return;
         if (!controller.signal.aborted) setRegressionError(error instanceof Error
           ? error.message : "Plan regression comparison is unavailable.");
       });
     return () => controller.abort();
-  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
+  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, refresh, readAccess.revision]);
   useEffect(() => {
     trendRequest.current?.abort();
     const selection = groupSelection;
     if (!selection?.planFingerprint || selectedDatabaseId !== undefined && selection.databaseId !== selectedDatabaseId) { setGroupTrend(undefined); return; }
-    const controller = new AbortController(); trendRequest.current = controller;
+    const controller = readAccess.begin(); if (!controller) return; trendRequest.current = controller;
     setGroupTrend({ key: groupTrendKey, state: { status: "loading" } });
     void getQueryStoreGroupPlanTrend(instanceId, selection.databaseId,
       selection.queryFingerprint, selection.planFingerprint,
       selection.fromUtc, selection.toUtc, controller.signal)
       .then(trend => { if (!controller.signal.aborted && trendRequest.current === controller && currentGroupTrendKey.current === groupTrendKey) setGroupTrend({ key: groupTrendKey, state: { status: "ready", trend } }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && trendRequest.current === controller && currentGroupTrendKey.current === groupTrendKey) setGroupTrend({ key: groupTrendKey, state: { status: "error",
+      .catch((error: unknown) => { if (readAccess.failed(error, controller)) return; if (!controller.signal.aborted && trendRequest.current === controller && currentGroupTrendKey.current === groupTrendKey) setGroupTrend({ key: groupTrendKey, state: { status: "error",
         message: error instanceof Error ? error.message : "Plan delta trend could not be loaded." } }); });
     return () => controller.abort();
-  }, [groupTrendKey, groupSelection]);
+  }, [groupTrendKey, groupSelection, readAccess.revision]);
   useEffect(() => {
     const previous = activeQuery.current;
     const queryChanged = previous === undefined || previous.instanceId !== instanceId || previous.ranking !== ranking ||
       (previous.refresh === refresh && (previous.fromUtc !== timeWindow.fromUtc || previous.toUtc !== timeWindow.toUtc));
     activeQuery.current = { instanceId, ranking, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc, refresh };
     pagingRequest.current?.abort(); pagingRequest.current = null; setPaging(false);
-    const c = new AbortController(); setPage(undefined); setStatus(undefined); setMessage(undefined);
+    const c = readAccess.begin(); if (!c) return; setPage(undefined); setStatus(undefined); setMessage(undefined);
     if (queryChanged && !initialQuerySelection) { setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); }
-    void getQueryPerformanceTop(instanceId, ranking, undefined, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setPage(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance evidence is unavailable."); });
-    void getQueryPerformanceStatus(instanceId, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setStatus(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance status is unavailable."); });
+    void getQueryPerformanceTop(instanceId, ranking, undefined, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setPage(value); }).catch((e: unknown) => { if (readAccess.failed(e, c)) return; if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance evidence is unavailable."); });
+    void getQueryPerformanceStatus(instanceId, timeWindow.fromUtc, timeWindow.toUtc, c.signal).then(value => { if (!c.signal.aborted) setStatus(value); }).catch((e: unknown) => { if (readAccess.failed(e, c)) return; if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query performance status is unavailable."); });
     return () => c.abort();
-  }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc, refresh]);
+  }, [instanceId, ranking, timeWindow.fromUtc, timeWindow.toUtc, refresh, readAccess.revision]);
   useEffect(() => {
     if (!page || !historySelection || page.items.some(item => item.query.databaseId === historySelection.databaseId && item.query.queryFingerprint === historySelection.queryFingerprint)
       || waitRanking?.items.some(item => item.databaseId === historySelection.databaseId && item.queryFingerprint === historySelection.queryFingerprint)
@@ -260,7 +267,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       setHistorySelection(undefined); setHistory(undefined); setPlan(undefined); setGroupTrend(undefined); setSelectedSource("mixed");
       return;
     }
-    const controller = new AbortController();
+    const controller = readAccess.begin(); if (!controller) return;
     const selection = { ...initialQuerySelection, fromUtc: timeWindow.fromUtc, toUtc: timeWindow.toUtc };
     historyRequest.current?.abort();
     historyRequest.current = controller;
@@ -281,21 +288,22 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
           setSelectedSource(value.items[0].source);
         if (value.items.length === 0) setMessage("No history was observed for this query hash in the selected time window.");
       })
-      .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Query history is unavailable."); });
+      .catch((error: unknown) => { if (readAccess.failed(error, controller)) return; if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Query history is unavailable."); });
     if (selection.planFingerprint) void getQueryPerformancePlan(instanceId, selection.databaseId,
       selection.queryFingerprint, selection.planFingerprint, controller.signal)
       .then(value => { if (!controller.signal.aborted) setPlan(value); })
-      .catch((error: unknown) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Plan metadata is unavailable."); });
+      .catch((error: unknown) => { if (readAccess.failed(error, controller)) return; if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Plan metadata is unavailable."); });
     return () => controller.abort();
   }, [instanceId, initialQuerySelection?.databaseId, initialQuerySelection?.queryFingerprint,
       initialQuerySelection?.planFingerprint, initialQuerySelection?.sourceKind,
-      timeWindow.fromUtc, timeWindow.toUtc, refresh, selectedDatabaseId, selectionInvalid]);
+      timeWindow.fromUtc, timeWindow.toUtc, refresh, selectedDatabaseId, selectionInvalid, readAccess.revision]);
   const loadHistory = (selection: { databaseId: number; queryFingerprint: string; fromUtc: string; toUtc: string }, cursor?: string) => {
     historyRequest.current?.abort();
-    const c = new AbortController(); historyRequest.current = c;
-    void getQueryPerformanceHistory(instanceId, selection.databaseId, selection.queryFingerprint, selection.fromUtc, selection.toUtc, c.signal, cursor).then(value => { if (!c.signal.aborted) setHistory(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query history is unavailable."); });
+    const c = readAccess.begin(); if (!c) return; historyRequest.current = c;
+    void getQueryPerformanceHistory(instanceId, selection.databaseId, selection.queryFingerprint, selection.fromUtc, selection.toUtc, c.signal, cursor).then(value => { if (!c.signal.aborted) setHistory(value); }).catch((e: unknown) => { if (readAccess.failed(e, c)) return; if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Query history is unavailable."); });
   };
   const select = (databaseId: number, queryFingerprint: string, from: string, to: string, planFingerprint: string | undefined, sourceKind: string) => {
+    if (!readAccess.allowed()) return;
     const selectedPlan = sourceKind === "query_store" ? planFingerprint : undefined;
     const selectedSource = sourceKind === "query_store" ? "query_store" : "plan_cache";
     if (initialQuerySelection?.databaseId !== databaseId ||
@@ -308,22 +316,22 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     }
     const selection = { databaseId, queryFingerprint, fromUtc: page?.fromUtc ?? from,
       toUtc: page?.toUtc ?? to, planFingerprint: selectedPlan };
-    const c = new AbortController();
+    const c = readAccess.begin(); if (!c) return;
     setSelectedSource(selectedSource);
     selectionRequest.current?.abort(); selectionRequest.current = c;
     clearContent(); setPlan(undefined); setMessage(undefined); setHistorySelection(selection); setHistory(undefined);
     loadHistory(selection);
-    if (planFingerprint !== undefined) void getQueryPerformancePlan(instanceId, databaseId, queryFingerprint, planFingerprint, c.signal).then(value => { if (!c.signal.aborted) setPlan(value); }).catch((e: unknown) => { if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Plan metadata is unavailable."); });
+    if (planFingerprint !== undefined) void getQueryPerformancePlan(instanceId, databaseId, queryFingerprint, planFingerprint, c.signal).then(value => { if (!c.signal.aborted) setPlan(value); }).catch((e: unknown) => { if (readAccess.failed(e, c)) return; if (!c.signal.aborted) setMessage(e instanceof Error ? e.message : "Plan metadata is unavailable."); });
   };
   const loadMetricPage = () => {
     if (!page?.nextCursor || pagingRequest.current) return;
     const context = pagingContext;
-    const c = new AbortController(); pagingRequest.current = c;
+    const c = readAccess.begin(); if (!c) return; pagingRequest.current = c;
     const current = () => !c.signal.aborted && pagingRequest.current === c && currentPagingContext.current === context;
     setPaging(true); setMessage(undefined);
     void getQueryPerformanceTop(instanceId, ranking, page.nextCursor, page.fromUtc, page.toUtc, c.signal).then(next => {
       if (current()) setPage(next);
-    }).catch((e: unknown) => { if (current()) setMessage(e instanceof Error ? e.message : "Query performance page is unavailable."); }).finally(() => {
+    }).catch((e: unknown) => { if (readAccess.failed(e, c)) return; if (current()) setMessage(e instanceof Error ? e.message : "Query performance page is unavailable."); }).finally(() => {
       if (current()) { pagingRequest.current = null; setPaging(false); }
     });
   };
@@ -355,7 +363,8 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   };
   const rowTrendContext = JSON.stringify([instanceId.toLowerCase(), timeWindow.fromUtc, timeWindow.toUtc, view, ranking, rankingSource, database, refresh,
     page?.items.map(item => `${item.collectionRunId}:${item.observationKey}`)]);
-  return <RankingTrendProvider contextKey={rowTrendContext}><section className="query-performance-screen" aria-labelledby="query-performance-heading">
+  if (readAccess.denied) return <section className="query-performance-screen" aria-label="Query evidence access"><h2>Queries for {displayName}</h2><p role="alert">Query evidence access was denied. Retained rankings, history, waits, trends, and protected content were removed. Restore read access for this server, then explicitly retry.</p><button type="button" onClick={readAccess.retry}>Retry query access</button><button type="button" className="secondary-button" onClick={onClose}>Close</button></section>;
+  return <QueryReadAccessContext.Provider value={readAccess}><RankingTrendProvider contextKey={rowTrendContext}><section className="query-performance-screen" aria-labelledby="query-performance-heading">
     <div className="health-heading-row"><div><p className="eyebrow">Server · queries</p><h2 id="query-performance-heading">Queries for {displayName}</h2></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {selectionInvalid ? <p role="alert" className="status-message">{invalidQuerySelectionMessage}</p> : null}
     {message === undefined || view === "cache" ? null : <p role="alert" className="status-message">{message}</p>}
@@ -476,5 +485,5 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       </table></div> : null}
     </section>}
 
-  </section></RankingTrendProvider>;
+  </section></RankingTrendProvider></QueryReadAccessContext.Provider>;
 }

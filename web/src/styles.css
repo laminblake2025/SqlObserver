@@ -373,6 +373,7 @@ html:has(.workspace-fleet-strip) { scroll-padding-top: calc(var(--workspace-flee
 /* Target registration and server inventory */
 .fleet-grid { display: grid; grid-template-columns: minmax(0, 2.7fr) minmax(280px, 1fr); gap: 20px; }
 .fleet-grid > .panel:first-child { overflow: hidden; }
+.fleet-grid .table-scroll:focus-visible { outline-offset: -3px; }
 .fleet-grid > .panel:nth-child(2) { padding: 20px; }
 .fleet-grid .table-scroll table { min-width: 980px; }
 .fleet-grid .table-scroll td:first-child { min-width: 170px; }

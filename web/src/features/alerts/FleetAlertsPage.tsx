@@ -67,7 +67,7 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
       <label>State<select value={filter} onChange={event => setFilter(event.target.value as AlertFilter)}>
         <option value="active">Active</option><option value="firing">Firing</option><option value="all">All loaded states</option>
       </select></label>
-      <label>Server or rule<input aria-label="Filter loaded alerts" value={search}
+      <label>Filter loaded alerts<input aria-label="Filter loaded alerts" value={search}
         onChange={event => setSearch(event.target.value)} placeholder="Search loaded alerts" /></label>
       <label>Group by<select value={grouping} onChange={event => setGrouping(event.target.value as FleetAlertGrouping)}>
         <option value="server">Server</option><option value="rule">Rule</option><option value="none">None</option>

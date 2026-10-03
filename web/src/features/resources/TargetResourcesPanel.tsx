@@ -112,7 +112,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   const chart = (title: string, metric: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h3>{title}</h3>
     <ChartEvidenceIndicator label={title} series={evidence?.series.filter(item => item.metric === metric) ?? []} />
-    <OverviewChart series={evidence?.series.filter(item => item.metric === metric) ?? []}
+    <OverviewChart scrollablePlotLabel={`${title} plot`} series={evidence?.series.filter(item => item.metric === metric) ?? []}
       previous={previous?.series.filter(item => item.metric === metric)}
       fromUtc={result.data!.fromUtc} toUtc={result.data!.toUtc}
       references={chartReferences.references}
@@ -173,7 +173,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
           "Queries waiting for execution memory grants at sample time.")}
         <section className="panel server-dashboard-chart"><h3>Memory pressure</h3>
           <ChartEvidenceIndicator label="Memory pressure" series={memory(evidence)} />
-          <OverviewChart series={memory(evidence)} previous={memory(previous)}
+          <OverviewChart scrollablePlotLabel="Memory pressure plot" series={memory(evidence)} previous={memory(previous)}
             references={chartReferences.references}
             crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
             fromUtc={result.data.fromUtc} toUtc={result.data.toUtc} onSelectWindow={onSelectWindow} />

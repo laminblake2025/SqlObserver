@@ -360,6 +360,62 @@ test('uses the real time provider for local and UTC chart labels without changin
   await expect(chart.getByRole('columnheader', { name: 'UTC', exact: true })).toBeVisible();
 });
 
+for (const width of [320, 390, 768, 1440]) test(`opted-in resource plot keeps readable axes and local keyboard scrolling at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.getByRole('combobox', { name: 'Primary chart kind', exact: true }).selectOption('overview');
+  await page.getByRole('checkbox', { name: 'Scrollable resource plot', exact: true }).check();
+  const viewport = primary(page).getByRole('region', { name: 'Resource evidence plot', exact: true });
+  const svg = viewport.getByRole('img');
+  await expect(svg).toBeVisible();
+  await page.getByRole('button', { name: 'Replace chart target', exact: true }).focus();
+  await page.keyboard.press('Tab');
+  await expect(viewport).toBeFocused();
+  const geometry = await viewport.evaluate(element => {
+    const svg = element.querySelector('svg'), text = svg.querySelector('text'), matrix = text.getScreenCTM();
+    const outline = getComputedStyle(element), box = svg.getBoundingClientRect();
+    return { client: element.clientWidth, scroll: element.scrollWidth, svgWidth: box.width, svgHeight: box.height,
+      axisFont: parseFloat(getComputedStyle(text).fontSize) * Math.hypot(matrix.a, matrix.b),
+      outlineStyle: outline.outlineStyle, outlineWidth: parseFloat(outline.outlineWidth) };
+  });
+  expect(geometry.outlineStyle).not.toBe('none');
+  expect(geometry.outlineWidth).toBeGreaterThanOrEqual(2);
+  expect(geometry.svgWidth).toBeGreaterThanOrEqual(650);
+  expect(geometry.axisFont).toBeGreaterThanOrEqual(11.5);
+  expect(Math.abs(geometry.svgHeight - geometry.svgWidth * 220 / 650)).toBeLessThan(1);
+  if (width <= 560) {
+    expect(geometry.scroll).toBeGreaterThan(geometry.client);
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => viewport.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+    // Exercise pointer-to-window conversion after the SVG has moved within its own viewport.
+    await viewport.evaluate(element => { element.scrollLeft = 150; });
+    await viewport.scrollIntoViewIfNeeded();
+    const gesture = await viewport.evaluate(element => {
+      const edges = [...element.querySelectorAll('.chart-gridline-vertical')], box = element.getBoundingClientRect();
+      const edge = line => { const point = line.ownerSVGElement.createSVGPoint(); point.x = line.x1.baseVal.value;
+        point.y = (line.y1.baseVal.value + line.y2.baseVal.value) / 2; return point.matrixTransform(line.getScreenCTM()); };
+      const first = edge(edges[0]), last = edge(edges.at(-1));
+      const start = Math.max(first.x + 5, box.left + 20), end = Math.min(last.x - 5, box.right - 20);
+      return { start, end, y: first.y, from: (start - first.x) / (last.x - first.x), to: (end - first.x) / (last.x - first.x) };
+    });
+    expect(gesture.end).toBeGreaterThan(gesture.start);
+    await page.mouse.move(gesture.start, gesture.y); await page.mouse.down();
+    await page.mouse.move(gesture.end, gesture.y, { steps: 6 }); await page.mouse.up();
+    await expect(result(page, 'Selection callback count')).toHaveText('1');
+    for (const [name, fraction] of [['Selected from UTC', gesture.from], ['Selected to UTC', gesture.to]]) {
+      const expected = Date.parse(initialFrom) + fraction * (Date.parse(initialTo) - Date.parse(initialFrom));
+      await expect.poll(async () => Math.abs(Date.parse(await result(page, name).textContent()) - expected)).toBeLessThan(1000);
+    }
+  }
+  expect(await svg.evaluate(element => getComputedStyle(element).touchAction)).toContain('pan-y');
+  await expect(viewport.locator('figcaption, table')).toHaveCount(0);
+  await primary(page).getByText('View chart values', { exact: true }).click();
+  await expect(primary(page).getByRole('region', { name: 'Chart observation values', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
+  await info.attach(`resource-plot-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
+  expect(violations).toEqual([]);
+});
+
 test('keeps chart values accessible at four dashboard widths', async ({ page }, info) => {
   const screenshotDirectory = fileURLToPath(new URL('../../artifacts/dashboard-access-navigation/screenshots/', import.meta.url));
   await mkdir(screenshotDirectory, { recursive: true });

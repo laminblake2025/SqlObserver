@@ -53,6 +53,10 @@ export function volumeHistoryWindow(fromUtc: string, toUtc: string) {
   if (duration <= 0n || duration > 31n * 86400n * 1000000n) return invalid();
   return { fromUtc: from, toUtc: to };
 }
+export function volumeHistoryContextIdentity(instanceId: string, targetRevision: number, fromUtc: string, toUtc: string, compare: boolean, selectedVolume: VolumeHistoryIdentity | null | undefined): string {
+  try { return JSON.stringify([instanceId.toLowerCase(),targetRevision,at(volumeHistoryUtc(fromUtc)).toString(),at(volumeHistoryUtc(toUtc)).toString(),compare,selectedVolume]); }
+  catch { return JSON.stringify([instanceId.toLowerCase(),targetRevision,fromUtc,toUtc,compare,selectedVolume]); }
+}
 export function previousVolumeHistoryWindow(fromUtc: string, toUtc: string) {
   const window = volumeHistoryWindow(fromUtc, toUtc), value = at(window.fromUtc) * 2n - at(window.toUtc);
   const remainder = (value % 1000000n + 1000000n) % 1000000n;

@@ -7,6 +7,7 @@ import type { QueryWindow } from "./queryWindowModel";
 import { RankingTrend } from "./RankingTrend.tsx";
 import { RankingTrendProvider } from "./useRankingTrends.tsx";
 import { cacheRankingTrendRequest } from "./rankingTrendModel.ts";
+import { QueryReadAccessContext, useQueryReadBoundary, useSharedQueryReadAccess } from "./useQueryReadAccess.tsx";
 
 const metrics: readonly [QueryPerformanceMetric, string][] = [
   ["cpu", "CPU"], ["duration", "Duration"], ["executions", "Executions"],
@@ -27,17 +28,19 @@ export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databa
   const [state, setState] = useState<{ readonly key: string; readonly result?: PlanCacheIntervalRanking; readonly error?: string }>();
   const key = JSON.stringify([instanceId, timeWindow.fromUtc, timeWindow.toUtc, metric, refresh]);
   const current = state?.key === key ? state : undefined;
+  const localAccess=useQueryReadBoundary(instanceId,()=>setState(undefined),key), readAccess=useSharedQueryReadAccess()??localAccess;
   useEffect(() => {
-    const controller = new AbortController();
+    const controller = readAccess.begin(); if (!controller) return;
     void getPlanCacheIntervalRanking(instanceId, timeWindow.fromUtc, timeWindow.toUtc, metric, controller.signal)
       .then(result => { if (!controller.signal.aborted) setState({ key, result }); })
-      .catch(() => { if (!controller.signal.aborted) setState({ key, error: "Cache interval evidence is unavailable. Retry when collection and repository access are available." }); });
+      .catch((failure: unknown) => { if (readAccess.failed(failure,controller)) return; if (!controller.signal.aborted) setState({ key, error: "Cache interval evidence is unavailable. Retry when collection and repository access are available." }); });
     return () => controller.abort();
-  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, metric, refresh, key]);
+  }, [instanceId, timeWindow.fromUtc, timeWindow.toUtc, metric, refresh, key, readAccess.revision]);
   const result = current?.result;
   const rows = result?.items.filter(row => selectedDatabaseId === undefined || row.databaseId === selectedDatabaseId) ?? [];
   const rowTrendContext = JSON.stringify([key, selectedDatabaseId, rows.map(row => `${row.databaseId}:${row.databaseIncarnation}:${row.queryFingerprint}:${row.planFingerprint}`)]);
-  return <RankingTrendProvider contextKey={rowTrendContext}><section className="panel" aria-label="Cache interval deltas">
+  if(readAccess.denied)return <section className="panel" aria-label="Query evidence access"><h3>Cache interval deltas</h3><p role="alert">Query evidence access was denied. Retained history and protected content were removed. Restore read access, then explicitly retry.</p><button type="button" onClick={readAccess.retry}>Retry query access</button></section>;
+  return <QueryReadAccessContext.Provider value={readAccess}><RankingTrendProvider contextKey={rowTrendContext}><section className="panel" aria-label="Cache interval deltas">
     <h3>Cache interval deltas</h3>
     <p>Activity measured between qualified cache captures in the selected window. First samples, resets and comparisons crossing the window boundary contribute no total. Database recreations are ranked separately. Cache eviction and incomplete captures can hide activity.</p>
     <label>Rank cache activity by <select value={metric} onChange={event => onMetricChange(event.target.value as QueryPerformanceMetric)}>
@@ -65,5 +68,5 @@ export function PlanCacheIntervalPanel({ instanceId, timeWindow, refresh, databa
       {result.hasMore ? <p>More query plans were observed; this ranking shows the first 25.</p> : null}
     </>}
     {selection?.targetId === instanceId && (selectedDatabaseId === undefined || selection.databaseId === selectedDatabaseId) ? <PlanCacheIntervalHistoryPanel canReadText={canReadText} selection={selection} metric={metric} onSelectWindow={onSelectWindow} timeWindow={timeWindow} refresh={refresh} onClose={() => onSelect(undefined)} /> : null}
-  </section></RankingTrendProvider>;
+  </section></RankingTrendProvider></QueryReadAccessContext.Provider>;
 }

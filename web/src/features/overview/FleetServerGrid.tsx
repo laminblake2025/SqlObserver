@@ -80,7 +80,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
     <div className="overview-panel-heading">
       <div><p className="eyebrow">AUTHORIZED TARGETS</p><h2>Server grid</h2></div>
       <div className="fleet-grid-controls">
-        <label className="inline-search">Group by<select aria-label="Group servers by" value={groupBy} onChange={event => setGroupBy(event.target.value as FleetGrouping)}><option value="environment">Environment</option><option value="tag">Tag</option><option value="none">No grouping</option></select></label>
+        <label className="inline-search">Group servers by<select aria-label="Group servers by" value={groupBy} onChange={event => setGroupBy(event.target.value as FleetGrouping)}><option value="environment">Environment</option><option value="tag">Tag</option><option value="none">No grouping</option></select></label>
         <label className="inline-search">Search loaded servers<input aria-label="Search loaded servers" placeholder="Search loaded targets…" value={search} onChange={event => onSearch(event.target.value)} /></label>
       </div>
     </div>
@@ -119,7 +119,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
         {group.rows.map(row => <tr key={row.target.targetId}>
         <td><a href={overviewHref(scope, 'health', row.target.targetId)}>{row.target.displayName}</a>
           <small>{row.target.environment ?? 'Unassigned'} · {row.target.tags.length ? row.target.tags.join(', ') : 'No tags'}</small>
-          {row.target.canManageGrouping && row.target.lifecycle !== 'retired' && <button type="button" className="table-link" disabled={recoveries.has(row.target.targetId.toLowerCase())} aria-label={`Edit grouping for ${row.target.displayName}`} onClick={() => edit(row.target)}>Edit labels</button>}
+          {row.target.canManageGrouping && row.target.lifecycle !== 'retired' && <button type="button" className="table-link" disabled={recoveries.has(row.target.targetId.toLowerCase())} aria-label={`Edit grouping for ${row.target.displayName}`} onClick={() => edit(row.target)}>Edit grouping</button>}
         </td>
         <td><a href={overviewHref(scope, 'alerts', row.target.targetId)}>{count(row.evidence?.activeAlerts)} active alerts</a><small>{row.attentionCount} observed issues · SQL core {row.evidence?.collectionState?.replaceAll('_', ' ') ?? 'unavailable'}</small></td>
         <SignalCell label="SQL scheduler CPU" signal={row.signals.cpu} href={overviewHref(scope, 'resources', row.target.targetId)} />

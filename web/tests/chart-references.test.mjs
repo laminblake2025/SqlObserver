@@ -113,7 +113,9 @@ test("rendered chart contains bands, median and threshold lines with accessible 
     "./chartTimeModel":new URL("../src/features/overview/chartTimeModel.ts",import.meta.url).href,
     "../../components/useChartGesture":new URL("../src/components/useChartGesture.ts",import.meta.url).href,
     "./overviewChartRange":new URL("../src/features/overview/overviewChartRange.ts",import.meta.url).href,
-    "./chartReferenceModel.ts":new URL("../src/features/overview/chartReferenceModel.ts",import.meta.url).href};
+    "./chartReferenceModel.ts":new URL("../src/features/overview/chartReferenceModel.ts",import.meta.url).href,
+    // This SSR loader omits the style-only module; mounted dark/keyboard/axe checks load the actual CSS.
+    "./overviewChart.css":"data:text/javascript;base64,"+Buffer.from("export {};").toString("base64")};
   for(const [key,value] of Object.entries(replacements))javascript=javascript.replaceAll(JSON.stringify(key),JSON.stringify(value));
   const {OverviewChart}=await import("data:text/javascript;base64,"+Buffer.from(javascript).toString("base64"));
   const bands=memoryBaselineBands(target,[parseBaseline(baseline())],from,to);

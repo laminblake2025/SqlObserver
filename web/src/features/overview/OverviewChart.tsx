@@ -6,6 +6,7 @@ import { useChartGesture } from '../../components/useChartGesture';
 import { formatOverviewChartValue, overviewChartRange } from './overviewChartRange';
 import type { OverviewSeries } from './overviewTypes';
 import { matchingReferences, type ChartReferences } from './chartReferenceModel.ts';
+import './overviewChart.css';
 
 const colors = ['var(--series-1)','var(--series-2)','var(--series-3)','var(--series-4)','var(--series-5)','var(--series-6)','var(--series-7)','var(--series-8)','var(--series-9)','var(--series-10)'];
 
@@ -17,13 +18,14 @@ interface PlotPoint {
   readonly y: number;
 }
 
-export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshairUtc,onCrosshairChange,onSelectWindow,references}: {
+export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshairUtc,onCrosshairChange,onSelectWindow,references,scrollablePlotLabel}: {
   series:readonly OverviewSeries[];previous?:readonly OverviewSeries[];fromUtc:string;toUtc:string;
   markers?:readonly {timeUtc:string;label:string}[];
   crosshairUtc?:string|null;
   onCrosshairChange?:(utc:string|null)=>void;
   onSelectWindow?:(window:{fromUtc:string;toUtc:string})=>void;
   references?:ChartReferences;
+  scrollablePlotLabel?:string;
 }) {
   const {mode}=useTimeDisplay();
   const timeLabel=(value:string|number,compact=false)=>formatDisplayTime(value,mode,compact);
@@ -46,7 +48,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   const pointX=(event:PointerEvent<SVGSVGElement>)=>{
     return chartSvgX(event.currentTarget,event.clientX,event.clientY);
   };
-  return <figure><svg className={`chart overview-chart${onSelectWindow?' chart-interactive':''}`} viewBox="0 0 650 220" role="img" aria-label={`${series[0]?.unit} over the selected ${mode==='local'?'local-time display':'UTC'} window. Lines connect observations; missing samples remain gaps.${onSelectWindow?' Drag across the chart to select a shared time window.':''}`}
+  const plot=<svg className={`chart overview-chart${onSelectWindow?' chart-interactive':''}`} viewBox="0 0 650 220" role="img" aria-label={`${series[0]?.unit} over the selected ${mode==='local'?'local-time display':'UTC'} window. Lines connect observations; missing samples remain gaps.${onSelectWindow?' Drag across the chart to select a shared time window.':''}`}
     onPointerMove={event=>{if((!onCrosshairChange&&!onSelectWindow)||!event.isPrimary||!gesture.acceptsPointer(event.pointerId))return;const value=pointX(event);if(value===null)return;onCrosshairChange?.(chartUtcAtX(value,fromUtc,toUtc));gesture.move(event.pointerId,value);}}
     onPointerDown={event=>{if(!onSelectWindow||event.button!==0||!event.isPrimary)return;const value=pointX(event);if(value===null)return;if(gesture.begin(event.pointerId,value))event.currentTarget.setPointerCapture(event.pointerId);}}
     onPointerUp={event=>{gesture.finish(event.pointerId,pointX(event));}}
@@ -74,7 +76,8 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     {dragStart!==null&&dragEnd!==null&&<rect className="chart-selection" x={Math.min(dragStart,dragEnd)} y="25" width={Math.abs(dragEnd-dragStart)} height="155" pointerEvents="none"/>}
     {crosshairX!==null&&<g className="chart-crosshair" pointerEvents="none"><line x1={crosshairX} x2={crosshairX} y1="25" y2="180"/><text x={crosshairX>500?crosshairX-5:crosshairX+5} y="18" textAnchor={crosshairX>500?'end':'start'}>{timeLabel(crosshairTime,true)}</text></g>}
     <text x="48" y="210">{timeLabel(from,true)}</text><text x="465" y="210">{timeLabel(to,true)}</text>
-  </svg><figcaption className="overview-legend">{series.map(s=><span key={`${s.targetId}:${s.metric}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
+  </svg>;
+  return <figure>{scrollablePlotLabel?<div className="overview-plot-scroll" role="region" aria-label={scrollablePlotLabel} tabIndex={0}>{plot}</div>:plot}<figcaption className="overview-legend">{series.map(s=><span key={`${s.targetId}:${s.metric}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
   <small>Vertical scale includes observations and visible references and may not start at zero.</small>
   {bands.length>0&&<small>Shaded band: {[...new Set(bands.map(band=>band.label.split(' · ')[0]))].join(', ')} · p10–p90; center line: median. Missing reference hours remain gaps.</small>}
   {selectedReferences.thresholds.length>0&&<small>Dashed horizontal lines: current enabled metric rules. Open reference details for each rule and condition.</small>}
