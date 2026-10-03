@@ -21,6 +21,7 @@ import {handleDashboardNativeInsightsFixture} from './dashboard-native-insights-
 import {handleDashboardRetainedEvidenceFixture} from './dashboard-retained-evidence-fixture.mjs';
 import {handleReportWorkflowFixture} from './report-workflow-fixture.mjs';
 import {nativeAlertSelectionPage} from './alert-selection-fixture.mjs';
+import {handleAlertAssignmentFixture} from './alert-assignment-fixtures.mjs';
 import {handleAnalyticsWorkflowFixture} from './analytics-workflow-fixture.mjs';
 import {handleDeadlockRetainedFixture} from './deadlock-retained-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
@@ -105,6 +106,7 @@ createServer(async(req,res)=>{try{
  if(await handleChartReferenceFixture(url,res,req,targets,send))return;
  // Opt-in dashboard interaction evidence, isolated from existing scenario contracts.
  if(req.headers.cookie?.includes('dashboardRefactor=1')) {
+  if(handleAlertAssignmentFixture(url,req,res,targets,send))return;
   if(await handleAvailabilityFixture(url,res))return;
   if(await handleBackupFixture(url,res,req))return;
   const route=/^\/api\/v1\/observation-targets\/([^/]+)\/(.+)$/.exec(url.pathname);

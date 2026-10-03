@@ -556,6 +556,26 @@ internal sealed class FakeAlertDestinationRead : IAlertDestinationReadPort
 
 internal sealed class FakeAlertQuery : IAlertQueryService
 {
+    internal bool AssignmentMissing { get; set; }
+    internal Guid? LastAssignmentAnchor { get; private set; }
+    public ValueTask<AlertAssignmentView?> GetAssignmentAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken)
+    {
+        authorization.RequireAny(targetId, [ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator, ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor]);
+        bool writer = authorization.CanAccess(ApplicationRole.Operator, targetId) || authorization.CanAccess(ApplicationRole.TargetAdministrator, targetId);
+        return ValueTask.FromResult<AlertAssignmentView?>(AssignmentMissing ? null : new AlertAssignmentView(
+            new(targetId, alertId, Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"), 7, AlertState.Firing, Snapshot,
+                "S-1-5-21-2201", "Approved responder", "Synthetic triage", "S-1-5-21-2100", Snapshot),
+            writer ? [new("S-1-5-21-2201", "Approved responder")] : [], writer));
+    }
+    public ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, int limit, Guid? beforeOperationId, CancellationToken cancellationToken)
+    {
+        authorization.RequireAny(targetId, [ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator, ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor]);
+        LastAssignmentAnchor = beforeOperationId;
+        Guid operation = Guid.Parse("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+        return ValueTask.FromResult(new AlertAssignmentHistoryPage(beforeOperationId is null ?
+            [new(operation, Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"), 7, "S-1-5-21-2201", "Approved responder", null, null, "Synthetic triage", "S-1-5-21-2100", Snapshot)] : [],
+            beforeOperationId is null ? operation : null));
+    }
     internal bool SnoozeMissing { get; set; }
     internal int SnoozeCalls { get; private set; }
     internal int PageCalls { get; private set; }
@@ -588,10 +608,19 @@ internal sealed class FakeAlertQuery : IAlertQueryService
     private static AlertActiveDto Item(MonitoredInstanceId target) => new(M8AlertApiFactory.AlertId, Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), target, "metric.threshold", AlertState.Firing, Snapshot.AddMinutes(-5), Snapshot.AddMinutes(-4), null, 2, "threshold", false);
 }
 
-internal enum FakeAlertAdministrationMode { Success, Conflict, Unavailable }
+internal enum FakeAlertAdministrationMode { Success, Conflict, Unavailable, Unapproved }
 
 internal sealed class FakeAlertAdministration : IAlertAdministrationService
 {
+    internal int AssignmentCalls { get; private set; }
+    internal AlertAssignmentWriteRequest? LastAssignmentWriteRequest { get; private set; }
+    public async ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AuthorizationContext authorization, AlertAssignmentWriteRequest request, CancellationToken cancellationToken)
+    {
+        authorization.RequireAny(request.Audit.TargetId, [ApplicationRole.Operator, ApplicationRole.TargetAdministrator]);
+        AssignmentCalls++; LastAssignmentWriteRequest = request;
+        AdministrativeAuditReceipt receipt = await Run();
+        return new AlertAssignmentWriteReceipt(receipt, request.ExpectedRevision + 1, request.AssigneeSid?.Value, receipt.RecordedAtUtc);
+    }
     internal int SnoozeCalls { get; private set; }
     internal AlertSnoozeWriteRequest? LastSnoozeWriteRequest { get; private set; }
     internal FakeAlertAdministrationMode Mode { get; set; }
@@ -618,6 +647,7 @@ internal sealed class FakeAlertAdministration : IAlertAdministrationService
     {
         FakeAlertAdministrationMode.Conflict => throw new AlertRepositoryOperationException("conflict", "conflict", 409, new InvalidOperationException()),
         FakeAlertAdministrationMode.Unavailable => throw new AlertRepositoryOperationException("repository_unavailable", "unavailable", 503, new InvalidOperationException()),
+        FakeAlertAdministrationMode.Unapproved => throw new AlertRepositoryOperationException("assignee_not_approved", "unapproved", 422, new InvalidOperationException()),
         _ => ValueTask.FromResult(new AdministrativeAuditReceipt(new AdministrativeAuditId(Guid.Parse("99999999-9999-4999-8999-999999999999")), new DateTimeOffset(2026, 8, 25, 12, 0, 0, TimeSpan.Zero))),
     };
 }

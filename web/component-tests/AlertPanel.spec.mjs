@@ -59,7 +59,7 @@ function heldResponse(response) {
 }
 
 test.beforeEach(async ({ page }) => {
-  const context = { unexpected: [], requests: [], notificationReads: [], handler: undefined };
+  const context = { unexpected: [], requests: [], notificationReads: [], assignmentReads: [], handler: undefined };
   contexts.set(page, context);
   page.on('pageerror', error => context.unexpected.push(`Page error: ${error.message}`));
   await page.route('**/*', async route => {
@@ -68,6 +68,13 @@ test.beforeEach(async ({ page }) => {
       context.unexpected.push(`External request: ${url.href}`);
       await route.abort();
     } else if (/^\/api(?:\/|$)/.test(url.pathname)) {
+      const assignment = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/assignment$/u.exec(url.pathname);
+      if (assignment && route.request().method() === 'GET' && [target, otherTarget].includes(assignment[1]) && !url.search) {
+        context.assignmentReads.push(route.request());
+        await json(route, { targetId: assignment[1], alertId: assignment[2], episodeId: assignment[2], revision: 1, state: 'firing',
+          serverNowUtc: snapshotUtc, assigneeSid: null, assigneeName: null, assignmentReason: null, assignedBy: null,
+          assignedAtUtc: null, eligibleAssignees: [], canAssign: false }); return;
+      }
       const notification = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/snooze$/u.exec(url.pathname);
       // Track new notification metadata independently of the existing inbox/acknowledgement assertions.
       if (notification && route.request().method() === 'GET' && [target, otherTarget].includes(notification[1]) && !url.search) {
@@ -337,6 +344,6 @@ for (const fixture of [
   await expect.poll(() => page.evaluate(() => location.hash)).toBe(href);
   await expect(page.getByRole('status').filter({ hasText: 'Activity route selected' })).toBeVisible();
   expect(context.requests.filter(request => isRead({ request: () => request }))).toHaveLength(1);
-  expect([...context.requests, ...context.notificationReads].every(request => request.method() === 'GET')).toBe(true);
+  expect([...context.requests, ...context.notificationReads, ...context.assignmentReads].every(request => request.method() === 'GET')).toBe(true);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

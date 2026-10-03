@@ -13,6 +13,7 @@ public static class AlertEndpoints
 {
     public static IEndpointRouteBuilder MapAlertEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapAlertAssignmentEndpoints();
         endpoints.MapGroup("/api/v1/alerts").RequireAuthorization()
             .MapGet("/active", GetFleetActiveAsync);
         var group = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/alerts").RequireAuthorization();

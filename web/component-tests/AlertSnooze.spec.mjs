@@ -22,7 +22,7 @@ function held() {
 }
 test.beforeEach(async ({ page }) => {
   const session = { backend: notificationBackend(), allowed: true, legacy: false, state: 'firing', total: 1,
-    inboxReads: [], statusReads: [], posts: [], acknowledgements: [], unexpected: [], handler: undefined };
+    inboxReads: [], assignmentReads: [], statusReads: [], posts: [], acknowledgements: [], unexpected: [], handler: undefined };
   sessions.set(page, session); await page.clock.setFixedTime(new Date(serverNowUtc));
   page.on('pageerror', failure => session.unexpected.push(`Page error: ${failure.message}`));
   await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
@@ -33,6 +33,13 @@ test.beforeEach(async ({ page }) => {
     if (!/^\/api(?:\/|$)/u.test(url.pathname)) return route.continue();
     if (request.method() === 'GET' && url.pathname === '/api/v1/me' && [alpha, beta].includes(url.searchParams.get('targetId')))
       return json(route, access(url.searchParams.get('targetId'), session.allowed));
+    const assignment = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/assignment$/u.exec(url.pathname);
+    if (assignment && request.method() === 'GET' && [alpha, beta].includes(assignment[1]) && !url.search) {
+      session.assignmentReads.push(request);
+      return json(route, { targetId: assignment[1], alertId: assignment[2], episodeId, revision: 7, state: 'firing',
+        serverNowUtc, assigneeSid: null, assigneeName: null, assignmentReason: null, assignedBy: null,
+        assignedAtUtc: null, eligibleAssignees: [], canAssign: false });
+    }
     const acknowledgement = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/acknowledge$/u.exec(url.pathname);
     if (acknowledgement && request.method() === 'POST' && [alpha, beta].includes(acknowledgement[1]) && !url.search) {
       session.acknowledgements.push(request.postDataJSON());

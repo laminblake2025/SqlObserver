@@ -23,7 +23,7 @@ function held(status = 200, change = body => body) {
   } };
 }
 test.beforeEach(async ({ page }) => {
-  const session = { generation: 1, total: 210, allowed: true, reads: [], posts: [], accessReads: [], notificationReads: [], unexpected: [], handler: undefined };
+  const session = { generation: 1, total: 210, allowed: true, reads: [], posts: [], accessReads: [], notificationReads: [], assignmentReads: [], unexpected: [], handler: undefined };
   sessions.set(page, session); page.on('pageerror', failure => session.unexpected.push(`Page error: ${failure.message}`));
   await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
   await page.route('**/*', async route => {
@@ -31,6 +31,13 @@ test.beforeEach(async ({ page }) => {
     const reject = async reason => { session.unexpected.push(`${reason}: ${request.method()} ${url.href}`); await route.abort(); };
     if (url.origin !== origin) return reject('External request');
     if (!/^\/api(?:\/|$)/u.test(url.pathname)) return route.continue();
+    const assignment = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/assignment$/u.exec(url.pathname);
+    if (assignment && request.method() === 'GET' && [alpha, beta].includes(assignment[1]) && !url.search) {
+      session.assignmentReads.push({ target: assignment[1], alertId: assignment[2] });
+      return json(route, { targetId: assignment[1], alertId: assignment[2], episodeId: assignment[2], revision: 1, state: 'firing',
+        serverNowUtc: '2026-03-12T13:00:00.1234560+00:00', assigneeSid: null, assigneeName: null, assignmentReason: null,
+        assignedBy: null, assignedAtUtc: null, eligibleAssignees: [], canAssign: false });
+    }
     const notification = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/snooze$/u.exec(url.pathname);
     if (notification && request.method() === 'GET' && [alpha, beta].includes(notification[1]) && !url.search) {
       const item = { type: 'notification', target: notification[1], alertId: notification[2] }; session.notificationReads.push(item);

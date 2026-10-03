@@ -58,6 +58,8 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddSingleton(static services =>
     WindowsAuthorizationConfiguration.CreateResolver(
         services.GetRequiredService<IConfiguration>()));
+// Validate the complete bounded responder roster now, before accepting requests.
+builder.Services.AddSingleton<IAlertAssignmentEligibilityPort>(ConfiguredAlertAssignmentEligibility.Create(builder.Configuration));
 builder.Services.AddSingleton<IIdentityFingerprintKeyProvider>(_ =>
     new ConfigurationIdentityFingerprintKeyProvider(() => builder.Configuration["SqlObserver:IdentityFingerprintKey"]));
 builder.Services.AddSingleton<IdentityFingerprintKey>(services =>

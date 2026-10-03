@@ -2,7 +2,35 @@
 
 This checkpoint implements the dashboard refactor, including the native contracts and persistence needed for cohesive dashboard features. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor; unrelated collector and runtime redesign remain outside this pass.
 
-## Latest alert notification snooze qualification (2026-10-03)
+## Latest alert assignment qualification (2026-10-03)
+
+Fleet and server alert details now support durable **Assign, Reassign and Unassign**, with current ownership and paginated immutable change history. Assignment records responsibility while preserving retained alert evidence, acknowledgement, notification snooze and evaluator state. Resolution retains attribution; a new firing episode starts unassigned. [Feature and configuration contract](Alert-Assignment.md).
+
+Eligible responders come from an administrator-configured target roster. This is an explicit approval policy, not an Active Directory membership lookup or an authorization grant. Entries require Enabled=true and valid SID, safe display name and bounded target scope; malformed configuration fails at startup. Disabled actors are ineligible. Same-target Operator or Target Administrator authorization is required to change ownership. Readers can inspect ownership/history but cannot enumerate candidates. Duplicate display names remain distinguishable by identity hints. An empty roster names the application-administrator recovery path.
+
+Forward migration **0350** adds native assignment state and immutable receipts/history. Target and rule-state locks serialize mutations; current episode/revision and active-state preconditions protect fresh commands. Exactly one revision increment is required. Server-derived digests bind actor, target, alert, episode, revision, selected SID or explicit null and reason. Exact replay returns the original audited receipt before current roster/episode checks, including after recipient revocation or renaming. Divergent/stale commands fail rather than overwrite. Applied migrations were not edited.
+
+Current ownership is disclosed as an as-of server read, separate from the retained inbox and shared historical window. Confirmed POST completion triggers an independent GET; failed readback retries only GET. Uncertain requests retain the complete captured command. Failed or cancelled refresh cannot discard that intent. Definite eligibility refusal explains nonapplication and refreshes the roster. Inactive current state and changed episodes explain disabled controls. The shared synchronous mutation lane excludes acknowledgement, snooze and assignment writes/retries; a writer cancels/fences a pending replacement inbox read, and pending writers prevent Latest/retry reads. Context, role, denial and unmount fence late results.
+
+History uses a private immutable native sequence, with a target/alert-bound operation UUID anchor. Equal timestamps and cross-episode history do not lose changes. The browser retains at most **20 pages / 1,000 changes**, discloses the cap and offers explicit refresh. A failed/cancelled refresh keeps the old history and repeats the same first-page intent.
+
+Three independent lanes owned Domain/Application/HTTP/configuration, migration/repository/PostgreSQL tests, and UI/theme/mounted tests. Read-only peers inspected native and frontend seams. One lead integrated built-App journeys, resolved findings and owns final execution and visual evidence.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent peer reviews and one lead. | Complete. |
+| Dark theme | Shared dark tokens, wrapped controls, readable current/retained evidence, audit receipts and visible keyboard focus. | Passing in tested states. |
+| Diagnostic-screen review | Episode-scoped ownership, target-approved roster, immutable replay, history, retained alert evidence and authoritative readback reviewed. | Assignment slice complete. |
+| Interaction tests | **45 native web checks**, **133 mounted cases**, **23 built-App cases**. | Complete owning groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe and document overflow at **320/390/768/1440**, with mobile/desktop visual review. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build/assets, **254 affected .NET checks**: 46 unit, 85 API, 47 security/worker and **76 real PostgreSQL**, including HTTP-to-repository behavior. **1,888 final frozen inputs** unchanged; owned fixture ports closed. | Passing against final code. |
+| Screenshots and completion summary | **Eight fresh captures**, [gallery](../../artifacts/dashboard-alert-assignment/index.html), [exact cases, hashes and provenance](../../artifacts/dashboard-alert-assignment/completion.json). | Delivered locally, bound to the final local commit. |
+
+Preserved `before-*` attempts record analyzer-required test syntax and PostgreSQL harness corrections: acknowledgement evidence is compared before/after instead of requiring a seeded evaluator operation; the collector-only state read uses the collector test role, without broadening production grants. Initial browsers passed 128 mounted and 22 App cases. Repairs assert absent panels after unmount, reach visible focus with actual Tab navigation and use exact accessible history cells plus ordered reason-node equality. Complete owning browser groups reran after all browsers stopped. Only those two specs changed; product/backend/build inputs remained unchanged, and every backend group's consumed hashes match final code. Passing subsets were not combined into final counts.
+
+Native qualification uses disposable pinned PostgreSQL **18.4** databases; the HTTP journey exercises production services with only authentication replaced. Browser traffic/captures use synthetic fixtures on final built assets. SQL Server collectors are unchanged; collector, manual assistive-technology and cross-browser certification are not claimed. Recurring maintenance, group template deployment, assistant decisions, telemetry/source gaps and the broader repository plan remain open. No GitHub upload occurred.
+
+## Previous alert notification snooze qualification (2026-10-03)
 
 Fleet and server alert inboxes now support durable **Snooze and Unsnooze** for the current alert episode. Snooze suppresses notification delivery; the alert remains visible and firing or acknowledged, and collection/evaluation continue. New episodes do not inherit suppression. The dashboard offers 15 minutes, 1 hour, 8 hours and 24 hours, requires a reason and discloses received-row evidence separately from current server status. [Feature contract](Alert-Notification-Snooze.md).
 
@@ -473,7 +501,7 @@ These statuses describe the original interface requirements rather than treating
 | Quiet evidence and recovery guidance | Named source dots, compact footer and expandable reference details; visible partial/missing/failed states. | Do not collapse errors or turn lack of evidence into a healthy verdict. |
 | Role-aware UI | `/me` target grants gate actions and protected query text/plans; late content is fenced after context or role changes. See [access model](../../web/src/features/targets/meApi.ts). | New mutations and assistant tools need matching target authorization and audit semantics. |
 | Fleet grid and pinned strip | Environment/tag grouping, observed-exception ordering, scoped signal links and authorized compact navigation. See [fleet grid](../../web/src/features/overview/FleetServerGrid.tsx). | Grid evidence is bounded to the loaded Overview response; it is not a transactional fleet snapshot. |
-| Fleet alert inbox | Grouped current inbox, acknowledgement with retry identity, durable episode-scoped Snooze/Unsnooze, exact alert selection and investigation links. | Assignment remains incomplete. |
+| Fleet alert inbox | Grouped current inbox, acknowledgement with retry identity, durable episode-scoped Snooze/Unsnooze and Assign/Reassign/Unassign, immutable ownership history, exact selection and investigation links. | Eligible responders require administrator-configured target approval; assignment does not grant access. Complete alert lifecycle event coverage remains separate. |
 | Server dashboard | Shared charts, baseline/reference context, event selection, investigate-first and live blocking tree. | Full event/source parity remains incomplete. |
 | Queries | Ranking/trends, regression comparisons, protected text/plan inspection, history and selected-plan hourly waits. | Source/collection qualification is separate from frontend fixture validation. |
 | Waits | Category trends, native deltas, retained captured-session links and exact capture restoration. | Captured sessions do not prove who caused a historical aggregate wait bucket. |
@@ -495,9 +523,9 @@ The following work is a handoff, not an implementation authorization. Keep each 
 
 ### Alert inbox actions
 
-Snooze and Unsnooze are delivered across the [HTTP routes](../../src/SqlObserver.Server/AlertEndpoints.cs), native repository, audit and fleet/server controls. Versioned inbox projections supply current episode/revision where native identity exists; legacy rows without an episode expose both as null. Current-status GET and audited mutation receipts are separate from retained inbox evidence. See the [contract and delivery fences](Alert-Notification-Snooze.md) and latest qualification above. Applied migrations were not edited.
+Snooze and Unsnooze are delivered across the [HTTP routes](../../src/SqlObserver.Server/AlertEndpoints.cs), native repository, audit and fleet/server controls. Versioned inbox projections supply current episode/revision where native identity exists; legacy rows without an episode expose both as null. Current-status GET and audited mutation receipts are separate from retained inbox evidence. See the [contract and delivery fences](Alert-Notification-Snooze.md) and previous snooze qualification above. Applied migrations were not edited.
 
-**Assignment remains open:** define eligible assignee identities and assign/reassign/unassign semantics. Persist current owner and actor/time/change history. Enforce target role and assignee eligibility, revision/episode fences, retry identity and same-operation/different-payload conflicts. Define owner behavior after resolution and new firing cycles. This needs durable contracts and repository/service tests before UI controls can claim it works.
+**Assignment is delivered:** [routes and eligibility configuration](Alert-Assignment.md), native current ownership/immutable history, target-role and approved-responder checks, episode/revision fences and exact replay are implemented. Resolution retains attribution; new episodes start unassigned. Current status and history remain separate from retained inbox evidence. Full assign/reassign/unassign behavior is qualified against the native repository and fleet/server UI in the latest section above.
 
 ### Recurring maintenance
 

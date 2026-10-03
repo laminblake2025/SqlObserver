@@ -55,6 +55,41 @@ public sealed record AlertSnoozeWriteRequest
 }
 public sealed record AlertSnoozeWriteReceipt(AdministrativeAuditReceipt Audit, long Revision,
     DateTimeOffset? EndsAtUtc, DateTimeOffset AppliedAtUtc);
+public sealed record AlertAssignmentWriteRequest
+{
+    public AlertAssignmentWriteRequest(Guid alertId, Guid expectedEpisodeId, long expectedRevision,
+        ActorSecurityIdentifier? assigneeSid, string reason, string idempotencyKey,
+        AdministrativeAuditEnvelope audit, RepositoryCallTimeout timeout)
+    {
+        ArgumentNullException.ThrowIfNull(audit); ArgumentNullException.ThrowIfNull(timeout);
+        if (!AlertIdentifier.TryParseRfc4122(idempotencyKey, out _)) throw new ArgumentException("A canonical operation identity is required.", nameof(idempotencyKey));
+        if (audit.Action != (assigneeSid is null ? AdministrativeAuditAction.UnassignAlert : AdministrativeAuditAction.AssignAlert))
+            throw new ArgumentException("The assignment audit action does not match its payload.", nameof(audit));
+        RequestDigest = AlertAssignmentContract.ComputeRequestDigest(audit.TargetId, alertId, expectedEpisodeId, expectedRevision, assigneeSid, reason);
+        AlertId = alertId; ExpectedEpisodeId = expectedEpisodeId; ExpectedRevision = expectedRevision;
+        AssigneeSid = assigneeSid; Reason = reason; IdempotencyKey = idempotencyKey; Audit = audit; Timeout = timeout;
+    }
+    public Guid AlertId { get; }
+    public Guid ExpectedEpisodeId { get; }
+    public long ExpectedRevision { get; }
+    public ActorSecurityIdentifier? AssigneeSid { get; }
+    public string Reason { get; }
+    public string IdempotencyKey { get; }
+    public AdministrativeAuditEnvelope Audit { get; }
+    public RepositoryCallTimeout Timeout { get; }
+    public string RequestDigest { get; }
+    public bool AssigneeEligible { get; init; }
+    public string? ApprovedAssigneeName { get; init; }
+}
+public sealed record AlertAssignmentWriteReceipt(AdministrativeAuditReceipt Audit, long Revision,
+    string? AssigneeSid, DateTimeOffset AppliedAtUtc);
+public sealed record AlertAssignmentView(AlertAssignmentStatus Status,
+    IReadOnlyList<AlertAssignmentCandidate> EligibleAssignees, bool CanAssign);
+public interface IAlertAssignmentEligibilityPort
+{
+    IReadOnlyList<AlertAssignmentCandidate> ListEligible(MonitoredInstanceId targetId);
+    AlertAssignmentCandidate? ResolveApproved(MonitoredInstanceId targetId, ActorSecurityIdentifier sid);
+}
 public sealed record AlertDestinationWriteRequest(Guid DestinationId, string Kind, string ConfigurationReference, bool Enabled, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, long? ExpectedRevision = null, string? RequestDigest = null, bool Approve = false, AlertDestinationApproval? Approval = null)
 {
     public const int MaximumReferenceLength = 256;
@@ -141,6 +176,12 @@ public interface IAlertRepositoryPort
         throw new NotSupportedException("The alert snooze read is not implemented by this repository.");
     ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AlertSnoozeWriteRequest request, CancellationToken cancellationToken) =>
         throw new NotSupportedException("The alert snooze mutation is not implemented by this repository.");
+    ValueTask<AlertAssignmentStatus?> GetAssignmentAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment read is not implemented by this repository.");
+    ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AlertAssignmentWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment mutation is not implemented by this repository.");
+    ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(MonitoredInstanceId targetId, Guid alertId, int limit, Guid? beforeOperationId, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment history is not implemented by this repository.");
     ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AlertDestinationWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelDeliveryAdminAsync(AlertDeliveryAdminCancellationRequest request, CancellationToken cancellationToken);
     ValueTask<IReadOnlyList<AlertDeliveryWork>> ClaimDueDeliveriesAsync(WorkerLeaseIdentity lease, int limit, RepositoryCallTimeout timeout, CancellationToken cancellationToken);
@@ -173,6 +214,10 @@ public interface IAlertDestinationPort
 
 public interface IAlertQueryService
 {
+    ValueTask<AlertAssignmentView?> GetAssignmentAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment read is not implemented by this service.");
+    ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, int limit, Guid? beforeOperationId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment history is not implemented by this service.");
     ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken) =>
         throw new NotSupportedException("The alert snooze read is not implemented by this service.");
     ValueTask<IReadOnlyList<AlertActiveDto>> ListActiveAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, CancellationToken cancellationToken);
@@ -263,6 +308,8 @@ public interface IAlertDestinationQueryService
 
 public interface IAlertAdministrationService
 {
+    ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AuthorizationContext authorization, AlertAssignmentWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment mutation is not implemented by this service.");
     ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AuthorizationContext authorization, AlertSnoozeWriteRequest request, CancellationToken cancellationToken) =>
         throw new NotSupportedException("The alert snooze mutation is not implemented by this service.");
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken);

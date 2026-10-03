@@ -483,6 +483,108 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlert
         catch (PostgresException exception) { throw MapAlertException(exception); }
     }
 
+    public async ValueTask<AlertAssignmentStatus?> GetAssignmentAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("An alert identity is required.", nameof(alertId));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT target_id,alert_id,episode_id,revision,state,server_now,assignee_sid,assignee_name,assignment_reason,assigned_by,assigned_at FROM alerting.get_episode_assignment(@target_id,@alert_id);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            command.Parameters.AddWithValue("target_id", targetId.Value);
+            command.Parameters.AddWithValue("alert_id", alertId);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            AlertAssignmentStatus? status = await reader.ReadAsync(deadline.Token).ConfigureAwait(false)
+                ? new AlertAssignmentStatus(new MonitoredInstanceId(reader.GetGuid(0)), reader.GetGuid(1), reader.GetGuid(2),
+                    reader.GetInt64(3), (AlertState)reader.GetInt16(4), reader.GetFieldValue<DateTimeOffset>(5),
+                    reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.IsDBNull(8) ? null : reader.GetString(8), reader.IsDBNull(9) ? null : reader.GetString(9),
+                    reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10))
+                : null;
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return status;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    public async ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AlertAssignmentWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, request.Audit.TargetId.Value, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT audit_id,recorded_at,revision,assignee_sid,applied_at FROM alerting.set_episode_assignment(@target_id,@alert_id,@episode_id,@revision,@assignee_sid,@assignee_name,@assignee_eligible,@reason,@idempotency_key,@actor_sid,@correlation_id,@request_digest);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+            command.Parameters.AddWithValue("target_id", request.Audit.TargetId.Value);
+            command.Parameters.AddWithValue("alert_id", request.AlertId);
+            command.Parameters.AddWithValue("episode_id", request.ExpectedEpisodeId);
+            command.Parameters.AddWithValue("revision", request.ExpectedRevision);
+            command.Parameters.Add("assignee_sid", NpgsqlDbType.Text).Value = (object?)request.AssigneeSid?.Value ?? DBNull.Value;
+            command.Parameters.Add("assignee_name", NpgsqlDbType.Text).Value = (object?)request.ApprovedAssigneeName ?? DBNull.Value;
+            command.Parameters.AddWithValue("assignee_eligible", request.AssigneeEligible);
+            command.Parameters.AddWithValue("reason", request.Reason);
+            command.Parameters.AddWithValue("idempotency_key", request.IdempotencyKey);
+            command.Parameters.AddWithValue("actor_sid", request.Audit.ActorSid.Value);
+            command.Parameters.AddWithValue("correlation_id", request.Audit.CorrelationId.Value);
+            command.Parameters.AddWithValue("request_digest", request.RequestDigest);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            if (!await reader.ReadAsync(deadline.Token).ConfigureAwait(false)) throw new InvalidDataException("Alert assignment returned no immutable receipt.");
+            var receipt = new AlertAssignmentWriteReceipt(
+                new AdministrativeAuditReceipt(new AdministrativeAuditId(reader.GetGuid(0)), reader.GetFieldValue<DateTimeOffset>(1)),
+                reader.GetInt64(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return receipt;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    public async ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(MonitoredInstanceId targetId, Guid alertId,
+        int limit, Guid? beforeOperationId, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty || beforeOperationId == Guid.Empty) throw new ArgumentException("Valid alert and history anchor identities are required.");
+        if (limit is <= 0 or > AlertAssignmentContract.MaximumHistoryPageSize) throw new ArgumentOutOfRangeException(nameof(limit));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT operation_id,episode_id,revision,assignee_sid,assignee_name,previous_assignee_sid,previous_assignee_name,reason,actor_sid,applied_at FROM alerting.list_assignment_history(@target_id,@alert_id,@max_results,@before_operation_id);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            command.Parameters.AddWithValue("target_id", targetId.Value);
+            command.Parameters.AddWithValue("alert_id", alertId);
+            command.Parameters.AddWithValue("max_results", limit);
+            command.Parameters.Add("before_operation_id", NpgsqlDbType.Uuid).Value = (object?)beforeOperationId ?? DBNull.Value;
+            var items = new List<AlertAssignmentHistoryItem>(limit + 1);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+                items.Add(new AlertAssignmentHistoryItem(reader.GetGuid(0), reader.GetGuid(1), reader.GetInt64(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
+                    reader.GetString(7), reader.GetString(8), reader.GetFieldValue<DateTimeOffset>(9)));
+            await reader.DisposeAsync().ConfigureAwait(false);
+            bool more = items.Count > limit;
+            if (more) items.RemoveAt(items.Count - 1);
+            Guid? next = more && items.Count > 0 ? items[^1].OperationId : null;
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return new AlertAssignmentHistoryPage(items, next);
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
     private static AlertActiveDto WithSnoozeMetadata(AlertActiveDto alert, NpgsqlDataReader reader, int start) => alert with
     {
         EpisodeId = reader.IsDBNull(start) ? null : reader.GetGuid(start),
@@ -751,6 +853,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlert
 
     private static AlertRepositoryOperationException MapAlertException(PostgresException exception) => exception.SqlState switch
     {
+        "P0422" => new AlertRepositoryOperationException("assignee_not_approved", "The requested responder is not approved for this target.", 422, exception),
         "22023" or "22P02" or "23502" => new AlertRepositoryOperationException("invalid_request", "The alert request is invalid.", 400, exception),
         "P0002" => new AlertRepositoryOperationException("target_not_found", "The requested alert target or resource was not found.", 404, exception),
         "42501" => new AlertRepositoryOperationException("forbidden", "The alert operation is not authorized for this target.", 403, exception),

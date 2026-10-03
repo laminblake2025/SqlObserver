@@ -5,11 +5,13 @@ import { changeAlertNotifications, getAlertNotificationState, type AlertNotifica
 import { notificationCommand, validNotificationReason, type AlertNotificationCommand,
   type AlertNotificationState, type NotificationAction } from "./alertSnoozeModel.ts";
 import type { FleetAlert } from "./alertTypes.ts";
+import type { AlertMutationLane } from "./alertMutationLane.ts";
 import "./alertSnooze.css";
 
 interface Props {
   readonly selected: FleetAlert; readonly allowed: boolean; readonly otherMutationBusy: boolean;
   readonly hold: () => void; readonly deny: () => void; readonly onBusyChange?: (busy: boolean) => void;
+  readonly mutationLane?: AlertMutationLane; readonly mutationKey?: string;
 }
 interface Attempt { readonly action: NotificationAction; readonly command: AlertNotificationCommand; }
 type ReadIntent = "status" | "readback";
@@ -21,7 +23,7 @@ interface View {
 }
 
 /** The parent keys this component to context, denial, target, alert and received cycle. */
-export function AlertSnoozeControls({ selected, allowed, otherMutationBusy, hold, deny, onBusyChange }: Props) {
+export function AlertSnoozeControls({ selected, allowed, otherMutationBusy, hold, deny, onBusyChange, mutationLane, mutationKey = "" }: Props) {
   const time = useTimeFormatter(), [minutes, setMinutes] = useState(60), [reason, setReason] = useState("");
   const [view, setView] = useState<View>({});
   const mounted = useRef(false), authority = useRef(allowed), owner = useRef<Owner | undefined>(undefined);
@@ -29,11 +31,11 @@ export function AlertSnoozeControls({ selected, allowed, otherMutationBusy, hold
   authority.current = allowed;
   useLayoutEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; owner.current?.controller.abort(); owner.current = undefined; };
+    return () => { mounted.current = false; owner.current?.controller.abort(); if (owner.current) mutationLane?.release(owner.current); owner.current = undefined; };
   }, []);
   useLayoutEffect(() => {
     if (allowed || !owner.current) return;
-    const request = owner.current; request.controller.abort(); owner.current = undefined;
+    const request = owner.current; request.controller.abort(); mutationLane?.release(request); owner.current = undefined;
     setView(previous => ({ ...previous, busy: undefined, uncertain: request.attempt ?? previous.uncertain,
       failedRead: request.kind === "mutation" ? previous.failedRead : request.kind,
       failedNewIntent: request.newIntent,
@@ -70,11 +72,14 @@ export function AlertSnoozeControls({ selected, allowed, otherMutationBusy, hold
   }
   async function send(attempt: Attempt) {
     if (!mounted.current || !authority.current || owner.current || otherMutationBusy) return;
-    const request: Owner = { controller: new AbortController(), kind: "mutation", attempt }; owner.current = request;
+    const request: Owner = { controller: new AbortController(), kind: "mutation", attempt };
+    if (mutationLane && !mutationLane.claim(mutationKey, request, "snooze")) return;
+    owner.current = request;
     hold(); setView(previous => ({ ...previous, busy: "mutation", message: undefined, uncertain: attempt, conflict: false }));
     try {
       const receipt = await changeAlertNotifications(selected.targetId, selected.alertId, attempt.action, attempt.command, request.controller.signal);
       if (!isCurrent(request)) return;
+      mutationLane?.release(request);
       owner.current = undefined;
       setView(previous => ({ ...previous, receipt, busy: undefined, uncertain: undefined,
         message: "Notification operation recorded. Reading current server status; the receipt does not prove the snooze is still active." }));
@@ -85,11 +90,11 @@ export function AlertSnoozeControls({ selected, allowed, otherMutationBusy, hold
       setView(previous => ({ ...previous, busy: undefined, uncertain: attempt, conflict,
         message: conflict ? "The alert episode or revision changed. Refresh notification status before starting a new operation."
           : "Notification completion is uncertain. Retry uses the same operation, episode, revision, expiry and reason; it never extends the original snooze." }));
-    } finally { if (owner.current === request) owner.current = undefined; }
+    } finally { mutationLane?.release(request); if (owner.current === request) owner.current = undefined; }
   }
   function cancel() {
     const request = owner.current; if (!request) return;
-    request.controller.abort(); owner.current = undefined;
+    request.controller.abort(); mutationLane?.release(request); owner.current = undefined;
     setView(previous => ({ ...previous, busy: undefined, uncertain: request.attempt ?? previous.uncertain,
       failedRead: request.kind === "mutation" ? previous.failedRead : request.kind,
       failedNewIntent: request.newIntent,

@@ -70,6 +70,8 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
     [InlineData(AdministrativeAuditAction.AcknowledgeAlert)]
     [InlineData(AdministrativeAuditAction.SnoozeAlert)]
     [InlineData(AdministrativeAuditAction.UnsnoozeAlert)]
+    [InlineData(AdministrativeAuditAction.AssignAlert)]
+    [InlineData(AdministrativeAuditAction.UnassignAlert)]
     [InlineData(AdministrativeAuditAction.ConfigureAlertDestination)]
     [InlineData(AdministrativeAuditAction.UpdateAlertDestination)]
     [InlineData(AdministrativeAuditAction.RetireAlertDestination)]

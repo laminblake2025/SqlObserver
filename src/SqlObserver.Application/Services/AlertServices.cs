@@ -6,13 +6,41 @@ using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Application.Services;
 
-public sealed class AlertQueryService(IAlertRepositoryPort repository) : IAlertQueryService
+public sealed class AlertQueryService(IAlertRepositoryPort repository, IAlertAssignmentEligibilityPort? assignmentEligibility = null) : IAlertQueryService
 {
     private static readonly ApplicationRole[] ReadRoles =
     [
         ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator,
         ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor,
     ];
+
+    public async ValueTask<AlertAssignmentView?> GetAssignmentAsync(AuthorizationContext authorization,
+        MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("Alert identity is required.", nameof(alertId));
+        authorization.RequireAny(targetId, ReadRoles);
+        AlertAssignmentStatus? result = await repository.GetAssignmentAsync(targetId, alertId,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken).ConfigureAwait(false);
+        if (result is null) return null;
+        if (result.TargetId.Value != targetId.Value || result.AlertId != alertId)
+            throw new InvalidDataException("The alert assignment read does not match its requested resource.");
+        bool canAssign = authorization.CanAccess(ApplicationRole.Operator, targetId) ||
+            authorization.CanAccess(ApplicationRole.TargetAdministrator, targetId);
+        IReadOnlyList<AlertAssignmentCandidate> candidates = canAssign ? assignmentEligibility?.ListEligible(targetId) ?? [] : [];
+        return new AlertAssignmentView(result, candidates, canAssign);
+    }
+
+    public ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(AuthorizationContext authorization,
+        MonitoredInstanceId targetId, Guid alertId, int limit, Guid? beforeOperationId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty || beforeOperationId == Guid.Empty) throw new ArgumentException("Alert and cursor identities must be nonempty.");
+        if (limit is < 1 or > AlertAssignmentContract.MaximumHistoryPageSize) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, ReadRoles);
+        return repository.ListAssignmentHistoryAsync(targetId, alertId, limit, beforeOperationId,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
 
     public async ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(AuthorizationContext authorization,
         MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken)
@@ -111,8 +139,27 @@ public sealed class AlertDestinationQueryService(IAlertDestinationReadPort repos
     }
 }
 
-public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit, IAlertDestinationApprovalPort? destinationApproval = null) : IAlertAdministrationService
+public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit,
+    IAlertDestinationApprovalPort? destinationApproval = null, IAlertAssignmentEligibilityPort? assignmentEligibility = null) : IAlertAdministrationService
 {
+    public async ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AuthorizationContext authorization,
+        AlertAssignmentWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AlertAssignmentWriteReceipt? result = null;
+        await WriteAnyAsync(authorization, request.Audit, request.Audit.TargetId, request.IdempotencyKey, async () =>
+        {
+            AlertAssignmentCandidate? candidate = request.AssigneeSid is null ? null :
+                assignmentEligibility?.ResolveApproved(request.Audit.TargetId, request.AssigneeSid);
+            // Never reject revoked approval before the atomic repository replay lookup.
+            // Caller-authored metadata is replaced even when the roster has changed.
+            var resolved = request with { AssigneeEligible = candidate is not null, ApprovedAssigneeName = candidate?.DisplayName };
+            result = await repository.SetAssignmentAsync(resolved, cancellationToken).ConfigureAwait(false);
+            return result.Audit;
+        }, cancellationToken).ConfigureAwait(false);
+        return result ?? throw new InvalidOperationException("The alert assignment mutation returned no receipt.");
+    }
+
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) =>
         WriteAsync(authorization, request.Audit, ApplicationRole.TargetAdministrator, request.Audit.TargetId, request.IdempotencyKey, () => repository.UpsertRuleAsync(request, cancellationToken), cancellationToken);
 

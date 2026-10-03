@@ -102,9 +102,14 @@ export function useAlertInbox(kind: AlertInboxKind, targetId: string, context: s
     if (latest.current.context !== context || store.current.context !== context) return;
     cacheAcknowledged(store.current.receipts, item, targetId); redraw();
   }
+  function pinMutation() {
+    // A replacement already in flight cannot take away the selected writer.
+    if (owner.current) cancel();
+    hold();
+  }
   return { rows, receipts, snapshotUtc: receipts[0]?.page.snapshotUtc, nextCursor: receipts.at(-1)?.page.nextCursor,
     loading: state?.loading ?? !receipts.length, error: state?.error, retained: currentStore?.held ?? false, denial: currentStore?.denial ?? store.current.denial + 1,
-    retry: () => { if (state?.attempt) void load(state.attempt, true); }, canRetry: Boolean(state?.attempt), cancel, hold, deny, acknowledged,
+    retry: () => { if (state?.attempt) void load(state.attempt, true); }, canRetry: Boolean(state?.attempt), cancel, hold, pinMutation, deny, acknowledged,
     more: () => void load({ latest: false }, true), latest: () => void load({ latest: true, requestedKey }, true) };
 }
 function cacheAcknowledged(receipts: AlertInboxReceipt[], item: ActiveAlert, targetId: string) {

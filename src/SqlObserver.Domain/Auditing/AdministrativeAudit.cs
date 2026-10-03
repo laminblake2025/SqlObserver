@@ -83,6 +83,8 @@ public enum AdministrativeAuditAction
     ApproveAlertDestination = 17,
     SnoozeAlert = 18,
     UnsnoozeAlert = 19,
+    AssignAlert = 20,
+    UnassignAlert = 21,
 }
 
 public enum AdministrativeAuthorizationDecision
