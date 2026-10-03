@@ -1,5 +1,5 @@
 import { apiFetch } from "../../apiClient.ts";
-import { utcMicroseconds } from "../../utcTimestamp.ts";
+import { canonicalUtcTimestamp, utcMicroseconds } from "../../utcTimestamp.ts";
 import { readBoundedBody } from "../activity/activityParser.mjs";
 export type ReportKind = "instance-health" | "performance-window" | "incident-evidence" | "capacity-readiness";
 export interface ReportRun {
@@ -22,6 +22,11 @@ function knownKind(value: unknown): value is ReportKind {
   return typeof value === "string" && Object.hasOwn(kindValues, value);
 }
 function invalidReceipt(): Error { return new Error("The report response could not be verified."); }
+function receiptUtc(value: string): string {
+  // PostgreSQL DateTimeOffset receipts have a seventh round-trip digit of zero.
+  // Other sub-microsecond fractions remain invalid; request/digest inputs are unchanged.
+  return canonicalUtcTimestamp(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
+}
 
 function parseReceipt(value: unknown, targetId: string, reportKind: ReportKind, expectedDigest: string): ReportRun {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw invalidReceipt();
@@ -31,9 +36,10 @@ function parseReceipt(value: unknown, targetId: string, reportKind: ReportKind, 
     || run.definitionVersion !== 1 || run.state !== "finalized"
     || run.parameterDigest !== expectedDigest
     || typeof run.snapshotUtc !== "string" || typeof run.expiresAtUtc !== "string") throw invalidReceipt();
-  if (utcMicroseconds(run.expiresAtUtc) - utcMicroseconds(run.snapshotUtc) !== reportLifetime) throw invalidReceipt();
+  const snapshotUtc = receiptUtc(run.snapshotUtc), expiresAtUtc = receiptUtc(run.expiresAtUtc);
+  if (utcMicroseconds(expiresAtUtc) - utcMicroseconds(snapshotUtc) !== reportLifetime) throw invalidReceipt();
   return { runId: run.runId, targetId: run.targetId, targetRevision: run.targetRevision as number,
-    kind: kindValues[reportKind], definitionVersion: 1, snapshotUtc: run.snapshotUtc, expiresAtUtc: run.expiresAtUtc,
+    kind: kindValues[reportKind], definitionVersion: 1, snapshotUtc, expiresAtUtc,
     parameterDigest: expectedDigest, state: "finalized" };
 }
 

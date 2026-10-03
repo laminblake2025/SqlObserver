@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { createReport, reportCsvUrl, reportHtmlUrl, type ReportKind, type ReportRun } from "./reportsApi";
 import { reportContextKey, resolveReportWindow, type ReportSelection, type ReportWindow } from "./reportsWorkspaceModel";
+import { useReportExpiry } from "./useReportExpiry";
 
 interface ReportAttempt {
   readonly contextKey: string;
@@ -20,14 +21,21 @@ interface ReportView {
   readonly message?: string;
 }
 
-export function ReportsPanel({ instanceId, displayName, onClose, scope, selection, onSelectKind }: {
+interface ReportsPanelProps {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
   readonly scope: OverviewScope;
   readonly selection: ReportSelection;
   readonly onSelectKind: (kind: ReportKind) => void;
-}) {
+}
+
+export function ReportsPanel(props: ReportsPanelProps) {
+  // A returning target/type/window owns a new lifetime, even after selection ABA.
+  return <ReportWorkspace key={reportContextKey(props.instanceId, props.selection, props.scope)} {...props} />;
+}
+
+function ReportWorkspace({ instanceId, displayName, onClose, scope, selection, onSelectKind }: ReportsPanelProps) {
   const formatTime = useTimeFormatter();
   const contextKey = reportContextKey(instanceId, selection, scope);
   const latestContext = useRef(contextKey);
@@ -35,6 +43,11 @@ export function ReportsPanel({ instanceId, displayName, onClose, scope, selectio
   const [view, setView] = useState<ReportView>({ contextKey, busy: false });
   const activeRequest = useRef<ActiveRequest | null>(null);
   const attempt = useRef<ReportAttempt | null>(null);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; activeRequest.current?.controller.abort(); activeRequest.current = null; };
+  }, []);
 
   useEffect(() => {
     if (activeRequest.current && activeRequest.current.contextKey !== contextKey) {
@@ -75,18 +88,19 @@ export function ReportsPanel({ instanceId, displayName, onClose, scope, selectio
   const displayWindow = visibleView?.window ?? selectedWindow;
   const message = selection.state === "invalid" ? selection.message : visibleView?.message ?? windowError;
   const run = visibleView?.run;
+  const expiry = useReportExpiry(run);
   const exportSection = kind === "instance-health" ? "health"
     : kind === "performance-window" ? "performance"
     : kind === "incident-evidence" ? "incidents" : "capacity";
 
   async function generate() {
-    if (selection.state !== "valid") return;
+    if (!mounted.current || selection.state !== "valid") return;
     if (activeRequest.current?.contextKey === contextKey) return;
     activeRequest.current?.controller.abort();
     const controller = new AbortController();
     activeRequest.current = { contextKey, controller };
     setView({ contextKey, busy: true, window: visibleView?.window });
-    const isCurrent = () => latestContext.current === contextKey
+    const isCurrent = () => mounted.current && latestContext.current === contextKey
       && activeRequest.current?.controller === controller && !controller.signal.aborted;
     let immutableAttempt: ReportAttempt | undefined;
 
@@ -164,7 +178,7 @@ export function ReportsPanel({ instanceId, displayName, onClose, scope, selectio
 
       <div className="report-actions">
         <button disabled={kind === undefined || (visibleView?.busy ?? false) || windowError !== undefined} type="submit">
-          {visibleView?.busy ? "Generating…" : "Generate report"}
+          {visibleView?.busy ? "Generating…" : expiry.expired ? "Generate new report" : "Generate report"}
         </button>
       </div>
     </form>
@@ -172,11 +186,12 @@ export function ReportsPanel({ instanceId, displayName, onClose, scope, selectio
     {message === undefined ? null : <p className="status-message" role="alert">{message}</p>}
     {run === undefined || run.targetId.toLowerCase() !== instanceId.toLowerCase()
       ? <p className="empty-state">Reports use authorized, materialized projection evidence.</p>
+      : expiry.expired ? <p className="status-message" role="status">This report expired. Generate a new report using {kind === "instance-health" ? "current snapshot evidence" : "the current shared range"}.</p>
       : <div className="report-result" aria-live="polite">
         <p>Ready through {formatTime(run.expiresAtUtc)}.</p>
         <div className="report-export-links">
-          <a href={reportHtmlUrl(instanceId, run.runId)} target="_blank" rel="noreferrer">Open printable HTML</a>
-          <a href={reportCsvUrl(instanceId, run.runId, exportSection)} download>Download section CSV</a>
+          <a href={reportHtmlUrl(instanceId, run.runId)} target="_blank" rel="noreferrer" onClick={event => { if (!mounted.current || expiry.check()) event.preventDefault(); }} onAuxClick={event => { if (!mounted.current || expiry.check()) event.preventDefault(); }}>Open printable HTML</a>
+          <a href={reportCsvUrl(instanceId, run.runId, exportSection)} download onClick={event => { if (!mounted.current || expiry.check()) event.preventDefault(); }} onAuxClick={event => { if (!mounted.current || expiry.check()) event.preventDefault(); }}>Download section CSV</a>
         </div>
       </div>}
   </section>;

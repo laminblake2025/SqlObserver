@@ -57,6 +57,36 @@ test("report generation accepts native numeric kinds and bounded finalized recei
   }
 });
 
+test("native seventh-zero receipt timestamps preserve exact microseconds including verified expired results", async () => {
+  for (const offset of ["Z", "+00:00"]) {
+    for (const year of ["2026", "1970"]) {
+      const snapshotUtc = `${year}-08-24T13:00:00.1234560${offset}`, expiresAtUtc = `${year}-08-25T13:00:00.1234560${offset}`;
+      await withFetch(async () => new Response(JSON.stringify(receipt({ snapshotUtc, expiresAtUtc }))), async () => {
+        const result = await createReport(target, "instance-health", new AbortController().signal);
+        assert.equal(result.snapshotUtc, `${year}-08-24T13:00:00.123456Z`);
+        assert.equal(result.expiresAtUtc, `${year}-08-25T13:00:00.123456Z`);
+        assert.equal(result.state, "finalized");
+      });
+    }
+  }
+});
+
+test("receipt normalization rejects nonzero seventh or extra digits without widening request timestamps", async () => {
+  for (const fraction of ["1234561", "12345600"]) {
+    const snapshotUtc = `2026-08-24T13:00:00.${fraction}+00:00`, expiresAtUtc = `2026-08-25T13:00:00.${fraction}+00:00`;
+    await withFetch(async () => new Response(JSON.stringify(receipt({ snapshotUtc, expiresAtUtc }))), async () => {
+      await assert.rejects(() => createReport(target, "instance-health", new AbortController().signal),
+        error => error.message === "The report response could not be verified.");
+    });
+  }
+  let requests = 0;
+  await withFetch(async () => { requests++; return new Response(JSON.stringify(receipt())); }, async () => {
+    await assert.rejects(() => createReport(target, "performance-window", new AbortController().signal,
+      "2026-08-01T00:00:00.1234560Z", "2026-08-02T00:00:00.1234560Z"));
+  });
+  assert.equal(requests, 0);
+});
+
 test("report generation rejects malformed, cross-target, wrong-kind and unfinished receipts", async () => {
   const invalid = [null, [], "SECRET_BACKEND_DETAIL", {},
     receipt({ targetId: runId }), receipt({ runId: "../../html" }), receipt({ runId: "00000000-0000-0000-0000-000000000000" }),

@@ -2,7 +2,29 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest access, navigation and pointer qualification (2026-10-03)
+## Latest Reports expiry qualification (2026-10-03)
+
+Ordinary report exports now disappear at the native half-open UTC expiry boundary, including already-expired success receipts. The expiry hook compares exact microseconds, rounds timer delay up to browser milliseconds and rechecks on focus/visibility wake. Once observed, expiry stays latched for that receipt even if the wall clock moves backwards. Link activation also checks expiry before regular or auxiliary navigation, covering a suspended timer before the next render. Renewal is explicit; expiry never generates a report automatically.
+
+An uncertain request retains its exact operation ID, kind and frozen Live window. Native ordinary generation may replay a retained expired finalized receipt: this is a verified success, displayed as expired with no exports. Only the following explicit Generate new report creates a new operation and current Live window. Native cleanup eventually removes expired operation rows, so the frontend does not claim permanent exactly-once behavior. Report receipt parsing accepts a seventh trailing zero from native UTC round-trip output, preserving exact microseconds and rejecting unsupported submicrosecond fractions; request/digest rules are unchanged.
+
+Keyed report contexts plus layout cleanup cancel pending work and fence late results across target/type/time selection round trips and unmount/remount. Three independent lanes owned runtime/API, mounted interactions/dark-theme/accessibility, and read-only native/lifecycle review. The lead owns built-App cases, integration, final execution and screenshot review. No backend, collector, dependency or authentication changes were made.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Separate runtime, mounted/theme and native review lanes; one lead. | Complete. |
+| Dark theme | Shared tokens, readable expiry/window messages and visible renewal focus. | Passing in tested states. |
+| Diagnostic-screen review | Native expiry/export gates, retained operation replay, exact UTC parsing and report context disposal inspected. | Recorded report-expiry finding closed. |
+| Interaction tests | **18 owning checks: 17 runtime/API/model and one explicit security lint**, **32 mounted cases**, **19 built-App cases**. | Complete owning groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe, exact window readability and document overflow at **320/390/768/1440**, including explicit expired renewal. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **559 unchanged final frozen inputs**, closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **Eight fresh expiry captures**, representative mobile/desktop review, [gallery](../../artifacts/dashboard-report-expiry/index.html), [case inventories, hashes and provenance](../../artifacts/dashboard-report-expiry/completion.json). | Delivered locally, bound to the final local commit. |
+
+Source review corrected old already-expired mounted defaults and custom receipt fixtures before execution; all preserve the native 24-hour lifetime and exact fractional UTC. The initial browser attempt passed 28 mounted and 15 App cases; each group's four new accessibility cases timed out because axe awaited timers while the exact-boundary test clock was paused. Complete reports/traces, legacy captures and pre-repair specs remain in `initial-browser`. All browsers stopped before repair. Only the two owning specs changed: they resume timers after exact expiry and focus assertions, before axe and capture. Product/API/build/native inputs remain unchanged. Complete final groups reran rather than combining repair subsets.
+
+All traffic and captures use synthetic native frontend fixtures. Backend materialization/export content, connected databases, backend authorization, manual assistive technology and cross-browser behavior are not certified. The five recorded existing-contract frontend findings below are now closed by their owning qualifications. This does not complete the dashboard's backend-dependent features, release gates or full repository plan. No GitHub upload occurred.
+
+## Previous access, navigation and pointer qualification (2026-10-03)
 
 Waits and Activity now share definitive caller-denial ownership across their retained sources. Native HTTP 401/403 cancels pending reads, clears current/history/trend/ranking/captured receipts and local First caches, and stops automatic retry loops. Explicit successful recovery restores only the sources actually validated; a history-only Activity response cannot reopen failed supporting sources. Ordinary transient failures retain received evidence with disclosure, and a successful collector `PermissionDenied` receipt remains coverage evidence rather than caller denial. Target, known revision, exact window and selection changes fence late results. Retained Activity refreshes disclose that previous snapshots remain displayed.
 
@@ -198,11 +220,7 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 The legacy Operations projection pagination, direct current head-blocker, canonical native pager, workspace triage/context, Analytics and recorded Deadlock findings are closed by the qualifications above. Analytics incidents use the native bounded legacy list rather than an invented paginated surface contract. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
 
-The Health default-section, workspace target-catalog denial, Waits retained-read denial and chart pointer-ownership findings are closed by the latest access/navigation qualification. The remaining existing-contract frontend finding is:
-
-- **Report expiry:** [ReportsPanel](../../web/src/features/reports/ReportsPanel.tsx) continues displaying export links after native `expiresAtUtc`. Reuse the existing saved-investigation report's expiry/wake semantics, preserve exact uncertain-retry identity, and distinguish explicit fresh generation from expired receipt recovery.
-
-Check paths and current native contracts before changing these sources. This does not complete the dashboard refactor or repository plan.
+The Health default-section, workspace target-catalog denial, Waits retained-read denial, chart pointer ownership and ordinary report-expiry findings are closed by the owning qualifications above. These evidence-backed repairs do not establish completion of every dashboard behavior or of the repository plan. Recheck current sources before identifying further defects; preserve native model/rendered behavior coverage and distinguish source lint from execution evidence.
 
 The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
 

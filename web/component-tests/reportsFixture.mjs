@@ -13,6 +13,12 @@ export function reportHref({ reportKind = 'instance-health', targetId = target, 
 }
 const kindValues = { 'instance-health': 0, 'performance-window': 1, 'incident-evidence': 2, 'capacity-readiness': 3 };
 const roundTripUtc = value => `${value.slice(0, 19)}.${(value.match(/\.(\d{1,6})Z$/)?.[1] ?? '').padEnd(7, '0')}+00:00`;
+export function reportSnapshotForExpiry(expiresAtUtc) {
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,7})?(?:Z|\+00:00)$/u.exec(expiresAtUtc);
+  if (!match) throw new Error('Use a native UTC report expiry fixture.');
+  // Shift whole seconds only and preserve the native fractional component exactly.
+  return `${new Date(Date.parse(`${match[1]}Z`) - 86_400_000).toISOString().slice(0, 19)}${match[2] ?? ''}Z`;
+}
 export function reportRunForRequest(request, overrides = {}) {
   const canonical = request.fromUtc === undefined ? { reportKind: request.reportKind }
     : { fromUtc: roundTripUtc(request.fromUtc), reportKind: request.reportKind, toUtc: roundTripUtc(request.toUtc) };
@@ -21,11 +27,13 @@ export function reportRunForRequest(request, overrides = {}) {
 }
 export const reportRun = (overrides = {}) => ({ runId, targetId: target, targetRevision: 7, kind: 0,
   definitionVersion: 1, parameterDigest: createHash('sha256').update('{"reportKind":"instance-health"}').digest('hex'),
-  snapshotUtc: '2026-08-24T13:00:00Z', expiresAtUtc: '2026-08-25T13:00:00Z', state: 'finalized', ...overrides });
+  snapshotUtc: '2026-09-24T13:00:00Z', expiresAtUtc: '2026-09-25T13:00:00Z', state: 'finalized', ...overrides,
+  ...(overrides.expiresAtUtc !== undefined && overrides.snapshotUtc === undefined
+    ? { snapshotUtc: reportSnapshotForExpiry(overrides.expiresAtUtc) } : {}) });
 
 // Model the native target+operation idempotency key. A receipt may be lost or
 // invalid after materialization; repeating the exact payload returns that run.
-export function reportBackend() {
+export function reportBackend({ receiptOverrides = () => ({}) } = {}) {
   const operations = new Map();
   return {
     operations,
@@ -37,7 +45,8 @@ export function reportBackend() {
         return previous;
       }
       const receipt = reportRunForRequest(body, { targetId,
-        runId: operations.size === 0 ? runId : `77777777-7777-4777-8777-${String(operations.size + 1).padStart(12, '0')}` });
+        runId: operations.size === 0 ? runId : `77777777-7777-4777-8777-${String(operations.size + 1).padStart(12, '0')}`,
+        ...receiptOverrides(body, operations.size) });
       const accepted = { body: JSON.parse(rawBody), rawBody, receipt };
       operations.set(identity, accepted);
       return accepted;

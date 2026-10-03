@@ -19,6 +19,7 @@ function Harness() {
     range: "custom", from: "2026-08-01T13:45:00.000Z", to: "2026-08-02T13:45:00.000Z", compare: false }, "instance-health"));
   const [refresh, setRefresh] = useState(0);
   const [closed, setClosed] = useState(false);
+  const [mounted, setMounted] = useState(true);
   const { mode, setMode } = useTimeDisplay();
   useEffect(() => {
     if (!location.hash) location.hash = hash;
@@ -47,9 +48,10 @@ function Harness() {
         <option value="local">Local</option><option value="utc">UTC</option>
       </select></label>
       <button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh context</button>
+      <button type="button" onClick={() => setMounted(value => !value)}>{mounted ? "Unmount reports panel" : "Mount reports panel"}</button>
       <span>Context refresh count: {refresh}</span>
     </fieldset>
-    {closed ? <p role="status">Panel closed</p> : <ReportsPanel instanceId={scope.target} displayName={displayName}
+    {closed ? <p role="status">Panel closed</p> : mounted && <ReportsPanel instanceId={scope.target} displayName={displayName}
       scope={scope} selection={selection} onSelectKind={kind => { location.hash = reportSelectionHref(scope, kind); }}
       onClose={() => setClosed(true)} />}
   </main>;

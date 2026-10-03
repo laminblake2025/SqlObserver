@@ -95,7 +95,7 @@ test('renders the four fixed report kinds and inert server text; Instance Health
   await expect(htmlLink(page)).toHaveAttribute('rel', 'noreferrer');
   await expect(csvLink(page)).toHaveAttribute('href', `${postPath(target)}/${runId}/health.csv`);
   await expect(csvLink(page)).toHaveAttribute('download', '');
-  await expect(panel(page)).toContainText('08/25/2026');
+  await expect(panel(page)).toContainText('09/25/2026');
   await expect(panel(page)).toContainText('13:00:00 UTC');
   expect(contexts.get(page).requests).toHaveLength(1);
 });
@@ -266,7 +266,7 @@ for (const width of [320, 390, 768, 1440]) test(`report controls and exports rem
   const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
   await info.attach(`reports-panel-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
   expect(violations).toEqual([]);
-  const directory = fileURLToPath(new URL('../../artifacts/dashboard-components/screenshots/', import.meta.url));
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-report-expiry/legacy/screenshots/', import.meta.url));
   await mkdir(directory, { recursive: true }); const path = `${directory}reports-panel-${width}.png`;
   await page.screenshot({ path, fullPage: true }); await info.attach(`reports-panel-${width}`, { path, contentType: 'image/png' });
   await page.getByRole('combobox', { name: 'Time display', exact: true }).selectOption('local');
@@ -502,4 +502,162 @@ test('shared scope edits abort pending work and fence late exports and late safe
   await expect(panel(page)).not.toContainText('SECRET_LATE_FAILURE');
   await expect(generate(page)).toBeEnabled();
   expect(contexts.get(page).requests).toHaveLength(2);
+});
+
+const generateNew = page => panel(page).getByRole('button', { name: 'Generate new report', exact: true });
+const expired = page => panel(page).getByText(/^This report expired\./u);
+async function expiryClock(page) {
+  const at = new Date('2026-09-24T13:00:00.000Z');
+  await page.clock.install({ time: at }); await page.clock.pauseAt(at);
+}
+
+test('exports retire at the native half-open expiry boundary without an unrelated render or automatic POST', async ({ page }) => {
+  await expiryClock(page);
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    await json(route, reportRunForRequest(route.request().postDataJSON(), {
+      expiresAtUtc: '2026-09-24T13:00:01.001000+00:00' })); return true;
+  });
+  await generate(page).click(); await expect(htmlLink(page)).toBeVisible(); await expect(csvLink(page)).toBeVisible();
+  await page.clock.runFor(1000); await expect(htmlLink(page)).toBeVisible();
+  await page.clock.runFor(1); await expect(htmlLink(page)).toHaveCount(0); await expect(csvLink(page)).toHaveCount(0);
+  await expect(expired(page)).toBeVisible(); await expect(generateNew(page)).toBeEnabled();
+  expect(contexts.get(page).requests).toHaveLength(1);
+});
+
+test('a native submillisecond expiry stays usable before its instant and expires on the first representable later millisecond', async ({ page }) => {
+  await expiryClock(page);
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    await json(route, reportRunForRequest(route.request().postDataJSON(), { expiresAtUtc: '2026-09-24T13:00:00.000001+00:00' })); return true;
+  });
+  await generate(page).click(); await expect(htmlLink(page)).toBeVisible();
+  await page.clock.runFor(1); await expect(htmlLink(page)).toHaveCount(0); await expect(expired(page)).toBeVisible();
+  expect(contexts.get(page).requests).toHaveLength(1);
+});
+
+for (const expiresAtUtc of ['2026-09-24T13:00:00.000000+00:00', '2026-09-24T12:59:59.999999+00:00'])
+  test(`an already expired native receipt at ${expiresAtUtc} never advertises export links`, async ({ page }) => {
+    await mount(page, async route => {
+      if (!isPost(route)) return false;
+      await json(route, reportRunForRequest(route.request().postDataJSON(), { expiresAtUtc })); return true;
+    });
+    await page.evaluate(() => {
+      window.reportAdvertisedExports = [];
+      new MutationObserver(() => { for (const link of document.querySelectorAll('.report-export-links a')) window.reportAdvertisedExports.push(link.getAttribute('href')); })
+        .observe(document.getElementById('root'), { childList: true, subtree: true });
+    });
+    await generate(page).click(); await expect(expired(page)).toBeVisible();
+    await expect(htmlLink(page)).toHaveCount(0); await expect(csvLink(page)).toHaveCount(0);
+    expect(await page.evaluate(() => window.reportAdvertisedExports)).toEqual([]);
+    await expect(generateNew(page)).toBeEnabled(); expect(contexts.get(page).requests).toHaveLength(1);
+  });
+
+for (const wake of ['focus', 'visibilitychange']) test(`${wake} wake retires stale exports after the browser clock passes expiry`, async ({ page }) => {
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    await json(route, reportRunForRequest(route.request().postDataJSON(), { expiresAtUtc: '2026-09-24T13:00:10.123456+00:00' })); return true;
+  });
+  await generate(page).click(); await expect(htmlLink(page)).toBeVisible();
+  // setFixedTime changes the wall clock without advancing the outstanding timer.
+  await page.clock.setFixedTime(new Date('2026-09-24T13:00:11Z'));
+  await page.evaluate(event => { (event === 'focus' ? window : document).dispatchEvent(new Event(event)); }, wake);
+  await expect(htmlLink(page)).toHaveCount(0); await expect(csvLink(page)).toHaveCount(0); await expect(expired(page)).toBeVisible();
+  expect(contexts.get(page).requests).toHaveLength(1);
+});
+
+test('export activation rechecks expiry before dispatch even when a throttled timer has not rendered the expired state', async ({ page }) => {
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    await json(route, reportRunForRequest(route.request().postDataJSON(), { expiresAtUtc: '2026-09-24T13:00:10.123456+00:00' })); return true;
+  });
+  await generate(page).click(); await expect(csvLink(page)).toBeVisible();
+  const staleAnchor = await csvLink(page).elementHandle();
+  await page.clock.setFixedTime(new Date('2026-09-24T13:00:11Z'));
+  // Native anchor activation avoids a focus wake, exercising the click-time guard itself.
+  await staleAnchor.evaluate(anchor => anchor.click());
+  await expect(expired(page)).toBeVisible(); await expect(csvLink(page)).toHaveCount(0); await expect(htmlLink(page)).toHaveCount(0);
+  expect(contexts.get(page).requests).toHaveLength(1);
+});
+
+test('an uncertain Live attempt keeps its operation and exact window through expiry; verified expiry permits a fresh generation', async ({ page }) => {
+  await expiryClock(page); let repositoryUtc = '2026-09-24T13:00:00.000Z';
+  const backend = reportBackend({ receiptOverrides: () => ({ snapshotUtc: repositoryUtc,
+    expiresAtUtc: new Date(Date.parse(repositoryUtc) + 86_400_000).toISOString() }) });
+  const bodies = [];
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    const raw = route.request().postData(); bodies.push(raw);
+    const accepted = backend.accept(target, route.request().postDataJSON(), raw);
+    if (bodies.length === 1) await route.abort('failed'); else await json(route, accepted.receipt);
+    return true;
+  }, reportHref({ reportKind: 'performance-window', range: '1h' }));
+  await generate(page).click(); await expect(panel(page).getByRole('alert')).toHaveText('The report response could not be verified.');
+  await page.clock.fastForward(86_402_000); repositoryUtc = '2026-09-25T13:00:02.000Z';
+  await page.getByRole('button', { name: 'Refresh context', exact: true }).click();
+  await generate(page).click(); await expect(expired(page)).toBeVisible();
+  expect(bodies[1]).toBe(bodies[0]); expect(backend.operations.size).toBe(1);
+  await expect(htmlLink(page)).toHaveCount(0);
+  await generateNew(page).click(); await expect(htmlLink(page)).toBeVisible();
+  const original = JSON.parse(bodies[0]), fresh = JSON.parse(bodies[2]);
+  expect(fresh.operationId).not.toBe(original.operationId); expect(backend.operations.size).toBe(2);
+  assertOperation(fresh, 'performance-window', { fromUtc: '2026-09-25T12:00:02.000Z', toUtc: repositoryUtc });
+  expect(fresh.toUtc).not.toBe(original.toUtc);
+});
+
+test('target ABA cannot revive a held old receipt or its export expiry timer', async ({ page }) => {
+  const old = heldResponse(reportRun({ expiresAtUtc: '2026-09-24T13:00:01Z' })); let posts = 0;
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    if (++posts === 1) await old.handle(route); else await json(route, reportRun({ runId: otherRunId })); return true;
+  });
+  await generate(page).click(); const request = await old.started;
+  const aborted = page.waitForEvent('requestfailed', { predicate: value => value === request });
+  await page.getByRole('combobox', { name: 'Server context', exact: true }).selectOption(otherTarget); await aborted;
+  await page.getByRole('combobox', { name: 'Server context', exact: true }).selectOption(target);
+  await expect(generate(page)).toBeEnabled(); await generate(page).click();
+  await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${otherRunId}/html`);
+  await old.release(); await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${otherRunId}/html`);
+  await expect(expired(page)).toHaveCount(0); expect(contexts.get(page).requests).toHaveLength(2);
+});
+
+test('unmounting cancels pending generation and prevents late receipt recovery after remount', async ({ page }) => {
+  const old = heldResponse(reportRun()); let posts = 0;
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    if (++posts === 1) await old.handle(route); else await json(route, reportRun({ runId: otherRunId })); return true;
+  });
+  await generate(page).click(); const request = await old.started;
+  const aborted = page.waitForEvent('requestfailed', { predicate: value => value === request });
+  await page.getByRole('button', { name: 'Unmount reports panel', exact: true }).click(); await aborted;
+  await page.getByRole('button', { name: 'Mount reports panel', exact: true }).click(); await old.release();
+  await expect(htmlLink(page)).toHaveCount(0); await expect(generate(page)).toBeEnabled();
+  await generate(page).click(); await expect(htmlLink(page)).toHaveAttribute('href', `${postPath(target)}/${otherRunId}/html`);
+  expect(contexts.get(page).requests).toHaveLength(2);
+});
+
+for (const width of [320, 390, 768, 1440]) test(`expired report recovery is accessible in dark layout at ${width}px`, async ({ page }, info) => {
+  await expiryClock(page); await page.setViewportSize({ width, height: 1000 });
+  await mount(page, async route => {
+    if (!isPost(route)) return false;
+    await json(route, reportRunForRequest(route.request().postDataJSON(), { expiresAtUtc: '2026-09-24T13:00:00.000001+00:00' })); return true;
+  }, reportHref({ reportKind: 'performance-window', from: '2026-08-01T13:45:00.123456Z', to: '2026-08-02T13:45:00.654321Z' }));
+  await generate(page).focus(); await page.keyboard.press('Enter'); await expect(htmlLink(page)).toBeVisible();
+  await page.clock.runFor(1); await expect(expired(page)).toBeVisible();
+  await expect(htmlLink(page)).toHaveCount(0); await expect(csvLink(page)).toHaveCount(0);
+  await expect(panel(page).locator('time').nth(0)).toHaveAttribute('datetime', '2026-08-01T13:45:00.123456Z');
+  await expect(panel(page).locator('time').nth(1)).toHaveAttribute('datetime', '2026-08-02T13:45:00.654321Z');
+  await generateNew(page).focus(); await expect(generateNew(page)).toBeFocused();
+  const outline = await generateNew(page).evaluate(element => ({ style: getComputedStyle(element).outlineStyle,
+    width: parseFloat(getComputedStyle(element).outlineWidth) }));
+  expect(outline.style).not.toBe('none'); expect(outline.width).toBeGreaterThanOrEqual(2);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  // Exact expiry assertions are complete; axe needs asynchronous browser timers.
+  await page.clock.resume();
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  await info.attach(`report-expiry-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-report-expiry/screenshots/', import.meta.url)); await mkdir(directory, { recursive: true });
+  await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+  await page.screenshot({ path: `${directory}/report-expiry-${width}.png`, fullPage: true });
 });

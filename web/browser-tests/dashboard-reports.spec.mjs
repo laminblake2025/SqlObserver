@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { reportRunForRequest } from '../component-tests/reportsFixture.mjs';
 
 const origin = 'http://127.0.0.1:4331';
 const target = '11111111-1111-4111-8111-000000000001';
@@ -10,6 +11,17 @@ const panel = page => page.getByRole('region', { name: /^Reports for / });
 const generate = page => panel(page).getByRole('button', { name: 'Generate report', exact: true });
 const html = page => panel(page).getByRole('link', { name: 'Open printable HTML', exact: true });
 const kind = page => panel(page).getByRole('combobox', { name: 'Report type', exact: true });
+const sessions = new WeakMap();
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-02T12:01:00Z'));
+  const errors = []; sessions.set(page, errors);
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/*', route => {
+    if (new URL(route.request().url()).origin === origin) return route.continue();
+    errors.push(`Unexpected external request: ${route.request().url()}`); return route.abort();
+  });
+});
+test.afterEach(async ({ page }) => expect(sessions.get(page)).toEqual([]));
 async function fixture(page, mode = 'ready') {
   await page.context().addCookies(Object.entries({ dashboardRefactor: '1', chartReferenceRole: 'viewer',
     reportWorkflowFixture: '1', reportWorkflowSession: crypto.randomUUID(), reportWorkflowMode: mode })
@@ -38,7 +50,7 @@ async function auditAndCapture(page, info, name) {
   const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
   await info.attach(`${name}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
   expect(violations).toEqual([]);
-  const folder = resolve('../artifacts/dashboard-report-time/screenshots'); await mkdir(folder, { recursive: true });
+  const folder = resolve('../artifacts/dashboard-report-expiry/legacy/screenshots'); await mkdir(folder, { recursive: true });
   await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
   await page.screenshot({ path: resolve(folder, `${name}.png`), fullPage: true });
 }
@@ -180,4 +192,102 @@ for (const width of [320, 390, 768, 1440]) test(`Reports workspace has readable 
   await page.keyboard.press('Tab');
   await expect(panel(page).getByRole('link', { name: 'Download section CSV', exact: true })).toBeFocused();
   await auditAndCapture(page, info, `reports-workspace-${width}`);
+});
+
+const expired = page => panel(page).getByRole('status').filter({ hasText: 'This report expired.' });
+const generateAction = page => panel(page).getByRole('button', { name: /^Generate (?:new )?report$/, exact: true });
+const receiptStart = '2026-10-02T12:00:00.0000010+00:00';
+const receiptEnd = '2026-10-03T12:00:00.0000010+00:00';
+const runId = '22222222-2222-4222-8222-222222222222';
+const newRunId = '33333333-3333-4333-8333-333333333333';
+function receipt(body, overrides = {}) {
+  return reportRunForRequest(body, { targetId: target, snapshotUtc: receiptStart, expiresAtUtc: receiptEnd, runId, ...overrides });
+}
+const jsonReceipt = (route, value) => route.fulfill({ contentType: 'application/json',
+  headers: { 'cache-control': 'no-store' }, json: value });
+
+test('built Reports expires at the native microsecond boundary without generating implicitly', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-03T11:59:59.999Z') });
+  await page.clock.pauseAt(new Date('2026-10-03T11:59:59.999Z'));
+  await fixture(page); const bodies = [];
+  await page.route(`**/api/v1/observation-targets/${target}/reports`, route => {
+    const body = route.request().postDataJSON(); bodies.push(body);
+    return jsonReceipt(route, receipt(body, bodies.length > 1 ? { runId: newRunId,
+      snapshotUtc: '2026-10-03T12:00:00.001Z', expiresAtUtc: '2026-10-04T12:00:00.001Z' } : {}));
+  });
+  await page.goto(reportHref('performance-window')); const saved = new URL(page.url()).hash;
+  await generate(page).click(); await expect(html(page)).toBeVisible();
+  await page.clock.runFor(1); await expect(html(page)).toBeVisible();
+  await page.clock.runFor(1); await expect(expired(page)).toBeVisible();
+  await expect(html(page)).toHaveCount(0);
+  await expect(panel(page).getByRole('link', { name: 'Download section CSV', exact: true })).toHaveCount(0);
+  expect(bodies).toHaveLength(1); expect(new URL(page.url()).hash).toBe(saved);
+  await generateAction(page).click(); await expect(html(page)).toHaveAttribute('href', `/api/v1/observation-targets/${target}/reports/${newRunId}/html`);
+  expect(bodies).toHaveLength(2); expect(bodies[1]).toEqual({ ...bodies[0], operationId: expect.any(String) });
+  expect(bodies[1].operationId).not.toBe(bodies[0].operationId);
+});
+
+for (const wake of ['focus', 'visibilitychange']) test(`built Reports removes stale exports on ${wake} after a wall-clock jump`, async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T12:01:00Z') }); await fixture(page); const bodies = [];
+  await page.clock.pauseAt(new Date('2026-10-02T12:01:00Z'));
+  await page.route(`**/api/v1/observation-targets/${target}/reports`, route => {
+    const body = route.request().postDataJSON(); bodies.push(body); return jsonReceipt(route, receipt(body));
+  });
+  await page.goto(reportHref('instance-health')); await generate(page).click(); await expect(html(page)).toBeVisible();
+  await page.clock.setFixedTime(new Date('2026-10-03T12:01:00Z'));
+  await page.evaluate(event => (event === 'focus' ? window : document).dispatchEvent(new Event(event)), wake);
+  await expect(expired(page)).toBeVisible(); await expect(html(page)).toHaveCount(0); expect(bodies).toHaveLength(1);
+  await page.clock.setFixedTime(new Date('2026-10-02T12:01:00Z'));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(expired(page)).toBeVisible(); await expect(html(page)).toHaveCount(0); expect(bodies).toHaveLength(1);
+});
+
+test('built Reports recovers an uncertain expired run before explicitly creating a fresh Live operation', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-02T12:01:00Z') }); await fixture(page); const bodies = [];
+  await page.clock.pauseAt(new Date('2026-10-02T12:01:00Z'));
+  await page.route(`**/api/v1/observation-targets/${target}/reports`, route => {
+    const body = route.request().postDataJSON(); bodies.push(body);
+    if (bodies.length === 1) return route.fulfill({ contentType: 'application/json', body: '{"PRIVATE_LOST_RECEIPT":' });
+    return jsonReceipt(route, receipt(body, bodies.length > 2 ? { runId: newRunId,
+      snapshotUtc: '2026-10-03T12:01:00Z', expiresAtUtc: '2026-10-04T12:01:00Z' } : {}));
+  });
+  await page.goto(`/#/reports?target=${target}&range=1h&reportKind=performance-window`);
+  await generate(page).click(); await expect(panel(page).getByRole('alert')).toBeVisible();
+  await page.clock.setFixedTime(new Date('2026-10-03T12:01:00Z'));
+  await generate(page).click(); await expect(expired(page)).toBeVisible(); await expect(html(page)).toHaveCount(0);
+  expect(bodies).toHaveLength(2); expect(bodies[1]).toEqual(bodies[0]);
+  await expect(page.locator('body')).not.toContainText('PRIVATE_LOST_RECEIPT');
+  await generateAction(page).click(); await expect(html(page)).toHaveAttribute('href', `/api/v1/observation-targets/${target}/reports/${newRunId}/html`);
+  expect(bodies).toHaveLength(3); expect(bodies[2].operationId).not.toBe(bodies[0].operationId);
+  expect(bodies[2].toUtc).toBe('2026-10-03T12:01:00.000Z');
+  expect(bodies[2].fromUtc).toBe('2026-10-03T11:01:00.000Z');
+});
+
+for (const width of [320, 390, 768, 1440]) test(`expired Reports workspace supports explicit keyboard renewal in dark layout at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.clock.install({ time: new Date('2026-10-03T12:01:00Z') }); await fixture(page); const bodies = [];
+  await page.clock.pauseAt(new Date('2026-10-03T12:01:00Z'));
+  await page.route(`**/api/v1/observation-targets/${target}/reports`, route => {
+    const body = route.request().postDataJSON(); bodies.push(body);
+    return jsonReceipt(route, receipt(body, bodies.length > 1 ? { runId: newRunId,
+      snapshotUtc: '2026-10-03T12:01:00Z', expiresAtUtc: '2026-10-04T12:01:00Z' } : {}));
+  });
+  await page.goto(reportHref('capacity-readiness')); await generate(page).click(); await expect(expired(page)).toBeVisible();
+  await expect(html(page)).toHaveCount(0); expect(bodies).toHaveLength(1);
+  const action = generateAction(page);
+  for (let step = 0; step < 70 && !await action.evaluate(element => element === document.activeElement); step++) await page.keyboard.press('Tab');
+  await expect(action).toBeFocused();
+  const focus = await action.evaluate(element => ({ style: getComputedStyle(element).outlineStyle, width: parseFloat(getComputedStyle(element).outlineWidth) }));
+  expect(focus.style).not.toBe('none'); expect(focus.width).toBeGreaterThanOrEqual(2);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  // Exact expiry has been asserted; axe and screenshot rendering need active timers.
+  await page.clock.resume();
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  await info.attach(`workspace-report-expiry-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
+  const folder = resolve('../artifacts/dashboard-report-expiry/screenshots'); await mkdir(folder, { recursive: true });
+  await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+  await page.screenshot({ path: resolve(folder, `workspace-report-expiry-${width}.png`), fullPage: true });
+  await page.keyboard.press('Enter'); await expect(html(page)).toBeVisible(); expect(bodies).toHaveLength(2);
+  expect(bodies[1].operationId).not.toBe(bodies[0].operationId);
 });
