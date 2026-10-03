@@ -3,6 +3,8 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
+import { historyBinding, volumeHistoryBackend } from '../tools/sql-volume-history-fixture.mjs';
+
 const origin = 'http://127.0.0.1:4328';
 const alpha = '11111111-1111-4111-8111-000000000001', beta = '11111111-1111-4111-8111-000000000002';
 const run = 'abababababab4bab8bab000000000001', newerRun = 'abababababab4bab8bab000000000002';
@@ -50,6 +52,7 @@ test.beforeEach(async ({ page }) => {
   const context = { requests: [], unexpected: [], revision: 1, snapshot: run, handler: undefined, expired: false };
   contexts.set(page, context); page.on('pageerror', error => context.unexpected.push(`Page error: ${error.message}`));
   await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
+  const history = volumeHistoryBackend({ mode: 'unavailable' });
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     const reject = async () => { context.unexpected.push(`${request.method()} ${url.href}`); await route.abort(); };
@@ -59,6 +62,10 @@ test.beforeEach(async ({ page }) => {
       if (request.method() !== 'GET') return reject();
       return json(route, { refreshedAtUtc: to, fromUtc: url.searchParams.get('fromUtc'), toUtc: url.searchParams.get('toUtc'),
         targetId: url.searchParams.get('targetId'), targets: [], excludedTargets: 0, evidence: [] });
+    }
+    if (/\/resources\/volumes\/history$/u.test(url.pathname)) {
+      try { const binding = historyBinding(url); if (request.method() !== 'GET' || ![alpha, beta].includes(binding.instanceId)) return reject();
+        return json(route, history.read(binding, url.searchParams.get('cursor'))); } catch { return reject(); }
     }
     const match = /^\/api\/v1\/observation-targets\/([^/]+)\/health\/files$/u.exec(url.pathname);
     if (!match || ![alpha, beta].includes(match[1]) || request.method() !== 'GET' || url.searchParams.get('limit') !== '25'

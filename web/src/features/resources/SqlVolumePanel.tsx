@@ -24,7 +24,7 @@ export function SqlVolumePanel({ instanceId, targetRevision, refresh, isRewind }
 }) {
   return isRewind ? <section className="panel server-dashboard-chart" aria-label="SQL-reported target-host volume capacity">
     <h3>SQL-reported target-host volume capacity</h3>
-    <p>Historical volume capacity is not available in Rewind. Choose a live range to see the latest snapshot.</p>
+    <p>The latest volume snapshot and forecast are separate from Rewind. Use SQL volume window history for retained capacity in the selected range.</p>
   </section> : <LiveSqlVolumePanel key={JSON.stringify([instanceId.toLowerCase(), targetRevision])}
     instanceId={instanceId} targetRevision={targetRevision} refresh={refresh} />;
 }

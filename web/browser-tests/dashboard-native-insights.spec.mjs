@@ -98,10 +98,10 @@ test('selected plan and changed window reject a delayed prior plan response', as
   expect(params(page).get('queryFingerprint')).toBe(digest(4097)); expect(params(page).get('from')).toBe('2026-10-02T09:00:00.123456Z'); expect(sql).toEqual([]);
 });
 
-test('selected file allocation preserves exact bytes percent growth unknown maximum and latest snapshot in Rewind', async ({ page }) => {
+test('selected file allocation preserves exact bytes percent growth unknown maximum and loaded snapshot in Rewind', async ({ page }) => {
   await setup(page); await page.goto('/' + fileHash()); await openAllocation(page);
   await expect(allocation(page)).toContainText('9223372036854775807 bytes'); await expect(allocation(page)).toContainText('67108864 bytes per growth event');
-  await expect(allocation(page)).toContainText('latest'); await expect(allocation(page)).toContainText('Rewind');
+  await expect(allocation(page)).toContainText('loaded file snapshot'); await expect(allocation(page)).toContainText('Rewind');
   const chosen = files(page).getByRole('button', { name: 'View read and write latency trend for database 5, file SYNTHETIC_percent_log', exact: true });
   await chosen.click(); await expect(chosen).toHaveAttribute('aria-pressed', 'true');
   await expect(allocation(page)).toContainText('10% per growth event'); await expect(allocation(page)).toContainText('No finite maximum reported (unlimited or unknown)');
@@ -151,7 +151,7 @@ for (const width of [320, 390, 768, 1440]) for (const surface of ['selected-plan
     await page.setViewportSize({ width, height: 1000 }); await setup(page);
     if (surface === 'selected-plan-waits') { await page.goto('/' + queryHash()); await expect(waits(page)).toBeVisible(); await openWaitValues(page); await expect(page.getByText('Query performance request failed.', { exact: true })).toHaveCount(0); }
     else { await page.goto('/' + fileHash()); await openAllocation(page); await expect(allocation(page)).toContainText('9223372036854775807 bytes'); }
-    const scroll = surface === 'selected-plan-waits' ? waits(page).getByRole('region', { name: 'Selected plan hourly wait values', exact: true }) : files(page).getByRole('region', { name: 'Latest database file counters', exact: true });
+    const scroll = surface === 'selected-plan-waits' ? waits(page).getByRole('region', { name: 'Selected plan hourly wait values', exact: true }) : files(page).getByRole('region', { name: 'Loaded database file counters', exact: true });
     await scroll.focus(); await expect(scroll).toBeFocused();
     if (await scroll.evaluate(element => element.scrollWidth > element.clientWidth)) { await scroll.press('ArrowRight'); await expect.poll(() => scroll.evaluate(element => element.scrollLeft)).toBeGreaterThan(0); await scroll.evaluate(element => { element.scrollLeft = 0; }); }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);

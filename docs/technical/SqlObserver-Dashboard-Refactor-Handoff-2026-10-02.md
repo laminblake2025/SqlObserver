@@ -2,6 +2,30 @@
 
 This checkpoint implements the dashboard refactor, including the native contracts and persistence needed for cohesive dashboard features. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor; unrelated collector and runtime redesign remain outside this pass.
 
+## Latest SQL volume window-history qualification (2026-10-03)
+
+Resources now reads retained SQL volume capacity in the shared Live/Rewind window, restores an exact sample revision/key from URLs, and reads the previous equal-length window independently. The existing latest snapshot and forecast remain separate. No historical forecast, interpolated edge observation or physical incarnation continuity is inferred. [Feature contract](Sql-Volume-Window-History.md).
+
+Forward migration **0353** reads canonical partitioned collection runs, identities, outcomes and retained volume snapshots, including after sealing original mirrors. Completion UTC selects each run; actual SQL observation and ingestion times remain distinct. Failed, absent, lossy, unknown, skewed, resized and cross-revision evidence stays explicit. Exact decimal Int64 bytes survive transport and tables; chart GiB are approximate. Mount-point and unknown identities show isolated gauges. Eligible comparison requires complete independent windows, the same revision/key, at least two observations each and unchanged known total capacity.
+
+Same-target Viewer/Operator/Target Administrator reads are private/no-store. A full bounded manifest digest fences unread continuations across late commits, retention, policy/cadence and context drift, with original-issued 15-minute protected cursors. Limits are 10,000 runs, 1,000 revision/key identities and 250,000 observations, with explicit narrow-window overflow. Independent cohort scans avoid repeated partition access under stale statistics; profiling measured approximately 264 ms without ANALYZE, within the unchanged five-second repository budget. This measurement is evidence for the qualified fixture, not a fleet performance guarantee.
+
+Three non-overlapping owners implemented backend/HTTP, storage/repository and UI/theme/interactions; independent peers reviewed native semantics, ownership, chart behavior and accessibility. The lead integrated global selection URLs, built-App journeys, regression fixture seams and final evidence.
+
+| Requested requirement | Final evidence | Completion for this slice |
+|---|---|---|
+| Multiple subagents / one lead | Three independent owners, peer review and lead integration. | Complete. |
+| Dark theme | Shared dark tokens, wrapped identities/controls, visible focus and compact readable chart axes. | Passing tested states. |
+| Diagnostic-screen review | Canonical sealed reads, exact source/window identity, gaps, target grants, bounded paging and comparison reviewed. | Volume-history slice complete. |
+| Interaction tests | **45 native web**, **70 mounted**, **9 new built-App**; full legacy volume/native-insight groups **6/13**, affected Resources context/accessibility **13/20**. | Pass without skips/retries/flaky outcomes. |
+| Accessibility / responsive | Keyboard, axe, contained scrolling and overflow at **320/390/768/1440**, plus screenshot review. | Passing tested states. |
+| Final integrated validation | Strict product/harness TypeScript, production build/assets; **72 affected .NET** (**36 unit, 21 API, 15 real PostgreSQL**); **1964** unchanged frozen inputs. | Passing final code. |
+| Screenshots / completion summary | Eight fresh captures, [gallery](../../artifacts/dashboard-volume-window-history/index.html) and [exact cases/hashes/provenance](../../artifacts/dashboard-volume-window-history/completion.json). | Delivered locally, bound to local commit. |
+
+Complete failed/interrupted attempts retain consumed source, logs, reports and traces. Repairs corrected an analyzer parameter, fixture canonical-FK cutover, stale-statistics query shape, harness clocks/heading/gesture geometry, native fixture cursor/order and stale accessible labels. No behavior/authorization/overflow/deadline/axe assertion was weakened. Final counts come from complete owning runs, not passing subsets. Resources filters are recorded in the evidence; the entire unrelated dashboard regression suite was not run.
+
+Browser evidence is synthetic; native repository and production HTTP checks use disposable pinned PostgreSQL 18.4, with only HTTP authentication replaced. SQL Server collector, manual assistive-technology, cross-browser and release certification are not claimed. The optional assistant and remaining source/parity requirements stay open. No GitHub upload occurred.
+
 ## Latest rule-template group deployment qualification (2026-10-03)
 
 The fleet Rule templates screen now supports a shared library of immutable versions, complete native environment/tag previews, explicit batches of ten, durable per-server outcomes, stop, guarded rollback and immutable history. Template publication never changes deployed rules automatically. A loaded Overview page never defines deployment membership. [Feature contract](Alert-Rule-Group-Templates.md).
@@ -554,7 +578,7 @@ These statuses describe the original interface requirements rather than treating
 | Queries | Ranking/trends, regression comparisons, protected text/plan inspection, history and selected-plan hourly waits. | Source/collection qualification is separate from frontend fixture validation. |
 | Waits | Category trends, native deltas, retained captured-session links and exact capture restoration. | Captured sessions do not prove who caused a historical aggregate wait bucket. |
 | Sessions/blocking/deadlocks | Exact request and chain identities, retained snapshots and deadlock restoration, inert role-gated protected content. | Collection completeness and retention limit available historical evidence. |
-| Resources | SQL scheduler CPU, SQL memory, aggregate/NUMA PLE, file latency, selected-file allocation/autogrowth and SQL-reported volume capacity. | Target-host CPU comparison and historical volume comparison need additional source contracts. |
+| Resources | SQL scheduler CPU, SQL memory, aggregate/NUMA PLE, file latency, selected-file allocation/autogrowth and SQL-reported volume capacity. | Selected-window SQL volume history and guarded previous-window comparison are delivered. Target-host CPU comparison and physical volume-incarnation certification need additional source contracts. |
 | Health checks | Existing backup/RPO, Agent, HA, TempDB and configuration/database-option surfaces with scoped navigation. | Source completeness, long-running-job parity and live platform qualification must be assessed in collector work; frontend checks cannot prove them. |
 | Administration | Target rules, destinations, server grouping, revision-checked connection edits/rediscovery/retirement, one-off/finite recurring maintenance, immutable shared templates and complete-group deployment/stop/guarded rollback, plus offline permission generator. | Group previews are capped at 100 complete authorized members, batches at ten; version publication never propagates automatically. |
 | Ctrl+K | Authorized server, database, query-hash and current-alert destinations. See [palette](../../web/src/components/CommandPalette.tsx). | Lookup/list caps and missing selections remain explicit. |
@@ -595,9 +619,9 @@ Next decision: specify the intended comparison before collecting it. A paired ch
 
 ### Historical volume capacity
 
-[The volume panel](../../web/src/features/resources/SqlVolumePanel.tsx) (line 97) provides Live SQL-reported capacity and a forecast derived from complete daily snapshots, while Rewind discloses unavailable historical capacity. [The API](../../web/src/features/resources/sqlVolumeApi.ts) binds a latest target-revision/snapshot page; it does not accept a selected history window. A forecast scalar cannot reconstruct historical/comparison observations.
+Delivered: [selected-window contract](Sql-Volume-Window-History.md), forward migration 0353, native canonical history and private target-authorized API, exact revision/key URL restoration, truthful gaps, bounded protected continuation and independent previous-window comparison. The latest snapshot/forecast stays separate. The latest qualification section records complete final owning checks and screenshots.
 
-Next contract: explicit selected window, source cutoff, target revision, opaque volume identity/epoch, timed capacity observations, loss/coverage and bounded continuation. [Existing identity rules](SqlObserver-Sql-Volume-Capacity-Contract.md) require an epoch change when the physical SQL host changes. Define comparison eligibility across failover, volume replacement and capacity changes. Verify target/window/revision mismatch refusal and missing-point gaps before enabling Rewind history.
+Physical incarnation/key-epoch continuity is not persisted by the existing collector. The UI explicitly declines to infer it; mount-point and unknown identities are not comparable, and revisions/keys/capacity changes fence comparison. A future collector contract must verify physical-host identity and volume replacement/failover before claiming that continuity. The existing latest-forecast repository path is outside this slice and has not been certified against sealed original run mirrors.
 
 ### Historical wait attribution
 

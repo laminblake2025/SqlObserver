@@ -19,6 +19,7 @@ public static class SqlVolumeEndpoints
 
     public static IEndpointRouteBuilder MapSqlVolumeEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapSqlVolumeWindowHistoryEndpoints();
         endpoints.MapGet("/api/v1/observation-targets/{instanceId:guid}/resources/volumes", ReadAsync)
             .RequireAuthorization();
         return endpoints;

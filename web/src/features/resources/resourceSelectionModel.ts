@@ -4,8 +4,11 @@ import { canonicalUtcTimestamp, utcMicroseconds } from "../../utcTimestamp.ts";
 import { resourceInspectionUtc } from "./resourceInspectionModel.ts";
 
 export interface ResourceFileSelection { readonly databaseId: number; readonly fileId: number }
+export interface ResourceVolumeSelection { readonly sampleTargetRevision: number; readonly volumeKey: string }
 export interface ResourceSelection {
   readonly file?: ResourceFileSelection;
+  readonly volume?: ResourceVolumeSelection;
+  readonly invalidVolume?: boolean;
   readonly numaNodeId?: number;
   readonly inspectionUtc?: string;
   readonly issues?: readonly string[];
@@ -14,6 +17,12 @@ export interface ResourceSelection {
 }
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const validTarget = (value: string) => guid.test(value) && value.toLowerCase() !== "00000000-0000-0000-0000-000000000000";
+const volumeKey = /^[0-9a-f]{64}$/u;
+const revision = (value: string | null): number | undefined => {
+  if (value === null || !/^[1-9]\d{0,15}$/u.test(value)) return undefined;
+  const result = Number(value);
+  return Number.isSafeInteger(result) && result >= 1 ? result : undefined;
+};
 const inspectionTime = (value: string): string => {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6}|\.\d{6}0)?Z$/u.test(value)) throw new Error("Use a valid UTC timestamp.");
   const normalized = value.replace(/(\.\d{6})0Z$/u, "$1Z");
@@ -61,17 +70,29 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
   if (params.getAll("target").length !== 1 || !target || !validTarget(target) ||
     (expectedTarget !== undefined && target.toLowerCase() !== expectedTarget.toLowerCase())) return {};
   const scope = readOverviewScope(hash);
-  const hasSelection = ["resourceDatabaseId", "resourceFileId", "numaNodeId", "resourceAt"].some(key => params.has(key));
+  const hasSelection = ["resourceDatabaseId", "resourceFileId", "numaNodeId", "resourceAt", "volumeRevision", "volumeKey"].some(key => params.has(key));
   if (hasSelection && !validBaseContext(params, scope)) return {
     invalidContext: true,
     issues: ["Requested resource selections have invalid or ambiguous database and time context. Clear resource selections before choosing new evidence."],
     ...(params.has("numaNodeId") ? { invalidNode: true } : {}),
+    ...(params.has("volumeRevision") || params.has("volumeKey") ? { invalidVolume: true } : {}),
   };
   const issues: string[] = [];
   let file: ResourceFileSelection | undefined;
   let numaNodeId: number | undefined;
   let inspectionUtc: string | undefined;
   let invalidNode = false;
+  let volume: ResourceVolumeSelection | undefined;
+  let invalidVolume = false;
+  if (params.has("volumeRevision") || params.has("volumeKey")) {
+    const sampleTargetRevision = revision(params.get("volumeRevision"));
+    const key = params.get("volumeKey");
+    if (params.getAll("volumeRevision").length !== 1 || params.getAll("volumeKey").length !== 1 ||
+        sampleTargetRevision === undefined || key === null || !volumeKey.test(key)) {
+      invalidVolume = true;
+      issues.push("The requested volume identity or sample revision is invalid. Choose an exact received identity or clear resource selections; no other volume has been selected.");
+    } else volume = { sampleTargetRevision, volumeKey: key };
+  }
   if (params.has("resourceDatabaseId") || params.has("resourceFileId")) {
     const databaseId = integer(params.get("resourceDatabaseId"), 1, 32767);
     const fileId = integer(params.get("resourceFileId"), 1, 65535);
@@ -96,7 +117,7 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
       if (scope.range === "custom") inspectionUtc = resourceInspectionUtc(inspectionUtc, scope.from ?? "", scope.to ?? "");
     } catch { inspectionUtc = undefined; issues.push("The requested resource inspection time is invalid or outside the shared window. Align another time or clear resource selections."); }
   }
-  return { ...(file ? { file } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
+  return { ...(file ? { file } : {}), ...(volume ? { volume } : {}), ...(invalidVolume ? { invalidVolume: true } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
     ...(inspectionUtc ? { inspectionUtc } : {}), ...(issues.length ? { issues } : {}), ...(invalidNode ? { invalidNode: true } : {}) };
 }
 
@@ -108,6 +129,10 @@ export function resourceSelectionHref(scope: OverviewScope, selection: ResourceS
   if (validFile(selection.file, scope)) {
     params.set("resourceDatabaseId", String(selection.file!.databaseId));
     params.set("resourceFileId", String(selection.file!.fileId));
+  }
+  if (selection.volume && volumeKey.test(selection.volume.volumeKey) && Number.isSafeInteger(selection.volume.sampleTargetRevision) && selection.volume.sampleTargetRevision >= 1) {
+    params.set("volumeRevision", String(selection.volume.sampleTargetRevision));
+    params.set("volumeKey", selection.volume.volumeKey);
   }
   if (selection.numaNodeId !== undefined && Number.isSafeInteger(selection.numaNodeId) && selection.numaNodeId >= 0 && selection.numaNodeId <= 1023) params.set("numaNodeId", String(selection.numaNodeId));
   if (selection.inspectionUtc) {

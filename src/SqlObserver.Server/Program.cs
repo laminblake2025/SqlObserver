@@ -99,6 +99,10 @@ builder.Services.AddSingleton<IHealthProjectionRepositoryPort>(static services =
 builder.Services.AddSingleton<ISqlVolumeReadRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlVolumeReads);
 builder.Services.AddSingleton<ISqlVolumeReadService, SqlVolumeReadService>();
+builder.Services.AddSingleton<ISqlVolumeWindowHistoryRepositoryPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlVolumeWindowHistory);
+builder.Services.AddSingleton<ISqlVolumeWindowHistoryService, SqlVolumeWindowHistoryService>();
+builder.Services.AddSingleton<SqlVolumeWindowHistoryCursorProtector>();
 builder.Services.AddSingleton<IDatabaseFileIoTrendRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().DatabaseFileIoTrends);
 builder.Services.AddSingleton<IDatabaseFileIoTrendQueryService, DatabaseFileIoTrendQueryService>();

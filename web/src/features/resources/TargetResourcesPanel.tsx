@@ -1,14 +1,15 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { OverviewChart } from "../overview/OverviewChart";
 import type { OverviewScope, OverviewSeries } from "../overview/overviewTypes";
-import { customUtcInputValue, readOverviewScope } from "../overview/overviewModel.ts";
+import { customUtcInputValue, overviewWindow, readOverviewScope } from "../overview/overviewModel.ts";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { fileSizeGib, lifetimeAverageStallMilliseconds } from "./resourceFileModel";
 import { DatabaseFileIoTrendPanel, type SelectedDatabaseFile } from "./DatabaseFileIoTrendPanel";
 import { BufferNodePlePanel } from "./BufferNodePlePanel";
 import { SqlVolumePanel } from "./SqlVolumePanel";
+import { SqlVolumeHistoryPanel } from "./SqlVolumeHistoryPanel";
 import { useChartReferences } from "../overview/useChartReferences.ts";
 import { resourceInspectionInputUtc, resourceInspectionUtc } from "./resourceInspectionModel.ts";
 import { readResourceSelection, resourceSelectionHref, type ResourceSelection } from "./resourceSelectionModel.ts";
@@ -44,7 +45,10 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   const [inspectionDraft, setInspectionDraft] = useState<{ key: string; source?: string; value: string; error?: string }>();
   const draft = inspectionDraft?.key === inspectionContext && inspectionDraft.source === resourceSelection.inspectionUtc ? inspectionDraft : undefined;
   const inputValue = draft?.value ?? customUtcInputValue(resourceSelection.inspectionUtc);
-  const inspectionWindow = result.data && evidence ? { fromUtc: result.data.fromUtc, toUtc: result.data.toUtc } : undefined;
+  const fallbackWindow = useMemo(() => { try { return overviewWindow(scope, Date.now()); } catch { return undefined; } },
+    [instanceId, targetRevision, scope.range, scope.from, scope.to, refresh]);
+  const analyticsWindow = result.data && evidence ? { fromUtc: result.data.fromUtc, toUtc: result.data.toUtc } : undefined;
+  const inspectionWindow = analyticsWindow ?? fallbackWindow;
   const crosshairUtc = (() => {
     if (!inspectionWindow || resourceSelection.invalidContext) return null;
     const requested = inspection?.key === inspectionKey ? inspection.utc : resourceSelection.inspectionUtc;
@@ -134,7 +138,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     <p className="table-note">CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.</p>
     {resourceSelection.issues?.map(issue => <p role="alert" key={issue}>{issue}</p>)}
-    {(resourceSelection.file || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
+    {(resourceSelection.file || resourceSelection.volume || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
       <button type="button" className="secondary-button" onClick={() => updateSelection({}, true)}>Clear resource selections</button>}
     {inspectionWindow && <p><a href={resourceSelectionHref(chartScope, resourceSelection)}>Open fixed resource investigation</a></p>}
     <section className="panel server-dashboard-chart" aria-label="Resource chart alignment">
@@ -180,12 +184,15 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         <ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
-    {inspectionWindow && <BufferNodePlePanel instanceId={instanceId} targetRevision={targetRevision} scope={chartScope} refresh={refresh}
+    {analyticsWindow && <BufferNodePlePanel instanceId={instanceId} targetRevision={targetRevision} scope={chartScope} refresh={refresh}
       nodeSelectionInvalid={resourceSelection.invalidNode}
       selectedNodeId={resourceSelection.numaNodeId} onSelectNode={nodeId => updateSelection({ numaNodeId: nodeId })}
       crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
       onSelectWindow={onSelectWindow} />}
     <SqlVolumePanel instanceId={instanceId} targetRevision={targetRevision} refresh={refresh} isRewind={isRewind} />
+    {inspectionWindow && <SqlVolumeHistoryPanel instanceId={instanceId} targetRevision={targetRevision} fromUtc={inspectionWindow.fromUtc} toUtc={inspectionWindow.toUtc}
+      compare={scope.compare} refresh={refresh} selectedVolume={resourceSelection.invalidVolume || resourceSelection.invalidContext ? null : resourceSelection.volume}
+      onSelectVolume={volume => updateSelection({ volume })} crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime} onSelectWindow={onSelectWindow} />}
     <section className="panel server-dashboard-chart" aria-label="Database file I/O" aria-busy={filesLoading}>
       <h3>Database file I/O</h3>
         <p>Choose a file to chart read and write latency in the selected window. The table reads the latest source snapshot even in Rewind; a browsed or selected file keeps its loaded evidence until you return to latest. Its averages use cumulative counters since reset. This is not free disk space.</p>
@@ -242,14 +249,14 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
           </nav>
         </>}
     </section>
-    {inspectionWindow && <DatabaseFileIoTrendPanel instanceId={instanceId} targetRevision={targetRevision} file={activeSelectedFile} scope={chartScope}
+    {analyticsWindow && <DatabaseFileIoTrendPanel instanceId={instanceId} targetRevision={targetRevision} file={activeSelectedFile} scope={chartScope}
       crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
       refresh={refresh} onSelectWindow={onSelectWindow} />}
     {result.data && evidence && <section className="compact-evidence-footer" aria-label="Resources evidence status">
       <p>Selected window: {formatDisplayTime(result.data.fromUtc, mode)} to {formatDisplayTime(result.data.toUtc, mode)}. Refreshed {formatDisplayTime(result.data.refreshedAtUtc, mode)}.</p>
       <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} · {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
       <EvidenceDisclosure label="Collection evidence details" attention={evidence.gaps.length > 0 || evidence.collectionState !== "current"}>
-        <p>CPU and memory history follow this loaded window. PLE and selected-file latency state their own coverage. File counters show their loaded source snapshot even in Rewind; volume capacity is available only in Live. Missing observations are never filled with zero.</p>
+        <p>CPU, memory and volume history follow this loaded window. PLE and selected-file latency state their own coverage. File counters show their loaded source snapshot even in Rewind; latest volume capacity and its forecast are separate Live evidence. Missing observations are never filled with zero.</p>
         <p>Last SQL core observation: {evidence.lastObservedUtc ? formatDisplayTime(evidence.lastObservedUtc, mode) : "unavailable"}. Source status does not establish a health verdict.</p>
       </EvidenceDisclosure>
       <ReferenceEvidenceStatus {...chartReferences} />

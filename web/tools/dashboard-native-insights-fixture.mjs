@@ -4,7 +4,7 @@ import { handleQueryRowTrendFixture } from './query-row-trend-fixture.mjs';
 const cookie = (request, name) => request.headers.cookie?.split(';').map(value => value.trim()).find(value => value.startsWith(name + '='))?.slice(name.length + 1);
 const digest = value => value.toString(16).padStart(12, '0') + '0'.repeat(52);
 export const nativeFileObservedUtc = '2026-10-02T11:30:00.123456Z';
-export const nativeFileCursor = 'bmF0aXZlLWZpbGVzOjI=';
+const nativeFileCursor = target => Buffer.from(['f', target.replaceAll('-', ''), '99999999999949998999000000000001', '1', '5', '2'].join('\n')).toString('base64url');
 export function handleDashboardNativeInsightsFixture(url, response, request, targets, send) {
   if (cookie(request, 'nativeInsightsFixture') !== '1') return false;
   const route = /^\/api\/v1\/observation-targets\/([^/]+)\/(.+)$/.exec(url.pathname);
@@ -15,7 +15,7 @@ export function handleDashboardNativeInsightsFixture(url, response, request, tar
   if (surface === 'health/files') {
     if (mode === 'file-error') { send(response, {}, 503); return true; }
     if (mode === 'file-forbidden') { send(response, {}, 403); return true; }
-    const collector = syntheticCollector(nativeFileObservedUtc);
+    const collector = { ...syntheticCollector(nativeFileObservedUtc, 'database.files'), sourceRows: 4, outputRows: 4, insertedRows: 4 };
     if (mode === 'file-stale') Object.assign(collector, { state: 'stale', reason: 'evidence_stale' });
     const make = (databaseId, fileId, logicalName, sizeBytes, maximumSizeBytes, growthBytes, growthPercent) => syntheticFile({ databaseId, fileId,
       logicalName: logicalName + (offset ? '_02' : ''), fileType: logicalName.endsWith('_log') ? 'log' : 'rows', sizeBytes, maximumSizeBytes, growthBytes, growthPercent,
@@ -23,11 +23,11 @@ export function handleDashboardNativeInsightsFixture(url, response, request, tar
     const files = [make(5, 1, 'SYNTHETIC_exact_data', '9223372036854775807', '9223372036854775807', '67108864', 0),
       make(5, 2, 'SYNTHETIC_percent_log', '1073741824', null, '0', 10),
       make(6, 1, 'SYNTHETIC_other_database', '2147483648', '4294967296', '134217728', 0),
-      make(5, 3, 'SYNTHETIC_zero_growth', '536870912', '1073741824', '0', 0)];
-    const cursor = url.searchParams.get('cursor');
-    if (cursor !== null && cursor !== nativeFileCursor) { send(response, {}, 400); return true; }
+      make(5, 3, 'SYNTHETIC_zero_growth', '536870912', '1073741824', '0', 0)].sort((a,b) => a.databaseId-b.databaseId || a.fileId-b.fileId);
+    const cursor = url.searchParams.get('cursor'), continuation = nativeFileCursor(target.instanceId);
+    if (cursor !== null && cursor !== continuation) { send(response, {}, 400); return true; }
     send(response, { instanceId: target.instanceId, repositoryTimeUtc: '2026-10-02T12:00:00.654321Z', collector,
-      items: mode === 'file-empty' ? [] : cursor ? files.slice(3) : files.slice(0, 3), nextCursor: mode === 'file-empty' || cursor ? null : nativeFileCursor });
+      items: mode === 'file-empty' ? [] : cursor ? files.slice(2) : files.slice(0, 2), nextCursor: mode === 'file-empty' || cursor ? null : continuation });
     return true;
   }
   if (!surface.startsWith('query-performance/')) return false;

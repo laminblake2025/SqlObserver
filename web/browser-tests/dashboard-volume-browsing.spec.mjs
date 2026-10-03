@@ -55,6 +55,15 @@ test.beforeEach(async ({ page }) => {
     const match = /^\/api\/v1\/observation-targets\/([^/]+)(?:\/(.+))?$/.exec(url.pathname);
     if (!match || ![alpha, beta].includes(match[1])) return reject();
     if (!match[2] || supporting.has(match[2])) { context.supporting.push(url); return route.continue(); }
+    if (match[2] === 'resources/volumes/history') {
+      if (url.searchParams.get('targetRevision') !== '1' || url.searchParams.get('limit') !== '25' ||
+          !url.searchParams.get('fromUtc') || !url.searchParams.get('toUtc') ||
+          [...url.searchParams.keys()].some(key => !['targetRevision', 'limit', 'fromUtc', 'toUtc'].includes(key))) return reject();
+      context.supporting.push(url);
+      return json(route, { instanceId: match[1], targetRevision: 1, fromUtc: url.searchParams.get('fromUtc'), toUtc: url.searchParams.get('toUtc'),
+        cutoffUtc: '2026-10-03T12:00:00.123456Z', repositoryTimeUtc: '2026-10-03T12:00:00.123456Z', readEpoch: 'f'.repeat(64), state: 'unavailable', reason: 'no_completed_runs',
+        coverage: { runCount: 0, completeRunCount: 0, gapRunCount: 0, retainedObservationCount: 0, retentionDays: 30, hasVisibilityGap: true }, items: [], nextCursor: null });
+    }
     if (match[2] !== 'resources/volumes' || url.searchParams.get('limit') !== '25'
       || [...url.searchParams.keys()].some(key => !['limit', 'cursor'].includes(key))) return reject();
     const cursor = url.searchParams.get('cursor') ?? undefined, index = cursors.indexOf(cursor);
@@ -111,7 +120,8 @@ test('a pending native volume continuation survives Refresh but Rewind cancels i
   await expect(next(page)).toBeDisabled(); expect(context.requests).toHaveLength(2);
   const cancelled = page.waitForEvent('requestfailed', { predicate: candidate => candidate === request });
   await page.getByRole('combobox', { name: 'Time range', exact: true }).selectOption('custom'); await cancelled;
-  await expect(panel(page)).toContainText('Historical volume capacity is not available in Rewind.'); await expect(table(page)).toHaveCount(0);
+  await expect(panel(page)).toContainText('latest volume snapshot and forecast are separate from Rewind'); await expect(table(page)).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'SQL volume window history', exact: true })).toContainText('No completed volume collections were retained');
   const fixed = scope(page); expect(fixed).toMatchObject({ target: alpha, databaseId: '5', range: 'custom', compare: '1' });
   release(); await finished; await expect(table(page)).toHaveCount(0); expect(context.requests).toHaveLength(2);
   context.handler = undefined; context.run = latestRun;

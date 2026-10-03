@@ -179,7 +179,7 @@ for (const change of ['target', 'revision', 'rewind', 'unmount']) test(`${change
     expect(context.requests.at(-1).id).toBe(change === 'target' ? beta : alpha);
     if (change === 'target') await expect(panel(page).locator('[title^="Opaque volume key 00000001"]')).toHaveCount(0);
   } else if (change === 'rewind') {
-    await expect(table(page)).toHaveCount(0); await expect(panel(page)).toContainText('Historical volume capacity is not available in Rewind.');
+    await expect(table(page)).toHaveCount(0); await expect(panel(page)).toContainText('The latest volume snapshot and forecast are separate from Rewind.');
     expect(context.requests).toHaveLength(2);
     context.handler = undefined; await page.getByRole('combobox', { name: 'Time context', exact: true }).selectOption('live');
     await expectPage(page, 0); expect(context.requests.at(-1).cursor).toBeUndefined();

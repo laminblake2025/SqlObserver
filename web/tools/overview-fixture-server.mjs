@@ -15,6 +15,7 @@ import {syntheticCollector,syntheticFile} from './health-contract-fixture.mjs';
 import {handleWorkspaceSelectionFixture} from './workspace-selection-fixture.mjs';
 import {handleMaintenanceCalendarFixture} from './maintenance-calendar-fixture.mjs';
 import {handleSqlVolumeFixture} from './sql-volume-fixture.mjs';
+import {handleSqlVolumeHistoryFixture} from './sql-volume-history-fixture.mjs';
 import {handleMaintenanceEditFixture} from './maintenance-edit-fixture.mjs';
 import {handleMaintenanceSeriesFixture} from './maintenance-series-fixture.mjs';
 import {handleWaitCapturedSessionFixture} from './wait-captured-session-fixture.mjs';
@@ -60,6 +61,7 @@ createServer(async(req,res)=>{try{
  if(handleMaintenanceSeriesFixture(url,res,req,targets,send))return;
  if(await handleMaintenanceEditFixture(url,res,req,targets,send))return;
  if(handleWaitCapturedSessionFixture(url,res,req,targets,send))return;
+ if(handleSqlVolumeHistoryFixture(url,res,req,targets,send))return;
  if(handleSqlVolumeFixture(url,res,req,targets,send))return;
  if(handleMaintenanceCalendarFixture(url,res,req,targets,send))return;
  if(handleWorkspaceSelectionFixture(url,res,req,targets,send))return;
