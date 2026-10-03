@@ -109,6 +109,33 @@ test('unmount aborts inventory ownership and a late denial cannot remove a remou
   await pending.finish(); await expect(inventory(page)).toBeEnabled(); await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+test('routine inventory provenance is folded while received counts remain visible and toggling performs no read', async ({ page }) => {
+  await mount(page); const context = contexts.get(page);
+  const disclosure = page.locator('.database-inventory-details'), summary = disclosure.locator('summary');
+  await expect(disclosure).not.toHaveAttribute('open', '');
+  await expect(page.locator('.database-scope-status')).toContainText('26 databases loaded.');
+  const reads = context.requests.length;
+  await summary.focus(); await page.keyboard.press('Enter');
+  await expect(disclosure).toHaveAttribute('open', ''); await expect(summary).toBeFocused();
+  await expect(disclosure.getByText(/^Repository snapshot:/)).toBeVisible();
+  await expect(disclosure).toContainText('missing entries do not mean a database is absent');
+  await summary.press('Enter'); await expect(disclosure).not.toHaveAttribute('open', '');
+  expect(context.requests).toHaveLength(reads); expect(new URL(page.url()).hash).toBe('');
+});
+
+for (const status of [401, 403]) test(`inventory HTTP ${status} keeps the selected filter until its visible clear action is activated`, async ({ page }) => {
+  await mount(page); const context = contexts.get(page);
+  context.handler = async (route, item) => { if (item.kind !== 'databases') return false; await json(route, { detail: providerText }, status); return true; };
+  await page.keyboard.press('F6'); await expect(inventory(page)).toBeDisabled(); await expect(inventory(page)).toHaveValue('5');
+  await expect(page.locator('.database-inventory-details')).not.toHaveAttribute('open', '');
+  await expect(page.locator('.database-scope-selection-note')).toBeVisible();
+  const clear = page.getByRole('button', { name: 'Clear database filter', exact: true }); await clear.focus();
+  const reads = context.requests.length; await clear.press('Enter');
+  await expect(inventory(page)).toHaveValue(''); await expect(clear).toHaveCount(0); await expect(inventory(page)).toBeDisabled();
+  await expect(page.locator('.database-scope-selection-note')).toHaveCount(0);
+  expect(context.requests).toHaveLength(reads); await expect(page.getByRole('alert')).toContainText('access');
+});
+
 for (const [kind, category] of [['servers', 'Servers'], ['databases', 'Databases'], ['alerts', 'Current alerts']]) {
   for (const status of [401, 403]) test(`palette ${category} later-page HTTP ${status} removes matches and keyboard reopening requires a new receipt`, async ({ page }) => {
     await mount(page, false); const context = contexts.get(page), pending = held(item => item.kind === kind && Boolean(item.cursor), status);

@@ -154,6 +154,7 @@ const listUrl=await compile("SavedIncidentList",{
   "./incidentModel.ts":new URL("../src/features/incidents/incidentModel.ts",import.meta.url).href,
 });
 const workspaceUrl=await compile("IncidentWorkspace",{
+  "./incidentDisclosure.css": "data:text/javascript,export%20%7B%7D",
   "./incidentApi.ts":new URL("../src/features/incidents/incidentApi.ts",import.meta.url).href,
   "./incidentModel.ts":new URL("../src/features/incidents/incidentModel.ts",import.meta.url).href,
   "./SavedIncidentView.tsx":viewUrl,"./SavedIncidentList.tsx":listUrl,"../overview/overviewModel.ts":new URL("../src/features/overview/overviewModel.ts",import.meta.url).href,

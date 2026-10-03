@@ -15,6 +15,7 @@ const targets = {
 // Deliberate UI-role fixture only; this flag does not authorize any server API.
 const canManageConfiguration = new URLSearchParams(location.search).get("canManageConfiguration") === "true";
 const navigation = new URLSearchParams(location.search).get("navigation") === "true";
+const embedded = new URLSearchParams(location.search).get("embedded") === "true";
 
 function Harness() {
   const { mode, setMode } = useTimeDisplay();
@@ -59,6 +60,7 @@ function Harness() {
     <output aria-label="Selected database context">{selectedDatabase ?? "None"}</output>
     {navigation && <output hidden aria-label="First committed health navigation">{JSON.stringify(commit)}</output>}
     {closed ? <p>Health panel closed</p> : <TargetHealthPanel
+      embedded={embedded}
       instanceId={targets[selectedTarget]} displayName={selectedTarget === "alpha" ? "Alpha" : "Beta"}
       onClose={() => setClosed(true)} scope={scope} refresh={refresh} healthRefresh={refresh}
       blockingRefresh={refresh} selectedDatabaseId={selectedDatabase} onSelectDatabase={selectDatabase}

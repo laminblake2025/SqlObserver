@@ -1,0 +1,34 @@
+.workspace > .shell > .page-heading { margin-bottom: 14px; }
+.workspace-context-frame { min-width: 0; margin-block-end: 14px; }
+.workspace-context-frame .workspace-context-controls { justify-content: flex-start; align-items: flex-start; gap: 10px 14px; margin: 0; }
+.workspace-context-controls > .scope-control,
+.workspace-context-controls > .database-scope-controls { flex: 0 1 260px; min-width: 0; max-width: 320px; }
+.workspace-context-controls .scope-control select { width: 100%; min-width: 0; min-height: 44px; }
+.workspace-context-frame .workspace-context-controls > button,
+.workspace-context-frame .workspace-context-controls > a { display: inline-flex; align-self: flex-start; align-items: center; justify-content: center; min-height: 44px; max-width: 100%; margin-block-start: 20px; white-space: normal; overflow-wrap: anywhere; }
+.database-scope-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; min-width: 0; }
+.database-scope-meta > .database-scope-status { flex: 1 1 130px; min-width: 0; margin: 0; }
+.database-scope-meta > .database-inventory-details { flex: 0 1 auto; margin: 0; }
+.database-scope-meta > .database-inventory-details[open] { flex-basis: 100%; }
+.workspace-context-scope,
+.database-scope-selection-note { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.database-scope-selection-note { color: var(--amber); }
+.workspace-context-details,
+.database-inventory-details { min-width: 0; margin-block-start: 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.workspace-context-details > summary,
+.database-inventory-details > summary { min-height: 44px; padding: 12px 6px; border-radius: 6px; color: var(--teal-deep); cursor: pointer; font-weight: 650; }
+.workspace-context-details > summary:focus-visible,
+.database-inventory-details > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.workspace-context-details > p,
+.database-inventory-details > p { margin: 4px 6px 10px; line-height: 1.5; }
+.database-scope-clear { min-height: 44px; max-width: 100%; margin-block-start: 8px; white-space: normal; }
+@media (max-width: 600px) {
+  .workspace-context-controls > .scope-control,
+  .workspace-context-controls > .database-scope-controls { flex: 1 1 100%; max-width: none; width: 100%; }
+  .workspace-context-frame .workspace-context-controls > button,
+  .workspace-context-frame .workspace-context-controls > a { margin-block-start: 0; }
+}
+@media (forced-colors: active) {
+  .workspace-context-details > summary:focus-visible,
+  .database-inventory-details > summary:focus-visible { outline-color: Highlight; }
+}

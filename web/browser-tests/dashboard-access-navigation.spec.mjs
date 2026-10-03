@@ -126,7 +126,7 @@ test('catalog denial removes a pending registration and fences its later native 
 test('built Health Back/Forward and reload restore the bare route default', async ({ page }) => {
   await open(page, 'health');
   const tabs = page.getByRole('tablist', { name: 'Server summary sections', exact: true });
-  const summary = tabs.getByRole('tab', { name: 'Summary', exact: true }), collection = tabs.getByRole('tab', { name: 'Collection health', exact: true });
+  const summary = tabs.getByRole('tab', { name: 'Dashboard', exact: true }), collection = tabs.getByRole('tab', { name: 'Collection health', exact: true });
   await expect(summary).toHaveAttribute('aria-selected', 'true'); const saved = new URL(page.url()).hash;
   await collection.click(); await expect(collection).toHaveAttribute('aria-selected', 'true');
   await page.goBack(); await expect(summary).toHaveAttribute('aria-selected', 'true'); expect(new URL(page.url()).hash).toBe(saved);
@@ -135,13 +135,14 @@ test('built Health Back/Forward and reload restore the bare route default', asyn
   await page.goForward(); await expect(collection).toHaveAttribute('aria-selected', 'true');
 });
 
-test('built bare Health defaults to Databases and clearing shared database context restores Summary', async ({ page }) => {
+test('built bare Health retains Dashboard when the shared database filter is cleared or restored', async ({ page }) => {
   await open(page, 'health', { databaseId: '5' });
   const tabs = page.getByRole('tablist', { name: 'Server summary sections', exact: true });
-  await expect(tabs.getByRole('tab', { name: 'Databases', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
   const database = page.getByRole('combobox', { name: 'Workspace database', exact: true });
-  await database.selectOption(''); await expect(tabs.getByRole('tab', { name: 'Summary', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await page.goBack(); await expect(tabs.getByRole('tab', { name: 'Databases', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await database.selectOption(''); await expect(tabs.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.goBack(); await expect(tabs.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(database).toHaveValue('5');
   await tabs.getByRole('tab', { name: 'Collection health', exact: true }).click(); await database.selectOption('');
   await expect(tabs.getByRole('tab', { name: 'Collection health', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.reload(); await expect(tabs.getByRole('tab', { name: 'Collection health', exact: true })).toHaveAttribute('aria-selected', 'true');

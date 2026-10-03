@@ -76,6 +76,12 @@ async function openDisclosure(page, article, label, key = 'Enter') {
   const summary = article.getByText(label, { exact: true }); await summary.focus(); await page.keyboard.press(key);
   await expect(summary.locator('..')).toHaveAttribute('open', '');
 }
+const workspaceSummary = page => page.locator('summary').filter({ hasText: /^Investigation workspace$/ });
+async function openWorkspace(page) {
+  const summary = workspaceSummary(page);
+  await summary.focus(); await page.keyboard.press('Enter');
+  await expect(summary.locator('..')).toHaveAttribute('open', '');
+}
 async function expectExports(page, id, runId) {
   await expect(html(page)).toHaveAttribute('href', `/api/v1/observation-targets/${id}/reports/${runId}/html`);
   await expect(html(page)).toHaveAttribute('target', '_blank'); await expect(html(page)).toHaveAttribute('rel', 'noreferrer');
@@ -143,7 +149,10 @@ test('the saved exact microsecond window and share link remain frozen while shar
   const share = () => view(page).getByRole('link', { name: 'Open the saved window and share this investigation', exact: true });
   const selected = () => share().getAttribute('href').then(href => Object.fromEntries(new URLSearchParams(href.split('?')[1])));
   await expect.poll(selected).toMatchObject({ target, incident: thread, range: 'custom', from: fromUtc, to: toUtc, databaseId: '5', compare: '1' });
+  // Settle the route-owned re-read before advancing the transport timeout clock.
+  const reread = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname === `/api/v1/observation-targets/${target}/incidents/saved/${thread}`);
   await page.getByRole('button', { name: 'Shift shared window', exact: true }).click();
+  const response = await reread; expect(await response.finished()).toBeNull();
   await expect(view(page)).toBeVisible();
   await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('from')).toBe('2026-09-29T11:00:00.111111Z');
   await expect.poll(selected).toMatchObject({ from: fromUtc, to: toUtc });
@@ -252,6 +261,7 @@ test('saved list paging retains its native snapshot and a stale cursor requires 
     stale = false; await json(route, { detail: 'SECRET_CURSOR' }, 409); return true;
   };
   await page.goto(`/component-tests/incidents.html${incidentHref(target, null)}`);
+  await openWorkspace(page);
   await page.getByRole('button', { name: 'Saved investigations', exact: true }).click();
   await expect(page.locator('.incident-summary-list > li')).toHaveCount(20);
   await page.getByRole('button', { name: 'Older investigations', exact: true }).click();
@@ -281,6 +291,165 @@ test('direct saved-view props cannot expose title, notes, evidence or actions be
   await expect(page.locator('.incident-notes')).toHaveText('PRIVATE_DIRECT_SAVED_NOTES');
   await page.getByRole('combobox', { name: 'Read access', exact: true }).selectOption('unverified');
   await expect(page.locator('body')).not.toContainText('PRIVATE_DIRECT_SAVED_NOTES');
+  expect(contexts.get(page).requests).toHaveLength(0);
+});
+
+async function draftWorkspace(page) {
+  await page.goto(`/component-tests/incidents.html${incidentHref(target, null)}`);
+  await page.getByRole('combobox', { name: 'Save access', exact: true }).selectOption('operator');
+  await expect(workspaceSummary(page).locator('..')).not.toHaveAttribute('open', '');
+  await openWorkspace(page);
+  await page.getByRole('button', { name: 'Open incident', exact: true }).press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Incident title', exact: true })).toBeFocused();
+}
+async function closeWorkspace(page) {
+  await workspaceSummary(page).focus(); await page.keyboard.press('Enter');
+  await expect(workspaceSummary(page).locator('..')).not.toHaveAttribute('open', '');
+}
+
+test('the optional workspace exposes the role hint without fetching or changing the shared URL', async ({ page }) => {
+  await page.goto(`/component-tests/incidents.html${incidentHref(target, null)}`);
+  const hash = new URL(page.url()).hash;
+  await expect(workspaceSummary(page).locator('..')).not.toHaveAttribute('open', '');
+  await expect(page.getByText('Operator or Target Administrator access unlocks saving an incident for this server.', { exact: true })).toBeHidden();
+  await openWorkspace(page);
+  await expect(page.getByText('Operator or Target Administrator access unlocks saving an incident for this server.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Saved investigations', exact: true })).toBeVisible();
+  await closeWorkspace(page); await page.getByRole('button', { name: 'Refresh workspace context', exact: true }).click();
+  expect(new URL(page.url()).hash).toBe(hash); expect(contexts.get(page).requests).toHaveLength(0);
+});
+
+test('closing the workspace preserves a frozen draft through context refresh and a shared-window change', async ({ page }) => {
+  await draftWorkspace(page);
+  const title = page.getByRole('textbox', { name: 'Incident title', exact: true });
+  await title.fill('SYNTHETIC retained draft'); await page.getByRole('textbox', { name: 'Notes', exact: true }).fill('Keep these exact notes.');
+  const frozen = await page.locator('.incident-form > p').first().textContent();
+  await closeWorkspace(page);
+  await expect(page.getByText(/^Frozen incident draft:/)).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh workspace context', exact: true }).click();
+  await page.getByRole('button', { name: 'Shift shared window', exact: true }).click();
+  await expect(workspaceSummary(page).locator('..')).not.toHaveAttribute('open', '');
+  await openWorkspace(page); await expect(title).toHaveValue('SYNTHETIC retained draft');
+  await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveValue('Keep these exact notes.');
+  await expect(page.locator('.incident-form > p').first()).toHaveText(frozen);
+  await page.getByRole('button', { name: 'Close draft', exact: true }).press('Enter');
+  await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeFocused();
+  await expect(workspaceSummary(page).locator('..')).toHaveAttribute('open', '');
+  expect(contexts.get(page).requests).toHaveLength(0);
+});
+
+test('a collapsed pending save remains owned and its uncertain retry preserves the exact original command', async ({ page }) => {
+  const context = contexts.get(page); let started, release, finished;
+  const seen = new Promise(done => { started = done; }), held = new Promise(done => { release = done; }), delivered = new Promise(done => { finished = done; });
+  context.handler = async (route, item) => {
+    if (item.action !== 'save' || context.requests.filter(item => item.action === 'save').length !== 1) return false;
+    context.backend.acceptSave(item.id, item.body); started(route.request()); await held;
+    await json(route, { detail: 'PRIVATE_SAVE_ERROR' }, 503); finished(); return true;
+  };
+  await draftWorkspace(page);
+  await page.getByRole('textbox', { name: 'Incident title', exact: true }).fill('SYNTHETIC exact retry');
+  await page.getByRole('textbox', { name: 'Notes', exact: true }).fill('Frozen notes.');
+  await page.getByRole('button', { name: 'Save incident', exact: true }).press('Enter');
+  const request = await seen;
+  await closeWorkspace(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Saving the frozen incident draft.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh workspace context', exact: true }).click();
+  expect(request.failure()).toBeNull(); expect(context.requests.filter(item => item.action === 'save')).toHaveLength(1);
+  release(); await delivered;
+  await expect(page.getByRole('alert')).toHaveText('The incident service is temporarily unavailable. Retry the same save to check its outcome.');
+  await expect(page.getByRole('button', { name: 'Retry same save', exact: true })).toHaveCount(0);
+  await openWorkspace(page);
+  await expect(page.getByRole('textbox', { name: 'Incident title', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Retry same save', exact: true }).press('Enter');
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC exact retry', exact: true })).toBeVisible();
+  const saves = context.requests.filter(item => item.action === 'save'); expect(saves).toHaveLength(2); expect(saves[1].body).toEqual(saves[0].body);
+  expect(saves[0].body).toMatchObject({ expectedTargetRevision: 7, fromUtc, toUtc, notes: 'Frozen notes.' });
+  await expect(workspaceSummary(page)).toHaveCount(0); await expect(page.locator('body')).not.toContainText('PRIVATE_SAVE_ERROR');
+});
+
+test('collapsing the outer workspace preserves a pending saved-list continuation and exposes its failure for explicit recovery', async ({ page }) => {
+  const context = contexts.get(page); let started, release, finished, fail = true;
+  const seen = new Promise(done => { started = done; }), gate = new Promise(done => { release = done; }), delivered = new Promise(done => { finished = done; });
+  context.handler = async (route, item) => {
+    if (item.action !== 'list' || !item.url.searchParams.has('cursor') || !fail) return false;
+    fail = false; started(route.request()); await gate; await json(route, {}, 503); finished(); return true;
+  };
+  await page.goto(`/component-tests/incidents.html${incidentHref(target, null)}`); await openWorkspace(page);
+  await page.getByRole('button', { name: 'Saved investigations', exact: true }).click();
+  await expect(page.locator('.incident-summary-list > li')).toHaveCount(20);
+  await page.getByRole('button', { name: 'Older investigations', exact: true }).click(); const request = await seen;
+  await closeWorkspace(page);
+  await expect(page.getByRole('status').filter({ hasText: 'Loading saved investigations…' })).toBeVisible();
+  expect(request.failure()).toBeNull();
+  release(); await delivered;
+  await expect(page.getByRole('alert')).toHaveText('Saved investigations are temporarily unavailable. Open the investigation workspace for recovery controls.');
+  await openWorkspace(page);
+  await page.getByRole('button', { name: 'Retry loading investigations', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'SYNTHETIC saved page 20', exact: true })).toBeVisible();
+  await closeWorkspace(page); await page.getByRole('button', { name: 'Refresh workspace context', exact: true }).click(); await openWorkspace(page);
+  await expect(page.getByRole('link', { name: 'SYNTHETIC saved page 20', exact: true })).toBeVisible();
+  expect(context.requests.filter(item => item.action === 'list').map(item => item.url.searchParams.get('cursor'))).toEqual([null, 'native.snapshot', 'native.snapshot']);
+});
+
+for (const state of ['invalid', 'missing', 'denied']) test(`a ${state} selected investigation stays discoverable outside the optional workspace`, async ({ page }) => {
+  const hash = state === 'invalid' ? incidentHref(target, 'invalid') : incidentHref(target, 'ffffffff-ffff-4fff-8fff-ffffffffffff');
+  await page.goto(`/component-tests/incidents.html${state === 'denied' ? '?read=denied' : ''}${hash}`);
+  await expect(workspaceSummary(page)).toHaveCount(0);
+  await expect(page.getByText(state === 'invalid' ? 'The incident link is invalid. Open a saved investigation using its original link.'
+    : state === 'denied' ? denial : 'This saved investigation was not found. Automatically correlated incidents remain available in Analytics.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close investigation', exact: true })).toBeVisible();
+  for (const button of await page.locator('.incident-workspace').getByRole('button').all()) {
+    expect((await button.boundingBox()).height, 'Direct recovery actions remain touch accessible outside the optional workspace').toBeGreaterThanOrEqual(44);
+  }
+  await expect(view(page)).toHaveCount(0);
+  expect(contexts.get(page).requests.map(item => item.action)).toEqual(state === 'missing' ? ['read'] : []);
+});
+
+test('an invalid shared window stays visible outside the closed workspace and cannot create a draft', async ({ page }) => {
+  await page.goto(`/component-tests/incidents.html${incidentHref(target, null, { from: toUtc, to: fromUtc })}`);
+  await page.getByRole('combobox', { name: 'Save access', exact: true }).selectOption('operator');
+  await expect(workspaceSummary(page).locator('..')).not.toHaveAttribute('open', '');
+  await expect(page.getByRole('status').filter({ hasText: 'Select a window of at most seven days.' })).toBeVisible();
+  await openWorkspace(page); await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeDisabled();
+  expect(contexts.get(page).requests).toHaveLength(0);
+});
+
+test('opening a draft retires a held saved-list owner without leaving a collapsed loading announcement', async ({ page }) => {
+  const context = contexts.get(page); let started, release, finished;
+  const seen = new Promise(done => { started = done; }), gate = new Promise(done => { release = done; }), delivered = new Promise(done => { finished = done; });
+  context.handler = async (route, item) => {
+    if (item.action !== 'list') return false;
+    started(route.request()); await gate;
+    try { await json(route, summaryPage(item.id)); } catch (error) { if (!route.request().failure()?.errorText.includes('ERR_ABORTED')) throw error; }
+    finished(); return true;
+  };
+  await page.goto(`/component-tests/incidents.html${incidentHref(target, null)}`);
+  await page.getByRole('combobox', { name: 'Save access', exact: true }).selectOption('operator'); await openWorkspace(page);
+  await page.getByRole('button', { name: 'Saved investigations', exact: true }).click(); const request = await seen;
+  await page.getByRole('button', { name: 'Open incident', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Incident title', exact: true })).toBeFocused();
+  await expect.poll(() => request.failure()?.errorText).toContain('ERR_ABORTED');
+  await closeWorkspace(page); await expect(page.getByText(/^Frozen incident draft:/)).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Loading saved investigations' })).toHaveCount(0);
+  release(); await delivered;
+  await expect(page.getByRole('status').filter({ hasText: 'Loading saved investigations' })).toHaveCount(0);
+  await openWorkspace(page); await expect(page.getByRole('textbox', { name: 'Incident title', exact: true })).toBeVisible();
+  expect(context.requests.map(item => item.action)).toEqual(['list']);
+});
+
+for (const width of [320, 390, 768, 1440]) test(`the compact investigation disclosure preserves keyboard focus and a draft at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 }); await draftWorkspace(page);
+  await page.getByRole('textbox', { name: 'Incident title', exact: true }).fill(`SYNTHETIC draft ${width}`);
+  await closeWorkspace(page); await expect(workspaceSummary(page)).toBeFocused();
+  const focus = await workspaceSummary(page).evaluate(element => ({ style: getComputedStyle(element).outlineStyle, width: parseFloat(getComputedStyle(element).outlineWidth) }));
+  expect(focus.style).not.toBe('none'); expect(focus.width).toBeGreaterThanOrEqual(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
+  await info.attach(`incident-disclosure-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-context-frame/screenshots/', import.meta.url)); await mkdir(directory, { recursive: true });
+  await page.screenshot({ path: `${directory}/incident-disclosure-${width}.png`, fullPage: true });
+  await openWorkspace(page); await expect(page.getByRole('textbox', { name: 'Incident title', exact: true })).toHaveValue(`SYNTHETIC draft ${width}`);
   expect(contexts.get(page).requests).toHaveLength(0);
 });
 

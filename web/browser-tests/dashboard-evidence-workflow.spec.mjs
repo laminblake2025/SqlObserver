@@ -36,6 +36,12 @@ for (const width of [320, 390, 768, 1440]) test(`dashboard answers precede folde
   const agentBrowser = agent.getByText('Browse SQL Agent failure evidence', { exact: true }).locator('xpath=parent::details');
   await expect(page.locator('.server-dashboard-charts .chart-plot-scroll').first()).toBeVisible();
   await expect(agentBrowser.locator('summary')).toBeVisible(); await settled(page);
+  const workspace = page.locator('summary').filter({ hasText: /^Investigation workspace$/ }).locator('..');
+  await expect(workspace).not.toHaveAttribute('open', '');
+  await expect(page.getByRole('heading', { name: 'Server summary for SYNTHETIC SQL 01', exact: true })).toHaveCount(0);
+  await expect(page.locator('.health-screen').getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
+  const navBeforeKpis = await page.evaluate(() => Boolean(document.querySelector('.health-navigation-frame')?.compareDocumentPosition(document.querySelector('.server-dashboard-kpis')) & Node.DOCUMENT_POSITION_FOLLOWING));
+  expect(navBeforeKpis, 'Embedded section navigation precedes heavy dashboard content').toBe(true);
   const selectors = ['.server-dashboard-kpis', '.dashboard-investigation', '.dashboard-timeline', '.server-dashboard-charts',
     '.server-dashboard-blocking', '.alert-lifecycle-history', '.server-agent-evidence'];
   const ordered = await page.evaluate(selectors => {

@@ -21,6 +21,7 @@ export function DatabaseScopeControls({ targetId, databaseId, onChange, refresh 
   readonly refresh: number;
 }) {
   const descriptionId = useId();
+  const missingDescriptionId = useId();
   const timeLabel = useTimeFormatter();
   const [state, setState] = useState<InventoryState>();
   const context = useRef({ target: targetId.toLowerCase(), generation: 0 });
@@ -59,20 +60,23 @@ export function DatabaseScopeControls({ targetId, databaseId, onChange, refresh 
   const selectionMissing = databaseId !== undefined && !choices.items.some(item => item.databaseId === databaseId);
   return <div className="database-scope-controls">
     <label className="scope-control">Workspace database
-      <select value={databaseId === undefined ? "" : String(databaseId)} aria-describedby={descriptionId} disabled={current?.denied === true}
+      <select value={databaseId === undefined ? "" : String(databaseId)} aria-describedby={selectionMissing ? `${descriptionId} ${missingDescriptionId}` : descriptionId} disabled={current?.denied === true}
         onChange={event => onChange(event.target.value === "" ? undefined : Number(event.target.value))}>
         <option value="">All databases</option>
         {selectionMissing && <option value={String(databaseId)}>Database ID {databaseId} (not in loaded inventory)</option>}
         {choices.items.map(item => <option value={String(item.databaseId)} key={item.databaseId}>{item.name} · ID {item.databaseId}</option>)}
       </select>
     </label>
-    <p id={descriptionId} className="database-scope-status diagnostic-workflow-note" role={current?.error ? "alert" : "status"}>
-      {current?.error ? current.denied ? current.error : `Database inventory unavailable. ${current.error} Previously loaded names are retained.`
-        : loading ? "Loading database inventory…"
-          : `${choices.complete ? "Loaded inventory" : "Partial inventory"} · ${choices.items.length} databases loaded${choices.complete ? "" : " · 20-page limit reached"}.`}
-      {choices.repositoryTimeUtc && <> Repository snapshot: {timeLabel(choices.repositoryTimeUtc)}.</>}
-      {databaseId !== undefined && selectionMissing && " The selected database remains in scope."}
-      {" Inventory lists observed databases; missing entries do not mean a database is absent."}
+    <div className="database-scope-meta"><p id={descriptionId} className="database-scope-status diagnostic-workflow-note" role={current?.error ? "alert" : "status"}>
+      {current?.error ? current.denied ? current.error : `Database inventory unavailable. ${current.error}${choices.items.length ? " Previously loaded names are retained." : ""}`
+        : loading ? choices.repositoryTimeUtc ? `Refreshing inventory · ${choices.items.length} databases loaded.` : "Loading database inventory…"
+          : `${choices.complete ? "Loaded inventory" : "Partial inventory"} · ${choices.items.length} databases loaded.`}
     </p>
+    <details className="database-inventory-details"><summary>Inventory details</summary>
+      {choices.repositoryTimeUtc && <p>Repository snapshot: {timeLabel(choices.repositoryTimeUtc)}.</p>}
+      <p>Inventory lists observed databases; missing entries do not mean a database is absent. Reads are bounded to 20 pages.{!loading && !current?.error && !choices.complete && " The 20-page limit was reached; more inventory may be available."}</p>
+    </details></div>
+    {selectionMissing && <p id={missingDescriptionId} className="database-scope-selection-note" role="status">Selected database ID {databaseId} has not been received in inventory; its filter remains selected.</p>}
+    {current?.denied && databaseId !== undefined && <button type="button" className="secondary-button database-scope-clear" onClick={() => onChange(undefined)}>Clear database filter</button>}
   </div>;
 }

@@ -6,7 +6,7 @@ import { alpha, beta, at, cursor, collector, database, evidence, logicalFile } f
 import { alertLifecycleHistoryBackend, lifecycleFixtureBinding } from '../tools/alert-lifecycle-history-fixture.mjs';
 
 const sessions = new WeakMap();
-const panel = page => page.getByRole('region', { name: /^Server summary for/ });
+const panel = page => page.getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ });
 const inventory = page => page.getByRole('region', { name: 'Database health', exact: true });
 const files = page => page.getByRole('region', { name: 'Logical-file health', exact: true });
 const fact = (container, label) => container.locator('dl > div').filter({ has: container.page().getByText(label, { exact: true }) }).locator('dd');
@@ -81,7 +81,7 @@ async function auditRecovery(page, info, focus, prefix) {
     await page.setViewportSize({ width, height: 1000 });
     await focus.focus(); await expect(focus).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+    const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
     await info.attach(`${prefix}-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
     expect(violations).toEqual([]);
     const path = `${directory}${prefix}-${width}.png`;
@@ -116,7 +116,7 @@ test('discloses native pending, stale and degraded collector evidence with loss 
   await expect(fact(card('engine.exact'), 'Sample loss')).toHaveText('ingestion_rejection: 1 items, 8 bytes');
   for (const [label, value] of [['Source rows', '15'], ['Response bytes', '4096'], ['Retries', '2'], ['Circuit', 'Recovery probe']])
     await expect(fact(card('engine.loss'), label)).toHaveText(value);
-  await panel(page).getByRole('tab', { name: 'Summary', exact: true }).click();
+  await panel(page).getByRole('tab', { name: 'Dashboard', exact: true }).click();
   await panel(page).getByText('All latest core metric samples', { exact: true }).click();
   await expect(panel(page).getByText('No core metric samples are available.', { exact: true })).toBeVisible();
 });
@@ -165,7 +165,7 @@ test('the explicit administrator UI fixture exposes the scoped permission destin
   sessions.get(page).fixtures.set(alpha, fixture);
   await open(page, 'Databases', '?canManageConfiguration=true');
   await inventory(page).getByRole('button', { name: 'Use Synthetic inventory as database context', exact: true }).click();
-  await panel(page).getByRole('tab', { name: 'Summary', exact: true }).click();
+  await panel(page).getByRole('tab', { name: 'Dashboard', exact: true }).click();
   await expect(panel(page).locator('.health-metric-strip')).toContainText('Unavailable');
   await expect(panel(page).getByText('For unavailable or incomplete core metrics, review', { exact: false })).toBeVisible();
   await expect(panel(page).getByRole('link', { name: 'collection health', exact: true })).toHaveAttribute('href', /healthSection=collection/);
@@ -250,7 +250,8 @@ test('sanitizes a failed native response and retries through an external refresh
   };
   await page.goto('/component-tests/health.html');
   await expect(panel(page).getByRole('alert')).toHaveText('You are not authorized to view health for this target.');
-  await expect(panel(page).getByRole('tab')).toHaveCount(0);
+  await expect(panel(page).getByRole('tab')).toHaveCount(3);
+  await expect(panel(page).getByRole('tab', { name: 'Collection health', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('body')).not.toContainText('synthetic-secret');
   expect(await page.evaluate(() => window.healthInjected)).toBeUndefined();
   fail = false;
@@ -359,4 +360,44 @@ test('keeps health inventory usable and accessible at 320 and 1440 pixels', asyn
     await page.screenshot({ path, fullPage: true });
     await info.attach(`health-panel-${width}`, { path, contentType: 'image/png' });
   }
+});
+
+test('embedded navigation and independent dashboard remain available when the latest health snapshot fails', async ({ page }) => {
+  sessions.get(page).intercept = async (route, _url, _id, kind) => {
+    if (kind !== undefined) return false;
+    await route.fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"PRIVATE_HEALTH_ERROR"}' }); return true;
+  };
+  await open(page, 'Dashboard', '?embedded=true');
+  await expect(panel(page).getByRole('heading', { name: 'Server diagnostics for Alpha', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'Server summary for Alpha', exact: true })).toHaveCount(0);
+  await expect(panel(page).getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
+  const navigation = panel(page).getByRole('tablist', { name: 'Server summary sections', exact: true });
+  await expect(navigation).toBeVisible();
+  await expect(panel(page).getByRole('alert').filter({ hasText: 'The health request failed safely.' })).toBeVisible();
+  await expect(panel(page).getByText('No latest health snapshot has been received for this server. Missing evidence is not an all-clear signal.', { exact: true })).toBeVisible();
+  await expect(panel(page).locator('.health-dashboard-pane')).toBeVisible();
+  await navigation.getByRole('tab', { name: 'Databases', exact: true }).click();
+  await expect(panel(page).locator('.health-dashboard-pane')).toBeHidden();
+  await expect(navigation).toBeVisible();
+  await navigation.getByRole('tab', { name: 'Collection health', exact: true }).click();
+  await expect(navigation.getByRole('tab', { name: 'Collection health', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await navigation.getByRole('tab', { name: 'Dashboard', exact: true }).click();
+  await expect(panel(page).locator('.health-dashboard-pane')).toBeVisible();
+  expect(sessions.get(page).requests.filter(path => path.startsWith('/api/v1/overview?'))).toHaveLength(1);
+  expect(sessions.get(page).requests.filter(path => path.endsWith('/health'))).toHaveLength(1);
+  await expect(page.locator('body')).not.toContainText('PRIVATE_HEALTH_ERROR');
+});
+
+test('switching sections preserves the mounted dashboard disclosure and owned source receipts', async ({ page }) => {
+  await open(page, 'Dashboard');
+  const summary = panel(page).locator('summary').filter({ hasText: /^Browse alert lifecycle events$/ });
+  await expect(summary).toBeVisible();
+  await summary.focus(); await page.keyboard.press('Enter');
+  await expect(summary.locator('..')).toHaveAttribute('open', '');
+  const reads = sessions.get(page).requests.filter(path => path.includes('/alerts/history')).length;
+  const tab = name => panel(page).getByRole('tab', { name, exact: true });
+  await tab('Collection health').click(); await expect(summary).toBeHidden();
+  await tab('Dashboard').click(); await expect(summary).toBeVisible();
+  await expect(summary.locator('..')).toHaveAttribute('open', '');
+  expect(sessions.get(page).requests.filter(path => path.includes('/alerts/history'))).toHaveLength(reads);
 });

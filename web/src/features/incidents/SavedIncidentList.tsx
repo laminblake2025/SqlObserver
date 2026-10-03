@@ -8,10 +8,12 @@ interface ListSnapshot {
   readonly key: string; readonly pending: boolean; readonly page?: SavedIncidentPage;
   readonly error?: { message: string; retryable: boolean };
 }
+export interface SavedIncidentReadStatus { readonly pending: boolean; readonly error?: string; }
 
-export function SavedIncidentList({ targetId, targetRevision, scope, formatTime, compact = false }: {
+export function SavedIncidentList({ targetId, targetRevision, scope, formatTime, compact = false, onReadStateChange }: {
   readonly targetId: string; readonly targetRevision?: number; readonly scope: OverviewScope;
   readonly formatTime: (value: string) => string; readonly compact?: boolean;
+  readonly onReadStateChange?: (state: SavedIncidentReadStatus) => void;
 }) {
   const context = JSON.stringify([targetId.toLowerCase(), targetRevision]);
   const [expandedContext, setExpanded] = useState<string>();
@@ -25,6 +27,7 @@ export function SavedIncidentList({ targetId, targetRevision, scope, formatTime,
   const current = snapshot?.key === key ? snapshot : undefined;
   const page = current?.page; const error = current?.error;
   const pending = expanded && (!current || current.pending);
+  useEffect(() => { onReadStateChange?.({ pending, error: error?.message }); }, [pending, error?.message, onReadStateChange]);
   const contentsId = useId();
   const Heading = compact ? "h2" : "h4";
   useEffect(() => {

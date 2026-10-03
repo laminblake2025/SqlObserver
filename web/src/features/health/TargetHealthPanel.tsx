@@ -10,6 +10,7 @@ import { ServerDashboard } from "./ServerDashboard";
 import { DatabaseOptionChanges } from "./DatabaseOptionChanges";
 import { ServerConfigurationChanges } from "./ServerConfigurationChanges";
 import { ServerConfigurationSnapshot } from "./ServerConfigurationSnapshot";
+import "./healthNavigationFrame.css";
 
 import { getDatabaseHealth, getTargetHealthEvidence, HealthRequestError } from "./healthApi";
 import {
@@ -72,6 +73,7 @@ interface RecoveryContext {
 }
 
 export interface TargetHealthPanelProps {
+  readonly embedded?: boolean;
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
@@ -89,7 +91,7 @@ export interface TargetHealthPanelProps {
   readonly onSelectSection?: (section: "summary" | "databases" | "collection") => void;
 }
 
-export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ embedded = false, instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const evidenceKey = JSON.stringify([instanceId.toLowerCase(), targetRevision]);
   const [receivedKey, setReceivedKey] = useState<string>();
@@ -99,13 +101,11 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
   const [failure, setMessage] = useState<{ key: string; message: string }>();
   const message = failure?.key === evidenceKey ? failure.message : undefined;
   const [loading, setLoading] = useState(true);
-  const [localTab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases"));
+  const [localTab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? "summary");
   // Route-owned sections are resolved during render, including an absent URL
   // selection restored by Back. Local state remains available to standalone consumers.
-  const tab = onSelectSection ? selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases") : localTab;
-  useEffect(() => { if (!onSelectSection) {
-    if (selectedSection) setTab(selectedSection); else if (selectedDatabaseId !== undefined) setTab("databases");
-  } }, [selectedDatabaseId, selectedSection, onSelectSection]);
+  const tab = onSelectSection ? selectedSection ?? "summary" : localTab;
+  useEffect(() => { if (!onSelectSection && selectedSection) setTab(selectedSection); }, [selectedSection, onSelectSection]);
   const snapshot = evidence?.target;
   const recoveryContext: RecoveryContext = { instanceId, scope, canGeneratePermissions: canManageConfiguration };
 
@@ -148,7 +148,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
 
   return (
     <section className="health-screen" aria-labelledby="health-heading">
-      <div className="health-heading-row">
+      {embedded ? <h2 id="health-heading" className="health-frame-accessible-heading">Server diagnostics for {displayName}</h2> : <div className="health-heading-row">
         <div>
           <p className="eyebrow">Server summary · target-scoped snapshot</p>
           <h2 id="health-heading">Server summary for {displayName}</h2>
@@ -156,23 +156,35 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
         <button className="secondary-button" onClick={onClose} type="button">
           Close
         </button>
-      </div>
-      <ServerDashboard instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
-        targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
-        blockingRefresh={blockingRefresh}
-        configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
-      <p className="table-note">The dashboard follows the selected time window. Database, file, configuration, and collector summaries below show their latest snapshots, with source times alongside each observation.</p>
-
-      {loading && snapshot === undefined ? <p role="status">Loading health evidence…</p> : null}
-      {message === undefined ? null : <p role="alert" className="status-message">{message}</p>}
-      {evidence === undefined ? null : (
-        <>
-          <Tabs
+      </div>}
+      <div className="health-navigation-frame">
+        <Tabs
             label="Server summary sections"
-            tabs={[{ value: "summary", label: "Summary" }, { value: "databases", label: "Databases" }, { value: "collection", label: "Collection health" }]}
+            tabs={[{ value: "summary", label: "Dashboard" }, { value: "databases", label: "Databases" }, { value: "collection", label: "Collection health" }]}
             value={tab}
             onChange={(value) => { const section = value as "summary" | "databases" | "collection"; if (onSelectSection) onSelectSection(section); else setTab(section); }}
-          />
+        />
+        {loading && <p role="status">{snapshot
+          ? `Refreshing latest health evidence… Previously received snapshots evaluated at ${formatTimestamp(snapshot.repositoryTimeUtc)} remain visible.`
+          : "Loading health evidence…"}</p>}
+        {message !== undefined && <p role="alert" className="status-message">{message}</p>}
+        {message !== undefined && snapshot && !loading && <p role="status">Previously received latest snapshots remain visible, evaluated at {formatTimestamp(snapshot.repositoryTimeUtc)}. The failed read has not refreshed this evidence.</p>}
+        {!snapshot && !loading && <p role="status">No latest health snapshot has been received for this server. Missing evidence is not an all-clear signal.</p>}
+      </div>
+      <div className="health-dashboard-pane" hidden={tab !== "summary"}>
+        <ServerDashboard active={tab === "summary"} instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
+          targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
+          blockingRefresh={blockingRefresh}
+          configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
+      </div>
+      <section className="health-latest-pane" aria-labelledby="health-latest-heading">
+        <h3 id="health-latest-heading">{tab === "summary" ? "Latest server snapshots" : tab === "databases" ? "Latest database and logical-file snapshots" : "Latest collection health"}</h3>
+        <p className="table-note">{tab === "summary"
+          ? "Core metrics and configuration snapshots show their latest evidence; they do not rewind with the dashboard. Configuration changes follow the selected time window."
+          : tab === "databases"
+            ? "Database and logical-file summaries show their latest snapshots. Database-option changes follow the selected time window."
+            : "Collector health shows the latest snapshot, independently of the selected historical window. Source observation and repository times are shown alongside each observation."}</p>
+        {evidence === undefined ? null : <>
           <div className="health-summary">
             <span className={`health-state health-${evidence.target.state}`}>
               {stateLabels[evidence.target.state]}
@@ -196,8 +208,8 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           </> : null}
           {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth targetRevision={targetRevision} instanceId={instanceId} firstPage={evidence.databases} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} /><DatabaseFileHealth page={evidence.files} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} /></> : null}
           {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div> : null}
-        </>
-      )}
+        </>}
+      </section>
     </section>
   );
 }

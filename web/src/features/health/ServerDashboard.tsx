@@ -30,7 +30,7 @@ import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.t
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 import "./serverHistoryDisclosure.css";
 
-export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules }: {
+export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules, active = true }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly scope: OverviewScope;
@@ -40,6 +40,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   readonly targetRevision: number;
   readonly selectionHash: string;
   readonly canReadRules: boolean;
+  readonly active?: boolean;
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
@@ -55,7 +56,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const [blockerSelection, setBlockerSelection] = useState<{ key: string; sessionId: number }>();
   const blockerKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, blockingEvidence.page?.evidence?.runId]);
   const inspectBlocker = (sessionId: number) => {
-    if (location.hash !== selectionHash) return;
+    if (!active || location.hash !== selectionHash) return;
     setBlockerSelection({ key: blockerKey, sessionId });
     document.getElementById("server-blocking-heading")?.focus();
     document.getElementById("server-blocking-heading")?.scrollIntoView({ block: "start" });
@@ -104,9 +105,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const alignmentContext = JSON.stringify([inspectionKey, selectionHash]);
   const inspection = useChartInspection(alignmentContext, timelineWindow?.fromUtc, timelineWindow?.toUtc, requestedChartAt, restoredEvent?.timeUtc);
   const crosshairUtc = inspection.crosshairUtc;
-  const setCrosshairUtc = (utc: string | null) => { if (location.hash === selectionHash) inspection.setCrosshairUtc(utc); };
+  const setCrosshairUtc = (utc: string | null) => { if (active && location.hash === selectionHash) inspection.setCrosshairUtc(utc); };
   const selectTimeline = (selection: DashboardTimelineSelection | undefined) => {
-    if (location.hash !== selectionHash) return;
+    if (!active || location.hash !== selectionHash) return;
     setCrosshairUtc(null);
     const current = readDashboardTimelineSelection(location.hash, instanceId);
     if (selection && !timelineEvents.some(event => matchesDashboardTimelineSelection(selection, event))) {
@@ -136,7 +137,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "engine.os_available_memory_bytes" || item.metric === "host.memory.available_bytes")
     .map(item => ({ ...item, dimension: item.metric === "engine.process_physical_memory_bytes" ? "SQL process used" : item.metric === "engine.os_available_memory_bytes" ? "OS available via SQL" : "Host available" })) ?? [];
   const change = (next: Partial<OverviewScope>) => {
-    if (location.hash !== selectionHash) return;
+    if (!active || location.hash !== selectionHash) return;
     const nextScope = { ...selectedScope, ...next };
     try { location.hash = dashboardTimelineSelectionHref(nextScope, requestedSelection ?? undefined); }
     catch { location.hash = overviewHref(nextScope, "health", instanceId); }
@@ -146,6 +147,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     <h4>{label}</h4>
     <ChartEvidenceIndicator label={label} series={evidence?.series.filter(series => series.metric === metric) ?? []} />
     <OverviewChart
+      interactionKey={String(active)}
       scrollablePlotLabel={`${label} plot`}
       series={evidence?.series.filter(series => series.metric === metric) ?? []}
       previous={previous?.series.filter(series => series.metric === metric)}
@@ -185,15 +187,15 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     </>}
     {timelineWindow&&<><ChartAlignmentControls key={inspectionKey} context={inspectionKey} label="Dashboard" headingLevel={4} {...timelineWindow}
       requestedUtc={requestedChartAt} crosshairUtc={crosshairUtc}
-      onAlign={utc=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash,utc);}}
-      onClear={()=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
-      <DashboardTimeline contextKey={timelineContextKey} events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
+      onAlign={utc=>{if(!active||location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash,utc);}}
+      onClear={()=>{if(!active||location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
+      <DashboardTimeline interactionEnabled={active} contextKey={timelineContextKey} events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
       selection={requestedSelection} onSelectionChange={selectTimeline} pinnedExactEvent={pinnedExactEvent}
       loading={timeline.loading||alerts.list.loading||alerts.detail.loading}
       onSelectWindow={window=>{setCrosshairUtc(null);change({range:"custom",from:window.fromUtc,to:window.toUtc});}}
       onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes}/>
       {selectedLifecycleEvent!==undefined&&<button type="button" className="secondary-button server-history-action" aria-controls={alertEvidenceId} onClick={()=>{
-        if(location.hash!==selectionHash)return;
+        if(!active||location.hash!==selectionHash)return;
         alertEvidence.current?.focus();alertEvidence.current?.scrollIntoView({block:"start"});
       }}>Review selected alert event evidence</button>}</>}
     {data && evidence && <>
@@ -201,7 +203,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
         {chart("engine.sql_scheduler_cpu_percent", "SQL scheduler CPU", "Percent of online SQL scheduler capacity used by non-preemptive workers between samples. This excludes preemptive and hidden-scheduler work; it is not total SQL process CPU.")}
-        <ServerWaitTrendPanel instanceId={instanceId} fromUtc={data.fromUtc} toUtc={data.toUtc} refresh={refresh}
+        <ServerWaitTrendPanel interactionKey={String(active)} instanceId={instanceId} fromUtc={data.fromUtc} toUtc={data.toUtc} refresh={refresh}
           markers={markers}
           crosshairUtc={crosshairUtc} onCrosshairChange={setCrosshairUtc}
           onSelectWindow={window => { setCrosshairUtc(null); change({ range: "custom", from: window.fromUtc, to: window.toUtc }); }} />
@@ -211,6 +213,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
           <h4>Memory pressure</h4>
           <ChartEvidenceIndicator label="Memory pressure" series={memorySeries(evidence)} />
           <OverviewChart
+      interactionKey={String(active)}
             scrollablePlotLabel="Memory pressure plot"
             series={memorySeries(evidence)}
             previous={memorySeries(previous)}

@@ -28,7 +28,7 @@ const timeBasisLabels: Readonly<Record<TimelineEvent["timeBasis"], string>> = {
 };
 
 export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSelectTime, sourceNotes,
-  selection, onSelectionChange, onSelectWindow, loading = false, pinnedExactEvent, contextKey }: {
+  selection, onSelectionChange, onSelectWindow, loading = false, pinnedExactEvent, contextKey, interactionEnabled = true }: {
   readonly events: readonly TimelineEvent[];
   readonly fromUtc: string;
   readonly toUtc: string;
@@ -41,6 +41,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
   readonly loading?: boolean;
   readonly pinnedExactEvent?: TimelineEvent;
   readonly contextKey?: string;
+  readonly interactionEnabled?: boolean;
 }) {
   const headingId = useId();
   const timeLabel = useTimeFormatter();
@@ -53,6 +54,8 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
     catch { return value; }
   };
   const windowKey = JSON.stringify([contextKey, windowInstant(fromUtc), windowInstant(toUtc)]);
+  const gestureKey = JSON.stringify([windowKey, interactionEnabled]);
+  const currentGesture = useRef(gestureKey); currentGesture.current = gestureKey;
   const currentWindow = useRef(windowKey);
   currentWindow.current = windowKey;
   const [eventBrowser, setEventBrowser] = useState<{ key: string; open: boolean }>();
@@ -77,35 +80,35 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
       gesture.current = undefined;
       if (active && rail.current?.hasPointerCapture(active.pointer)) rail.current.releasePointerCapture(active.pointer);
     };
-  }, [windowKey]);
+  }, [gestureKey]);
   const position = (event: PointerEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return chartX(event.clientX, bounds.left + event.currentTarget.clientLeft, event.currentTarget.clientWidth);
   };
   const beginRange = (event: PointerEvent<SVGSVGElement>) => {
-    if (!onSelectWindow || event.button !== 0 || !event.isPrimary || gesture.current) return;
+    if (!interactionEnabled || !onSelectWindow || event.button !== 0 || !event.isPrimary || gesture.current) return;
     const start = position(event);
-    gesture.current = { key: windowKey, pointer: event.pointerId, start, end: start };
+    gesture.current = { key: gestureKey, pointer: event.pointerId, start, end: start };
     event.currentTarget.setPointerCapture(event.pointerId);
     setPreview({ key: windowKey, start, end: start });
   };
   const moveRange = (event: PointerEvent<SVGSVGElement>) => {
     const active = gesture.current;
-    if (!active || active.pointer !== event.pointerId || active.key !== currentWindow.current) return;
+    if (!active || active.pointer !== event.pointerId || active.key !== currentGesture.current) return;
     active.end = position(event);
-    setPreview({ key: active.key, start: active.start, end: active.end });
+    setPreview({ key: windowKey, start: active.start, end: active.end });
   };
   const endRange = (event: PointerEvent<SVGSVGElement>) => {
     const active = gesture.current;
     if (!active || active.pointer !== event.pointerId) return;
-    const selected = active.key === currentWindow.current
+    const selected = interactionEnabled && active.key === currentGesture.current
       ? chartSelection(active.start, position(event), fromUtc, toUtc) : undefined;
     cancelGesture();
     if (selected) onSelectWindow?.(selected);
   };
   const instant = (value: string) => utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
   const applyRange = () => {
-    if (!onSelectWindow || currentWindow.current !== windowKey) return;
+    if (!interactionEnabled || !onSelectWindow || currentWindow.current !== windowKey) return;
     try {
       const start = instant(range.from), end = instant(range.to);
       if (start < instant(fromUtc) || end > instant(toUtc) || end - start < 60_000_000n)
@@ -138,6 +141,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
     if (ownsAlignment.current) callback.current(null);
   }, []);
   const align = (event: TimelineEvent) => {
+    if (!interactionEnabled) return;
     const next = { eventId: event.id, timeUtc: event.timeUtc };
     if (controlled) onSelectionChange(next);
     else setLocalSelection({ ...next, windowKey });
@@ -145,22 +149,23 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
     onSelectTime(event.timeUtc);
   };
   const clearAlignment = () => {
+    if (!interactionEnabled) return;
     setLocalSelection(undefined);
     onSelectionChange?.(undefined);
     ownsAlignment.current = false;
     onSelectTime(null);
   };
   const showSelectedEvent = () => {
-    if (!loadedSelection || currentWindow.current !== windowKey) return;
+    if (!interactionEnabled || !loadedSelection || currentWindow.current !== windowKey) return;
     setCategory("all");
     setEventBrowser({ key: windowKey, open: true });
     setFocusRequest({ key: windowKey, eventId: loadedSelection.id });
   };
   useEffect(() => {
     if (!focusRequest) return;
-    if (focusRequest.key === windowKey) eventButtons.current.get(focusRequest.eventId)?.focus();
+    if (interactionEnabled && focusRequest.key === windowKey) eventButtons.current.get(focusRequest.eventId)?.focus();
     setFocusRequest(undefined);
-  }, [focusRequest, windowKey]);
+  }, [focusRequest, windowKey, interactionEnabled]);
   return <section className="dashboard-timeline panel" aria-labelledby={headingId}>
     <div className="dashboard-timeline-heading">
       <div><h4 id={headingId}>Investigation timeline</h4>

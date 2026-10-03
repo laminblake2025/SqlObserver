@@ -17,7 +17,7 @@ const refresh = page => page.locator('.page-actions').getByRole('button', { name
 const supportingReads = new Set(['health', 'health/databases', 'health/files', 'health/database-option-changes',
   'health/server-configuration-changes', 'health/server-configuration-snapshot', 'deadlocks', 'alerts/active',
   'activity/blocking/current', 'activity/waits/trend', 'query-performance/regressions',
-  'sql-agent/failures', 'analytics/baselines', 'analytics/sql-baselines']);
+  'sql-agent/failures', 'analytics/baselines', 'analytics/sql-baselines', 'alerts/history']);
 async function json(route, value, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(value) });
 }
@@ -82,6 +82,7 @@ test.afterEach(async ({ page }) => {
 async function open(page, scenario = 'rich', hash = incidentHref()) {
   contexts.get(page).backend.incidents.set(`${target}:${thread}`, savedIncident(scenario));
   await page.goto(`/${hash}`); await expect(view(page)).toBeVisible(); await expect(generate(page)).toBeEnabled();
+  await expect(page.locator('summary').filter({ hasText: /^Investigation workspace$/ })).toHaveCount(0);
 }
 async function expectScope(page) {
   await expect.poll(() => scope(page)).toMatchObject({ target, incident: thread, range: 'custom', from: fromUtc, to: toUtc, databaseId: '5', compare: '1' });

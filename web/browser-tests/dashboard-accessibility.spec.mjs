@@ -173,6 +173,10 @@ for (const width of [320, 390, 768, 1440]) {
       const notice = page.getByTestId('database-context-notice');
       await expect(notice).toContainText('Database ID 6');
       await expect(notice).toContainText('server-wide');
+      const contextDetails = notice.locator('xpath=parent::details');
+      await expect(contextDetails).not.toHaveAttribute('open', '');
+      await contextDetails.locator('summary').focus(); await page.keyboard.press('Enter');
+      await expect(contextDetails).toHaveAttribute('open', ''); await expect(notice).toBeVisible();
 
       // Native select navigation must update shared context without a mouse.
       await database.focus();
@@ -387,6 +391,7 @@ for (const width of [320, 390, 768, 1440]) {
     ]);
     const from = '2026-09-26T08:00:00.000Z', to = '2026-09-26T12:00:00.000Z';
     await page.goto(`/#/resources?${new URLSearchParams({ target, range: 'custom', from, to, databaseId: '6' })}`);
+    await openInvestigationWorkspace(page);
     const open = page.getByRole('button', { name: 'Open incident', exact: true });
     await open.focus(); await open.press('Enter');
     const title = page.getByLabel('Incident title', { exact: true });
@@ -747,4 +752,13 @@ for (const width of [320, 390, 768, 1440]) {
       await saveFullPage(page, `${capture}-${width}.png`);
     }
   });
+}
+
+async function openInvestigationWorkspace(page) {
+  const summary = page.locator('summary').filter({ hasText: /^Investigation workspace$/ });
+  await expect(summary).toBeVisible();
+  if (await summary.locator('..').getAttribute('open') === null) {
+    await summary.focus(); await page.keyboard.press('Enter');
+  }
+  await expect(summary.locator('..')).toHaveAttribute('open', '');
 }

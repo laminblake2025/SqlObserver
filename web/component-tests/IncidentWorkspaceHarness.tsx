@@ -68,7 +68,8 @@ function Harness() {
       ? <SavedIncidentView incident={directIncident} canRead={canRead} href={defaultHash} formatTime={formatTime} compact
         onClose={() => setMounted(false)} />
       : <IncidentWorkspace targetId={scope.target} targetRevision={scope.target === alpha ? 7 : 8}
-      window={resolveWorkspaceIncidentWindow(hash, scope.target, Date.now()).window} canSave={canSave} canRead={canRead}
+      window={resolveWorkspaceIncidentWindow(hash, scope.target, Date.now()).window}
+      contextMessage={resolveWorkspaceIncidentWindow(hash, scope.target, Date.now()).message} canSave={canSave} canRead={canRead}
       scope={scope} selectionHash={hash} formatTime={formatTime} compact /> : <p>Incident workspace unmounted</p>}
   </main>;
 }

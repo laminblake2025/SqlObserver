@@ -17,6 +17,7 @@ import { maintenanceSeriesSelectionHref, readMaintenanceSeriesSelection, retainM
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { DatabaseScopeControls } from "./components/DatabaseScopeControls";
+import "./workspaceContextFrame.css";
 import { IncidentWorkspace } from "./features/incidents/IncidentWorkspace.tsx";
 import "./features/incidents/incidentWorkspace.css";
 import "./features/health/dashboardBaselineCards.css";
@@ -361,7 +362,7 @@ export function App() {
     : route.page === "rule-templates"
       ? "Version shared alert settings and explicitly deploy them to complete server groups."
     : route.page === "health"
-      ? selected ? `Servers / ${selected.displayName} · target-scoped evidence` : "Select a server to inspect target-scoped evidence."
+      ? selected ? "Server monitoring and diagnostic evidence." : "Select a server to inspect target-scoped evidence."
       : selected?.displayName ?? (route.page === "servers" ? "Registered targets and collection visibility" : "Select a server to inspect evidence.");
 
   return (
@@ -423,8 +424,9 @@ export function App() {
             eyebrow={route.page === "overview" ? "SQL OBSERVER / OVERVIEW" : `SQL OBSERVER / ${destinations[route.page].toUpperCase()}`}
             title={pageTitle}
             subtitle={pageSubtitle}
-            actions={
-              <div className="page-actions">
+          />
+          <section className="workspace-context-frame" aria-label="Workspace server and database context">
+              <div className="workspace-context-controls page-actions">
                 {targetPage ? (
                   <label className="scope-control">
                     <span>Target</span>
@@ -439,6 +441,7 @@ export function App() {
                     </select>
                   </label>
                 ) : null}
+                {selected && <DatabaseScopeControls targetId={selected.instanceId} databaseId={scope.databaseId} onChange={changeDatabaseContext} refresh={slowRefresh} />}
                 <button className="secondary-button" type="button" disabled={loading} onClick={refreshWorkspace}>
                   ↻ <span>Refresh</span>
                 </button>
@@ -448,25 +451,22 @@ export function App() {
                   ? <a className="secondary-button" href="#/rule-templates">Rule templates</a> : null}
                 {canAddServer ? <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button> : null}
               </div>
-            }
-          />
-
-          {selected && <DatabaseScopeControls targetId={selected.instanceId} databaseId={scope.databaseId} onChange={changeDatabaseContext} refresh={slowRefresh} />}
-          {scope.databaseId !== undefined && selected && <p className="muted database-context-notice" data-testid="database-context-notice">
+              {selected && <p className="workspace-context-scope">{scope.databaseId === undefined ? "All databases · server-wide monitoring evidence." : `Database ID ${scope.databaseId} · supported rows filtered; server-wide evidence remains server-wide.`}</p>}
+              {scope.databaseId !== undefined && selected && <details className="workspace-context-details"><summary>Context details</summary><p className="muted database-context-notice" data-testid="database-context-notice">
             Database ID {scope.databaseId} stays selected across this server’s views. Supported session, query and file rows follow this context; server-wide metrics, waits, blocking history, deadlocks, alerts and health checks remain server-wide.
-          </p>}
-          {selected && incidentPage && <section className="workspace-investigations" aria-label={`Investigations for ${selected.displayName}`}>
-            <IncidentWorkspace key={selected.instanceId} compact targetId={selected.instanceId} targetRevision={selected.configurationRevision}
-              canSave={canSaveIncident(myAccess, selected.instanceId)} canRead={canReadIncident(myAccess, selected.instanceId)} scope={scope} selectionHash={location.hash}
-              window={incidentContext?.window} formatTime={value => formatDisplayTime(value, timeDisplayMode)} />
-            {incidentContext?.message && <p className="evidence-footer" role="status">{incidentContext.message}</p>}
-            {scope.databaseId !== undefined && <p className="evidence-footer">Saved incidents capture server-wide analytics evidence. The database context is retained for navigation.</p>}
-          </section>}
+          </p></details>}
+          </section>
 
           {route.page !== "overview" && route.page !== "rule-templates" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
           {message ? <p role="alert" className="status-message">{message}</p> : null}
           {targetPage && !props && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
+
+          {selected && incidentPage && <section className="workspace-investigations" aria-label={`Investigations for ${selected.displayName}`}>
+            <IncidentWorkspace key={selected.instanceId} compact targetId={selected.instanceId} targetRevision={selected.configurationRevision}
+              canSave={canSaveIncident(myAccess, selected.instanceId)} canRead={canReadIncident(myAccess, selected.instanceId)} scope={scope} selectionHash={location.hash}
+              window={incidentContext?.window} contextMessage={incidentContext?.message} formatTime={value => formatDisplayTime(value, timeDisplayMode)} />
+          </section>}
 
           {!catalogDenied && route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
           {!catalogDenied && fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} selection={alertSelection} /> : null}
@@ -503,7 +503,7 @@ export function App() {
 
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
-              {route.page === "health" && <TargetHealthPanel {...props} scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
+              {route.page === "health" && <TargetHealthPanel {...props} embedded scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
                 onSelectSection={section => { location.hash = retainDashboardTimelineHref(healthSectionHref(readOverviewScope(location.hash), props.instanceId, section), location.hash); }}
                 canManageConfiguration={canManageRules} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} targetRevision={selected!.configurationRevision} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}

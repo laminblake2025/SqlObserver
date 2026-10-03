@@ -441,6 +441,7 @@ test('the common incident action is available across target diagnostics and clos
   await incidentWorkspaceFixture(page);
   for (const surface of ['overview', 'health', 'activity', 'waits', 'resources', 'queries', 'deadlocks', 'operations', 'alerts']) {
     await page.goto(href(surface));
+    await openInvestigationWorkspace(page);
     const open = page.getByRole('button', { name: 'Open incident', exact: true });
     await expect(open).toHaveCount(1);
     await expect(open).toBeEnabled();
@@ -457,6 +458,7 @@ test('the common incident action is available across target diagnostics and clos
 test('incident save pins the original window and revision while duplicate activation and retry keep one immutable operation', async ({ page }) => {
   await incidentWorkspaceFixture(page, true);
   await page.goto(`${href('resources')}&databaseId=6`);
+  await openInvestigationWorkspace(page);
   await page.getByRole('button', { name: 'Open incident', exact: true }).click();
   const title = page.getByRole('textbox', { name: 'Incident title', exact: true }), notes = page.getByRole('textbox', { name: 'Notes', exact: true });
   await title.fill('SYNTHETIC resource investigation'); await notes.fill('Synthetic note\nNo connected VM evidence.');
@@ -500,6 +502,7 @@ test('incident save pins the original window and revision while duplicate activa
 test('saved incident links are canonical and delayed old-target or foreign reads never display another investigation', async ({ page }) => {
   await incidentWorkspaceFixture(page);
   await page.goto(href('waits'));
+  await openInvestigationWorkspace(page);
   await page.getByRole('button', { name: 'Saved investigations', exact: true }).click();
   const retained = page.getByRole('link', { name: 'SYNTHETIC retained investigation 01', exact: true });
   await expect(retained).toHaveAttribute('href', /#\/health\?/);
@@ -514,6 +517,7 @@ test('saved incident links are canonical and delayed old-target or foreign reads
   await page.reload(); await expect.poll(() => pending).toBe(true);
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
   await expect.poll(() => scope(page).get('target')).toBe(second);
+  await openInvestigationWorkspace(page);
   await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeEnabled();
   release();
   await expect(page.getByRole('heading', { name: 'SYNTHETIC retained investigation 01', exact: true })).toHaveCount(0);
@@ -996,12 +1000,12 @@ test('persistent fleet strip keeps all authorized servers across diagnostics and
   await fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 01:/ }).click();
   await assertDatabaseScope(page, 6);
   await assertHistoricalScope(page);
-  await expect(page.getByRole('heading', { name: 'Server summary for SYNTHETIC SQL 01', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Server diagnostics for SYNTHETIC SQL 01', exact: true })).toBeVisible();
   await fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 02:/ }).click();
   await assertHistoricalScope(page, second);
   await expect.poll(() => scope(page).get('databaseId')).toBe(null);
   await expect(workspaceDatabase(page)).toHaveValue('');
-  await expect(page.getByRole('heading', { name: 'Server summary for SYNTHETIC SQL 02', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Server diagnostics for SYNTHETIC SQL 02', exact: true })).toBeVisible();
   await expect(fleetStrip(page).getByRole('link')).toHaveCount(10);
   await expect(fleetStrip(page).getByRole('link', { name: /^SYNTHETIC SQL 02:/ })).toHaveAttribute('aria-current', 'location');
 });
@@ -1410,6 +1414,7 @@ test('viewer actions name the required roles and missing coverage is never an al
   await page.getByText('Collection coverage and evidence gaps', { exact: true }).click();
   await expect(page.getByText('Synthetic collection timeout', { exact: true })).toBeVisible();
   await page.goto(href('health'));
+  await openInvestigationWorkspace(page);
   await expect(page.getByText('Operator or Target Administrator access unlocks saving an incident for this server.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toHaveCount(0);
   await page.goto('/__fixture?mode=empty');
@@ -2193,7 +2198,7 @@ test('timeline database context filters plan comparisons while retaining server 
   expect(configurationParams.get('healthSection')).toBe('summary');
   expect(configurationParams.get('configurationRun')).toBe('22222222-2222-4222-8222-222222222222');
   await configurationEvidence.click();
-  await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => scope(page).get('healthSection')).toBe('summary');
   await assertDatabaseScope(page, 6);
   const selectedConfigurationRun = page.locator('li[data-configuration-run="22222222-2222-4222-8222-222222222222"]');
@@ -2202,7 +2207,7 @@ test('timeline database context filters plan comparisons while retaining server 
   await expect(selectedConfigurationRun).toBeFocused();
   await expect(selectedConfigurationRun).toContainText('cost threshold for parallelism');
   await page.reload();
-  await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
   await assertDatabaseScope(page, 6);
   await expect(selectedConfigurationRun).toBeFocused();
   await page.getByRole('button', { name: 'Edit UTC range', exact: true }).click();
@@ -2212,7 +2217,7 @@ test('timeline database context filters plan comparisons while retaining server 
   await assertHistoricalScope(page, first, '2026-09-26T09:00:00.000Z', '2026-09-26T11:00:00.000Z');
   await assertDatabaseScope(page, 6);
   await expect.poll(() => scope(page).get('healthSection')).toBe('summary');
-  await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('failed plan comparison refresh removes old leads and reports unavailable coverage honestly', async ({ page }) => {
@@ -2346,7 +2351,7 @@ test('malformed database option and mismatched configuration history remain expl
   });
   await page.goto(`${href('health')}&healthSection=databases`);
   await expect(page.getByRole('region', { name: 'Database option changes', exact: true })).toContainText('Option history is unavailable.');
-  await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+  await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Server configuration changes', exact: true })).toContainText('Configuration history is unavailable or changed while paging.');
   await expect(page.getByRole('region', { name: 'Investigation timeline', exact: true })).not.toContainText('Server configuration detected');
   expect(crashes).toEqual([]);
@@ -2719,3 +2724,12 @@ test('quiet dashboard and Resources evidence disclosures remain keyboard accessi
   const footer = page.getByRole('region', { name: 'Resources evidence status', exact: true });
   await expect(footer.locator('.compact-evidence-action').filter({ hasText: 'Partial history remains labelled.' })).toBeVisible();
 });
+
+async function openInvestigationWorkspace(page) {
+  const summary = page.locator('summary').filter({ hasText: /^Investigation workspace$/ });
+  await expect(summary).toBeVisible();
+  if (await summary.locator('..').getAttribute('open') === null) {
+    await summary.focus(); await page.keyboard.press('Enter');
+  }
+  await expect(summary.locator('..')).toHaveAttribute('open', '');
+}

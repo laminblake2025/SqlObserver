@@ -7,8 +7,9 @@ import { waitTrendChartData } from "../activity/waitTrendChartModel";
 import { getServerWaitTrend, type WaitTrendResponse } from "../activity/waitTrendApi";
 import { ActivityRequestError } from "../activity/activityParser.mjs";
 
-export function ServerWaitTrendPanel({ instanceId, fromUtc, toUtc, refresh, markers, crosshairUtc, onCrosshairChange, onSelectWindow }: {
+export function ServerWaitTrendPanel({ instanceId, fromUtc, toUtc, refresh, markers, crosshairUtc, onCrosshairChange, onSelectWindow, interactionKey }: {
   readonly instanceId: string;
+  readonly interactionKey?: string;
   readonly fromUtc: string;
   readonly toUtc: string;
   readonly refresh: number;
@@ -77,7 +78,7 @@ export function ServerWaitTrendPanel({ instanceId, fromUtc, toUtc, refresh, mark
       <p className="table-note">Wait trend window: <time dateTime={trend.fromUtc}>{formatTime(trend.fromUtc)}</time> to{" "}
         <time dateTime={trend.toUtc}>{formatTime(trend.toUtc)}</time> (exclusive). Snapshot read at{" "}
         <time dateTime={trend.repositoryTimeUtc}>{formatTime(trend.repositoryTimeUtc)}</time>.</p>
-      <OverviewChart series={series} fromUtc={trend.fromUtc} toUtc={trend.toUtc}
+      <OverviewChart interactionKey={interactionKey} series={series} fromUtc={trend.fromUtc} toUtc={trend.toUtc}
         markers={markers} crosshairUtc={crosshairUtc} onCrosshairChange={onCrosshairChange} onSelectWindow={onSelectWindow} />
       <small>{chart.comparableBuckets} of {chart.totalBuckets} five-minute buckets are comparable across all categories. Unknown and partial buckets remain gaps.{chart.oversizedValues ? ` ${chart.oversizedValues} values exceed chart precision.` : ""}</small>
     </>}

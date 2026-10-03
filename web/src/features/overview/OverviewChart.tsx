@@ -19,7 +19,7 @@ interface PlotPoint {
   readonly y: number;
 }
 
-export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshairUtc,onCrosshairChange,onSelectWindow,references,scrollablePlotLabel}: {
+export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshairUtc,onCrosshairChange,onSelectWindow,references,scrollablePlotLabel,interactionKey}: {
   series:readonly OverviewSeries[];previous?:readonly OverviewSeries[];fromUtc:string;toUtc:string;
   markers?:readonly {timeUtc:string;label:string}[];
   crosshairUtc?:string|null;
@@ -27,10 +27,11 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   onSelectWindow?:(window:{fromUtc:string;toUtc:string})=>void;
   references?:ChartReferences;
   scrollablePlotLabel?:string;
+  interactionKey?:string;
 }) {
   const {mode}=useTimeDisplay();
   const timeLabel=(value:string|number,compact=false)=>formatDisplayTime(value,mode,compact);
-  const gesture=useChartGesture(JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity)]),fromUtc,toUtc,onSelectWindow);
+  const gesture=useChartGesture(JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity),interactionKey]),fromUtc,toUtc,onSelectWindow);
   const dragStart=gesture.start,dragEnd=gesture.end;
   const from=Date.parse(fromUtc), to=Date.parse(toUtc);
   const selectedReferences=matchingReferences(series,references);

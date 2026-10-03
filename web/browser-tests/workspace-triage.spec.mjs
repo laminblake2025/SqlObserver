@@ -44,7 +44,7 @@ for (const width of [320, 1440]) test(`Workspace triage database change preserve
     const selection = healthSection === 'summary' ? { configurationRun: scan } : {};
     await expect.poll(() => scope(page)).toMatchObject({ target, range: 'custom', from, to, compare: '1', databaseId: '6', healthSection, ...selection });
     if (healthSection === 'collection') expect(scope(page).configurationRun).toBeUndefined();
-    await expect(page.getByRole('tab', { name: healthSection === 'collection' ? 'Collection health' : 'Summary', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: healthSection === 'collection' ? 'Collection health' : 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
     await page.reload(); await healthyFrame(page);
     expect(scope(page)).toMatchObject({ databaseId: '6', healthSection, ...selection, from, to });
   }
