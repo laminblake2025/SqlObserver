@@ -1,0 +1,12 @@
+.alert-lifecycle-history { min-width: 0; padding: 20px; overflow-wrap: anywhere; }
+.alert-lifecycle-history .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
+.alert-lifecycle-history .table-scroll { max-height: 28rem; }
+.alert-lifecycle-history .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.alert-lifecycle-history td small { display: block; margin-block-start: .3rem; }
+.alert-lifecycle-history td button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.alert-lifecycle-browser > summary { min-height: 40px; padding-block: .75rem; color: var(--teal-deep); cursor: pointer; font-weight: 700; }
+.alert-lifecycle-selected { margin-block: 1rem; padding-block: .75rem; border-block: 1px solid var(--border); }
+.alert-lifecycle-facts { display: grid; grid-template-columns: minmax(140px, .7fr) minmax(0, 2fr); gap: .5rem 1rem; }
+.alert-lifecycle-facts dt { color: var(--muted); }
+.alert-lifecycle-facts dd { margin: 0; }
+@media (max-width: 560px) { .alert-lifecycle-history { padding: 14px; } .alert-lifecycle-facts { grid-template-columns: minmax(0, 1fr); gap: .3rem; } .alert-lifecycle-facts dd { margin-block-end: .5rem; } }

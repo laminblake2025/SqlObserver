@@ -8,7 +8,7 @@ import type { DatabaseOptionChangeResult, ServerConfigurationChangeResult } from
 import type { ActiveAlert, ActiveAlertPage } from "../features/alerts/alertTypes";
 
 export type TimelineKind = "deadlock" | "alert" | "agent_failure" | "database_options" | "configuration" | "plan_regression" | "finding";
-export type TimelineTimeBasis = "occurred" | "fired" | "first_observed" | "detected" | "last_observed" | "snapshot";
+export type TimelineTimeBasis = "occurred" | "fired" | "first_observed" | "detected" | "last_observed" | "snapshot" | "observed" | "applied";
 export interface TimelineEvent {
   readonly id: string;
   readonly kind: TimelineKind;
@@ -19,7 +19,7 @@ export interface TimelineEvent {
   readonly timeBasis: TimelineTimeBasis;
 }
 const kinds = new Set<TimelineKind>(["deadlock", "alert", "agent_failure", "database_options", "configuration", "plan_regression", "finding"]);
-const bases = new Set<TimelineTimeBasis>(["occurred", "fired", "first_observed", "detected", "last_observed", "snapshot"]);
+const bases = new Set<TimelineTimeBasis>(["occurred", "fired", "first_observed", "detected", "last_observed", "snapshot", "observed", "applied"]);
 function instant(value: unknown): bigint | undefined {
   try { return utcMicroseconds(typeof value === "string" ? value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1") : value); } catch { return undefined; }
 }
@@ -118,7 +118,7 @@ export function alertFiredTimelineEvents(targetId: string, scope: OverviewScope,
 }
 
 /** Latest 120 loaded events, shown chronologically. An empty list says nothing about uncollected events. */
-export function timelineEventsInWindow(events: readonly TimelineEvent[], fromUtc: string, toUtc: string): readonly TimelineEvent[] {
+export function timelineEventsInWindow(events: readonly TimelineEvent[], fromUtc: string, toUtc: string, pinnedExactEvent?: TimelineEvent): readonly TimelineEvent[] {
   const from = instant(fromUtc), to = instant(toUtc);
   if (from === undefined || to === undefined || from >= to) return [];
   const ids = new Set<string>();
@@ -133,7 +133,11 @@ export function timelineEventsInWindow(events: readonly TimelineEvent[], fromUtc
     valid.push({ event, time });
   }
   valid.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : a.event.id.localeCompare(b.event.id));
-  return valid.slice(-120).map(item => item.event);
+  const latest = valid.slice(-120), pinned = pinnedExactEvent && valid.find(item => item.event.id === pinnedExactEvent.id && item.time === instant(pinnedExactEvent.timeUtc));
+  if (pinned && !latest.some(item => item.event.id === pinned.event.id)) {
+    return [pinned,...latest.slice(-119)].sort((a,b)=>a.time<b.time?-1:a.time>b.time?1:a.event.id.localeCompare(b.event.id)).map(item=>item.event);
+  }
+  return latest.map(item => item.event);
 }
 
 const guid = (value: unknown): value is string => typeof value === "string" &&

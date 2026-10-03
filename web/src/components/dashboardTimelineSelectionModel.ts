@@ -6,11 +6,24 @@ export interface DashboardTimelineSelection {
   readonly eventId: string;
   readonly timeUtc: string;
 }
+export interface AlertLifecycleTimelineIdentity {
+  readonly eventId: string;
+  readonly alertId: string;
+  readonly episodeId: string | null;
+}
 const guid = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value) &&
   value !== "00000000-0000-0000-0000-000000000000";
+/** A retained event and its exact cycle are independent of the current inbox. */
+export function readAlertLifecycleTimelineIdentity(value: unknown): AlertLifecycleTimelineIdentity | undefined {
+  if (typeof value !== "string" || value.length > 512) return undefined;
+  const parts = /^alert-history:([0-9a-fA-F-]{36}):([0-9a-fA-F-]{36}):([0-9a-fA-F-]{36}|legacy)$/u.exec(value);
+  if (!parts || !guid(parts[1]) || !guid(parts[2]) || parts[3] !== "legacy" && !guid(parts[3])) return undefined;
+  return { eventId: parts[1]!.toLowerCase(), alertId: parts[2]!.toLowerCase(), episodeId: parts[3] === "legacy" ? null : parts[3]!.toLowerCase() };
+}
 const eventIdentity = (value: unknown, timeUtc: unknown): value is string => {
   if (typeof value !== "string" || value.length > 512) return false;
+  if (value.startsWith("alert-history:")) return readAlertLifecycleTimelineIdentity(value) !== undefined;
   if (value.startsWith("alert:")) {
     const parts = /^alert:([0-9a-f-]{36}):(0|-?[1-9]\d{0,17})$/iu.exec(value);
     const time = clock(timeUtc);
@@ -18,7 +31,7 @@ const eventIdentity = (value: unknown, timeUtc: unknown): value is string => {
   }
   return /^(?:deadlock|agent|database-options|configuration|plan|finding):[A-Za-z0-9_.:%+!'()*-]+$/u.test(value);
 };
-const normalizedEventId = (value: string) => value.startsWith("alert:") ? value.toLowerCase() : value;
+const normalizedEventId = (value: string) => value.startsWith("alert:") || value.startsWith("alert-history:") ? value.toLowerCase() : value;
 const normalizedUtc = (value: string) => value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1");
 function clock(value: unknown): bigint | undefined {
   try { return utcMicroseconds(typeof value === "string" ? normalizedUtc(value) : value); }

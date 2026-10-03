@@ -8,7 +8,7 @@ import { canonicalUtcTimestamp, utcMicroseconds } from "../utcTimestamp.ts";
 const categories: readonly { value: "all" | TimelineEvent["kind"]; label: string }[] = [
   { value: "all", label: "All events" },
   { value: "deadlock", label: "Deadlocks" },
-  { value: "alert", label: "Alerts fired (current inbox)" },
+  { value: "alert", label: "Alerts (retained lifecycle)" },
   { value: "agent_failure", label: "SQL Agent failures" },
   { value: "database_options", label: "Database options" },
   { value: "configuration", label: "Server configuration" },
@@ -22,10 +22,12 @@ const timeBasisLabels: Readonly<Record<TimelineEvent["timeBasis"], string>> = {
   detected: "Change detected",
   last_observed: "Last observed",
   snapshot: "Evidence snapshot",
+  observed: "Evaluator observation",
+  applied: "Operation applied",
 };
 
 export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSelectTime, sourceNotes,
-  selection, onSelectionChange, onSelectWindow, loading = false }: {
+  selection, onSelectionChange, onSelectWindow, loading = false, pinnedExactEvent }: {
   readonly events: readonly TimelineEvent[];
   readonly fromUtc: string;
   readonly toUtc: string;
@@ -36,6 +38,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
   readonly onSelectionChange?: (selection: DashboardTimelineSelection | undefined) => void;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly loading?: boolean;
+  readonly pinnedExactEvent?: TimelineEvent;
 }) {
   const headingId = useId();
   const timeLabel = useTimeFormatter();
@@ -106,7 +109,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
       setRangeError({ key: windowKey, message: "Use valid UTC timestamps and choose at least one minute within the loaded timeline window." });
     }
   };
-  const loaded = useMemo(() => timelineEventsInWindow(events, fromUtc, toUtc), [events, fromUtc, toUtc]);
+  const loaded = useMemo(() => timelineEventsInWindow(events, fromUtc, toUtc,pinnedExactEvent), [events, fromUtc, toUtc,pinnedExactEvent]);
   const visible = loaded.filter(event => category === "all" || event.kind === category);
   const controlled = onSelectionChange !== undefined;
   const requested = controlled ? selection : localSelection?.windowKey === windowKey ? localSelection : undefined;
@@ -181,6 +184,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
     </div>}
     <p className="dashboard-timeline-status" role="status">
       {visible.length} shown · {loaded.length} loaded events · up to 120 events in this window.
+      {pinnedExactEvent && <> The validated exact selected event is included alongside up to 119 other latest loaded events.</>}
       {selected && <> Selected event: {selected.title}.</>}
       {crosshairUtc && Number.isFinite(Date.parse(crosshairUtc)) && <> Chart crosshair: <time dateTime={crosshairUtc} title={crosshairUtc}>{timeLabel(crosshairUtc)}</time>.</>}
     </p>

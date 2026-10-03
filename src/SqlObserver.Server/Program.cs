@@ -204,6 +204,9 @@ builder.Services.AddSingleton<IPlanCacheIntervalRankingRepositoryPort>(static se
     services.GetRequiredService<PostgreSqlTargetControlPlane>().PlanCacheIntervalRankings);
 builder.Services.AddSingleton<IPlanCacheIntervalRankingQueryService, PlanCacheIntervalRankingQueryService>();
 builder.Services.AddSingleton<IAlertRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().Alerts);
+builder.Services.AddSingleton<IAlertLifecycleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertLifecycle);
+builder.Services.AddSingleton<IAlertLifecycleService, AlertLifecycleService>();
+builder.Services.AddSingleton<AlertLifecycleCursorProtector>();
 builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertRuleReads);
 builder.Services.AddSingleton<IMaintenanceWindowReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceWindowReads);
 builder.Services.AddSingleton<IMaintenanceSeriesRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceSeries);

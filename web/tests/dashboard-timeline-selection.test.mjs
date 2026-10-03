@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readDashboardTimelineSelection, dashboardTimelineSelectionHref, matchesDashboardTimelineSelection } from '../src/components/dashboardTimelineSelectionModel.ts';
+import { readDashboardTimelineSelection, dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, readAlertLifecycleTimelineIdentity } from '../src/components/dashboardTimelineSelectionModel.ts';
 import { utcMicroseconds } from '../src/utcTimestamp.ts';
 
 const target = '11111111-1111-4111-8111-000000000001';
@@ -78,4 +78,59 @@ test('native alert selection accepts valid pre-epoch and epoch-zero fired instan
     const read = readDashboardTimelineSelection(dashboardTimelineSelectionHref(ancientScope, selected));
     assert.equal(read.eventId, selected.eventId); assert.equal(utcMicroseconds(read.timeUtc), utcMicroseconds(timeUtc));
   }
+});
+
+const retainedEvent = 'abcdefab-abcd-4abc-8abc-abcdefabcdef';
+const retainedAlert = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const retainedEpisode = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const historyId = (event = retainedEvent, alert = retainedAlert, episode = retainedEpisode) =>
+  `alert-history:${event}:${alert}:${episode}`;
+
+test('retained lifecycle selection restores the exact event and cycle with its investigation context', () => {
+  const selected = { eventId: historyId(), timeUtc: selection.timeUtc };
+  const href = dashboardTimelineSelectionHref(scope, selected);
+  assert.deepEqual(readDashboardTimelineSelection(href, target), selected);
+  assert.deepEqual(readAlertLifecycleTimelineIdentity(selected.eventId), {
+    eventId: retainedEvent, alertId: retainedAlert, episodeId: retainedEpisode,
+  });
+  const parameters = new URLSearchParams(href.split('?')[1]);
+  for (const [key, value] of [['databaseId', '6'], ['compare', '1'], ['from', scope.from], ['to', scope.to]])
+    assert.equal(parameters.get(key), value);
+  assert.deepEqual(readDashboardTimelineSelection(dashboardTimelineSelectionHref(scope,
+    { ...selected, eventId: historyId(retainedEvent.toUpperCase(), retainedAlert.toUpperCase(), retainedEpisode.toUpperCase()) })), selected);
+});
+
+test('coincident lifecycle events and refired cycles cannot substitute for a restored event', () => {
+  const selected = { eventId: historyId(), timeUtc: selection.timeUtc };
+  assert.equal(matchesDashboardTimelineSelection(selected, { id: selected.eventId, timeUtc: selected.timeUtc }), true);
+  for (const id of [historyId(retainedAlert), historyId(retainedEvent, retainedEpisode),
+    historyId(retainedEvent, retainedAlert, retainedEvent), historyId(retainedEvent, retainedAlert, 'legacy')])
+    assert.equal(matchesDashboardTimelineSelection(selected, { id, timeUtc: selected.timeUtc }), false, id);
+  assert.equal(matchesDashboardTimelineSelection(selected, { id: selected.eventId, timeUtc: '2026-09-26T10:00:00.123457Z' }), false);
+});
+
+test('legacy lifecycle selection carries explicit absent provenance without inventing an episode', () => {
+  const selected = { eventId: historyId(retainedEvent, retainedAlert, 'legacy'), timeUtc: selection.timeUtc };
+  assert.deepEqual(readDashboardTimelineSelection(dashboardTimelineSelectionHref(scope, selected)), selected);
+  assert.deepEqual(readAlertLifecycleTimelineIdentity(selected.eventId), {
+    eventId: retainedEvent, alertId: retainedAlert, episodeId: null,
+  });
+});
+
+test('retained lifecycle selection rejects malformed identity, ambiguity and incompatible target or window', () => {
+  const selected = { eventId: historyId(), timeUtc: selection.timeUtc };
+  for (const eventId of [historyId('00000000-0000-0000-0000-000000000000'), historyId(retainedEvent, 'bad'),
+    historyId(retainedEvent, retainedAlert, '00000000-0000-0000-0000-000000000000'),
+    historyId(retainedEvent, retainedAlert, ''), historyId() + ':extra', 'alert-history:opaque',
+    historyId().replace('alert-history:', 'ALERT-HISTORY:'),
+    historyId(retainedEvent, retainedAlert, 'LEGACY')]) {
+    assert.equal(readAlertLifecycleTimelineIdentity(eventId), undefined, eventId);
+    assert.throws(() => dashboardTimelineSelectionHref(scope, { ...selected, eventId }), /inside the fixed/);
+  }
+  const href = dashboardTimelineSelectionHref(scope, selected);
+  for (const suffix of ['&timelineEvent=' + encodeURIComponent(selected.eventId), '&timelineAt=' + selection.timeUtc,
+    '&target=' + target, '&healthSection=summary']) assert.equal(readDashboardTimelineSelection(href + suffix), null);
+  assert.equal(readDashboardTimelineSelection(href, retainedAlert), null);
+  for (const timeUtc of [scope.to, '2026-09-26T08:00:00.123455Z'])
+    assert.throws(() => dashboardTimelineSelectionHref(scope, { ...selected, timeUtc }), /inside the fixed/);
 });

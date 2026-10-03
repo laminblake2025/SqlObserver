@@ -55,6 +55,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
         var alertRepository = new PostgreSqlAlertRepositoryPort(dataSource);
         Alerts = alertRepository;
+        AlertLifecycle = new PostgreSqlAlertLifecycleRepositoryPort(dataSource);
         AlertRuleReads = alertRepository;
         MaintenanceWindowReads = alertRepository;
         MaintenanceSeries = new PostgreSqlMaintenanceSeriesRepositoryPort(dataSource);
@@ -119,6 +120,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
 
     public ICollectorRuntimeRepositoryPort CollectorRuntime { get; }
     public IAlertRepositoryPort Alerts { get; }
+    public IAlertLifecycleReadPort AlertLifecycle { get; }
     public IAlertRuleReadPort AlertRuleReads { get; }
     public IMaintenanceWindowReadPort MaintenanceWindowReads { get; }
     public IMaintenanceSeriesRepositoryPort MaintenanceSeries { get; }

@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { retainedEvidenceNow, retainedCaptureTimes, retainedCaptureId, retainedAlertId } from '../tools/dashboard-retained-evidence-fixture.mjs';
+import { installAlertLifecycleHistoryFixture, alertLifecycleHistoryBackend } from '../component-tests/alertLifecycleHistoryFixture.mjs';
+import { retainedEvidenceNow, retainedCaptureTimes, retainedCaptureId } from '../tools/dashboard-retained-evidence-fixture.mjs';
 
 const origin = 'http://127.0.0.1:4327';
 const first = '11111111-1111-4111-8111-000000000001', second = '11111111-1111-4111-8111-000000000002';
@@ -13,12 +14,12 @@ const pin = (index = 0, capture = 1) => ({ sessionSnapshot: retainedCaptureId(in
 const scope = page => new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
 const captures = page => page.getByRole('region', { name: 'Captured sessions by server wait category', exact: true });
 const timeline = page => page.getByRole('region', { name: 'Investigation timeline', exact: true });
-const alertAlign = (page, text = 'fired blocking', index = 1) => timeline(page).getByRole('button', { name: `Align charts: Alert fired \u00b7 SYNTHETIC ${text} ${index}`, exact: true });
+const alertAlign = (page, kind = 'fired') => timeline(page).getByRole('button', { name: `Align charts: Alert ${kind} · SYNTHETIC_BLOCKING_RULE`, exact: true }).first();
 const refresh = page => page.locator('.page-actions').getByRole('button', { name: /Refresh/ });
 async function fixture(page, extra = {}) {
   await page.clock.install({ time: new Date(retainedEvidenceNow) });
   await page.context().addCookies(Object.entries({ dashboardRefactor: '1', chartReferenceRole: 'viewer', databaseScopeFixture: '1',
-    retainedEvidenceFixture: '1', ...extra }).map(([name, value]) => ({ name, value, url: origin })));
+    retainedEvidenceFixture: '1', alertLifecycleHistoryFixture: '1', ...extra }).map(([name, value]) => ({ name, value, url: origin })));
   await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
 }
 async function chooseAlerts(page) {
@@ -137,79 +138,41 @@ test('delayed pinned Waits metadata cannot publish after target or exact window 
   await expect.poll(() => windowReturned).toBe(true); await expect(captures(page).getByRole('table')).toHaveCount(0);
 });
 
-test('current alert fired markers use native half-open bounds and exact inbox links even in database context', async ({ page }) => {
-  await fixture(page); const reads = [], mutations = [];
-  page.on('request', request => { if (request.url().includes('/alerts/active?')) reads.push(request.url()); if (!['GET', 'HEAD'].includes(request.method())) mutations.push(request.url()); });
-  await page.goto(href('health', first, { ...alertWindow, databaseId: '6', compare: '1', healthSection: 'summary' }));
-  await chooseAlerts(page); await expect(alertAlign(page)).toBeVisible();
-  await expect(timeline(page).getByRole('button', { name: /^Align charts: Alert fired/ })).toHaveCount(3);
-  await expect(alertAlign(page, 'window start')).toBeVisible(); await expect(alertAlign(page, 'paged acknowledged')).toBeVisible();
-  await expect(alertAlign(page, 'before window')).toHaveCount(0); await expect(alertAlign(page, 'window end')).toHaveCount(0);
-  await expect(alertAlign(page, 'pending without fired time')).toHaveCount(0);
-  const row = alertAlign(page).locator('xpath=ancestor::li');
-  await expect(row).toContainText('Native fired time 2026-10-02T11:05:00.123456Z');
-  await expect(row).toContainText('Current inbox state: firing'); await expect(row).toContainText('not a reconstructed transition history');
-  await alertAlign(page).focus(); await page.keyboard.press('Enter');
-  await expect(alertAlign(page)).toBeFocused(); await expect(alertAlign(page)).toHaveAttribute('aria-pressed', 'true');
-  expect(scope(page).get('timelineAt')).toBe('2026-10-02T11:05:00.123456Z');
-  const coverage = await openCoverage(page);
-  await expect(coverage).toContainText('Current alert inbox: 6 rows from 2 of at most five pages / 500 rows');
-  await expect(coverage).toContainText('3 native fired markers in this window'); await expect(coverage).toContainText('Alerts remain server-wide');
-  const evidence = row.getByRole('link', { name: /^Open evidence:/ });
-  const selected = new URLSearchParams((await evidence.getAttribute('href')).split('?')[1]);
-  expect(Object.fromEntries(selected)).toMatchObject({ target: first, databaseId: '6', range: 'custom', from: alertWindow.from, to: alertWindow.to, compare: '1', alert: retainedAlertId() });
-  await evidence.click(); await expect(page.getByRole('region', { name: 'Target alerts', exact: true }).getByRole('button', { name: 'SYNTHETIC fired blocking 1', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.goBack(); await chooseAlerts(page); await expect(alertAlign(page)).toHaveAttribute('aria-pressed', 'true');
-  expect(scope(page).get('timelineAt')).toBe('2026-10-02T11:05:00.123456Z');
-  await page.goForward(); await expect(page.getByRole('region', { name: 'Target alerts', exact: true }).getByRole('button', { name: 'SYNTHETIC fired blocking 1', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  expect(reads.length).toBeGreaterThanOrEqual(2); expect(mutations).toEqual([]);
+test('retained lifecycle markers preserve resolved and refired cycles in database context', async ({ page }) => {
+  await fixture(page); const reads=[],mutations=[];
+  page.on('request',request=>{if(request.url().includes('/alerts/history'))reads.push(new URL(request.url()));if(!['GET','HEAD'].includes(request.method()))mutations.push(request.url());});
+  await page.goto(href('health',first,{...alertWindow,databaseId:'6',compare:'1',healthSection:'summary'}));await chooseAlerts(page);
+  await expect(timeline(page).getByRole('button',{name:/^Align charts: Alert /})).toHaveCount(16);
+  await expect(alertAlign(page,'resolved')).toBeVisible();await alertAlign(page,'resolved').focus();await page.keyboard.press('Enter');
+  await expect(alertAlign(page,'resolved')).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByRole('region',{name:'Selected alert lifecycle event',exact:true})).toContainText('Alert resolved');
+  const saved=scope(page).get('timelineEvent');expect(saved).toMatch(/^alert-history:/);await page.reload();await chooseAlerts(page);
+  expect(scope(page).get('timelineEvent')).toBe(saved);await expect(alertAlign(page,'resolved')).toHaveAttribute('aria-pressed','true');
+  const coverage=await openCoverage(page);await expect(coverage).toContainText('server-wide');
+  expect(reads.some(url=>/history\/[a-f0-9-]{36}$/.test(url.pathname))).toBe(true);expect(reads.every(url=>!url.searchParams.has('databaseId'))).toBe(true);expect(mutations).toEqual([]);
 });
 
-test('alert marker pages stop at the native bound and reject duplicate foreign shifted or failed inboxes honestly', async ({ page }) => {
-  await fixture(page, { retainedAlertMode: 'bounded' }); const reads = [];
-  page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/alerts/active')) reads.push(request.url()); });
-  await page.goto(href('health', first, { ...alertWindow, healthSection: 'summary' })); await chooseAlerts(page);
-  await expect(timeline(page).getByRole('button', { name: /^Align charts: Alert fired/ })).toHaveCount(5);
-  let coverage = await openCoverage(page);
-  await expect(coverage).toContainText('5 rows from 5 of at most five pages / 500 rows; additional inbox rows are not loaded');
-  expect(reads).toHaveLength(5);
-  for (const mode of ['duplicate', 'cycle', 'snapshot-shift', 'foreign', 'error']) {
-    await page.context().addCookies([{ name: 'retainedAlertMode', value: mode, url: origin }]); await page.reload();
-    await chooseAlerts(page); coverage = await openCoverage(page);
-    await expect(coverage).toContainText('Current-inbox alert markers are unavailable.');
-    await expect(timeline(page).getByRole('button', { name: /^Align charts: Alert fired/ })).toHaveCount(0);
-    await expect(coverage).toContainText('no alert history or all-clear state is inferred');
-  }
+test('retained marker pages cache visited rows and reject duplicate or shifted receipts honestly',async({page})=>{
+  await fixture(page);const session=await installAlertLifecycleHistoryFixture(page,{origin,backend:alertLifecycleHistoryBackend({count:101})});
+  await page.goto(href('health',first,{...alertWindow,healthSection:'summary'}));await chooseAlerts(page);
+  const panel=page.getByRole('region',{name:'Alert lifecycle history',exact:true});await panel.getByText('Browse alert lifecycle events',{exact:true}).click();
+  await expect(panel).toContainText('100 received of 101');await panel.getByRole('button',{name:'Next alert history page',exact:true}).click();await expect(panel).toContainText('101 received of 101');
+  const before=session.reads.length,markerCount=await timeline(page).getByRole('button',{name:/^Align charts: Alert /}).count();await panel.getByRole('button',{name:'First alert history page',exact:true}).click();await panel.getByRole('button',{name:'Next alert history page',exact:true}).click();expect(session.reads).toHaveLength(before);
+  session.handler=async(route,item)=>{const value=session.backend.read(item.binding);value.targetId=second;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(value)});return true;};
+  await panel.getByRole('button',{name:'Refresh alert history',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('invalid or mismatched receipt');
+  await expect(panel).toContainText('101 received of 101');await expect(timeline(page).getByRole('button',{name:/^Align charts: Alert /})).toHaveCount(markerCount);
 });
 
-test('current-inbox alert markers reject delayed old server and window pages instead of repopulating timeline evidence', async ({ page }) => {
-  await fixture(page); let release, started = false, returned = false;
-  const gate = new Promise(resolve => { release = resolve; });
-  const pattern = `**/observation-targets/${first}/alerts/active?*`;
-  await page.route(pattern, async route => { started = true; await gate; await route.continue().catch(() => {}); returned = true; });
-  try {
-    await page.goto(href('health', first, { ...alertWindow, healthSection: 'summary' })); await expect.poll(() => started).toBe(true);
-    await page.evaluate(hash => { location.hash = hash; }, href('health', second, { ...alertWindow, healthSection: 'summary' }).slice(1));
-    await chooseAlerts(page); await expect(alertAlign(page, 'fired blocking', 2)).toBeVisible();
-  } finally { release(); }
-  await expect.poll(() => returned).toBe(true); await page.unroute(pattern); await expect(alertAlign(page)).toHaveCount(0);
-  let releaseWindow, windowStarted = false, windowReturned = false;
-  const windowGate = new Promise(resolve => { releaseWindow = resolve; });
-  const secondPattern = `**/observation-targets/${second}/alerts/active?*`;
-  await page.route(secondPattern, async route => { windowStarted = true; await windowGate; await route.continue().catch(() => {}); windowReturned = true; });
-  try {
-    await refresh(page).click(); await expect.poll(() => windowStarted).toBe(true);
-    await expect(alertAlign(page, 'fired blocking', 2)).toBeVisible();
-    await expect(await openCoverage(page)).toContainText('Refreshing current alert inbox; showing previously loaded fired markers in this same window.');
-    await page.evaluate(hash => { location.hash = hash; }, href('health', second, { ...alertWindow, from: '2026-10-02T11:30:00.000000Z', healthSection: 'summary' }).slice(1));
-    await expect(alertAlign(page, 'fired blocking', 2)).toHaveCount(0);
-  } finally { releaseWindow(); }
-  await expect.poll(() => windowReturned).toBe(true); await page.unroute(secondPattern);
-  await expect(alertAlign(page, 'paged acknowledged', 2)).toBeVisible();
-  await expect(timeline(page).getByRole('button', { name: /^Align charts: Alert fired/ })).toHaveCount(1);
-  await page.context().addCookies([{ name: 'retainedAlertMode', value: 'error', url: origin }]); await refresh(page).click();
-  await expect(await openCoverage(page)).toContainText('Current-inbox alert markers are unavailable.');
-  await expect(timeline(page).getByRole('button', { name: /^Align charts: Alert fired/ })).toHaveCount(0);
+test('late retained alert reads cannot publish after server or window changes',async({page})=>{
+  await fixture(page);let release,started=false,returned=false;const gate=new Promise(resolve=>{release=resolve;});const pattern=`**/observation-targets/${first}/alerts/history?*`;
+  await page.route(pattern,async route=>{started=true;await gate;await route.continue().catch(()=>{});returned=true;});
+  try{await page.goto(href('health',first,{...alertWindow,healthSection:'summary'}));await expect.poll(()=>started).toBe(true);
+    await page.evaluate(hash=>{location.hash=hash;},href('health',second,{...alertWindow,healthSection:'summary'}).slice(1));await chooseAlerts(page);await expect(alertAlign(page,'resolved')).toBeVisible();
+  }finally{release();}await expect.poll(()=>returned).toBe(true);await page.unroute(pattern);
+  const selected=alertAlign(page,'resolved');await selected.click();await expect(page.getByRole('region',{name:'Selected alert lifecycle event',exact:true})).toContainText('Alert resolved');
+  expect(scope(page).get('target')).toBe(second);expect(scope(page).get('timelineEvent')).toMatch(/^alert-history:/);
+  await page.evaluate(hash=>{location.hash=hash;},href('health',second,{...alertWindow,from:'2026-10-02T11:30:00.000000Z',healthSection:'summary'}).slice(1));await chooseAlerts(page);
+  await expect(page.getByRole('region',{name:'Selected alert lifecycle event',exact:true})).toHaveCount(0);await expect(alertAlign(page,'resolved')).toBeVisible();
 });
 
 test('one native seventh-zero custom URL preserves identical exact request bounds across Dashboard Waits and Resources', async ({ page }) => {
@@ -258,14 +221,14 @@ for (const width of [320, 390, 768, 1440]) {
     await page.keyboard.press('Tab'); await expect(captures(page).getByRole('link', { name: 'Inspect captured session 51 / request 0', exact: true })).toBeFocused();
     await auditAndCapture(page, info, 'waits-pinned-capture', width);
   });
-  test(`current-inbox alert markers retain native keyboard evidence and responsive coverage at ${width}px`, async ({ page }, info) => {
+  test(`retained alert lifecycle markers retain exact keyboard evidence and responsive coverage at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1000 }); await fixture(page);
     await page.goto(href('health', first, { ...alertWindow, databaseId: '6', healthSection: 'summary' })); await chooseAlerts(page);
     await expect(alertAlign(page)).toBeVisible(); await alertAlign(page).focus(); await page.keyboard.press('Enter');
     await expect(alertAlign(page)).toBeFocused(); await expect(alertAlign(page)).toHaveAttribute('aria-pressed', 'true');
     await page.reload(); await chooseAlerts(page); await expect(alertAlign(page)).toHaveAttribute('aria-pressed', 'true');
-    await openCoverage(page); await expect(timeline(page)).toContainText('Alerts remain server-wide');
-    await expect(timeline(page)).toContainText('not a reconstructed transition history');
+    await openCoverage(page); await expect(timeline(page)).toContainText('server-wide');
+    await expect(page.getByRole('region',{name:'Selected alert lifecycle event',exact:true})).toContainText('Exact lookup does not substitute the newest cycle');
     await auditAndCapture(page, info, 'dashboard-alert-markers', width);
   });
 }

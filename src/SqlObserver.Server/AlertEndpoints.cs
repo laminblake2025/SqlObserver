@@ -13,6 +13,7 @@ public static class AlertEndpoints
 {
     public static IEndpointRouteBuilder MapAlertEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapAlertLifecycleEndpoints();
         endpoints.MapAlertAssignmentEndpoints();
         endpoints.MapMaintenanceSeriesEndpoints();
         endpoints.MapAlertRuleTemplateEndpoints();
