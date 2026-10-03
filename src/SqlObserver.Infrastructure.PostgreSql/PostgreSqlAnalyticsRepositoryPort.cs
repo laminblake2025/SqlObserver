@@ -501,7 +501,33 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
     }
     public async ValueTask<RetentionPolicyReadResult> UpdatePolicyAsync(RetentionPolicyUpdateRequest request, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request); RetentionPolicyValidator.Validate(request.Policy); await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false); await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false); await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, FiveSecondTimeout, cancellationToken).ConfigureAwait(false); await SetClaimAsync(connection, transaction, "SecurityAdministrator", "global", FiveSecondTimeout, request.Authorization.ActorSid.ToString(), cancellationToken).ConfigureAwait(false); await using var command = Command(connection, transaction, "SELECT system.update_m10_retention_policy(@data_class,@enabled,@retain_for,@minimum,@expected,@changed_by,@reason)", FiveSecondTimeout); command.Parameters.AddWithValue("data_class", request.Policy.DataClass); command.Parameters.AddWithValue("enabled", request.Policy.Enabled); command.Parameters.AddWithValue("retain_for", (object?)request.Policy.RetainFor ?? DBNull.Value); command.Parameters.AddWithValue("minimum", request.Policy.MinimumPartitionsToKeep); command.Parameters.AddWithValue("expected", request.ExpectedRevision); command.Parameters.AddWithValue("changed_by", request.Authorization.ActorSid.ToString()); command.Parameters.AddWithValue("reason", request.ChangeReason); await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false); await transaction.CommitAsync(cancellationToken).ConfigureAwait(false); return await GetPolicyAsync(request.Policy.DataClass, cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        RetentionPolicyValidator.Validate(request.Policy);
+        await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, FiveSecondTimeout, cancellationToken).ConfigureAwait(false);
+        await SetClaimAsync(connection, transaction, "SecurityAdministrator", "global", FiveSecondTimeout, request.Authorization.ActorSid.ToString(), cancellationToken).ConfigureAwait(false);
+        await using var command = Command(connection, transaction,
+            "SELECT system.update_m10_retention_policy(@data_class,@enabled,@retain_for,@minimum,@expected,@changed_by,@reason)", FiveSecondTimeout);
+        command.Parameters.AddWithValue("data_class", request.Policy.DataClass);
+        command.Parameters.AddWithValue("enabled", request.Policy.Enabled);
+        command.Parameters.AddWithValue("retain_for", (object?)request.Policy.RetainFor ?? DBNull.Value);
+        command.Parameters.AddWithValue("minimum", request.Policy.MinimumPartitionsToKeep);
+        command.Parameters.AddWithValue("expected", request.ExpectedRevision);
+        command.Parameters.AddWithValue("changed_by", request.Authorization.ActorSid.ToString());
+        command.Parameters.AddWithValue("reason", request.ChangeReason);
+        try
+        {
+            await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (PostgresException error) when (request.Policy.DataClass is "server_lifecycle_receipts" or "server_lifecycle_events")
+        {
+            if (error.SqlState == "40001") throw new InvalidOperationException("The lifecycle retention policy revision changed.");
+            if (error.SqlState == "22023") throw new ArgumentException("The lifecycle retention policy bounds are invalid.", nameof(request));
+            throw;
+        }
+        return await GetPolicyAsync(request.Policy.DataClass, cancellationToken).ConfigureAwait(false);
     }
 
     private static NpgsqlCommand Command(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, RepositoryCallTimeout timeout) => new(sql, connection, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };

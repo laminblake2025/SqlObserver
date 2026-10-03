@@ -20,7 +20,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fixture)
+public sealed partial class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fixture)
 {
     private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
@@ -433,23 +433,23 @@ public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fi
         Assert.Equal(0L, await CountAsync(database, "SELECT count(*) FROM control.collector_contract WHERE collector_id='server.lifecycle';"));
     }
 
-    private sealed record Window(DateTimeOffset FromUtc, DateTimeOffset ToUtc);
-    private static async Task<Window> WindowAsync(RepositoryTestDatabase database)
+    internal sealed record Window(DateTimeOffset FromUtc, DateTimeOffset ToUtc);
+    internal static async Task<Window> WindowAsync(RepositoryTestDatabase database)
     {
         await using var command = database.DataSource.CreateCommand("SELECT clock_timestamp();");
         await using var row = await command.ExecuteReaderAsync(); Assert.True(await row.ReadAsync());
         DateTimeOffset now = row.GetFieldValue<DateTimeOffset>(0);
         return new(now.AddMinutes(-1), now.AddHours(1));
     }
-    private static ServerLifecycleHistoryListRequest List(Guid target, Window window, int limit = 100, ServerLifecycleHistoryCursor? cursor = null, long revision = 1) =>
+    internal static ServerLifecycleHistoryListRequest List(Guid target, Window window, int limit = 100, ServerLifecycleHistoryCursor? cursor = null, long revision = 1) =>
         new(target, revision, window.FromUtc, window.ToUtc, limit, cursor, Timeout);
-    private static ServerLifecycleHistoryExactRequest Exact(Guid target, Window window, ServerLifecycleHistoryEvent item) =>
+    internal static ServerLifecycleHistoryExactRequest Exact(Guid target, Window window, ServerLifecycleHistoryEvent item) =>
         new(target, 1, window.FromUtc, window.ToUtc, item.EventId, item.SampleTargetRevision, item.AfterRunId, item.DetectedAtUtc, Timeout);
     private static AuthorizationContext Auth(Guid target) => new(new("S-1-5-21-1234"), AuthorizationPrincipalState.Active,
         [new(ApplicationRole.Viewer, TargetAuthorizationScope.ForTargets([new(target)]))]);
-    private static async Task CommitAsync(PostgreSqlCollectorRuntimeRepositoryPort runtime, CommitCollectorRunRequest request) =>
+    internal static async Task CommitAsync(PostgreSqlCollectorRuntimeRepositoryPort runtime, CommitCollectorRunRequest request) =>
         Assert.Equal(CollectorRunCommitStatus.Committed, (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
-    private static async Task<Guid[]> NativeEventIdsAsync(RepositoryTestDatabase database, Guid target)
+    internal static async Task<Guid[]> NativeEventIdsAsync(RepositoryTestDatabase database, Guid target)
     {
         await using var command = database.DataSource.CreateCommand("SELECT event_id FROM events.server_lifecycle_event WHERE instance_id=@target ORDER BY detected_at,event_id;");
         command.Parameters.AddWithValue("target", target); await using var rows = await command.ExecuteReaderAsync(); var ids = new List<Guid>();
@@ -465,7 +465,7 @@ public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fi
         return database;
     }
 
-    private static async Task<Guid> SeedAsync(RepositoryTestDatabase database)
+    internal static async Task<Guid> SeedAsync(RepositoryTestDatabase database)
     {
         // Isolated test admission only: production registry and migration grants stay inactive.
         var source = new SqlServerLifecycleCollector(SqlServerLifecycleAssetCatalog.LoadEmbedded(), new IdentityFingerprintKey(new byte[32]));
@@ -504,7 +504,7 @@ public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fi
         await PrimeAsync(database, target); return target;
     }
 
-    private static Task PrimeAsync(RepositoryTestDatabase database, Guid target) => ExecuteAsync(database, """
+    internal static Task PrimeAsync(RepositoryTestDatabase database, Guid target) => ExecuteAsync(database, """
         UPDATE control.collector_schedule SET enabled=(collector_id IN ('capability.connection','engine.core','server.lifecycle')),
           next_due_at=CASE WHEN collector_id='server.lifecycle' THEN statement_timestamp()-interval '1 second' ELSE statement_timestamp()+interval '1 day' END,
           last_outcome=CASE WHEN collector_id IN ('capability.connection','engine.core') THEN 'succeeded' ELSE last_outcome END,
@@ -512,8 +512,8 @@ public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fi
         WHERE instance_id=@target;
         """, ("target", target));
 
-    private sealed record Run(CollectorDueWorkItem Work, CollectorRunId Id, WorkerLeaseIdentity Lease);
-    private static async Task<Run> BeginAsync(RepositoryTestDatabase database, NpgsqlDataSource collector,
+    internal sealed record Run(CollectorDueWorkItem Work, CollectorRunId Id, WorkerLeaseIdentity Lease);
+    internal static async Task<Run> BeginAsync(RepositoryTestDatabase database, NpgsqlDataSource collector,
         PostgreSqlCollectorRuntimeRepositoryPort runtime, Guid target, WorkerLeaseIdentity? existingLease = null)
     {
         await ExecuteAsync(database, "UPDATE control.collector_schedule SET next_due_at=clock_timestamp()-interval '1 second' WHERE instance_id=@target AND collector_id='server.lifecycle';", ("target", target));
@@ -534,9 +534,9 @@ public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fi
         return new(work, id, lease);
     }
 
-    private static ServerLifecycleEngineEvidence Engine(int pid = 10, long ticks = 100, string? node = null, DateTime? start = null) =>
+    internal static ServerLifecycleEngineEvidence Engine(int pid = 10, long ticks = 100, string? node = null, DateTime? start = null) =>
         new(node ?? Node, Logical, pid, start ?? LocalStart, ticks, 100_000);
-    private static ServerLifecycleSnapshot Snapshot(Run run, ServerLifecycleEngineEvidence? engine = null,
+    internal static ServerLifecycleSnapshot Snapshot(Run run, ServerLifecycleEngineEvidence? engine = null,
         ServerLifecycleAgMemberEvidence[]? members = null, bool? hadr = false, DateTimeOffset? observed = null) =>
         new(run.Work.TargetId, run.Work.TargetRevision, run.Id, observed ?? run.Work.RepositoryTimeUtc,
             engine ?? Engine(), hadr, members ?? [], 1 + (members?.Length ?? 0), false);
@@ -551,7 +551,7 @@ public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fi
             index.ToString("x64", CultureInfo.InvariantCulture), 1.ToString("x64", CultureInfo.InvariantCulture), index == 1 ? "PRIMARY" : "SECONDARY", "PRIMARY", true, 1024)).ToArray();
         return new(run.Work.TargetId, run.Work.TargetRevision, run.Id, run.Work.RepositoryTimeUtc, Engine(), true, members, 1025, true);
     }
-    private static CommitCollectorRunRequest Commit(Run run, ServerLifecycleSnapshot? snapshot,
+    internal static CommitCollectorRunRequest Commit(Run run, ServerLifecycleSnapshot? snapshot,
         CollectorRunOutcome outcome = CollectorRunOutcome.Succeeded, CollectorRunReason reason = CollectorRunReason.Completed,
         CollectorLossEvidence? loss = null)
     {
@@ -567,12 +567,12 @@ public sealed class ServerLifecycleHistoryPostgreSqlTests(PostgreSql18Fixture fi
     }
 
 
-    private static async Task<long> CountAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
+    internal static async Task<long> CountAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
     {
         await using var command = database.DataSource.CreateCommand(sql); foreach (var p in parameters) command.Parameters.AddWithValue(p.Name, p.Value);
         return Assert.IsType<long>(await command.ExecuteScalarAsync());
     }
-    private static async Task ExecuteAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
+    internal static async Task ExecuteAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
     {
         await using var command = database.DataSource.CreateCommand(sql); foreach (var p in parameters) command.Parameters.AddWithValue(p.Name, p.Value);
         await command.ExecuteNonQueryAsync();

@@ -136,6 +136,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
+      SQLOBSERVER_ISOLATED_CLOCK_POSTGRES_IMAGE: sqlobserver-postgres-isolated-clock:18.4-v2
       SQLOBSERVER_VALIDATION_PROFILE: Local
       SQLOBSERVER_LOCAL_POSTGRES: Host=127.0.0.1;Port=5432;Database=sqlobserver_test_admin;Username=postgres;Password=sqlobserver-ci-only;Pooling=false
     steps:
@@ -156,6 +157,12 @@ jobs:
         run: |
           mkdir -p artifacts/ci
           dotnet restore SqlObserver.slnx --configfile NuGet.Config --locked-mode 2>&1 | tee artifacts/ci/restore.log
+
+      - name: Build isolated PostgreSQL retention clock
+        shell: bash
+        run: |
+          docker build --platform linux/amd64 --tag sqlobserver-postgres-isolated-clock:18.4-v2 tools/qualification/isolated-clock-postgresql 2>&1 | tee artifacts/ci/isolated-clock-image.log
+          docker image inspect sqlobserver-postgres-isolated-clock:18.4-v2 --format '{{.Id}}' > artifacts/ci/isolated-clock-image-id.txt
 
       - name: Test repository behavior and role boundaries
         shell: pwsh
