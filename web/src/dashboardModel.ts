@@ -105,7 +105,8 @@ export function activityHistoryHref(target: string, occurredAtUtc: string, event
     if (scope.range === 'custom') { if (scope.from) query.set('from', scope.from); if (scope.to) query.set('to', scope.to); }
     if (scope.compare) query.set('compare', '1');
   }
-  query.set('at', occurredAtUtc);
+  // Native DateTimeOffset responses use +00:00; Activity routes restore Z timestamps.
+  query.set('at', occurredAtUtc.replace(/\+00:00$/u, 'Z'));
   if (eventId !== undefined && guid.test(eventId)) query.set('event', eventId);
   return `#/activity?${query}`;
 }

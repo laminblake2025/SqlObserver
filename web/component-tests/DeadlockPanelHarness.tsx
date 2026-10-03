@@ -15,6 +15,8 @@ const targets = [
 function Harness() {
   const [hash, setHash] = useState(location.hash);
   const [refresh, setRefresh] = useState(0);
+  const [revision, setRevision] = useState(1);
+  const [mounted, setMounted] = useState(true);
   useEffect(() => {
     const update = () => setHash(location.hash);
     window.addEventListener("hashchange", update);
@@ -31,11 +33,20 @@ function Harness() {
         location.hash = deadlockSelectionHref({ ...scope, target: event.target.value });
       }}>{targets.map(target => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
       <button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh context</button>
+      <button type="button" onClick={() => setRevision(value => value + 1)}>Advance target revision</button>
+      <label>History window<select value={scope.range === "custom" ? scope.from?.includes("T01:") ? "second" : "first" : "live"}
+        onChange={event => { location.hash = deadlockSelectionHref(event.target.value === "live"
+          ? { ...scope, range: "1h", from: undefined, to: undefined }
+          : { ...scope, range: "custom", from: `2026-08-24T${event.target.value === "second" ? "01" : "00"}:00:00.000Z`,
+            to: `2026-08-24T${event.target.value === "second" ? "02" : "01"}:00:00.000Z` }); }}>
+        <option value="first">First hour</option><option value="second">Second hour</option><option value="live">Live hour</option>
+      </select></label>
+      <button type="button" onClick={() => setMounted(value => !value)}>{mounted ? "Unmount deadlock panel" : "Mount deadlock panel"}</button>
     </fieldset>
-    <TargetDeadlockPanel instanceId={scope.target} displayName={displayName} scope={scope} refresh={refresh}
+    {mounted && <TargetDeadlockPanel instanceId={scope.target} displayName={displayName} scope={scope} refresh={refresh} targetRevision={revision}
       onClose={() => undefined} selectedEventId={selection === null ? null : selection?.eventId}
       selectedOccurredAtUtc={selection?.occurredAtUtc}
-      onSelectEvent={next => { location.hash = deadlockSelectionHref(scope, next); }} />
+      onSelectEvent={next => { location.hash = deadlockSelectionHref(readOverviewScope(location.hash), next); }} />}
   </main>;
 }
 

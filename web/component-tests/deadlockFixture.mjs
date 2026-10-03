@@ -4,12 +4,14 @@ export const otherTarget = '44444444-4444-4444-8444-444444444444';
 export const firstId = '22222222-2222-4222-8222-222222222222';
 export const secondId = '55555555-5555-4555-8555-555555555555';
 export const retainedId = '99999999-9999-4999-8999-999999999999';
-export const firstAt = '2026-08-24T00:10:00.123456Z';
-export const secondAt = '2026-08-24T00:20:00.654321Z';
+export const firstAt = '2026-08-24T00:20:00.123456Z';
+export const secondAt = '2026-08-24T00:10:00.654321Z';
 export const retainedAt = '2026-08-24T00:30:00.123456Z';
 export const fromUtc = '2026-08-24T00:00:00.000Z';
 export const toUtc = '2026-08-24T01:00:00.000Z';
-export const cursor = 'page+/=two';
+const tailAt = '2026-08-24T00:19:59.999976Z';
+const tailId = '66666666-6666-4666-8666-000000000024';
+export const cursor = Buffer.from(JSON.stringify([target, tailAt, tailId, '2026-08-24T00:50:00Z', fromUtc, toUtc]), 'utf8').toString('base64');
 export const providerText = '<img src="https://deadlock.invalid/provider" onerror="window.deadlockInjected=1">';
 
 export function summary(overrides = {}) {
@@ -21,6 +23,10 @@ export function secondSummary(overrides = {}) {
   return summary({ eventId: secondId, occurredAtUtc: secondAt, fingerprint: 'b'.repeat(64), ...overrides });
 }
 export function eventPage(items = [summary(), secondSummary()], overrides = {}) {
+  if (overrides.nextCursor === cursor) items = [items[0], ...Array.from({ length: 24 }, (_, index) => summary({
+    eventId: `66666666-6666-4666-8666-${String(index + 1).padStart(12, '0')}`,
+    occurredAtUtc: `2026-08-24T00:19:59.${String(999999 - index).padStart(6, '0')}Z`,
+  }))];
   return { targetId: target, repositoryTimeUtc: '2026-08-24T00:50:00Z', items, nextCursor: null, ...overrides };
 }
 export function eventDetail(selected = summary(), overrides = {}) {

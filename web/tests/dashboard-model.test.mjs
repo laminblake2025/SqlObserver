@@ -31,6 +31,16 @@ test('deadlock activity links carry the selected custom investigation window', (
   assert.equal(params.get('compare'),'1');
   assert.equal(readRoute(href).activityAtUtc,'2026-09-21T02:00:00.000Z');
 });
+
+test('native zero-offset deadlock links restore Activity with exact fractional event time', () => {
+  const eventId = 'f321555e-329f-421b-485c-cf796aa0f475';
+  for (const fraction of ['123456', '1234560']) {
+    const at = `2026-08-24T00:00:00.${fraction}+00:00`;
+    assert.deepEqual(readRoute(activityHistoryHref('target-2', at, eventId)), {
+      page: 'activity', target: 'target-2', activityAtUtc: at.replace('+00:00', 'Z'), activityEventId: eventId,
+    });
+  }
+});
 test('nullable target addresses never invent a named instance or default port', () => {
   assert.equal(formatAddress({host:'lab',namedInstance:null,tcpPort:1433}), 'lab:1433');
   assert.equal(formatAddress({host:'lab',namedInstance:'SQL'}), 'lab\\SQL');

@@ -1,18 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { EvidenceStatus } from "../../components/DiagnosticUi";
 import { activityHistoryHref } from "../../dashboardModel";
-import { getDeadlock, getDeadlocks } from "./deadlockApi";
+import { deadlockAccessDenied, getDeadlock } from "./deadlockApi";
 import { buildDeadlockGraph } from "./deadlockGraph";
-import type { DeadlockDetail, DeadlockPage, DeadlockSummary } from "./deadlockTypes";
+import type { DeadlockDetail, DeadlockSummary } from "./deadlockTypes";
 import { overviewWindow } from "../overview/overviewModel";
 import type { OverviewScope } from "../overview/overviewTypes";
+import { useDeadlockPages } from "./useDeadlockPages";
+import "./deadlockInvestigation.css";
 import { deadlockOccurrenceInScope, matchesDeadlockSelection, type DeadlockSelection } from "./deadlockSelectionModel.ts";
 
-export function TargetDeadlockPanel({ instanceId, displayName, onClose, scope, refresh, selectedEventId, selectedOccurredAtUtc, onSelectEvent }: {
+export function TargetDeadlockPanel({ instanceId, displayName, onClose, scope, refresh, selectedEventId, selectedOccurredAtUtc, onSelectEvent, targetRevision }: {
   readonly instanceId: string; readonly displayName: string; readonly onClose: () => void;
   readonly scope: OverviewScope; readonly refresh: number;
+  readonly targetRevision?: number;
   readonly selectedEventId?: string | null; readonly selectedOccurredAtUtc?: string;
   readonly onSelectEvent?: (selection: DeadlockSelection | undefined) => void;
 }) {
@@ -24,103 +27,89 @@ export function TargetDeadlockPanel({ instanceId, displayName, onClose, scope, r
     try { return overviewWindow({ ...scope, from: normalize(scope.from), to: normalize(scope.to) }, Date.now()); }
     catch { return undefined; }
   }, [scope.range, scope.from, scope.to, refresh]);
-  const context = JSON.stringify([instanceId.toLowerCase(), scope.range, scope.from, scope.to, scope.databaseId]);
-  const listKey = JSON.stringify([context, window?.fromUtc, window?.toUtc, refresh]);
-  const [receivedPage, setPage] = useState<{ context: string; key: string; page: DeadlockPage; fromUtc: string; toUtc: string }>();
-  const page = window && receivedPage?.context === context ? receivedPage.page : undefined;
-  const [localSelection, setLocalSelection] = useState<{ context: string; selection: DeadlockSelection }>();
-  const local = localSelection?.context === context ? localSelection.selection : undefined;
+  const context = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
+  const contextIdentity = useRef({ context, generation: 0 });
+  if (contextIdentity.current.context !== context) contextIdentity.current = { context, generation: contextIdentity.current.generation + 1 };
+  const contextGeneration = contextIdentity.current.generation;
+  const [denial, setDenial] = useState<number>();
+  const accessDenied = denial === contextGeneration;
+  const denialEpoch = useRef(0);
+  const detailRequest = useRef<AbortController | undefined>(undefined);
+  const deny = () => { denialEpoch.current++; detailRequest.current?.abort(); detailRequest.current = undefined;
+    pages.refuseAccess(); setDetail(undefined); setDetailState(undefined); setDenial(contextGeneration); };
+  const pages = useDeadlockPages(instanceId, context, window, refresh, accessDenied, deny, () => setDenial(undefined));
+  const page = accessDenied ? undefined : pages.receipt?.page;
+  const listLoading = pages.loading;
+  const message = !window ? "Choose a valid UTC range of up to 31 days for deadlock history." : pages.error;
+  const [localSelection, setLocalSelection] = useState<{ generation: number; selection: DeadlockSelection }>();
+  const local = localSelection?.generation === contextGeneration ? localSelection.selection : undefined;
   const requested = selectedEventId === null ? null : selectedEventId !== undefined
     ? { eventId: selectedEventId.toLowerCase(), occurredAtUtc: selectedOccurredAtUtc }
     : onSelectEvent ? undefined : local;
   const activeId = requested === null ? undefined : requested?.eventId ?? page?.items[0]?.eventId.toLowerCase();
-  const requestKey = JSON.stringify([context, activeId, requested?.occurredAtUtc, refresh]);
-  const identity = useRef({ requestKey, listKey });
-  identity.current = { requestKey, listKey };
-  const [receivedDetail, setDetail] = useState<{ context: string; refresh: number; detail: DeadlockDetail }>();
-  const detail = window && receivedDetail?.context === context && activeId !== undefined &&
+  const selectionKey = JSON.stringify([contextGeneration, activeId, requested?.occurredAtUtc, requested === null]);
+  const selectionIdentity = useRef({ key: selectionKey, generation: 0 });
+  if (selectionIdentity.current.key !== selectionKey) selectionIdentity.current = { key: selectionKey, generation: selectionIdentity.current.generation + 1 };
+  const selectionGeneration = selectionIdentity.current.generation;
+  const currentIdentity = useRef({ contextGeneration, selectionGeneration, refresh, accessDenied });
+  currentIdentity.current = { contextGeneration, selectionGeneration, refresh, accessDenied };
+  const [receivedDetail, setDetail] = useState<{ generation: number; receivedAtUtc: string; detail: DeadlockDetail }>();
+  const detail = !accessDenied && window && receivedDetail?.generation === selectionGeneration && activeId !== undefined &&
     receivedDetail.detail.summary.eventId.toLowerCase() === activeId &&
     (!requested?.occurredAtUtc || matchesDeadlockSelection({ eventId: activeId, occurredAtUtc: requested.occurredAtUtc }, receivedDetail.detail.summary))
     ? receivedDetail.detail : undefined;
-  const [listState, setListState] = useState<{ key: string; loading: boolean; error?: string }>();
-  const listLoading = Boolean(window && (listState?.key !== listKey || listState.loading));
-  const message = listState?.key === listKey ? listState.error : undefined;
-  const [detailState, setDetailState] = useState<{ key: string; loading: boolean; error?: string }>();
-  const detailLoading = Boolean(activeId && window && requested !== null && (detailState?.key !== requestKey || detailState.loading));
-  const detailError = detailState?.key === requestKey ? detailState.error : undefined;
-  const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
-  const listRequest = useRef<AbortController | undefined>(undefined);
-  const detailRequest = useRef<AbortController | undefined>(undefined);
-
-  useEffect(() => {
-    listRequest.current?.abort();
-    const controller = new AbortController(); listRequest.current = controller;
-    setPage(previous => previous?.context === context ? previous : undefined);
-    setListState({ key: listKey, loading: Boolean(window), ...(!window ? { error: "Choose a valid UTC range of up to 31 days for deadlock history." } : {}) });
-    if (!window) return () => controller.abort();
-    void getDeadlocks(instanceId, controller.signal, undefined, window)
-      .then(next => {
-        if (controller.signal.aborted || identity.current.listKey !== listKey) return;
-        if (next.targetId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Deadlock evidence did not match the selected server.");
-        setPage({ context, key: listKey, page: next, ...window }); setCursorTrail([]); setListState({ key: listKey, loading: false });
-      }).catch((error: unknown) => {
-        if (!controller.signal.aborted && identity.current.listKey === listKey) {
-          setPage(undefined); setCursorTrail([]);
-          setListState({ key: listKey, loading: false, error: error instanceof Error ? error.message : "Deadlock evidence is unavailable." });
-        }
-      });
-    return () => { controller.abort(); listRequest.current?.abort(); };
-  }, [instanceId, listKey]);
-
-  useEffect(() => {
-    detailRequest.current?.abort();
-    if (!activeId || !window || requested === null) return;
-    if (detail && receivedDetail?.refresh === refresh) {
-      setDetailState({ key: requestKey, loading: false }); return;
-    }
+  const [detailState, setDetailState] = useState<{ generation: number; loading: boolean; error?: string }>();
+  const detailLoading = Boolean(!accessDenied && activeId && window && requested !== null &&
+    (detailState?.generation !== selectionGeneration || detailState.loading));
+  const detailError = !accessDenied && detailState?.generation === selectionGeneration ? detailState.error : undefined;
+  useLayoutEffect(() => {
+    detailRequest.current?.abort(); detailRequest.current = undefined;
+    setDetail(undefined); setDetailState(undefined);
+    return () => { detailRequest.current?.abort(); detailRequest.current = undefined; };
+  }, [contextGeneration, selectionGeneration]);
+  const detailHeld = useRef(false);
+  useLayoutEffect(() => { detailHeld.current = false; }, [contextGeneration, selectionGeneration]);
+  async function readDetail(explicit = false) {
+    if (detailRequest.current || accessDenied || !activeId || !window || requested === null ||
+        currentIdentity.current.selectionGeneration !== selectionGeneration || !explicit && detailHeld.current) return;
     const controller = new AbortController(); detailRequest.current = controller;
-    setDetailState({ key: requestKey, loading: true });
-    void getDeadlock(instanceId, activeId, controller.signal).then(next => {
-      if (controller.signal.aborted || identity.current.requestKey !== requestKey) return;
+    const epoch = denialEpoch.current;
+    const current = () => !controller.signal.aborted && detailRequest.current === controller && denialEpoch.current === epoch &&
+      currentIdentity.current.selectionGeneration === selectionGeneration && currentIdentity.current.contextGeneration === contextGeneration &&
+      !currentIdentity.current.accessDenied;
+    setDetailState({ generation: selectionGeneration, loading: true });
+    try {
+      const next = await getDeadlock(instanceId, activeId, controller.signal);
+      if (!current()) return;
       if (next.summary.eventId.toLowerCase() !== activeId || !deadlockOccurrenceInScope(next.summary.occurredAtUtc, scope) ||
           requested?.occurredAtUtc && !matchesDeadlockSelection({ eventId: activeId, occurredAtUtc: requested.occurredAtUtc }, next.summary))
         throw new Error("The retained deadlock did not match the requested occurrence and workspace window.");
-      setDetail({ context, refresh, detail: next }); setDetailState({ key: requestKey, loading: false });
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted && identity.current.requestKey === requestKey) {
-        setDetail(undefined); setDetailState({ key: requestKey, loading: false, error: requested
-          ? "The requested deadlock detail is unavailable. It may have expired or access may have changed. No other event has been selected."
-          : error instanceof Error ? error.message : "Deadlock detail is unavailable." });
-      }
-    });
-    return () => controller.abort();
-  }, [instanceId, requestKey, Boolean(window)]);
-
+      detailHeld.current = false;
+      setDetail({ generation: selectionGeneration, receivedAtUtc: new Date().toISOString(), detail: next }); setDetailState({ generation: selectionGeneration, loading: false });
+    } catch (error) {
+      if (!current()) return;
+      if (deadlockAccessDenied(error)) { deny(); return; }
+      detailHeld.current = true;
+      setDetailState({ generation: selectionGeneration, loading: false, error: requested
+        ? "The requested deadlock detail is unavailable. It may have expired or access may have changed. No other event has been selected."
+        : error instanceof Error ? error.message : "Deadlock detail is unavailable." });
+    } finally { if (detailRequest.current === controller) detailRequest.current = undefined; }
+  }
+  useEffect(() => { void readDetail(); }, [instanceId, contextGeneration, selectionGeneration, refresh, Boolean(window), accessDenied]);
+  function cancelDetail() {
+    const controller = detailRequest.current;
+    if (!controller || currentIdentity.current.selectionGeneration !== selectionGeneration) return;
+    controller.abort(); detailRequest.current = undefined; detailHeld.current = true;
+    setDetailState({ generation: selectionGeneration, loading: false, error: "Deadlock detail read cancelled. Retry repeats the selected occurrence read." });
+  }
   function selectEvent(item: DeadlockSummary) {
     const selection = { eventId: item.eventId.toLowerCase(), occurredAtUtc: item.occurredAtUtc };
     if (onSelectEvent) onSelectEvent(selection);
-    else setLocalSelection({ context, selection });
+    else setLocalSelection({ generation: contextGeneration, selection });
   }
   function clearSelection() {
     detailRequest.current?.abort(); setDetail(undefined); setLocalSelection(undefined);
     onSelectEvent?.(undefined);
-  }
-  async function loadPage(cursor: string | undefined, nextTrail: readonly string[]) {
-    if (listLoading || !window) return;
-    listRequest.current?.abort();
-    const controller = new AbortController(); listRequest.current = controller;
-    setListState({ key: listKey, loading: true });
-    try {
-      const next = await getDeadlocks(instanceId, controller.signal, cursor, window);
-      if (controller.signal.aborted || identity.current.listKey !== listKey) return;
-      if (next.targetId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Deadlock evidence did not match the selected server.");
-      setPage({ context, key: listKey, page: next, ...window }); setCursorTrail(nextTrail); setListState({ key: listKey, loading: false });
-    } catch (error: unknown) {
-      if (!controller.signal.aborted && identity.current.listKey === listKey) {
-        setPage(undefined); setCursorTrail([]);
-        setListState({ key: listKey, loading: false, error: error instanceof Error ? error.message : "Deadlock evidence is unavailable." });
-      }
-    }
   }
   const requestedNotOnPage = Boolean(requested && page && !page.items.some(item => item.eventId.toLowerCase() === requested.eventId));
   return <section className="deadlock-screen" aria-labelledby="deadlock-heading">
@@ -128,25 +117,36 @@ export function TargetDeadlockPanel({ instanceId, displayName, onClose, scope, r
       <div><p className="eyebrow">Deadlocks · passive system_health evidence</p><h2 id="deadlock-heading">Deadlock investigation</h2><p className="screen-subtitle">Captured events and lock relationships for {displayName}</p></div>
       <button className="secondary-button" onClick={onClose} type="button">Close</button>
     </div>
-    {message ? <p role="alert" className="status-message">{message} Refresh to retry the event list.</p> : null}
-    {!page && !message ? <p role="status">Loading bounded deadlock evidence…</p> : null}
+    {message ? <p role="alert" className="status-message">{message} Received event pages remain available; retry repeats this read.</p> : null}
     {scope.databaseId !== undefined && <p className="table-note">Deadlock events and relationships remain server-wide; this source does not establish database attribution.</p>}
-    {window && <p className="activity-evidence">Deadlock events in the selected window: {timeLabel(window.fromUtc)} to {timeLabel(window.toUtc)}.</p>}
-    {page && listLoading && receivedPage && <p role="status">Refreshing deadlock events; showing the previously loaded event page for {timeLabel(receivedPage.fromUtc)} to {timeLabel(receivedPage.toUtc)}. Repository snapshot: {timeLabel(page.repositoryTimeUtc)}. Selection keeps its exact retained occurrence.</p>}
+    {window && <p className="activity-evidence">Workspace time range: {timeLabel(window.fromUtc)} to {timeLabel(window.toUtc)}.</p>}
+    {accessDenied && <p role="alert" className="status-message">Deadlock access was denied. Received event pages and details were removed. Return to latest after access is restored.</p>}
+    {pages.receipt && !accessDenied && <p className="deadlock-investigation-receipt">Received evidence window: {timeLabel(pages.receipt.window.fromUtc)} to {timeLabel(pages.receipt.window.toUtc)}. Collected evidence cutoff: {timeLabel(pages.receipt.page.repositoryTimeUtc)}. Page {pages.selected + 1} of {pages.receipts.length} received pages.</p>}
+    {pages.retained && !accessDenied && <p className="deadlock-investigation-note">Browsing received deadlock evidence. Workspace refresh keeps this investigation. First, Previous and visited Next pages use received rows; unread continuation keeps its collected cutoff and window. Repository retention can still remove events.</p>}
+    {pages.bounded && <p role="status">Retained limit reached: 20 pages / 500 events. Return to latest to start another investigation.</p>}
+    {listLoading && <p role="status">{pages.receipt ? "Reading deadlock evidence; received event pages remain displayed..." : "Loading bounded deadlock evidence..."}</p>}
+    <nav className="deadlock-investigation-controls" aria-label="Deadlock investigation reads">
+      <button type="button" disabled={listLoading || !window} onClick={pages.latest}>Return to latest deadlock events</button>
+      {pages.canRetry && <button type="button" disabled={listLoading} onClick={pages.retry}>Retry deadlock read</button>}
+      {listLoading && <button type="button" onClick={pages.cancel}>Cancel deadlock read</button>}
+    </nav>
     {requested === null && <p role="alert">The requested deadlock selection is invalid or contradicts the workspace context. Clear the deadlock selection to continue.</p>}
     {requested !== undefined && <button type="button" className="secondary-button" onClick={clearSelection}>Clear deadlock selection</button>}
     <div className="deadlock-layout">
       <aside className="deadlock-events" aria-label="Captured deadlock events" aria-busy={listLoading}>
         {page && <>
           <div className="deadlock-events-heading"><h3>{page.items.length} captured events</h3><span>{page.nextCursor ? "More bounded events available" : "History bound reached"}</span></div>
-          {page.items.length === 0 ? <p className="empty-state">No captured deadlock events are available in this bounded page. This does not establish that no deadlocks occurred.</p> : <div className="event-list">{page.items.map(item => <button className={item.eventId.toLowerCase() === activeId ? "event-card is-selected" : "event-card"} aria-pressed={item.eventId.toLowerCase() === activeId} aria-controls="selected-deadlock-detail" key={item.eventId.toLowerCase()} onClick={() => selectEvent(item)} type="button"><span className="event-severity" aria-hidden="true">!</span><span><strong>{timeLabel(item.occurredAtUtc)}</strong><small>{item.participantCount} participants · {item.relationCount} relationships</small><small>Fingerprint {item.fingerprint.slice(0, 12)}…{item.parseTruncated ? " · truncated" : ""}</small></span><span aria-hidden="true">›</span></button>)}</div>}
+          {page.items.length === 0 ? <p className="empty-state">No captured deadlock events are available in this bounded page. This does not establish that no deadlocks occurred.</p> : <div className="event-list" tabIndex={0} role="region" aria-label="Received deadlock event rows">{page.items.map(item => <button className={item.eventId.toLowerCase() === activeId ? "event-card is-selected" : "event-card"} aria-pressed={item.eventId.toLowerCase() === activeId} aria-controls="selected-deadlock-detail" key={item.eventId.toLowerCase()} onClick={() => selectEvent(item)} type="button"><span className="event-severity" aria-hidden="true">!</span><span><strong>{timeLabel(item.occurredAtUtc)}</strong><small>{item.participantCount} participants · {item.relationCount} relationships</small><small>Fingerprint {item.fingerprint.slice(0, 12)}…{item.parseTruncated ? " · truncated" : ""}</small></span><span aria-hidden="true">›</span></button>)}</div>}
           <p className="table-note">Repository time: {timeLabel(page.repositoryTimeUtc)}</p>
-          <nav className="pager" aria-label="Deadlock event pages"><button type="button" disabled={listLoading || cursorTrail.length === 0} onClick={() => void loadPage(undefined, [])}>First page</button><button type="button" disabled={listLoading || cursorTrail.length === 0} onClick={() => { const previousTrail = cursorTrail.slice(0, -1); void loadPage(previousTrail.at(-1), previousTrail); }}>Previous</button><button type="button" disabled={listLoading || !page.nextCursor} onClick={() => void loadPage(page.nextCursor ?? undefined, page.nextCursor ? [...cursorTrail, page.nextCursor] : cursorTrail)}>Next</button></nav>
+          <nav className="pager deadlock-investigation-controls" aria-label="Deadlock event pages"><button type="button" disabled={listLoading || pages.selected === 0} onClick={pages.first}>First page</button><button type="button" disabled={listLoading || pages.selected === 0} onClick={pages.previous}>Previous</button><button type="button" disabled={listLoading || !pages.canNext} onClick={pages.next}>Next</button></nav>
         </>}
       </aside>
       <section id="selected-deadlock-detail" className="deadlock-detail" aria-label="Selected deadlock detail" aria-busy={detailLoading}>
         {requestedNotOnPage && detail && <p role="status">The requested deadlock is not on the loaded event page. Its retained detail is shown without selecting another event.</p>}
-        {detailError && <p role="alert">{detailError} Refresh to retry or clear the deadlock selection.</p>}
+        {detailError && <p role="alert">{detailError} Retry the selected detail or clear the deadlock selection.{detail ? " Previously received matching detail remains available." : ""}</p>}
+        {detailError && !accessDenied && <button type="button" disabled={detailLoading} onClick={() => void readDetail(true)}>Retry deadlock detail</button>}
+        {detailLoading && <button type="button" onClick={cancelDetail}>Cancel deadlock detail</button>}
+        {detail && receivedDetail && <p className="deadlock-investigation-note">Detail received: {timeLabel(receivedDetail.receivedAtUtc)}. This exact occurrence is read independently of the event-list collected cutoff.</p>}
         {detail && detailLoading && <p role="status">Refreshing the selected deadlock; showing its previously loaded retained detail.</p>}
         {detail && window && !deadlockOccurrenceInScope(detail.summary.occurredAtUtc, { ...scope, range: "custom", from: window.fromUtc, to: window.toUtc }) && <p role="status">The selected retained occurrence is outside the current moving Live window. Its exact captured identity remains selected.</p>}
         {detail ? <DeadlockDetailView detail={detail} instanceId={instanceId} scope={scope} /> : detailLoading ? <p role="status">Loading selected event participants and relationships…</p> : !detailError && requested !== null ? <div className="empty-state">Select an event to inspect its available participants and relationships.</div> : null}

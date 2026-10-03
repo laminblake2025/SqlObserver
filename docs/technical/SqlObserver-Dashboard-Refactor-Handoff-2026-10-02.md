@@ -2,7 +2,31 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest Analytics workspace qualification (2026-10-03)
+## Latest retained Deadlock investigation qualification (2026-10-03)
+
+Deadlock event pages now retain the received window and collected cutoff through workspace polling, moving Live ticks, failed continuation and cancellation. First/Previous/visited Next restore locally; unread continuation keeps the native cursor and exact bounds. Return to latest replaces the investigation and resumes future polling only after a validated successful read. Retry repeats the failed/cancelled request. Browser retention is bounded to 20 pages / 500 events, independently of repository retention.
+
+List validation follows the native standard-base64 six-field cursor, target, descending occurrence/UUID order, full 25-row continuation page, collected cutoff, exact UTC window and row tail. A cursor is not a signature, and retention can remove source rows. The detail read is independent of the list cutoff: its receipt states when the browser received it, without inventing a native revision or snapshot fence. Caller-known target revision is a context fence only. Pending exact detail reads survive polling; error/cancellation retains only previously validated matching detail with explicit disclosure. A failed initial or mismatched selection never substitutes another event.
+
+Target/revision/window/selection generations fence late results and selection round trips before effects. Definitive HTTP 401/403 clears both list and detail receipts synchronously and cancels owned reads; a pending list success cannot erase a detail denial. Recovery requires an explicit successful latest read. The parser now accepts native UTC `+00:00` DateTimeOffset output, and the Activity link converts that suffix to `Z` while preserving the exact fractional occurrence and event identity.
+
+Three non-overlapping owners handled runtime/native models, mounted interactions and dark-theme/native peer review. The lead owns App revision/link integration, faithful native fixtures, existing regressions, final execution and visual review. Screenshot review exposed a full-page event list that pushed mobile detail too far down: the final list is a named keyboard-scrollable region bounded to 420px on narrow screens and 600px otherwise, with all received rows still accessible.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three independent owners, non-overlapping files and native/lifecycle peer review; one integration lead. | Complete. |
+| Dark theme | Shared tokens, wrapping controls/receipts, visible inset focus and bounded event/table/diagram scrolling. | Passing in tested states. |
+| Diagnostic-screen review | Native Deadlock paging/detail, exact Activity provenance, received evidence and denial/context ownership reviewed and repaired. | Recorded Deadlock findings closed. |
+| Interaction tests | **47 owning checks: 46 runtime/API/model and one explicit lint**, **35 mounted cases**, **eight built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe, bounded vertical event rows, local horizontal table/diagram scrolling and document overflow at **320/390/768/1440**; App checks at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **547 unchanged frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **Six fresh captures**, mobile/desktop visual review, [gallery](../../artifacts/dashboard-deadlock-retained/index.html), [case inventories, hashes and provenance](../../artifacts/dashboard-deadlock-retained/completion.json). | Delivered locally, bound to the final local commit. |
+
+These are affected frontend checks, not full repository or release certification. Complete earlier attempts remain under `initial-typecheck`, `initial-browser`, `before-layout` and `before-capture`. Strict checks required an explicitly validated six-string tuple type. Initial browser setup used an ambiguous receipt locator, read rows before continuation completed, and installed detail handlers before the selection receipt finished. The denial regression now gates both requests before releasing denial, so it exercises the intended pending-success race. All browsers stopped before corrections. Complete groups reran; visual layout repair triggered a rebuild and new native/mounted/App groups. The final capture positioning change preserves product/assertions and reruns complete browser groups; final counts are not combined repair subsets.
+
+All browser traffic and captures use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. Other source-reviewed frontend findings below and the broader revamp remain incomplete. No GitHub upload occurred.
+
+## Previous Analytics workspace qualification (2026-10-03)
 
 Analytics category selection now restores through the shared URL, reload and browser navigation. Unknown, empty or duplicate category parameters are explicitly refused until the user chooses a valid category. Database and time changes preserve the category and exact supported UTC context. Jobs and backfill remain inventory reads independent of the workspace time range.
 
@@ -148,7 +172,17 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 ### Remaining source-reviewed dashboard work
 
-The legacy Operations projection pagination, direct current head-blocker, canonical native pager, workspace triage/context and recorded Analytics findings are closed by the qualifications above. Analytics now restores category URLs, retains independent surface investigations through polling/moving Live windows, accepts native diagnostic JSON strings and preserves unknown nullable packet confidence. Incidents use the native bounded legacy list rather than an invented paginated surface contract. A fresh source review is required before selecting further dashboard work; this does not complete the dashboard refactor or repository plan. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
+The legacy Operations projection pagination, direct current head-blocker, canonical native pager, workspace triage/context, Analytics and recorded Deadlock findings are closed by the qualifications above. Analytics incidents use the native bounded legacy list rather than an invented paginated surface contract. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
+
+Fresh source review identified the following existing-contract frontend findings for focused regression and implementation next. They are not closed by the Deadlock qualification, and do not authorize backend expansion:
+
+- **Health default-section restoration:** [TargetHealthPanel](../../web/src/features/health/TargetHealthPanel.tsx) keeps its local tab when the route drops `healthSection` and database context. Summary → Collection → browser Back to a bare Health URL can leave Collection selected; reload of that same URL selects Summary. Cover absent-section/default Databases and removal of database context.
+- **Workspace target-catalog denial:** [App target loading](../../web/src/App.tsx) catches same-cursor refresh failures without removing the previous target catalog; [targetApi](../../web/src/features/targets/targetApi.ts) preserves native HTTP status. Distinguish definitive 401/403 from transient failure, cancel late catalog reads and test labels/subtree removal and explicit authorized recovery.
+- **Waits retained-read denial:** [TargetWaitsPanel](../../web/src/features/activity/TargetWaitsPanel.tsx) and [useHistoryPaging](../../web/src/features/activity/useHistoryPaging.ts) keep prior pages after typed Activity 401/403. Cover current/history/outer retained evidence and prevent local First navigation from reviving refused content. Ordinary transient read failure remains separate.
+- **Chart pointer ownership:** [ObservationChart](../../web/src/components/ObservationChart.tsx), [OverviewChart](../../web/src/features/overview/OverviewChart.tsx) and the shared gesture hook admit secondary/right/middle pointer gestures. The timeline already requires primary left-button ownership. Verify only the owning primary pointer can commit a shared range.
+- **Report expiry:** [ReportsPanel](../../web/src/features/reports/ReportsPanel.tsx) continues displaying export links after native `expiresAtUtc`. Reuse the existing saved-investigation report's expiry/wake semantics, preserve exact uncertain-retry identity, and distinguish explicit fresh generation from expired receipt recovery.
+
+Check paths and current native contracts before changing these sources. This does not complete the dashboard refactor or repository plan.
 
 The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
 

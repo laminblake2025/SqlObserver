@@ -465,7 +465,7 @@ export function App() {
                 }}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "queries" && queryWindow.state !== "valid" && <QueryPerformanceRangeMessage scope={scope} result={queryWindow} />}
-              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} scope={scope} refresh={slowRefresh}
+              {route.page === "deadlocks" && <TargetDeadlockPanel key={`${scope.range}:${scope.from ?? ""}:${scope.to ?? ""}`} {...props} targetRevision={listedTarget?.configurationRevision} scope={scope} refresh={slowRefresh}
                 selectedEventId={deadlockSelection === null ? null : deadlockSelection?.eventId} selectedOccurredAtUtc={deadlockSelection?.occurredAtUtc}
                 onSelectEvent={selection => {
                   const currentRoute = readRoute(location.hash);

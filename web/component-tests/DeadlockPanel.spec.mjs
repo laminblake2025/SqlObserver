@@ -145,7 +145,7 @@ test('provider text stays inert while truncated detail displays only available k
   expect(await page.evaluate(() => window.deadlockInjected)).toBeUndefined();
 });
 
-test('an off-page retained event keeps its exact microsecond occurrence and rejects a same-ID mismatch', async ({ page }) => {
+test('an off-page retained event keeps its exact microsecond occurrence and refuses a mismatched refresh receipt', async ({ page }) => {
   const selected = summary({ eventId: retainedId, occurredAtUtc: retainedAt, fingerprint: 'c'.repeat(64) });
   let reads = 0;
   await mount(page, async route => {
@@ -162,15 +162,15 @@ test('an off-page retained event keeps its exact microsecond occurrence and reje
   await expect(eventCards(page).nth(0)).toHaveAttribute('aria-pressed', 'false');
   await page.getByRole('button', { name: 'Refresh context' }).click();
   await expect(detail(page).getByRole('alert')).toContainText('No other event has been selected.');
-  await expect(activityLink(page)).toHaveCount(0);
-  await expect(detail(page).getByRole('table')).toHaveCount(0);
+  await expectLink(page, retainedId, retainedAt);
+  await expect(detail(page)).toContainText('Previously received matching detail remains available.');
   await expect(eventCards(page).nth(0)).toHaveAttribute('aria-pressed', 'false');
-  await page.getByRole('button', { name: 'Refresh context' }).click();
+  await page.getByRole('button', { name: 'Retry deadlock detail', exact: true }).click();
   await expectLink(page, retainedId, retainedAt);
   expect(reads).toBe(3);
 });
 
-test('bounded paging retains the selected event and a failed list refresh retries the first page', async ({ page }) => {
+test('bounded paging retains the selected event through refresh and a failed latest read retries the first page', async ({ page }) => {
   let initialReads = 0;
   const next = held(eventPage([secondSummary()]));
   await mount(page, async route => {
@@ -194,16 +194,19 @@ test('bounded paging retains the selected event and a failed list refresh retrie
   await expect(detail(page)).toContainText('not on the loaded event page');
   await expectLink(page, firstId, firstAt);
   await page.getByRole('button', { name: 'Refresh context' }).click();
-  await expect(page.getByRole('alert')).toContainText('Deadlock evidence is unavailable. Refresh to retry the event list.');
-  await expect(eventCards(page)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Refresh context' }).click();
+  await expect(eventCards(page)).toHaveCount(1);
+  expect(initialReads).toBe(1);
+  await page.getByRole('button', { name: 'Return to latest deadlock events', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Deadlock evidence is unavailable.');
+  await expect(eventCards(page)).toHaveCount(1);
+  await page.getByRole('button', { name: 'Retry deadlock read', exact: true }).click();
   await expect(eventCards(page).nth(0)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(initialReads).toBe(3);
 });
 
-test('the native reader rejects valid JSON above its byte bound for list and detail then refresh recovers', async ({ page }) => {
+test('the native reader rejects valid JSON above its byte bound for list and detail then exact retry recovers', async ({ page }) => {
   const padding = 'x'.repeat(256 * 1024 + 1);
   let lists = 0, details = 0;
   await mount(page, async route => {
@@ -219,11 +222,12 @@ test('the native reader rejects valid JSON above its byte bound for list and det
   }, summary());
   // These bodies remain below the deadlock parser's 1 MiB limit and are valid
   // JSON. Rejection exercises the transport's 256 KiB deadlock reader boundary.
-  await expect(page.getByRole('alert').filter({ hasText: 'Activity evidence returned an invalid response.' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Deadlock evidence returned an invalid or unavailable response.' })).toBeVisible();
   await expect(detail(page).getByRole('alert')).toContainText('No other event has been selected.');
   await expect(activityLink(page)).toHaveCount(0);
   await expect(eventCards(page)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Refresh context' }).click();
+  await page.getByRole('button', { name: 'Retry deadlock read', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry deadlock detail', exact: true }).click();
   await expectLink(page, firstId, firstAt);
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect([lists, details]).toEqual([2, 2]);
@@ -276,7 +280,7 @@ test('changing event selection cancels pending detail and a late first event can
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('cross-target list evidence fails accessibly and refresh retries the same target before selecting detail', async ({ page }) => {
+test('cross-target list evidence fails accessibly and exact retry reads the same target before selecting detail', async ({ page }) => {
   let reads = 0;
   await mount(page, async route => {
     if (isList(route)) {
@@ -286,11 +290,11 @@ test('cross-target list evidence fails accessibly and refresh retries the same t
     if (isDetail(route)) { await json(route, eventDetail()); return true; }
     return false;
   });
-  await expect(page.getByRole('alert')).toContainText('Deadlock response is invalid. Refresh to retry the event list.');
+  await expect(page.getByRole('alert')).toContainText('Deadlock evidence returned an invalid or unavailable response.');
   await expect(eventCards(page)).toHaveCount(0);
   await expect(activityLink(page)).toHaveCount(0);
   expect(contexts.get(page).requests).toHaveLength(1);
-  await page.getByRole('button', { name: 'Refresh context' }).click();
+  await page.getByRole('button', { name: 'Retry deadlock read', exact: true }).click();
   await expectLink(page, firstId, firstAt);
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(reads).toBe(2);
