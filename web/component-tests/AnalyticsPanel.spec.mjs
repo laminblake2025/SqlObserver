@@ -2,12 +2,16 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { nativeAnalyticsCursor } from '../tools/analytics-workflow-fixture.mjs';
 
 const alpha = '11111111-1111-4111-8111-111111111111';
 const beta = '22222222-2222-4222-8222-222222222222';
 const firstId = '33333333-3333-4333-8333-333333333333';
 const secondId = '44444444-4444-4444-8444-444444444444';
-const next = 'opaque/page|2';
+const next = nativeAnalyticsCursor({targetId:alpha,surface:'jobs',targetRevision:1,generation:1,
+  snapshotUtc:'2026-09-09T00:00:00Z',cutoffUtc:'2026-09-09T00:00:00Z',
+  fromUtc:'2026-09-08T00:00:00Z',toUtc:'2026-09-09T00:00:00Z'},
+  {jobId:'33333333-3333-4333-8333-333333333432',requestedAtUtc:'2026-09-08T01:00:00Z'});
 const sessions = new WeakMap();
 const panel = page => page.locator('section.analytics-surface');
 const body = (url, options = {}) => ({ targetId: url.pathname.split('/')[4], surface: url.pathname.split('/').at(-1),
@@ -19,6 +23,10 @@ const json = (route, value) => route.fulfill({ status: 200, contentType: 'applic
   headers: { 'cache-control': 'no-store' }, body: JSON.stringify(value) });
 const job = id => ({ jobId: id, jobKind: 'rollup', status: 'running', requestedAtUtc: '2026-09-08T01:00:00Z',
   startedAtUtc: null, completedAtUtc: null, attempt: 1, targetRevision: 1 });
+const firstPage = url => {
+  const value=body(url,{items:[body(url).items[0],...Array.from({length:99},(_,index)=>({...job(`33333333-3333-4333-8333-${333333333334+index}`),jobKind:url.pathname.endsWith('/backfill')?'backfill':'rollup'}))]});
+  return {...value,nextCursor:nativeAnalyticsCursor(value,value.items.at(-1))};
+};
 
 test.beforeEach(async ({ page }) => {
   const session = { unexpected: [], requests: [], cancelled: [], handler: undefined };
@@ -43,7 +51,7 @@ test.afterEach(async ({ page }) => expect(sessions.get(page).unexpected).toEqual
 async function open(page) { await page.goto('/component-tests/analytics.html'); }
 async function paged(page) {
   sessions.get(page).handler = async (route, url) => {
-    await json(route, body(url, url.searchParams.has('cursor') ? { items: [job(secondId)] } : { nextCursor: next }));
+    await json(route, url.searchParams.has('cursor') ? body(url,{items:[job(secondId)]}) : firstPage(url));
     return true;
   };
   await open(page);
@@ -61,23 +69,24 @@ test('sanitizes an initial service failure and retries through the rendered acti
   await expect(panel(page).getByRole('alert')).toHaveText('The analytics service is temporarily unavailable.');
   await expect(page.locator('body')).not.toContainText('provider-secret');
   fail = false;
-  await panel(page).getByRole('button', { name: 'Retry', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'Retry analytics read', exact: true }).click();
   await expect(panel(page).getByRole('cell', { name: firstId, exact: true })).toBeVisible();
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
   expect(await page.evaluate(() => window.analyticsInjected)).toBeUndefined();
 });
 
-test('restarts an invalid cursor with the exact selected window and no cursor', async ({ page }) => {
+test('returns an invalid continuation to latest with the exact selected window and no cursor', async ({ page }) => {
   sessions.get(page).handler = async (route, url) => {
     if (url.searchParams.has('cursor')) await route.fulfill({ status: 400, body: 'provider-secret' });
-    else await json(route, body(url, { nextCursor: next }));
+    else await json(route, firstPage(url));
     return true;
   };
   await open(page);
   await panel(page).getByRole('button', { name: 'Next evidence page', exact: true }).click();
-  await expect(panel(page).getByRole('alert')).toHaveText('The page cursor is invalid; restart paging to load the first page.');
-  await expect(panel(page).getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
-  await panel(page).getByRole('button', { name: 'Restart paging', exact: true }).click();
+  await expect(panel(page).getByRole('alert')).toHaveText('The analytics request or cursor is invalid.');
+  await expect(panel(page).getByRole('cell', { name: firstId, exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('button', { name: 'Retry analytics read', exact: true })).toBeEnabled();
+  await panel(page).getByRole('button', { name: 'Return analytics to latest', exact: true }).click();
   await expect(panel(page).getByRole('cell', { name: firstId, exact: true })).toBeVisible();
   const requests = sessions.get(page).requests;
   expect(requests.map(url => url.searchParams.get('cursor'))).toEqual([null, next, null]);
@@ -85,16 +94,19 @@ test('restarts an invalid cursor with the exact selected window and no cursor', 
 });
 
 test('renders permission, no-data and stale states without treating job inventory as time-filtered rows', async ({ page }) => {
-  let state = 'permission_denied';
-  sessions.get(page).handler = async (route, url) => { await json(route, body(url, { state, items: state === 'no_data' ? [] : [job(firstId)] })); return true; };
+  let state = 'denied';
+  sessions.get(page).handler = async (route, url) => {
+    if(state==='denied')await route.fulfill({status:403,body:'provider-secret'});
+    else await json(route, body(url, { state, items: state === 'no_data' ? [] : [job(firstId)] })); return true;
+  };
   await open(page);
-  await expect(panel(page).getByRole('status')).toHaveText('You are not authorized to view this surface.');
-  await expect(panel(page).getByRole('button')).toHaveCount(0);
-  state = 'no_data'; await page.getByRole('button', { name: 'Refresh context' }).click();
-  await expect(panel(page).getByRole('status')).toHaveText('No job inventory rows are available in this response.');
+  await expect(panel(page).getByRole('alert')).toContainText('Analytics access was denied.');
+  await expect(panel(page).getByRole('table')).toHaveCount(0);
+  state = 'no_data'; await panel(page).getByRole('button', { name: 'Return analytics to latest', exact: true }).click();
+  await expect(panel(page)).toContainText('No job inventory rows are available in this response.');
   state = 'stale'; await page.getByRole('button', { name: 'Refresh context' }).click();
-  await expect(panel(page).getByRole('status')).toHaveText('This snapshot is stale; refresh to retry.');
-  state = 'complete'; await panel(page).getByRole('button', { name: 'Refresh snapshot' }).click();
+  await expect(panel(page).getByRole('status')).toHaveText('This snapshot is stale. Return to latest to read a new snapshot.');
+  state = 'complete'; await panel(page).getByRole('button', { name: 'Return analytics to latest', exact: true }).click();
   await expect(panel(page)).toContainText('not filtered');
   await expect(panel(page).getByRole('cell', { name: firstId, exact: true })).toBeVisible();
 });
@@ -105,7 +117,7 @@ test('changing target discards another target cursor before its first native rea
   await expect.poll(() => sessions.get(page).requests.filter(url => url.pathname.includes(beta)).length).toBeGreaterThan(0);
   expect(sessions.get(page).requests.filter(url => url.pathname.includes(beta)).every(url => !url.searchParams.has('cursor'))).toBe(true);
   await expect(panel(page).getByRole('cell', { name: firstId, exact: true })).toBeVisible();
-  await expect(panel(page).getByRole('button', { name: 'First page', exact: true })).toBeDisabled();
+  await expect(panel(page).getByRole('button', { name: 'First evidence page', exact: true })).toBeDisabled();
 });
 
 test('changing surface discards the old surface cursor before its first native read', async ({ page }) => {
@@ -124,7 +136,7 @@ test('changing window aborts pending continuation and cannot display its late ro
   const finished = new Promise(resolve => { finish = resolve; });
   const session = sessions.get(page);
   session.handler = async (route, url) => {
-    if (!url.searchParams.has('cursor')) { await json(route, body(url, { nextCursor: next })); return true; }
+    if (!url.searchParams.has('cursor')) { await json(route, firstPage(url)); return true; }
     start(); await held;
     try { await json(route, body(url, { items: [job(secondId)] })); }
     catch (error) { if (!session.cancelled.some(value => value.includes('cursor='))) throw error; }
@@ -132,7 +144,7 @@ test('changing window aborts pending continuation and cannot display its late ro
     return true;
   };
   await open(page); await panel(page).getByRole('button', { name: 'Next evidence page', exact: true }).click(); await seen;
-  await expect(panel(page).getByRole('status')).toHaveText('Loading…');
+  await expect(panel(page).getByRole('status')).toContainText('Reading analytics evidence…');
   await page.getByRole('button', { name: 'Change window' }).click();
   await expect(panel(page).getByRole('cell', { name: firstId, exact: true })).toBeVisible();
   await expect.poll(() => session.cancelled.filter(value => value.includes('cursor=')).length).toBe(1);

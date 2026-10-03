@@ -21,6 +21,7 @@ import {handleDashboardNativeInsightsFixture} from './dashboard-native-insights-
 import {handleDashboardRetainedEvidenceFixture} from './dashboard-retained-evidence-fixture.mjs';
 import {handleReportWorkflowFixture} from './report-workflow-fixture.mjs';
 import {nativeAlertSelectionPage} from './alert-selection-fixture.mjs';
+import {handleAnalyticsWorkflowFixture} from './analytics-workflow-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433,authenticationMode:'windows_integrated_service_identity',encryptionMode:'mandatory_validated',discoveryRequestedAtUtc:'2026-09-25T12:00:00Z',lastDiscoveryAtUtc:'2026-09-25T12:01:00Z'}));
 // The ordinary live fixture exposes one synthetic capture. Filter/page reads
@@ -48,6 +49,7 @@ const utcTicks=value=>{
 const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ if(handleAnalyticsWorkflowFixture(url,res,req,targets,send))return;
  if(await handleReportWorkflowFixture(url,res,req,targets,send))return;
  if(handleDashboardRetainedEvidenceFixture(url,res,req,targets,send))return;
  if(handleDashboardNativeInsightsFixture(url,res,req,targets,send))return;

@@ -1,90 +1,80 @@
 import { EvidenceTable } from "../../components/EvidenceTable";
 import { useTimeDisplay, useTimeFormatter } from "../../TimeDisplayContext";
-import { useEffect, useRef, useState } from "react";
-import { AnalyticsRequestError, getAnalyticsSurface } from "./analyticsApi";
-import { analyticsEmptyStateText, analyticsScopeText, analyticsStatusText } from "./analyticsScope";
-import { panelStateForRequestError, panelStateForSurface } from "./analyticsState";
+import { analyticsEmptyStateText, analyticsScopeText } from "./analyticsScope";
+import { panelStateForSurface } from "./analyticsState";
 import { analyticsSurfaceLabel } from "./analyticsSurfaceCatalog";
-import type { AnalyticsPanelState, AnalyticsSurface, AnalyticsSurfacePage } from "./analyticsTypes";
+import { analyticsInventory, type AnalyticsWindow } from "./analyticsSurfacePaging";
+import { useAnalyticsSurface } from "./useAnalyticsSurface";
+import type { AnalyticsPanelState, AnalyticsSurface } from "./analyticsTypes";
+import "./analyticsWorkflow.css";
 
 const messages: Record<AnalyticsPanelState, string> = {
-  loading: "Loading…", ready: "", "no-data": "No data is available for this window.", degraded: "Data is degraded; some sources were unavailable.", "permission-denied": "You are not authorized to view this surface.", unsupported: "This surface is unsupported for the target.", stale: "This snapshot is stale; refresh to retry.", partial: "Only partial evidence is available.", "low-confidence": "Evidence confidence is low.", backfilling: "Backfill is in progress.", "cursor-invalid": "The page cursor is invalid; restart paging to load the first page.", "retention-blocked": "This data is blocked by retention policy."
+  loading: "Loading…", ready: "", "no-data": "No data is available for this window.",
+  degraded: "Data is degraded; some sources were unavailable.",
+  "permission-denied": "This receipt reports a permission gap in the collected evidence. Check the collection identity's permissions.", unsupported: "This surface is unsupported for the target.",
+  stale: "This snapshot is stale. Return to latest to read a new snapshot.", partial: "Only partial evidence is available.",
+  "low-confidence": "Evidence confidence is low.", backfilling: "Backfill is in progress. Return to latest to check again.",
+  "cursor-invalid": "The analytics continuation is invalid. Received pages remain available.",
+  "retention-blocked": "This data is blocked by retention policy.",
 };
 
-type Paging = { cursor?: string; fromUtc?: string; toUtc?: string };
-
-function statusOf(error: unknown): number | undefined {
-  return error instanceof AnalyticsRequestError ? error.status : undefined;
-}
-
-function messageFor(error: unknown, status: number | undefined, hasCursor: boolean): string | null {
-  if (status === 400 || status === 422) return hasCursor ? messages["cursor-invalid"] : "The analytics request is invalid. Retry the request.";
-  if (error instanceof AnalyticsRequestError) return error.message;
-  if (error instanceof Error) return "The analytics response could not be validated. Retry the request.";
-  return "The analytics request failed. Retry the request.";
-}
-
-function canRetry(state: AnalyticsPanelState): boolean {
-  return state === "degraded" || state === "stale" || state === "backfilling" || state === "cursor-invalid";
-}
-
-export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, refresh = 0 }: { targetId: string; surface: AnalyticsSurface; timeWindow?: {fromUtc:string;toUtc:string}; refresh?: number }) {
+export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, targetRevision, contextKey, refresh = 0, active = true,
+  denialEpoch = 0, onAccessDenied }: {
+  targetId: string; surface: AnalyticsSurface; timeWindow?: AnalyticsWindow; targetRevision?: number;
+  contextKey?: string; refresh?: number; active?: boolean; denialEpoch?: number; onAccessDenied?: () => void;
+}) {
   const { mode } = useTimeDisplay();
   const formatTime = useTimeFormatter();
-  const [state, setState] = useState<AnalyticsPanelState>("loading");
-  const [page, setPage] = useState<AnalyticsSurfacePage | null>(null);
-  const [paging, setPaging] = useState<Paging>({});
-  const [error, setError] = useState<string | null>(null);
-  const [reload, setReload] = useState(0);
-  const activeContext = useRef<string | undefined>(undefined);
-
-  useEffect(() => {
-    const contextKey = `${targetId}:${surface}:${timeWindow?.fromUtc ?? ""}:${timeWindow?.toUtc ?? ""}`;
-    if (activeContext.current !== undefined && activeContext.current !== contextKey) {
-      activeContext.current = contextKey;
-      setPaging({});
-      setState("loading"); setPage(null); setError(null);
-      return;
-    }
-    activeContext.current = contextKey;
-    const controller = new AbortController();
-    setState("loading"); setPage(null); setError(null);
-    getAnalyticsSurface(targetId, surface, controller.signal, {...timeWindow,...paging}).then(value => {
-      if (controller.signal.aborted) return;
-      setPage(value); setState(panelStateForSurface(value.state, value.items.length > 0));
-    }).catch((failure: unknown) => {
-      if (controller.signal.aborted) return;
-      const status = statusOf(failure); const hasCursor = paging.cursor !== undefined;
-      setState(panelStateForRequestError(status, hasCursor)); setError(messageFor(failure, status, hasCursor));
-    });
-    return () => controller.abort();
-  }, [targetId, surface, paging, reload, refresh, timeWindow?.fromUtc, timeWindow?.toUtc]);
-
-  const retry = () => { setState("loading"); setPage(null); setError(null); setReload(value => value + 1); };
-  const restartPaging = () => {
-    const hasPaging = paging.cursor !== undefined || paging.fromUtc !== undefined || paging.toUtc !== undefined;
-    setState("loading"); setPage(null); setError(null); setPaging({});
-    if (!hasPaging) setReload(value => value + 1);
-  };
-  const actions = canRetry(state) ? <div className="toolbar">
-    {state === "cursor-invalid" && paging.cursor !== undefined ? <button type="button" onClick={restartPaging}>Restart paging</button> : null}
-    {state !== "cursor-invalid" ? <button type="button" onClick={retry}>{state === "stale" ? "Refresh snapshot" : state === "backfilling" ? "Check again" : "Retry"}</button> : null}
-  </div> : null;
-  const statusText = analyticsStatusText(surface, state, error, messages);
-
-  if (state !== "ready" && state !== "partial" && state !== "degraded") return <section className="panel analytics-surface"><p role={error ? "alert" : "status"} className="status-message">{statusText}</p>{actions}</section>;
-  if (!page) return <section className="panel analytics-surface"><p role={error ? "alert" : "status"} className="status-message">{statusText}</p>{actions}</section>;
-  if (page.items.length === 0) return <section className="panel analytics-surface"><p className="empty-state">{surface === "jobs" || surface === "backfill" ? analyticsEmptyStateText(surface) : `${messages[state]} ${analyticsEmptyStateText(surface)}`}</p></section>;
-  const rows = surface.startsWith("replication/") ? page.items.map(item => ({
+  // Direct callers get a strict explicit-window boundary. AnalyticsPage supplies a stable
+  // workspace context so computed Live windows can move without disturbing held reads.
+  const context = JSON.stringify([targetId.toLowerCase(), targetRevision ?? null, surface,
+    contextKey ?? `${timeWindow?.fromUtc ?? ""}:${timeWindow?.toUtc ?? ""}`, denialEpoch]);
+  const inbox = useAnalyticsSurface(targetId, surface, context, timeWindow, targetRevision, refresh, active,
+    denialEpoch > 0, onAccessDenied);
+  if (!active) return null;
+  const page = inbox.receipt?.page;
+  const state = page ? panelStateForSurface(page.state, page.items.length > 0) : "loading";
+  const surfaceLabel = analyticsSurfaceLabel(surface);
+  const rows = !page ? [] : surface.startsWith("replication/") ? page.items.map(item => ({
     "Observed": formatTime(String(item.observedAtUtc)),
     "Agent state": item.synchronizationState === "disabled" ? "Stopped" : item.synchronizationState,
     "Pending commands": item.pendingCommands,
     "Latency (seconds)": item.latencySeconds,
     "Coverage": item.coverage,
-    "Evidence": { runId: item.runId, role: item.role, targetRevision: item.targetRevision, visibilityGap: item.visibilityGap }
+    "Evidence": { runId: item.runId, role: item.role, targetRevision: item.targetRevision, visibilityGap: item.visibilityGap },
   })) : page.items.map(item => Object.fromEntries(Object.entries(item).map(([key, value]) =>
     [key.endsWith("Utc") && typeof value === "string" ? `${key.slice(0, -3)} (${mode === "local" ? "local" : "UTC"})` : key,
       key.endsWith("Utc") && typeof value === "string" ? formatTime(value) : value])));
-  const surfaceLabel = analyticsSurfaceLabel(surface);
-  return <section className="panel analytics-surface"><h2>{surfaceLabel}</h2><p>{page.state === "visibility_gap" ? "This history includes observations collected without a distribution database binding. Health and queue values are unavailable for those rows." : messages[state]}</p><EvidenceTable label={surfaceLabel} rows={rows}/><p>{analyticsScopeText(surface, page, formatTime)}</p><div className="toolbar"><button type="button" disabled={!paging.cursor} onClick={restartPaging}>First page</button><button type="button" disabled={!page.nextCursor} onClick={() => setPaging({ cursor: page.nextCursor ?? undefined, fromUtc: page.fromUtc, toUtc: page.toUtc })}>Next evidence page</button></div></section>;
+  return <section className="panel analytics-surface" aria-label={surfaceLabel}>
+    <div className="analytics-workflow-heading"><h2>{surfaceLabel}</h2>
+      <span className="analytics-workflow-mode">{inbox.retained ? "Retained analytics evidence" : "Latest received analytics evidence"}</span>
+    </div>
+    <div className="analytics-workflow-controls" aria-label="Analytics evidence controls">
+      {surface !== "incidents" && <>
+        <button type="button" disabled={inbox.loading || inbox.selected === 0} onClick={inbox.first}>First evidence page</button>
+        <button type="button" disabled={inbox.loading || inbox.selected === 0} onClick={inbox.previous}>Previous evidence page</button>
+        <button type="button" disabled={inbox.loading || !inbox.canNext} onClick={inbox.next}>Next evidence page</button>
+      </>}
+      <button type="button" disabled={inbox.loading} onClick={inbox.latest}>Return analytics to latest</button>
+      {inbox.loading && <button type="button" onClick={inbox.cancel}>Cancel analytics read</button>}
+      {!inbox.loading && inbox.canRetry && <button type="button" onClick={inbox.retry}>Retry analytics read</button>}
+    </div>
+    {inbox.loading && <p role="status" className="status-message">Reading analytics evidence…{page ? " The received page remains visible." : ""}</p>}
+    {inbox.error && <p role="alert" className="status-message">{inbox.error}</p>}
+    {inbox.bounded && <p role="status">Retained analytics limit reached: 20 pages / 4,000 rows. Visited pages remain available; return to latest for a new read.</p>}
+    {page && <>
+      <p className="analytics-workflow-receipt">Received page {inbox.selected + 1} of {inbox.receipts.length}. {page.items.length} rows on this page.
+        {page.targetRevision !== undefined && <> Target revision: {page.targetRevision}.</>}
+        {page.generation !== undefined && <> Generation: {page.generation}.</>}
+        {inbox.receipt && <> Received: {formatTime(inbox.receipt.receivedAtUtc)}.</>}
+      </p>
+      <p className="analytics-workflow-scope">{analyticsScopeText(surface, page, formatTime)}</p>
+      {surface === "incidents" ? <p className="analytics-workflow-note">Bounded incident list. The native route does not provide continuation or a snapshot fence. At most 100 incident rows are returned; this list does not prove that every incident is included.</p>
+        : <p className="analytics-workflow-note">Visited pages retain the evidence received for this target, revision, generation and native read boundary. Inventory state and access can change between reads; this is not a frozen repository snapshot.{analyticsInventory(surface) ? " The effective request window binds continuation only; job inventory is not filtered by time." : ""}</p>}
+      {(page.state === "visibility_gap" || messages[state]) && <p role="status">{page.state === "visibility_gap"
+        ? "This history includes observations collected without a distribution database binding. Health and queue values are unavailable for those rows."
+        : messages[state]}</p>}
+      {state === "permission-denied" ? null : rows.length > 0 ? <EvidenceTable label={surfaceLabel} rows={rows} /> : <p className="empty-state">{analyticsEmptyStateText(surface)}</p>}
+    </>}
+  </section>;
 }

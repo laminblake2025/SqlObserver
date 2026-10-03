@@ -16,7 +16,7 @@ export function analyticsScopeText(surface: AnalyticsSurface, page: AnalyticsSco
   if (surface === "jobs" || surface === "backfill") {
     return `${surface === "backfill" ? "Backfill job inventory" : "Job inventory"}. Records are not filtered by time. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
   }
-  return `${formatTime ? "Selected window" : "UTC window"}: ${display(page.fromUtc)} to ${display(page.toUtc)}. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
+  return `${formatTime ? "Received evidence window" : "UTC window"}: ${display(page.fromUtc)} to ${display(page.toUtc)}. Snapshot: ${snapshot}. Cutoff: ${cutoff}.`;
 }
 
 export function analyticsEmptyStateText(surface: AnalyticsSurface): string {

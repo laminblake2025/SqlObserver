@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
+import { analyticsSurfaceCatalog } from "./features/analytics/analyticsSurfaceCatalog";
 import { Drawer } from "./components/Drawer";
 import { CommandPalette } from "./components/CommandPalette";
 import { alertJumpHref, alertSelectionFromHash, queryJumpHref, targetAlertHref } from "./components/commandPaletteModel";
@@ -53,7 +54,7 @@ import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, c
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
 import { WorkspaceFleetStrip } from "./features/overview/WorkspaceFleetStrip";
-import { activityHistoryHref, healthSectionHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
+import { activityHistoryHref, analyticsSurfaceHref, retainAnalyticsSurfaceHref, healthSectionHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
 import { refreshCadence, startWorkspaceClock, wakeLiveTick } from "./liveRefreshSchedule";
 
 const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], string>> = {
@@ -96,7 +97,7 @@ export function App() {
   const [directTargetLookup, setDirectTargetLookup] = useState<DirectTargetLookup>();
   const [adding, setAdding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [surface, setSurface] = useState<AnalyticsSurface>("incidents");
+  const surface = route.analyticsSurface ?? "incidents";
   const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" || route.page === "operations" || route.page === "alerts" || route.page === "reports" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
   const maxTimeRangeDays = route.page === "analytics" || route.page === "reports" && reportSelection.state === "valid" &&
@@ -221,6 +222,8 @@ export function App() {
       ? healthCheckHref(nextScope, currentRoute.target, currentRoute.healthCheck)
       : currentRoute.page === "health" && currentRoute.healthSection
       ? healthSectionHref(nextScope, currentRoute.target, currentRoute.healthSection, currentRoute.configurationRunId)
+      : currentRoute.page === "analytics" && currentRoute.analyticsSurface
+      ? analyticsSurfaceHref(nextScope, currentRoute.target, currentRoute.analyticsSurface)
       : overviewHref(nextScope, currentRoute.page, currentRoute.target);
     location.hash = queryViewHref(retainDiagnosticSelectionHref(href, location.hash), { ...readQueryViewSelection(location.hash), cacheSelection: undefined });
   };
@@ -241,6 +244,8 @@ export function App() {
         ? healthSectionHref(selectedScope, selectedRoute.target, selectedRoute.healthSection, selectedRoute.configurationRunId)
       : selectedRoute.page === "operations" && selectedRoute.healthCheck
         ? healthCheckHref(selectedScope, selectedRoute.target, selectedRoute.healthCheck)
+      : selectedRoute.page === "analytics" && selectedRoute.analyticsSurface
+        ? analyticsSurfaceHref(selectedScope, selectedRoute.target, selectedRoute.analyticsSurface)
       : overviewHref(selectedScope, selectedRoute.page, selectedRoute.target);
     location.hash = queryViewHref(retainDiagnosticSelectionHref(href, location.hash), readQueryViewSelection(location.hash));
   };
@@ -273,7 +278,9 @@ export function App() {
     const href = page === "health" && route.healthSection
       ? healthSectionHref(scope, target, route.healthSection, route.configurationRunId)
       : page === "operations" && route.healthCheck
-        ? healthCheckHref(scope, target, route.healthCheck) : overviewHref(scope, page, target);
+        ? healthCheckHref(scope, target, route.healthCheck)
+      : page === "analytics" && route.analyticsSurface
+        ? analyticsSurfaceHref(scope, target, route.analyticsSurface) : overviewHref(scope, page, target);
     return queryViewHref(retainDiagnosticSelectionHref(href, location.hash), queryView);
   };
   const closeTarget = () => {
@@ -477,7 +484,18 @@ export function App() {
                   if (location.hash !== renderedHash || currentRoute.page !== "reports" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
                   location.hash = reportSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, kind);
                 }} />}
-              {route.page === "analytics" && <AnalyticsPage targetId={props.instanceId} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={setSurface} />}
+              {route.page === "analytics" && (route.analyticsSelectionInvalid ? <section className="panel analytics-selection-error">
+                <p role="alert">The analytics surface in this URL is invalid. Choose an available evidence surface.</p>
+                <label className="surface-selector">Evidence surface<select aria-label="Evidence surface" value="" onChange={event => {
+                  const current = readRoute(location.hash);
+                  if (current.page !== "analytics" || current.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  location.hash = analyticsSurfaceHref(readOverviewScope(location.hash), props.instanceId, event.target.value as AnalyticsSurface);
+                }}><option value="" disabled>Choose an evidence surface</option>{analyticsSurfaceCatalog.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+              </section> : <AnalyticsPage targetId={props.instanceId} targetRevision={selected!.configurationRevision} scope={scope} refresh={slowRefresh} surface={surface} onSurfaceChange={nextSurface => {
+                const current = readRoute(location.hash);
+                if (current.page !== "analytics" || current.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                location.hash = retainDashboardTimelineHref(analyticsSurfaceHref(readOverviewScope(location.hash), props.instanceId, nextSurface), location.hash);
+              }} />)}
             </div>
           ) : null}
         </main>
@@ -505,7 +523,7 @@ function retainDiagnosticSelectionHref(href: string, currentHash: string): strin
   next = retainSessionWaitCaptureHref(next, currentHash);
   next = retainAdminSelectionHref(next, currentHash);
   next = retainDeadlockSelectionHref(next, currentHash);
-  return retainReportSelectionHref(next, currentHash);
+  return retainAnalyticsSurfaceHref(retainReportSelectionHref(next, currentHash), currentHash);
 }
 
 function retainDashboardTimelineHref(href: string, currentHash: string): string {

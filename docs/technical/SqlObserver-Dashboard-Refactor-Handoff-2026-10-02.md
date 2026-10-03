@@ -2,7 +2,33 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest workspace triage and diagnostic context qualification (2026-10-03)
+## Latest Analytics workspace qualification (2026-10-03)
+
+Analytics category selection now restores through the shared URL, reload and browser navigation. Unknown, empty or duplicate category parameters are explicitly refused until the user chooses a valid category. Database and time changes preserve the category and exact supported UTC context. Jobs and backfill remain inventory reads independent of the workspace time range.
+
+Each category retains its own received pages through workspace polling. Already-visited First/Previous/Next pages restore locally; explicit continuation, retry and latest reads keep ownership across moving Live ticks. Return to latest replaces the investigation only after native validation succeeds. Failure or cancellation preserves the received evidence and exact retry context. Receipts distinguish the Received evidence window from the Workspace time range. Retention is bounded to 20 pages / 4,000 rows per paginated surface; legacy incidents remain a bounded 100-row list without fabricated pagination or snapshot provenance.
+
+Target, known configuration revision and explicit context changes discard old receipts before effects, abort owned requests and reject late results, including selection round trips. Actual HTTP 401/403 clears protected receipts across categories and stops automatic denial loops; an explicit successful read restores only its own category. Collector coverage gaps are separate from caller authorization. Native diagnostic metadata is parsed from its JSON string without mutating the original input, rendered as inert text, and nullable packet confidence stays unknown.
+
+Native cursor validation binds the surface, target, revision, generation, snapshot/cutoff, effective window and visible row tail/order before pages join. This is native cursor contract validation, not cryptographic verification. Unread continuation can expire as source generation advances; already-received pages remain available. Native jobs are mutable inventory, not an immutable historical snapshot. Hidden replication and PostgreSQL JSONB tie keys are not replaced with invented client identities.
+
+Three non-overlapping owners handled the retained-page lifecycle/dark theme, native contract review, and mounted interaction/accessibility checks. Independent read-only reviews covered App composition and lifecycle boundaries. The lead integrated URL behavior, native fixtures and App checks, resolved review findings, and ran all final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent reviews and one integration lead. | Complete. |
+| Dark theme | Shared tokens, wrapping controls/receipts, visible focus and bounded keyboard-scrollable tables. | Passing in tested states. |
+| Diagnostic-screen review | Analytics URL restoration, independent retained investigations, native metadata/confidence and cursor/lifecycle boundaries reviewed and repaired. | Recorded Analytics findings closed. |
+| Interaction tests | **68 native runtime/API/model checks**, **36 mounted cases**, **11 built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe, control bounds and document overflow at **320/390/768/1440**; App checks at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **539 unchanged frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **Six fresh captures**, mobile/desktop visual review, [gallery](../../artifacts/dashboard-analytics-workflow/index.html), [case inventories, hashes and provenance](../../artifacts/dashboard-analytics-workflow/completion.json). | Delivered locally, bound to the final local commit. |
+
+These are affected frontend checks, not full repository or release certification. Complete earlier attempts remain under `initial-browser` and `before-window-label`. The initial mounted run exposed a raw JSON assertion that incorrectly expected unescaped quotes; the corrected assertion parses the displayed JSON and still checks inert rendering. All browsers stopped before correction. A subsequent visual wording refinement and current-URL guard triggered a rebuild and fresh complete native/mounted/App groups; counts are not assembled from repair subsets.
+
+All browser traffic and captures use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The original repository plan and broader dashboard refactor remain incomplete; backend-dependent requirements below remain open. No GitHub upload occurred.
+
+## Previous workspace triage and diagnostic context qualification (2026-10-03)
 
 Fleet and server alert investigations now retain received pages through workspace polling and preserve explicit paging, retry and acknowledgement ownership. Return to latest replaces the investigation only after successful native validation. Cancellation and uncertain acknowledgement completion retain the original operation ID for the same locally received first-observed cycle. Authority loss and selection round trips clear busy ownership without accepting late success. Fleet access is rechecked during workspace ticks without treating the pending recheck as a denial. Actual HTTP 401/403 removes protected rows, details and actions; a readable alert response alone cannot restore write authority.
 
@@ -122,7 +148,7 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 ### Remaining source-reviewed dashboard work
 
-The legacy Operations projection pagination, direct current head-blocker, canonical native pager and current workspace triage/context findings are closed by the qualifications above. The next source-reviewed frontend area is Analytics: category selection is local state rather than a restored URL; polling clears surface pages and moving Live windows interrupt continuation. Native diagnostic metadata is a JSON string while the frontend parser expects an object, and evidence packet confidence can be null while its parser requires a number. Verify native contracts before implementing this next pass; incidents use a bounded legacy list rather than the paginated surface contract. This does not complete the dashboard refactor or repository plan. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
+The legacy Operations projection pagination, direct current head-blocker, canonical native pager, workspace triage/context and recorded Analytics findings are closed by the qualifications above. Analytics now restores category URLs, retains independent surface investigations through polling/moving Live windows, accepts native diagnostic JSON strings and preserves unknown nullable packet confidence. Incidents use the native bounded legacy list rather than an invented paginated surface contract. A fresh source review is required before selecting further dashboard work; this does not complete the dashboard refactor or repository plan. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
 
 The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
 

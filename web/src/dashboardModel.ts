@@ -1,6 +1,8 @@
 import type { OverviewScope } from './features/overview/overviewTypes';
 import { readOverviewScope, overviewHref } from './features/overview/overviewModel.ts';
 import { healthCheckTab, type HealthCheckTab } from './features/operations/agentHistoryModel.ts';
+import { analyticsSurfaceCatalog } from './features/analytics/analyticsSurfaceCatalog.ts';
+import type { AnalyticsSurface } from './features/analytics/analyticsTypes';
 
 export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', maintenance: 'Maintenance windows', destinations: 'Destinations', permissions: 'Permission script', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
 export type Destination = keyof typeof destinations;
@@ -19,6 +21,8 @@ export interface DashboardRoute {
   readonly healthCheck?: HealthCheckTab;
   readonly healthSection?: HealthSection;
   readonly configurationRunId?: string;
+  readonly analyticsSurface?: AnalyticsSurface;
+  readonly analyticsSelectionInvalid?: true;
 }
 const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/;
 const guid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -33,6 +37,14 @@ export function readRoute(hash: string): DashboardRoute {
   const base = { page, target: scope.target, ...(scope.databaseId !== undefined ? { databaseId: scope.databaseId } : {}) };
   const check = healthCheckTab(params.get('check'));
   const section = params.get('healthSection');
+  if (page === 'analytics') {
+    const surfaces = params.getAll('surface');
+    if (surfaces.length === 0) return { ...base, analyticsSurface: 'incidents' };
+    const surface = surfaces[0];
+    return surfaces.length === 1 && analyticsSurfaceCatalog.some(option => option.value === surface)
+      ? { ...base, analyticsSurface: surface as AnalyticsSurface }
+      : { ...base, analyticsSelectionInvalid: true };
+  }
   if (page === 'health' && (section === 'summary' || section === 'databases' || section === 'collection')) {
     const run = params.get('configurationRun');
     return { ...base, healthSection: section, ...(section === 'summary' && run && guid.test(run) ? { configurationRunId: run.toLowerCase() } : {}) };
@@ -68,6 +80,18 @@ export function readRoute(hash: string): DashboardRoute {
   return base;
 }
 export function routeHref(page: Destination, target: string): string { return `#/${page}${target ? `?target=${encodeURIComponent(target)}` : ''}`; }
+export function analyticsSurfaceHref(scope: OverviewScope, target: string, surface: AnalyticsSurface): string {
+  if (!analyticsSurfaceCatalog.some(option => option.value === surface)) throw new Error('Choose an available analytics surface.');
+  return `${overviewHref(scope, 'analytics', target)}&surface=${encodeURIComponent(surface)}`;
+}
+export function retainAnalyticsSurfaceHref(href: string, currentHash: string): string {
+  if (href.split('?')[0] !== '#/analytics' || currentHash.split('?')[0] !== '#/analytics') return href;
+  const next = new URLSearchParams(href.split('?')[1]);
+  if (next.has('surface')) return href;
+  const selected = new URLSearchParams(currentHash.split('?')[1]).getAll('surface');
+  for (const value of selected) next.append('surface', value);
+  return `#/analytics?${next}`;
+}
 export function healthSectionHref(scope: OverviewScope, target: string, section: HealthSection, configurationRunId?: string): string {
   const selection = section === "summary" && target.toLowerCase() === scope.target.toLowerCase() && configurationRunId && guid.test(configurationRunId)
     ? `&configurationRun=${configurationRunId.toLowerCase()}` : "";

@@ -1,6 +1,6 @@
 import { apiFetch } from "../../apiClient.ts";
 import { parseSqlBaselinePage, type SqlBaselinePage } from "./sqlBaselineModel.ts";
-import { parseAnalyticsSurfacePage, parseBaselines, parseComparison, parseForecasts, parseIncidentsSurfacePage, parseMetricSeries, parseMutationReceipt, parseRetentionExecution, parseRetentionPolicy, parseRetentionPreview, parseRollupPage } from "./analyticsParser.ts";
+import { analyticsUtcTicks, decodeAnalyticsSurfaceCursor, sameAnalyticsUtc, parseAnalyticsSurfacePage, parseBaselines, parseComparison, parseForecasts, parseIncidentsSurfacePage, parseMetricSeries, parseMutationReceipt, parseRetentionExecution, parseRetentionPolicy, parseRetentionPreview, parseRollupPage } from "./analyticsParser.ts";
 import type { AnalyticsComparison, AnalyticsMutationReceipt, AnalyticsSurface, AnalyticsSurfacePage, MetricSeries, RetentionExecutionResult, RetentionPolicyResult, RetentionPreview, RollupPage } from "./analyticsTypes";
 
 export class AnalyticsRequestError extends Error { public readonly status: number; public constructor(status: number, message: string) { super(message); this.name = "AnalyticsRequestError"; this.status = status; } }
@@ -11,7 +11,34 @@ async function readJson(path: string, signal: AbortSignal, init?: RequestInit): 
 function query(params: Record<string, string | number | undefined>): string { const result = new URLSearchParams(); for (const [key, value] of Object.entries(params)) if (value !== undefined) result.set(key, String(value)); return result.toString(); }
 export async function getMetricSeries(targetId: string, metric: string, signal: AbortSignal): Promise<MetricSeries> { const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/series?${query({ metricKey: metric, limit: 1000 })}`, signal); return parseMetricSeries(result, targetId); }
 export async function getRollups(targetId: string, metric: string, signal: AbortSignal, cursor?: string): Promise<RollupPage> { const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/rollups?${query({ metricKey: metric, interval: "hour", limit: 200, cursor })}`, signal); return parseRollupPage(result, targetId); }
-export async function getAnalyticsSurface<T = Record<string, unknown>>(targetId: string, surface: AnalyticsSurface, signal: AbortSignal, options: { fromUtc?: string; toUtc?: string; limit?: number; cursor?: string; expectedTargetRevision?: number } = {}): Promise<AnalyticsSurfacePage<T>> { const pathSurface = surface === "backfill" ? "backfill" : surface; const limit = options.limit ?? analyticsSurfaceLimits[surface]; const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/${pathSurface}?${query({ fromUtc: options.fromUtc, toUtc: options.toUtc, limit, cursor: options.cursor })}`, signal); return surface === "incidents" ? parseIncidentsSurfacePage<T>(result, targetId, options.expectedTargetRevision) : parseAnalyticsSurfacePage<T>(result, surface, targetId, options.expectedTargetRevision); }
+export async function getAnalyticsSurface<T = Record<string, unknown>>(targetId: string, surface: AnalyticsSurface, signal: AbortSignal, options: { fromUtc?: string; toUtc?: string; limit?: number; cursor?: string; expectedTargetRevision?: number } = {}): Promise<AnalyticsSurfacePage<T>> {
+  const limit = options.limit ?? analyticsSurfaceLimits[surface];
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > analyticsSurfaceLimits[surface]) throw new Error("Invalid analytics surface limit.");
+  if ((options.fromUtc === undefined) !== (options.toUtc === undefined)) throw new Error("Both analytics window bounds are required.");
+  if (options.fromUtc !== undefined && options.toUtc !== undefined) {
+    const duration = analyticsUtcTicks(options.toUtc) - analyticsUtcTicks(options.fromUtc);
+    if (duration <= 0n || duration > BigInt(surface === "incidents" ? 31 : 7) * 864000000000n) throw new Error("Invalid analytics surface window.");
+  }
+  if (options.cursor !== undefined) {
+    if (surface === "incidents") throw new Error("The incidents route does not support continuation.");
+    const cursor = decodeAnalyticsSurfaceCursor(options.cursor);
+    if (cursor.surface !== surface || cursor.targetId.toLowerCase() !== targetId.toLowerCase()
+      || options.expectedTargetRevision !== undefined && cursor.targetRevision !== options.expectedTargetRevision
+      || options.fromUtc === undefined || options.toUtc === undefined
+      || !sameAnalyticsUtc(cursor.fromUtc, options.fromUtc) || !sameAnalyticsUtc(cursor.toUtc, options.toUtc)) throw new Error("Analytics continuation does not match its request.");
+  }
+  const result = await readJson(`/api/v1/observation-targets/${targetPath(targetId)}/analytics/${surface}?${query({ fromUtc: options.fromUtc, toUtc: options.toUtc, limit, cursor: options.cursor })}`, signal);
+  const page = surface === "incidents" ? parseIncidentsSurfacePage<T>(result, targetId, options.expectedTargetRevision) : parseAnalyticsSurfacePage<T>(result, surface, targetId, options.expectedTargetRevision);
+  if (options.fromUtc !== undefined && options.toUtc !== undefined && (!sameAnalyticsUtc(page.fromUtc, options.fromUtc) || !sameAnalyticsUtc(page.toUtc, options.toUtc))) throw new Error("Analytics response window does not match its request.");
+  if (options.cursor !== undefined) {
+    const continuation = decodeAnalyticsSurfaceCursor(options.cursor);
+    if (page.targetRevision !== continuation.targetRevision || page.generation !== continuation.generation
+      || !page.snapshotUtc || !page.cutoffUtc || !sameAnalyticsUtc(page.snapshotUtc, continuation.snapshotUtc)
+      || !sameAnalyticsUtc(page.cutoffUtc, continuation.sourceCutoffUtc)) throw new Error("Analytics continuation receipt changed.");
+  }
+  if (page.items.length > limit || page.nextCursor !== null && page.items.length !== limit) throw new Error("Invalid analytics surface page size.");
+  return page;
+}
 export const getAnalyticsPage = getAnalyticsSurface;
 export const getJobs = <T = Record<string, unknown>>(targetId: string, signal: AbortSignal, options?: Parameters<typeof getAnalyticsSurface>[3]) => getAnalyticsSurface<T>(targetId, "jobs", signal, options);
 export const getBackfill = <T = Record<string, unknown>>(targetId: string, signal: AbortSignal, options?: Parameters<typeof getAnalyticsSurface>[3]) => getAnalyticsSurface<T>(targetId, "backfill", signal, options);
