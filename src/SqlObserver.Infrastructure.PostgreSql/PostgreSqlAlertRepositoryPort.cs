@@ -340,10 +340,10 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlert
                 ?? throw new InvalidOperationException("Repository snapshot was not returned.");
             snapshot = PostgreSqlRuntimeSupport.ConvertUtcTimestamp(repositorySnapshot);
         }
-        await using var cmd = new NpgsqlCommand("SELECT alert_id,rule_id,target_id,rule_name,state,first_observed_at,fired_at,acknowledged_at,value,reason,delivery_suppressed FROM reporting.list_active_alerts(@target_id,@max_results,@after_fired,@after_alert_id,@snapshot_utc);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        await using var cmd = new NpgsqlCommand("SELECT alert_id,rule_id,target_id,rule_name,state,first_observed_at,fired_at,acknowledged_at,value,reason,delivery_suppressed,episode_id,revision,snoozed_until,snooze_reason,snoozed_by,snoozed_at,snoozed FROM reporting.list_active_alerts_v2(@target_id,@max_results,@after_fired,@after_alert_id,@snapshot_utc);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("max_results", limit); cmd.Parameters.AddWithValue("after_fired", (object?)cursor?.SortAtUtc ?? DBNull.Value); cmd.Parameters.AddWithValue("after_alert_id", (object?)cursor?.AlertId ?? DBNull.Value); cmd.Parameters.AddWithValue("snapshot_utc", snapshot);
         var rows = new List<AlertActiveDto>(limit + 1); await using NpgsqlDataReader r = await cmd.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
-        while (await r.ReadAsync(deadline.Token).ConfigureAwait(false)) rows.Add(new AlertActiveDto(r.GetGuid(0), r.GetGuid(1), new MonitoredInstanceId(r.GetGuid(2)), r.GetString(3), (AlertState)r.GetInt32(4), r.GetFieldValue<DateTimeOffset>(5), r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6), r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7), r.IsDBNull(8) ? null : r.GetDouble(8), r.IsDBNull(9) ? null : r.GetString(9), r.GetBoolean(10)));
+        while (await r.ReadAsync(deadline.Token).ConfigureAwait(false)) rows.Add(WithSnoozeMetadata(new AlertActiveDto(r.GetGuid(0), r.GetGuid(1), new MonitoredInstanceId(r.GetGuid(2)), r.GetString(3), (AlertState)r.GetInt32(4), r.GetFieldValue<DateTimeOffset>(5), r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6), r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7), r.IsDBNull(8) ? null : r.GetDouble(8), r.IsDBNull(9) ? null : r.GetString(9), r.GetBoolean(10)), r, 11));
         await r.DisposeAsync().ConfigureAwait(false);
         bool more = rows.Count > limit; if (more) rows.RemoveAt(rows.Count - 1);
         AlertActiveCursor? next = more && rows.Count > 0 ? new AlertActiveCursor(targetId, rows[^1].FiredUtc ?? rows[^1].FirstObservedUtc, rows[^1].AlertId, snapshot) : null;
@@ -372,8 +372,9 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlert
         }
         await using var command = new NpgsqlCommand("""
             SELECT alert_id,rule_id,target_id,target_name,rule_name,state,first_observed_at,
-                   fired_at,acknowledged_at,value,reason,delivery_suppressed
-            FROM reporting.list_fleet_active_alerts(@target_ids,@all_targets,@max_results,
+                   fired_at,acknowledged_at,value,reason,delivery_suppressed,
+                   episode_id,revision,snoozed_until,snooze_reason,snoozed_by,snoozed_at,snoozed
+            FROM reporting.list_fleet_active_alerts_v2(@target_ids,@all_targets,@max_results,
                  @after_at,@after_target,@after_alert_id,@snapshot_utc);
             """, connection, transaction)
         {
@@ -397,7 +398,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlert
                 reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
                 reader.IsDBNull(9) ? null : reader.GetDouble(9),
                 reader.IsDBNull(10) ? null : reader.GetString(10), reader.GetBoolean(11));
-            rows.Add(new FleetAlertItem(alert, reader.GetString(3)));
+            rows.Add(new FleetAlertItem(WithSnoozeMetadata(alert, reader, 12), reader.GetString(3)));
         }
         await reader.DisposeAsync().ConfigureAwait(false);
         bool more = rows.Count > limit;
@@ -418,6 +419,82 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlert
     public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(MaintenanceWriteRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.upsert_maintenance(@window,@idempotency_key,@actor_sid,@correlation_id)", request.Audit, request.IdempotencyKey, JsonSerializer.Serialize(new { Action = request.Audit.Action.ToString(), Id = request.Window.Id, TargetId = request.Window.TargetId.Value, request.Window.StartsAtUtc, request.Window.EndsAtUtc, request.Window.Reason, request.ExpectedRevision, request.RequestDigest }), request.Timeout, cancellationToken);
     public ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(MaintenanceCancellationRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.cancel_maintenance(@window_id,@target_id,@idempotency_key,@actor_sid,@correlation_id,@expected_revision,@request_digest)", request.Audit, request.IdempotencyKey, new MaintenanceCancellationPayload(request.WindowId, request.ExpectedRevision, request.RequestDigest), request.Timeout, cancellationToken);
     public ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AlertAcknowledgeRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.acknowledge(@alert_id,@target_id,@idempotency_key,@actor_sid,@correlation_id,@expected_revision,@expected_episode_id,@request_digest)", request.Audit, request.IdempotencyKey, new AcknowledgePayload(request.AlertId, request.ExpectedRevision, request.RequestDigest, request.ExpectedEpisodeId), request.Timeout, cancellationToken);
+    public async ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("An alert identity is required.", nameof(alertId));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT target_id,alert_id,episode_id,revision,state,server_now,ends_at,reason,actor_sid,applied_at,snoozed,delivery_suppressed FROM alerting.get_episode_snooze(@target_id,@alert_id);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            command.Parameters.AddWithValue("target_id", targetId.Value);
+            command.Parameters.AddWithValue("alert_id", alertId);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            AlertSnoozeStatus? status = await reader.ReadAsync(deadline.Token).ConfigureAwait(false)
+                ? new AlertSnoozeStatus(new MonitoredInstanceId(reader.GetGuid(0)), reader.GetGuid(1), reader.GetGuid(2),
+                    reader.GetInt64(3), (AlertState)reader.GetInt16(4), reader.GetFieldValue<DateTimeOffset>(5),
+                    reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetString(8),
+                    reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9), reader.GetBoolean(10), reader.GetBoolean(11))
+                : null;
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return status;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    public async ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AlertSnoozeWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, request.Audit.TargetId.Value, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT audit_id,recorded_at,revision,ends_at,applied_at FROM alerting.set_episode_snooze(@target_id,@alert_id,@episode_id,@revision,@ends_at,@reason,@idempotency_key,@actor_sid,@correlation_id,@request_digest);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+            command.Parameters.AddWithValue("target_id", request.Audit.TargetId.Value);
+            command.Parameters.AddWithValue("alert_id", request.AlertId);
+            command.Parameters.AddWithValue("episode_id", request.ExpectedEpisodeId);
+            command.Parameters.AddWithValue("revision", request.ExpectedRevision);
+            command.Parameters.Add("ends_at", NpgsqlDbType.TimestampTz).Value = (object?)request.EndsAtUtc ?? DBNull.Value;
+            command.Parameters.AddWithValue("reason", request.Reason);
+            command.Parameters.AddWithValue("idempotency_key", request.IdempotencyKey);
+            command.Parameters.AddWithValue("actor_sid", request.Audit.ActorSid.Value);
+            command.Parameters.AddWithValue("correlation_id", request.Audit.CorrelationId.Value);
+            command.Parameters.AddWithValue("request_digest", request.RequestDigest);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            if (!await reader.ReadAsync(deadline.Token).ConfigureAwait(false)) throw new InvalidDataException("Alert snooze returned no immutable receipt.");
+            var receipt = new AlertSnoozeWriteReceipt(
+                new AdministrativeAuditReceipt(new AdministrativeAuditId(reader.GetGuid(0)), reader.GetFieldValue<DateTimeOffset>(1)),
+                reader.GetInt64(2), reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3), reader.GetFieldValue<DateTimeOffset>(4));
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return receipt;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    private static AlertActiveDto WithSnoozeMetadata(AlertActiveDto alert, NpgsqlDataReader reader, int start) => alert with
+    {
+        EpisodeId = reader.IsDBNull(start) ? null : reader.GetGuid(start),
+        // Legacy active rows may have no episode identity. They remain readable
+        // but cannot supply the paired precondition required for a snooze write.
+        Revision = reader.IsDBNull(start) ? null : reader.GetInt64(start + 1),
+        SnoozedUntilUtc = reader.IsDBNull(start + 2) ? null : reader.GetFieldValue<DateTimeOffset>(start + 2),
+        SnoozeReason = reader.IsDBNull(start + 3) ? null : reader.GetString(start + 3),
+        SnoozedBy = reader.IsDBNull(start + 4) ? null : reader.GetString(start + 4),
+        SnoozedAtUtc = reader.IsDBNull(start + 5) ? null : reader.GetFieldValue<DateTimeOffset>(start + 5),
+        Snoozed = reader.GetBoolean(start + 6),
+    };
     public ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AlertDestinationWriteRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.upsert_destination(@destination_id,@kind,@configuration_reference,@enabled,@idempotency_key,@actor_sid,@correlation_id,@expected_revision,@request_digest,@approve,@approval_revision,@approval_scope,@approval_digest,@action)", request.Audit, request.IdempotencyKey, new DestinationPayload(request.DestinationId, request.Kind, request.ConfigurationReference, request.Enabled, request.ExpectedRevision, request.RequestDigest, request.Approve, request.Approval, request.Action switch { AdministrativeAuditAction.ConfigureAlertDestination => "alert.destination.configure", AdministrativeAuditAction.ApproveAlertDestination => "alert.destination.approve", AdministrativeAuditAction.UpdateAlertDestination => "alert.destination.update", AdministrativeAuditAction.RetireAlertDestination => "alert.destination.retire", _ => throw new InvalidDataException("Destination action is not allowlisted.") }), request.Timeout, cancellationToken);
     public ValueTask<AdministrativeAuditReceipt> CancelDeliveryAdminAsync(AlertDeliveryAdminCancellationRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.cancel_delivery_admin(@delivery_id,@target_id,@idempotency_key,@actor_sid,@correlation_id,@reason,@request_digest)", request.Audit, request.IdempotencyKey, new DeliveryAdminCancellationPayload(request.DeliveryId, request.Reason, request.RequestDigest), request.Timeout, cancellationToken);
     public async ValueTask<IReadOnlyList<AlertDeliveryWork>> ClaimDueDeliveriesAsync(WorkerLeaseIdentity lease, int limit, RepositoryCallTimeout timeout, CancellationToken cancellationToken)

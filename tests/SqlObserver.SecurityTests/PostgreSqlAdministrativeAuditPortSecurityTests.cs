@@ -68,6 +68,8 @@ public sealed class PostgreSqlAdministrativeAuditPortSecurityTests
     [InlineData(AdministrativeAuditAction.UpdateMaintenanceWindow)]
     [InlineData(AdministrativeAuditAction.RetireMaintenanceWindow)]
     [InlineData(AdministrativeAuditAction.AcknowledgeAlert)]
+    [InlineData(AdministrativeAuditAction.SnoozeAlert)]
+    [InlineData(AdministrativeAuditAction.UnsnoozeAlert)]
     [InlineData(AdministrativeAuditAction.ConfigureAlertDestination)]
     [InlineData(AdministrativeAuditAction.UpdateAlertDestination)]
     [InlineData(AdministrativeAuditAction.RetireAlertDestination)]

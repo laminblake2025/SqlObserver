@@ -59,7 +59,7 @@ function heldResponse(response) {
 }
 
 test.beforeEach(async ({ page }) => {
-  const context = { unexpected: [], requests: [], handler: undefined };
+  const context = { unexpected: [], requests: [], notificationReads: [], handler: undefined };
   contexts.set(page, context);
   page.on('pageerror', error => context.unexpected.push(`Page error: ${error.message}`));
   await page.route('**/*', async route => {
@@ -68,6 +68,14 @@ test.beforeEach(async ({ page }) => {
       context.unexpected.push(`External request: ${url.href}`);
       await route.abort();
     } else if (/^\/api(?:\/|$)/.test(url.pathname)) {
+      const notification = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/snooze$/u.exec(url.pathname);
+      // Track new notification metadata independently of the existing inbox/acknowledgement assertions.
+      if (notification && route.request().method() === 'GET' && [target, otherTarget].includes(notification[1]) && !url.search) {
+        context.notificationReads.push(route.request());
+        await json(route, { targetId: notification[1], alertId: notification[2], episodeId: notification[2], revision: 1,
+          state: 'firing', serverNowUtc: snapshotUtc, snoozedUntilUtc: null, snoozeReason: null,
+          snoozedBy: null, snoozedAtUtc: null, snoozed: false, deliverySuppressed: false }); return;
+      }
       context.requests.push(route.request());
       if (route.request().method() === 'GET' && url.pathname === '/api/v1/me' && [target, otherTarget].includes(url.searchParams.get('targetId'))) {
         await json(route, { active: true, targetId: url.searchParams.get('targetId'), grantedRoles: ['Viewer'], targetRoles: ['Viewer'], allTargetRoles: [] });
@@ -114,7 +122,7 @@ test('acknowledge is available only to an operator selecting a firing alert', as
     // A URL selection resets the production filter to active. Terminal states
     // remain an explicit hidden selection until the user asks to reveal it.
     if (state === 'normal' || state === 'resolved') await page.getByRole('button', { name: 'Show selected alert' }).click();
-    await expect(detail(page, `${state} rule`).getByRole('status')).toContainText(state);
+    await expect(detail(page, `${state} rule`).locator('.evidence-status')).toContainText(state);
     await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toHaveCount(0);
   }
   await page.getByRole('button', { name: 'firing rule', exact: true }).click();
@@ -138,7 +146,7 @@ test('failed acknowledgement retries the same operation and a bodyless 204 recor
   await page.getByLabel('Operator permission').check();
   await page.getByRole('button', { name: 'Acknowledge', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement completion is uncertain.' })).toBeVisible();
-  await expect(detail(page).getByRole('status')).toContainText('firing');
+  await expect(detail(page).locator('.evidence-status')).toContainText('firing');
   await page.getByRole('button', { name: 'Retry acknowledgement', exact: true }).click();
   await success.started;
   await expect(page.getByRole('button', { name: 'Acknowledging…', exact: true })).toBeDisabled();
@@ -147,7 +155,7 @@ test('failed acknowledgement retries the same operation and a bodyless 204 recor
   expect(Object.keys(operations[0])).toEqual(['operationId']);
   expect(operations[0].operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   await success.release();
-  await expect(detail(page).getByRole('status')).toContainText('acknowledged');
+  await expect(detail(page).locator('.evidence-status')).toContainText('acknowledged');
   await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement recorded. The received row is marked locally' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toHaveCount(0);
   await expect(detail(page)).toContainText('Not returned by this alert state');
@@ -162,7 +170,7 @@ test('a selected resolved or filtered alert remains explicit until the user clea
   await expect(page.getByText('The selected alert is hidden by the current filters.', { exact: false })).toBeVisible();
   await expect(detail(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Show selected alert' }).click();
-  await expect(detail(page, 'Resolved health').getByRole('status')).toContainText('resolved');
+  await expect(detail(page, 'Resolved health').locator('.evidence-status')).toContainText('resolved');
   await page.getByLabel('Filter by rule identifier').fill('no-such-rule');
   await expect(detail(page, 'Resolved health')).toHaveCount(0);
   await expect(page.getByText('No alert rows match the loaded target-scoped evidence.', { exact: true })).toBeVisible();
@@ -269,7 +277,7 @@ test('changing server context aborts pending evidence and excludes its late resp
   await expect(detail(page, 'Reporting memory')).toContainText('Reporting SQL');
   await old.release();
   await expect(page.getByRole('button', { name: 'CPU high', exact: true })).toHaveCount(0);
-  await expect(detail(page, 'Reporting memory').getByRole('status')).toContainText('firing');
+  await expect(detail(page, 'Reporting memory').locator('.evidence-status')).toContainText('firing');
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(contexts.get(page).requests.filter(request => new URL(request.url()).pathname !== '/api/v1/me')).toHaveLength(2);
   expect(contexts.get(page).requests.filter(request => new URL(request.url()).pathname === '/api/v1/me')).toHaveLength(1);
@@ -293,10 +301,10 @@ test('changing the selected alert aborts acknowledgement without applying its la
   await cancelled;
   await expect(detail(page, 'Memory high').getByRole('button', { name: 'Acknowledge', exact: true })).toBeEnabled();
   await old.release();
-  await expect(detail(page, 'Memory high').getByRole('status')).toContainText('firing');
+  await expect(detail(page, 'Memory high').locator('.evidence-status')).toContainText('firing');
   await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement recorded.' })).toHaveCount(0);
   await page.getByRole('button', { name: 'CPU high', exact: true }).click();
-  await expect(detail(page).getByRole('status')).toContainText('firing');
+  await expect(detail(page).locator('.evidence-status')).toContainText('firing');
   await expect(detail(page).getByRole('button', { name: 'Acknowledge', exact: true })).toBeEnabled();
   expect(contexts.get(page).requests.map(request => request.method())).toEqual(['GET', 'POST']);
 });
@@ -306,7 +314,7 @@ for (const fixture of [
     firedUtc: '2026-08-24T09:00:00.123456Z', at: '2026-08-24T09:00:00.123456Z',
     from: '2026-08-24T08:30:00.123Z', to: '2026-08-24T09:30:00.123Z' },
   { name: 'first observed timestamp when fired is missing', firstObservedUtc: '2026-08-24T09:00:00.654321+00:00',
-    firedUtc: null, at: '2026-08-24T09:00:00.654321+00:00',
+    firedUtc: null, at: '2026-08-24T09:00:00.654321Z',
     from: '2026-08-24T08:30:00.654Z', to: '2026-08-24T09:30:00.654Z' },
 ]) test(`Open activity navigates to the ${fixture.name} with target and database context`, async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-08-24T12:00:00Z'));
@@ -324,8 +332,11 @@ for (const fixture of [
     from: fixture.from, to: fixture.to, at: fixture.at });
   expect(params.getAll('at')).toEqual([fixture.at]);
   expect(params.has('event')).toBe(false);
+  const context = contexts.get(page);
   await link.focus(); await expect(link).toBeFocused(); await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => location.hash)).toBe(href);
-  expect(contexts.get(page).requests.filter(request => new URL(request.url()).pathname !== '/api/v1/me').map(request => request.method())).toEqual(['GET']);
+  await expect(page.getByRole('status').filter({ hasText: 'Activity route selected' })).toBeVisible();
+  expect(context.requests.filter(request => isRead({ request: () => request }))).toHaveLength(1);
+  expect([...context.requests, ...context.notificationReads].every(request => request.method() === 'GET')).toBe(true);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

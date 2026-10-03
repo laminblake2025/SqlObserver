@@ -22,6 +22,9 @@ public static class AlertEndpoints
         group.MapGet("/maintenance", GetMaintenanceWindowsAsync);
         group.MapGet("/destinations", GetDestinationsAsync);
         group.MapPost("/{alertId:guid}/acknowledge", AcknowledgeAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
+        group.MapGet("/{alertId:guid}/snooze", GetSnoozeAsync);
+        group.MapPost("/{alertId:guid}/snooze", SnoozeAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
+        group.MapPost("/{alertId:guid}/unsnooze", UnsnoozeAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPost("/rules", CreateRuleAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPut("/rules/{ruleId:guid}", UpdateRuleAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPost("/rules/{ruleId:guid}/disable", DisableRuleAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
@@ -44,7 +47,7 @@ public static class AlertEndpoints
             AlertActiveCursor? after = DecodeCursor(cursor, instanceId);
             AlertActivePage result = await service.ListActivePageAsync(resolver.Resolve(context.User), new MonitoredInstanceId(instanceId), limit, after, cancellationToken).ConfigureAwait(false);
             string? nextCursor = result.NextCursor is null ? null : EncodeCursor(result.NextCursor);
-            return Results.Ok(new { targetId = instanceId, snapshotUtc = result.SnapshotUtc, items = result.Items.Select(static row => new { alertId = row.AlertId, ruleId = row.RuleId, ruleName = row.RuleName, state = row.State.ToString().ToLowerInvariant(), firstObservedUtc = row.FirstObservedUtc, firedUtc = row.FiredUtc, acknowledgedUtc = row.AcknowledgedUtc, value = row.Value, reason = row.Reason, deliverySuppressed = row.DeliverySuppressed }), nextCursor });
+            return Results.Ok(new { targetId = instanceId, snapshotUtc = result.SnapshotUtc, items = result.Items.Select(static row => new { alertId = row.AlertId, ruleId = row.RuleId, ruleName = row.RuleName, state = row.State.ToString().ToLowerInvariant(), firstObservedUtc = row.FirstObservedUtc, firedUtc = row.FiredUtc, acknowledgedUtc = row.AcknowledgedUtc, value = row.Value, reason = row.Reason, deliverySuppressed = row.DeliverySuppressed, episodeId = row.EpisodeId, revision = row.Revision, snoozedUntilUtc = row.SnoozedUntilUtc, snoozeReason = row.SnoozeReason, snoozedBy = row.SnoozedBy, snoozedAtUtc = row.SnoozedAtUtc, snoozed = row.Snoozed }), nextCursor });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }
@@ -71,6 +74,10 @@ public static class AlertEndpoints
                     acknowledgedUtc = item.Alert.AcknowledgedUtc,
                     value = item.Alert.Value, reason = item.Alert.Reason,
                     deliverySuppressed = item.Alert.DeliverySuppressed,
+                    episodeId = item.Alert.EpisodeId, revision = item.Alert.Revision,
+                    snoozedUntilUtc = item.Alert.SnoozedUntilUtc, snoozeReason = item.Alert.SnoozeReason,
+                    snoozedBy = item.Alert.SnoozedBy, snoozedAtUtc = item.Alert.SnoozedAtUtc,
+                    snoozed = item.Alert.Snoozed,
                 }),
                 nextCursor = page.NextCursor is null ? null : EncodeFleetCursor(page.NextCursor),
             });
@@ -300,6 +307,8 @@ public static class AlertEndpoints
     }
 
     private sealed record AcknowledgeBody(string OperationId, string? CorrelationId, long? ExpectedRevision = null, string? RequestDigest = null, Guid? ExpectedEpisodeId = null);
+    private sealed record SnoozeBody(string OperationId, string ExpectedEpisodeId, long ExpectedRevision,
+        string Reason, string? EndsAtUtc = null, string? CorrelationId = null);
     private sealed record RuleBody(string RuleId, string Name, string Kind, string? MetricId, string Comparison, double Threshold, double Hysteresis, int ConfirmationCount, int ConfirmationSeconds, int EvaluationSeconds, bool Enabled, string OperationId, string? CorrelationId, long? ExpectedRevision = null, string? RequestDigest = null, int? ClearConfirmationCount = null);
     private sealed record MaintenanceBody(string WindowId, string StartsAtUtc, string EndsAtUtc, string Reason, string OperationId, string? CorrelationId, long? ExpectedRevision = null, string? RequestDigest = null);
     private sealed record MaintenanceCancelBody(string OperationId, string? CorrelationId, long? ExpectedRevision = null, string? RequestDigest = null);
@@ -359,6 +368,73 @@ public static class AlertEndpoints
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static async Task<IResult> GetSnoozeAsync(HttpContext context, Guid instanceId, Guid alertId,
+        IAlertQueryService service, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken)
+    {
+        if (instanceId == Guid.Empty || alertId == Guid.Empty) return Results.BadRequest();
+        try
+        {
+            AlertSnoozeStatus? result = await service.GetSnoozeAsync(resolver.Resolve(context.User),
+                new MonitoredInstanceId(instanceId), alertId, cancellationToken).ConfigureAwait(false);
+            return result is null ? Results.NotFound() : Results.Ok(new
+            {
+                targetId = result.TargetId.Value, alertId = result.AlertId, episodeId = result.EpisodeId,
+                revision = result.Revision, state = result.State.ToString().ToLowerInvariant(),
+                serverNowUtc = result.ServerNowUtc, snoozedUntilUtc = result.SnoozedUntilUtc,
+                snoozeReason = result.SnoozeReason, snoozedBy = result.SnoozedBy, snoozedAtUtc = result.SnoozedAtUtc,
+                snoozed = result.Snoozed, deliverySuppressed = result.DeliverySuppressed,
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static Task<IResult> SnoozeAsync(HttpContext context, Guid instanceId, Guid alertId, SnoozeBody body,
+        IAlertAdministrationService service, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken) =>
+        WriteSnoozeAsync(context, instanceId, alertId, body, false, service, resolver, cancellationToken);
+
+    private static Task<IResult> UnsnoozeAsync(HttpContext context, Guid instanceId, Guid alertId, SnoozeBody body,
+        IAlertAdministrationService service, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken) =>
+        WriteSnoozeAsync(context, instanceId, alertId, body, true, service, resolver, cancellationToken);
+
+    private static async Task<IResult> WriteSnoozeAsync(HttpContext context, Guid instanceId, Guid alertId,
+        SnoozeBody body, bool clear, IAlertAdministrationService service, WindowsGroupRoleResolver resolver,
+        CancellationToken cancellationToken)
+    {
+        if (instanceId == Guid.Empty || alertId == Guid.Empty ||
+            !AlertIdentifier.TryParseRfc4122(body.OperationId, out Guid operationId) ||
+            !AlertIdentifier.TryParseRfc4122(body.ExpectedEpisodeId, out Guid episodeId) || body.ExpectedRevision <= 0 ||
+            body.CorrelationId is not null && !AlertIdentifier.TryParseRfc4122(body.CorrelationId, out _))
+            return Results.BadRequest();
+        DateTimeOffset? end = null;
+        if (clear ? body.EndsAtUtc is not null : !TrySnoozeUtc(body.EndsAtUtc, out _)) return Results.BadRequest();
+        if (!clear) { _ = TrySnoozeUtc(body.EndsAtUtc, out DateTimeOffset parsed); end = parsed; }
+        var authorization = resolver.Resolve(context.User);
+        try
+        {
+            var audit = new AdministrativeAuditEnvelope(authorization.ActorSid,
+                new AuditCorrelationId(ParseOptionalCorrelation(body.CorrelationId)),
+                clear ? AdministrativeAuditAction.UnsnoozeAlert : AdministrativeAuditAction.SnoozeAlert,
+                new MonitoredInstanceId(instanceId));
+            var request = new AlertSnoozeWriteRequest(alertId, episodeId, body.ExpectedRevision, end,
+                body.Reason, body.OperationId, audit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)));
+            AlertSnoozeWriteReceipt result = await service.SetSnoozeAsync(authorization, request, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new { operationId, auditId = result.Audit.AuditId.Value,
+                recordedAtUtc = result.Audit.RecordedAtUtc, revision = result.Revision,
+                endsAtUtc = result.EndsAtUtc, appliedAtUtc = result.AppliedAtUtc });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static bool TrySnoozeUtc(string? value, out DateTimeOffset timestamp)
+    {
+        timestamp = default;
+        return value is not null && System.Text.RegularExpressions.Regex.IsMatch(value,
+            @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant) && TryUtc(value, out timestamp);
     }
 
     private static async Task<IResult> CancelDeliveryAsync(HttpContext context, Guid instanceId, Guid deliveryId, DeliveryCancelBody body, IAlertAdministrationService service, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken)

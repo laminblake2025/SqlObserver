@@ -15,6 +15,7 @@ import type { FleetAlert } from "./alertTypes";
 import { fleetAlertKey } from "./fleetAlertJump";
 import { alertJumpHref, targetAlertHref, type AlertSelection } from "../../components/commandPaletteModel";
 import { alertReasonSummary } from "./alertRuleSignals.ts";
+import { AlertSnoozeControls } from "./AlertSnoozeControls.tsx";
 
 export function FleetAlertsPage({ refresh, selection }: { readonly refresh: number; readonly selection?: AlertSelection }) {
   const { mode } = useTimeDisplay();
@@ -31,6 +32,7 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
   const [search, setSearch] = useState("");
   const [grouping, setGrouping] = useState<FleetAlertGrouping>("server");
   const [accessResult, setAccessResult] = useState<{ readonly key: string; readonly allowed: boolean }>();
+  const [notificationMutation, setNotificationMutation] = useState<{ readonly key: string; readonly busy: boolean }>();
   useEffect(() => { if (requestedKey) { setFilter("active"); setSearch(""); } }, [requestedKey]);
   const visible = useMemo(() => items.filter(item => alertMatchesFilter(filter, item.state) &&
     (search === "" || `${item.targetName} ${item.ruleName} ${item.targetId}`.toLowerCase().includes(search.toLowerCase()))), [filter, items, search]);
@@ -53,6 +55,8 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
   const acknowledgement = useAlertAcknowledgement(context, inbox.denial, selected, canAcknowledge, inbox.hold, inbox.deny, inbox.acknowledged);
   const message = acknowledgement.message;
   const busy = acknowledgement.busy;
+  const notificationKey = JSON.stringify([context, inbox.denial, key(selected), selected?.firstObservedUtc, selected?.episodeId]);
+  const notificationBusy = notificationMutation?.key === notificationKey && notificationMutation.busy;
   const selectAlert = (item: FleetAlert) => { location.hash = alertJumpHref(scope, item); };
   return <section className="alerts-screen fleet-alerts-screen" aria-labelledby="fleet-alerts-heading">
     <div className="screen-intro"><div><p className="eyebrow">Alerts · fleet</p><h2 id="fleet-alerts-heading">Alert inbox</h2><p>Current firing and acknowledged alerts across servers you can read. Select one to investigate or acknowledge it.</p></div></div>
@@ -92,21 +96,26 @@ export function FleetAlertsPage({ refresh, selection }: { readonly refresh: numb
           </tbody>)}
         </table></div>
         {!loading && !error && visible.length === 0 ? <p className="empty-state">No alerts match the loaded fleet evidence.</p> : null}
-        <AlertTriageControls inbox={inbox} label="inbox" onLatest={() => { acknowledgement.cancel(); inbox.latest(); }} />
+        <AlertTriageControls inbox={inbox} label="inbox" mutationBusy={notificationBusy}
+          onLatest={() => { if (notificationBusy) return; acknowledgement.cancel(); inbox.latest(); }} />
       </section>
       {selected ? <DetailPane title={selected.ruleName} subtitle={`${selected.targetName} · alert ${selected.alertId}`}
         actions={selected.state === "firing" && canAcknowledge ? <button className="primary" type="button"
-          disabled={busy} onClick={acknowledgement.acknowledge}>{busy ? "Acknowledging…" : "Acknowledge"}</button> : undefined}>
-        <EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Delivery suppressed" : "Delivery enabled"}
+          disabled={busy || notificationBusy} onClick={() => { if (!notificationBusy) acknowledgement.acknowledge(); }}>{busy ? "Acknowledging…" : "Acknowledge"}</button> : undefined}>
+        <EvidenceStatus label={selected.state} detail={selected.deliverySuppressed ? "Received row: delivery suppressed" : "Received row: delivery enabled"}
           tone={selected.state === "firing" ? "critical" : "warning"} />
         <div className="alert-triage-actions">
           {busy && <button type="button" onClick={acknowledgement.cancel}>Cancel acknowledgement</button>}
-          {acknowledgement.canRetry && <button type="button" onClick={acknowledgement.retry}>Retry acknowledgement</button>}
+          {acknowledgement.canRetry && <button type="button" disabled={notificationBusy}
+            onClick={() => { if (!notificationBusy) acknowledgement.retry(); }}>Retry acknowledgement</button>}
         </div>
         <p className="detail-note">{alertReasonSummary(selected.reason, selected.value) ?? "No reason was returned for this alert."}</p>
         <p>First observed: {formatTime(selected.firstObservedUtc)}</p>
         <p>Fired: {formatTime(selected.firedUtc)}</p>
         <p>Acknowledged: {formatTime(selected.acknowledgedUtc)}</p>
+        <AlertSnoozeControls key={notificationKey} selected={selected} allowed={canAcknowledge} otherMutationBusy={busy}
+          hold={inbox.hold} deny={inbox.deny} onBusyChange={value => setNotificationMutation(previous =>
+            value || previous?.key === notificationKey ? { key: notificationKey, busy: value } : previous)} />
         <a href={targetAlertHref(scope, selected.targetId, selected.alertId)}>Open server alerts →</a>
         <a href={alertActivityHref(selected, scope)}>Investigate at alert time →</a>
         {selected.state === "firing" && !canAcknowledge ? <p className="detail-note">

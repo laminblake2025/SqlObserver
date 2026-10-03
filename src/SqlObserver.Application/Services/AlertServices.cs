@@ -14,6 +14,19 @@ public sealed class AlertQueryService(IAlertRepositoryPort repository) : IAlertQ
         ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor,
     ];
 
+    public async ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(AuthorizationContext authorization,
+        MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("Alert identity is required.", nameof(alertId));
+        authorization.RequireAny(targetId, ReadRoles);
+        AlertSnoozeStatus? result = await repository.GetSnoozeAsync(targetId, alertId,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken).ConfigureAwait(false);
+        if (result is not null && (result.TargetId.Value != targetId.Value || result.AlertId != alertId))
+            throw new InvalidDataException("The alert snooze read does not match its requested resource.");
+        return result;
+    }
+
     public ValueTask<IReadOnlyList<AlertActiveDto>> ListActiveAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
@@ -111,6 +124,19 @@ public sealed class AlertAdministrationService(IAlertRepositoryPort repository, 
 
     public ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AuthorizationContext authorization, AlertAcknowledgeRequest request, CancellationToken cancellationToken) =>
         WriteAnyAsync(authorization, request.Audit, request.Audit.TargetId, request.IdempotencyKey, () => repository.AcknowledgeAsync(request, cancellationToken), cancellationToken);
+
+    public async ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AuthorizationContext authorization,
+        AlertSnoozeWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AlertSnoozeWriteReceipt? result = null;
+        await WriteAnyAsync(authorization, request.Audit, request.Audit.TargetId, request.IdempotencyKey, async () =>
+        {
+            result = await repository.SetSnoozeAsync(request, cancellationToken).ConfigureAwait(false);
+            return result.Audit;
+        }, cancellationToken).ConfigureAwait(false);
+        return result ?? throw new InvalidOperationException("The alert snooze mutation returned no receipt.");
+    }
 
     public ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AuthorizationContext authorization, AlertDestinationWriteRequest request, CancellationToken cancellationToken) =>
         UpsertDestinationCoreAsync(authorization, request, cancellationToken);

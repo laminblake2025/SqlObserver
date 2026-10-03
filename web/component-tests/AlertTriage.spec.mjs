@@ -23,7 +23,7 @@ function held(status = 200, change = body => body) {
   } };
 }
 test.beforeEach(async ({ page }) => {
-  const session = { generation: 1, total: 210, allowed: true, reads: [], posts: [], accessReads: [], unexpected: [], handler: undefined };
+  const session = { generation: 1, total: 210, allowed: true, reads: [], posts: [], accessReads: [], notificationReads: [], unexpected: [], handler: undefined };
   sessions.set(page, session); page.on('pageerror', failure => session.unexpected.push(`Page error: ${failure.message}`));
   await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
   await page.route('**/*', async route => {
@@ -31,6 +31,14 @@ test.beforeEach(async ({ page }) => {
     const reject = async reason => { session.unexpected.push(`${reason}: ${request.method()} ${url.href}`); await route.abort(); };
     if (url.origin !== origin) return reject('External request');
     if (!/^\/api(?:\/|$)/u.test(url.pathname)) return route.continue();
+    const notification = /^\/api\/v1\/observation-targets\/([^/]+)\/alerts\/([^/]+)\/snooze$/u.exec(url.pathname);
+    if (notification && request.method() === 'GET' && [alpha, beta].includes(notification[1]) && !url.search) {
+      const item = { type: 'notification', target: notification[1], alertId: notification[2] }; session.notificationReads.push(item);
+      if (session.handler && await session.handler(route, item)) return;
+      return json(route, { targetId: item.target, alertId: item.alertId, episodeId: item.alertId, revision: 1,
+        state: 'firing', serverNowUtc: '2026-03-12T13:00:00.1234560+00:00', snoozedUntilUtc: null,
+        snoozeReason: null, snoozedBy: null, snoozedAtUtc: null, snoozed: false, deliverySuppressed: false });
+    }
     if (url.pathname === '/api/v1/me' && request.method() === 'GET' && [...url.searchParams.keys()].join('|') === 'targetId' && [alpha, beta].includes(url.searchParams.get('targetId'))) {
       const item = { type: 'access', target: url.searchParams.get('targetId') }; session.accessReads.push(item);
       if (session.handler && await session.handler(route, item)) return;
@@ -72,7 +80,7 @@ for (const kind of ['target', 'fleet']) {
     await more(page).evaluate(button => { button.click(); button.click(); }); const started = await pending.started;
     session.generation = 2; await tick(page).click(); expect(reads(page)).toHaveLength(2);
     expect(started.request.failure()).toBeNull(); await rows(page, 100); await pending.release(); await rows(page, 200);
-    await expect(panel(page).locator('.alert-triage-receipt')).toContainText('2 received page(s), 200 loaded rows');
+    await expect(panel(page).locator('.alert-list .alert-triage-receipt')).toContainText('2 received page(s), 200 loaded rows');
     await tick(page).click(); expect(reads(page)).toHaveLength(2); await expect(table(page)).toContainText('Alert 101 g1');
   });
   test(`${kind}: cursor failure and cancellation retry the exact native cursor without discarding loaded rows`, async ({ page }) => {

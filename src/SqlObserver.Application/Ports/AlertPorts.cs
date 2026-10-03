@@ -29,6 +29,32 @@ public sealed record MaintenanceWriteRequest(MaintenanceWindow Window, string Id
 public sealed record MaintenanceCancellationRequest(Guid WindowId, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, long? ExpectedRevision = null, string? RequestDigest = null);
 public sealed record AlertDeliveryAdminCancellationRequest(Guid DeliveryId, string Reason, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, string? RequestDigest = null);
 public sealed record AlertAcknowledgeRequest(Guid AlertId, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, long? ExpectedRevision = null, string? RequestDigest = null, Guid? ExpectedEpisodeId = null);
+public sealed record AlertSnoozeWriteRequest
+{
+    public AlertSnoozeWriteRequest(Guid alertId, Guid expectedEpisodeId, long expectedRevision,
+        DateTimeOffset? endsAtUtc, string reason, string idempotencyKey,
+        AdministrativeAuditEnvelope audit, RepositoryCallTimeout timeout)
+    {
+        ArgumentNullException.ThrowIfNull(audit); ArgumentNullException.ThrowIfNull(timeout);
+        if (!AlertIdentifier.TryParseRfc4122(idempotencyKey, out _)) throw new ArgumentException("A canonical operation identity is required.", nameof(idempotencyKey));
+        if (audit.Action != (endsAtUtc is null ? AdministrativeAuditAction.UnsnoozeAlert : AdministrativeAuditAction.SnoozeAlert))
+            throw new ArgumentException("The snooze audit action does not match its payload.", nameof(audit));
+        RequestDigest = AlertSnoozeContract.ComputeRequestDigest(audit.TargetId, alertId, expectedEpisodeId, expectedRevision, endsAtUtc, reason);
+        AlertId = alertId; ExpectedEpisodeId = expectedEpisodeId; ExpectedRevision = expectedRevision;
+        EndsAtUtc = endsAtUtc; Reason = reason; IdempotencyKey = idempotencyKey; Audit = audit; Timeout = timeout;
+    }
+    public Guid AlertId { get; }
+    public Guid ExpectedEpisodeId { get; }
+    public long ExpectedRevision { get; }
+    public DateTimeOffset? EndsAtUtc { get; }
+    public string Reason { get; }
+    public string IdempotencyKey { get; }
+    public AdministrativeAuditEnvelope Audit { get; }
+    public RepositoryCallTimeout Timeout { get; }
+    public string RequestDigest { get; }
+}
+public sealed record AlertSnoozeWriteReceipt(AdministrativeAuditReceipt Audit, long Revision,
+    DateTimeOffset? EndsAtUtc, DateTimeOffset AppliedAtUtc);
 public sealed record AlertDestinationWriteRequest(Guid DestinationId, string Kind, string ConfigurationReference, bool Enabled, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, long? ExpectedRevision = null, string? RequestDigest = null, bool Approve = false, AlertDestinationApproval? Approval = null)
 {
     public const int MaximumReferenceLength = 256;
@@ -77,8 +103,8 @@ public sealed record FleetAlertPage(IReadOnlyList<FleetAlertItem> Items, DateTim
 public sealed record AlertDeliveryWork(Guid DeliveryId, Guid AlertId, Guid DestinationId, string Kind, string ConfigurationReference, byte[] Payload, int Attempt, DateTimeOffset DueAtUtc, MonitoredInstanceId? TargetId = null, WorkerLeaseIdentity? Lease = null, string? WorkKey = null, long? ConfigurationRevision = null, string? ConfigurationDigest = null);
 public sealed record AlertDeliveryResult(Guid DeliveryId, bool Succeeded, bool PermanentFailure, string Reason, DateTimeOffset CompletedAtUtc, MonitoredInstanceId? TargetId = null, int? ResponseCode = null, int? ResponseBytes = null);
 public sealed record AlertDeliveryCancellation(Guid DeliveryId, string Reason);
-public enum AlertDeliveryReadiness { Active, Cancelled, Maintenance, RuleDisabled, DestinationNotApproved, LeaseLost }
-public enum AlertDeliveryLeaseOutcome { Active, DeferMaintenance, CancelDisabled, CancelUnapproved, LostFence }
+public enum AlertDeliveryReadiness { Active, Cancelled, Maintenance, RuleDisabled, DestinationNotApproved, LeaseLost, Snoozed }
+public enum AlertDeliveryLeaseOutcome { Active, DeferMaintenance, CancelDisabled, CancelUnapproved, LostFence, DeferSnooze }
 
 /// <summary>
 /// A database-backed per-target dispatch permit. The permit remains held while
@@ -111,6 +137,10 @@ public interface IAlertRepositoryPort
     ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(MaintenanceWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(MaintenanceCancellationRequest request, CancellationToken cancellationToken) => ValueTask.FromResult(new AdministrativeAuditReceipt(new AdministrativeAuditId(Guid.NewGuid()), DateTimeOffset.UtcNow));
     ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AlertAcknowledgeRequest request, CancellationToken cancellationToken);
+    ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze read is not implemented by this repository.");
+    ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AlertSnoozeWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze mutation is not implemented by this repository.");
     ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AlertDestinationWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelDeliveryAdminAsync(AlertDeliveryAdminCancellationRequest request, CancellationToken cancellationToken);
     ValueTask<IReadOnlyList<AlertDeliveryWork>> ClaimDueDeliveriesAsync(WorkerLeaseIdentity lease, int limit, RepositoryCallTimeout timeout, CancellationToken cancellationToken);
@@ -125,6 +155,7 @@ public interface IAlertRepositoryPort
         {
             AlertDeliveryReadiness.Active => AlertDeliveryLeaseOutcome.Active,
             AlertDeliveryReadiness.Maintenance => AlertDeliveryLeaseOutcome.DeferMaintenance,
+            AlertDeliveryReadiness.Snoozed => AlertDeliveryLeaseOutcome.DeferSnooze,
             AlertDeliveryReadiness.RuleDisabled or AlertDeliveryReadiness.Cancelled => AlertDeliveryLeaseOutcome.CancelDisabled,
             AlertDeliveryReadiness.DestinationNotApproved => AlertDeliveryLeaseOutcome.CancelUnapproved,
             _ => AlertDeliveryLeaseOutcome.LostFence,
@@ -142,6 +173,8 @@ public interface IAlertDestinationPort
 
 public interface IAlertQueryService
 {
+    ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze read is not implemented by this service.");
     ValueTask<IReadOnlyList<AlertActiveDto>> ListActiveAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, CancellationToken cancellationToken);
     async ValueTask<AlertActivePage> ListActivePageAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, AlertActiveCursor? cursor, CancellationToken cancellationToken)
     {
@@ -230,6 +263,8 @@ public interface IAlertDestinationQueryService
 
 public interface IAlertAdministrationService
 {
+    ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AuthorizationContext authorization, AlertSnoozeWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze mutation is not implemented by this service.");
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(AuthorizationContext authorization, MaintenanceWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(AuthorizationContext authorization, MaintenanceCancellationRequest request, CancellationToken cancellationToken);

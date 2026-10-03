@@ -556,8 +556,18 @@ internal sealed class FakeAlertDestinationRead : IAlertDestinationReadPort
 
 internal sealed class FakeAlertQuery : IAlertQueryService
 {
+    internal bool SnoozeMissing { get; set; }
+    internal int SnoozeCalls { get; private set; }
     internal int PageCalls { get; private set; }
     private static readonly DateTimeOffset Snapshot = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
+    public ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken)
+    {
+        authorization.RequireAny(targetId, [ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator, ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor]);
+        SnoozeCalls++;
+        return ValueTask.FromResult<AlertSnoozeStatus?>(SnoozeMissing ? null : new AlertSnoozeStatus(targetId, alertId,
+            Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"), 7, AlertState.Firing, Snapshot,
+            Snapshot.AddHours(1), "Synthetic incident triage", "S-1-5-21-2100", Snapshot, true, true));
+    }
     public ValueTask<IReadOnlyList<AlertActiveDto>> ListActiveAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyList<AlertActiveDto>>([Item(targetId)]);
     public ValueTask<AlertActivePage> ListActivePageAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, AlertActiveCursor? cursor, CancellationToken cancellationToken)
     {
@@ -582,6 +592,8 @@ internal enum FakeAlertAdministrationMode { Success, Conflict, Unavailable }
 
 internal sealed class FakeAlertAdministration : IAlertAdministrationService
 {
+    internal int SnoozeCalls { get; private set; }
+    internal AlertSnoozeWriteRequest? LastSnoozeWriteRequest { get; private set; }
     internal FakeAlertAdministrationMode Mode { get; set; }
     internal int AcknowledgeCalls { get; private set; }
     internal int UpsertRuleCalls { get; private set; }
@@ -589,6 +601,12 @@ internal sealed class FakeAlertAdministration : IAlertAdministrationService
     internal MaintenanceWriteRequest? LastMaintenanceWriteRequest { get; private set; }
     internal MaintenanceCancellationRequest? LastMaintenanceCancellationRequest { get; private set; }
     internal AlertDestinationWriteRequest? LastDestinationWriteRequest { get; private set; }
+    public async ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AuthorizationContext authorization, AlertSnoozeWriteRequest request, CancellationToken cancellationToken)
+    {
+        Require(authorization, ApplicationRole.Operator); SnoozeCalls++; LastSnoozeWriteRequest = request;
+        AdministrativeAuditReceipt receipt = await Run();
+        return new AlertSnoozeWriteReceipt(receipt, request.ExpectedRevision + 1, request.EndsAtUtc, receipt.RecordedAtUtc);
+    }
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); UpsertRuleCalls++; LastRuleWriteRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(AuthorizationContext authorization, MaintenanceWriteRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); LastMaintenanceWriteRequest = request; return Run(); }
     public ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(AuthorizationContext authorization, MaintenanceCancellationRequest request, CancellationToken cancellationToken) { Require(authorization, ApplicationRole.TargetAdministrator); LastMaintenanceCancellationRequest = request; return Run(); }

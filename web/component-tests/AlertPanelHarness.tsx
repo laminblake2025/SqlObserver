@@ -23,6 +23,7 @@ function Harness() {
     return () => window.removeEventListener("hashchange", updateHash);
   }, []);
   const selection = alertSelectionFromHash(hash);
+  const alertsRoute = hash.split("?")[0] === "#/alerts";
   const displayName = targets.find(target => target.id === targetId)?.name ?? "Unknown server";
   return <main style={{ padding: "20px" }}>
     <h1>Alert panel harness</h1>
@@ -36,10 +37,10 @@ function Harness() {
         onChange={event => setCanAcknowledge(event.target.checked)} />Operator permission</label>
       <button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh context</button>
     </fieldset>
-    {closed ? <p role="status">Panel closed</p> : <TargetAlertsPanel instanceId={targetId} displayName={displayName}
+    {closed ? <p role="status">Panel closed</p> : alertsRoute ? <TargetAlertsPanel instanceId={targetId} displayName={displayName}
       onClose={() => setClosed(true)} canAcknowledge={canAcknowledge} canManageRules={false}
       canManageDestinations={false} refresh={refresh}
-      selectedAlertId={selection?.targetId === targetId ? selection.alertId : undefined} />}
+      selectedAlertId={selection?.targetId === targetId ? selection.alertId : undefined} /> : <p role="status">Activity route selected</p>}
   </main>;
 }
 

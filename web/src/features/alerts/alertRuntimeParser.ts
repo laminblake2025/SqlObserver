@@ -1,4 +1,5 @@
 import type { ActiveAlert, ActiveAlertPage, AlertState, FleetAlert, FleetAlertPage } from "./alertTypes";
+import { parseAlertSnoozeProjection } from "./alertSnoozeModel.ts";
 
 export const MAX_ALERT_RESPONSE_BYTES = 256 * 1024;
 
@@ -50,7 +51,7 @@ function parseAlert(item: unknown): ActiveAlert {
     if (typeof candidate.alertId !== "string" || !isUuid(candidate.alertId) || typeof candidate.ruleId !== "string" || !isUuid(candidate.ruleId) || typeof candidate.ruleName !== "string" || candidate.ruleName.length === 0 || !isState(candidate.state) || typeof candidate.firstObservedUtc !== "string" || !isUtc(candidate.firstObservedUtc) || typeof candidate.deliverySuppressed !== "boolean") throw new Error("Alerts response is invalid.");
     if (candidate.value !== undefined && candidate.value !== null && (typeof candidate.value !== "number" || !Number.isFinite(candidate.value))) throw new Error("Alerts response is invalid.");
     if (candidate.reason !== undefined && candidate.reason !== null && typeof candidate.reason !== "string") throw new Error("Alerts response is invalid.");
-    return { alertId: candidate.alertId, ruleId: candidate.ruleId, ruleName: candidate.ruleName, state: candidate.state, firstObservedUtc: candidate.firstObservedUtc, firedUtc: optionalUtc(candidate.firedUtc), acknowledgedUtc: optionalUtc(candidate.acknowledgedUtc), value: candidate.value as number | null | undefined, reason: candidate.reason as string | undefined, deliverySuppressed: candidate.deliverySuppressed };
+    return { ...parseAlertSnoozeProjection(candidate), alertId: candidate.alertId, ruleId: candidate.ruleId, ruleName: candidate.ruleName, state: candidate.state, firstObservedUtc: candidate.firstObservedUtc, firedUtc: optionalUtc(candidate.firedUtc), acknowledgedUtc: optionalUtc(candidate.acknowledgedUtc), value: candidate.value as number | null | undefined, reason: candidate.reason as string | undefined, deliverySuppressed: candidate.deliverySuppressed };
 }
 
 const validCursor = (value: unknown): boolean => value === undefined || value === null ||

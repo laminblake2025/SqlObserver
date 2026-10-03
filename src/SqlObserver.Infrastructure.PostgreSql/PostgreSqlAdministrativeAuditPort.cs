@@ -141,6 +141,8 @@ public sealed class PostgreSqlAdministrativeAuditPort : IAdministrativeAuditPort
             AdministrativeAuditAction.UpdateMaintenanceWindow => "alert.maintenance.update",
             AdministrativeAuditAction.RetireMaintenanceWindow => "alert.maintenance.retire",
             AdministrativeAuditAction.AcknowledgeAlert => "alert.acknowledge",
+            AdministrativeAuditAction.SnoozeAlert => "alert.snooze",
+            AdministrativeAuditAction.UnsnoozeAlert => "alert.unsnooze",
             AdministrativeAuditAction.ConfigureAlertDestination => "alert.destination.configure",
             AdministrativeAuditAction.UpdateAlertDestination => "alert.destination.update",
             AdministrativeAuditAction.RetireAlertDestination => "alert.destination.retire",

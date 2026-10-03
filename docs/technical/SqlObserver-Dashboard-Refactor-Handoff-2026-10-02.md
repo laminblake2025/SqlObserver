@@ -1,8 +1,32 @@
 # Dashboard refactor checkpoint and next-work handoff
 
-This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
+This checkpoint implements the dashboard refactor, including the native contracts and persistence needed for cohesive dashboard features. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor; unrelated collector and runtime redesign remain outside this pass.
 
-## Latest Reports expiry qualification (2026-10-03)
+## Latest alert notification snooze qualification (2026-10-03)
+
+Fleet and server alert inboxes now support durable **Snooze and Unsnooze** for the current alert episode. Snooze suppresses notification delivery; the alert remains visible and firing or acknowledged, and collection/evaluation continue. New episodes do not inherit suppression. The dashboard offers 15 minutes, 1 hour, 8 hours and 24 hours, requires a reason and discloses received-row evidence separately from current server status. [Feature contract](Alert-Notification-Snooze.md).
+
+Forward migration 0349 adds episode metadata and immutable operation receipts. Same-target Operator or Target Administrator authorization, episode/revision preconditions and server-derived payload digests protect mutations. Exact retries return the original audited receipt, including after expiry, without extending the deadline. Dispatch and mutation share the native target fence; deferral preserves outbox identity, attempts and due time. Maintenance remains independent. Legacy rows without a real episode remain readable with null episode/revision and disabled controls.
+
+Uncertain requests retain their complete captured command. A confirmed POST is followed by a separate current-status GET; failed readback retries only GET. Failed refresh or return-to-latest cannot silently discard an uncertain operation. Acknowledgement, acknowledgement retry and notification changes exclude concurrent mutations. Role/context changes and unmount fence late results. Current status is explicitly an as-of server read rather than a historical-window projection or a client claim of authoritative expiry.
+
+Three independent lanes owned Domain/Application/HTTP and tests, migration/repository and PostgreSQL tests, and UI/theme/mounted tests. The lead integrated the built-App journeys, reviewed evidence and resolved shared seams. A separate read-only source review checked diagnostic semantics and accessibility/responsive behavior.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping implementation lanes, read-only peer reviews and one lead. | Complete. |
+| Dark theme | Shared dark tokens, readable retained/current evidence, wrapped controls, audit receipts and visible keyboard focus. | Passing in tested states. |
+| Diagnostic-screen review | Episode-scoped suppression, role scope, immutable replay, dispatch order, retained alert evidence and authoritative readback reviewed. | Snooze slice complete. |
+| Interaction tests | **29 native web checks**, **86 mounted cases**, **15 built-App cases**. | Complete owning groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe and document overflow at **320/390/768/1440**, with desktop/mobile visual review. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build/assets, **191 affected .NET checks**: 32 unit, 49 API, 45 security/worker and **65 real PostgreSQL**, including HTTP-to-repository behavior. **1,865 final frozen inputs** unchanged; owned fixture ports closed. | Passing against final code. |
+| Screenshots and completion summary | **Eight fresh captures**, [gallery](../../artifacts/dashboard-alert-snooze/index.html), [exact cases, hashes and provenance](../../artifacts/dashboard-alert-snooze/completion.json). | Delivered locally, bound to the final local commit. |
+
+Initial compile and test-harness failures are preserved under the gallery's `before-*` directories. Repairs covered analyzer-required syntax, checksum case comparison, the native delivery-renew signature, explicit required seed counters and receipt value comparisons. Browser repairs retained exact route/time/row assertions, scoped receipt selectors, and made the alert harness unmount on Activity navigation as the App does. Visual review clarified the old delivery badge as received-row evidence. Complete affected groups reran after repairs; passing subsets were not combined into a final count. Backend inputs stayed unchanged during the final web-only repair.
+
+Repository tests use disposable pinned PostgreSQL 18.4 databases; the HTTP journey uses production services with only authentication replaced. Browser traffic and captures are synthetic fixtures on final built assets. The lab SSH probe timed out; local Docker provided the required database qualification. SQL Server collectors are unchanged, so collector certification is outside this slice. Manual assistive technology and cross-browser certification are not claimed. Assignment, recurring maintenance, group template deployment, assistant decisions and the broader repository plan remain open. No GitHub upload occurred.
+
+## Previous Reports expiry qualification (2026-10-03)
 
 Ordinary report exports now disappear at the native half-open UTC expiry boundary, including already-expired success receipts. The expiry hook compares exact microseconds, rounds timer delay up to browser milliseconds and rechecks on focus/visibility wake. Once observed, expiry stays latched for that receipt even if the wall clock moves backwards. Link activation also checks expiry before regular or auxiliary navigation, covering a suspended timer before the next render. Renewal is explicit; expiry never generates a report automatically.
 
@@ -449,7 +473,7 @@ These statuses describe the original interface requirements rather than treating
 | Quiet evidence and recovery guidance | Named source dots, compact footer and expandable reference details; visible partial/missing/failed states. | Do not collapse errors or turn lack of evidence into a healthy verdict. |
 | Role-aware UI | `/me` target grants gate actions and protected query text/plans; late content is fenced after context or role changes. See [access model](../../web/src/features/targets/meApi.ts). | New mutations and assistant tools need matching target authorization and audit semantics. |
 | Fleet grid and pinned strip | Environment/tag grouping, observed-exception ordering, scoped signal links and authorized compact navigation. See [fleet grid](../../web/src/features/overview/FleetServerGrid.tsx). | Grid evidence is bounded to the loaded Overview response; it is not a transactional fleet snapshot. |
-| Fleet alert inbox | Grouped current inbox, acknowledgement with retry identity, exact alert selection and investigation links. | Snooze and assignment remain incomplete. |
+| Fleet alert inbox | Grouped current inbox, acknowledgement with retry identity, durable episode-scoped Snooze/Unsnooze, exact alert selection and investigation links. | Assignment remains incomplete. |
 | Server dashboard | Shared charts, baseline/reference context, event selection, investigate-first and live blocking tree. | Full event/source parity remains incomplete. |
 | Queries | Ranking/trends, regression comparisons, protected text/plan inspection, history and selected-plan hourly waits. | Source/collection qualification is separate from frontend fixture validation. |
 | Waits | Category trends, native deltas, retained captured-session links and exact capture restoration. | Captured sessions do not prove who caused a historical aggregate wait bucket. |
@@ -471,12 +495,9 @@ The following work is a handoff, not an implementation authorization. Keep each 
 
 ### Alert inbox actions
 
-The inspected [route table and response projection](../../src/SqlObserver.Server/AlertEndpoints.cs) (lines 14–47), [frontend DTO](../../web/src/features/alerts/alertTypes.ts) and [action client](../../web/src/features/alerts/alertApi.ts) provide current-alert reads and acknowledgement. They do not provide snooze or assignment fields/actions. Current active rows omit episode ID, revision, assignee, snooze expiry and action history. The acknowledgement backend already accepts optional expected episode/revision and a request digest, while the frontend sends a stable operation ID. [Acknowledgement retries](../../web/src/features/alerts/acknowledgementAttempts.ts) and [migration 0047](../../database/migrations/0047_alert_admin_first_operation.sql) are precedents, not permission to edit an applied migration.
+Snooze and Unsnooze are delivered across the [HTTP routes](../../src/SqlObserver.Server/AlertEndpoints.cs), native repository, audit and fleet/server controls. Versioned inbox projections supply current episode/revision where native identity exists; legacy rows without an episode expose both as null. Current-status GET and audited mutation receipts are separate from retained inbox evidence. See the [contract and delivery fences](Alert-Notification-Snooze.md) and latest qualification above. Applied migrations were not edited.
 
-- **Snooze:** define whether it suppresses delivery, changes inbox visibility, or affects evaluation; never imply resolution. Supply target/alert/episode identity, revision, server-owned expiry, actor/reason and history. Require same-target Operator/Target Administrator access, stable operation plus payload digest, stale-episode/revision conflicts, and authoritative readback. Prove bounded UTC expiry, half-open end behavior, unsnooze and new-episode policy.
-- **Assignment:** define eligible assignee identities and assign/reassign/unassign semantics. Persist current owner and actor/time/change history. Enforce target role and assignee eligibility, revision/episode fences, retry identity and same-operation/different-payload conflicts. Define owner behavior after resolution and new firing cycles.
-
-These features need durable state and service/repository tests before UI controls can claim they work. Adding buttons or local-only state would not fulfill the plan.
+**Assignment remains open:** define eligible assignee identities and assign/reassign/unassign semantics. Persist current owner and actor/time/change history. Enforce target role and assignee eligibility, revision/episode fences, retry identity and same-operation/different-payload conflicts. Define owner behavior after resolution and new firing cycles. This needs durable contracts and repository/service tests before UI controls can claim it works.
 
 ### Recurring maintenance
 

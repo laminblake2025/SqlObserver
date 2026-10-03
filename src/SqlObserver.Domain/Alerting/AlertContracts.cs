@@ -224,4 +224,43 @@ public sealed class MaintenanceWindow
 
 public sealed record AlertActiveDto(Guid AlertId, Guid RuleId, MonitoredInstanceId TargetId, string RuleName,
     AlertState State, DateTimeOffset FirstObservedUtc, DateTimeOffset? FiredUtc, DateTimeOffset? AcknowledgedUtc,
-    double? Value, string? Reason, bool DeliverySuppressed);
+    double? Value, string? Reason, bool DeliverySuppressed)
+{
+    public Guid? EpisodeId { get; init; }
+    public long? Revision { get; init; }
+    public DateTimeOffset? SnoozedUntilUtc { get; init; }
+    public string? SnoozeReason { get; init; }
+    public string? SnoozedBy { get; init; }
+    public DateTimeOffset? SnoozedAtUtc { get; init; }
+    public bool? Snoozed { get; init; }
+}
+
+/// <summary>Current repository evidence; a replayed mutation receipt cannot establish this state.</summary>
+public sealed record AlertSnoozeStatus(MonitoredInstanceId TargetId, Guid AlertId, Guid EpisodeId,
+    long Revision, AlertState State, DateTimeOffset ServerNowUtc, DateTimeOffset? SnoozedUntilUtc,
+    string? SnoozeReason, string? SnoozedBy, DateTimeOffset? SnoozedAtUtc, bool Snoozed, bool DeliverySuppressed);
+
+public static class AlertSnoozeContract
+{
+    public const int MaximumReasonUtf8Bytes = 512;
+    public static readonly TimeSpan MaximumDuration = TimeSpan.FromHours(24);
+
+    public static string ValidateReason(string reason) =>
+        DomainValidation.RequireSafeText(reason, nameof(reason), MaximumReasonUtf8Bytes);
+
+    public static string ComputeRequestDigest(MonitoredInstanceId targetId, Guid alertId, Guid episodeId,
+        long revision, DateTimeOffset? endsAtUtc, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty || episodeId == Guid.Empty) throw new ArgumentException("Alert and episode identities are required.");
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(revision);
+        if (endsAtUtc is not null) DomainValidation.RequireUtcMicrosecondAligned(endsAtUtc.Value, nameof(endsAtUtc));
+        reason = ValidateReason(reason);
+        // Wall-clock bounds belong to the first atomic repository write, after replay lookup.
+        string end = endsAtUtc?.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", System.Globalization.CultureInfo.InvariantCulture) ?? "<null>";
+        string canonical = string.Join('|', endsAtUtc is null ? "alert.unsnooze" : "alert.snooze",
+            targetId.Value.ToString("D"), alertId.ToString("D"), episodeId.ToString("D"),
+            revision.ToString(System.Globalization.CultureInfo.InvariantCulture), end, reason);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
+    }
+}
