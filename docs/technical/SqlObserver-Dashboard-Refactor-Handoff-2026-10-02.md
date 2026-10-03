@@ -2,7 +2,31 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest search and diagnostic context qualification
+## Latest retained-pager and current-head-blocker qualification (2026-10-03)
+
+Investigate-first now gives a direct current head-blocker answer from one native graph read shared with the dashboard blocking tree. Ranking uses distinct blocked sessions, then exact observed wait; cycle, external and depth-limited roots are unconfirmed. Keyboard Inspect focuses and highlights the same received graph, preserving the shared Rewind URL. Current server-wide evidence remains independent of the historical window. Empty retained, incomplete or never-collected evidence does not claim all clear; repository check time is labelled separately when collection time is unavailable.
+
+Resources files, Health databases, configuration history, per-replica AG streams, backup assessment and Agent failure history retain their investigated pages and native cursor context through workspace refresh. Explicit latest resets only after a validated successful read; failures preserve the investigation. Target/revision/window changes fence old receipts before effects, cancel owned reads and reject late results. Definitive 401/403 removes protected retained receipts. Independent AG streams disclose different cutoff/run/revision evidence. Configuration selected-run entry starts pinned; successful explicit latest resumes polling even while the URL keeps the scan identity. Dashboard Agent timeline markers keep their original distinct behavior: pending refresh retains them, failed refresh clears them and discloses the unavailable selection.
+
+Three owners implemented non-overlapping resource, Health/configuration and operation modules with their own mounted interactions, dark-theme, keyboard, accessibility and responsive cases. They independently cross-reviewed integration. The lead owns shared graph/API composition, App regressions, common CSS, review repairs and final qualification. Reviews caught unresolved-root labels, a false empty retained all-clear, outer Health permission retention, configuration explicit-latest repinning and an invented completion timestamp. All were repaired and checked. Long native database buttons wrap within the panel; raw evidence tables scroll locally.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping feature owners, independent review and lead-owned shared integration and conflict resolution. | Complete. |
+| Dark theme | Shared tokens, selected-root outline, visible keyboard focus, wrapping controls and bounded native long names. | Passing in tested states. |
+| Diagnostic-screen review | Existing current blocking and native pagers reviewed against API/collector/schema contracts; latest/current versus investigated provenance remains explicit. | These findings closed; legacy projection paging below remains. |
+| Interaction tests | **80 owning checks: 79 runtime/API/model and one explicit security lint**, **96 mounted cases**, **13 built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard activation/focus, local table scrolling, axe and document/control bounds at **320/390/768/1440**; built-App current-blocker inspection at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **496 frozen inputs**, closed owned fixture ports. | Passing against final product code. |
+| Screenshots and completion summary | **36 fresh captures**, representative mobile/desktop visual review, [gallery](../../artifacts/dashboard-retained-pagers/index.html), [case inventories, hashes and provenance](../../artifacts/dashboard-retained-pagers/completion.json). | Delivered locally, bound to the final local commit. |
+
+These are affected checks, not full repository/release certification. Final groups are complete executions, never a union of repair subsets. Product, build assets, native and mounted inputs stayed unchanged between final groups. Only the owning App screenshot changed after mounted qualification: full-page captures were too tall to inspect usefully, so the two built-App captures now show the Investigate-first panel. Mobile capture height is enlarged after the unchanged 1000-pixel-height behavioral/layout checks, keeping pinned navigation above the panel. The complete 13-case App group reran; `components-frozen-inputs.json` and final hashes document that exact test-only difference.
+
+Complete earlier attempts remain under `initial-typecheck`, `initial-native`, `initial-components`, `before-operation-layout`, `dependency-load-failure`, `before-agent-dashboard-repair`, `before-configuration-latest-repair`, `before-capture-refinement` and `before-mobile-capture-height`. Type narrowing/strip-only import errors, native synthetic identities and microsecond fixture arithmetic, clock/timeout/focus setup, product long-name overflow and unwrapped harness JSON layout were repaired without weakening behavior assertions. One unchanged-code mounted attempt encountered Chromium `ERR_NO_BUFFER_SPACE` loading a module before harness mount; its trace remains separate. Independent final review repairs prompted a rebuild and fresh native/mounted/App groups.
+
+All captures and browser requests use local synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The full repository plan and dashboard refactor remain incomplete. No GitHub upload occurred.
+
+## Previous search and diagnostic context qualification
 
 Command-palette rows, status and navigation now stay bound to their loaded server, database, category and search session before effects run. Exact query verification also follows the current hash and UTC window. Target/category changes, close/reopen, paging and unmount cancel old reads and fence late results. Reopening starts with Servers without dispatching a stale database search.
 
@@ -52,8 +76,9 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 These are frontend findings supported by existing native contracts, not backend scope requests. Check current sources before changing them:
 
-1. **Investigate-first head blocker:** use the existing current blocking graph/root/chain evidence for a direct current head-blocker finding and navigation, rather than relying only on a historical aggregate. Preserve the source's latest versus selected-window distinction.
-2. **Refresh-retained native pagers:** preserve investigated pages/cursors for resource files, AG streams, backups, Agent/configuration history and health databases until explicit latest or context change; distinguish mutable windows from snapshot contracts.
+1. **Legacy Operations projection pagination:** `OperationsPanel.tsx` / `operationsState.ts` still reset or append their older projection-card pages during polling. Review and retain their investigated mutable-window context using existing native contracts. This is distinct from the qualified per-replica AG, backup assessment and Agent history pagers above.
+
+The direct current head-blocker and canonical native pager findings are closed by the latest pass. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
 
 The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
 

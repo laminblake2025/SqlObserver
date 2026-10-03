@@ -34,18 +34,21 @@ export function AgentFailureHistoryPanel({ instanceId, targetRevision, scope, re
     try { return { window: resolveAgentWindow(scope, Date.now()), error: undefined }; }
     catch (error) { return { window: undefined, error: error instanceof Error ? error.message : "Choose a valid SQL Agent history window." }; }
   }, [scope.range, scope.from, scope.to, refresh]);
-  const history = useAgentHistory(instanceId, targetRevision, selection.window, refresh);
+  const history = useAgentHistory(instanceId, targetRevision, selection.window, refresh, JSON.stringify([scope.range, scope.from, scope.to]));
   return <section className="panel operation-card" aria-label="SQL Agent failures" aria-busy={history.loading}>
     <h3>SQL Agent failures</h3>
     {selection.error && <p role="status">{selection.error}</p>}
     {history.loading && <p role="status">{history.refreshing && history.page
-      ? `Refreshing SQL Agent history; the previous first-page snapshot from ${formatTime(history.page.observedAtUtc)} remains visible for ${formatTime(history.page.window.fromUtc)} to ${formatTime(history.page.window.toUtc)}.`
+      ? `Refreshing SQL Agent history; the received snapshot from ${formatTime(history.page.observedAtUtc)} remains visible for ${formatTime(history.page.window.fromUtc)} to ${formatTime(history.page.window.toUtc)}.`
       : "Loading SQL Agent history for the selected window…"}</p>}
-    {history.error && <p role="alert">{history.error} Refresh the history from the first page.</p>}
+    {history.held && <p className="table-note">Retained investigation page. Workspace polling does not replace this SQL Agent window.</p>}
+    {history.error && <p role="alert">{history.error} <button type="button" disabled={history.loading} onClick={history.retry}>Retry SQL Agent history</button></p>}
     {history.page && <AgentFailureEvidence page={history.page} />}
     {selection.window && <nav className="pager" aria-label="SQL Agent history pages">
       <span>Page {history.pageNumber}</span>{" "}
-      <button type="button" disabled={history.loading} onClick={() => void history.navigate()}>Refresh first page</button>{" "}
+      <button type="button" disabled={history.loading} onClick={history.returnLatest}>Return SQL Agent history to latest</button>{" "}
+      <button type="button" disabled={history.loading || history.index === 0} onClick={history.first}>First history page</button>{" "}
+      <button type="button" disabled={history.loading || history.index === 0} onClick={history.previous}>Previous history page</button>{" "}
       <button type="button" disabled={history.loading || !history.page?.nextCursor} onClick={() => void history.navigate(history.page!.nextCursor!)}>Next history page</button>
     </nav>}
   </section>;

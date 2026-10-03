@@ -33,7 +33,7 @@ test("native health client sanitizes HTTP and malformed target responses", async
   try {
     for (const [status, message] of [[403, "You are not authorized to view health for this target."], [504, "The health request exceeded its execution limit."], [500, "The health request failed safely."]]) {
       globalThis.fetch = async () => new Response("password=synthetic-secret; provider stack", { status });
-      await assert.rejects(getTargetHealth(alpha, new AbortController().signal), error => error instanceof HealthRequestError && error.message === message);
+      await assert.rejects(getTargetHealth(alpha, new AbortController().signal), error => error instanceof HealthRequestError && error.message === message && error.status === status);
     }
     for (const body of ["not JSON", JSON.stringify({ ...evidence().target, instanceId: "22222222-2222-4222-8222-222222222222" })]) {
       globalThis.fetch = async () => new Response(body, { headers: { "content-type": "application/json" } });

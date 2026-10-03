@@ -67,7 +67,7 @@ async function open(page, section = 'Collection health', query = '') {
 }
 
 async function auditRecovery(page, info, focus, prefix) {
-  const directory = fileURLToPath(new URL('../../artifacts/dashboard-components/screenshots/', import.meta.url));
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-retained-pagers/screenshots/', import.meta.url));
   await mkdir(directory, { recursive: true });
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -226,7 +226,8 @@ test('keeps exact large file counters, bounded page evidence and database contex
   await expect(files(page)).toContainText('Showing 0 of 1 loaded logical files for database ID 8. Other files may be on another page.');
   await expect(files(page)).toContainText('No logical-file rows for this database are present in the bounded first page.');
   await inventory(page).getByRole('button', { name: 'Clear database context' }).click();
-  await inventory(page).getByRole('button', { name: 'Previous database page' }).click();
+  // A changed database context starts a fresh first page, rather than reusing the old investigated trail.
+  await expect(inventory(page).getByRole('button', { name: 'Previous database page' })).toBeDisabled();
   await expect(inventory(page).getByRole('heading', { name: 'First database' })).toBeVisible();
   await expect(inventory(page)).toContainText('Page 1 · 1 databases · More available');
   await expect(files(page).getByRole('heading', { name: 'Synthetic_data' })).toBeVisible();
@@ -250,6 +251,20 @@ test('sanitizes a failed native response and retries through an external refresh
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
 });
 
+test('definitive denied outer Health poll drops all retained inventory and file receipts', async ({ page }) => {
+  const fixture = evidence(); fixture.databases.items = [database(7, 'Protected database')]; fixture.files.items = [logicalFile()];
+  sessions.get(page).fixtures.set(alpha, fixture); await open(page, 'Databases');
+  await expect(inventory(page)).toContainText('Protected database'); await expect(files(page)).toContainText('Synthetic_data');
+  sessions.get(page).intercept = async (route, _url, _id, kind) => {
+    if (kind !== undefined) return false;
+    await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ detail: 'SECRET_DENIAL' }) }); return true;
+  };
+  await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+  await expect(panel(page).getByRole('alert')).toContainText('not authorized');
+  await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+  await expect(panel(page)).not.toContainText('Protected database'); await expect(panel(page)).not.toContainText('SECRET_DENIAL');
+});
+
 test('preserves the first page on paging failure and allows a sanitized retry', async ({ page }) => {
   const fixture = evidence(); fixture.databases.items = [database(7, 'First database')]; fixture.databases.nextCursor = cursor;
   sessions.get(page).fixtures.set(alpha, fixture);
@@ -262,7 +277,7 @@ test('preserves the first page on paging failure and allows a sanitized retry', 
   };
   await open(page, 'Databases');
   await inventory(page).getByRole('button', { name: 'Next database page' }).click();
-  await expect(inventory(page).getByRole('alert')).toHaveText('Database page is unavailable. Try again.');
+  await expect(inventory(page).getByRole('alert')).toHaveText('Database page is unavailable or its snapshot changed. The loaded page remains available; return to latest to retry.');
   await expect(inventory(page).getByRole('heading', { name: 'First database' })).toBeVisible();
   await expect(page.locator('body')).not.toContainText('synthetic-secret');
   fail = false;
@@ -321,7 +336,7 @@ test('keeps health inventory usable and accessible at 320 and 1440 pixels', asyn
   const fixture = evidence(); fixture.databases.items = [database()]; fixture.files.items = [logicalFile()];
   sessions.get(page).fixtures.set(alpha, fixture);
   await open(page, 'Databases');
-  const directory = fileURLToPath(new URL('../../artifacts/dashboard-components/screenshots/', import.meta.url));
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-retained-pagers/screenshots/', import.meta.url));
   await mkdir(directory, { recursive: true });
   for (const width of [320, 1440]) {
     await page.setViewportSize({ width, height: 1000 });

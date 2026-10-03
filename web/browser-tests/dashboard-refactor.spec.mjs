@@ -1263,6 +1263,29 @@ test('investigate-first and blocking drill-downs keep the server, window and eve
   await expect(page.getByRole('heading', { name: 'Live sessions', exact: true })).toBeVisible();
 });
 
+for (const width of [320, 1440]) test(`built dashboard inspects the native current head blocker within rewind at ${width}`, async ({ page }) => {
+  const errors = [], reads = []; page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/blocking/current')) reads.push(request.url()); });
+  await page.setViewportSize({ width, height: 1000 }); await open(page, 'health', second);
+  const summary = page.getByRole('region', { name: 'What needs attention', exact: true });
+  await expect(summary).toContainText('1 distinct blocked session');
+  const button = summary.getByRole('button', { name: 'Inspect head blocker 51', exact: true });
+  await button.focus(); await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Blocking chains', exact: true })).toBeFocused();
+  await expect(page.locator('.selected-blocker')).toContainText('Session 72');
+  await assertHistoricalScope(page, second); expect(reads).toHaveLength(1); expect(errors).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo({ top: 0, behavior: 'instant' }); });
+  await mkdir('../artifacts/dashboard-retained-pagers/screenshots', { recursive: true });
+  // Keep the pinned mobile navigation above the panel rather than obscuring this local capture.
+  const capture = await summary.boundingBox();
+  await page.setViewportSize({ width, height: Math.max(1000, Math.ceil(capture.height) + 800) });
+  await summary.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.activeElement?.blur());
+  await summary.screenshot({ path: `../artifacts/dashboard-retained-pagers/screenshots/built-head-blocker-${width}.png` });
+});
+
 test('timeline rail and keyboard range select the shared workspace and restore it after reload', async ({ page }) => {
   const requests = [];
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/v1/overview') requests.push(new URL(request.url())); });
@@ -2005,7 +2028,7 @@ test('Resources pointer and keyboard inspection align CPU memory PLE and file la
   await assertHistoricalScope(page); await assertDatabaseScope(page, 5);
 });
 
-test('periodic live configuration history refresh preserves the user current keyboard focus', async ({ page }) => {
+test('periodic live configuration history retains the selected scan and keyboard focus until explicit latest', async ({ page }) => {
   await timelineFixture(page);
   await page.clock.install({ time: new Date('2026-09-26T12:00:00Z') });
   let configurationRequests = 0;
@@ -2021,7 +2044,7 @@ test('periodic live configuration history refresh preserves the user current key
   // runFor executes every tick; fastForward intentionally coalesces intervals.
   await page.clock.runFor(61_000);
   await expect.poll(() => configurationRequests).toBeGreaterThan(initiallyFocusedRequests);
-  await expect(selectedRun).not.toHaveText(initiallyFocusedText);
+  await expect(selectedRun).toHaveText(initiallyFocusedText);
   await expect(selectedRun).toContainText('cost threshold for parallelism');
   await expect(selectedRun).toBeFocused();
   const before = await selectedRun.textContent();
@@ -2031,11 +2054,16 @@ test('periodic live configuration history refresh preserves the user current key
   const initialRequests = configurationRequests;
   await page.clock.runFor(61_000);
   await expect.poll(() => configurationRequests).toBeGreaterThan(initialRequests);
-  // A changed detection label proves that the refreshed history has rendered,
-  // rather than only waiting for the network request to begin.
-  await expect(selectedRun).not.toHaveText(before);
+  // Independent timeline polling continues; the selected configuration receipt remains pinned.
+  await expect(selectedRun).toHaveText(before);
   await expect(selectedRun).toContainText('cost threshold for parallelism');
   await expect(timeRange).toBeFocused();
+  await expect(timeRange).toHaveValue('1h');
+  expect(scope(page).get('configurationRun')).toBe('22222222-2222-4222-8222-222222222222');
+  await expect(page.getByText(/Retained configuration history\. Workspace refresh/)).toBeVisible();
+  await page.getByRole('button', { name: 'Return to latest configuration history', exact: true }).click();
+  await expect(selectedRun).not.toHaveText(before);
+  await expect(page.getByText(/Latest history for the selected window\./)).toBeVisible();
   await expect(timeRange).toHaveValue('1h');
   expect(scope(page).get('configurationRun')).toBe('22222222-2222-4222-8222-222222222222');
 });
@@ -2257,7 +2285,7 @@ test('Resources rejects a malformed refreshed file snapshot while retaining inde
   await resourceUrlFixture(page);
   const crashes = []; page.on('pageerror', error => crashes.push(error.message));
   await page.goto(href('resources'));
-  const files = page.getByRole('region', { name: 'Latest database file counters', exact: true });
+  const files = page.getByRole('region', { name: 'Loaded database file counters', exact: true });
   await expect(files).toContainText('Orders_data');
   await page.route(`**/observation-targets/${first}/health/files?*`, async route => {
     const response = await route.fetch(), body = await response.json();
@@ -2266,7 +2294,7 @@ test('Resources rejects a malformed refreshed file snapshot while retaining inde
   });
   await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
   await expect(page.getByRole('alert').filter({ hasText: healthContractFailure })).toBeVisible();
-  await expect(files).toHaveCount(0);
+  await expect(files).toContainText('Orders_data');
   await expect(page.getByText('SYNTHETIC rejected file', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Per-NUMA page life expectancy', exact: true }).locator('.overview-chart')).toHaveCount(2);
   await assertHistoricalScope(page); expect(crashes).toEqual([]);

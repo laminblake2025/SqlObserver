@@ -111,7 +111,7 @@ test('rendered checks show separate verdicts, configured limits, unknown ages an
 });
 test('rendered missing and retired snapshots explain the action without fabricated database rows', () => {
   for (const scenario of ['not_collected', 'failed', 'expired']) {
-    const html = render(parse(fixture(scenario))); assert.match(html, /no current database verdicts/);
+    const html = render(parse(fixture(scenario))); assert.match(html, /no database verdicts are available for this received assessment/);
     assert.doesNotMatch(html, /class="backup-check evidence-current"/); assert.doesNotMatch(html, /<tbody>/);
   }
 });

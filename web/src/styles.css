@@ -454,6 +454,7 @@ html:has(.workspace-fleet-strip) { scroll-padding-top: calc(var(--workspace-flee
 .server-dashboard-blocking .section-heading { align-items: baseline; }
 .server-dashboard-blocking h4, .server-dashboard-blocking h5 { margin: 0; }
 .server-dashboard-blocking-meta { color: var(--muted); font-size: 12px; }
+.bounded-health-card button { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .server-dashboard-blocking-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 12px; }
 .server-dashboard-blocking-group { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
 .server-dashboard-blocking-group ul { list-style: none; margin: 8px 0 0; padding: 0; }

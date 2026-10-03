@@ -1,9 +1,12 @@
 import { useId } from "react";
 import { buildInvestigationSummary } from "./investigationSummaryModel.ts";
 import type { InvestigationSummaryInput, InvestigationSummary } from "./investigationSummaryModel.ts";
+import { HeadBlockerAnswer } from "./HeadBlockerAnswer.tsx";
+import type { CurrentBlockingEvidence } from "./useCurrentBlockingEvidence.ts";
 
-export function DashboardInvestigationSummary({ targetId, scope, fromUtc, toUtc, issues, events, formatTime, loading = false, sourceNotes = [] }:
-  InvestigationSummaryInput & { readonly formatTime: (value: string) => string; readonly loading?: boolean; readonly sourceNotes?: readonly string[] }) {
+export function DashboardInvestigationSummary({ targetId, scope, fromUtc, toUtc, issues, events, formatTime, loading = false, sourceNotes = [], blocking }:
+  InvestigationSummaryInput & { readonly formatTime: (value: string) => string; readonly loading?: boolean; readonly sourceNotes?: readonly string[];
+    readonly blocking?: { evidence: CurrentBlockingEvidence; targetRevision: number; onInspect: (sessionId: number) => void } }) {
   const heading = useId();
   let summary: InvestigationSummary;
   try { summary = buildInvestigationSummary({ targetId, scope, fromUtc, toUtc, issues, events }); }
@@ -13,6 +16,7 @@ export function DashboardInvestigationSummary({ targetId, scope, fromUtc, toUtc,
   </section>; }
   return <section className="panel dashboard-investigation" aria-labelledby={heading} aria-busy={loading}>
     <p className="eyebrow">Investigate first</p><h4 id={heading}>What needs attention</h4>
+    {blocking && <HeadBlockerAnswer {...blocking} formatTime={formatTime} />}
     <p className="dashboard-investigation-note">Loaded exceptions and observed plan comparisons. Temporal proximity does not establish causation or the actual change time.</p>
     {loading && <p className="dashboard-investigation-note" role="status">Refreshing investigation evidence; any retained findings and context belong to the displayed snapshot window.</p>}
     {summary.items.length ? <ol className="dashboard-investigation-findings">{summary.items.map(finding => <li key={finding.id}>
@@ -30,8 +34,8 @@ export function DashboardInvestigationSummary({ targetId, scope, fromUtc, toUtc,
           <p>{context.event.detail}</p>
         </li>)}</ul>
       </details>}
-    </li>)}</ol> : <p className="empty-state">No ranked exceptions or qualifying plan comparisons in the loaded evidence. Check collection gaps and source coverage before treating this as all clear.</p>}
-    <p className="dashboard-investigation-note">Showing {summary.items.length} of {summary.totalFindings} loaded findings; at most five findings and three nearby change observations per finding. {summary.omittedFindings > 0 ? `${summary.omittedFindings} additional loaded findings remain in their source screens. ` : ""}The list uses bounded source pages and may be incomplete. Overview exceptions remain server-wide, including with a database selected; temporal context is attached only inside the selected history window.</p>
+    </li>)}</ol> : <p className="empty-state">No ranked exceptions or qualifying plan comparisons in the loaded window evidence. Check collection gaps and source coverage before treating this as all clear.</p>}
+    <p className="dashboard-investigation-note">Showing {summary.items.length} of {summary.totalFindings} loaded window findings; at most five findings and three nearby change observations per finding. {blocking ? "Current graph roots are listed separately above. " : ""}{summary.omittedFindings > 0 ? `${summary.omittedFindings} additional loaded findings remain in their source screens. ` : ""}The list uses bounded source pages and may be incomplete. Overview exceptions remain server-wide, including with a database selected; temporal context is attached only inside the selected history window.</p>
     {summary.rejectedEvidence > 0 && <p className="dashboard-investigation-note" role="status">{summary.rejectedEvidence} loaded evidence entries were outside the comparable scope, duplicated or invalid and were excluded from temporal comparison.</p>}
     {sourceNotes.length > 0 && <details className="dashboard-investigation-coverage"><summary>Investigation source coverage</summary><ul>{sourceNotes.map((note, index) => <li key={`${index}:${note}`}>{note}</li>)}</ul></details>}
   </section>;

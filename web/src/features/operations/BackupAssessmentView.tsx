@@ -10,9 +10,9 @@ export function BackupAssessmentView({ page, formatTime, renderPolicy }: {
 }) {
   return <>
     <p className="table-note">Assessed {formatTime(page.atUtc)} · source observed {formatTime(page.sourceObservedAtUtc)} ·
-      {page.collectorEnabled ? " collection enabled" : " collection disabled"} · {backupLabel(page.coverage)} coverage</p>
+      {page.collectorEnabled ? " collection enabled in this response" : " collection disabled in this response"} · {backupLabel(page.coverage)} coverage</p>
     {page.action && <p className="evidence-callout">{page.action}</p>}
-    {page.evidenceStatus !== "retained" && <p role="status">{backupLabel(page.evidenceStatus)} · no current database verdicts are available.</p>}
+    {page.evidenceStatus !== "retained" && <p role="status">{backupLabel(page.evidenceStatus)} · no database verdicts are available for this received assessment.</p>}
     {page.items.length > 0 && <div className="table-scroll" tabIndex={0} role="region" aria-label="Per-database backup assessments"><table className="evidence-table">
       <caption>Backup freshness per observed database identity</caption>
       <thead><tr><th scope="col">Database identity</th><th scope="col">Full backup</th><th scope="col">Log backup</th><th scope="col">Evidence and policy</th></tr></thead>

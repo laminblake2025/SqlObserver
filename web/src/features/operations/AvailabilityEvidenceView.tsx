@@ -16,7 +16,7 @@ export function AvailabilityEvidenceView({ page, stream, formatTime }: {
       <div><dt>Run accounting (both streams)</dt><dd>{page.retainedItems} retained / {page.outputItems} captured / {page.sourceRows} source rows</dd></div>
       <div><dt>Capture loss</dt><dd>{page.lossKind.replaceAll("_", " ")}{page.truncated ? " · truncated" : ""}</dd></div>
     </dl>
-    {!page.collectorEnabled && page.runId !== null && <p>Collection is currently disabled. These are previously published observations.</p>}
+    {!page.collectorEnabled && page.runId !== null && <p>Collection was disabled in this received response. These are previously published observations.</p>}
     {page.items.length > 0 && <div className="table-scroll availability-evidence-scroll" role="region"
       aria-label={`${stream === "replicas" ? "Replica" : "Database replica"} evidence table`} tabIndex={0}><table className="availability-evidence-table">
       <caption>{stream === "replicas" ? "Configured AG replicas" : "AG database-replica evidence"} · {page.items.length} rows on this page</caption>

@@ -6,6 +6,7 @@ import { issueHref, overviewEvidenceFooter, overviewHref, rankedIssues } from ".
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
+import { useCurrentBlockingEvidence } from "./useCurrentBlockingEvidence.ts";
 import { ServerWaitTrendPanel } from "./ServerWaitTrendPanel";
 import type { TargetHealthState } from "./healthTypes";
 import { DashboardTimeline } from "../../components/DashboardTimeline";
@@ -44,6 +45,15 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const result = useOverviewAnalytics(selectedScope, refresh);
   const data = result.data;
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
+  const blockingEvidence = useCurrentBlockingEvidence(instanceId, targetRevision, blockingRefresh, Boolean(data && evidence));
+  const [blockerSelection, setBlockerSelection] = useState<{ key: string; sessionId: number }>();
+  const blockerKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, blockingEvidence.page?.evidence?.runId]);
+  const inspectBlocker = (sessionId: number) => {
+    if (location.hash !== selectionHash) return;
+    setBlockerSelection({ key: blockerKey, sessionId });
+    document.getElementById("server-blocking-heading")?.focus();
+    document.getElementById("server-blocking-heading")?.scrollIntoView({ block: "start" });
+  };
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data).filter(issue => issue.targetId.toLowerCase() === instanceId.toLowerCase()) : [];
   const agentHistory = useAgentHistory(instanceId, targetRevision, data && evidence ? data : undefined, refresh);
@@ -146,7 +156,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         fromUtc={data.fromUtc} toUtc={data.toUtc} formatTime={timeLabel} baselineStatus={chartReferences.baselineStatus} />
       <DashboardInvestigationSummary targetId={instanceId} scope={fixedTimelineScope} fromUtc={data.fromUtc} toUtc={data.toUtc}
         issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || alerts.loading || agentHistory.loading}
-        sourceNotes={timelineNotes} />
+        sourceNotes={timelineNotes} blocking={{ evidence: blockingEvidence, targetRevision, onInspect: inspectBlocker }} />
       <DashboardTimeline events={timelineEvents}
         fromUtc={data.fromUtc} toUtc={data.toUtc} crosshairUtc={crosshairUtc}
         selection={requestedSelection} onSelectionChange={selectTimeline} loading={result.loading || timeline.loading || alerts.loading || agentHistory.loading}
@@ -185,7 +195,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
           <small>GiB. SQL process physical memory is used memory; OS available memory via SQL and host available memory are free memory. They are separate measurements and need not add up to total host memory.</small>
         </section>
       </div>
-      <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} refresh={blockingRefresh} />
+      <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} evidence={blockingEvidence} targetRevision={targetRevision}
+        selectedRoot={blockerSelection?.key === blockerKey ? blockerSelection.sessionId : undefined} />
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       <section className="compact-evidence-footer" aria-label="Dashboard evidence status">
         <p>Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. Refreshed {timeLabel(data.refreshedAtUtc)}.</p>

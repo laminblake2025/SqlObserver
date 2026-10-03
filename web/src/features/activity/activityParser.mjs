@@ -10,7 +10,7 @@ export async function getPage(url, parseItem, expectedInstanceId, signal, maximu
   let response;
   try { response = await apiFetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }, { maximumResponseBytes }); }
   catch (error) { if (signal.aborted) throw error; throw new ActivityRequestError("Activity evidence is temporarily unavailable."); }
-  if (!response.ok) throw new ActivityRequestError(safeStatusMessage(response.status));
+  if (!response.ok) throw new ActivityRequestError(safeStatusMessage(response.status), response.status);
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null && (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > maximumResponseBytes)) throw invalidResponse();
   let value;

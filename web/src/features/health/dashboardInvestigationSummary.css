@@ -1,4 +1,10 @@
 .dashboard-investigation { min-width: 0; padding: 18px; }
+.dashboard-head-blockers { border-bottom: 1px solid var(--border); padding-block: .5rem 1rem; min-width: 0; }
+.dashboard-head-blockers ul { padding-inline-start: 1.2rem; }
+.dashboard-head-blockers li { padding-block: .5rem; overflow-wrap: anywhere; }
+.dashboard-head-blockers li strong, .dashboard-head-blockers li span { display: block; margin-bottom: .4rem; }
+.dashboard-head-blockers li span { color: var(--muted); font-size: .85rem; }
+.selected-blocker { outline: 2px solid var(--teal); outline-offset: 2px; }
 .dashboard-investigation-note { color: var(--muted); font-size: .82rem; line-height: 1.6; overflow-wrap: anywhere; }
 .dashboard-investigation-findings { margin: 0; padding-inline-start: 1.55rem; }
 .dashboard-investigation-findings > li { padding-block: .85rem; padding-inline-start: .3rem; border-bottom: 1px solid var(--border); min-width: 0; }

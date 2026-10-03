@@ -70,3 +70,14 @@ test("production HTTP reader enforces headers, streamed bytes, null bodies, and 
   assert.match(safeStatusMessage(403), /not authorized/u);
   assert.match(safeStatusMessage(504), /execution limit/u);
 });
+
+test("current blocking reader preserves definitive HTTP denial status without exposing provider content", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const status of [401, 403]) {
+      globalThis.fetch = async () => new Response("SECRET_PROVIDER_DETAIL", { status });
+      await assert.rejects(getCurrentBlockingPage(target, new AbortController().signal), error =>
+        error.status === status && !error.message.includes("SECRET_PROVIDER_DETAIL"));
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});

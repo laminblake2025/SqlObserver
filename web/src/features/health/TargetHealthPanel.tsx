@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { Tabs } from "../../components/DiagnosticUi";
 import { healthSectionHref } from "../../dashboardModel";
 import { overviewHref } from "../overview/overviewModel";
 import type { OverviewScope } from "../overview/overviewTypes";
+import { useHealthPageRequest, canAppendHealthPage } from "./useHealthPageRequest";
 import { healthRecoveryAdvice } from "./healthRecoveryModel";
 import { ServerDashboard } from "./ServerDashboard";
 import { DatabaseOptionChanges } from "./DatabaseOptionChanges";
@@ -90,10 +91,13 @@ export interface TargetHealthPanelProps {
 
 export function TargetHealthPanel({ instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
+  const evidenceKey = JSON.stringify([instanceId.toLowerCase(), targetRevision]);
+  const [receivedKey, setReceivedKey] = useState<string>();
   const [receivedEvidence, setEvidence] = useState<TargetHealthEvidence>();
-  const evidence = receivedEvidence?.target.instanceId.toLowerCase() === instanceId.toLowerCase()
+  const evidence = receivedKey === evidenceKey && receivedEvidence?.target.instanceId.toLowerCase() === instanceId.toLowerCase()
     ? receivedEvidence : undefined;
-  const [message, setMessage] = useState<string>();
+  const [failure, setMessage] = useState<{ key: string; message: string }>();
+  const message = failure?.key === evidenceKey ? failure.message : undefined;
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? (selectedDatabaseId === undefined ? "summary" : "databases"));
   useEffect(() => { if (selectedSection) setTab(selectedSection); else if (selectedDatabaseId !== undefined) setTab("databases"); }, [selectedDatabaseId, selectedSection]);
@@ -114,12 +118,14 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
           throw new HealthRequestError("Health evidence did not match the selected server. Refresh to retry.");
         }
         if (active) {
+          setReceivedKey(evidenceKey);
           setEvidence(next);
           setMessage(undefined);
         }
       } catch (error: unknown) {
         if (active && currentRequest.signal.aborted === false) {
-          setMessage(getSafeMessage(error));
+          setMessage({ key: evidenceKey, message: getSafeMessage(error) });
+          if (error instanceof HealthRequestError && [401, 403].includes(error.status ?? 0)) setEvidence(undefined);
         }
       } finally {
         if (active) setLoading(false);
@@ -133,7 +139,7 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
       active = false;
       request?.abort();
     };
-  }, [instanceId, healthRefresh]);
+  }, [instanceId, targetRevision, evidenceKey, healthRefresh]);
 
   return (
     <section className="health-screen" aria-labelledby="health-heading">
@@ -178,12 +184,12 @@ export function TargetHealthPanel({ instanceId, displayName, onClose, scope, ref
             </details>
             <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh}
               canManage={canManageConfiguration} />
-            <ServerConfigurationChanges selectedRunId={selectedConfigurationRunId} instanceId={instanceId} scope={scope} refresh={refresh}
+            <ServerConfigurationChanges selectedRunId={selectedConfigurationRunId} targetRevision={targetRevision} instanceId={instanceId} scope={scope} refresh={refresh}
               collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")}
               canManage={canManageConfiguration} />
             <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth key={instanceId} instanceId={instanceId} firstPage={evidence.databases} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} /><DatabaseFileHealth page={evidence.files} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} /></> : null}
+          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth targetRevision={targetRevision} instanceId={instanceId} firstPage={evidence.databases} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} /><DatabaseFileHealth page={evidence.files} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} /></> : null}
           {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div> : null}
         </>
       )}
@@ -205,104 +211,98 @@ function HealthMetricStrip({ metrics }: { readonly metrics: readonly CoreMetricS
   })}</div>;
 }
 
-function DatabaseHealth({ instanceId, firstPage, recoveryContext, selectedDatabaseId, onSelectDatabase }: { readonly instanceId: string; readonly firstPage: DatabaseHealthPage; readonly recoveryContext: RecoveryContext; readonly selectedDatabaseId?: number; readonly onSelectDatabase: (databaseId: number | undefined) => void }) {
+export function DatabaseHealth({ instanceId, targetRevision, firstPage, recoveryContext, selectedDatabaseId, onSelectDatabase }: { readonly instanceId: string; readonly targetRevision: number; readonly firstPage: DatabaseHealthPage; readonly recoveryContext: RecoveryContext; readonly selectedDatabaseId?: number; readonly onSelectDatabase: (databaseId: number | undefined) => void }) {
   const formatTimestamp = useTimeFormatter();
-  const [page, setPage] = useState(firstPage);
-  const [pageIndex, setPageIndex] = useState(0);
-  const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const request = useRef<AbortController | undefined>(undefined);
-  const [selectionMissing, setSelectionMissing] = useState(false);
+  const scope = recoveryContext.scope;
+  const key = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, selectedDatabaseId]);
+  type Trail = { key: string; pages: readonly DatabaseHealthPage[]; index: number; retained: boolean; searched: boolean; missing: boolean };
+  const [trail, setTrail] = useState<Trail | undefined>(() => ({ key, pages: [firstPage], index: 0,
+    retained: selectedDatabaseId !== undefined, searched: false, missing: false }));
+  const current = trail?.key === key ? trail : undefined;
+  const page = current?.pages[current.index];
+  const pageIndex = current?.index ?? 0;
+  const commands = useHealthPageRequest(key);
+  const [failure, setFailure] = useState<string>();
+  const error = failure === key;
+  const loading = commands.pending || (!page && !error);
+  const [limitKey, setLimitKey] = useState<string>();
+  const atLimit = limitKey === key;
+  const selectionMissing = current?.missing ?? false;
 
-  useEffect(() => {
-    request.current?.abort();
-    request.current = undefined;
-    setPage(firstPage);
-    setPageIndex(0);
-    setCursors([undefined]);
-    setLoading(false);
-    setError(false);
-    setSelectionMissing(false);
-    return () => request.current?.abort();
-  }, [instanceId, firstPage]);
-
-  useEffect(() => {
-    if (selectedDatabaseId === undefined) return;
-    const controller = new AbortController();
-    request.current?.abort();
-    request.current = controller;
-    setSelectionMissing(false);
-    if (firstPage.items.some(item => item.databaseId === selectedDatabaseId)) {
-      setPage(firstPage);
-      setPageIndex(0);
-      setCursors([undefined]);
-      setLoading(false);
-      request.current = undefined;
-      return;
-    }
-    setLoading(true);
-    void (async () => {
-      let current = firstPage;
-      const visited = new Set<string>();
-      const pageCursors: (string | undefined)[] = [undefined];
-      for (let index = 1; index < 20 && current.nextCursor; index += 1) {
-        if (visited.has(current.nextCursor)) throw new Error("Database paging repeated a cursor.");
-        visited.add(current.nextCursor);
-        pageCursors.push(current.nextCursor);
-        const next = await getDatabaseHealth(instanceId, controller.signal, current.nextCursor);
-        if (controller.signal.aborted) return;
-        if (next.instanceId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Database page target mismatch.");
-        if (next.items.some(item => item.databaseId === selectedDatabaseId)) {
-          setPage(next);
-          setPageIndex(index);
-          setCursors(pageCursors);
-          return;
-        }
-        current = next;
-      }
-      setSelectionMissing(true);
-    })().catch(() => { if (!controller.signal.aborted) setError(true); }).finally(() => {
-      if (!controller.signal.aborted) { request.current = undefined; setLoading(false); }
-    });
-    return () => controller.abort();
-  }, [instanceId, firstPage, selectedDatabaseId]);
-
-  useEffect(() => {
-    if (selectedDatabaseId !== undefined && page.items.some(item => item.databaseId === selectedDatabaseId)) {
-      document.getElementById(`database-health-${selectedDatabaseId}`)?.scrollIntoView({ block: "center" });
-    }
-  }, [page, selectedDatabaseId]);
-
-  async function navigate(index: number, cursor?: string) {
-    if (request.current) return;
-    if (index === 0) {
-      setPage(firstPage);
-      setPageIndex(0);
-      setError(false);
-      return;
-    }
-    const controller = new AbortController();
-    request.current = controller;
-    setLoading(true);
-    setError(false);
+  async function readLatest(initial?: DatabaseHealthPage, explicit = true) {
+    const command = commands.begin();
+    if (!command) return;
+    setFailure(undefined);
+    if (current && (explicit || selectedDatabaseId !== undefined)) setTrail({ ...current, retained: true, searched: true });
     try {
-      const next = await getDatabaseHealth(instanceId, controller.signal, cursor);
-      if (controller.signal.aborted) return;
-      if (next.instanceId.toLowerCase() !== instanceId.toLowerCase()) throw new Error("Database page target mismatch.");
-      setPage(next);
-      setPageIndex(index);
-      setCursors(previous => [...previous.slice(0, index), cursor]);
-    } catch {
-      if (!controller.signal.aborted) setError(true);
-    } finally {
-      if (!controller.signal.aborted) {
-        request.current = undefined;
-        setLoading(false);
+      const first = initial ?? await getDatabaseHealth(instanceId, command.signal);
+      const pages = [first];
+      if (!command.current()) return;
+      let missing = selectedDatabaseId !== undefined && !first.items.some(item => item.databaseId === selectedDatabaseId);
+      const visited = new Set<string>();
+      while (missing && pages.length < 20 && pages.at(-1)?.nextCursor) {
+        const cursor = pages.at(-1)!.nextCursor!;
+        if (visited.has(cursor)) throw new Error("Database paging repeated a cursor.");
+        visited.add(cursor);
+        const next = await getDatabaseHealth(instanceId, command.signal, cursor);
+        if (!command.current()) return;
+        pages.push(next);
+        missing = !next.items.some(item => item.databaseId === selectedDatabaseId);
       }
-    }
+      if (command.current()) {
+        setLimitKey(undefined);
+        setTrail({ key, pages, index: pages.length - 1, retained: selectedDatabaseId !== undefined, searched: true, missing });
+      }
+    } catch (error) { if (command.current()) {
+      setFailure(key);
+      if (error instanceof HealthRequestError && (error.status === 401 || error.status === 403)) setTrail(undefined);
+    } }
+    finally { command.finish(); }
   }
 
+  useEffect(() => {
+    if (!current) { void readLatest(undefined, false); return; }
+    if (selectedDatabaseId !== undefined && !current.searched) { void readLatest(firstPage, false); return; }
+    // A polled first page belongs only to latest mode. It never replaces a retained cursor trail.
+    if (!current.retained && !commands.pending)
+      setTrail({ key, pages: [firstPage], index: 0, retained: false, searched: true, missing: false });
+  }, [key, firstPage]);
+
+  useEffect(() => {
+    if (selectedDatabaseId !== undefined && page?.items.some(item => item.databaseId === selectedDatabaseId))
+      document.getElementById(`database-health-${selectedDatabaseId}`)?.scrollIntoView({ block: "center" });
+  }, [page, selectedDatabaseId]);
+
+  async function navigate(index: number) {
+    if (!current || commands.pending) return;
+    if (current.pages[index]) {
+      setTrail({ ...current, retained: true, index }); setFailure(undefined); return;
+    }
+    if (!canAppendHealthPage(current.pages)) { setLimitKey(key); setTrail({ ...current, retained: true }); return; }
+    const cursor = page?.nextCursor;
+    if (!cursor) return;
+    const command = commands.begin();
+    if (!command) return;
+    setTrail({ ...current, retained: true }); setFailure(undefined);
+    try {
+      const next = await getDatabaseHealth(instanceId, command.signal, cursor);
+      if (!command.current()) return;
+      if (!canAppendHealthPage(current.pages, next.items.length)) { setLimitKey(key); return; }
+      if (next.nextCursor && current.pages.some(item => item.nextCursor === next.nextCursor))
+        throw new Error("Database paging repeated a cursor.");
+      setTrail({ ...current, pages: [...current.pages.slice(0, index), next], index, retained: true });
+    } catch (error) { if (command.current()) {
+      setFailure(key);
+      if (error instanceof HealthRequestError && (error.status === 401 || error.status === 403)) setTrail(undefined);
+    } }
+    finally { command.finish(); }
+  }
+
+  if (!page) return <section className="bounded-health-section" aria-labelledby="database-health-heading" aria-busy={loading}>
+    <h4 id="database-health-heading">Database health</h4>
+    {error ? <p role="alert">Database page is unavailable. <button type="button" onClick={() => void readLatest()}>Return to latest database snapshot</button></p>
+      : <p role="status">Loading database page…</p>}
+  </section>;
   return (
     <section className="bounded-health-section" aria-labelledby="database-health-heading" aria-busy={loading}>
       <div className="bounded-health-heading">
@@ -314,7 +314,9 @@ function DatabaseHealth({ instanceId, firstPage, recoveryContext, selectedDataba
       {selectedDatabaseId !== undefined ? <p className="table-note">Selected database ID {selectedDatabaseId}. <button type="button" className="secondary-button" onClick={() => onSelectDatabase(undefined)}>Clear database context</button></p> : null}
       <p className="page-boundary">Page {pageIndex + 1} · {page.items.length} databases{page.nextCursor ? " · More available" : " · End of snapshot"}</p>
       {loading ? <p role="status">Loading database page…</p> : null}
-      {error ? <p role="alert">Database page is unavailable. Try again.</p> : null}
+      {error ? <p role="alert">Database page is unavailable or its snapshot changed. The loaded page remains available; return to latest to retry.</p> : null}
+      {current?.retained ? <p className="table-note">Retained database snapshot. Workspace refresh does not replace this investigated page or its cursor trail.</p> : null}
+      {atLimit ? <p role="status">Browser investigation limit reached: 400 pages or 10,000 database rows. Return to latest or change context to start a new investigation.</p> : null}
       {selectionMissing ? <p role="status">Database ID {selectedDatabaseId} is not in the first 500 database rows. Browse the remaining pages below.</p> : null}
       {page.items.length === 0 ? (
         <p className="empty-state">
@@ -330,9 +332,10 @@ function DatabaseHealth({ instanceId, firstPage, recoveryContext, selectedDataba
         </div>
       )}
       <nav aria-label="Database health pages" className="pager">
+        <button type="button" disabled={commands.pending} onClick={() => void readLatest()}>Return to latest database snapshot</button>
         <button type="button" disabled={loading || pageIndex === 0} onClick={() => void navigate(0)}>First database page</button>{" "}
-        <button type="button" disabled={loading || pageIndex === 0} onClick={() => void navigate(pageIndex - 1, cursors[pageIndex - 1])}>Previous database page</button>{" "}
-        <button type="button" disabled={loading || !page.nextCursor} onClick={() => void navigate(pageIndex + 1, page.nextCursor ?? undefined)}>Next database page</button>
+        <button type="button" disabled={loading || pageIndex === 0} onClick={() => void navigate(pageIndex - 1)}>Previous database page</button>{" "}
+        <button type="button" disabled={loading || !page.nextCursor || atLimit} onClick={() => void navigate(pageIndex + 1)}>Next database page</button>
       </nav>
     </section>
   );
@@ -365,7 +368,7 @@ function DatabaseHealthCard({ database, selected, onSelect }: { readonly databas
   );
 }
 
-function DatabaseFileHealth({ page, recoveryContext, selectedDatabaseId }: { readonly page: DatabaseFileHealthPage; readonly recoveryContext: RecoveryContext; readonly selectedDatabaseId?: number }) {
+export function DatabaseFileHealth({ page, recoveryContext, selectedDatabaseId }: { readonly page: DatabaseFileHealthPage; readonly recoveryContext: RecoveryContext; readonly selectedDatabaseId?: number }) {
   const formatTimestamp = useTimeFormatter();
   const visibleFiles = selectedDatabaseId === undefined ? page.items : page.items.filter(file => file.databaseId === selectedDatabaseId);
   return (

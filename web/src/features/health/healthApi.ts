@@ -94,9 +94,11 @@ export class ConfigurationCollectionError extends Error {
 }
 
 export class HealthRequestError extends Error {
-  public constructor(message: string) {
+  readonly status: number | undefined;
+  public constructor(message: string, status?: number) {
     super(message);
     this.name = "HealthRequestError";
+    this.status = status;
   }
 }
 
@@ -183,7 +185,7 @@ async function getJson<T>(path: string, signal: AbortSignal, parse: (value: unkn
 
   if (signal.aborted) throw signal.reason;
   if (!response.ok) {
-    throw new HealthRequestError(getSafeHealthFailure(response.status));
+    throw new HealthRequestError(getSafeHealthFailure(response.status), response.status);
   }
 
   try {

@@ -110,7 +110,7 @@ createServer(async(req,res)=>{try{
   if(route&&targets.some(t=>t.instanceId===route[1])) {
    const instanceId=route[1],surface=route[2],now=new Date().toISOString();
    const collector={collectorId:'engine.core',manifestVersion:1,outputSchemaVersion:1,state:'current',reason:'none',lastExecutionOutcome:'succeeded',circuitState:'closed',durationMilliseconds:20,retryCount:0,sourceRows:2,outputRows:2,insertedRows:2,duplicateRows:0,rejectedRows:0,responseBytes:1024,persistedBytes:1024,hasVisibilityGap:false,sampleLossKind:null,minimumLostItems:null,minimumLostBytes:null,lossCountIsExact:null,lastSuccessAtUtc:now,lastAttemptAtUtc:now,scheduledAtUtc:now,nextDueAtUtc:now};
-   const evidence={runId:'22222222-2222-4222-8222-222222222222',targetRevision:'1',collectorId:'blocking.current',freshness:'current',outcome:'succeeded',reason:'none',isPartial:false,completedAtUtc:now};
+   const evidence={runId:'22222222-2222-4222-8222-222222222222',targetRevision:'1',collectorId:'blocking.current',freshness:'current',outcome:'succeeded',reason:'completed',isPartial:false,completedAtUtc:now};
    const edge={blockedSessionId:72,blockerKind:'session',blockerSessionId:51,rootBlockerSessionId:51,waitType:'LCK_M_X',waitingTaskCount:'1',waitDurationMilliseconds:'12000',chainDepth:1,chainState:'resolved',observedAtUtc:now};
    if(surface==='health')return send(res,{instanceId,state:'current',repositoryTimeUtc:now,collectors:[collector],coreMetrics:[{sampleId:'33333333-3333-4333-8333-000000000001',metricId:'engine.user_connections',observedAtUtc:now,value:428,dimensions:[]}]});
    if(surface==='health/databases') {
@@ -119,8 +119,9 @@ createServer(async(req,res)=>{try{
     return send(res,{instanceId,repositoryTimeUtc:now,collector,items:scoped?[database(5,'Orders'),database(6,'Warehouse')]:[database(5,'Orders')],nextCursor:null});
    }
    if(surface==='health/files') {
-    const file={databaseId:5,fileId:1,logicalName:'Orders_data',fileType:'rows',state:'online',sizeBytes:'8589934592',maximumSizeBytes:null,growthBytes:'67108864',growthPercent:0,readCount:'120000',writeCount:'80000',bytesRead:'12000000',bytesWritten:'8000000',ioStallMilliseconds:'1040000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:now,collector};
-    return send(res,{instanceId,repositoryTimeUtc:now,collector,items:req.headers.cookie?.includes('databaseScopeFixture=1')?[file,{...file,databaseId:6,logicalName:'Warehouse_data',sizeBytes:'17179869184'}]:[file],nextCursor:null});
+    const fileCollector={...collector,collectorId:'database.files'};
+    const file={databaseId:5,fileId:1,logicalName:'Orders_data',fileType:'rows',state:'online',sizeBytes:'8589934592',maximumSizeBytes:null,growthBytes:'67108864',growthPercent:0,readCount:'120000',writeCount:'80000',bytesRead:'12000000',bytesWritten:'8000000',ioStallMilliseconds:'1040000',readStallMilliseconds:'480000',writeStallMilliseconds:'560000',observedAtUtc:now,collector:fileCollector};
+    return send(res,{instanceId,repositoryTimeUtc:now,collector:fileCollector,items:req.headers.cookie?.includes('databaseScopeFixture=1')?[file,{...file,databaseId:6,logicalName:'Warehouse_data',sizeBytes:'17179869184'}]:[file],nextCursor:null});
    }
    if(surface==='health/database-option-changes'||surface==='health/server-configuration-changes') {
     const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc'),start=Date.parse(fromUtc),end=Date.parse(toUtc);

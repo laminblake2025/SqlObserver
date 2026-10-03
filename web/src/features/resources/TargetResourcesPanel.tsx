@@ -1,8 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
-import { getDatabaseFileHealth } from "../health/healthApi";
-import type { DatabaseFileHealthPage } from "../health/healthTypes";
 import { OverviewChart } from "../overview/OverviewChart";
 import type { OverviewScope, OverviewSeries } from "../overview/overviewTypes";
 import { customUtcInputValue, readOverviewScope } from "../overview/overviewModel.ts";
@@ -16,6 +14,7 @@ import { resourceInspectionInputUtc, resourceInspectionUtc } from "./resourceIns
 import { readResourceSelection, resourceSelectionHref, type ResourceSelection } from "./resourceSelectionModel.ts";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 import { selectedFileAllocation } from "./selectedFileAllocationModel.ts";
+import { useRetainedResourceFiles } from "./useRetainedResourceFiles";
 
 const memoryMetrics = new Set([
   "engine.process_physical_memory_bytes", "engine.os_available_memory_bytes",
@@ -97,68 +96,14 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       updateSelection({ inspectionUtc: undefined });
     }
   };
-  const fileContext = JSON.stringify([instanceId.toLowerCase(), targetRevision, refresh]);
-  const fileContextRef = useRef(fileContext);
-  fileContextRef.current = fileContext;
-  const [receivedFiles, setFiles] = useState<{ key: string; page: DatabaseFileHealthPage }>();
-  const [receivedFileError, setFileError] = useState<{ key: string; message: string }>();
-  const [receivedFilesLoading, setFilesLoading] = useState<{ key: string; loading: boolean }>();
-  const files = receivedFiles?.key === fileContext ? receivedFiles.page : undefined;
-  const fileError = receivedFileError?.key === fileContext ? receivedFileError.message : undefined;
-  const filesLoading = receivedFilesLoading?.key === fileContext ? receivedFilesLoading.loading : true;
-  const [filePageIndex, setFilePageIndex] = useState(0);
-  const [fileCursors, setFileCursors] = useState<readonly (string | undefined)[]>([undefined]);
+  const fileContext = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
+  const { files, fileError, filesLoading, filePageIndex, fileCursors, retained: filesRetained,
+    navigateFilePage, returnToLatestFiles } = useRetainedResourceFiles(instanceId, fileContext, refresh, Boolean(resourceSelection.file));
   const loadedSelectedFile = resourceSelection.file && files?.items.find(file => file.databaseId === resourceSelection.file!.databaseId && file.fileId === resourceSelection.file!.fileId);
   const activeSelectedFile: SelectedDatabaseFile | null = resourceSelection.file
     ? { ...resourceSelection.file, logicalName: loadedSelectedFile?.logicalName ?? `File ID ${resourceSelection.file.fileId} (name unavailable in the loaded snapshot)` } : null;
   const visibleFiles = files?.items.filter(file => scope.databaseId === undefined || file.databaseId === scope.databaseId) ?? [];
-  const fileRequest = useRef<AbortController | undefined>(undefined);
   const isRewind = scope.range === "custom";
-
-  useEffect(() => {
-    fileRequest.current?.abort();
-    const controller = new AbortController();
-    fileRequest.current = controller;
-    setFiles(undefined);
-    setFileError(undefined);
-    setFilePageIndex(0);
-    setFileCursors([undefined]);
-    setFilesLoading({ key: fileContext, loading: true });
-    void getDatabaseFileHealth(instanceId, controller.signal)
-      .then(page => {
-        if (!controller.signal.aborted && fileContextRef.current === fileContext) {
-          if (page.instanceId.toLowerCase() !== instanceId.toLowerCase())
-            throw new Error("File evidence did not match the selected server.");
-          setFiles({ key: fileContext, page });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted && fileContextRef.current === fileContext) setFileError({ key: fileContext, message: error instanceof Error ? error.message : "File evidence is unavailable." });
-      })
-      .finally(() => { if (!controller.signal.aborted && fileContextRef.current === fileContext) { fileRequest.current = undefined; setFilesLoading({ key: fileContext, loading: false }); } });
-    return () => { controller.abort(); fileRequest.current?.abort(); fileRequest.current = undefined; };
-  }, [instanceId, targetRevision, refresh]);
-
-  async function navigateFilePage(index: number, cursor?: string) {
-    if (fileContextRef.current !== fileContext || fileRequest.current || !files) return;
-    const controller = new AbortController();
-    fileRequest.current = controller;
-    setFilesLoading({ key: fileContext, loading: true });
-    setFileError(undefined);
-    try {
-      const page = await getDatabaseFileHealth(instanceId, controller.signal, cursor);
-      if (controller.signal.aborted || fileContextRef.current !== fileContext) return;
-      if (page.instanceId.toLowerCase() !== instanceId.toLowerCase())
-        throw new Error("File evidence did not match the selected server.");
-      setFiles({ key: fileContext, page });
-      setFilePageIndex(index);
-      setFileCursors(previous => [...previous.slice(0, index), cursor]);
-    } catch (error: unknown) {
-      if (!controller.signal.aborted && fileContextRef.current === fileContext) setFileError({ key: fileContext, message: error instanceof Error ? error.message : "File evidence is unavailable." });
-    } finally {
-      if (!controller.signal.aborted && fileContextRef.current === fileContext) { fileRequest.current = undefined; setFilesLoading({ key: fileContext, loading: false }); }
-    }
-  }
 
   const chart = (title: string, metric: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h3>{title}</h3>
@@ -185,7 +130,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   return <section className="activity-screen" aria-labelledby="resources-heading">
     <div className="screen-intro"><div><p className="eyebrow">Server · resources</p>
       <h2 id="resources-heading">Resources for {displayName}</h2>
-      <p>SQL Server CPU, memory, per-NUMA page life expectancy, and selected-file latency follow the shared time window. The file table shows the latest cumulative counters.</p>
+      <p>SQL Server CPU, memory, per-NUMA page life expectancy, and selected-file latency follow the shared time window. The file table shows cumulative counters from its loaded source snapshot.</p>
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     <p className="table-note">CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.</p>
     {resourceSelection.issues?.map(issue => <p role="alert" key={issue}>{issue}</p>)}
@@ -243,16 +188,18 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     <SqlVolumePanel instanceId={instanceId} targetRevision={targetRevision} refresh={refresh} isRewind={isRewind} />
     <section className="panel server-dashboard-chart" aria-label="Database file I/O" aria-busy={filesLoading}>
       <h3>Database file I/O</h3>
-        <p>Choose a file to chart read and write latency in the selected window. The table is the latest snapshot even in Rewind; its averages use cumulative counters since reset. This is not free disk space.</p>
+        <p>Choose a file to chart read and write latency in the selected window. The table reads the latest source snapshot even in Rewind; a browsed or selected file keeps its loaded evidence until you return to latest. Its averages use cumulative counters since reset. This is not free disk space.</p>
         {activeSelectedFile && <><p className="activity-evidence">Selected file: database ID {activeSelectedFile.databaseId}, file ID {activeSelectedFile.fileId} · {activeSelectedFile.logicalName}.</p>
           {!loadedSelectedFile && <p role="status">The selected file is not in the loaded snapshot page. Its identity is retained; no other file has been selected.</p>}
           <button type="button" className="secondary-button" onClick={() => updateSelection({ file: undefined })}>Clear selected file</button></>}
-        {filesLoading && <p role="status">Loading file snapshot…</p>}
-        {fileError && <p role="alert">{fileError} Refresh or retry page navigation.</p>}
+        {filesLoading && <p role="status">{files ? "Loading file evidence; the displayed page remains visible until a validated response arrives…" : "Loading file snapshot…"}</p>}
+        {filesRetained && <p role="status">Browsing retained file evidence · automatic file refresh paused. Already-read pages are restored locally; unread pages require a valid native snapshot continuation. Repository check times may differ between pages.</p>}
+        {(filesRetained || fileError) && <button type="button" className="secondary-button" disabled={filesLoading} onClick={() => void returnToLatestFiles()}>Return to latest file snapshot</button>}
+        {fileError && <p role="alert">{fileError} The investigation has not advanced; retry navigation or return to latest.</p>}
         <details className="supporting-evidence" aria-label="Selected file allocation and autogrowth">
           <summary>Selected file allocation and autogrowth{allocation.state === "unavailable"
             ? <span> · {filesLoading ? "Loading" : "Unavailable"}</span> : allocation.attention ? <span> · Stale or incomplete evidence</span> : null}</summary>
-          <p className="table-note">This is allocation configuration from the latest loaded file snapshot, including in Rewind. It is not used log space, free disk space, a capacity forecast, or a guarantee that growth will succeed.</p>
+          <p className="table-note">This is allocation configuration from the loaded file snapshot, including in Rewind. It is not used log space, free disk space, a capacity forecast, or a guarantee that growth will succeed.</p>
           {allocation.state === "unavailable" ? <p role="status">{allocation.notice}</p> : <>
             <p className="activity-evidence">Database ID {allocation.file.databaseId} · file ID {allocation.file.fileId} · {allocation.file.logicalName}.</p>
             {allocation.attention && <p role="status">Loaded file snapshot status: {files?.collector.state.replaceAll("_", " ")} · selected file status: {allocation.file.collector.state.replaceAll("_", " ")}. The evidence may be stale or incomplete. Configuration facts do not establish present capacity.</p>}
@@ -272,10 +219,10 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         </details>
         {files && <><p className="table-note">Page {filePageIndex + 1} · {files.items.length} loaded files{files.nextCursor ? " · More files available" : " · End of file snapshot"}.</p>
           <EvidenceDisclosure label={`File snapshot evidence: ${files.collector.state.replaceAll("_", " ")}`} attention={files.collector.state !== "current"}>
-            <p>Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)}. The table shows the latest source snapshot, including in Rewind; it does not follow the chart window.</p>
+            <p>Repository time: {formatDisplayTime(files.repositoryTimeUtc, mode)}. The table shows a source snapshot read independently of the chart window, including in Rewind. Retained pages describe evidence when read, not current file health.</p>
           </EvidenceDisclosure>
           {scope.databaseId !== undefined ? <p className="table-note">Showing {visibleFiles.length} of {files.items.length} loaded files for database ID {scope.databaseId}.</p> : null}
-          {visibleFiles.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Latest database file counters"><table className="evidence-table"><caption>Latest SQL Server file counters</caption>
+          {visibleFiles.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Loaded database file counters"><table className="evidence-table"><caption>{filesRetained ? "Retained" : "Latest"} SQL Server file counters</caption>
             <thead><tr><th scope="col">Database / file</th><th scope="col">Size</th>
               <th scope="col">Reads</th><th scope="col">Avg read stall (ms)</th>
               <th scope="col">Writes</th><th scope="col">Avg write stall (ms)</th>
@@ -302,7 +249,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       <p>Selected window: {formatDisplayTime(result.data.fromUtc, mode)} to {formatDisplayTime(result.data.toUtc, mode)}. Refreshed {formatDisplayTime(result.data.refreshedAtUtc, mode)}.</p>
       <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} · {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
       <EvidenceDisclosure label="Collection evidence details" attention={evidence.gaps.length > 0 || evidence.collectionState !== "current"}>
-        <p>CPU and memory history follow this loaded window. PLE and selected-file latency state their own coverage. File counters show the latest snapshot even in Rewind; volume capacity is available only in Live. Missing observations are never filled with zero.</p>
+        <p>CPU and memory history follow this loaded window. PLE and selected-file latency state their own coverage. File counters show their loaded source snapshot even in Rewind; volume capacity is available only in Live. Missing observations are never filled with zero.</p>
         <p>Last SQL core observation: {evidence.lastObservedUtc ? formatDisplayTime(evidence.lastObservedUtc, mode) : "unavailable"}. Source status does not establish a health verdict.</p>
       </EvidenceDisclosure>
       <ReferenceEvidenceStatus {...chartReferences} />
