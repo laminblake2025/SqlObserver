@@ -15,6 +15,7 @@ public static class AlertEndpoints
     {
         endpoints.MapAlertAssignmentEndpoints();
         endpoints.MapMaintenanceSeriesEndpoints();
+        endpoints.MapAlertRuleTemplateEndpoints();
         endpoints.MapGroup("/api/v1/alerts").RequireAuthorization()
             .MapGet("/active", GetFleetActiveAsync);
         var group = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/alerts").RequireAuthorization();

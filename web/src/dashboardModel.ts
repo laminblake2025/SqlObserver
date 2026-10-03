@@ -4,7 +4,7 @@ import { healthCheckTab, type HealthCheckTab } from './features/operations/agent
 import { analyticsSurfaceCatalog } from './features/analytics/analyticsSurfaceCatalog.ts';
 import type { AnalyticsSurface } from './features/analytics/analyticsTypes';
 
-export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', maintenance: 'Maintenance windows', destinations: 'Destinations', permissions: 'Permission script', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
+export const destinations = { overview: 'Overview', servers: 'Servers', health: 'Server summary', activity: 'Activity', waits: 'Waits', resources: 'Resources', queries: 'Query performance', deadlocks: 'Deadlocks', alerts: 'Alerts', rules: 'Alert rules', 'rule-templates': 'Rule templates', maintenance: 'Maintenance windows', destinations: 'Destinations', permissions: 'Permission script', operations: 'Health checks', analytics: 'Analytics', reports: 'Reports' } as const;
 export type Destination = keyof typeof destinations;
 export type HealthSection = "summary" | "databases" | "collection";
 export const navigationDestinations = ['overview', 'servers', 'activity', 'waits', 'resources', 'queries', 'deadlocks', 'alerts', 'operations', 'analytics', 'reports'] as const satisfies readonly Destination[];
@@ -32,6 +32,9 @@ export function readRoute(hash: string): DashboardRoute {
   const path = separator < 0 ? route : route.slice(0, separator);
   const query = separator < 0 ? undefined : route.slice(separator + 1);
   const page = Object.hasOwn(destinations, path ?? '') ? path as Destination : 'overview';
+  // Shared templates are global configuration. A copied diagnostic target or
+  // database parameter cannot turn the page into a target-scoped deployment.
+  if (page === 'rule-templates') return { page, target: '' };
   const params = new URLSearchParams(query);
   const scope = readOverviewScope(hash);
   const base = { page, target: scope.target, ...(scope.databaseId !== undefined ? { databaseId: scope.databaseId } : {}) };

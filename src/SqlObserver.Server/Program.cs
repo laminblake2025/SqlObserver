@@ -204,6 +204,9 @@ builder.Services.AddSingleton<IAlertRuleReadPort>(static services => services.Ge
 builder.Services.AddSingleton<IMaintenanceWindowReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceWindowReads);
 builder.Services.AddSingleton<IMaintenanceSeriesRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().MaintenanceSeries);
 builder.Services.AddSingleton<IMaintenanceSeriesService, MaintenanceSeriesService>();
+builder.Services.AddSingleton<IAlertRuleTemplateRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().RuleTemplates);
+builder.Services.AddSingleton<IAlertRuleTemplateApprovalPort, SqlObserver.Server.AlertRuleTemplateCatalog>();
+builder.Services.AddSingleton<IAlertRuleTemplateService, AlertRuleTemplateService>();
 builder.Services.AddSingleton<IAlertDestinationReadPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().AlertDestinationReads);
 builder.Services.AddSingleton<IOperationalHealthRepositoryPort>(static services => services.GetRequiredService<PostgreSqlTargetControlPlane>().OperationalHealth);
 builder.Services.AddSingleton<IAvailabilityGroupEvidenceRepositoryPort>(static services =>

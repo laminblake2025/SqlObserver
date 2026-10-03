@@ -2,6 +2,30 @@
 
 This checkpoint implements the dashboard refactor, including the native contracts and persistence needed for cohesive dashboard features. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor; unrelated collector and runtime redesign remain outside this pass.
 
+## Latest rule-template group deployment qualification (2026-10-03)
+
+The fleet Rule templates screen now supports a shared library of immutable versions, complete native environment/tag previews, explicit batches of ten, durable per-server outcomes, stop, guarded rollback and immutable history. Template publication never changes deployed rules automatically. A loaded Overview page never defines deployment membership. [Feature contract](Alert-Rule-Group-Templates.md).
+
+Forward migration **0352** resolves and authorizes every configured non-retired member before exposing a cohort. Preview freezes deduplicated membership, settings/version/source digests, target/grouping revisions and rule before/after configurations. Groups above 100 are refused without truncation. Target dispatch and rule revision fences protect native writes; bounded batches retain successes and disclose conflicts/failures. Source compatibility does not establish diagnostic health. Rollback restores prior settings or disables created rules, protects later manual edits and does not retract notifications or audit history.
+
+Owner/all-target-administrator publication and every-member Target Administrator grants are server-derived. Exact command replay returns immutable historical receipts before current-state fences; current status requires separate GET. Uncertain writes retain exact payload/operation identity even after successful refresh. Confirmed writes retry failed GET readback only. Context, role, denial and unmount fence late results. Exact immutable-version/deployment URLs are independent of copied diagnostic target/window parameters. Catalog identity controls owner affordances without changing the `/me` wire contract.
+
+Three independent owners covered Domain/Application/HTTP, native migration/repository/PostgreSQL and UI/theme/interactions. Read-only peers reviewed diagnostic semantics and ownership; one lead integrated App journeys, resolved findings and executed final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents / one lead | Three non-overlapping implementation owners, independent peer reviews and lead integration. | Complete. |
+| Dark theme | Shared dark tokens, readable settings/status/receipts, wrapped controls and visible focus. | Passing in tested states. |
+| Diagnostic-screen review | Native complete membership, source compatibility, immutable versions/replay, durable outcomes, dispatch fences, current provenance and guarded rollback reviewed. | Template deployment slice complete. |
+| Interaction tests | **46 native web**, **43 mounted** and **8 built-App** cases; complete affected administration/workflow/keyboard groups **16/14/6**. | Pass without skips, retries or flaky outcomes. |
+| Accessibility / responsive | Keyboard, axe and overflow checks at **320/390/768/1440**, plus mobile/desktop visual review. | Passing in tested states. |
+| Final integrated validation | Strict product/harness TypeScript, production build/assets; **228 affected .NET checks**, including **106 real PostgreSQL** and production HTTP-to-repository behavior; **1939** unchanged frozen inputs. | Passing against final code. |
+| Screenshots / completion summary | Eight fresh captures, [gallery](../../artifacts/dashboard-rule-templates/index.html) and [exact cases, hashes and provenance](../../artifacts/dashboard-rule-templates/completion.json). | Delivered locally, bound to final local commit. |
+
+Final .NET counts are **19 unit**, **53 API**, **50 security/worker**, **106 PostgreSQL**. Owning checks consume unchanged final inputs. Complete failed attempts and consumed source are retained in separate `before-*` evidence. Real database qualification found noncanonical deterministic child UUIDs; the repaired version/variant passes the existing native rule writer. Other repairs corrected fixture timestamp consistency, test-only mixed grants and selectors, and TypeScript narrowing without weakening behavior assertions. Passing subsets were not aggregated into final counts.
+
+Browser fixtures/captures are synthetic on final built assets. Native repository and production HTTP integration use disposable pinned PostgreSQL **18.4**, with only authentication replaced in HTTP tests. SQL Server collectors, manual assistive-technology and cross-browser certification are unchanged/unqualified. The optional assistant, telemetry/source gaps and broader repository plan remain open. No GitHub upload occurred.
+
 ## Latest recurring-maintenance qualification (2026-10-03)
 
 The target maintenance screen now supports finite daily, weekly and monthly series with server preview, create, edit future and cancel future. Civil definitions retain a named IANA zone and explicit gap/fold policies; browser time-zone conversion does not authorize a schedule. Elapsed duration, skipped dates, immutable source provenance and current-state timestamps are disclosed. [Feature contract](Recurring-Maintenance.md).
@@ -532,7 +556,7 @@ These statuses describe the original interface requirements rather than treating
 | Sessions/blocking/deadlocks | Exact request and chain identities, retained snapshots and deadlock restoration, inert role-gated protected content. | Collection completeness and retention limit available historical evidence. |
 | Resources | SQL scheduler CPU, SQL memory, aggregate/NUMA PLE, file latency, selected-file allocation/autogrowth and SQL-reported volume capacity. | Target-host CPU comparison and historical volume comparison need additional source contracts. |
 | Health checks | Existing backup/RPO, Agent, HA, TempDB and configuration/database-option surfaces with scoped navigation. | Source completeness, long-running-job parity and live platform qualification must be assessed in collector work; frontend checks cannot prove them. |
-| Administration | Target rules, destinations, server grouping, revision-checked connection edits/rediscovery/retirement, one-off maintenance calendar/create/edit/cancel, finite recurring series and offline permission generator. | Rule-template deployment by group remains incomplete. |
+| Administration | Target rules, destinations, server grouping, revision-checked connection edits/rediscovery/retirement, one-off/finite recurring maintenance, immutable shared templates and complete-group deployment/stop/guarded rollback, plus offline permission generator. | Group previews are capped at 100 complete authorized members, batches at ten; version publication never propagates automatically. |
 | Ctrl+K | Authorized server, database, query-hash and current-alert destinations. See [palette](../../web/src/components/CommandPalette.tsx). | Lookup/list caps and missing selections remain explicit. |
 | Live updates with pause | One workspace clock with source cadences, pause, hidden-window suppression and wake refresh; no refresh-key remount of diagnostic surfaces. See [clock](../../web/src/liveRefreshSchedule.ts). | SignalR is not required by the plan when shared polling is used. |
 | Shareable URLs | Target/window and supported alert, query, resource, request, chain, deadlock, admin, server settings, timeline and retained Waits selections survive reload/history. | Invalid or unavailable exact identities remain visible; no substituted newest selection. |
@@ -559,9 +583,9 @@ The new qualification section above records owning final checks. Lists remain bo
 
 ### Rule templates by group
 
-[Rule mutation routes](../../src/SqlObserver.Server/AlertEndpoints.cs) and [frontend mutations](../../web/src/features/alerts/alertRuleAdminActions.ts) are per-target, revision-checked operations. The inspected contracts do not supply a deployment job, frozen membership, per-target result or inherited rule provenance. [Fleet grouping](../../web/src/features/overview/FleetServerGrid.tsx) is a loaded authorized display; multi-tag targets can appear more than once.
+Delivered: [shared immutable library and complete group deployment contract](Alert-Rule-Group-Templates.md), forward migration 0352, native full-membership authorization/overflow checks, frozen previews, bounded durable batch outcomes, stop, guarded rollback and current rule provenance. The fleet screen and exact version/deployment URLs expose source compatibility, per-target results and immutable history without treating a loaded Overview page as a cohort.
 
-Next contract: a preview with deduplicated frozen target membership, per-target catalog compatibility, existing revisions and template/version provenance. Authorize every target; define bounded batch and partial-failure semantics; retain deployment/per-target operation IDs and payload digests. Return per-target success/conflict/failure, server timestamps and audit history. Prove retries do not duplicate rules, changed revisions are not overwritten and membership changes cannot silently expand a deployment. Define update/rollback semantics before implementation.
+Owner or all-target administrator publication creates a new immutable version. Updating a template or group never propagates automatically; a fresh preview is required. Exact retries return original receipts and do not advance batches. Current readback and guarded rollback protect later manual changes. The latest qualification section records the complete final evidence and bounded limits.
 
 ### Target-host and SQL CPU
 

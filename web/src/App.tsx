@@ -33,6 +33,9 @@ import { TargetAlertRulesPanel } from "./features/alerts/TargetAlertRulesPanel";
 import { TargetMaintenancePanel } from "./features/alerts/TargetMaintenancePanel";
 import { TargetDestinationsPanel } from "./features/alerts/TargetDestinationsPanel";
 import { FleetAlertsPage } from "./features/alerts/FleetAlertsPage";
+import { RuleTemplatesPage } from "./features/alerts/RuleTemplatesPage";
+import { readRuleTemplateSelection, ruleTemplateSelectionHref } from "./features/alerts/ruleTemplateSelection.ts";
+import "./features/alerts/ruleTemplates.css";
 import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
 import { deadlockSelectionHref, readDeadlockSelection, retainDeadlockSelectionHref } from "./features/deadlocks/deadlockSelectionModel.ts";
 import { TargetHealthPanel } from "./features/health/TargetHealthPanel";
@@ -88,6 +91,7 @@ export function App() {
   const deadlockSelection = readDeadlockSelection(location.hash, route.target);
   const reportSelection = readReportSelection(location.hash);
   const serverManagement = readServerManagementSelection(location.hash);
+  const templateSelection = readRuleTemplateSelection(location.hash);
   const [targets, setTargets] = useState<readonly ObservationTargetSummary[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string>();
@@ -107,6 +111,7 @@ export function App() {
     (reportSelection.kind === "performance-window" || reportSelection.kind === "incident-evidence") ? 7 : 31;
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
+  const [templateAccessMessage, setTemplateAccessMessage] = useState<string>();
   const requestedCursor = useRef<string | undefined>(undefined);
   const catalogAccess = useRef(new TargetCatalogAccess());
   const [catalogDenied, setCatalogDenied] = useState(false);
@@ -167,11 +172,16 @@ export function App() {
     const targetId = route.target || null;
     setAccess(current => current?.targetId === targetId ? current : undefined);
     void getMyAccess(targetId, read.signal)
-      .then(value => { if (read.current()) setAccess({ targetId, value }); })
+      .then(value => { if (read.current()) { setAccess({ targetId, value }); setTemplateAccessMessage(undefined); } })
       .catch((error: unknown) => {
         if (!read.current()) return;
         if (isAccessDenial(error)) denyCatalogAccess();
-        else setAccess(undefined);
+        else if (readRoute(location.hash).page === "rule-templates" && targetId === null) {
+          // A transient workspace read cannot abandon a confirmed operation's
+          // independent recovery. Every protected template request still
+          // resolves current authorization at its own server boundary.
+          setTemplateAccessMessage("Workspace access refresh is unavailable. Template controls retain the last verified role; each template request verifies current access.");
+        } else setAccess(undefined);
       });
     return read.cancel;
   }, [route.target, slowRefresh, catalogDenied, denyCatalogAccess]);
@@ -205,7 +215,7 @@ export function App() {
   const evidence = useFleetEvidence(targets, route.page === "servers");
   const listedTarget = targets.find((target) => target.instanceId.toLowerCase() === route.target.toLowerCase());
   const fleetAlertsPage = route.page === "alerts" && !route.target;
-  const targetPage = route.page !== "overview" && route.page !== "servers" && !fleetAlertsPage;
+  const targetPage = route.page !== "overview" && route.page !== "servers" && route.page !== "rule-templates" && !fleetAlertsPage;
   const directLookupRequired = !catalogDenied && targetPage && Boolean(route.target) && !listedTarget;
   const currentDirectTargetLookup = directLookupRequired
     ? directTargetLookup?.targetId === route.target && directTargetLookup.refresh === slowRefresh
@@ -300,12 +310,13 @@ export function App() {
   useEffect(() => { if (!canAddServer) setAdding(false); }, [canAddServer]);
   const canManageRules = canManageAlertRules(myAccess, route.target);
   const canManageDestinations = canManageAlertDestinations(myAccess, route.target);
+  const canUseRuleTemplates = myAccess?.active === true && myAccess.grantedRoles.includes("TargetAdministrator");
   const queryWindow = useMemo(
     () => resolveQueryWindow(scope, Date.now()),
     [route.page, scope.target, scope.range, scope.from, scope.to, slowRefresh],
   );
   const currentNavigation = route.page === "health" || route.page === "permissions" ? "servers" :
-    route.page === "rules" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
+    route.page === "rules" || route.page === "rule-templates" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
   const routeHref = (page: Destination, target = route.target) => {
     if (page === "alerts" && route.page === "alerts" && alertSelection && target.toLowerCase() === route.target.toLowerCase())
       return target ? targetAlertHref(scope, target, alertSelection.alertId) : alertJumpHref(scope, alertSelection);
@@ -347,6 +358,8 @@ export function App() {
     ? "Find the most important exceptions across your SQL Server environment."
     : fleetAlertsPage
       ? "Review current alerts across the servers you can read."
+    : route.page === "rule-templates"
+      ? "Version shared alert settings and explicitly deploy them to complete server groups."
     : route.page === "health"
       ? selected ? `Servers / ${selected.displayName} · target-scoped evidence` : "Select a server to inspect target-scoped evidence."
       : selected?.displayName ?? (route.page === "servers" ? "Registered targets and collection visibility" : "Select a server to inspect evidence.");
@@ -431,6 +444,8 @@ export function App() {
                 </button>
                 {selected && route.page === "health" && canManageRules
                   ? <a className="secondary-button" href={overviewHref(scope, "permissions", selected.instanceId)}>Generate permission script</a> : null}
+                {canUseRuleTemplates && (route.page === "servers" || route.page === "alerts" || route.page === "rules")
+                  ? <a className="secondary-button" href="#/rule-templates">Rule templates</a> : null}
                 {canAddServer ? <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button> : null}
               </div>
             }
@@ -448,13 +463,27 @@ export function App() {
             {scope.databaseId !== undefined && <p className="evidence-footer">Saved incidents capture server-wide analytics evidence. The database context is retained for navigation.</p>}
           </section>}
 
-          {route.page !== "overview" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
+          {route.page !== "overview" && route.page !== "rule-templates" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
           {message ? <p role="alert" className="status-message">{message}</p> : null}
           {targetPage && !props && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
 
           {!catalogDenied && route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
           {!catalogDenied && fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} selection={alertSelection} /> : null}
+          {!catalogDenied && route.page === "rule-templates" && templateAccessMessage ? <p role="status" className="evidence-footer">{templateAccessMessage}</p> : null}
+          {!catalogDenied && route.page === "rule-templates" ? <RuleTemplatesPage
+            allowed={canUseRuleTemplates} allTargetAdmin={myAccess?.allTargetRoles.includes("TargetAdministrator") === true} actorSid={undefined}
+            selectedTemplateId={templateSelection.templateId} selectedTemplateVersion={templateSelection.templateVersion}
+            selectedDeploymentId={templateSelection.deploymentId}
+            onSelectTemplate={(templateId, templateVersion) => {
+              if (location.hash !== renderedHash || readRoute(location.hash).page !== "rule-templates") return;
+              location.hash = ruleTemplateSelectionHref(location.hash, { templateId, templateVersion });
+            }}
+            onSelectDeployment={deploymentId => {
+              if (location.hash !== renderedHash || readRoute(location.hash).page !== "rule-templates") return;
+              location.hash = ruleTemplateSelectionHref(location.hash, { deploymentId });
+            }}
+            onBack={() => { if (readRoute(location.hash).page === "rule-templates") location.hash = "#/alerts"; }} /> : null}
           {route.page === "servers" && serverManagement?.state === "invalid" ? <section className="panel" aria-label="Server settings"><h2>Server settings</h2><p role="alert">{serverManagement.message}</p><a href={overviewHref({ ...scope, databaseId: undefined }, "servers", "")}>Return to server list</a></section> : null}
           {!catalogDenied && route.page === "servers" && serverManagement?.state === "selected" ? <TargetManagementPanel
             key={serverManagement.instanceId} instanceId={serverManagement.instanceId} scope={scope} access={myAccess}
