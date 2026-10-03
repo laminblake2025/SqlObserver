@@ -73,7 +73,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
                 ? ReplicationBounds.MaximumRows + 1
                 : manifest.Id.Value == "queries.performance-groups"
                     ? 2 * (manifest.Limits.MaxRows + 1) + QueryPerformanceBounds.MaximumDatabases + 1
-                : manifest.Id.Value == "storage.volume"
+                : manifest.Id.Value is "storage.volume" or "server.lifecycle"
                     ? manifest.Limits.MaxRows + 1
                 : manifest.Id.Value == "queries.performance"
             ? manifest.ManifestVersion.Value == 3
@@ -165,7 +165,11 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             throw new InvalidDataException("Collector inventory output belongs to a different target revision.");
         }
 
-        if (manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health" or "replication.health")
+        if (manifest.Id.Value == "server.lifecycle")
+        {
+            ValidateServerLifecycle(manifest, payload.OperationalHealth, request, result);
+        }
+        else if (manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health" or "replication.health")
         {
             ValidateOperationalHealthPayload(manifest, payload.OperationalHealth, request, result);
         }
@@ -199,7 +203,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
 
         // Incomplete topology and unqualified cache evidence require a supported
         // protocol with explicit coverage. This is not a generic Partial marker.
-        if (result.Loss.Kind == CollectorLossKind.VisibilityIncomplete &&
+        if (result.Loss.Kind == CollectorLossKind.VisibilityIncomplete && manifest.Id.Value != "server.lifecycle" &&
             !((queryPerformanceV2 || queryPerformanceV3) && payload.PlanCacheRuntime is { QualifiedExhaustive: false } &&
                 result.Outcome == CollectorRunOutcome.Partial && result.Reason == CollectorRunReason.VisibilityIncomplete) &&
             (manifest.Id.Value is not ("availability-groups.health" or "replication.health" or "backups.status") ||
@@ -241,6 +245,57 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
                 result.Outcome != CollectorRunOutcome.Succeeded && items.Count != 0)
                 throw new InvalidDataException("Server configuration scan coverage or accounting is invalid.");
         }
+    }
+
+    private static void ValidateServerLifecycle(CollectorManifest manifest, OperationalHealthPayload? envelope,
+        CollectorExecutionRequest request, CollectorExecutionResult result)
+    {
+        if (manifest.OutputKind != CollectorOutputKind.ServerLifecycle || manifest.ManifestVersion.Value != 1 ||
+            manifest.OutputSchemaVersion.Value != 1 || result.Payload.HostMetricsContext is not null ||
+            result.Payload.QueryPerformanceStatuses.Count != 0 || result.Payload.QueryPerformanceTargetStatus is not null ||
+            result.Payload.QueryStoreGroups is not null || result.Payload.PlanCacheRuntime is not null ||
+            result.Payload.PlanCacheContent is not null)
+            throw new InvalidDataException("Lifecycle output requires its exact contract and no foreign sidecars.");
+        if (result.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
+        {
+            if (envelope is not null || result.Accounting.SourceRowsRead != 0 ||
+                result.Accounting.OutputItemsProduced != 0 || result.Accounting.ResponseBytes != 0 ||
+                result.Accounting.OutputBytes != 0 ||
+                (result.Outcome == CollectorRunOutcome.OutputInvalid
+                    ? result.Loss.Kind != CollectorLossKind.OutputValidationFailure || result.Loss.MinimumLostItems != 1
+                    : result.Loss.HasLoss))
+                throw new InvalidDataException("A failed lifecycle run cannot publish evidence.");
+            return;
+        }
+        if (envelope?.Snapshot is not ServerLifecycleSnapshot snapshot || snapshot.TargetId != request.TargetId ||
+            snapshot.TargetRevision != request.TargetRevision || snapshot.RunId != request.RunId ||
+            snapshot.SourceSchemaVersion != 1 || snapshot.SourceRowsRead > manifest.Limits.MaxRows + 1 ||
+            result.Accounting.SourceRowsRead != snapshot.SourceRowsRead ||
+            envelope.ItemCount != 1 + snapshot.Members.Count || result.Accounting.OutputItemsProduced != envelope.ItemCount ||
+            envelope.EstimatedSizeBytes != snapshot.EstimatedSizeBytes || result.Accounting.OutputBytes != snapshot.EstimatedSizeBytes ||
+            result.Accounting.ResponseBytes < snapshot.EstimatedSizeBytes)
+            throw new InvalidDataException("Lifecycle receipt identity or accounting is invalid.");
+        bool incomplete = snapshot.EngineCoverage != ServerLifecycleCoverage.Complete ||
+            snapshot.AvailabilityCoverage is ServerLifecycleCoverage.Partial or ServerLifecycleCoverage.Unknown;
+        bool valid = result.Loss.Kind switch
+        {
+            CollectorLossKind.None => !snapshot.Truncated && !incomplete &&
+                result.Outcome == CollectorRunOutcome.Succeeded && result.Reason == CollectorRunReason.Completed,
+            CollectorLossKind.VisibilityIncomplete => !snapshot.Truncated && incomplete &&
+                result.Outcome == CollectorRunOutcome.Partial && result.Reason == CollectorRunReason.VisibilityIncomplete &&
+                result.Loss.MinimumLostItems == 1 && !result.Loss.CountIsExact,
+            CollectorLossKind.SourceRowLimit => snapshot.Truncated &&
+                result.Outcome == CollectorRunOutcome.Partial && result.Reason == CollectorRunReason.SourceRowLimit &&
+                snapshot.SourceRowsRead == envelope.ItemCount + 1 &&
+                result.Loss.MinimumLostItems == 1 && !result.Loss.CountIsExact,
+            CollectorLossKind.ResponseByteLimit => snapshot.Truncated && snapshot.Members.Count == 0 &&
+                result.Outcome == CollectorRunOutcome.Partial && result.Reason == CollectorRunReason.ResponseByteLimit &&
+                snapshot.SourceRowsRead > 1 && result.Loss.MinimumLostItems == snapshot.SourceRowsRead - 1 &&
+                !result.Loss.CountIsExact,
+            _ => false,
+        };
+        if (!valid || result.Loss.MinimumLostBytes != 0)
+            throw new InvalidDataException("Lifecycle source coverage and loss are inconsistent.");
     }
 
     private static void ValidateOperationalHealthPayload(CollectorManifest manifest, OperationalHealthPayload? envelope,
