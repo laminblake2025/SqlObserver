@@ -88,14 +88,15 @@ test("M9 production client safely maps malformed/status/oversized and aborts str
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test("M9 production operations reducer covers loading, complete, degraded, no-data, retry, append, and cancel reset", () => {
+test("M9 production operations reducer covers states and replaces continuations without mixing received rows", () => {
   const page = { ...base("backups"), items: [{ label: "<hostile>" }], hasMore: true, nextCursor: "next" };
   let state = initialOperationsState();
   assert.equal(state.backups.loading, true);
   state = operationsReducer(state, { type: "success", kind: "backups", page, append: false });
   assert.equal(state.backups.page.items[0].label, "<hostile>");
   state = operationsReducer(state, { type: "success", kind: "backups", page: { ...page, state: "Degraded", items: [{ label: "second" }] }, append: true });
-  assert.equal(state.backups.page.items.length, 2);
+  assert.equal(state.backups.page.items.length, 1);
+  assert.equal(state.backups.page.items[0].label, "second");
   for (const stateName of ["NoData", "Complete", "Partial"]) state = operationsReducer(state, { type: "success", kind: "backups", page: { ...page, state: stateName, items: [] }, append: false });
   state = operationsReducer(state, { type: "failure", kind: "backups", error: "retry", retryable: true });
   assert.equal(state.backups.error, "retry");
@@ -110,7 +111,7 @@ test("M9 render model maps every surface and state with safe retry, paging, and 
     let stateValue = initialOperationsState();
     stateValue = operationsReducer(stateValue, { type: "success", kind, page: { ...base(kind), state, items: [{ label: "<img onerror=alert(1)>" }], hasMore: true, nextCursor: "opaque" }, append: false });
     const card = buildOperationsRenderModel(stateValue).cards[kind];
-    assert.equal(card.status, state); assert.equal(card.canLoadMore, true); assert.equal(card.canRetry, false); assert.equal(card.inertLabels[0], "<img onerror=alert(1)>");
+    assert.equal(card.status, state); assert.equal(card.canLoadMore, kind !== "tempdb-summary"); assert.equal(card.canRetry, false); assert.equal(card.inertLabels[0], "<img onerror=alert(1)>");
   }
   let retryState = initialOperationsState();
   retryState = operationsReducer(retryState, { type: "failure", kind: "backups", error: "retry", retryable: true });

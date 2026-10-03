@@ -2,7 +2,31 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest retained-pager and current-head-blocker qualification (2026-10-03)
+## Latest legacy Operations projection qualification (2026-10-03)
+
+Legacy backup, TempDB and Availability Group projection cards now retain independent investigated pages and native cursor trails through workspace polling. Already-visited First/Previous/Next pages restore locally; unread continuation can expire when the native latest run advances. Explicit Return to latest resets only after a validated successful read. Failure preserves the received page; Retry repeats the failed operation, and Cancel retains the receipt without claiming a new source read. Automatic first-page reads can be superseded by a newer refresh. Explicit investigation requests keep ownership across refresh ticks.
+
+Target, revision, shared window and database changes fence old receipts before effects and abort owned requests; unmount and late results are also fenced. Actual HTTP 401/403 discards retained protected receipts. Collector PermissionDenied remains a source-coverage gap. Receipts disclose source run/revision and observation time independently of already-loaded App metadata. A NoData receipt labels repository check time rather than inventing collection time. Rewind and database selection do not make these legacy server-wide projections historical. TempDB summary totals and file pages have independent receipts; the summary omits files and has no row pager. Legacy Agent loading was removed in favor of the existing canonical history flow.
+
+Native cursors use nested standard-base64 envelopes bound to target, snapshot time, run, revision, kind and row tail. Validation preserves native microseconds/seventh-zero timestamps, nullable backup sort keys, ordering and cursor progress. This binding is not a cryptographic signature. Retention is bounded to 400 pages/10,000 rows. AG truncated and top-level visibility are page-relative in the native projection; additional-page disclosure is separate from Partial source coverage. A source GET enforces current database revision, but its revision can differ from stale App metadata loaded before a target edit.
+
+Three non-overlapping owners handled product lifecycle/native models, mounted interactions, and dark-theme/accessibility/native diagnostic review. The lead integrated existing fixture contracts, authored runtime/App checks, repaired test setup and ran final qualification. Independent review identified page-relative AG flags and an automatic read that needed superseding; both were repaired before browser qualification. Shared dark tokens, wrapping controls/receipt identities, sticky headers and bounded keyboard-scrollable tables passed the tested widths.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners with independent source review; lead owns integration, native/App checks and final qualification. | Complete. |
+| Dark theme | Shared tokens, readable receipts, wrapping identities/controls and visible keyboard focus. | Passing in tested states. |
+| Diagnostic-screen review | Native legacy backup/TempDB/AG contracts, retained investigation, error/cancel lifecycle and source provenance reviewed and repaired. | Recorded legacy projection finding closed. |
+| Interaction tests | **24 runtime/API/model checks**, **33 mounted cases**, **seven built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard activation/focus, local table scrolling, axe and document/control bounds at **320/390/768/1440**; App integration at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification and **505 unchanged frozen inputs**; owned fixture ports closed. | Passing against final product code. |
+| Screenshots and completion summary | **Eight fresh captures**, representative mobile/desktop visual review, [gallery](../../artifacts/dashboard-operations-projections/index.html), [case inventories, hashes and provenance](../../artifacts/dashboard-operations-projections/completion.json). | Delivered locally, bound to the final local commit. |
+
+These are affected checks, not full repository or release certification. Final counts come from complete groups, never combined repair subsets. Earlier attempts remain under `before-native-contract-review`, `initial-app` and `app-target-assertion`. App setup corrections used the actual arrow-prefixed Refresh name, respected server navigation clearing a per-target database ID, and asserted the new target request/distinct source run instead of expecting a target ID in a card that displays run/revision. A mounted source-revision fixture now models source revision 2 after stale App metadata 1, consistent with native database constraints. Product, assets, native checks and harness inputs remained unchanged during those spec-only corrections; the complete final mounted/App groups reran against one unchanged 505-input manifest.
+
+All browser requests and screenshots use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The broader dashboard refactor and original repository plan remain incomplete; backend-dependent requirements below remain open. No GitHub upload occurred.
+
+## Previous retained-pager and current-head-blocker qualification (2026-10-03)
 
 Investigate-first now gives a direct current head-blocker answer from one native graph read shared with the dashboard blocking tree. Ranking uses distinct blocked sessions, then exact observed wait; cycle, external and depth-limited roots are unconfirmed. Keyboard Inspect focuses and highlights the same received graph, preserving the shared Rewind URL. Current server-wide evidence remains independent of the historical window. Empty retained, incomplete or never-collected evidence does not claim all clear; repository check time is labelled separately when collection time is unavailable.
 
@@ -74,11 +98,7 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 ### Remaining source-reviewed dashboard work
 
-These are frontend findings supported by existing native contracts, not backend scope requests. Check current sources before changing them:
-
-1. **Legacy Operations projection pagination:** `OperationsPanel.tsx` / `operationsState.ts` still reset or append their older projection-card pages during polling. Review and retain their investigated mutable-window context using existing native contracts. This is distinct from the qualified per-replica AG, backup assessment and Agent history pagers above.
-
-The direct current head-blocker and canonical native pager findings are closed by the latest pass. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
+The recorded legacy Operations projection pagination finding is closed by the latest qualification above. Earlier direct current head-blocker and canonical native pager findings remain closed. This closes the recorded frontend finding list, not the full dashboard refactor or repository plan. Check current sources before taking on further work within the authorized scope. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
 
 The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
 

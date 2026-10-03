@@ -16,6 +16,8 @@ export interface OperationsRenderCard {
   readonly canLoadMore: boolean;
   readonly canCancel: boolean;
   readonly inertLabels: readonly string[];
+  readonly retained: boolean;
+  readonly pageIndex: number;
 }
 export interface OperationsRenderModel { readonly cards: Readonly<Record<OperationalKind, OperationsRenderCard>>; }
 
@@ -31,7 +33,7 @@ export function buildOperationsRenderModel(state: OperationsState): OperationsRe
     const status: OperationsRenderStatus = card.error !== undefined && page === undefined ? "Error" : card.loading ? "Loading" : page?.state ?? "Error";
     const items = page?.items ?? [];
     const inertLabels = items.flatMap(item => Object.values(item).filter((value): value is string => typeof value === "string"));
-    return [kind, { kind, label: labels[kind], status, page, loading: card.loading, items, error: card.error, retryable: card.retryable === true, canRetry: card.error !== undefined && card.retryable === true, canLoadMore: card.loading !== true && page?.hasMore === true && typeof page.nextCursor === "string", canCancel: card.loading, inertLabels } satisfies OperationsRenderCard];
+    return [kind, { kind, label: labels[kind], status, page, loading: card.loading, items, error: card.error, retryable: card.retryable === true, canRetry: card.error !== undefined && card.retryable === true, canLoadMore: kind !== "tempdb-summary" && card.loading !== true && page?.hasMore === true && typeof page.nextCursor === "string", canCancel: card.loading, inertLabels, retained: card.retained === true, pageIndex: card.pageIndex ?? 0 } satisfies OperationsRenderCard];
   })) as unknown as Record<OperationalKind, OperationsRenderCard>;
   return { cards };
 }

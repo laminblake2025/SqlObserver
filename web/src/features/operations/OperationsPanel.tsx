@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { AnalyticsSurfacePanel } from "../analytics/AnalyticsSurfacePanel";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
 import { EvidenceTable } from "../../components/EvidenceTable";
 import { healthSectionHref } from "../../dashboardModel";
-import { getOperationalPage, OperationalApiError } from "./operationsApi";
-import { initialOperationsState, operationKinds, operationsReducer } from "./operationsState";
+import type { OperationsState } from "./operationsState";
+import { useOperationalProjection } from "./useOperationalProjection.ts";
+import "./operationsProjection.css";
 import { buildOperationsRenderModel, type OperationsRenderCard } from "./operationsRenderModel";
 import type { OperationalKind, OperationalPage } from "./operationsTypes";
 import type { OverviewScope } from "../overview/overviewTypes";
@@ -35,113 +36,89 @@ const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly 
 };
 
 export function OperationsPanel({ instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false }: { readonly instanceId: string; readonly targetRevision: number; readonly initialTab?: OperationsTab; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean }) {
-  const [cards, dispatch] = useReducer(operationsReducer, undefined, initialOperationsState);
-  const [tab, setTab] = useState<OperationsTab>(initialTab);
-  useEffect(() => { setTab(initialTab); }, [instanceId, initialTab]);
-  const controllers = useRef(new Map<OperationalKind, AbortController>());
-
-  useEffect(() => {
-    controllers.current.forEach((controller) => controller.abort());
-    controllers.current.clear();
-    dispatch({ type: "reset" });
-    let disposed = false;
-    const isCurrent = (kind: OperationalKind, controller: AbortController) => !disposed && !controller.signal.aborted && controllers.current.get(kind) === controller;
-    const load = async (kind: OperationalKind, cursor?: string | null) => {
-      const controller = new AbortController();
-      controllers.current.set(kind, controller);
-      dispatch({ type: "start", kind, append: cursor !== undefined });
-      try {
-        const page = await getOperationalPage(instanceId, kind, { cursor, limit: 50, signal: controller.signal });
-        if (isCurrent(kind, controller)) dispatch({ type: "success", kind, page, append: cursor !== undefined });
-      } catch (error: unknown) {
-        if (isCurrent(kind, controller) && !(error instanceof DOMException && error.name === "AbortError")) {
-          const api = error instanceof OperationalApiError ? error : undefined;
-          dispatch({ type: "failure", kind, error: api?.message ?? "Operational health is temporarily unavailable.", retryable: api?.retryable ?? true });
-        }
-      }
-    };
-    operationKinds.filter(kind => kind !== "agent").forEach((kind) => { void load(kind); });
-    return () => {
-      disposed = true;
-      controllers.current.forEach((controller) => controller.abort());
-      controllers.current.clear();
-    };
-  }, [instanceId, refresh]);
-
-  const retry = (kind: OperationalKind) => {
-    controllers.current.get(kind)?.abort();
-    const controller = new AbortController();
-    controllers.current.set(kind, controller);
-    dispatch({ type: "start", kind, append: false });
-    void getOperationalPage(instanceId, kind, { limit: 50, signal: controller.signal })
-      .then((page) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller) dispatch({ type: "success", kind, page, append: false }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller && !(error instanceof DOMException && error.name === "AbortError")) dispatch({ type: "failure", kind, error: error instanceof OperationalApiError ? error.message : "Operational health is temporarily unavailable.", retryable: true }); });
+  const tabKey = JSON.stringify([instanceId.toLowerCase(), initialTab]);
+  const [selectedTab, setSelectedTab] = useState<{ key: string; value: OperationsTab }>();
+  const tab = selectedTab?.key === tabKey ? selectedTab.value : initialTab;
+  const context = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
+  const projections = {
+    backups: useOperationalProjection("backups", instanceId, context, refresh),
+    "tempdb-summary": useOperationalProjection("tempdb-summary", instanceId, context, refresh),
+    "tempdb-files": useOperationalProjection("tempdb-files", instanceId, context, refresh),
+    "ag-replicas": useOperationalProjection("ag-replicas", instanceId, context, refresh),
+    "ag-databases": useOperationalProjection("ag-databases", instanceId, context, refresh),
   };
-
-  const more = (kind: OperationalKind, cursor: string) => {
-    controllers.current.get(kind)?.abort();
-    const controller = new AbortController();
-    controllers.current.set(kind, controller);
-    dispatch({ type: "start", kind, append: true });
-    void getOperationalPage(instanceId, kind, { limit: 50, cursor, signal: controller.signal })
-      .then((page) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller) dispatch({ type: "success", kind, page, append: true }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller && !(error instanceof DOMException && error.name === "AbortError")) dispatch({ type: "failure", kind, error: error instanceof OperationalApiError ? error.message : "Operational health is temporarily unavailable.", retryable: true }); });
-  };
-
-  const cancel = (kind: OperationalKind) => {
-    controllers.current.get(kind)?.abort();
-    controllers.current.delete(kind);
-    dispatch({ type: "cancel", kind });
-  };
-
+  const cards: OperationsState = { agent: { loading: false }, backups: projections.backups.card,
+    "tempdb-summary": projections["tempdb-summary"].card, "tempdb-files": projections["tempdb-files"].card,
+    "ag-replicas": projections["ag-replicas"].card, "ag-databases": projections["ag-databases"].card };
   const model = buildOperationsRenderModel(cards);
+  const renderCard = (kind: OperationalKind) => kind === "agent" ? null :
+    <OperationCard card={model.cards[kind]} key={kind} actions={projections[kind]} />;
   const activeKinds = tab === "replication" ? [] : tabKinds[tab];
   return <section className="operations-screen" aria-label="Health checks">
     <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB pressure, availability, and replication from collected evidence.</p></div></div>
-    <Tabs label="Health check categories" tabs={tabs} value={tab} onChange={(value) => { setTab(value as OperationsTab); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
+    <Tabs label="Health check categories" tabs={tabs} value={tab} onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
     <nav className="toolbar" aria-label="Additional health checks">
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>
     </nav>
     <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
-    {scope.range === "custom" && <p className="table-note">Rewind applies to backup assessments, per-replica AG evidence and SQL Agent first-observed history. Other operational cards show their latest source snapshots.</p>}
+    {scope.range === "custom" && <p className="table-note">Rewind applies to backup assessments, per-replica AG evidence and SQL Agent first-observed history. Earlier projection cards read the latest source when requested and can retain an investigated receipt.</p>}
     {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
       : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
-      <details className="supporting-evidence"><summary>Earlier availability summary (latest v1 snapshot)</summary>
-        <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>
+      <details className="supporting-evidence"><summary>Earlier availability summary (received v1 snapshots)</summary>
+        <div className="operations-stack">{activeKinds.map(renderCard)}</div>
       </details></> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
-        <details className="supporting-evidence"><summary>Earlier backup observations (latest v1 snapshot)</summary>
-          <div className="operations-stack">{activeKinds.map(kind => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>
+        <details className="supporting-evidence"><summary>Earlier backup observations (received v1 snapshots)</summary>
+          <div className="operations-stack">{activeKinds.map(renderCard)}</div>
         </details></> : tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} scope={scope} />
-        : <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>}
+        : <div className="operations-stack">{activeKinds.map(renderCard)}</div>}
   </section>;
 }
 
-function OperationCard({ card, onRetry, onLoadMore, onCancel }: { readonly card: OperationsRenderCard; readonly onRetry: (kind: OperationalKind) => void; readonly onLoadMore: (kind: OperationalKind, cursor: string) => void; readonly onCancel: (kind: OperationalKind) => void }) {
+function OperationCard({ card, actions }: { readonly card: OperationsRenderCard; readonly actions: ReturnType<typeof useOperationalProjection> }) {
   const formatTime = useTimeFormatter();
   const page = card.page;
   const tone = card.status === "Complete" ? "current" : card.status === "Error" || card.status === "PermissionDenied" ? "critical" : card.status === "Partial" || card.status === "Degraded" ? "warning" : "unavailable";
-  return <article className="operation-card panel" aria-label={card.label}>
-    <div className="operation-card-heading"><div><p className="eyebrow">{card.kind === "agent" ? "SQL AGENT" : card.kind.toUpperCase()}</p><h3>{card.label}</h3></div><EvidenceStatus label={card.loading ? "Loading" : page?.state ?? card.status} detail={page ? `Observed ${formatTime(page.observedAtUtc)}` : undefined} tone={tone} /></div>
-    {card.status === "Loading" ? <div className="operation-state"><p>Loading bounded evidence…</p><button type="button" onClick={() => onCancel(card.kind)}>Cancel</button></div> : null}
-    {card.status === "Error" && page === undefined ? <div className="operation-state"><p role="alert">{card.error ?? "Operational health is temporarily unavailable."}</p>{card.canRetry ? <button type="button" onClick={() => onRetry(card.kind)}>Retry</button> : null}</div> : null}
-    {page ? <>
+  return <article className="operation-card operation-projection-card panel" aria-label={card.label} aria-busy={card.loading}>
+    <div className="operation-card-heading"><div><p className="eyebrow">{card.kind.toUpperCase()}</p><h3>{card.label}</h3></div><EvidenceStatus label={card.loading ? "Loading" : page?.state ?? card.status} detail={page ? `${page.state === "NoData" ? "Checked" : "Snapshot receipt"} ${formatTime(page.observedAtUtc)}` : undefined} tone={tone} /></div>
+    <p className="operation-projection-note">This projection reads the latest source snapshot when requested. Rewind and database selection do not filter these server-wide rows. Each card has an independent source receipt.</p>
+    {card.retained && <p className="operation-projection-retained">Retained projection investigation. Workspace polling does not replace this card. Previously read pages restore locally; unread pages need an unexpired native continuation.</p>}
+    {card.loading && <div className="operation-state"><p role="status">{page ? "Reading bounded evidence; the received page remains visible…" : "Loading bounded evidence…"}</p><button type="button" onClick={actions.cancel}>Cancel {card.label} read</button></div>}
+    {card.error && <div className="operation-state"><p role="alert">{card.error}</p>{card.canRetry && <button type="button" disabled={card.loading} onClick={actions.retry}>Retry {card.label} read</button>}</div>}
+    {page && <>
+      {(card.loading || card.error) && <p className="operation-projection-note">Showing the previously received page while this read is pending or unavailable. The receipt below describes that evidence; it does not establish current state.</p>}
+      <p className="operation-projection-receipt">{page.runId ? `Received source run: ${page.runId}` : "No source run"} · {page.runId ? "Source target revision" : "Reported target revision"}: {page.targetRevision}. This receipt does not certify current configuration or health.</p>
       <OperationCoverage page={page} kind={card.kind} />
-      {card.kind === "tempdb-summary" ? <TempDbSummary page={page} /> : null}
-      {page.state === "NoData" ? <p className="empty-state">No observation is available for this target. Check the collector status in Server summary.</p> : null}
-      {page.state === "Unsupported" ? <p className="empty-state">This collector is unsupported by the target. Check the discovered platform and version in Server summary.</p> : null}
-      {page.state === "PermissionDenied" ? <p className="empty-state">The collector could not read this evidence. Ask a Target Administrator to check the monitored SQL Server read permissions.</p> : null}
+      {card.kind === "tempdb-summary" && <><TempDbSummary page={page} /><p className="operation-projection-note">Summary totals belong to this source run. Browse TempDB files independently; another card can have a different receipt.</p></>}
+      {page.state === "NoData" && <p className="empty-state">No observation is available for this target. Check the collector status in Server summary.</p>}
+      {page.state === "Unsupported" && <p className="empty-state">This collector is unsupported by the target. Check the discovered platform and version in Server summary.</p>}
+      {page.state === "PermissionDenied" && <p className="empty-state">The collector could not read this evidence. Ask a Target Administrator to check the monitored SQL Server read permissions.</p>}
       {page.items.length ? <NamedOperationEvidence kind={card.kind} page={page} /> : card.kind !== "tempdb-summary" && page.state === "Complete" ? <p className="empty-state">No bounded rows were reported by this observation.</p> : null}
-      {page.items.length ? <details className="evidence-disclosure"><summary>Secondary projection fields</summary><EvidenceTable label={`${card.label} secondary evidence`} rows={card.items} /></details> : null}
-      {card.error ? <div className="operation-state"><p role="alert">{card.error}</p>{card.canRetry ? <button type="button" onClick={() => onRetry(card.kind)}>Retry</button> : null}</div> : null}
-      {card.canLoadMore && page.nextCursor ? <button type="button" disabled={card.loading} onClick={() => onLoadMore(card.kind, page.nextCursor!)}>Load more bounded rows</button> : null}
-    </> : null}
+      {page.items.length > 0 && <details className="evidence-disclosure"><summary>Secondary projection fields</summary><EvidenceTable label={`${card.label} secondary evidence`} rows={card.items} /></details>}
+    </>}
+    <nav className="operation-projection-controls operation-pagination pager" aria-label={`${card.label} pages`}>
+      <span>Page {card.pageIndex + 1}</span>
+      {card.kind !== "tempdb-summary" && <>
+        <button type="button" disabled={card.loading || !page || card.pageIndex === 0} onClick={actions.first}>First {card.label} page</button>
+        <button type="button" disabled={card.loading || !page || card.pageIndex === 0} onClick={actions.previous}>Previous {card.label} page</button>
+        <button type="button" disabled={!card.canLoadMore} onClick={actions.next}>Next {card.label} page</button>
+      </>}
+      <button type="button" disabled={card.loading} onClick={actions.latest}>Return {card.label} to latest</button>
+    </nav>
   </article>;
 }
 
 function OperationCoverage({ page, kind }: { readonly page: OperationalPage; readonly kind: OperationalKind }) {
   const formatTime = useTimeFormatter();
-  return <div className="operation-coverage"><span>Snapshot observed {formatTime(page.observedAtUtc)}</span>{page.truncated ? <strong>Partial capture · additional rows may be missing</strong> : null}{page.visibilityScope ? <span>Visibility: {page.visibilityScope}</span> : null}{page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatTime(page.coverageFromUtc)} to {formatTime(page.coverageToUtc)}</span> : null}{kind === "agent" ? <small>Execution start uses the SQL Server local clock without a time-zone offset. Job names and messages are unavailable.</small> : null}</div>;
+  const availability = kind === "ag-replicas" || kind === "ag-databases";
+  return <div className="operation-coverage">
+    <span>{page.state === "NoData" ? "Repository no-data check time" : "Snapshot receipt time"}: {formatTime(page.observedAtUtc)}</span>
+    {page.state === "Partial" && <strong>Partial source observation · source coverage is incomplete</strong>}
+    {page.truncated && <strong>{availability ? "Additional snapshot rows exist beyond this page" : "Partial capture · additional rows may be missing"}</strong>}
+    {page.visibilityScope && <span>{availability ? "First row visibility on this page" : "Visibility"}: {page.visibilityScope}</span>}
+    {page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatTime(page.coverageFromUtc)} to {formatTime(page.coverageToUtc)}</span> : null}
+    {kind === "agent" && <small>Execution start uses the SQL Server local clock without a time-zone offset. Job names and messages are unavailable.</small>}
+  </div>;
 }
 
 function TempDbSummary({ page }: { readonly page: OperationalPage }) {

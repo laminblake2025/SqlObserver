@@ -95,7 +95,7 @@ async function expectContextLinks(page, id = target) {
 test('the grouped tabs expose six distinct sources, current Agent history, and shared context links', async ({ page }) => {
   register(page, 'tempdb-files', operational('tempdb-files', target, { items: [tempFile(1, { state: providerText })] }));
   await mount(page);
-  await expect(panel(page).getByRole('region', { name: 'Backup freshness assessments' })).toContainText('no current database verdicts are available');
+  await expect(panel(page).getByRole('region', { name: 'Backup freshness assessments' })).toContainText('no database verdicts are available for this received assessment');
   await supporting(page, 'Earlier backup observations');
   await expect(card(page, 'Backups').getByRole('table', { name: /^backups named evidence/ })).toContainText('Full');
   await tab(page, 'SQL Agent').click();
@@ -127,7 +127,7 @@ test('NoData, Unsupported, PermissionDenied and Partial remain truthful about mi
   register(page, 'tempdb-files', operational('tempdb-files', target, { state: 'Unsupported' }));
   register(page, 'backups', operational('backups', target, { state: 'PermissionDenied' }));
   register(page, 'ag-replicas', operational('ag-replicas', target, {
-    state: 'Partial', truncated: true, items: fixture()['ag-replicas'].items,
+    state: 'Partial', truncated: false, items: fixture()['ag-replicas'].items,
   }));
   await mount(page, 'tempdb');
   const summary = card(page, 'TempDB summary');
@@ -143,7 +143,7 @@ test('NoData, Unsupported, PermissionDenied and Partial remain truthful about mi
   await tab(page, 'Availability groups').click();
   await supporting(page, 'Earlier availability summary');
   await expect(card(page, 'Availability Group replicas').getByRole('status')).toContainText('Partial');
-  await expect(card(page, 'Availability Group replicas')).toContainText('Partial capture · additional rows may be missing');
+  await expect(card(page, 'Availability Group replicas')).toContainText('Partial source observation · source coverage is incomplete');
   await expect(card(page, 'Availability Group replicas').getByRole('table', { name: /^ag-replicas named evidence/ })).toBeVisible();
 });
 
@@ -154,43 +154,46 @@ test('cancelling pending evidence aborts its request and retry obtains a fresh b
   const request = await old.started;
   await expect(files(page)).toContainText('Loading bounded evidence…');
   const cancelled = page.waitForEvent('requestfailed', { predicate: failed => failed === request });
-  await files(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+  await files(page).getByRole('button', { name: 'Cancel TempDB files read', exact: true }).click();
   await cancelled;
-  await expect(files(page).getByRole('alert')).toContainText('cancelled. Retry to request a fresh snapshot.');
-  await expect(files(page).getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+  await expect(files(page).getByRole('alert')).toContainText('cancelled');
+  await expect(files(page).getByRole('button', { name: 'Cancel TempDB files read', exact: true })).toHaveCount(0);
   await old.release();
   register(page, 'tempdb-files', operational('tempdb-files', target, { items: [tempFile(9)] }));
-  await files(page).getByRole('button', { name: 'Retry', exact: true }).click();
+  await files(page).getByRole('button', { name: 'Retry TempDB files read', exact: true }).click();
   await expect(namedFiles(page).getByRole('row')).toHaveCount(2);
   await expect(namedFiles(page).getByRole('row').nth(1).getByRole('cell').first()).toHaveText('9');
   await expect(files(page).getByRole('alert')).toHaveCount(0);
   expect(sessions.get(page).requests.filter(request => key(request.url()) === key(requestPath('tempdb-files')))).toHaveLength(2);
 });
 
-test('paging appends bounded rows, preserves them on failure, and retry replaces the page without reflecting the error body', async ({ page }) => {
-  register(page, 'tempdb-files', operational('tempdb-files', target, { items: [tempFile(1)], hasMore: true, nextCursor: cursor }));
-  const next = held(operational('tempdb-files', target, { items: [tempFile(2)], hasMore: true, nextCursor: lastCursor }));
+test('paging replaces bounded rows, preserves the investigated page on failure, and retries the same native cursor safely', async ({ page }) => {
+  register(page, 'tempdb-files', operational('tempdb-files', target, { items: Array.from({ length: 50 }, (_, i) => tempFile(i + 1)), hasMore: true, nextCursor: cursor }));
+  const next = held(operational('tempdb-files', target, { items: Array.from({ length: 50 }, (_, i) => tempFile(i + 51)), hasMore: true, nextCursor: lastCursor }));
   register(page, 'tempdb-files', undefined, { cursor, handler: next.handle });
   register(page, 'tempdb-files', { providerDetail: 'OPERATIONS_PROVIDER_SECRET' }, { cursor: lastCursor, status: 503 });
   await mount(page, 'tempdb');
-  await expect(namedFiles(page).getByRole('row')).toHaveCount(2);
-  await files(page).getByRole('button', { name: 'Load more bounded rows', exact: true }).click();
+  await expect(namedFiles(page).getByRole('row')).toHaveCount(51);
+  await files(page).getByRole('button', { name: 'Next TempDB files page', exact: true }).click();
   await next.started;
-  await expect(files(page).getByRole('button', { name: 'Load more bounded rows', exact: true })).toHaveCount(0);
-  await expect(namedFiles(page).getByRole('row')).toHaveCount(2);
+  await expect(files(page).getByRole('button', { name: 'Next TempDB files page', exact: true })).toBeDisabled();
+  await expect(namedFiles(page).getByRole('row')).toHaveCount(51);
   await next.release();
-  await expect(namedFiles(page).getByRole('row')).toHaveCount(3);
-  await expect(namedFiles(page).getByRole('row').nth(2).getByRole('cell').first()).toHaveText('2');
-  await files(page).getByRole('button', { name: 'Load more bounded rows', exact: true }).click();
+  await expect(namedFiles(page).getByRole('row')).toHaveCount(51);
+  await expect(namedFiles(page).getByRole('row').nth(1).getByRole('cell').first()).toHaveText('51');
+  await files(page).getByRole('button', { name: 'Next TempDB files page', exact: true }).click();
   await expect(files(page).getByRole('alert')).toHaveText('Operational health is temporarily unavailable.');
-  await expect(namedFiles(page).getByRole('row')).toHaveCount(3);
+  await expect(namedFiles(page).getByRole('row')).toHaveCount(51);
+  await expect(namedFiles(page).getByRole('row').nth(1).getByRole('cell').first()).toHaveText('51');
   await expect(panel(page)).not.toContainText('OPERATIONS_PROVIDER_SECRET');
-  register(page, 'tempdb-files', operational('tempdb-files', target, { items: [tempFile(8)] }));
-  await files(page).getByRole('button', { name: 'Retry', exact: true }).click();
+  register(page, 'tempdb-files', operational('tempdb-files', target, { items: [tempFile(101)] }), { cursor: lastCursor });
+  await files(page).getByRole('button', { name: 'Retry TempDB files read', exact: true }).click();
   await expect(namedFiles(page).getByRole('row')).toHaveCount(2);
-  await expect(namedFiles(page).getByRole('row').nth(1).getByRole('cell').first()).toHaveText('8');
+  await expect(namedFiles(page).getByRole('row').nth(1).getByRole('cell').first()).toHaveText('101');
   await expect(files(page).getByRole('alert')).toHaveCount(0);
-  await expect(files(page).getByRole('button', { name: 'Load more bounded rows', exact: true })).toHaveCount(0);
+  await expect(files(page).getByRole('button', { name: 'Next TempDB files page', exact: true })).toBeDisabled();
+  const failedAndRetried = sessions.get(page).requests.filter(request => key(request.url()) === key(requestPath('tempdb-files', target, lastCursor)));
+  expect(failedAndRetried).toHaveLength(2);
 });
 
 test('a server change cancels pending evidence and its late response cannot replace the new target or links', async ({ page }) => {
@@ -221,9 +224,9 @@ test('modern AG evidence labels unknown local state and fences correlation until
   await expect(replicas.getByRole('table')).toContainText('Unknown');
   await expect(replicas).toContainText('Secondary: local state only');
   await expect(replicas).toContainText('Captured rows have incomplete coverage.');
-  await expect(panel(page).getByRole('alert')).toContainText('different runs or target revisions');
+  await expect(panel(page).getByRole('alert')).toContainText('different cutoffs, runs or target revisions');
   register(page, 'availability-databases', { ...retained, items: [] });
-  await panel(page).getByRole('button', { name: 'Restart both AG streams', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'Return both AG streams to latest', exact: true }).click();
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
   await expect(replicas.getByRole('table')).toBeVisible();
   await expect(card(page, 'AG database replicas')).toContainText('1 retained / 1 captured / 1 source rows');
@@ -232,7 +235,7 @@ test('modern AG evidence labels unknown local state and fences correlation until
 test('Operations remains keyboard accessible without page overflow at narrow and desktop widths', async ({ page }, info) => {
   await mount(page, 'tempdb');
   await expect(namedFiles(page)).toBeVisible();
-  const directory = fileURLToPath(new URL('../../artifacts/dashboard-components/screenshots/', import.meta.url));
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-operations-projections/screenshots/', import.meta.url));
   await mkdir(directory, { recursive: true });
   for (const width of [320, 1440]) {
     await page.setViewportSize({ width, height: 1000 });

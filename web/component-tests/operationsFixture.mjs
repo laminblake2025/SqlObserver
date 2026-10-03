@@ -5,8 +5,12 @@ export const runId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 export const fromUtc = '2026-08-25T11:00:00.000Z';
 export const toUtc = '2026-08-25T13:00:00.000Z';
 export const observedAtUtc = '2026-08-25T12:00:00.000Z';
-export const cursor = 'page+/=two';
-export const lastCursor = 'page-three';
+// Native v1 snapshot cursor: standard-base64 outer and PascalCase inner tie key.
+export const projectionCursor = (fileId, id = target) => Buffer.from(`${id}|${observedAtUtc}|${Buffer.from(JSON.stringify({
+  Kind: 'tempdb', RunId: runId, Revision: 4, From: null, To: null, A: String(fileId), B: '', C: '', D: '',
+})).toString('base64')}`).toString('base64');
+export const cursor = projectionCursor(50);
+export const lastCursor = projectionCursor(100);
 export const providerText = '<img src="https://operations.invalid/provider" onerror="window.operationsInjected=1">';
 export const paths = {
   backups: '/api/v1/observation-targets/:id/backups', agent: '/api/v1/observation-targets/:id/sql-agent/failures',
@@ -28,10 +32,11 @@ export function routeHash(id = target, tab = 'backups') {
   return `#/operations?${new URLSearchParams({ target: id, databaseId: '7', range: 'custom', from: fromUtc, to: toUtc, compare: '1', check: tab })}`;
 }
 export function operational(kind, id = target, overrides = {}) {
-  return { targetId: id, targetRevision: 4, runId, evidence: null, observedAtUtc, state: 'Complete',
+  return { targetId: id, targetRevision: 4, runId, evidence: { observedAtUtc }, observedAtUtc, state: 'Complete',
     items: [], hasMore: false, nextCursor: null, truncated: false,
     ...(kind === 'agent' ? { coverageFromUtc: fromUtc, coverageToUtc: toUtc } : {}),
-    ...(kind.startsWith('ag-') ? { visibilityScope: 'PrimaryAllKnown' } : {}), ...overrides };
+    ...(kind.startsWith('ag-') ? { visibilityScope: 'PrimaryAllKnown' } : {}), ...overrides,
+    ...((overrides.state === 'NoData') ? { evidence: null } : {}) };
 }
 export function tempFile(fileId = 1, overrides = {}) {
   return { fileId, sizeBytes: 1024, usedBytes: 256, freeBytes: 768, state: 'Online', ...overrides };
