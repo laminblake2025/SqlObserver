@@ -22,6 +22,7 @@ import {handleWaitCapturedSessionFixture} from './wait-captured-session-fixture.
 import {handleDashboardNativeInsightsFixture} from './dashboard-native-insights-fixture.mjs';
 import {handleDashboardRetainedEvidenceFixture} from './dashboard-retained-evidence-fixture.mjs';
 import {handleAlertLifecycleHistoryFixture} from './alert-lifecycle-history-fixture.mjs';
+import {handleServerLifecycleHistoryFixture} from './server-lifecycle-history-fixture.mjs';
 import {handleReportWorkflowFixture} from './report-workflow-fixture.mjs';
 import {nativeAlertSelectionPage} from './alert-selection-fixture.mjs';
 import {handleAlertAssignmentFixture} from './alert-assignment-fixtures.mjs';
@@ -54,6 +55,7 @@ const utcTicks=value=>{
 const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ if(handleServerLifecycleHistoryFixture(url,res,req,targets,send))return;
  if(handleAlertLifecycleHistoryFixture(url,res,req,targets,send))return;
  if(handleAnalyticsWorkflowFixture(url,res,req,targets,send))return;
  if(handleDeadlockRetainedFixture(req,res,url,send))return;

@@ -1,0 +1,33 @@
+.server-lifecycle-history { min-width: 0; padding: 20px; overflow-wrap: anywhere; }
+.server-lifecycle-history :where(section, details, div, nav) { min-width: 0; }
+.server-lifecycle-history button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.server-lifecycle-history .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
+.server-lifecycle-history summary { min-height: 44px; padding: .75rem .5rem; cursor: pointer; border-radius: .4rem; }
+.server-lifecycle-history :where(button, summary, .table-scroll):focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.server-lifecycle-browser > summary { color: var(--teal-deep); font-weight: 700; }
+.server-lifecycle-history .table-scroll { max-height: 28rem; overflow: auto; scrollbar-gutter: stable; }
+.server-lifecycle-history table { width: 100%; min-width: 640px; }
+.server-lifecycle-history :where(th, td) { overflow-wrap: anywhere; }
+.server-lifecycle-history td small { display: block; margin-block-start: .35rem; color: var(--muted); }
+.server-lifecycle-selected { margin-block: 1rem; padding: .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-soft); }
+.server-lifecycle-facts { display: grid; grid-template-columns: minmax(120px, .65fr) minmax(0, 2fr); gap: .5rem 1rem; }
+.server-lifecycle-facts dt { color: var(--muted); }
+.server-lifecycle-facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.server-lifecycle-proof-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.server-lifecycle-engine-proof { padding: .75rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--surface); }
+.server-lifecycle-engine-proof .server-lifecycle-facts { grid-template-columns: minmax(0, 1fr); gap: .3rem; }
+.server-lifecycle-engine-proof dd { margin-block-end: .5rem; }
+.server-lifecycle-gap { color: var(--text); }
+@media (max-width: 600px) {
+  .server-lifecycle-history { padding: 14px; }
+  .server-lifecycle-history .form-actions > button { flex: 1 1 100%; }
+  .server-lifecycle-selected { padding: .6rem; }
+  .server-lifecycle-facts, .server-lifecycle-proof-pair { grid-template-columns: minmax(0, 1fr); }
+  .server-lifecycle-facts { gap: .3rem; }
+  .server-lifecycle-facts dd { margin-block-end: .5rem; }
+  .server-lifecycle-history .table-scroll { max-height: 24rem; }
+}
+@media (forced-colors: active) {
+  .server-lifecycle-history :where(button, summary, .table-scroll):focus-visible { outline-color: Highlight; }
+  .server-lifecycle-selected, .server-lifecycle-engine-proof { border-color: CanvasText; }
+}

@@ -857,3 +857,37 @@ Requirement accounting for this checkpoint:
 | Final validation | Complete for this checkpoint: 153 unit + 64 native PostgreSQL cases and unchanged input inventory. |
 
 The native SQL Server/least-privilege qualification remains open: the prior read-only SSH probe timed out before SQL execution, and this checkpoint did not retry or change host/certificate/authentication settings. Next work is the native retained-history reader/repository and HTTP API, supported expiry/cutoff qualification, timeline source/UI integration and its owning interaction/accessibility/responsive/screenshots. Trusted AG transition/consistency evidence, paired CPU and running Agent job sources remain separate open dashboard dependencies. The original repository plan and dashboard requirements are not complete. No GitHub push or upload occurred.
+
+
+## 2026-10-03 — Lifecycle reader and dashboard integration checkpoint
+
+Three independent lanes owned the native PostgreSQL reader, typed browser model/client/hook and shared fixtures; the HTTP boundary and dark-theme evidence panel; and real PostgreSQL plus browser interaction/accessibility tests. The lead integrated shared timeline selection, composition and fixtures, resolved category-selection behavior, reviewed screenshots, and ran the required final validation serially against frozen code. The panel owner performed a final read-only review of the integrated panel/CSS and found no actionable issue. This pass stays within the lifecycle dashboard dependency.
+
+Delivered:
+
+- Forward migration 0356 exposes bounded target-scoped server-role history and independent exact-event reads. It validates immutable canonical receipt seals, actual capture/cadence coverage and original cutoff/continuation lifetime. No latest-state replacement or direct runtime table grant is introduced. Exact copied evidence remains available independently of list overflow.
+- The authorized lifecycle HTTP routes use same-target read roles, canonical UTC microsecond windows and identities, dedicated protected continuations, private/no-store responses and bounded safe error bodies. The backend service rejects unknown capture boundaries represented as complete coverage.
+- The dashboard adds sampled restart/responding-node events to its shared timeline and URL context. Exact event/run/revision/time selection survives reload and history. Category filtering preserves the saved selection and offers explicit marker recovery; clearing remains deliberate. Live history browsing fixes the effective shared window.
+- The scoped dark-theme panel keeps selected evidence and recovery controls outside folded raw rows. Immutable before/after proofs preserve local startup precision and Int64 counters. It discloses source gaps, unknown occurrence/cause and unqualified AG failover. Windows without retained snapshots show actionable collection/settings/permissions guidance and explain that refresh cannot recreate missing history.
+- Received pages remain evidence during transient failures, cancellation and expired continuations. Target/revision/window ownership and selection ABA are fenced. Access denial removes protected proofs/pages and requires explicit verified recovery. Crosshair pointer changes stay outside live status to avoid repeated announcements.
+
+Final validation: **361 backend checks** (154 unit, 115 real HTTP pipeline, 92 native PostgreSQL) passed against the same unchanged 1,549 backend inputs. Native PostgreSQL 18 used actual canonical producers and runtime server-role reads, including the 10,001-attempt list bound and independent exact lookup. Strict .NET analyzers passed. Frontend: **473 checks** (81 parser/timeline, 112 mounted, 257 built App, 16 retained-evidence, 7 saved-investigation), plus strict TypeScript, production build and verified asset manifest. All final frontend groups consumed the same 2212 source/config/test/build-output inputs, with zero failed/skipped/retried cases.
+
+Initial complete attempts are preserved. The initial App group failed 14/257 assertions: stale live-region selectors, old category-clear expectations, ambiguous repeated restart titles and a focus assertion entered through pointer mode. The final owning group was rerun in full after adapters were corrected to assert visible non-live crosshair, preserved exact selection, selected identity and keyboard focus. A subsequent complete App attempt passed 256/257 but one browser navigation failed before rendering with ERR_NO_BUFFER_SPACE; that entire attempt is also preserved and excluded. The complete App group was rerun unchanged. No passing subset from a failed attempt contributes to qualification. Earlier frontend passes preceding the final recovery-guidance change are historical and excluded.
+
+Requirement accounting:
+
+| Requirement | Result |
+|---|---|
+| Independent work / one integration lead | Complete for this pass; non-overlapping lanes integrated and frozen before checks. |
+| Dark theme | Scoped panel, 44px controls, inset keyboard focus, wrapping fields, contained scrolling and stacked narrow proof layout. |
+| Diagnostic-screen review | Nine existing screens checked; lifecycle source is independent of core analytics and never invents normal health or physical failover. |
+| Interaction tests | Complete owning groups verify exact URLs, window/paging, selection recovery, cancellation, races and access loss against final code. |
+| Accessibility / responsive | Automated Chromium/axe WCAG2/2.1 A/AA checks at 320/390/768/1440px and keyboard/overflow checks passed. Manual assistive technology and other browsers remain unqualified. |
+| Screenshots | Fresh source-bound nine-screen/four-width and lifecycle evidence captures, with full gallery and provenance at `artifacts/dashboard-server-lifecycle-ui-2026-10-03/index.html`. Browser images are explicit synthetic local DTO fixtures. |
+| Final validation | Complete final backend/frontend groups, exact case/input inventories and preserved attempts in the history/UI artifact folders. |
+| Scope / remaining work | Reader and dashboard integration complete for this pass; native SQL Server source/least-privilege qualification, production collector admission, trusted AG consistency/transition proof and supported receipt-expiry qualification remain pending. |
+
+Four additional native viewport captures verify unobstructed keyboard proof focus at all four widths without style or DOM substitutions. Long narrow element captures include sticky-header stitching; the normal viewport images show the actual visible context. The complete image gallery preserves both with provenance.
+
+The prior read-only SSH probe timed out before SQL execution. This pass did not retry or weaken authentication/certificates. Lifecycle collection remains staged outside production admission, so this UI does not claim connected SQL Server collector qualification. Paired CPU, running Agent job sources and the broader repository plan remain open. No GitHub push or upload occurred. Completion JSON binds this source to its local checkpoint commit; screenshots and cases must not be rebound to later product changes.

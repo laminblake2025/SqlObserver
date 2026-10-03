@@ -1843,7 +1843,7 @@ test('timeline URL restores the selected event with exact window and database co
   await expect(investigationTimeline(page).getByText(/^Browse loaded timeline events \(\d+\)$/).locator('xpath=parent::details')).not.toHaveAttribute('open', '');
   await browseTimelineEvents(page);
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
-  await expect(investigationTimeline(page).getByRole('status').locator('time')).toHaveAttribute('datetime', selectedTime);
+  await expect(investigationTimeline(page).locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', selectedTime);
   await expect.poll(() => page.locator('.server-dashboard .chart-crosshair').count()).toBeGreaterThanOrEqual(4);
   await assertHistoricalScope(page, first, exactFrom, exactTo);
   await assertDatabaseScope(page, 6);
@@ -1886,7 +1886,7 @@ test('aligning a Live timeline event freezes its loaded window and retains keybo
   await expect(investigationTimeline(page).getByRole('link', { name: 'Open selected event evidence', exact: true })).toBeVisible();
   await browseTimelineEvents(page);
   await expect(align).toHaveAttribute('aria-pressed', 'true');
-  await expect(investigationTimeline(page).getByRole('status').locator('time')).toHaveAttribute('datetime', eventTime);
+  await expect(investigationTimeline(page).locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', eventTime);
   await assertHistoricalScope(page, first, window.from, window.to);
   await assertDatabaseScope(page, 6);
 });
@@ -1969,8 +1969,8 @@ test('requested timeline selection remains explicit when hidden or absent and ne
   await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
   const selectedHash = new URL(page.url()).hash;
   await category.selectOption('deadlock');
-  await expect.poll(() => scope(page).get('timelineEvent')).toBe(null);
-  // An externally restored selection is kept even when the user's category hides it.
+  await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
+  // Filtering preserves the exact URL selection, including externally restored selections.
   await page.evaluate(hash => { location.hash = hash; }, selectedHash);
   await expect(timeline).toContainText('The selected timeline event is hidden by this category.');
   await expect(timeline.locator('button[aria-pressed="true"]')).toHaveCount(0);
@@ -2116,15 +2116,15 @@ test('investigation timeline remains usable when dashboard metric series contain
   await comparison.focus();
   await comparison.press('Enter');
   await expect(comparison).toHaveAttribute('aria-pressed', 'true');
-  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
-  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', eventTime);
+  await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
+  await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', eventTime);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   await expect(timeline.getByRole('button', { name: /^Align charts: Deadlock/ })).toHaveCount(1);
   await expect(page.locator('.server-dashboard-chart:has(.overview-empty) .chart-crosshair')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Wait categories over time', exact: true }).locator('.chart-crosshair')).toHaveCount(1);
 });
 
-test('timeline category keyboard control aligns shared charts and clears hidden selections', async ({ page }) => {
+test('timeline category keyboard control aligns shared charts and preserves exact hidden selections', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(href('health'));
   await browseTimelineEvents(page);
@@ -2144,8 +2144,8 @@ test('timeline category keyboard control aligns shared charts and clears hidden 
   await comparison.focus();
   await comparison.press('Enter');
   await expect(comparison).toHaveAttribute('aria-pressed', 'true');
-  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
-  await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', eventTime);
+  await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
+  await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', eventTime);
   await expect.poll(() => page.locator('.server-dashboard .chart-crosshair').count()).toBeGreaterThanOrEqual(4);
   await timeline.getByRole('button', { name: 'Clear timeline alignment', exact: true }).press('Enter');
   await expect(comparison).toHaveAttribute('aria-pressed', 'false');
@@ -2157,7 +2157,15 @@ test('timeline category keyboard control aligns shared charts and clears hidden 
   await category.press('Enter');
   await expect(category).toHaveValue('deadlock');
   await expect(timeline.getByRole('listitem')).toHaveCount(1);
-  await expect(timeline.getByRole('button', { name: 'Clear timeline alignment', exact: true })).toHaveCount(0);
+  await expect(timeline.getByRole('button', { name: 'Clear timeline alignment', exact: true })).toBeVisible();
+  await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
+  await expect.poll(() => page.locator('.server-dashboard .chart-crosshair').count()).toBeGreaterThanOrEqual(4);
+  await timeline.getByRole('button', { name: 'Show selected timeline event', exact: true }).press('Enter');
+  await expect(category).toHaveValue('all');
+  await expect(comparison).toBeFocused();
+  await expect(comparison).toHaveAttribute('aria-pressed', 'true');
+  await timeline.getByRole('button', { name: 'Clear timeline alignment', exact: true }).press('Enter');
+  await expect.poll(() => scope(page).get('timelineEvent')).toBe(null);
   await expect(page.locator('.server-dashboard .chart-crosshair')).toHaveCount(0);
   await timeline.getByText('Timeline coverage', { exact: true }).click();
   await expect(timeline).toContainText('Missing observations are not evidence of normal health.');

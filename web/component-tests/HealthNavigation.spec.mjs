@@ -4,6 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { origin, alpha, beta, from, to, healthNavigationHash, healthNavigationResponse } from './healthNavigationFixture.mjs';
 import { alertLifecycleHistoryBackend, lifecycleFixtureBinding } from '../tools/alert-lifecycle-history-fixture.mjs';
+import { serverLifecycleHistoryBackend, serverLifecycleFixtureBinding } from '../tools/server-lifecycle-history-fixture.mjs';
 
 const sessions = new WeakMap();
 const tabs = page => page.getByRole('tablist', { name: 'Server summary sections', exact: true });
@@ -22,6 +23,7 @@ async function firstCommit(page, name) {
 test.beforeEach(async ({ page }) => {
   const session = { unexpected: [], reads: [] }; sessions.set(page, session);
   const lifecycle = alertLifecycleHistoryBackend({ count: 0, cutoffUtc: to });
+  const serverLifecycle = serverLifecycleHistoryBackend({ count: 0, cutoffUtc: to });
   await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
   page.on('pageerror', error => session.unexpected.push(`Page error: ${error.message}`));
   await page.route('**/*', async route => {
@@ -31,7 +33,11 @@ test.beforeEach(async ({ page }) => {
     if (!/^\/api(?:\/|$)/u.test(url.pathname)) return route.continue();
     if (request.method() !== 'GET') return reject();
     let value; try {
-      if (/^\/api\/v1\/observation-targets\/[^/]+\/alerts\/history$/.test(url.pathname)) {
+      if (/^\/api\/v1\/observation-targets\/[^/]+\/lifecycle\/history$/.test(url.pathname)) {
+        const item = serverLifecycleFixtureBinding(url);
+        if (![alpha, beta].includes(item.binding.targetId)) return reject();
+        value = serverLifecycle.read(item.binding, item.cursor);
+      } else if (/^\/api\/v1\/observation-targets\/[^/]+\/alerts\/history$/.test(url.pathname)) {
         const item = lifecycleFixtureBinding(url);
         if (![alpha, beta].includes(item.binding.targetId)) return reject();
         value = lifecycle.read(item.binding, item.cursor);

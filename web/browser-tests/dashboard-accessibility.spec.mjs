@@ -230,8 +230,10 @@ for (const width of [320, 390, 768, 1440]) {
     await align.press('Enter');
     await expect(align).toBeFocused();
     await expect(align).toHaveAttribute('aria-pressed', 'true');
-    await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
-    await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
+    await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' })).toContainText('Chart crosshair:');
+    await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' })).not.toHaveAttribute('role', 'status');
+    await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' })).not.toHaveAttribute('aria-live', /.+/);
+    await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
     const selectionQuery = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
     expect(selectionQuery.get('timelineEvent')).toMatch(/^plan:/);
     expect(selectionQuery.get('timelineAt')).toBe('2026-09-26T11:00:00.000Z');
@@ -241,7 +243,7 @@ for (const width of [320, 390, 768, 1440]) {
     await timeline.getByRole('button', { name: 'Show selected event in timeline list', exact: true }).press('Enter');
     await expect(align).toBeFocused();
     await expect(align).toHaveAttribute('aria-pressed', 'true');
-    await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
+    await expect(timeline.locator('.dashboard-timeline-status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
     expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('databaseId')).toBe('6');
     const evidence = timeline.getByRole('link', { name: /^Open evidence: Plan regression comparison/ });
     await expect(evidence).toBeVisible();

@@ -11,6 +11,7 @@ const categories: readonly { value: "all" | TimelineEvent["kind"]; label: string
   { value: "deadlock", label: "Deadlocks" },
   { value: "alert", label: "Alerts (retained lifecycle)" },
   { value: "agent_failure", label: "SQL Agent failures" },
+  { value: "server_lifecycle", label: "Server lifecycle (sampled changes)" },
   { value: "database_options", label: "Database options" },
   { value: "configuration", label: "Server configuration" },
   { value: "plan_regression", label: "Plan comparisons" },
@@ -175,7 +176,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
         <select value={category} onChange={event => {
           const next = event.target.value as "all" | TimelineEvent["kind"];
           setCategory(next);
-          if (selected && next !== "all" && selected.kind !== next) clearAlignment();
+          if (!controlled && selected && next !== "all" && selected.kind !== next) clearAlignment();
         }}>
           {categories.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}
         </select>
@@ -211,8 +212,8 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
       {visible.length} matching · {loaded.length} loaded events · up to 120 events in this window.
       {pinnedExactEvent && <> The validated exact selected event is included alongside up to 119 other latest loaded events.</>}
       {selected && <> Selected event: {selected.title}.</>}
-      {crosshairUtc && Number.isFinite(Date.parse(crosshairUtc)) && <> Chart crosshair: <time dateTime={crosshairUtc} title={crosshairUtc}>{timeLabel(crosshairUtc)}</time>.</>}
     </p>
+    {crosshairUtc && Number.isFinite(Date.parse(crosshairUtc)) && <p className="dashboard-timeline-status">Chart crosshair: <time dateTime={crosshairUtc} title={crosshairUtc}>{timeLabel(crosshairUtc)}</time>.</p>}
     {controlled && selection === null && <p className="empty-state" role="status">The requested timeline selection is invalid for this server and window. No other event has been selected.</p>}
     {controlled && requested && !loadedSelection && <p className="empty-state" role="status">{loading
       ? "Loading the requested timeline event…"

@@ -36,6 +36,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         BackupFleetLatest = new PostgreSqlBackupFleetCachePort(dataSource);
         SqlVolumeReads = new PostgreSqlSqlVolumeReadPort(dataSource);
         SqlVolumeWindowHistory = new PostgreSqlSqlVolumeWindowHistoryRepositoryPort(dataSource);
+        ServerLifecycleHistory = new PostgreSqlServerLifecycleHistoryRepositoryPort(dataSource);
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
         OverviewHistory = new PostgreSqlOverviewHistoryPort(dataSource);
@@ -99,6 +100,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IBackupFleetLatestRepositoryPort BackupFleetLatest { get; }
     public ISqlVolumeReadRepositoryPort SqlVolumeReads { get; }
     public ISqlVolumeWindowHistoryRepositoryPort SqlVolumeWindowHistory { get; }
+    public IServerLifecycleHistoryReadPort ServerLifecycleHistory { get; }
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }
     public IOverviewHistoryRepositoryPort OverviewHistory { get; }

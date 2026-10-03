@@ -11,9 +11,21 @@ export interface AlertLifecycleTimelineIdentity {
   readonly alertId: string;
   readonly episodeId: string | null;
 }
+export interface ServerLifecycleTimelineIdentity {
+  readonly eventId: string;
+  readonly sampleTargetRevision: number;
+  readonly afterRunId: string;
+}
 const guid = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value) &&
   value !== "00000000-0000-0000-0000-000000000000";
+/** Sampled detection identity includes its own revision and immutable after-run. */
+export function readServerLifecycleTimelineIdentity(value: unknown): ServerLifecycleTimelineIdentity | undefined {
+  if (typeof value !== "string" || value.length > 512) return undefined;
+  const parts = /^server-lifecycle:([0-9a-fA-F-]{36}):([1-9]\d{0,15}):([0-9a-fA-F-]{36})$/u.exec(value);
+  if (!parts || !guid(parts[1]) || !guid(parts[3]) || !Number.isSafeInteger(Number(parts[2]))) return undefined;
+  return { eventId: parts[1]!.toLowerCase(), sampleTargetRevision: Number(parts[2]), afterRunId: parts[3]!.toLowerCase() };
+}
 /** A retained event and its exact cycle are independent of the current inbox. */
 export function readAlertLifecycleTimelineIdentity(value: unknown): AlertLifecycleTimelineIdentity | undefined {
   if (typeof value !== "string" || value.length > 512) return undefined;
@@ -24,6 +36,7 @@ export function readAlertLifecycleTimelineIdentity(value: unknown): AlertLifecyc
 const eventIdentity = (value: unknown, timeUtc: unknown): value is string => {
   if (typeof value !== "string" || value.length > 512) return false;
   if (value.startsWith("alert-history:")) return readAlertLifecycleTimelineIdentity(value) !== undefined;
+  if (value.startsWith("server-lifecycle:")) return readServerLifecycleTimelineIdentity(value) !== undefined;
   if (value.startsWith("alert:")) {
     const parts = /^alert:([0-9a-f-]{36}):(0|-?[1-9]\d{0,17})$/iu.exec(value);
     const time = clock(timeUtc);
@@ -31,7 +44,7 @@ const eventIdentity = (value: unknown, timeUtc: unknown): value is string => {
   }
   return /^(?:deadlock|agent|database-options|configuration|plan|finding):[A-Za-z0-9_.:%+!'()*-]+$/u.test(value);
 };
-const normalizedEventId = (value: string) => value.startsWith("alert:") || value.startsWith("alert-history:") ? value.toLowerCase() : value;
+const normalizedEventId = (value: string) => value.startsWith("alert:") || value.startsWith("alert-history:") || value.startsWith("server-lifecycle:") ? value.toLowerCase() : value;
 const normalizedUtc = (value: string) => value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1");
 function clock(value: unknown): bigint | undefined {
   try { return utcMicroseconds(typeof value === "string" ? normalizedUtc(value) : value); }

@@ -7,7 +7,7 @@ import type { QueryStorePlanRegressionList } from "../features/queries/queryPerf
 import type { DatabaseOptionChangeResult, ServerConfigurationChangeResult } from "../features/health/healthTypes";
 import type { ActiveAlert, ActiveAlertPage } from "../features/alerts/alertTypes";
 
-export type TimelineKind = "deadlock" | "alert" | "agent_failure" | "database_options" | "configuration" | "plan_regression" | "finding";
+export type TimelineKind = "deadlock" | "alert" | "agent_failure" | "database_options" | "configuration" | "plan_regression" | "finding" | "server_lifecycle";
 export type TimelineTimeBasis = "occurred" | "fired" | "first_observed" | "detected" | "last_observed" | "snapshot" | "observed" | "applied";
 export interface TimelineEvent {
   readonly id: string;
@@ -18,7 +18,7 @@ export interface TimelineEvent {
   readonly href: string;
   readonly timeBasis: TimelineTimeBasis;
 }
-const kinds = new Set<TimelineKind>(["deadlock", "alert", "agent_failure", "database_options", "configuration", "plan_regression", "finding"]);
+const kinds = new Set<TimelineKind>(["deadlock", "alert", "agent_failure", "database_options", "configuration", "plan_regression", "finding", "server_lifecycle"]);
 const bases = new Set<TimelineTimeBasis>(["occurred", "fired", "first_observed", "detected", "last_observed", "snapshot", "observed", "applied"]);
 function instant(value: unknown): bigint | undefined {
   try { return utcMicroseconds(typeof value === "string" ? value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1") : value); } catch { return undefined; }

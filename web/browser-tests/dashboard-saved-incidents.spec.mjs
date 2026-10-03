@@ -17,7 +17,7 @@ const refresh = page => page.locator('.page-actions').getByRole('button', { name
 const supportingReads = new Set(['health', 'health/databases', 'health/files', 'health/database-option-changes',
   'health/server-configuration-changes', 'health/server-configuration-snapshot', 'deadlocks', 'alerts/active',
   'activity/blocking/current', 'activity/waits/trend', 'query-performance/regressions',
-  'sql-agent/failures', 'analytics/baselines', 'analytics/sql-baselines', 'alerts/history']);
+  'sql-agent/failures', 'analytics/baselines', 'analytics/sql-baselines', 'alerts/history', 'lifecycle/history']);
 async function json(route, value, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(value) });
 }

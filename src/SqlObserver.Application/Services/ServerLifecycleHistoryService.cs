@@ -32,6 +32,9 @@ public sealed class ServerLifecycleHistoryService(IServerLifecycleHistoryReadPor
             if (page.State != state || page.Reason != reason || page.Items is null || page.Items.Count > request.Limit ||
                 page.Items.Count > page.Coverage.EventCount || page.Coverage.CaptureBoundaryUtc > page.CutoffUtc)
                 throw new ArgumentException("The lifecycle source coverage does not match its evidence.");
+            if (!page.Coverage.HasVisibilityGap && (page.Coverage.RetainedSnapshotCount > 0 && page.Coverage.CaptureBoundaryUtc is null ||
+                page.Coverage.CaptureBoundaryUtc > request.FromUtc))
+                throw new ArgumentException("The lifecycle window extends beyond its recorded capture boundary without a source gap.");
             if (request.Cursor is { } incoming)
             {
                 Lifetime(incoming.IssuedAtUtc, page.RepositoryTimeUtc);

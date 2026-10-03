@@ -14,13 +14,16 @@ import { DashboardTimeline } from "../../components/DashboardTimeline";
 import { timelineEventsInWindow, type TimelineEvent } from "../../components/dashboardTimelineModel";
 import { useDashboardTimeline } from "./useDashboardTimeline";
 import { useAlertLifecycleHistory } from "./useAlertLifecycleHistory.ts";
+import { useServerLifecycleHistory } from "./useServerLifecycleHistory.ts";
+import { ServerLifecycleHistoryPanel } from "./ServerLifecycleHistoryPanel.tsx";
+import { serverLifecycleTimelineEvents, serverLifecycleEventIdentity, matchesServerLifecycleSelection, type ServerLifecycleSelection } from "./serverLifecycleHistoryModel.ts";
 import { AlertLifecycleHistoryPanel } from "./AlertLifecycleHistoryPanel.tsx";
 import { alertLifecycleTimelineEvents, lifecycleEventIdentity, matchesLifecycleSelection, type AlertLifecycleSelection } from "./alertLifecycleHistoryModel.ts";
 import { useAgentHistory } from "../operations/useAgentHistory.ts";
 import { healthCheckHref, validateAgentWindow } from "../operations/agentHistoryModel.ts";
 import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx";
 import { useChartReferences } from "../overview/useChartReferences.ts";
-import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, readDashboardTimelineSelection, readAlertLifecycleTimelineIdentity,
+import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, readDashboardTimelineSelection, readAlertLifecycleTimelineIdentity, readServerLifecycleTimelineIdentity,
   type DashboardTimelineSelection } from "../../components/dashboardTimelineSelectionModel.ts";
 import { ChartAlignmentControls } from "../../components/ChartAlignmentControls.tsx";
 import { chartInspectionHref, readChartInspection } from "../../components/chartInspectionModel.ts";
@@ -71,6 +74,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const fallbackWindow = useMemo(()=>{try{return overviewWindow(selectedScope,Date.now());}catch{return undefined;}},[instanceId,targetRevision,scope.range,scope.from,scope.to,refresh]);
   const analyticsWindow = data && evidence ? { fromUtc:data.fromUtc,toUtc:data.toUtc } : undefined;
   const alertEvidence = useRef<HTMLDivElement>(null), alertEvidenceId = useId();
+  const serverLifecycleEvidence = useRef<HTMLDivElement>(null), serverLifecycleEvidenceId = useId();
   const agentWindowAvailable = (() => {
     if (!analyticsWindow) return false;
     try { validateAgentWindow(analyticsWindow); return true; } catch { return false; }
@@ -80,13 +84,21 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const requestedLifecycleIdentity = requestedSelection ? readAlertLifecycleTimelineIdentity(requestedSelection.eventId) : undefined;
   const selectedLifecycleEvent: AlertLifecycleSelection|null|undefined = requestedSelection === null ? null : requestedLifecycleIdentity && requestedSelection ? {...requestedLifecycleIdentity,eventAtUtc:requestedSelection.timeUtc} : undefined;
   const alerts = useAlertLifecycleHistory(timelineWindow ? {targetId:instanceId,targetRevision,...timelineWindow}:undefined,selectedLifecycleEvent);
+  const requestedServerLifecycleIdentity = requestedSelection ? readServerLifecycleTimelineIdentity(requestedSelection.eventId) : undefined;
+  const selectedServerLifecycleEvent: ServerLifecycleSelection|null|undefined = requestedSelection === null ? null : requestedServerLifecycleIdentity && requestedSelection
+    ? {...requestedServerLifecycleIdentity,detectedAtUtc:requestedSelection.timeUtc} : undefined;
+  const serverLifecycle = useServerLifecycleHistory(timelineWindow ? {targetId:instanceId,targetRevision,...timelineWindow}:undefined,selectedServerLifecycleEvent);
   const fixedTimelineScope: OverviewScope = timelineWindow ? { ...selectedScope, range: "custom", from: timelineWindow.fromUtc, to: timelineWindow.toUtc } : selectedScope;
   const lifecycleEvents = timelineWindow ? alertLifecycleTimelineEvents(alerts.list.pages.flatMap(page=>page.items),fixedTimelineScope) : [];
-  const pinnedExactEvent = alerts.detail.receipt?.event && timelineWindow ? alertLifecycleTimelineEvents([alerts.detail.receipt.event],fixedTimelineScope)[0] : undefined;
+  const serverLifecycleEvents = timelineWindow ? serverLifecycleTimelineEvents(serverLifecycle.list.pages.flatMap(page=>page.items),fixedTimelineScope) : [];
+  const pinnedExactEvent = serverLifecycle.detail.receipt?.event && timelineWindow
+    ? serverLifecycleTimelineEvents([serverLifecycle.detail.receipt.event],fixedTimelineScope)[0]
+    : alerts.detail.receipt?.event && timelineWindow ? alertLifecycleTimelineEvents([alerts.detail.receipt.event],fixedTimelineScope)[0] : undefined;
   const timelineEvents: readonly TimelineEvent[] = timelineWindow ? timelineEventsInWindow([
     ...(pinnedExactEvent ? [pinnedExactEvent] : []),
     ...timeline.events,
     ...lifecycleEvents,
+    ...serverLifecycleEvents,
     ...(agentHistory.page?.rows.filter(row => row.countsAsJobFailure).map(row => ({
       id: `agent:${row.jobId}:${row.historyInstanceId}`, kind: "agent_failure" as const,
       timeUtc: row.firstObservedAtUtc, title: `SQL Agent job failure · ${row.jobId} · history ${row.historyInstanceId}`,
@@ -112,7 +124,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     const current = readDashboardTimelineSelection(location.hash, instanceId);
     if (selection && !timelineEvents.some(event => matchesDashboardTimelineSelection(selection, event))) {
       const identity=readAlertLifecycleTimelineIdentity(selection.eventId);
-      if (!identity || !alerts.list.pages.flatMap(page=>page.items).some(event=>matchesLifecycleSelection(event,{...identity,eventAtUtc:selection.timeUtc}))) return;
+      const serverIdentity=readServerLifecycleTimelineIdentity(selection.eventId);
+      if (!(identity && alerts.list.pages.flatMap(page=>page.items).some(event=>matchesLifecycleSelection(event,{...identity,eventAtUtc:selection.timeUtc})))
+        && !(serverIdentity && serverLifecycle.list.pages.flatMap(page=>page.items).some(event=>matchesServerLifecycleSelection(event,{...serverIdentity,detectedAtUtc:selection.timeUtc})))) return;
     }
     if (selection && current && matchesDashboardTimelineSelection(current, { id: selection.eventId, timeUtc: selection.timeUtc })) return;
     const href = dashboardTimelineSelectionHref(selection ? fixedTimelineScope : selectedScope, selection);
@@ -131,7 +145,11 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       : agentHistory.page ? `SQL Agent: first ${agentHistory.page.rows.length} of up to 50 history rows${agentHistory.page.hasMore ? "; additional pages are available in SQL Agent history" : ""}${agentHistory.page.truncated ? "; capture was truncated" : ""}. Only failed job-outcome rows become markers.`
         : "SQL Agent has no received first-observed history coverage for this dashboard window. Check its read status below or open SQL Agent history independently; missing evidence is not all clear.",
     "The timeline retains the latest 120 loaded events. Database options and plan comparisons follow the selected database; alerts, deadlocks, job failures, configuration and snapshot findings remain server-wide.",
-    "Restart and failover transitions are not supplied by these sources. Retained alert lifecycle has native provenance and retention limits; an empty timeline is not an all-clear signal.",
+    serverLifecycle.denied ? "Server lifecycle access was denied; protected pages and exact proof were removed. Restore same-target read access and explicitly retry."
+      : serverLifecycle.list.error ? `Server lifecycle history: ${serverLifecycle.list.error}`
+        : serverLifecycle.list.pages.length ? `Sampled server lifecycle: ${serverLifecycle.list.pages.reduce((sum,page)=>sum+page.items.length,0)} received of ${serverLifecycle.list.pages[0]!.coverage.eventCount} detections. ${serverLifecycle.list.pages[0]!.coverage.hasVisibilityGap ? "Source visibility is incomplete; changes may be missing." : "Retained source coverage does not establish health."}`
+          : "Server lifecycle has no received source coverage. Verify collector availability and choose a retained window; missing evidence is not all clear.",
+    "Server lifecycle markers show detected changes between observations. Exact occurrence times, cause, number of changes between samples and physical AG failover are unqualified. An empty timeline is not an all-clear signal.",
   ];
   const memorySeries = (source: typeof evidence) => source?.series
     .filter(item => item.metric === "engine.process_physical_memory_bytes" || item.metric === "engine.os_available_memory_bytes" || item.metric === "host.memory.available_bytes")
@@ -143,6 +161,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     catch { location.hash = overviewHref(nextScope, "health", instanceId); }
   };
   const selectLifecycleEvent = (event:AlertLifecycleSelection|undefined) => selectTimeline(event ? {eventId:lifecycleEventIdentity(event),timeUtc:event.eventAtUtc}:undefined);
+  const selectServerLifecycleEvent = (event:ServerLifecycleSelection|undefined) => selectTimeline(event ? {eventId:serverLifecycleEventIdentity(event),timeUtc:event.detectedAtUtc}:undefined);
   const chart = (metric: string, label: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h4>{label}</h4>
     <ChartEvidenceIndicator label={label} series={evidence?.series.filter(series => series.metric === metric) ?? []} />
@@ -182,7 +201,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <DashboardBaselineCards targetId={instanceId} series={evidence.series} bands={chartReferences.references.bands}
         fromUtc={data.fromUtc} toUtc={data.toUtc} formatTime={timeLabel} baselineStatus={chartReferences.baselineStatus} />
       <DashboardInvestigationSummary targetId={instanceId} scope={fixedTimelineScope} fromUtc={data.fromUtc} toUtc={data.toUtc}
-        issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || alerts.list.loading || alerts.detail.loading || agentHistory.loading}
+        issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || alerts.list.loading || alerts.detail.loading || serverLifecycle.list.loading || serverLifecycle.detail.loading || agentHistory.loading}
         sourceNotes={timelineNotes} blocking={{ evidence: blockingEvidence, targetRevision, onInspect: inspectBlocker }} />
     </>}
     {timelineWindow&&<><ChartAlignmentControls key={inspectionKey} context={inspectionKey} label="Dashboard" headingLevel={4} {...timelineWindow}
@@ -191,13 +210,17 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       onClear={()=>{if(!active||location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
       <DashboardTimeline interactionEnabled={active} contextKey={timelineContextKey} events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
       selection={requestedSelection} onSelectionChange={selectTimeline} pinnedExactEvent={pinnedExactEvent}
-      loading={timeline.loading||alerts.list.loading||alerts.detail.loading}
+      loading={timeline.loading||alerts.list.loading||alerts.detail.loading||serverLifecycle.list.loading||serverLifecycle.detail.loading}
       onSelectWindow={window=>{setCrosshairUtc(null);change({range:"custom",from:window.fromUtc,to:window.toUtc});}}
       onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes}/>
       {selectedLifecycleEvent!==undefined&&<button type="button" className="secondary-button server-history-action" aria-controls={alertEvidenceId} onClick={()=>{
         if(!active||location.hash!==selectionHash)return;
         alertEvidence.current?.focus();alertEvidence.current?.scrollIntoView({block:"start"});
       }}>Review selected alert event evidence</button>}</>}
+    {selectedServerLifecycleEvent!==undefined&&<button type="button" className="secondary-button server-history-action" aria-controls={serverLifecycleEvidenceId} onClick={()=>{
+      if(!active||location.hash!==selectionHash)return;
+      serverLifecycleEvidence.current?.focus();serverLifecycleEvidence.current?.scrollIntoView({block:"start"});
+    }}>Review selected server lifecycle evidence</button>}
     {data && evidence && <>
       <div className="server-dashboard-charts">
         {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
@@ -244,6 +267,10 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     </>}
     {timelineWindow&&<div ref={alertEvidence} id={alertEvidenceId} tabIndex={-1} role="region" aria-label="Alert history evidence" className="server-history-evidence-location">
       <AlertLifecycleHistoryPanel history={alerts} scope={fixedTimelineScope} selectedEvent={selectedLifecycleEvent} onSelectEvent={selectLifecycleEvent}
+        onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/>
+    </div>}
+    {timelineWindow&&<div ref={serverLifecycleEvidence} id={serverLifecycleEvidenceId} tabIndex={-1} role="region" aria-label="Server lifecycle evidence" className="server-history-evidence-location">
+      <ServerLifecycleHistoryPanel history={serverLifecycle} selectedEvent={selectedServerLifecycleEvent} onSelectEvent={selectServerLifecycleEvent}
         onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/>
     </div>}
     <section className="panel server-agent-evidence" aria-label="SQL Agent first-observed evidence" aria-busy={agentHistory.loading}>

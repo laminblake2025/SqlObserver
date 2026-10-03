@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { alpha, beta, at, cursor, collector, database, evidence, logicalFile } from './healthFixture.mjs';
 import { alertLifecycleHistoryBackend, lifecycleFixtureBinding } from '../tools/alert-lifecycle-history-fixture.mjs';
+import { serverLifecycleHistoryBackend, serverLifecycleFixtureBinding } from '../tools/server-lifecycle-history-fixture.mjs';
 
 const sessions = new WeakMap();
 const panel = page => page.getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ });
@@ -16,6 +17,7 @@ const json = (route, value) => route.fulfill({ status: 200, contentType: 'applic
 test.beforeEach(async ({ page }) => {
   const session = { unexpected: [], requests: [], fixtures: new Map([[alpha, evidence(alpha)], [beta, evidence(beta)]]), intercept: undefined };
   const lifecycle = alertLifecycleHistoryBackend({ count: 0, cutoffUtc: at });
+  const serverLifecycle = serverLifecycleHistoryBackend({ count: 0, cutoffUtc: at });
   sessions.set(page, session);
   page.on('pageerror', error => session.unexpected.push(`Page error: ${error.message}`));
   await page.route('**/*', async route => {
@@ -27,6 +29,10 @@ test.beforeEach(async ({ page }) => {
     session.requests.push(`${url.pathname}${url.search}`);
     if (request.method() !== 'GET') {
       session.unexpected.push(`${request.method()} ${url.href}`); return route.abort();
+    }
+    if (/^\/api\/v1\/observation-targets\/[^/]+\/lifecycle\/history$/.test(url.pathname)) {
+      const item = serverLifecycleFixtureBinding(url);
+      if (session.fixtures.has(item.binding.targetId)) return json(route, serverLifecycle.read(item.binding, item.cursor));
     }
     // The real dashboard receives an authorized native empty snapshot. Health
     // remains mounted; unrelated chart/timeline/agent sources are not needed.

@@ -5,6 +5,19 @@
   border-radius: 0.5rem;
 }
 
+.dashboard-timeline-align,
+.dashboard-timeline-coverage > summary,
+.dashboard-timeline-event-evidence > a {
+  min-height: 44px;
+}
+
+.dashboard-timeline-align:focus-visible,
+.dashboard-timeline-coverage > summary:focus-visible,
+.dashboard-timeline-event-evidence > a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
 .dashboard-timeline-browser > summary {
   min-height: 44px;
   padding: 0.75rem;

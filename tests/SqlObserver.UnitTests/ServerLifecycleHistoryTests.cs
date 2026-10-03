@@ -269,6 +269,24 @@ public sealed class ServerLifecycleHistoryTests
     }
 
     [Fact]
+    public async Task WindowBeforeRecordedCaptureOrUnknownBoundaryCannotClaimGapFreeCoverage()
+    {
+        var repository = new Repository();
+        var service = new ServerLifecycleHistoryService(repository);
+        foreach (DateTimeOffset? boundary in new DateTimeOffset?[] { From.AddSeconds(1), null })
+        {
+            repository.Page = Page() with { Coverage = Coverage() with { CaptureBoundaryUtc = boundary } };
+            await Assert.ThrowsAsync<InvalidDataException>(() => service.ListAsync(Auth(), List(), CancellationToken.None).AsTask());
+            repository.Page = repository.Page with
+            {
+                State = "partial", Reason = "source_visibility_gap",
+                Coverage = repository.Page.Coverage with { HasVisibilityGap = true },
+            };
+            Assert.Equal("partial", (await service.ListAsync(Auth(), List(), CancellationToken.None))!.State);
+        }
+    }
+
+    [Fact]
     public async Task CancellationAndNativeRefusalsPropagateWithoutFabricatingAnEmptyPage()
     {
         var repository = new Repository(); var service = new ServerLifecycleHistoryService(repository);
