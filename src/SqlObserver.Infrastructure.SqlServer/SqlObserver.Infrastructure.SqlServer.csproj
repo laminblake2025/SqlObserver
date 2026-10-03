@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../collectors/sql/server.lifecycle.sqlserver15-17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.LifecycleSourceAssets.server.lifecycle.sqlserver15-17-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/cpu.target-witness.sqlserver15-17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.CpuWitnessSourceAssets.cpu.target-witness.sqlserver15-17-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/manifests/m7-query-performance-v2.assets.sha256" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV2Assets.m7-query-performance-v2.assets.sha256" />
     <EmbeddedResource Include="../../collectors/manifests/queries.performance.v2.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV2Assets.queries.performance.v2.json" />
     <EmbeddedResource Include="../../collectors/manifests/queries.performance.v2.schema.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV2Assets.queries.performance.v2.schema.json" />
