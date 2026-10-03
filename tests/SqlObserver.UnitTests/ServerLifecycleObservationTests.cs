@@ -194,6 +194,39 @@ public sealed class ServerLifecycleObservationTests
     }
 
     [Fact]
+    public void SealedEngineQualificationCanSurviveExclusiveAgVisibilityLoss()
+    {
+        var before = Snapshot(0, members: Members(remoteRole: null), hadr: true);
+        var after = Snapshot(1, Engine(pid: 11, ticks: 200, start: LocalStart.AddMinutes(1)),
+            Members(remoteRole: null), hadr: true);
+        var oldReceipt = new ServerLifecycleReceipt(before, before.SourceObservedAtUtc.AddSeconds(1),
+            null, succeededWithoutLoss: false, engineReadQualified: true);
+        var newReceipt = new ServerLifecycleReceipt(after, after.SourceObservedAtUtc.AddSeconds(1),
+            before.RunId, succeededWithoutLoss: false, engineReadQualified: true);
+        Assert.Equal(ServerLifecycleEventKind.RestartDetected,
+            Assert.Single(ServerLifecycleClassifier.Compare(oldReceipt, newReceipt)).Kind);
+        Assert.Empty(ServerLifecycleClassifier.Compare(oldReceipt,
+            new ServerLifecycleReceipt(after, newReceipt.CompletedAtUtc, before.RunId, succeededWithoutLoss: false)));
+    }
+
+    [Fact]
+    public void EngineQualificationCannotLiftTruncationOrUnlockUnqualifiedAgTransitions()
+    {
+        var before = Snapshot(0, members: Members(), hadr: true);
+        var truncated = Snapshot(1, Engine(pid: 11, ticks: 200, start: LocalStart.AddMinutes(1)),
+            Members(), hadr: true, truncated: true);
+        var oldReceipt = new ServerLifecycleReceipt(before, before.SourceObservedAtUtc.AddSeconds(1),
+            null, succeededWithoutLoss: false, sourceConsistencyVerified: true, engineReadQualified: true);
+        var newReceipt = new ServerLifecycleReceipt(truncated, truncated.SourceObservedAtUtc.AddSeconds(1),
+            before.RunId, succeededWithoutLoss: false, sourceConsistencyVerified: true, engineReadQualified: true);
+        Assert.Empty(ServerLifecycleClassifier.Compare(oldReceipt, newReceipt));
+        var switched = Snapshot(1, members: Members(switched: true), hadr: true);
+        Assert.Empty(ServerLifecycleClassifier.Compare(oldReceipt,
+            new ServerLifecycleReceipt(switched, switched.SourceObservedAtUtc.AddSeconds(1), before.RunId,
+                succeededWithoutLoss: false, sourceConsistencyVerified: true, engineReadQualified: true)));
+    }
+
+    [Fact]
     public void PrimaryChangeNeedsTrustedConsistencyProofEvenForCompleteMembership()
     {
         var before = Snapshot(0, members: Members(), hadr: true);

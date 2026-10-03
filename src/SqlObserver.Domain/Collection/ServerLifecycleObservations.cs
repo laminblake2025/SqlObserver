@@ -181,7 +181,8 @@ public sealed class ServerLifecycleSnapshot : IOperationalHealthSnapshot
 public sealed record ServerLifecycleReceipt
 {
     public ServerLifecycleReceipt(ServerLifecycleSnapshot snapshot, DateTimeOffset completedAtUtc,
-        CollectorRunId? previousRunId, bool succeededWithoutLoss, bool sourceConsistencyVerified = false)
+        CollectorRunId? previousRunId, bool succeededWithoutLoss, bool sourceConsistencyVerified = false,
+        bool engineReadQualified = false)
     {
         Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         CompletedAtUtc = DomainValidation.RequireUtcMicrosecondAligned(completedAtUtc, nameof(completedAtUtc));
@@ -189,6 +190,7 @@ public sealed record ServerLifecycleReceipt
         PreviousRunId = previousRunId;
         SucceededWithoutLoss = succeededWithoutLoss;
         SourceConsistencyVerified = sourceConsistencyVerified;
+        EngineReadQualified = succeededWithoutLoss || engineReadQualified;
     }
 
     public ServerLifecycleSnapshot Snapshot { get; }
@@ -196,6 +198,9 @@ public sealed record ServerLifecycleReceipt
     public CollectorRunId? PreviousRunId { get; }
     public bool SucceededWithoutLoss { get; }
     public bool SourceConsistencyVerified { get; }
+    /// <summary>Sealed writer proof of a complete engine row despite exclusively AG visibility loss.
+    /// A source/byte limit, malformed/failed read or truncated receipt cannot establish this proof.</summary>
+    public bool EngineReadQualified { get; }
 }
 
 /// <summary>A sampled detection interval. Occurrence time, cause and number of intervening transitions are unknown.</summary>
@@ -215,7 +220,8 @@ public static class ServerLifecycleClassifier
         var events = new List<ServerLifecycleDetectedEvent>();
         ServerLifecycleEngineEvidence oldEngine = before.Snapshot.Engine;
         ServerLifecycleEngineEvidence newEngine = after.Snapshot.Engine;
-        if (before.Snapshot.EngineCoverage == ServerLifecycleCoverage.Complete &&
+        if (before.EngineReadQualified && after.EngineReadQualified &&
+            before.Snapshot.EngineCoverage == ServerLifecycleCoverage.Complete &&
             after.Snapshot.EngineCoverage == ServerLifecycleCoverage.Complete &&
             oldEngine.LogicalInstanceFingerprint == newEngine.LogicalInstanceFingerprint)
         {
@@ -226,7 +232,8 @@ public static class ServerLifecycleClassifier
                 oldEngine.SourceStartLocal != newEngine.SourceStartLocal)
                 events.Add(Create(ServerLifecycleEventKind.RestartDetected, newEngine.PhysicalNodeFingerprint!, before, after));
         }
-        if (before.SourceConsistencyVerified && after.SourceConsistencyVerified &&
+        if (before.SucceededWithoutLoss && after.SucceededWithoutLoss &&
+            before.SourceConsistencyVerified && after.SourceConsistencyVerified &&
             before.Snapshot.AvailabilityCoverage == ServerLifecycleCoverage.Complete &&
             after.Snapshot.AvailabilityCoverage == ServerLifecycleCoverage.Complete)
         {
@@ -246,7 +253,7 @@ public static class ServerLifecycleClassifier
     }
 
     private static bool Comparable(ServerLifecycleReceipt before, ServerLifecycleReceipt after) =>
-        before.SucceededWithoutLoss && after.SucceededWithoutLoss && !before.Snapshot.Truncated && !after.Snapshot.Truncated &&
+        !before.Snapshot.Truncated && !after.Snapshot.Truncated &&
         after.PreviousRunId == before.Snapshot.RunId && before.Snapshot.TargetId == after.Snapshot.TargetId &&
         before.Snapshot.TargetRevision == after.Snapshot.TargetRevision &&
         before.Snapshot.SourceSchemaVersion == ServerLifecycleSnapshot.CurrentSourceSchemaVersion &&
@@ -257,15 +264,31 @@ public static class ServerLifecycleClassifier
     private static ServerLifecycleDetectedEvent Create(ServerLifecycleEventKind kind, string identity,
         ServerLifecycleReceipt before, ServerLifecycleReceipt after)
     {
-        string input = string.Join('|', "sqlobserver-lifecycle-event-v1", after.Snapshot.TargetId.Value.ToString("D"),
-            after.Snapshot.TargetRevision.Value.ToString(CultureInfo.InvariantCulture),
-            after.Snapshot.SourceSchemaVersion.ToString(CultureInfo.InvariantCulture),
-            ((int)kind).ToString(CultureInfo.InvariantCulture), before.Snapshot.RunId.Value.ToString("D"),
-            after.Snapshot.RunId.Value.ToString("D"), identity);
+        Guid eventId = ServerLifecycleEventIdentity.Compute(after.Snapshot.TargetId.Value,
+            after.Snapshot.TargetRevision.Value, after.Snapshot.SourceSchemaVersion, kind,
+            before.Snapshot.RunId.Value, after.Snapshot.RunId.Value, identity);
+        return new(eventId, kind, identity, before.Snapshot.RunId,
+            after.Snapshot.RunId, before.Snapshot.SourceObservedAtUtc, after.Snapshot.SourceObservedAtUtc, after.CompletedAtUtc);
+    }
+}
+
+/// <summary>Shared identity for immutable detections, their read projections and exact selection.</summary>
+public static class ServerLifecycleEventIdentity
+{
+    public static Guid Compute(Guid targetId, long targetRevision, int sourceSchemaVersion,
+        ServerLifecycleEventKind kind, Guid beforeRunId, Guid afterRunId, string affectedIdentityFingerprint)
+    {
+        if (targetId == Guid.Empty || targetRevision <= 0 || sourceSchemaVersion <= 0 ||
+            !Enum.IsDefined(kind) || beforeRunId == Guid.Empty || afterRunId == Guid.Empty || beforeRunId == afterRunId ||
+            !AvailabilityReplicaEvidenceIdentity.ValidFingerprint(affectedIdentityFingerprint))
+            throw new ArgumentException("Lifecycle event identity is invalid.");
+        string input = string.Join('|', "sqlobserver-lifecycle-event-v1", targetId.ToString("D"),
+            targetRevision.ToString(CultureInfo.InvariantCulture), sourceSchemaVersion.ToString(CultureInfo.InvariantCulture),
+            ((int)kind).ToString(CultureInfo.InvariantCulture), beforeRunId.ToString("D"), afterRunId.ToString("D"),
+            affectedIdentityFingerprint);
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         hash[6] = (byte)((hash[6] & 0x0f) | 0x80); // UUID v8: application-defined SHA-256 layout.
         hash[8] = (byte)((hash[8] & 0x3f) | 0x80);
-        return new(new Guid(hash.AsSpan(0, 16), bigEndian: true), kind, identity, before.Snapshot.RunId,
-            after.Snapshot.RunId, before.Snapshot.SourceObservedAtUtc, after.Snapshot.SourceObservedAtUtc, after.CompletedAtUtc);
+        return new Guid(hash.AsSpan(0, 16), bigEndian: true);
     }
 }
