@@ -7,6 +7,12 @@ const unexpectedRequests = new WeakMap();
 const rail = page => page.getByRole('img', { name: 'Timeline range selection with loaded event markers', exact: true });
 const count = page => page.getByRole('status', { name: 'Selection callback count', exact: true });
 const timeline = page => page.getByRole('region', { name: 'Investigation timeline', exact: true });
+const eventBrowser = page => timeline(page).getByText(/^Browse loaded timeline events \(\d+\)$/).locator('xpath=parent::details');
+async function browseEvents(page) {
+  const browser = eventBrowser(page);
+  if (!(await browser.evaluate(element => element.open))) await browser.locator('summary').click();
+  await expect(timeline(page).getByRole('region', { name: 'Loaded timeline event list', exact: true })).toBeVisible();
+}
 test.beforeEach(async ({ page }) => {
   const unexpected = []; unexpectedRequests.set(page, unexpected);
   page.on('pageerror', error => unexpected.push(`Page error: ${error.message}`));
@@ -60,6 +66,24 @@ test('cancel, click and subminute gestures do not select a window', async ({ pag
   const middle = await point(page, .5); await page.mouse.click(middle.x, middle.y);
   await expect(count(page)).toHaveText('0');
 });
+test('a foreign pointer cannot replace or cancel the captured timeline owner', async ({ page }) => {
+  await rail(page).evaluate(svg => svg.addEventListener('pointerdown', event => { svg.dataset.testOwner = String(event.pointerId); }, { once: true }));
+  await begin(page, .2, .8);
+  const svg = rail(page), owner = Number(await svg.getAttribute('data-test-owner'));
+  const preview = timeline(page).locator('.dashboard-timeline-range-preview');
+  const received = await preview.evaluate(element => [element.getAttribute('x'), element.getAttribute('width')]);
+  const foreign = { pointerId: owner + 100, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, ...await point(page, .5) };
+  for (const type of ['pointerdown', 'pointermove', 'pointercancel', 'lostpointercapture', 'pointerup']) {
+    await svg.dispatchEvent(type, { ...foreign, clientX: foreign.x, clientY: foreign.y });
+    await expect(preview).toHaveCount(1);
+    expect(await preview.evaluate(element => [element.getAttribute('x'), element.getAttribute('width')])).toEqual(received);
+    await expect(count(page)).toHaveText('0');
+  }
+  await page.mouse.up(); await expect(count(page)).toHaveText('1'); await expect(preview).toHaveCount(0);
+  for (const [name, utc] of [['Shared from UTC', '2026-01-15T12:12:00Z'], ['Shared to UTC', '2026-01-15T12:48:00Z']]) {
+    await expect.poll(async () => Math.abs(Date.parse(await page.getByRole('status', { name, exact: true }).textContent()) - Date.parse(utc))).toBeLessThan(15_000);
+  }
+});
 test('an exact loaded-window change cancels a held gesture and resets keyboard drafts', async ({ page }) => {
   await page.getByLabel('Timeline from UTC', { exact: true }).fill('2026-01-15T12:10:00.123456Z');
   await begin(page, .2, .8);
@@ -91,6 +115,7 @@ test('keyboard Enter publishes exact microsecond bounds and rejects invalid/outs
 });
 test('native event alignment/category/evidence survives the range rail and display preference', async ({ page }) => {
   await expect(timeline(page).locator('.dashboard-timeline-rail-marker')).toHaveCount(2);
+  await browseEvents(page);
   const event = timeline(page).getByRole('button', { name: 'Align charts: Recorded deadlock' });
   await event.press('Enter'); await expect(event).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('status', { name: 'Shared crosshair UTC', exact: true })).toHaveText('2026-01-15T12:15:00.000001Z');
@@ -100,6 +125,54 @@ test('native event alignment/category/evidence survives the range rail and displ
   await timeline(page).getByLabel('Timeline event category').selectOption('agent_failure');
   await expect(timeline(page).locator('.dashboard-timeline-rail-marker')).toHaveCount(1);
   await expect(page.getByRole('status', { name: 'Shared crosshair UTC', exact: true })).toHaveText('None');
+  await expect(count(page)).toHaveText('0');
+});
+test('raw events are folded by default and keyboard disclosure never changes the shared window', async ({ page }) => {
+  const browser = eventBrowser(page), summary = browser.locator('summary');
+  await expect(browser).not.toHaveAttribute('open', '');
+  await expect(rail(page)).toBeVisible();
+  await expect(page.getByLabel('Timeline from UTC', { exact: true })).toBeVisible();
+  await expect(timeline(page).getByRole('button', { name: 'Align charts: Recorded deadlock', exact: true })).toHaveCount(0);
+  const hash = new URL(page.url()).hash;
+  await summary.focus(); await page.keyboard.press('Enter');
+  await expect(summary).toBeFocused(); await expect(browser).toHaveAttribute('open', '');
+  await page.keyboard.press('Tab');
+  const list = timeline(page).getByRole('region', { name: 'Loaded timeline event list', exact: true });
+  await expect(list).toBeFocused(); await page.keyboard.press('Tab');
+  await expect(timeline(page).getByRole('button', { name: 'Align charts: Recorded deadlock', exact: true })).toBeFocused();
+  await summary.focus(); await page.keyboard.press('Enter');
+  await expect(browser).not.toHaveAttribute('open', ''); await expect(summary).toBeFocused();
+  await page.keyboard.press('Tab'); await expect(timeline(page).getByText('Timeline coverage', { exact: true })).toBeFocused();
+  expect(new URL(page.url()).hash).toBe(hash); await expect(count(page)).toHaveText('0');
+});
+test('restored selection stays compact until its explicit opener focuses the exact event', async ({ page }) => {
+  await page.getByRole('button', { name: 'Restore deadlock selection', exact: true }).click();
+  await expect(eventBrowser(page)).not.toHaveAttribute('open', '');
+  await expect(timeline(page).getByRole('link', { name: 'Open selected event evidence', exact: true })).toHaveAttribute('href', /#\/deadlocks\?target=/);
+  const show = timeline(page).getByRole('button', { name: 'Show selected event in timeline list', exact: true });
+  await show.focus(); await page.keyboard.press('Enter');
+  const selected = timeline(page).getByRole('button', { name: 'Align charts: Recorded deadlock', exact: true });
+  await expect(selected).toBeFocused(); await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect(count(page)).toHaveText('0');
+});
+for (const mode of ['missing', 'invalid']) test(`${mode} restored selection is discoverable without expanding raw rows`, async ({ page }) => {
+  await page.getByRole('button', { name: `Restore ${mode} selection`, exact: true }).click();
+  await expect(eventBrowser(page)).not.toHaveAttribute('open', '');
+  await expect(timeline(page)).toContainText(mode === 'missing' ? 'not present in the loaded evidence' : 'invalid for this server and window');
+  await expect(timeline(page).getByRole('link', { name: 'Open selected event evidence', exact: true })).toHaveCount(0);
+  await expect(timeline(page).getByRole('button', { name: 'Clear timeline alignment', exact: true })).toBeVisible();
+  await expect(count(page)).toHaveText('0');
+});
+test('same-context receipts and equivalent UTC preserve the browser while a true window or target resets it', async ({ page }) => {
+  await browseEvents(page);
+  await page.getByRole('button', { name: 'Refresh loaded events', exact: true }).click();
+  await expect(eventBrowser(page)).toHaveAttribute('open', '');
+  await page.getByRole('button', { name: 'Use equivalent UTC spelling', exact: true }).click();
+  await expect(eventBrowser(page)).toHaveAttribute('open', '');
+  await page.getByRole('button', { name: 'Advance loaded window', exact: true }).click();
+  await expect(eventBrowser(page)).not.toHaveAttribute('open', '');
+  await browseEvents(page); await page.getByRole('button', { name: 'Replace timeline target', exact: true }).click();
+  await expect(eventBrowser(page)).not.toHaveAttribute('open', '');
   await expect(count(page)).toHaveText('0');
 });
 for (const width of [320, 390, 768, 1440]) {
@@ -113,7 +186,7 @@ for (const width of [320, 390, 768, 1440]) {
     for (const control of [input, page.getByLabel('Timeline to UTC', { exact: true }), page.getByRole('button', { name: 'Apply timeline window' })]) {
       const bounds = await control.boundingBox(); expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
     }
-    const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+    const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
     await info.attach(`timeline-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
     const directory = fileURLToPath(new URL('../../artifacts/dashboard-fleet-timeline/screenshots/', import.meta.url)); await mkdir(directory, { recursive: true });
     await input.evaluate(element => element.blur()); await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));

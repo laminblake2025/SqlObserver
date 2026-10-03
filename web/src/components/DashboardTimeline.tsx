@@ -4,6 +4,7 @@ import { timelineEventsInWindow, type TimelineEvent } from "./dashboardTimelineM
 import { matchesDashboardTimelineSelection, type DashboardTimelineSelection } from "./dashboardTimelineSelectionModel.ts";
 import { chartSelection, chartX } from "../features/overview/chartTimeModel.ts";
 import { canonicalUtcTimestamp, utcMicroseconds } from "../utcTimestamp.ts";
+import "./dashboardTimelineBrowser.css";
 
 const categories: readonly { value: "all" | TimelineEvent["kind"]; label: string }[] = [
   { value: "all", label: "All events" },
@@ -27,7 +28,7 @@ const timeBasisLabels: Readonly<Record<TimelineEvent["timeBasis"], string>> = {
 };
 
 export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSelectTime, sourceNotes,
-  selection, onSelectionChange, onSelectWindow, loading = false, pinnedExactEvent }: {
+  selection, onSelectionChange, onSelectWindow, loading = false, pinnedExactEvent, contextKey }: {
   readonly events: readonly TimelineEvent[];
   readonly fromUtc: string;
   readonly toUtc: string;
@@ -39,6 +40,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
   readonly loading?: boolean;
   readonly pinnedExactEvent?: TimelineEvent;
+  readonly contextKey?: string;
 }) {
   const headingId = useId();
   const timeLabel = useTimeFormatter();
@@ -46,9 +48,16 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
   const [localSelection, setLocalSelection] = useState<DashboardTimelineSelection & { readonly windowKey: string }>();
   const callback = useRef(onSelectTime);
   const ownsAlignment = useRef(false);
-  const windowKey = JSON.stringify([fromUtc, toUtc]);
+  const windowInstant = (value: string) => {
+    try { return utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1")).toString(); }
+    catch { return value; }
+  };
+  const windowKey = JSON.stringify([contextKey, windowInstant(fromUtc), windowInstant(toUtc)]);
   const currentWindow = useRef(windowKey);
   currentWindow.current = windowKey;
+  const [eventBrowser, setEventBrowser] = useState<{ key: string; open: boolean }>();
+  const [focusRequest, setFocusRequest] = useState<{ key: string; eventId: string }>();
+  const eventButtons = useRef(new Map<string, HTMLButtonElement>());
   const rail = useRef<SVGSVGElement | null>(null);
   const gesture = useRef<{ key: string; pointer: number; start: number; end: number } | undefined>(undefined);
   const [preview, setPreview] = useState<{ key: string; start: number; end: number }>();
@@ -74,8 +83,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
     return chartX(event.clientX, bounds.left + event.currentTarget.clientLeft, event.currentTarget.clientWidth);
   };
   const beginRange = (event: PointerEvent<SVGSVGElement>) => {
-    if (!onSelectWindow || event.button !== 0 || !event.isPrimary) return;
-    cancelGesture();
+    if (!onSelectWindow || event.button !== 0 || !event.isPrimary || gesture.current) return;
     const start = position(event);
     gesture.current = { key: windowKey, pointer: event.pointerId, start, end: start };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -142,6 +150,17 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
     ownsAlignment.current = false;
     onSelectTime(null);
   };
+  const showSelectedEvent = () => {
+    if (!loadedSelection || currentWindow.current !== windowKey) return;
+    setCategory("all");
+    setEventBrowser({ key: windowKey, open: true });
+    setFocusRequest({ key: windowKey, eventId: loadedSelection.id });
+  };
+  useEffect(() => {
+    if (!focusRequest) return;
+    if (focusRequest.key === windowKey) eventButtons.current.get(focusRequest.eventId)?.focus();
+    setFocusRequest(undefined);
+  }, [focusRequest, windowKey]);
   return <section className="dashboard-timeline panel" aria-labelledby={headingId}>
     <div className="dashboard-timeline-heading">
       <div><h4 id={headingId}>Investigation timeline</h4>
@@ -162,7 +181,8 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
       <svg ref={rail} className="dashboard-timeline-rail" viewBox="0 0 650 64" preserveAspectRatio="none" role="img"
         aria-label="Timeline range selection with loaded event markers" aria-describedby={`${headingId}-range-help`}
         onPointerDown={beginRange} onPointerMove={moveRange} onPointerUp={endRange}
-        onPointerCancel={cancelGesture} onLostPointerCapture={() => { if (gesture.current) cancelGesture(); }}>
+        onPointerCancel={event => { if (gesture.current?.pointer === event.pointerId) cancelGesture(); }}
+        onLostPointerCapture={event => { if (gesture.current?.pointer === event.pointerId) cancelGesture(); }}>
         <line className="dashboard-timeline-rail-axis" x1="48" x2="620" y1="32" y2="32" />
         {drag && <rect className="dashboard-timeline-range-preview" x={Math.min(drag.start, drag.end)} y="12"
           width={Math.abs(drag.end - drag.start)} height="40" />}
@@ -183,7 +203,7 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
       </form>
     </div>}
     <p className="dashboard-timeline-status" role="status">
-      {visible.length} shown · {loaded.length} loaded events · up to 120 events in this window.
+      {visible.length} matching · {loaded.length} loaded events · up to 120 events in this window.
       {pinnedExactEvent && <> The validated exact selected event is included alongside up to 119 other latest loaded events.</>}
       {selected && <> Selected event: {selected.title}.</>}
       {crosshairUtc && Number.isFinite(Date.parse(crosshairUtc)) && <> Chart crosshair: <time dateTime={crosshairUtc} title={crosshairUtc}>{timeLabel(crosshairUtc)}</time>.</>}
@@ -194,13 +214,28 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
       : "The requested timeline event is not present in the loaded evidence for this window. No other event has been selected."}</p>}
     {controlled && loadedSelection && !selected && <p className="empty-state" role="status">
       The selected timeline event is hidden by this category. Show all events or clear the selection.{" "}
-      <button className="secondary-button" type="button" onClick={() => setCategory("all")}>Show selected timeline event</button>
+      <button className="secondary-button" type="button" onClick={showSelectedEvent}>Show selected timeline event</button>
     </p>}
+    {loadedSelection && <div className="dashboard-timeline-selected-evidence">
+      <p><strong>{loadedSelection.title}</strong> · {timeBasisLabels[loadedSelection.timeBasis]}:{" "}
+        <time dateTime={loadedSelection.timeUtc} title={loadedSelection.timeUtc}>{timeLabel(loadedSelection.timeUtc)}</time></p>
+      <p>{loadedSelection.detail}</p>
+      <div className="dashboard-timeline-selected-actions">
+        <a href={loadedSelection.href} aria-label="Open selected event evidence">Open selected event evidence</a>
+        {selected && <button className="secondary-button" type="button" onClick={showSelectedEvent}>Show selected event in timeline list</button>}
+      </div>
+    </div>}
     {(selected || controlled && selection !== undefined) && <button className="secondary-button dashboard-timeline-clear" type="button" onClick={clearAlignment}>Clear timeline alignment</button>}
     {visible.length === 0 ? <p className="empty-state">{loaded.length === 0
       ? loading ? "Timeline sources are loading for this window." : "No timeline events were loaded in this window. Missing or partial sources do not prove there were no events."
       : "No loaded events match this category. Other categories and unloaded sources may contain evidence."}</p>
-      : <ol className="dashboard-timeline-events" role="list">{visible.map(event => <li key={event.id} className={selected?.id === event.id ? "dashboard-timeline-event is-selected" : "dashboard-timeline-event"}>
+      : <details className="dashboard-timeline-browser" open={eventBrowser?.key === windowKey && eventBrowser.open}
+        onToggle={event => {
+          if (currentWindow.current === windowKey) setEventBrowser({ key: windowKey, open: event.currentTarget.open });
+        }}>
+        <summary>Browse loaded timeline events ({visible.length})</summary>
+        <div className="dashboard-timeline-browser-scroll" role="region" aria-label="Loaded timeline event list" tabIndex={0}>
+        <ol className="dashboard-timeline-events" role="list">{visible.map(event => <li key={event.id} className={selected?.id === event.id ? "dashboard-timeline-event is-selected" : "dashboard-timeline-event"}>
         <div className="dashboard-timeline-event-time">
           <span>{timeBasisLabels[event.timeBasis]}</span>
           <time dateTime={event.timeUtc} title={event.timeUtc}>{timeLabel(event.timeUtc)}</time>
@@ -208,11 +243,12 @@ export function DashboardTimeline({ events, fromUtc, toUtc, crosshairUtc, onSele
         </div>
         <div className="dashboard-timeline-event-evidence">
           <button className="dashboard-timeline-align" type="button" aria-label={`Align charts: ${event.title}`}
+            ref={element => { if (element) eventButtons.current.set(event.id, element); else eventButtons.current.delete(event.id); }}
             aria-pressed={selected?.id === event.id} onClick={() => align(event)}>{event.title}</button>
           <p>{event.detail}</p>
           <a href={event.href} aria-label={`Open evidence: ${event.title}`}>Open evidence</a>
         </div>
-      </li>)}</ol>}
+      </li>)}</ol></div></details>}
     <details className="dashboard-timeline-coverage">
       <summary>Timeline coverage</summary>
       <p>This timeline combines loaded observations with different time meanings. Snapshot findings and plan comparisons do not supply the exact moment a condition began. Missing observations are not evidence of normal health.</p>

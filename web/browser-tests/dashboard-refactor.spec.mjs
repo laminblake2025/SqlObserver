@@ -1809,6 +1809,11 @@ test('obsolete database change events cannot restore scope during a server or fl
 
 const investigationTimeline = page => page.getByRole('region', { name: 'Investigation timeline', exact: true });
 const planTimelineButtons = page => investigationTimeline(page).getByRole('button', { name: /^Align charts: Plan regression comparison/ });
+async function browseTimelineEvents(page) {
+  const browser = investigationTimeline(page).getByText(/^Browse loaded timeline events \(\d+\)$/).locator('xpath=parent::details');
+  if (!(await browser.evaluate(element => element.open))) await browser.locator('summary').click();
+  await expect(investigationTimeline(page).getByRole('region', { name: 'Loaded timeline event list', exact: true })).toBeVisible();
+}
 async function timelineFixture(page) {
   await databaseFixture(page);
   await page.context().addCookies([{ name: 'timelineFixture', value: '1', url: origin }]);
@@ -1818,6 +1823,7 @@ test('timeline URL restores the selected event with exact window and database co
   await timelineFixture(page);
   const exactFrom = '2026-09-26T08:00:00.123456Z', exactTo = '2026-09-26T12:00:00.654321Z';
   await page.goto(`/#/health?${new URLSearchParams({ target: first, range: 'custom', from: exactFrom, to: exactTo, databaseId: '6', compare: '1', healthSection: 'summary' })}`);
+  await browseTimelineEvents(page);
   const selected = planTimelineButtons(page);
   await expect(selected).toHaveCount(1);
   await selected.focus();
@@ -1828,6 +1834,9 @@ test('timeline URL restores the selected event with exact window and database co
   await assertHistoricalScope(page, first, exactFrom, exactTo);
   await assertDatabaseScope(page, 6);
   await page.reload();
+  await expect(investigationTimeline(page).getByRole('link', { name: 'Open selected event evidence', exact: true })).toBeVisible();
+  await expect(investigationTimeline(page).getByText(/^Browse loaded timeline events \(\d+\)$/).locator('xpath=parent::details')).not.toHaveAttribute('open', '');
+  await browseTimelineEvents(page);
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
   await expect(investigationTimeline(page).getByRole('status').locator('time')).toHaveAttribute('datetime', selectedTime);
   await expect.poll(() => page.locator('.server-dashboard .chart-crosshair').count()).toBeGreaterThanOrEqual(4);
@@ -1853,6 +1862,7 @@ test('aligning a Live timeline event freezes its loaded window and retains keybo
     }
   });
   await page.goto(`${href('health', first, '1h')}&databaseId=6`);
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(1);
   await expect.poll(() => loadedWindow).toBeTruthy();
   const window = { ...loadedWindow };
@@ -1868,6 +1878,8 @@ test('aligning a Live timeline event freezes its loaded window and retains keybo
   expect(await button.evaluate(element => element.isConnected)).toBe(true);
   await expect(page.getByRole('combobox', { name: 'Time range', exact: true })).toHaveValue('custom');
   await page.reload();
+  await expect(investigationTimeline(page).getByRole('link', { name: 'Open selected event evidence', exact: true })).toBeVisible();
+  await browseTimelineEvents(page);
   await expect(align).toHaveAttribute('aria-pressed', 'true');
   await expect(investigationTimeline(page).getByRole('status').locator('time')).toHaveAttribute('datetime', eventTime);
   await assertHistoricalScope(page, first, window.from, window.to);
@@ -1877,6 +1889,7 @@ test('aligning a Live timeline event freezes its loaded window and retains keybo
 test('selected Agent timeline marker retains its focused button during a pending refresh and becomes explicitly missing after failure', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(`${href('health')}&healthSection=summary`);
+  await browseTimelineEvents(page);
   const timeline = investigationTimeline(page);
   const selected = timeline.getByRole('button', { name: /^Align charts: SQL Agent job failure/ }).first();
   await expect(selected).toBeVisible();
@@ -1935,6 +1948,7 @@ test('Overview previous-period comparison requests retain the exact microsecond 
   });
   await page.goto(`/#/health?${new URLSearchParams({ target: first, range: 'custom', from: exactFrom, to: exactTo, compare: '1', healthSection: 'summary' })}`);
   await expect.poll(() => comparison).toMatchObject({ targetId: first, fromUtc: expectedPrevious, toUtc: exactFrom });
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   await expect(page.getByText('Previous-period evidence is unavailable.', { exact: true })).toHaveCount(0);
   await assertHistoricalScope(page, first, exactFrom, exactTo);
@@ -1943,6 +1957,7 @@ test('Overview previous-period comparison requests retain the exact microsecond 
 test('requested timeline selection remains explicit when hidden or absent and never selects another event', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(`${href('health')}&databaseId=6`);
+  await browseTimelineEvents(page);
   const timeline = investigationTimeline(page), category = timeline.getByRole('combobox', { name: 'Timeline event category', exact: true });
   await expect(planTimelineButtons(page)).toHaveCount(1);
   await planTimelineButtons(page).click();
@@ -1973,6 +1988,7 @@ test('requested timeline selection remains explicit when hidden or absent and ne
 test('delayed requested timeline evidence cannot restore a selection after switching servers', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(`${href('health')}&databaseId=6`);
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(1);
   await planTimelineButtons(page).click();
   await expect.poll(() => scope(page).get('timelineEvent')).toMatch(/^plan:/);
@@ -1989,6 +2005,7 @@ test('delayed requested timeline evidence cannot restore a selection after switc
   await page.evaluate(hash => { location.hash = hash; }, href('health', second).substring(1));
   await expect.poll(() => scope(page).get('target')).toBe(second);
   await expect.poll(() => scope(page).get('timelineEvent')).toBe(null);
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   release();
   await expect(investigationTimeline(page).locator('button[aria-pressed="true"]')).toHaveCount(0);
@@ -2082,6 +2099,7 @@ test('investigation timeline remains usable when dashboard metric series contain
     await route.fulfill({ response, json: { ...body, evidence: body.evidence.map(item => ({ ...item, series: [] })) } });
   });
   await page.goto(href('health'));
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   const timeline = investigationTimeline(page);
   await expect(timeline.getByRole('button', { name: /^Align charts: Deadlock/ })).toHaveCount(1);
@@ -2104,6 +2122,7 @@ test('investigation timeline remains usable when dashboard metric series contain
 test('timeline category keyboard control aligns shared charts and clears hidden selections', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(href('health'));
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   const timeline = investigationTimeline(page);
   const category = timeline.getByRole('combobox', { name: 'Timeline event category', exact: true });
@@ -2142,9 +2161,11 @@ test('timeline category keyboard control aligns shared charts and clears hidden 
 test('timeline database context filters plan comparisons while retaining server deadlocks and opens the current plan', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(`${href('health')}&compare=1`);
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   await workspaceDatabase(page).selectOption('6');
   await assertDatabaseScope(page, 6);
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(1);
   await expect(planTimelineButtons(page)).toHaveAccessibleName(/database 6/);
   const timeline = investigationTimeline(page);
@@ -2165,6 +2186,7 @@ test('timeline database context filters plan comparisons while retaining server 
   await expect(page.getByRole('region', { name: 'Possible plan regressions', exact: true })).toContainText('This is a correlation, not proof');
   await page.goBack();
   await assertDatabaseScope(page, 6);
+  await browseTimelineEvents(page);
   const configurationEvidence = investigationTimeline(page).getByRole('link', { name: 'Open evidence: Server configuration detected', exact: true });
   await expect(configurationEvidence).toBeVisible();
   const configurationParams = new URLSearchParams((await configurationEvidence.getAttribute('href')).split('?')[1]);
@@ -2196,6 +2218,7 @@ test('timeline database context filters plan comparisons while retaining server 
 test('failed plan comparison refresh removes old leads and reports unavailable coverage honestly', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(href('health'));
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   await page.route(`**/${first}/query-performance/regressions?*`, route => route.fulfill({ status: 503, json: {} }));
   await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
@@ -2218,6 +2241,7 @@ test('delayed old-target plan comparisons never reappear in the new server timel
     await page.goto(href('health'));
     await expect.poll(() => requested).toBe(true);
     await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+    await browseTimelineEvents(page);
     await expect(planTimelineButtons(page)).toHaveCount(2);
     await expect(planTimelineButtons(page).first()).toHaveAccessibleName(/query 777777777777/);
     await expect(planTimelineButtons(page).last()).toHaveAccessibleName(/query 888888888888/);
@@ -2230,6 +2254,7 @@ test('delayed old-target plan comparisons never reappear in the new server timel
 test('timeline plan comparisons clear during a window read and reject its delayed result after another rewind', async ({ page }) => {
   await timelineFixture(page);
   await page.goto(href('health'));
+  await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   let release, requested = false, continued = false;
   const gate = new Promise(resolve => { release = resolve; });
@@ -2247,8 +2272,10 @@ test('timeline plan comparisons clear during a window read and reject its delaye
   try {
     await editWindow('2026-09-26T09:00', '2026-09-26T11:00');
     await expect.poll(() => requested).toBe(true);
+    await browseTimelineEvents(page);
     await expect(planTimelineButtons(page)).toHaveCount(0);
     await editWindow('2026-09-26T10:00', '2026-09-26T11:00');
+    await browseTimelineEvents(page);
     await expect(planTimelineButtons(page)).toHaveCount(2);
   } finally { release(); }
   await expect.poll(() => continued).toBe(true);

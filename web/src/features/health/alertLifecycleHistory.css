@@ -1,10 +1,13 @@
 .alert-lifecycle-history { min-width: 0; padding: 20px; overflow-wrap: anywhere; }
 .alert-lifecycle-history .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
+.alert-lifecycle-history .form-actions > button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.alert-lifecycle-source-read { min-width: 0; }
 .alert-lifecycle-history .table-scroll { max-height: 28rem; }
 .alert-lifecycle-history .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .alert-lifecycle-history td small { display: block; margin-block-start: .3rem; }
 .alert-lifecycle-history td button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.alert-lifecycle-browser > summary { min-height: 40px; padding-block: .75rem; color: var(--teal-deep); cursor: pointer; font-weight: 700; }
+.alert-lifecycle-browser > summary { min-height: 44px; padding: .75rem .5rem; color: var(--teal-deep); cursor: pointer; font-weight: 700; border-radius: .4rem; }
+.alert-lifecycle-browser > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 .alert-lifecycle-selected { margin-block: 1rem; padding-block: .75rem; border-block: 1px solid var(--border); }
 .alert-lifecycle-facts { display: grid; grid-template-columns: minmax(140px, .7fr) minmax(0, 2fr); gap: .5rem 1rem; }
 .alert-lifecycle-facts dt { color: var(--muted); }

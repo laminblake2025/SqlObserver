@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 import { OverviewChart } from "../overview/OverviewChart";
 import { issueHref, overviewEvidenceFooter, overviewHref, overviewWindow, rankedIssues } from "../overview/overviewModel";
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
@@ -16,7 +17,7 @@ import { useAlertLifecycleHistory } from "./useAlertLifecycleHistory.ts";
 import { AlertLifecycleHistoryPanel } from "./AlertLifecycleHistoryPanel.tsx";
 import { alertLifecycleTimelineEvents, lifecycleEventIdentity, matchesLifecycleSelection, type AlertLifecycleSelection } from "./alertLifecycleHistoryModel.ts";
 import { useAgentHistory } from "../operations/useAgentHistory.ts";
-import { healthCheckHref } from "../operations/agentHistoryModel.ts";
+import { healthCheckHref, validateAgentWindow } from "../operations/agentHistoryModel.ts";
 import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx";
 import { useChartReferences } from "../overview/useChartReferences.ts";
 import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, readDashboardTimelineSelection, readAlertLifecycleTimelineIdentity,
@@ -27,6 +28,7 @@ import { useChartInspection } from "../../components/useChartInspection.ts";
 import { DashboardBaselineCards } from "./DashboardBaselineCards.tsx";
 import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.tsx";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
+import "./serverHistoryDisclosure.css";
 
 export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules }: {
   readonly instanceId: string;
@@ -42,6 +44,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
   const inspectionKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId, scope.compare]);
+  const timelineContextKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.databaseId, scope.compare]);
   const requestedChartAt = readChartInspection(selectionHash);
   const requestedSelection = readDashboardTimelineSelection(selectionHash, instanceId);
   const selectedScope = { ...scope, target: instanceId };
@@ -60,9 +63,17 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data).filter(issue => issue.targetId.toLowerCase() === instanceId.toLowerCase()) : [];
   const agentHistory = useAgentHistory(instanceId, targetRevision, data && evidence ? data : undefined, refresh);
+  const agentDisclosureKey = JSON.stringify([timelineContextKey, ...(agentHistory.page
+    ? [agentHistory.page.window.fromUtc, agentHistory.page.window.toUtc].map(value => utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1")).toString())
+    : [])]);
   const chartReferences = useChartReferences(instanceId, targetRevision, data && evidence ? data : undefined, canReadRules, refresh, evidence?.series.map(item => item.metric));
   const fallbackWindow = useMemo(()=>{try{return overviewWindow(selectedScope,Date.now());}catch{return undefined;}},[instanceId,targetRevision,scope.range,scope.from,scope.to,refresh]);
   const analyticsWindow = data && evidence ? { fromUtc:data.fromUtc,toUtc:data.toUtc } : undefined;
+  const alertEvidence = useRef<HTMLDivElement>(null), alertEvidenceId = useId();
+  const agentWindowAvailable = (() => {
+    if (!analyticsWindow) return false;
+    try { validateAgentWindow(analyticsWindow); return true; } catch { return false; }
+  })();
   const timelineWindow = analyticsWindow ?? fallbackWindow;
   const timeline = useDashboardTimeline(instanceId, targetRevision, selectedScope, analyticsWindow, refresh, configurationCollectorState);
   const requestedLifecycleIdentity = requestedSelection ? readAlertLifecycleTimelineIdentity(requestedSelection.eventId) : undefined;
@@ -116,7 +127,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     agentHistory.error ? `SQL Agent first-observed markers are unavailable: ${agentHistory.error}`
       : agentHistory.refreshing ? `Refreshing SQL Agent markers; showing the previous first-page snapshot from ${agentHistory.page!.observedAtUtc} in this same window.`
       : agentHistory.loading ? "Loading SQL Agent first-observed markers…"
-      : `SQL Agent: first ${agentHistory.page?.rows.length ?? 0} of up to 50 history rows${agentHistory.page?.hasMore ? "; additional pages are available in SQL Agent history" : ""}${agentHistory.page?.truncated ? "; capture was truncated" : ""}. Only failed job-outcome rows become markers.`,
+      : agentHistory.page ? `SQL Agent: first ${agentHistory.page.rows.length} of up to 50 history rows${agentHistory.page.hasMore ? "; additional pages are available in SQL Agent history" : ""}${agentHistory.page.truncated ? "; capture was truncated" : ""}. Only failed job-outcome rows become markers.`
+        : "SQL Agent has no received first-observed history coverage for this dashboard window. Check its read status below or open SQL Agent history independently; missing evidence is not all clear.",
     "The timeline retains the latest 120 loaded events. Database options and plan comparisons follow the selected database; alerts, deadlocks, job failures, configuration and snapshot findings remain server-wide.",
     "Restart and failover transitions are not supplied by these sources. Retained alert lifecycle has native provenance and retention limits; an empty timeline is not an all-clear signal.",
   ];
@@ -175,20 +187,16 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       requestedUtc={requestedChartAt} crosshairUtc={crosshairUtc}
       onAlign={utc=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash,utc);}}
       onClear={()=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
-      <DashboardTimeline events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
+      <DashboardTimeline contextKey={timelineContextKey} events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
       selection={requestedSelection} onSelectionChange={selectTimeline} pinnedExactEvent={pinnedExactEvent}
       loading={timeline.loading||alerts.list.loading||alerts.detail.loading}
       onSelectWindow={window=>{setCrosshairUtc(null);change({range:"custom",from:window.fromUtc,to:window.toUtc});}}
       onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes}/>
-      <AlertLifecycleHistoryPanel history={alerts} scope={fixedTimelineScope} selectedEvent={selectedLifecycleEvent} onSelectEvent={selectLifecycleEvent}
-        onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/></>}
+      {selectedLifecycleEvent!==undefined&&<button type="button" className="secondary-button server-history-action" aria-controls={alertEvidenceId} onClick={()=>{
+        if(location.hash!==selectionHash)return;
+        alertEvidence.current?.focus();alertEvidence.current?.scrollIntoView({block:"start"});
+      }}>Review selected alert event evidence</button>}</>}
     {data && evidence && <>
-      {agentHistory.page && <section className="panel" aria-label="SQL Agent first-observed evidence">
-        <h4>SQL Agent failures first observed in this window</h4>
-        {agentHistory.refreshing && <p role="status">Refreshing SQL Agent evidence; showing the previously loaded first-page snapshot from {timeLabel(agentHistory.page.observedAtUtc)} in this same window.</p>}
-        <AgentFailureEvidence page={agentHistory.page} compact />
-        <a href={healthCheckHref({ ...selectedScope, range: "custom", from: data.fromUtc, to: data.toUtc }, instanceId, "agent")}>Open SQL Agent history for this window →</a>
-      </section>}
       <div className="server-dashboard-charts">
         {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
         {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
@@ -231,6 +239,34 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       </section>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
+    {timelineWindow&&<div ref={alertEvidence} id={alertEvidenceId} tabIndex={-1} role="region" aria-label="Alert history evidence" className="server-history-evidence-location">
+      <AlertLifecycleHistoryPanel history={alerts} scope={fixedTimelineScope} selectedEvent={selectedLifecycleEvent} onSelectEvent={selectLifecycleEvent}
+        onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/>
+    </div>}
+    <section className="panel server-agent-evidence" aria-label="SQL Agent first-observed evidence" aria-busy={agentHistory.loading}>
+      <h4>SQL Agent failures first observed in this window</h4>
+      {agentHistory.loading&&<p role="status">{agentHistory.refreshing&&agentHistory.page
+        ? `Refreshing SQL Agent evidence; showing the previously loaded first-page snapshot from ${timeLabel(agentHistory.page.observedAtUtc)} in this same window.`
+        : "Loading SQL Agent first-observed evidence for the received dashboard window…"}</p>}
+      {agentHistory.error&&<p role="alert">{agentHistory.error}{agentWindowAvailable&&<> <button type="button" disabled={agentHistory.loading} onClick={agentHistory.retry}>Retry SQL Agent history</button></>}</p>}
+      {agentHistory.page?<>
+        <p className="activity-evidence">SQL Agent evidence: {agentHistory.page.state} · {agentHistory.page.rows.filter(row=>row.countsAsJobFailure).length} job-outcome failures in {agentHistory.page.rows.length} received history rows.
+          {agentHistory.page.hasMore?" Additional history pages are available.":" No further history pages are reported by this received snapshot."}
+          {agentHistory.page.truncated?" Source capture was truncated; failures may be missing.":""}</p>
+        <p className="table-note">First observed by monitoring, not job execution time. Snapshot {timeLabel(agentHistory.page.observedAtUtc)}; received window {timeLabel(agentHistory.page.window.fromUtc)} to {timeLabel(agentHistory.page.window.toUtc)}. Missing collection coverage can hide failures.</p>
+        {agentHistory.page.state==="PermissionDenied"&&<p role="status">The collector cannot read SQL Agent history. Have a Target Administrator review the server permission script; refreshing this read does not repair collector permissions.</p>}
+        {agentHistory.page.state==="Unsupported"&&<p role="status">SQL Agent history is unsupported for this target. Check the SQL Server edition and Agent availability.</p>}
+        {agentHistory.page.state==="NoData"&&<p role="status">No SQL Agent snapshot has been captured. Check that the Agent collector is enabled and can connect.</p>}
+        {["Partial","Degraded"].includes(agentHistory.page.state)&&<p role="status">SQL Agent collection coverage is incomplete. Review the collector diagnostics before treating missing rows as evidence that no jobs failed.</p>}
+        <details key={agentDisclosureKey} className="server-agent-evidence-browser"><summary>Browse SQL Agent failure evidence</summary>
+          <AgentFailureEvidence page={agentHistory.page} compact />
+        </details>
+        <button type="button" className="secondary-button server-history-action" disabled={agentHistory.loading||!agentWindowAvailable} onClick={agentHistory.returnLatest}>Refresh SQL Agent evidence</button>
+      </>:!agentHistory.loading&&!agentHistory.error&&<p role="status">SQL Agent history has no received evidence for this dashboard window. {analyticsWindow
+        ? "Verify collector availability and choose a retained range; missing evidence is not an all-clear signal."
+        : "A comparable dashboard source window has not been received. Open SQL Agent history to read its retained evidence independently."}</p>}
+      {timelineWindow&&<p><a href={healthCheckHref(fixedTimelineScope,instanceId,"agent")}>Open SQL Agent history for this window →</a></p>}
+    </section>
   </section>;
 }
 

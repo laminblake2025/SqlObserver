@@ -217,6 +217,9 @@ for (const width of [320, 390, 768, 1440]) {
     await expect(timeline.getByRole('heading', { name: 'Investigation timeline', exact: true })).toBeVisible();
     const category = timeline.getByRole('combobox', { name: 'Timeline event category', exact: true });
     await category.selectOption('plan_regression');
+    const eventBrowser = timeline.getByText(/^Browse loaded timeline events \(\d+\)$/).locator('xpath=parent::details');
+    await expect(eventBrowser).not.toHaveAttribute('open', '');
+    await eventBrowser.locator('summary').focus(); await page.keyboard.press('Enter');
     const align = timeline.getByRole('button', { name: /^Align charts: Plan regression comparison/ });
     await expect(align).toHaveCount(1);
     await align.focus();
@@ -229,6 +232,10 @@ for (const width of [320, 390, 768, 1440]) {
     expect(selectionQuery.get('timelineEvent')).toMatch(/^plan:/);
     expect(selectionQuery.get('timelineAt')).toBe('2026-09-26T11:00:00.000Z');
     await page.reload();
+    await expect(timeline.getByRole('link', { name: 'Open selected event evidence', exact: true })).toBeVisible();
+    await expect(eventBrowser).not.toHaveAttribute('open', '');
+    await timeline.getByRole('button', { name: 'Show selected event in timeline list', exact: true }).press('Enter');
+    await expect(align).toBeFocused();
     await expect(align).toHaveAttribute('aria-pressed', 'true');
     await expect(timeline.getByRole('status').filter({ hasText: 'Chart crosshair:' }).locator('time')).toHaveAttribute('datetime', '2026-09-26T11:00:00.000Z');
     expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('databaseId')).toBe('6');
@@ -241,8 +248,9 @@ for (const width of [320, 390, 768, 1440]) {
     await coverage.focus();
     await coverage.press('Enter');
     await expect(coverage).toBeFocused();
-    await expect(timeline.locator('details')).toHaveAttribute('open', '');
-    await expect(timeline.locator('details')).toContainText('different time meanings');
+    const coverageDetails = coverage.locator('xpath=parent::details');
+    await expect(coverageDetails).toHaveAttribute('open', '');
+    await expect(coverageDetails).toContainText('different time meanings');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 'Timeline evidence must fit; timestamps and links must wrap locally').toBeLessThanOrEqual(1);
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
     await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });

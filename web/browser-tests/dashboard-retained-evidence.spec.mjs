@@ -24,6 +24,9 @@ async function fixture(page, extra = {}) {
 }
 async function chooseAlerts(page) {
   await timeline(page).getByRole('combobox', { name: 'Timeline event category', exact: true }).selectOption('alert');
+  const browser = timeline(page).locator('.dashboard-timeline-browser');
+  await expect(browser).toHaveCount(1);
+  if (!(await browser.evaluate(element => element.open))) await browser.locator('summary').click();
 }
 async function openCoverage(page) {
   const details = timeline(page).getByText('Timeline coverage', { exact: true }).locator('xpath=parent::details');
