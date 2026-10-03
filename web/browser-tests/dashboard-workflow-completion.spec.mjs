@@ -65,7 +65,8 @@ test('maintenance conflicts require refreshed evidence and cancelled or Viewer w
   await expect(page.getByRole('button', { name: 'Edit window', exact: true })).toHaveCount(0);
   await page.context().addCookies([{ name: 'maintenanceEditRole', value: 'viewer', url: origin }]); await page.reload();
   await page.goto(href('maintenance', first, { windowId: maintenanceEditId() }));
-  await expect(windows(page)).toContainText('SYNTHETIC precise maintenance A');
+  await expect(windows(page)).not.toContainText('SYNTHETIC precise maintenance A');
+  await expect(page.getByRole('alert').filter({ hasText: 'Maintenance access is unavailable. Restore Target Administrator access and retry.' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit window', exact: true })).toHaveCount(0); expect(mutations).toBe(1);
 });
 

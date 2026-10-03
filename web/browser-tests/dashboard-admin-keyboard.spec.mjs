@@ -61,6 +61,8 @@ test.beforeEach(async ({ page }, info) => {
     if (request.method() === 'GET' && (url.pathname === '/api/v1/overview'
       || url.pathname === `/api/v1/observation-targets/${target}/health/databases`)) return route.continue();
     const prefix = `/api/v1/observation-targets/${target}/alerts/`;
+    if (request.method() === 'GET' && url.pathname === `${prefix}maintenance/series` && url.search === '?limit=50')
+      return json(route, { targetId: target, serverNowUtc: '2026-10-03T15:00:00Z', items: [], nextBeforeSeriesId: null });
     if (request.method() === 'GET' && url.pathname === `${prefix}rules/catalog` && !url.search)
       return json(route, { targetId: target, digest: 'a'.repeat(64), items: [template] });
     if (request.method() === 'GET' && ['rules', 'maintenance', 'destinations'].some(resource => url.pathname === prefix + resource)

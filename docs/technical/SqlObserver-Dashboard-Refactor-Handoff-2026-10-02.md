@@ -2,6 +2,30 @@
 
 This checkpoint implements the dashboard refactor, including the native contracts and persistence needed for cohesive dashboard features. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor; unrelated collector and runtime redesign remain outside this pass.
 
+## Latest recurring-maintenance qualification (2026-10-03)
+
+The target maintenance screen now supports finite daily, weekly and monthly series with server preview, create, edit future and cancel future. Civil definitions retain a named IANA zone and explicit gap/fold policies; browser time-zone conversion does not authorize a schedule. Elapsed duration, skipped dates, immutable source provenance and current-state timestamps are disclosed. [Feature contract](Recurring-Maintenance.md).
+
+Forward migration **0351** independently validates the complete canonical schedule and serializes mutations with target dispatch. Started windows remain unchanged. Individual generated-window edits/cancellations become permanent exceptions; removed dates and future cancellation fences cannot be resurrected. The lifetime cap is **2,048 occurrence slots**. All schedules have an inclusive end date within five years; no rolling expander is required.
+
+Same-target Target Administrator grants govern protected reads and writes. Server-derived digests, actor identity and revision checks bind commands; exact native replay precedes current-time and revision fences. An uncertain command retains its original payload and operation ID, including when another series is selected. Confirmed writes read authoritative status independently; failed readback retries GET only. A shared synchronous lane excludes series and one-off writes. Context/role/denial/unmount changes cancel and fence old work. URL series and exact occurrence identities survive time changes and reload. Lists expose native continuation, as-of status and explicit bounded loading.
+
+Three independent owners covered Domain/Application/HTTP, migration/repository/native tests and UI/theme/interactions. Peers reviewed contracts and lifecycle seams; one lead integrated App journeys and final validation. Compiler failures and pre-repair source are retained separately from final evidence.
+
+| Requested requirement | Final evidence | Result |
+|---|---|---|
+| Independent owners / integration lead | Three independent owners with non-overlapping files; lead integrated App journeys, contracts and final evidence. | Complete for this recurring-maintenance pass. |
+| Dark theme | Existing shared dark tokens, wrapped controls, readable status and audit receipts, visible keyboard focus. | Complete for this recurring-maintenance pass. |
+| Diagnostic review | Civil recurrence and DST policies, native authorization/replay, permanent exceptions/cancellation fences, source provenance and server readback reviewed. | Complete for this recurring-maintenance pass. |
+| Interaction tests | 46 native web checks; 41 mounted and 8 built-App cases pass. | Complete for this recurring-maintenance pass. |
+| Accessibility / responsive | Keyboard, axe and overflow checks at 320/390/768/1440; eight fresh captures. | Complete for this recurring-maintenance pass. |
+| Final integrated validation | Strict product/harness TypeScript, production build/assets; 216 affected .NET checks, including real PostgreSQL and HTTP-to-repository behavior; 1915 unchanged frozen inputs. | Complete for this recurring-maintenance pass. |
+| Scope / completion | Finite recurring maintenance preview/create/edit-future/cancel-future and individual occurrence exceptions delivered. Other dashboard-dependent requirements remain open. | Complete for this recurring-maintenance pass. |
+
+Final affected .NET counts: **22 unit**, **53 API**, **50 security**, **91 PostgreSQL**. Native web **46**, mounted **41**, built-App **8**, and complete affected administration/workflow/keyboard groups **16/14/6** pass. Strict product/harness TypeScript, production build and asset verification pass. Every qualifying check consumed unchanged final inputs, including **1915 frozen inputs**.
+
+[Eight final screenshots and requirement table](../../artifacts/dashboard-maintenance-series/index.html) and [exact cases, hashes and provenance](../../artifacts/dashboard-maintenance-series/completion.json) bind this local checkpoint. Browser fixtures are synthetic; database and production HTTP integration use disposable pinned PostgreSQL 18.4. SQL Server collectors, release certification and manual assistive-technology/cross-browser certification were not changed or qualified. The broader dashboard and repository plan remain open. No GitHub upload was attempted.
+
 ## Latest alert assignment qualification (2026-10-03)
 
 Fleet and server alert details now support durable **Assign, Reassign and Unassign**, with current ownership and paginated immutable change history. Assignment records responsibility while preserving retained alert evidence, acknowledgement, notification snooze and evaluator state. Resolution retains attribution; a new firing episode starts unassigned. [Feature and configuration contract](Alert-Assignment.md).
@@ -508,7 +532,7 @@ These statuses describe the original interface requirements rather than treating
 | Sessions/blocking/deadlocks | Exact request and chain identities, retained snapshots and deadlock restoration, inert role-gated protected content. | Collection completeness and retention limit available historical evidence. |
 | Resources | SQL scheduler CPU, SQL memory, aggregate/NUMA PLE, file latency, selected-file allocation/autogrowth and SQL-reported volume capacity. | Target-host CPU comparison and historical volume comparison need additional source contracts. |
 | Health checks | Existing backup/RPO, Agent, HA, TempDB and configuration/database-option surfaces with scoped navigation. | Source completeness, long-running-job parity and live platform qualification must be assessed in collector work; frontend checks cannot prove them. |
-| Administration | Target rules, destinations, server grouping, revision-checked connection edits/rediscovery/retirement, one-off maintenance calendar/create/edit/cancel and offline permission generator. | Recurrence and rule-template deployment by group remain incomplete. |
+| Administration | Target rules, destinations, server grouping, revision-checked connection edits/rediscovery/retirement, one-off maintenance calendar/create/edit/cancel, finite recurring series and offline permission generator. | Rule-template deployment by group remains incomplete. |
 | Ctrl+K | Authorized server, database, query-hash and current-alert destinations. See [palette](../../web/src/components/CommandPalette.tsx). | Lookup/list caps and missing selections remain explicit. |
 | Live updates with pause | One workspace clock with source cadences, pause, hidden-window suppression and wake refresh; no refresh-key remount of diagnostic surfaces. See [clock](../../web/src/liveRefreshSchedule.ts). | SignalR is not required by the plan when shared polling is used. |
 | Shareable URLs | Target/window and supported alert, query, resource, request, chain, deadlock, admin, server settings, timeline and retained Waits selections survive reload/history. | Invalid or unavailable exact identities remain visible; no substituted newest selection. |
@@ -529,9 +553,9 @@ Snooze and Unsnooze are delivered across the [HTTP routes](../../src/SqlObserver
 
 ### Recurring maintenance
 
-[Maintenance routes](../../src/SqlObserver.Server/AlertEndpoints.cs) currently create/update/cancel one-off target windows. [The parser](../../web/src/features/alerts/alertAdminListsApi.ts) accepts exact one-off fields; [the calendar](../../web/src/features/alerts/TargetMaintenancePanel.tsx) explicitly states that recurrence is not supplied (line 179). [Domain windows](../../src/SqlObserver.Domain/Alerting/AlertContracts.cs) are microsecond-aligned UTC, positive, at most seven days and half-open. The existing editor rejects nonexistent local times and discloses its repeated-DST-time choice.
+Delivered: [finite series contract](Recurring-Maintenance.md), new forward migration 0351, native canonical expansion and lifecycle validation, target-authorized HTTP reads/mutations, server previews and dashboard integration. Daily/weekly/monthly definitions have explicit end dates, named zones and DST policies. Future edit/cancel preserves started rows, individual exceptions and immutable provenance. Cancellation fences and date tombstones cannot be undone. Half-open overlap suppression and dispatch races are qualified while collection/evaluation continue. Exact series/occurrence URLs and legacy one-off edit/cancel coexist.
 
-Next contract: durable series ID/revision, recurrence definition, named timezone, explicit DST gap/fold policy, bounded occurrence expansion and provenance. Define edit/cancel-one versus edit/cancel-future, preserve past/cancelled occurrences, and prevent cancellation from being undone by expansion. Keep Target Administrator access, digest-based retry identity and revision fences. Validate delivery suppression at start/end, overlaps and dispatch races while collection/evaluation continue. Do not infer a fleet-wide maintenance calendar from loaded target pages.
+The new qualification section above records owning final checks. Lists remain bounded target views; they do not imply a fleet-wide calendar or an unbounded recurring scheduler. A new series is required beyond the finite end date or cumulative occurrence cap.
 
 ### Rule templates by group
 

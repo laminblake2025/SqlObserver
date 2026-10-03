@@ -1,6 +1,7 @@
 import { overviewHref, readOverviewScope } from "../overview/overviewModel.ts";
 import type { OverviewScope } from "../overview/overviewTypes.ts";
 import type { AdminListPage } from "./alertAdminListsApi.ts";
+import { retainMaintenanceSeriesSelectionHref } from "./maintenanceSeriesSelection.ts";
 
 export type AdminPage = "rules" | "maintenance" | "destinations";
 const parameters = { rules: "ruleId", maintenance: "windowId", destinations: "destinationId" } as const;
@@ -33,10 +34,10 @@ export function retainAdminSelectionHref(href: string, currentHash: string): str
   if (page !== "rules" && page !== "maintenance" && page !== "destinations") return href;
   const scope = readOverviewScope(href);
   const selected = readAdminSelection(currentHash, page, scope.target);
-  if (!selected) return href;
+  if (!selected) return retainMaintenanceSeriesSelectionHref(href, currentHash);
   const params = new URLSearchParams(href.split("?")[1]);
   params.set(parameters[page], selected);
-  return `#/${page}?${params}`;
+  return retainMaintenanceSeriesSelectionHref(`#/${page}?${params}`, currentHash);
 }
 
 export const adminRestorePageLimit = 5;

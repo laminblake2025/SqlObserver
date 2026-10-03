@@ -1,0 +1,13 @@
+.maintenance-series { margin-block: 1rem; min-width: 0; overflow-wrap: anywhere; }
+.maintenance-series-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.maintenance-series-fields label { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.maintenance-series-fields input, .maintenance-series-fields select, .maintenance-series-fields textarea { max-width: 100%; width: 100%; min-width: 0; }
+.maintenance-series-reason { grid-column: 1 / -1; }
+.maintenance-series-weekdays { display: flex; flex-wrap: wrap; gap: .75rem; margin-block: .75rem; border: 1px solid var(--border); }
+.maintenance-series-weekdays label { display: inline-flex; align-items: center; gap: .25rem; }
+.maintenance-series-weekdays input { width: auto; }
+.maintenance-series-receipt { color: var(--muted); font-size: .8rem; }
+.maintenance-series .table-scroll { max-height: 32rem; }
+.maintenance-series .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 900px) { .maintenance-series-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .maintenance-series-fields { grid-template-columns: minmax(0, 1fr); } }

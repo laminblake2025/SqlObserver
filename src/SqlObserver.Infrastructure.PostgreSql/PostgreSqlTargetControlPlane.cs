@@ -56,6 +56,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         Alerts = alertRepository;
         AlertRuleReads = alertRepository;
         MaintenanceWindowReads = alertRepository;
+        MaintenanceSeries = new PostgreSqlMaintenanceSeriesRepositoryPort(dataSource);
         AlertDestinationReads = alertRepository;
         OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
         AvailabilityGroupEvidence = new PostgreSqlAvailabilityGroupEvidencePort(dataSource);
@@ -117,6 +118,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IAlertRepositoryPort Alerts { get; }
     public IAlertRuleReadPort AlertRuleReads { get; }
     public IMaintenanceWindowReadPort MaintenanceWindowReads { get; }
+    public IMaintenanceSeriesRepositoryPort MaintenanceSeries { get; }
     public IAlertDestinationReadPort AlertDestinationReads { get; }
     public IOperationalHealthRepositoryPort OperationalHealth { get; }
     public IAvailabilityGroupEvidenceRepositoryPort AvailabilityGroupEvidence { get; }

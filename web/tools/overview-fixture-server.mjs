@@ -16,6 +16,7 @@ import {handleWorkspaceSelectionFixture} from './workspace-selection-fixture.mjs
 import {handleMaintenanceCalendarFixture} from './maintenance-calendar-fixture.mjs';
 import {handleSqlVolumeFixture} from './sql-volume-fixture.mjs';
 import {handleMaintenanceEditFixture} from './maintenance-edit-fixture.mjs';
+import {handleMaintenanceSeriesFixture} from './maintenance-series-fixture.mjs';
 import {handleWaitCapturedSessionFixture} from './wait-captured-session-fixture.mjs';
 import {handleDashboardNativeInsightsFixture} from './dashboard-native-insights-fixture.mjs';
 import {handleDashboardRetainedEvidenceFixture} from './dashboard-retained-evidence-fixture.mjs';
@@ -56,6 +57,7 @@ createServer(async(req,res)=>{try{
  if(await handleReportWorkflowFixture(url,res,req,targets,send))return;
  if(handleDashboardRetainedEvidenceFixture(url,res,req,targets,send))return;
  if(handleDashboardNativeInsightsFixture(url,res,req,targets,send))return;
+ if(handleMaintenanceSeriesFixture(url,res,req,targets,send))return;
  if(await handleMaintenanceEditFixture(url,res,req,targets,send))return;
  if(handleWaitCapturedSessionFixture(url,res,req,targets,send))return;
  if(handleSqlVolumeFixture(url,res,req,targets,send))return;

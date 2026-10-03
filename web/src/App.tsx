@@ -13,6 +13,7 @@ import { retainActivitySelectionHref } from "./features/activity/activitySelecti
 import { retainWaitCategoryHref } from "./features/activity/waitSelectionModel.ts";
 import { retainSessionWaitCategoryHref, retainSessionWaitCaptureHref } from "./features/activity/waitCapturedSessionsModel.ts";
 import { adminSelectionHref, readAdminSelection, retainAdminSelectionHref, type AdminPage } from "./features/alerts/adminSelectionModel.ts";
+import { maintenanceSeriesSelectionHref, readMaintenanceSeriesSelection, retainMaintenanceSeriesSelectionHref } from "./features/alerts/maintenanceSeriesSelection.ts";
 import { PageHeading } from "./components/DiagnosticUi";
 import { TimeRangeControls } from "./components/TimeRangeControls";
 import { DatabaseScopeControls } from "./components/DatabaseScopeControls";
@@ -329,7 +330,7 @@ export function App() {
   const selectAdminItem = (page: AdminPage, id: string) => {
     const currentRoute = readRoute(location.hash);
     if (!props || location.hash !== renderedHash || currentRoute.page !== page || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
-    location.hash = adminSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, page, id);
+    location.hash = retainMaintenanceSeriesSelectionHref(adminSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, page, id), location.hash);
   };
   const incidentPage = ["overview", "health", "activity", "waits", "resources", "queries", "deadlocks", "operations", "alerts"].includes(route.page);
   const incidentContext = selected && incidentPage ? resolveWorkspaceIncidentWindow(location.hash, selected.instanceId, Date.now()) : undefined;
@@ -509,7 +510,12 @@ export function App() {
                 }} />}
               {route.page === "alerts" && <TargetAlertsPanel {...props} targetRevision={selected!.configurationRevision} refresh={slowRefresh} selectedAlertId={alertSelection?.targetId === props.instanceId.toLowerCase() ? alertSelection.alertId : undefined} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "rules", props.instanceId)} onSelect={id => selectAdminItem("rules", id)} />}
-              {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "maintenance", props.instanceId)} onSelect={id => selectAdminItem("maintenance", id)} />}
+              {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "maintenance", props.instanceId)} onSelect={id => selectAdminItem("maintenance", id)}
+                selectedSeriesId={readMaintenanceSeriesSelection(location.hash, props.instanceId)} onSelectSeries={id => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "maintenance" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  location.hash = maintenanceSeriesSelectionHref(location.hash, id);
+                }} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}
               {route.page === "permissions" && <TargetPermissionScriptPanel key={props.instanceId} targetId={props.instanceId} displayName={props.displayName} host={selected!.host} canGenerate={canManageRules} onClose={closeTarget} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}

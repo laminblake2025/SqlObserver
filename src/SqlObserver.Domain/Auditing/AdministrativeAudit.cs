@@ -85,6 +85,9 @@ public enum AdministrativeAuditAction
     UnsnoozeAlert = 19,
     AssignAlert = 20,
     UnassignAlert = 21,
+    CreateMaintenanceSeries = 22,
+    UpdateMaintenanceSeries = 23,
+    CancelMaintenanceSeries = 24,
 }
 
 public enum AdministrativeAuthorizationDecision
