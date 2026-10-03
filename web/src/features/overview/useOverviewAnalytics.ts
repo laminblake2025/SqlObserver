@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getOverview } from './overviewApi';
 import { overviewWindow } from './overviewModel';
 import type { OverviewScope, OverviewSnapshot } from './overviewTypes';
@@ -12,11 +12,16 @@ function formatUtc(value: bigint): string {
   return fraction === 0n ? base : base.replace('Z', `${fraction.toString().padStart(3,'0')}Z`);
 }
 
-export function useOverviewAnalytics(scope: OverviewScope, refresh: number) {
-  const scopeKey = JSON.stringify([scope.target.toLowerCase(), scope.range, scope.from, scope.to, scope.compare, scope.databaseId]);
-  const readScopeKey = JSON.stringify([scope.target.toLowerCase(), scope.compare, scope.databaseId]);
+export function useOverviewAnalytics(scope: OverviewScope, refresh: number, targetRevision?: number) {
+  // This is the caller's known configuration boundary, not a revision supplied by the Overview DTO.
+  const boundary = JSON.stringify([scope.target.toLowerCase(), targetRevision, scope.compare, scope.databaseId]);
+  const generation = useRef({ boundary, number: 0 });
+  if (generation.current.boundary !== boundary) generation.current = { boundary, number: generation.current.number + 1 };
+  const readScopeKey = JSON.stringify([boundary, generation.current.number]);
+  const scopeKey = JSON.stringify([readScopeKey, scope.range, scope.from, scope.to]);
   const [result, setResult] = useState<{key:string; scopeKey:string; readScopeKey:string; data?:OverviewSnapshot; previous?:OverviewSnapshot; error?:string; comparisonError?:string; loading:boolean}>({key:'',scopeKey:'',readScopeKey:'',loading:true});
   const key = JSON.stringify([scopeKey,refresh]);
+  const latest = useRef(key); latest.current = key;
   const sameLoadedWindow = (previous: typeof result) => {
     if (previous.scopeKey === scopeKey) return true;
     if (previous.readScopeKey !== readScopeKey || !previous.data || scope.range !== 'custom' || !scope.from || !scope.to) return false;
@@ -26,6 +31,7 @@ export function useOverviewAnalytics(scope: OverviewScope, refresh: number) {
   };
   useEffect(() => {
     const controller = new AbortController();
+    const current = () => !controller.signal.aborted && latest.current === key;
     setResult(previous => sameLoadedWindow(previous)
       ? {key,scopeKey,readScopeKey,data:previous.data,previous:previous.previous,loading:true}
       : {key,scopeKey,readScopeKey,loading:true});
@@ -33,16 +39,16 @@ export function useOverviewAnalytics(scope: OverviewScope, refresh: number) {
       try {
         const window = overviewWindow(scope,Date.now());
         const data = await getOverview(scope.target,window,controller.signal);
-        if (controller.signal.aborted) return;
+        if (!current()) return;
         setResult({key,scopeKey,readScopeKey,data,loading:false});
         if (scope.compare) {
           const duration = utc(window.toUtc)-utc(window.fromUtc);
           try {
             const previous = await getOverview(scope.target,{fromUtc:formatUtc(utc(window.fromUtc)-duration),toUtc:window.fromUtc},controller.signal);
-            if (!controller.signal.aborted) setResult({key,scopeKey,readScopeKey,data,previous,loading:false});
-          } catch { if (!controller.signal.aborted) setResult({key,scopeKey,readScopeKey,data,loading:false,comparisonError:'Previous-period evidence is unavailable.'}); }
+            if (current()) setResult({key,scopeKey,readScopeKey,data,previous,loading:false});
+          } catch { if (current()) setResult({key,scopeKey,readScopeKey,data,loading:false,comparisonError:'Previous-period evidence is unavailable.'}); }
         }
-      } catch (error) { if (!controller.signal.aborted) setResult({key,scopeKey,readScopeKey,loading:false,error:error instanceof Error ? error.message : 'Overview is unavailable.'}); }
+      } catch (error) { if (current()) setResult({key,scopeKey,readScopeKey,loading:false,error:error instanceof Error ? error.message : 'Overview is unavailable.'}); }
     })();
     return () => controller.abort();
   },[key]);

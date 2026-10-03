@@ -1,4 +1,13 @@
 /** Shared, bounded transport. Feature modules validate their own response schema. */
+export class ApiRequestError extends Error {
+  public readonly status: number;
+  public constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 export interface ApiRequestOptions {
   readonly maximumResponseBytes?: number;
   readonly timeoutMilliseconds?: number;

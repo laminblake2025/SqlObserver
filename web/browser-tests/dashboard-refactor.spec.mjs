@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { nativeTargetAlertCursor } from '../tools/alert-selection-fixture.mjs';
 
 const first = '11111111-1111-4111-8111-000000000001';
 const second = '11111111-1111-4111-8111-000000000002';
@@ -773,7 +774,8 @@ test('target alert URL restores a paged selection and preserves keyboard focus w
   expect(reads).toBe(2);
   await assertDatabaseScope(page, 6);
   await assertHistoricalScope(page);
-  await expect(page.getByText(/Alerts show the latest target-scoped state, independently of the history window/)).toContainText('Repository snapshot:');
+  await expect(page.locator('.alert-triage-receipt')).toContainText('Native row-time cutoff:');
+  await expect(page.locator('.alert-triage-note')).toContainText('independent of Rewind and database selection');
   await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toHaveCount(0);
   const loadedReads = reads;
   const firstRow = observations.getByRole('button', { name: 'SYNTHETIC sustained blocking', exact: true });
@@ -817,7 +819,8 @@ test('fleet alert URL restores an exact paged alert and filtered or missing sele
   await expect(paged).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('complementary', { name: 'SYNTHETIC paged alert', exact: true })).toBeVisible();
   expect(reads).toBe(2);
-  await expect(page.getByText(/Alerts show the latest fleet state, independently of the history window/)).toContainText('Repository snapshot:');
+  await expect(page.locator('.alert-triage-receipt')).toContainText('Native row-time cutoff:');
+  await expect(page.locator('.alert-triage-note')).toContainText('independent of Rewind and database selection');
   await page.getByRole('textbox', { name: 'Filter loaded alerts', exact: true }).fill('blocking');
   await expect(page.locator('.detail-pane.empty-state')).toContainText('The selected alert is hidden by the current filters.');
   await expect(page.locator('aside.detail-pane')).toHaveCount(0);
@@ -870,7 +873,9 @@ test('acknowledgement from a prior firing cycle cannot mark refreshed alert evid
   await page.route(`**/${first}/alerts/active?*`, async route => {
     const response = await route.fetch();
     const body = await response.json();
-    await route.fulfill({ response, json: recycled ? { ...body, snapshotUtc: '2026-10-01T12:00:00.000Z', items: body.items.map(item => item.alertId === firstAlert ? { ...item, firstObservedUtc: '2026-10-01T09:00:00.000Z', firedUtc: '2026-10-01T09:01:00.000Z', value: 99 } : item) } : body });
+    const updated = recycled ? { ...body, snapshotUtc: '2026-10-01T12:00:00.000Z', items: body.items.map(item => item.alertId === firstAlert ? { ...item, firstObservedUtc: '2026-10-01T09:00:00.000Z', firedUtc: '2026-10-01T09:01:00.000Z', value: 99 } : item) } : body;
+    if (recycled && updated.nextCursor) updated.nextCursor = nativeTargetAlertCursor(first, updated.snapshotUtc, updated.items.at(-1));
+    await route.fulfill({ response, json: updated });
   });
   await page.route(`**/${first}/alerts/${firstAlert}/acknowledge`, async route => {
     operations.push(route.request().postDataJSON().operationId);
@@ -882,7 +887,7 @@ test('acknowledgement from a prior firing cycle cannot mark refreshed alert evid
     await page.getByRole('button', { name: 'Acknowledge', exact: true }).click();
     await expect.poll(() => operations.length).toBe(1);
     recycled = true;
-    await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+    await page.getByRole('button', { name: 'Return server alerts to latest', exact: true }).click();
     await expect(page.getByRole('complementary', { name: 'SYNTHETIC sustained blocking', exact: true }).locator('.alert-observed')).toContainText('99');
     await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toBeEnabled();
   } finally { release(); }

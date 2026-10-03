@@ -6,12 +6,15 @@ const firstId = '22222222-2222-4222-8222-222222222222';
 const secondId = '55555555-5555-4555-8555-555555555555';
 const missingId = '99999999-9999-4999-8999-999999999999';
 const snapshotUtc = '2026-08-24T00:00:00Z';
-const cursor = 'Y3Vyc29yMQ==';
+const cursor = Buffer.from(`${target}|2026-08-24T00:00:00.0000000+00:00|2026-08-24T00:00:00.0000000+00:00|40000098-4444-4444-8444-444444444444`).toString('base64');
 const contexts = new WeakMap();
 const alert = (overrides = {}) => ({ alertId: firstId, ruleId: '33333333-3333-4333-8333-333333333333',
   ruleName: 'CPU high', state: 'firing', firstObservedUtc: snapshotUtc, value: null,
   deliverySuppressed: false, ...overrides });
 const pageData = (items, overrides = {}) => ({ targetId: target, snapshotUtc, nextCursor: null, items, ...overrides });
+const firstPage = () => pageData([alert(), ...Array.from({ length: 99 }, (_, index) => alert({
+  alertId: `4${String(index).padStart(7, '0')}-4444-4444-8444-444444444444`, ruleName: `Intermediate rule ${index}`,
+}))], { nextCursor: cursor });
 const detail = (page, name = 'CPU high') => page.getByRole('complementary', { name, exact: true });
 const readPath = id => `/api/v1/observation-targets/${id}/alerts/active`;
 const acknowledgePath = (id, alertId) => `/api/v1/observation-targets/${id}/alerts/${alertId}/acknowledge`;
@@ -66,6 +69,10 @@ test.beforeEach(async ({ page }) => {
       await route.abort();
     } else if (/^\/api(?:\/|$)/.test(url.pathname)) {
       context.requests.push(route.request());
+      if (route.request().method() === 'GET' && url.pathname === '/api/v1/me' && [target, otherTarget].includes(url.searchParams.get('targetId'))) {
+        await json(route, { active: true, targetId: url.searchParams.get('targetId'), grantedRoles: ['Viewer'], targetRoles: ['Viewer'], allTargetRoles: [] });
+        return;
+      }
       if (!context.handler || !await context.handler(route)) {
         context.unexpected.push(`Unmocked API: ${route.request().method()} ${url.href}`);
         await route.abort();
@@ -130,9 +137,9 @@ test('failed acknowledgement retries the same operation and a bodyless 204 recor
   await expect(detail(page)).toContainText('Collector health value unavailable');
   await page.getByLabel('Operator permission').check();
   await page.getByRole('button', { name: 'Acknowledge', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'The alert could not be acknowledged.' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement completion is uncertain.' })).toBeVisible();
   await expect(detail(page).getByRole('status')).toContainText('firing');
-  await page.getByRole('button', { name: 'Acknowledge', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry acknowledgement', exact: true }).click();
   await success.started;
   await expect(page.getByRole('button', { name: 'Acknowledging…', exact: true })).toBeDisabled();
   expect(operations).toHaveLength(2);
@@ -141,7 +148,7 @@ test('failed acknowledgement retries the same operation and a bodyless 204 recor
   expect(operations[0].operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   await success.release();
   await expect(detail(page).getByRole('status')).toContainText('acknowledged');
-  await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement recorded. Monitoring continues' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Acknowledgement recorded. The received row is marked locally' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toHaveCount(0);
   await expect(detail(page)).toContainText('Not returned by this alert state');
 });
@@ -168,7 +175,7 @@ test('a selected resolved or filtered alert remains explicit until the user clea
 
 test('a missing URL selection searches server pages without substituting another alert', async ({ page }) => {
   await mount(page, async route => {
-    if (isRead(route)) { await json(route, pageData([alert()], { nextCursor: cursor })); return true; }
+    if (isRead(route)) { await json(route, firstPage()); return true; }
     if (isRead(route, target, cursor)) {
       await json(route, pageData([alert({ alertId: secondId, ruleName: 'Memory high' })])); return true;
     }
@@ -186,15 +193,20 @@ test('a missing URL selection searches server pages without substituting another
 });
 
 test('pagination is disabled while pending and rejects changed snapshots before retry', async ({ page }) => {
-  let reads = 0;
+  let reads = 0, continuations = 0;
   const next = heldResponse({ status: 200, contentType: 'application/json',
     body: JSON.stringify(pageData([alert({ alertId: secondId, ruleName: 'Inconsistent memory' })], { snapshotUtc: '2026-08-24T00:01:00Z' })) });
   await mount(page, async route => {
     if (isRead(route)) {
       reads++;
-      await json(route, pageData([alert()], { nextCursor: reads === 1 ? cursor : null })); return true;
+      await json(route, firstPage()); return true;
     }
-    if (isRead(route, target, cursor)) { await next.handle(route); return true; }
+    if (isRead(route, target, cursor)) {
+      continuations++;
+      if (continuations === 1) await next.handle(route);
+      else await json(route, pageData([alert({ alertId: secondId, ruleName: 'Memory high' })]));
+      return true;
+    }
     return false;
   });
   await expect(detail(page)).toBeVisible();
@@ -203,14 +215,16 @@ test('pagination is disabled while pending and rejects changed snapshots before 
   await expect(page.getByRole('button', { name: 'Loading…', exact: true })).toBeDisabled();
   expect(contexts.get(page).requests).toHaveLength(2);
   await next.release();
-  await expect(page.getByRole('alert')).toContainText('Alert snapshot changed while paging. Refresh the server alerts.');
+  await expect(page.getByRole('alert')).toContainText('Alert continuation could not be verified.');
   await expect(page.getByRole('button', { name: 'Inconsistent memory', exact: true })).toHaveCount(0);
-  await expect(page.getByText('1 shown · 1 loaded', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText('100 shown · 100 loaded', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Retry alert read', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(detail(page)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Load more', exact: true })).toBeDisabled();
-  expect(reads).toBe(2);
+  await expect(page.getByText('101 shown · 101 loaded', { exact: true })).toBeVisible();
+  expect(reads).toBe(1);
+  expect(continuations).toBe(2);
 });
 
 test('malformed target evidence reports an accessible error and a retry replaces it', async ({ page }) => {
@@ -231,7 +245,7 @@ test('malformed target evidence reports an accessible error and a retry replaces
   await expect(page.getByRole('alert')).toContainText('Alerts response is invalid.');
   await expect(page.getByRole('complementary')).toHaveCount(0);
   await expect(page.getByText('Selected alert evidence is unavailable.', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry alert read', exact: true }).click();
   await expect(detail(page)).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(detail(page).locator('.alert-observed strong')).toHaveText('0');
@@ -257,7 +271,8 @@ test('changing server context aborts pending evidence and excludes its late resp
   await expect(page.getByRole('button', { name: 'CPU high', exact: true })).toHaveCount(0);
   await expect(detail(page, 'Reporting memory').getByRole('status')).toContainText('firing');
   await expect(page.getByRole('alert')).toHaveCount(0);
-  expect(contexts.get(page).requests).toHaveLength(2);
+  expect(contexts.get(page).requests.filter(request => new URL(request.url()).pathname !== '/api/v1/me')).toHaveLength(2);
+  expect(contexts.get(page).requests.filter(request => new URL(request.url()).pathname === '/api/v1/me')).toHaveLength(1);
 });
 
 test('changing the selected alert aborts acknowledgement without applying its late success', async ({ page }) => {
@@ -297,7 +312,7 @@ for (const fixture of [
   await page.clock.setFixedTime(new Date('2026-08-24T12:00:00Z'));
   await mount(page, async route => {
     if (!isRead(route)) return false;
-    await json(route, pageData([alert({ firstObservedUtc: fixture.firstObservedUtc, firedUtc: fixture.firedUtc })]));
+    await json(route, pageData([alert({ firstObservedUtc: fixture.firstObservedUtc, firedUtc: fixture.firedUtc })], { snapshotUtc: '2026-08-24T12:00:00Z' }));
     return true;
   }, undefined, 'range=24h&databaseId=7&compare=1');
   const link = detail(page).getByRole('link', { name: 'Open activity', exact: false });
@@ -311,6 +326,6 @@ for (const fixture of [
   expect(params.has('event')).toBe(false);
   await link.focus(); await expect(link).toBeFocused(); await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => location.hash)).toBe(href);
-  expect(contexts.get(page).requests.map(request => request.method())).toEqual(['GET']);
+  expect(contexts.get(page).requests.filter(request => new URL(request.url()).pathname !== '/api/v1/me').map(request => request.method())).toEqual(['GET']);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

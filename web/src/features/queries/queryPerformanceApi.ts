@@ -1,4 +1,4 @@
-import { apiFetch } from "../../apiClient.ts";
+import { apiFetch, ApiRequestError } from "../../apiClient.ts";
 import { utcMicroseconds } from "../../utcTimestamp.ts";
 import type { PlanCacheContent, PlanCacheContentKind, PlanCacheContentReason } from "./queryPerformanceTypes";
 import { readBoundedBody } from "../activity/activityParser.mjs";
@@ -30,7 +30,7 @@ const metric = (value: unknown): value is number | null | undefined => value ===
 
 async function readJson(url: string, expectedTargetId: string, signal?: AbortSignal, maxBytes = maximumResponseBytes, sensitive = false): Promise<unknown> {
   const response = await apiFetch(url, { signal, cache: sensitive ? "no-store" : "default", headers: { Accept: "application/json" } }, { maximumResponseBytes: maxBytes });
-  if (!response.ok) throw new Error(response.status === 404 ? "Query performance evidence is unavailable." : "Query performance request failed.");
+  if (!response.ok) throw new ApiRequestError(response.status === 404 ? "Query performance evidence is unavailable." : "Query performance request failed.", response.status);
   if (!/^application\/json(?:;|$)/iu.test(response.headers.get("content-type") ?? "")) throw new Error("Query performance response content type was invalid.");
   const length = Number(response.headers.get("content-length") ?? "0");
   if (!Number.isFinite(length) || length > maxBytes) throw new Error("Query performance response exceeded its bound.");

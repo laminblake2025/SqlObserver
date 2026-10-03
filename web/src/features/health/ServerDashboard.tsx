@@ -37,12 +37,12 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
-  const inspectionKey = JSON.stringify([instanceId.toLowerCase(), scope.range, scope.from, scope.to, scope.databaseId]);
+  const inspectionKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
   const [hover, setHover] = useState<{ readonly key: string; readonly utc: string | null }>();
   const setCrosshairUtc = (utc: string | null) => setHover({ key: inspectionKey, utc });
   const requestedSelection = readDashboardTimelineSelection(selectionHash, instanceId);
   const selectedScope = { ...scope, target: instanceId };
-  const result = useOverviewAnalytics(selectedScope, refresh);
+  const result = useOverviewAnalytics(selectedScope, refresh, targetRevision);
   const data = result.data;
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
   const blockingEvidence = useCurrentBlockingEvidence(instanceId, targetRevision, blockingRefresh, Boolean(data && evidence));

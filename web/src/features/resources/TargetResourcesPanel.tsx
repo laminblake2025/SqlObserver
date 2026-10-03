@@ -32,7 +32,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }) {
   const { mode } = useTimeDisplay();
-  const result = useOverviewAnalytics({ ...scope, target: instanceId }, refresh);
+  const result = useOverviewAnalytics({ ...scope, target: instanceId }, refresh, targetRevision);
   const evidence = result.data?.evidence.find(item => item.targetId === instanceId);
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const chartReferences = useChartReferences(instanceId, targetRevision, result.data && evidence ? result.data : undefined, canReadRules, refresh, evidence?.series.map(item => item.metric));
@@ -180,7 +180,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
         <ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
-    {inspectionWindow && <BufferNodePlePanel instanceId={instanceId} scope={chartScope} refresh={refresh}
+    {inspectionWindow && <BufferNodePlePanel instanceId={instanceId} targetRevision={targetRevision} scope={chartScope} refresh={refresh}
       nodeSelectionInvalid={resourceSelection.invalidNode}
       selectedNodeId={resourceSelection.numaNodeId} onSelectNode={nodeId => updateSelection({ numaNodeId: nodeId })}
       crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
@@ -242,7 +242,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
           </nav>
         </>}
     </section>
-    {inspectionWindow && <DatabaseFileIoTrendPanel instanceId={instanceId} file={activeSelectedFile} scope={chartScope}
+    {inspectionWindow && <DatabaseFileIoTrendPanel instanceId={instanceId} targetRevision={targetRevision} file={activeSelectedFile} scope={chartScope}
       crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
       refresh={refresh} onSelectWindow={onSelectWindow} />}
     {result.data && evidence && <section className="compact-evidence-footer" aria-label="Resources evidence status">

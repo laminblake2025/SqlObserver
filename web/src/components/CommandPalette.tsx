@@ -3,7 +3,8 @@ import { listObservationTargets } from "../features/targets/targetApi";
 import type { ObservationTargetSummary } from "../features/targets/targetTypes";
 import { getFleetActiveAlerts } from "../features/alerts/alertApi";
 import type { FleetAlert } from "../features/alerts/alertTypes";
-import { getDatabaseHealth } from "../features/health/healthApi";
+import { getDatabaseHealth, HealthRequestError } from "../features/health/healthApi";
+import { ApiRequestError } from "../apiClient.ts";
 import type { DatabaseHealthSummary } from "../features/health/healthTypes";
 import { getQueryPerformanceHistory, getQueryPerformanceStatus } from "../features/queries/queryPerformanceApi";
 import type { QueryPerformanceDatabaseCatalog } from "../features/queries/queryPerformanceTypes";
@@ -35,6 +36,9 @@ export function CommandPalette({ open, onClose, scope }: {
   if (generation.current.context !== context) generation.current = { context, number: generation.current.number + 1 };
   const loadIdentity = JSON.stringify([context, generation.current.number]);
   const currentLoad = useRef(loadIdentity); currentLoad.current = loadIdentity;
+  const loadController = useRef<AbortController | undefined>(undefined);
+  const queryController = useRef<AbortController | undefined>(undefined);
+  const deniedLoad = useRef<string | undefined>(undefined);
   const [targets, setTargets] = useContextState<readonly ObservationTargetSummary[]>(loadIdentity, []);
   const [alerts, setAlerts] = useContextState<readonly FleetAlert[]>(loadIdentity, []);
   const [databases, setDatabases] = useContextState<readonly DatabaseHealthSummary[]>(loadIdentity, []);
@@ -43,6 +47,7 @@ export function CommandPalette({ open, onClose, scope }: {
   const [loading, setLoading] = useContextState(loadIdentity, open);
   const [moreAvailable, setMoreAvailable] = useContextState(loadIdentity, false);
   const [error, setError] = useContextState(loadIdentity, false);
+  const [denied, setDenied] = useContextState(loadIdentity, false);
   const queryContext = JSON.stringify([scope.target.toLowerCase(), scope.databaseId ?? null]);
   const queryDatabases = queryCatalog?.context === queryContext ? queryCatalog.items : [];
   const queryDatabaseId = queryDatabase?.context === queryContext ? queryDatabase.id : "";
@@ -51,6 +56,17 @@ export function CommandPalette({ open, onClose, scope }: {
   const currentQuery = useRef(queryIdentity); currentQuery.current = queryIdentity;
   const [queryLookup, setQueryLookup] = useContextState<"idle" | "loading" | "found" | "missing" | "error" | "window">(queryIdentity, "idle");
   const [verifiedQuery, setVerifiedQuery] = useContextState<string | undefined>(queryIdentity, undefined);
+  const accessDenied = (failure: unknown) => (failure instanceof ApiRequestError || failure instanceof HealthRequestError)
+    && (failure.status === 401 || failure.status === 403);
+  const refuseAccess = () => {
+    if (currentLoad.current !== loadIdentity) return;
+    // Fence stored callbacks immediately, before React commits the removal.
+    deniedLoad.current = loadIdentity;
+    loadController.current?.abort(); queryController.current?.abort();
+    setTargets([]); setAlerts([]); setDatabases([]); setQueryCatalog(undefined);
+    setVerifiedQuery(undefined); setQueryLookup("idle");
+    setLoading(false); setMoreAvailable(false); setError(false); setDenied(true);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -66,7 +82,8 @@ export function CommandPalette({ open, onClose, scope }: {
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    const current = () => !controller.signal.aborted && currentLoad.current === loadIdentity;
+    loadController.current = controller;
+    const current = () => !controller.signal.aborted && currentLoad.current === loadIdentity && deniedLoad.current !== loadIdentity;
     setQuery("");
     setTargets([]);
     setAlerts([]);
@@ -76,6 +93,7 @@ export function CommandPalette({ open, onClose, scope }: {
     setLoading(true);
     setMoreAvailable(false);
     setError(false);
+    setDenied(false);
     void (async () => {
       if (mode === "queries") {
         if (!scope.target) return;
@@ -138,28 +156,33 @@ export function CommandPalette({ open, onClose, scope }: {
         cursor = page.nextCursor;
         if (pageNumber === maximumPages - 1) setMoreAvailable(true);
       }
-    })().catch(() => {
-      if (current()) setError(true);
+    })().catch(failure => {
+      if (!current()) return;
+      if (accessDenied(failure)) refuseAccess(); else setError(true);
     }).finally(() => {
       if (current()) setLoading(false);
     });
-    return () => controller.abort();
+    return () => { controller.abort(); if (loadController.current === controller) loadController.current = undefined; };
   }, [loadIdentity]);
 
   useEffect(() => {
     setQueryLookup("idle");
     setVerifiedQuery(undefined);
-    if (!open || mode !== "queries" || !scope.target || !/^[0-9a-f]{64}$/i.test(query.trim())
+    if (!open || mode !== "queries" || deniedLoad.current === loadIdentity || !scope.target || !/^[0-9a-f]{64}$/i.test(query.trim())
       || !/^[1-9]\d{0,4}$/.test(queryDatabaseId) || Number(queryDatabaseId) > 32767) return;
     const window = resolveQueryWindow(scope, Date.now());
     if (window.state !== "valid") { setQueryLookup("window"); return; }
     const controller = new AbortController();
+    queryController.current = controller;
     const identity = queryIdentity;
     setQueryLookup("loading");
     void getQueryPerformanceHistory(scope.target, Number(queryDatabaseId), query.trim().toLowerCase(), window.window.fromUtc, window.window.toUtc, controller.signal)
-      .then(page => { if (!controller.signal.aborted && currentQuery.current === identity) { setQueryLookup(page.items.length ? "found" : "missing"); if (page.items.length) setVerifiedQuery(identity); } })
-      .catch(() => { if (!controller.signal.aborted && currentQuery.current === identity) setQueryLookup("error"); });
-    return () => controller.abort();
+      .then(page => { if (!controller.signal.aborted && currentQuery.current === identity && deniedLoad.current !== loadIdentity) { setQueryLookup(page.items.length ? "found" : "missing"); if (page.items.length) setVerifiedQuery(identity); } })
+      .catch(failure => {
+        if (controller.signal.aborted || currentQuery.current !== identity || deniedLoad.current === loadIdentity) return;
+        if (accessDenied(failure)) refuseAccess(); else setQueryLookup("error");
+      });
+    return () => { controller.abort(); if (queryController.current === controller) queryController.current = undefined; };
   }, [open, mode, queryIdentity]);
 
   const matches = useMemo(() => {
@@ -173,22 +196,22 @@ export function CommandPalette({ open, onClose, scope }: {
   const databaseMatches = useMemo(() => matchingDatabases(databases, query), [databases, query]);
 
   const jump = (target: ObservationTargetSummary) => {
-    if (!open || mode !== "servers" || currentLoad.current !== loadIdentity || !targets.includes(target)) return;
+    if (!open || mode !== "servers" || deniedLoad.current === loadIdentity || currentLoad.current !== loadIdentity || !targets.includes(target)) return;
     location.hash = overviewHref(scope, "health", target.instanceId);
     onClose();
   };
   const jumpAlert = (alert: FleetAlert) => {
-    if (!open || mode !== "alerts" || currentLoad.current !== loadIdentity || !alerts.includes(alert)) return;
+    if (!open || mode !== "alerts" || deniedLoad.current === loadIdentity || currentLoad.current !== loadIdentity || !alerts.includes(alert)) return;
     location.hash = alertJumpHref(scope, alert);
     onClose();
   };
   const jumpDatabase = (database: DatabaseHealthSummary) => {
-    if (!open || mode !== "databases" || currentLoad.current !== loadIdentity || !databases.includes(database)) return;
+    if (!open || mode !== "databases" || deniedLoad.current === loadIdentity || currentLoad.current !== loadIdentity || !databases.includes(database)) return;
     location.hash = databaseJumpHref(scope, scope.target, database.databaseId);
     onClose();
   };
   const jumpQuery = () => {
-    if (!open || mode !== "queries" || currentQuery.current !== queryIdentity || verifiedQuery !== queryIdentity) return;
+    if (!open || mode !== "queries" || deniedLoad.current === loadIdentity || currentQuery.current !== queryIdentity || verifiedQuery !== queryIdentity) return;
     location.hash = queryJumpHref(scope, scope.target, Number(queryDatabaseId), query.trim());
     onClose();
   };
@@ -204,7 +227,7 @@ export function CommandPalette({ open, onClose, scope }: {
       <button type="button" aria-pressed={mode === "queries"} onClick={() => setMode("queries")}>Query hash</button>
       <button type="button" aria-pressed={mode === "alerts"} onClick={() => setMode("alerts")}>Current alerts</button>
     </div>
-    {mode === "queries" && <label>Database ID <input type="number" min="1" max="32767" list="query-search-databases" value={queryDatabaseId} disabled={loading || !scope.target} onChange={event => setQueryDatabase({ context: queryContext, id: event.target.value })} placeholder="Choose a database ID" /></label>}
+    {mode === "queries" && <label>Database ID <input type="number" min="1" max="32767" list="query-search-databases" value={queryDatabaseId} disabled={loading || !scope.target || denied} onChange={event => setQueryDatabase({ context: queryContext, id: event.target.value })} placeholder="Choose a database ID" /></label>}
     {mode === "queries" && <datalist id="query-search-databases">{queryDatabases.map(database => <option key={database.databaseId} value={database.databaseId} label={database.databaseName} />)}</datalist>}
     {mode === "queries" && selectedDatabaseMissing && <p className="command-palette-status" role="status">Workspace database ID {scope.databaseId} is absent from this server's query database catalog. Choose an available database or enter its ID to check history.</p>}
     <input ref={search} type="search" aria-label={mode === "servers" ? "Search servers" : mode === "databases" ? "Search databases" : mode === "queries" ? "Enter query hash" : "Search current alerts"}
@@ -216,8 +239,8 @@ export function CommandPalette({ open, onClose, scope }: {
           dialog.current?.querySelector<HTMLButtonElement>(".command-palette-result")?.focus();
         }
       }} />
-    <p className="command-palette-status" role="status">
-      {mode === "servers"
+    <p className="command-palette-status diagnostic-workflow-note" role="status">
+      {denied ? "Access to this evidence was denied. Reopen search after your access is restored." : mode === "servers"
         ? loading ? `Searching authorized servers… ${targets.length} loaded` : error ? "Server search is incomplete. Try again later." : moreAvailable ? "Showing the first 2,000 authorized servers. Use Servers to browse further." : `${targets.length} authorized servers searched`
         : mode === "databases"
           ? !scope.target ? "Select a server first, then search its databases." : loading ? `Searching databases on the selected server… ${databases.length} loaded` : error ? "Database search is incomplete. Try the server's Databases tab." : moreAvailable ? "Showing the first 500 databases on this server. Use the Databases tab to browse further." : `${databases.length} databases searched on the selected server`
@@ -226,7 +249,7 @@ export function CommandPalette({ open, onClose, scope }: {
         : loading ? `Searching current alerts… ${alerts.length} loaded` : error ? "Alert search is incomplete. Try the Alert inbox." : moreAvailable ? "Showing the first 500 current alerts. Use the Alert inbox to browse further." : `${alerts.length} current alerts searched`}
     </p>
     <div className="command-palette-results" role="group" aria-label={mode === "servers" ? "Matching servers" : mode === "databases" ? "Matching databases" : mode === "queries" ? "Matching query hash" : "Matching current alerts"}>
-      {mode === "servers" ? matches.map(target => <button key={target.instanceId} className="command-palette-result" type="button" onClick={() => jump(target)}
+      {denied ? null : mode === "servers" ? matches.map(target => <button key={target.instanceId} className="command-palette-result" type="button" onClick={() => jump(target)}
         onKeyDown={event => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
@@ -254,7 +277,7 @@ export function CommandPalette({ open, onClose, scope }: {
         }}>
         <strong>{alert.ruleName}</strong><span>{alert.targetName} · {alert.state} · alert {alert.alertId.slice(0, 12)}…</span>
       </button>)}
-      {mode !== "queries" && !loading && (mode === "servers" ? matches.length : mode === "databases" ? databaseMatches.length : alertMatches.length) === 0 && <p className="command-palette-empty">No matching {mode === "servers" ? "servers" : mode === "databases" ? "databases" : "current alerts"} in the loaded results.</p>}
+      {!denied && mode !== "queries" && !loading && (mode === "servers" ? matches.length : mode === "databases" ? databaseMatches.length : alertMatches.length) === 0 && <p className="command-palette-empty">No matching {mode === "servers" ? "servers" : mode === "databases" ? "databases" : "current alerts"} in the loaded results.</p>}
     </div>
   </dialog>;
 }

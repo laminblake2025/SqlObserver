@@ -219,6 +219,8 @@ export function App() {
       ? targetAlertHref(nextScope, currentRoute.target, currentAlert.alertId)
       : currentRoute.page === "operations" && currentRoute.healthCheck
       ? healthCheckHref(nextScope, currentRoute.target, currentRoute.healthCheck)
+      : currentRoute.page === "health" && currentRoute.healthSection
+      ? healthSectionHref(nextScope, currentRoute.target, currentRoute.healthSection, currentRoute.configurationRunId)
       : overviewHref(nextScope, currentRoute.page, currentRoute.target);
     location.hash = queryViewHref(retainDiagnosticSelectionHref(href, location.hash), { ...readQueryViewSelection(location.hash), cacheSelection: undefined });
   };
@@ -463,7 +465,7 @@ export function App() {
                   if (location.hash !== renderedHash || currentRoute.page !== "deadlocks" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
                   location.hash = deadlockSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, selection);
                 }} />}
-              {route.page === "alerts" && <TargetAlertsPanel {...props} refresh={slowRefresh} selectedAlertId={alertSelection?.targetId === props.instanceId.toLowerCase() ? alertSelection.alertId : undefined} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
+              {route.page === "alerts" && <TargetAlertsPanel {...props} targetRevision={selected!.configurationRevision} refresh={slowRefresh} selectedAlertId={alertSelection?.targetId === props.instanceId.toLowerCase() ? alertSelection.alertId : undefined} canAcknowledge={canAcknowledgeAlert(myAccess, props.instanceId)} canManageRules={canManageRules} canManageDestinations={canManageDestinations} />}
               {route.page === "rules" && <TargetAlertRulesPanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "rules", props.instanceId)} onSelect={id => selectAdminItem("rules", id)} />}
               {route.page === "maintenance" && <TargetMaintenancePanel {...props} refresh={refresh} canManage={canManageRules} selectedId={readAdminSelection(location.hash, "maintenance", props.instanceId)} onSelect={id => selectAdminItem("maintenance", id)} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}

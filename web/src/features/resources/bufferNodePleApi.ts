@@ -1,4 +1,4 @@
-import { apiFetch } from "../../apiClient.ts";
+import { apiFetch, ApiRequestError } from "../../apiClient.ts";
 import { resourceWindowMatches } from "./resourceSelectionModel.ts";
 export interface BufferNodePleNode {
   readonly nodeId: number;
@@ -95,10 +95,10 @@ export async function getBufferNodePleWindow(targetId: string, fromUtc: string,
     `/api/v1/observation-targets/${encodeURIComponent(targetId)}/resources/buffer-nodes/ple?${parameters}`,
     { credentials: "same-origin", headers: { Accept: "application/json" }, signal },
   );
-  if (!response.ok) throw new Error(response.status === 403
+  if (!response.ok) throw new ApiRequestError(response.status === 403
     ? "You are not authorized to view Buffer Node PLE."
     : response.status === 400 ? "Choose a valid NUMA node and a UTC window of seven days or less."
-      : "Buffer Node PLE history is unavailable.");
+      : "Buffer Node PLE history is unavailable.", response.status);
   return parseBufferNodePleWindow(await response.json() as unknown,
     targetId, fromUtc, toUtc, nodeId);
 }

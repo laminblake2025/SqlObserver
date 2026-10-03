@@ -2,7 +2,31 @@
 
 This checkpoint implements the dashboard frontend within the sources already available. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor. Backend and collector work below requires a scope decision before implementation.
 
-## Latest legacy Operations projection qualification (2026-10-03)
+## Latest workspace triage and diagnostic context qualification (2026-10-03)
+
+Fleet and server alert investigations now retain received pages through workspace polling and preserve explicit paging, retry and acknowledgement ownership. Return to latest replaces the investigation only after successful native validation. Cancellation and uncertain acknowledgement completion retain the original operation ID for the same locally received first-observed cycle. Authority loss and selection round trips clear busy ownership without accepting late success. Fleet access is rechecked during workspace ticks without treating the pending recheck as a denial. Actual HTTP 401/403 removes protected rows, details and actions; a readable alert response alone cannot restore write authority.
+
+Native alert cursors, page size, ordering, cutoff, row identity and progress are validated before joining pages. Investigation is bounded to 20 pages / 2,000 rows; exact URL lookup remains five pages / 500 rows. The native cutoff excludes newer fired/first-observed rows, but does not freeze mutable alert state, names or permissions between reads. Native acknowledgement accepts operation ID only; local cycle handling does not invent a server episode precondition. Alert evidence remains current-state and server-wide independently of Rewind/database context.
+
+The workspace database selector and command palette discard prior names/results on definitive later-page denial, retain safe received evidence on ordinary failures, and fence target changes and abandoned requests. Native HTTP status survives shared readers. Changing the workspace database retains the Health subsection and, in its supported Summary subsection, the selected configuration scan and exact UTC window. Overview, PLE and file-trend charts fence caller-known target revision and server round trips before effects; native DTOs do not supply source revision, so this is a known context boundary plus a new read. NUMA keyboard selection stays mounted and focused during node changes and polling; retained safe options do not make old charts current.
+
+Three non-overlapping owners handled alert triage, workspace denial/context, and diagnostic focus/revision/theme work, each with owning interactions and four-width accessibility checks. Independent reviews found acknowledgement cleanup and server round-trip defects; both were repaired. The lead owns shared status typing, native fixtures, App checks, integration and final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three independent owners, non-overlapping files and read-only peer review; one integration lead. | Complete. |
+| Dark theme | Shared tokens, wrapping controls/receipts, visible keyboard focus and bounded tables. | Passing in tested states. |
+| Diagnostic-screen review | Alert retention/access, workspace denial/Health URL context and Overview/PLE/file revision/focus paths reviewed and repaired against existing native APIs. | These findings closed; Analytics work below remains. |
+| Interaction tests | **80 runtime/API/model checks**, **106 mounted cases**, **13 built-App cases**. | Complete final groups pass without skips, retries or flaky results. |
+| Accessibility and responsive checks | Keyboard, axe, control bounds and document overflow at **320/390/768/1440**; App checks at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, generated asset verification, **527 unchanged frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **14 fresh captures**, representative mobile/desktop visual review, [gallery](../../artifacts/dashboard-workspace-triage/index.html), [exact case inventories, hashes and provenance](../../artifacts/dashboard-workspace-triage/completion.json). | Delivered locally, bound to the final local commit. |
+
+These are affected frontend checks, not full repository or release certification. Counts come from complete final groups, never combined repair subsets. Earlier attempts remain under `initial-typecheck` and `initial-browser`. Strict checks first required a missing harness comparison field and preserving target/fleet types during local acknowledgement mapping; product was rebuilt and all native checks reran. Initial browser failures involved old fixtures missing native access-recheck responses and an unsupported scan identity assertion in Collection. All browsers stopped before those spec-only corrections. Complete final groups reran against unchanged product/assets/native/harness code and the final 527-input manifest.
+
+All browser traffic and screenshots use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The broader dashboard refactor and original plan remain incomplete. No GitHub upload occurred.
+
+## Previous legacy Operations projection qualification (2026-10-03)
 
 Legacy backup, TempDB and Availability Group projection cards now retain independent investigated pages and native cursor trails through workspace polling. Already-visited First/Previous/Next pages restore locally; unread continuation can expire when the native latest run advances. Explicit Return to latest resets only after a validated successful read. Failure preserves the received page; Retry repeats the failed operation, and Cancel retains the receipt without claiming a new source read. Automatic first-page reads can be superseded by a newer refresh. Explicit investigation requests keep ownership across refresh ticks.
 
@@ -98,7 +122,7 @@ This qualification uses synthetic native frontend fixtures. It does not establis
 
 ### Remaining source-reviewed dashboard work
 
-The recorded legacy Operations projection pagination finding is closed by the latest qualification above. Earlier direct current head-blocker and canonical native pager findings remain closed. This closes the recorded frontend finding list, not the full dashboard refactor or repository plan. Check current sources before taking on further work within the authorized scope. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
+The legacy Operations projection pagination, direct current head-blocker, canonical native pager and current workspace triage/context findings are closed by the qualifications above. The next source-reviewed frontend area is Analytics: category selection is local state rather than a restored URL; polling clears surface pages and moving Live windows interrupt continuation. Native diagnostic metadata is a JSON string while the frontend parser expects an object, and evidence packet confidence can be null while its parser requires a number. Verify native contracts before implementing this next pass; incidents use a bounded legacy list rather than the paginated surface contract. This does not complete the dashboard refactor or repository plan. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
 
 The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
 

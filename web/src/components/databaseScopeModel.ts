@@ -17,10 +17,12 @@ export type DatabaseScopeReader = (
 
 export class DatabaseScopeLoadError extends Error {
   public readonly choices: DatabaseScopeChoices;
-  public constructor(message: string, choices: DatabaseScopeChoices) {
+  public readonly status: number | undefined;
+  public constructor(message: string, choices: DatabaseScopeChoices, status?: number) {
     super(message);
     this.name = "DatabaseScopeLoadError";
     this.choices = choices;
+    this.status = status;
   }
 }
 
@@ -74,6 +76,9 @@ export async function loadDatabaseScopeChoices(
     return partial();
   } catch (failure) {
     checkAbort();
-    throw new DatabaseScopeLoadError(failure instanceof Error ? failure.message : "The database inventory could not be loaded.", partial());
+    const status = failure instanceof Error && "status" in failure && typeof failure.status === "number" ? failure.status : undefined;
+    const denied = status === 401 || status === 403;
+    throw new DatabaseScopeLoadError(failure instanceof Error ? failure.message : "The database inventory could not be loaded.",
+      denied ? { items: [], complete: false, repositoryTimeUtc: undefined } : partial(), status);
   }
 }

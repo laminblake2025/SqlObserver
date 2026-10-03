@@ -1,4 +1,4 @@
-import { apiFetch } from "../../apiClient.ts";
+import { apiFetch, ApiRequestError } from "../../apiClient.ts";
 export interface DatabaseFileIoTrendPoint {
   readonly bucketStartUtc: string;
   readonly sourceRows: number;
@@ -32,9 +32,9 @@ export async function getDatabaseFileIoTrend(instanceId: string, databaseId: num
     `/api/v1/observation-targets/${encodeURIComponent(instanceId)}/resources/files/${databaseId}/${fileId}/trend?${parameters}`,
     { credentials: "same-origin", headers: { Accept: "application/json" }, signal },
   );
-  if (!response.ok) throw new Error(response.status === 403
+  if (!response.ok) throw new ApiRequestError(response.status === 403
     ? "You are not authorized to view this file trend."
     : response.status === 400 ? "Choose a UTC window of at most seven days."
-      : "File I/O history is unavailable.");
+      : "File I/O history is unavailable.", response.status);
   return await response.json() as DatabaseFileIoTrend;
 }

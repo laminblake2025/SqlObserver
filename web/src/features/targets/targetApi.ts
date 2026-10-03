@@ -1,4 +1,4 @@
-import { apiFetch } from "../../apiClient.ts";
+import { apiFetch, ApiRequestError } from "../../apiClient.ts";
 import { invalidTargetResponse, maximumTargetResponseBytes, parseObservationTarget, parseObservationTargetGrouping,
   parseObservationTargetPage } from "./targetResponseParser.ts";
 import { targetManagementIdentity, targetManagementReceipt, targetManagementUpdate, type TargetManagementAction } from "./targetManagementModel.ts";
@@ -52,10 +52,10 @@ async function getJson<T>(path: string, init: RequestInit, signal: AbortSignal, 
   if (signal.aborted) throw signal.reason;
   if (!response.ok) {
     if (response.status === 429) {
-      throw new Error("Too many administrative requests. Wait briefly and retry.");
+      throw new ApiRequestError("Too many administrative requests. Wait briefly and retry.", response.status);
     }
 
-    throw new Error(`SqlObserver request failed with status ${response.status}.`);
+    throw new ApiRequestError(`SqlObserver request failed with status ${response.status}.`, response.status);
   }
 
   try {

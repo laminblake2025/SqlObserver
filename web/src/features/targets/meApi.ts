@@ -1,4 +1,4 @@
-import { apiFetch } from "../../apiClient.ts";
+import { apiFetch, ApiRequestError } from "../../apiClient.ts";
 export type ApplicationRole =
   | "Viewer" | "Operator" | "TargetAdministrator" | "SecurityAdministrator"
   | "Auditor" | "CollectorService" | "QueryTextReader";
@@ -85,6 +85,6 @@ export async function getMyAccess(targetId: string | null, signal: AbortSignal):
   if (targetId !== null && !guid.test(targetId)) throw new Error("Access information is unavailable.");
   const query = targetId === null ? "" : `?targetId=${encodeURIComponent(targetId)}`;
   const response = await apiFetch(`/api/v1/me${query}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal });
-  if (!response.ok) throw new Error("Access information is unavailable.");
+  if (!response.ok) throw new ApiRequestError("Access information is unavailable.", response.status);
   return parseMyAccess(await response.json(), targetId);
 }

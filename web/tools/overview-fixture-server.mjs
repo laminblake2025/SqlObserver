@@ -20,9 +20,9 @@ import {handleWaitCapturedSessionFixture} from './wait-captured-session-fixture.
 import {handleDashboardNativeInsightsFixture} from './dashboard-native-insights-fixture.mjs';
 import {handleDashboardRetainedEvidenceFixture} from './dashboard-retained-evidence-fixture.mjs';
 import {handleReportWorkflowFixture} from './report-workflow-fixture.mjs';
+import {nativeAlertSelectionPage} from './alert-selection-fixture.mjs';
 const root=resolve(import.meta.dirname,'../dist');
 const targets=Array.from({length:10},(_,i)=>({instanceId:`11111111-1111-4111-8111-${String(i+1).padStart(12,'0')}`,displayName:`SYNTHETIC SQL ${String(i+1).padStart(2,'0')}`,instanceKey:`synthetic-${i+1}`,host:`sql${i+1}.invalid`,lifecycle:'active',capabilityStatus:'supported',capabilityReasons:[],configurationRevision:1,tcpPort:1433,authenticationMode:'windows_integrated_service_identity',encryptionMode:'mandatory_validated',discoveryRequestedAtUtc:'2026-09-25T12:00:00Z',lastDiscoveryAtUtc:'2026-09-25T12:01:00Z'}));
-const alertSelectionSnapshot='2026-09-30T12:00:00.000Z';
 // The ordinary live fixture exposes one synthetic capture. Filter/page reads
 // must retain that GUID's observation time even as repository read time moves.
 const ordinaryLiveCapturedUtc=new Date().toISOString();
@@ -38,7 +38,6 @@ for(const target of targets.slice(0,2)) {
  const tail=target.instanceId.slice(-12),operationId=`bbbbbbbb-bbbb-4bbb-8bbb-${tail}`;
  workspaceIncidents.set(operationId,{body:null,result:{targetId:target.instanceId,targetRevision:target.configurationRevision,threadId:`aaaaaaaa-aaaa-4aaa-8aaa-${tail}`,operationId,fromUtc:'2026-09-26T08:00:00.000Z',toUtc:'2026-09-26T12:00:00.000Z',savedAtUtc:'2026-09-30T12:00:00.000Z',title:`SYNTHETIC retained investigation ${tail.slice(-2)}`,notes:'Synthetic retained notes; no connected server evidence.',evidenceTruncated:false,evidence:[]}});
 }
-const alertSelectionRows=[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:'2026-09-30T09:00:00.000Z',firedUtc:'2026-09-30T09:01:00.000Z',value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false},{alertId:'66666666-6666-4666-8666-666666666666',ruleId:'77777777-7777-4777-8777-777777777777',ruleName:'SYNTHETIC paged alert',state:'firing',firstObservedUtc:'2026-09-30T10:00:00.000Z',firedUtc:'2026-09-30T10:01:00.000Z',value:7,reason:'Synthetic bounded second-page evidence',deliverySuppressed:false}];
 const send=(res,value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
 // Preserve the same microsecond precision as the native equal-width comparison contract.
 const utcTicks=value=>{
@@ -94,10 +93,8 @@ createServer(async(req,res)=>{try{
   return send(res,{active:true,targetId,grantedRoles:roles,allTargetRoles:roles,targetRoles:targetId?roles:[]});
  }
  if(req.headers.cookie?.includes('alertSelectionFixture=1')&&url.pathname==='/api/v1/alerts/active') {
-  const cursor=url.searchParams.get('cursor');
-  if(cursor!==null&&cursor!=='cGFnZTI=')return send(res,{},400);
-  const index=cursor?1:0;
-  return send(res,{snapshotUtc:alertSelectionSnapshot,items:[{...alertSelectionRows[index],targetId:targets[index].instanceId,targetName:targets[index].displayName}],nextCursor:cursor?null:'cGFnZTI='});
+  const page=nativeAlertSelectionPage(targets,undefined,url.searchParams.get('cursor'));
+  return send(res,page??{},page?200:400);
  }
  if(handleQueryRowTrendFixture(url,res,req,targets,send))return;
  if(handleDashboardSummaryFixture(url,res,req,targets,send))return;
@@ -159,9 +156,8 @@ createServer(async(req,res)=>{try{
    if(retainedDeadlock)return send(res,{summary:retainedDeadlock,participants:[{sessionId:51,isVictim:true},{sessionId:72,isVictim:false}],relations:[{blockerSessionId:51,waiterSessionId:72,resourceCategory:'key',lockMode:'X'},{blockerSessionId:72,waiterSessionId:51,resourceCategory:'key',lockMode:'X'}]});
    if(surface==='alerts/active') {
     if(req.headers.cookie?.includes('alertSelectionFixture=1')) {
-     const cursor=url.searchParams.get('cursor');
-     if(cursor!==null&&cursor!=='cGFnZTI=')return send(res,{},400);
-     return send(res,{targetId:instanceId,snapshotUtc:alertSelectionSnapshot,items:cursor?alertSelectionRows:[alertSelectionRows[0]],nextCursor:cursor?null:'cGFnZTI='});
+     const page=nativeAlertSelectionPage(targets,instanceId,url.searchParams.get('cursor'));
+     return send(res,page??{},page?200:400);
     }
     return send(res,{targetId:instanceId,snapshotUtc:now,items:[{alertId:'44444444-4444-4444-8444-444444444444',ruleId:'55555555-5555-4555-8555-555555555555',ruleName:'SYNTHETIC sustained blocking',state:'firing',firstObservedUtc:now,firedUtc:now,value:12,reason:'12 distinct sessions blocked',deliverySuppressed:false}],nextCursor:null});
    }

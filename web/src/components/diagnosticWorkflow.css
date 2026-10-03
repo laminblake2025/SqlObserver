@@ -1,0 +1,43 @@
+.diagnostic-workflow-controls,
+.alert-triage-controls,
+.alert-triage-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+  margin-block: 12px;
+}
+.diagnostic-workflow-controls > *,
+.alert-triage-controls > *,
+.alert-triage-actions > * { min-width: 0; max-width: 100%; }
+.diagnostic-workflow-controls label,
+.alert-triage-controls label,
+.diagnostic-workflow-select { display: grid; gap: 6px; min-width: 0; color: var(--muted-deep); font-size: 12px; font-weight: 700; }
+.diagnostic-workflow-controls input:not([type="checkbox"]),
+.diagnostic-workflow-controls select,
+.alert-triage-controls input:not([type="checkbox"]),
+.alert-triage-controls select,
+.diagnostic-workflow-select select { min-width: 0; width: 100%; color: var(--text); background: var(--surface-soft); border-color: var(--border-strong); }
+.diagnostic-workflow-controls button,
+.alert-triage-controls button,
+.alert-triage-actions button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.diagnostic-workflow-note,
+.diagnostic-workflow-receipt,
+.alert-triage-note,
+.alert-triage-receipt { min-width: 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.diagnostic-workflow-error { min-width: 0; color: var(--red); overflow-wrap: anywhere; }
+.diagnostic-workflow-select { max-width: 24rem; margin-block: 12px; }
+.diagnostic-workflow-controls :focus-visible,
+.alert-triage-controls :focus-visible,
+.diagnostic-workflow-select select:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+@media (max-width: 480px) {
+  .diagnostic-workflow-controls label,
+  .alert-triage-controls label,
+  .diagnostic-workflow-select { flex-basis: 100%; width: 100%; max-width: 100%; }
+}
+@media (forced-colors: active) {
+  .diagnostic-workflow-controls :focus-visible,
+  .alert-triage-controls :focus-visible,
+  .diagnostic-workflow-select select:focus-visible { outline-color: Highlight; }
+}

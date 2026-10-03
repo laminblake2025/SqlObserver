@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { OverviewChart } from "../overview/OverviewChart";
@@ -14,8 +14,9 @@ export interface SelectedDatabaseFile {
   readonly logicalName: string;
 }
 
-export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onSelectWindow, crosshairUtc, onCrosshairChange }: {
+export function DatabaseFileIoTrendPanel({ instanceId, targetRevision = 0, file, scope, refresh, onSelectWindow, crosshairUtc, onCrosshairChange }: {
   readonly instanceId: string;
+  readonly targetRevision?: number;
   readonly file: SelectedDatabaseFile | null;
   readonly scope: OverviewScope;
   readonly refresh: number;
@@ -27,13 +28,18 @@ export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onS
   const [receivedTrend, setTrend] = useState<{ key: string; value: DatabaseFileIoTrend }>();
   const [receivedError, setError] = useState<{ key: string; message: string }>();
   const [receivedLoading, setLoading] = useState<{ key: string; value: boolean }>();
-  const key = JSON.stringify([instanceId, file?.databaseId, file?.fileId, scope, refresh]);
+  const context = JSON.stringify([instanceId.toLowerCase(), targetRevision, file?.databaseId, file?.fileId, scope]);
+  const generation = useRef({ context, number: 0 });
+  if (generation.current.context !== context) generation.current = { context, number: generation.current.number + 1 };
+  const key = JSON.stringify([context, generation.current.number, refresh]);
+  const latest = useRef(key); latest.current = key;
   const trend = receivedTrend?.key === key ? receivedTrend.value : undefined;
   const error = receivedError?.key === key ? receivedError.message : undefined;
   const loading = receivedLoading?.key === key ? receivedLoading.value : true;
 
   useEffect(() => {
     const controller = new AbortController();
+    const current = () => !controller.signal.aborted && latest.current === key;
     setTrend(undefined);
     setError(undefined);
     setLoading({ key, value: false });
@@ -51,7 +57,7 @@ export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onS
     void getDatabaseFileIoTrend(instanceId, file.databaseId, file.fileId,
       window.fromUtc, window.toUtc, controller.signal)
       .then(value => {
-        if (controller.signal.aborted) return;
+        if (!current()) return;
         if (value.targetId.toLowerCase() !== instanceId.toLowerCase() ||
             value.databaseId !== file.databaseId || value.fileId !== file.fileId ||
             !resourceWindowMatches(value.fromUtc, value.toUtc, window.fromUtc, window.toUtc) ||
@@ -61,10 +67,10 @@ export function DatabaseFileIoTrendPanel({ instanceId, file, scope, refresh, onS
         setTrend({ key, value });
       })
       .catch((failure: unknown) => {
-        if (!controller.signal.aborted)
+        if (current())
           setError({ key, message: failure instanceof Error ? failure.message : "File I/O history is unavailable." });
       })
-      .finally(() => { if (!controller.signal.aborted) setLoading({ key, value: false }); });
+      .finally(() => { if (current()) setLoading({ key, value: false }); });
     return () => controller.abort();
   }, [key]);
 
