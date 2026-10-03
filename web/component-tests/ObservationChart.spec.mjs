@@ -81,6 +81,42 @@ async function observePointerOwner(svg) {
   }, { once: true }));
 }
 
+async function touchTap(page, button) {
+  await button.scrollIntoViewIfNeeded();
+  const box = await button.boundingBox();
+  expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally { await session.detach(); }
+}
+
+async function touchScrollToEdge(page, viewport, button, direction) {
+  for (let step = 0; step < 8; step++) {
+    const position = await viewport.evaluate(element => ({ left: element.scrollLeft,
+      remaining: element.scrollWidth - element.clientWidth - element.scrollLeft }));
+    if ((direction === 'later' ? position.remaining : position.left) <= 1) break;
+    await expect(button).toBeEnabled();
+    await touchTap(page, button);
+    if (direction === 'later') await expect.poll(() => viewport.evaluate(element => element.scrollLeft)).toBeGreaterThan(position.left);
+    else await expect.poll(() => viewport.evaluate(element => element.scrollLeft)).toBeLessThan(position.left);
+  }
+  await expect(button).toBeDisabled();
+}
+
+async function visiblePlotGesture(viewport) {
+  await viewport.scrollIntoViewIfNeeded();
+  return viewport.evaluate(element => {
+    const edges = [...element.querySelectorAll('.chart-gridline-vertical')], box = element.getBoundingClientRect();
+    const edge = line => { const point = line.ownerSVGElement.createSVGPoint(); point.x = line.x1.baseVal.value;
+      point.y = (line.y1.baseVal.value + line.y2.baseVal.value) / 2; return point.matrixTransform(line.getScreenCTM()); };
+    const first = edge(edges[0]), last = edge(edges.at(-1));
+    const start = Math.max(first.x + 5, box.left + 20), end = Math.min(last.x - 5, box.right - 20);
+    return { start, end, y: first.y, from: (start - first.x) / (last.x - first.x), to: (end - first.x) / (last.x - first.x) };
+  });
+}
+
 for (const kind of ['observation', 'overview']) {
   test(`${kind} ignores right and middle mouse drags and secondary touch starts`, async ({ page }) => {
     await page.getByLabel('Primary chart kind').selectOption(kind);
@@ -185,9 +221,16 @@ for (const kind of ['observation', 'overview']) {
       point.y = (element.y1.baseVal.value + element.y2.baseVal.value) / 2;
       const screen = point.matrixTransform(element.getScreenCTM()); return { x: screen.x, y: screen.y };
     });
-    const axes = chart.locator('.chart-gridline-vertical'), start = await edge(axes.first()), end = await edge(axes.last());
+    const viewport = chart.locator('.chart-plot-scroll');
+    await viewport.focus();
+    await viewport.evaluate(element => { element.scrollLeft = 0; });
+    const axes = chart.locator('.chart-gridline-vertical'), start = await edge(axes.first());
     // One pixel outside the painted plot remains within SVG, and clamps to its real boundary.
     await page.mouse.move(start.x - 1, start.y); await page.mouse.down();
+    // Keep the captured owner while the real local viewport moves. Both endpoints are
+    // painted inside the viewport when clicked, even when the full plot cannot fit.
+    await viewport.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    const end = await edge(axes.last());
     await page.mouse.move(end.x + 1, end.y, { steps: 8 }); await page.mouse.up();
     await expect(result(page, 'Selection callback count')).toHaveText('1');
     await expect(result(page, 'Selected from UTC')).toHaveText(initialFrom);
@@ -206,12 +249,21 @@ for (const kind of ['observation', 'overview']) {
       await page.mouse.up();
       await expect(result(page, 'Selection callback count')).toHaveText('0');
       await page.getByRole('button', { name: 'Reset interaction', exact: true }).click();
-      const svg = chart.getByRole('img'); await svg.scrollIntoViewIfNeeded();
-      await page.evaluate(() => window.scrollTo({ top: scrollY, behavior: 'instant' }));
-      const bounds = await svg.boundingBox();
-      await page.mouse.move(bounds.x + bounds.width * .2, bounds.y + bounds.height * .5); await page.mouse.down();
-      await page.mouse.move(bounds.x + bounds.width * .8, bounds.y + bounds.height * .5, { steps: 6 }); await page.mouse.up();
+      await expect(result(page, 'Selected from UTC')).toHaveText(initialFrom);
+      await expect(result(page, 'Selected to UTC')).toHaveText(initialTo);
+      await page.mouse.move(0, 0);
+      const svg = chart.getByRole('img');
+      await svg.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const freshStart = await plotPoint(chart, .2), freshEnd = await plotPoint(chart, .8);
+      await page.mouse.move(freshStart.x, freshStart.y); await page.mouse.down();
+      await expect(chart.locator('.chart-selection')).toHaveCount(1);
+      await page.mouse.move(freshEnd.x, freshEnd.y, { steps: 6 });
+      await expect(chart.locator('.chart-selection')).toHaveCount(1);
+      await page.mouse.up();
       await expect(result(page, 'Selection callback count')).toHaveText('1');
+      for (const [name, utc] of [['Selected from UTC', '2026-01-15T12:12:00Z'], ['Selected to UTC', '2026-01-15T12:48:00Z']]) {
+        await expect.poll(async () => Math.abs(Date.parse(await result(page, name).textContent()) - Date.parse(utc))).toBeLessThan(1000);
+      }
     });
   }
 }
@@ -360,11 +412,14 @@ test('uses the real time provider for local and UTC chart labels without changin
   await expect(chart.getByRole('columnheader', { name: 'UTC', exact: true })).toBeVisible();
 });
 
-for (const width of [320, 390, 768, 1440]) test(`opted-in resource plot keeps readable axes and local keyboard scrolling at ${width}px`, async ({ page }, info) => {
+for (const kind of ['observation', 'overview']) for (const width of [320, 390, 768, 1440]) test(`${kind} plot keeps readable axes and full-window touch/keyboard access at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 1000 });
-  await page.getByRole('combobox', { name: 'Primary chart kind', exact: true }).selectOption('overview');
+  await page.getByRole('combobox', { name: 'Primary chart kind', exact: true }).selectOption(kind);
   await page.getByRole('checkbox', { name: 'Scrollable resource plot', exact: true }).check();
-  const viewport = primary(page).getByRole('region', { name: 'Resource evidence plot', exact: true });
+  const label = kind === 'overview' ? 'Resource evidence plot' : 'Latency evidence plot';
+  const viewport = primary(page).getByRole('region', { name: label, exact: true });
+  const earlier = primary(page).getByRole('button', { name: `Scroll ${label} earlier`, exact: true });
+  const later = primary(page).getByRole('button', { name: `Scroll ${label} later`, exact: true });
   const svg = viewport.getByRole('img');
   await expect(svg).toBeVisible();
   await page.getByRole('button', { name: 'Replace chart target', exact: true }).focus();
@@ -374,16 +429,31 @@ for (const width of [320, 390, 768, 1440]) test(`opted-in resource plot keeps re
     const svg = element.querySelector('svg'), text = svg.querySelector('text'), matrix = text.getScreenCTM();
     const outline = getComputedStyle(element), box = svg.getBoundingClientRect();
     return { client: element.clientWidth, scroll: element.scrollWidth, svgWidth: box.width, svgHeight: box.height,
+      viewWidth: svg.viewBox.baseVal.width, viewHeight: svg.viewBox.baseVal.height,
       axisFont: parseFloat(getComputedStyle(text).fontSize) * Math.hypot(matrix.a, matrix.b),
       outlineStyle: outline.outlineStyle, outlineWidth: parseFloat(outline.outlineWidth) };
   });
   expect(geometry.outlineStyle).not.toBe('none');
   expect(geometry.outlineWidth).toBeGreaterThanOrEqual(2);
-  expect(geometry.svgWidth).toBeGreaterThanOrEqual(650);
+  expect(geometry.svgWidth).toBeGreaterThanOrEqual(geometry.viewWidth);
   expect(geometry.axisFont).toBeGreaterThanOrEqual(11.5);
-  expect(Math.abs(geometry.svgHeight - geometry.svgWidth * 220 / 650)).toBeLessThan(1);
+  expect(Math.abs(geometry.svgHeight - geometry.svgWidth * geometry.viewHeight / geometry.viewWidth)).toBeLessThan(1);
+  if (geometry.scroll > geometry.client + 1) {
+    await expect(earlier).toBeDisabled(); await expect(later).toBeEnabled();
+    await touchScrollToEdge(page, viewport, later, 'later');
+    await expect(later).toBeDisabled(); await expect(earlier).toBeEnabled();
+    const lastAxis = await svg.locator('.chart-gridline-vertical').last().boundingBox(), rightBox = await viewport.boundingBox();
+    expect(lastAxis.x).toBeGreaterThanOrEqual(rightBox.x); expect(lastAxis.x).toBeLessThanOrEqual(rightBox.x + rightBox.width);
+    await touchScrollToEdge(page, viewport, earlier, 'earlier');
+    await expect(earlier).toBeDisabled(); await expect(later).toBeEnabled();
+    const firstAxis = await svg.locator('.chart-gridline-vertical').first().boundingBox(), leftBox = await viewport.boundingBox();
+    expect(firstAxis.x).toBeGreaterThanOrEqual(leftBox.x); expect(firstAxis.x).toBeLessThanOrEqual(leftBox.x + leftBox.width);
+    await expect(result(page, 'Selection callback count')).toHaveText('0');
+    await expect(result(page, 'Selected from UTC')).toHaveText(initialFrom); await expect(result(page, 'Selected to UTC')).toHaveText(initialTo);
+  } else { await expect(earlier).toHaveCount(0); await expect(later).toHaveCount(0); }
   if (width <= 560) {
     expect(geometry.scroll).toBeGreaterThan(geometry.client);
+    await viewport.focus();
     await page.keyboard.press('ArrowRight');
     await expect.poll(() => viewport.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
     // Exercise pointer-to-window conversion after the SVG has moved within its own viewport.
@@ -409,11 +479,91 @@ for (const width of [320, 390, 768, 1440]) test(`opted-in resource plot keeps re
   expect(await svg.evaluate(element => getComputedStyle(element).touchAction)).toContain('pan-y');
   await expect(viewport.locator('figcaption, table')).toHaveCount(0);
   await primary(page).getByText('View chart values', { exact: true }).click();
-  await expect(primary(page).getByRole('region', { name: 'Chart observation values', exact: true })).toBeVisible();
+  await expect(primary(page).getByRole('region', { name: kind === 'overview' ? 'Chart observation values' : 'Latency evidence chart values', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
-  await info.attach(`resource-plot-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
+  await info.attach(`${kind}-plot-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' });
   expect(violations).toEqual([]);
+});
+
+for (const kind of ['observation', 'overview']) for (const width of [320, 1440]) test(`${kind} long exact axis values fit their gutter and preserve CTM selection at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.getByRole('combobox', { name: 'Primary chart kind', exact: true }).selectOption(kind);
+  await page.getByRole('combobox', { name: 'Evidence preset', exact: true }).selectOption('large');
+  await page.getByRole('checkbox', { name: 'Scrollable resource plot', exact: true }).check();
+  const viewport = primary(page).locator('.chart-plot-scroll'), svg = viewport.getByRole('img');
+  const axes = await svg.locator('text[text-anchor="end"][x="40"]').evaluateAll(nodes => nodes.map(node => {
+    const box = node.getBBox(), view = node.ownerSVGElement.viewBox.baseVal, m = node.getScreenCTM();
+    return { text: node.textContent, left: box.x, right: box.x + box.width, viewLeft: view.x, viewRight: view.x + view.width,
+      font: parseFloat(getComputedStyle(node).fontSize) * Math.hypot(m.a, m.b) };
+  }));
+  expect(axes.length).toBeGreaterThanOrEqual(3); expect(axes.some(axis => axis.text.length > 10)).toBe(true);
+  for (const axis of axes) {
+    expect(axis.viewLeft).toBeLessThan(0); expect(axis.left).toBeGreaterThanOrEqual(axis.viewLeft);
+    // getBBox includes the font's subpixel ink overhang beyond the x=40 anchor.
+    expect(axis.right).toBeLessThanOrEqual(41); expect(axis.right).toBeLessThan(48);
+    expect(axis.right).toBeLessThanOrEqual(axis.viewRight); expect(axis.font).toBeGreaterThanOrEqual(11.99);
+  }
+  await primary(page).getByText('View chart values', { exact: true }).click();
+  const values = primary(page).getByRole('region', { name: kind === 'overview' ? 'Chart observation values' : 'Latency evidence chart values', exact: true });
+  for (const exact of ['1,000,000,000', '1,100,000,000', '1,200,000,000']) await expect(values.getByRole('cell', { name: kind === 'overview' ? exact + ' ms' : exact, exact: true })).toBeVisible();
+  await primary(page).getByText('View chart values', { exact: true }).click();
+  if (await viewport.evaluate(node => node.scrollWidth > node.clientWidth + 1)) {
+    const later = primary(page).getByRole('button', { name: /^Scroll .+ later$/ });
+    await touchTap(page, later); await expect.poll(() => viewport.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+  }
+  await expect(result(page, 'Selection callback count')).toHaveText('0');
+  const gesture = await visiblePlotGesture(viewport); expect(gesture.end).toBeGreaterThan(gesture.start);
+  await page.mouse.move(gesture.start, gesture.y); await page.mouse.down(); await page.mouse.move(gesture.end, gesture.y, { steps: 6 }); await page.mouse.up();
+  await expect(result(page, 'Selection callback count')).toHaveText('1');
+  for (const [name, fraction] of [['Selected from UTC', gesture.from], ['Selected to UTC', gesture.to]]) {
+    const expected = Date.parse(initialFrom) + fraction * (Date.parse(initialTo) - Date.parse(initialFrom));
+    await expect.poll(async () => Math.abs(Date.parse(await result(page, name).textContent()) - expected)).toBeLessThan(1000);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+});
+
+for (const kind of ['observation', 'overview']) test(`${kind} native touch drag after local scrolling respects cancel and replacement ownership`, async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 1000 });
+  await page.getByRole('combobox', { name: 'Primary chart kind', exact: true }).selectOption(kind);
+  await page.getByRole('checkbox', { name: 'Scrollable resource plot', exact: true }).check();
+  const viewport = primary(page).locator('.chart-plot-scroll'), svg = viewport.getByRole('img');
+  const session = await page.context().newCDPSession(page);
+  let touching = false;
+  try {
+    for (const ending of ['cancel', 'replace', 'apply']) {
+      await viewport.evaluate(element => { element.scrollLeft = 150; });
+      const gesture = await visiblePlotGesture(viewport);
+      expect(gesture.end).toBeGreaterThan(gesture.start);
+      await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: gesture.start, y: gesture.y, id: 1 }] }); touching = true;
+      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: gesture.end, y: gesture.y, id: 1 }] });
+      await expect(primary(page).locator('.chart-selection')).toHaveCount(1);
+      if (ending === 'replace') {
+        await page.getByRole('button', { name: 'Advance chart window', exact: true }).evaluate(button => button.click());
+        await expect(primary(page).locator('.chart-selection')).toHaveCount(0);
+        await expect.poll(() => viewport.evaluate(element => element.scrollLeft)).toBe(0);
+      }
+      await session.send('Input.dispatchTouchEvent', { type: ending === 'cancel' ? 'touchCancel' : 'touchEnd', touchPoints: [] }); touching = false;
+      await expect(primary(page).locator('.chart-selection')).toHaveCount(0);
+      await expect(result(page, 'Selection callback count')).toHaveText(ending === 'apply' ? '1' : '0');
+      if (ending === 'cancel') {
+        await expect(result(page, 'Selected from UTC')).toHaveText(initialFrom); await expect(result(page, 'Selected to UTC')).toHaveText(initialTo);
+      }
+      if (ending === 'replace') {
+        await expect(result(page, 'Selected from UTC')).toHaveText('2026-01-15T12:10:00.000Z');
+        await page.getByRole('button', { name: 'Reset interaction', exact: true }).click();
+        await expect(result(page, 'Selected from UTC')).toHaveText(initialFrom);
+      }
+      if (ending === 'apply') for (const [name, fraction] of [['Selected from UTC', gesture.from], ['Selected to UTC', gesture.to]]) {
+        const expected = Date.parse(initialFrom) + fraction * (Date.parse(initialTo) - Date.parse(initialFrom));
+        await expect.poll(async () => Math.abs(Date.parse(await result(page, name).textContent()) - expected)).toBeLessThan(1000);
+      }
+    }
+    expect(await svg.evaluate(element => getComputedStyle(element).touchAction)).toContain('pan-y');
+  } finally {
+    if (touching) await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await session.detach();
+  }
 });
 
 test('keeps chart values accessible at four dashboard widths', async ({ page }, info) => {

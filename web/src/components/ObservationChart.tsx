@@ -3,6 +3,7 @@ import { useTimeDisplay } from "../TimeDisplayContext";
 import { formatDisplayTime } from "../timeDisplay";
 import { chartUtcAtX, chartSvgX } from "../features/overview/chartTimeModel";
 import { useChartGesture } from "./useChartGesture";
+import { ChartPlotViewport } from "./ChartPlotViewport.tsx";
 import {
   nearestObservation, observationSegments, prepareObservationChart,
   type ObservationBand, type ObservationSeries, type ObservationThreshold,
@@ -47,11 +48,18 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
   const referenceBand = baselineBand && Number.isFinite(baselineBand.lower) && Number.isFinite(baselineBand.upper)
     && baselineBand.lower <= baselineBand.upper ? baselineBand : undefined;
   const referenceThreshold = threshold && Number.isFinite(threshold.value) ? threshold : undefined;
+  const ticks = [0,.5,1].map(fraction => {
+    const value = chart.minimum + fraction * (chart.maximum - chart.minimum);
+    return { value, label: valueFormatter(value) };
+  });
+  const viewLeft = Math.min(0,40 - (Math.max(...ticks.map(tick=>tick.label.length)) * 8 + 8));
+  const viewWidth = 650 - viewLeft;
   const announceCrosshair = (utc: string | null) => { setHoverUtc(utc); onCrosshairChange?.(utc); };
 
   return <figure className="observation-figure">
     <figcaption>{label} · {chart.pointCount} plotted values from loaded evidence · {mode === "local" ? "local time" : "UTC"}</figcaption>
-    <svg className={`chart observation-chart${onSelectWindow ? " chart-interactive" : ""}`} viewBox="0 0 650 225"
+    <ChartPlotViewport label={`${label} plot`} contextKey={JSON.stringify([fromUtc,toUtc,label,series.map(entry=>entry.id)])} canSelectWindow={Boolean(onSelectWindow)} minWidth={viewWidth}>
+    <svg className={`chart observation-chart${onSelectWindow ? " chart-interactive" : ""}`} viewBox={`${viewLeft} 0 ${viewWidth} 225`}
       role="img" aria-label={`${label}. ${chart.series.length} series in the selected ${mode === "local" ? "local-time display" : "UTC"} window. Missing samples remain gaps.${onSelectWindow ? " Drag to select a shared time window." : ""}`}
       onPointerMove={event => {
         if (!event.isPrimary || !gesture.acceptsPointer(event.pointerId)) return;
@@ -72,11 +80,8 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
       onPointerCancel={event => gesture.cancel(event.pointerId)}
       onLostPointerCapture={event => gesture.cancel(event.pointerId)}
       onPointerLeave={event => { if (event.isPrimary && gesture.acceptsPointer(event.pointerId) && dragStart === null) announceCrosshair(null); }}>
-      {[0, .5, 1].map(fraction => {
-        const value = chart.minimum + fraction * (chart.maximum - chart.minimum);
-        return <g key={fraction}><line className="chart-gridline" x1={left} x2={right} y1={y(value)} y2={y(value)} />
-          <text x="0" y={y(value) + 4}>{valueFormatter(value)}</text></g>;
-      })}
+      {ticks.map((tick,index) => <g key={index}><line className="chart-gridline" x1={left} x2={right} y1={y(tick.value)} y2={y(tick.value)} />
+        <text x="40" textAnchor="end" y={y(tick.value)+4}>{tick.label}</text></g>)}
       {[0, .5, 1].map(fraction => <line key={fraction} className="chart-gridline chart-gridline-vertical"
         x1={left + fraction * (right - left)} x2={left + fraction * (right - left)} y1={top} y2={bottom} />)}
       {referenceBand && <rect className="chart-baseline-band" x={left} y={y(referenceBand.upper)}
@@ -108,6 +113,7 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
       <text x={left} y="215">{timeLabel(chart.from, true)}</text>
       <text x={right} y="215" textAnchor="end">{timeLabel(chart.to, true)}</text>
     </svg>
+    </ChartPlotViewport>
     <div className="observation-legend">
       {chart.series.map((entry, index) => <span key={entry.id}><i style={{ background: colors[index % colors.length] }} />{entry.label}</span>)}
       {referenceBand && <span><i className="baseline-swatch" />{referenceBand.label}</span>}

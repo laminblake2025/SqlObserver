@@ -19,6 +19,17 @@ test.beforeEach(async({page})=>{
 test.afterEach(async({page})=>expect(sessions.get(page).errors,'Only native registered history GETs and no runtime errors').toEqual([]));
 async function mount(page,{key,revision=1,compare=false}={}){const params=new URLSearchParams({target:historyAlpha,range:'custom',from:historyFromUtc,to:historyToUtc,...(key?{volumeRevision:String(revision),volumeKey:key}:{}),...(compare?{compare:'1'}:{})});await page.goto('/component-tests/sql-volume-history.html#/resources?'+params);await expect(section(page,'Received volume identities')).toContainText('2 received rows');if(key)await expect(selected(page)).toContainText('4 received rows');}
 async function inspect(page,key=historyKeyA,revision=1){await action(page,`Inspect volume revision ${revision} key ${key}`).click();await expect(selected(page)).toContainText('4 received rows');}
+async function touchPlotButton(page,button){await button.scrollIntoViewIfNeeded();const box=await button.boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);const cdp=await page.context().newCDPSession(page);try{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height/2,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}finally{await cdp.detach();}}
+async function touchScrollToEdge(page,viewport,button,direction){
+ for(let step=0;step<8;step++){
+  const position=await viewport.evaluate(node=>({left:node.scrollLeft,remaining:node.scrollWidth-node.clientWidth-node.scrollLeft}));
+  if((direction==='later'?position.remaining:position.left)<=1)break;
+  await expect(button).toBeEnabled();await touchPlotButton(page,button);
+  if(direction==='later')await expect.poll(()=>viewport.evaluate(node=>node.scrollLeft)).toBeGreaterThan(position.left);
+  else await expect.poll(()=>viewport.evaluate(node=>node.scrollLeft)).toBeLessThan(position.left);
+ }
+ await expect(button).toBeDisabled();
+}
 test('Rewind history is separate from the latest forecast, follows the exact shared window and keeps bytes/source times distinct',async({page})=>{
  const session=sessions.get(page);await mount(page);await expect(page.getByRole('region',{name:'SQL-reported target-host volume capacity',exact:true})).toContainText('separate from Rewind');await inspect(page);
  await expect(chart(page)).toBeVisible();await expect(selected(page)).toContainText('107374182400');await expect(selected(page)).toContainText('53687091200');await expect(selected(page)).toContainText('Actual SQL observation');expect(session.reads.filter(r=>r.binding.selected).at(-1).binding).toEqual({instanceId:historyAlpha,targetRevision:1,fromUtc:historyFromUtc,toUtc:historyToUtc,selected:historyIdentity()});
@@ -113,6 +124,28 @@ test('catalogue40-page limit retains valid prior evidence and never dispatches a
  test.setTimeout(90000);const session=sessions.get(page);session.backend.settings.catalogCount=1000;await page.goto('/component-tests/sql-volume-history.html');await expect(section(page,'Received volume identities')).toContainText('25 received rows');for(let i=1;i<40;i++){await action(page,'Next volume identities page').click();await expect(section(page,'Received volume identities')).toContainText((i+1)*25+' received rows');}
  await expect(action(page,'Next volume identities page')).toBeDisabled();expect(session.reads).toHaveLength(40);const count=session.reads.length;await action(page,'First volume identities page').click();await action(page,'Next volume identities page').click();expect(session.reads).toHaveLength(count);await expect(action(page,'Refresh volume identities')).toBeEnabled();
 });
+for(const width of [320,390,768,1440])test('volume plot touch controls reach the full received window without selection or reads at '+width+'px',async({page})=>{
+ await page.setViewportSize({width,height:1100});await mount(page,{key:historyKeyA});const viewport=panel(page).getByRole('region',{name:'Volume history chart area',exact:true}),earlier=action(page,'Scroll Volume history chart area earlier'),later=action(page,'Scroll Volume history chart area later');
+ const before=sessions.get(page).reads.length,hash=new URL(page.url()).hash;
+ const geometry=await viewport.evaluate(node=>{const text=node.querySelector('svg text'),m=text.getScreenCTM();return{overflow:node.scrollWidth>node.clientWidth+1,font:parseFloat(getComputedStyle(text).fontSize)*Math.hypot(m.a,m.b)};});expect(geometry.font).toBeGreaterThanOrEqual(11);
+ if(geometry.overflow){
+  await expect(earlier).toBeDisabled();await expect(later).toBeEnabled();
+  await touchScrollToEdge(page,viewport,later,'later');
+  await expect(later).toBeDisabled();const rightAxis=await chart(page).locator('text').last().boundingBox(),rightBox=await viewport.boundingBox();expect(rightAxis.x).toBeGreaterThanOrEqual(rightBox.x);expect(rightAxis.x+rightAxis.width).toBeLessThanOrEqual(rightBox.x+rightBox.width+1);
+  await touchScrollToEdge(page,viewport,earlier,'earlier');
+  await expect(earlier).toBeDisabled();const texts=chart(page).locator('text'),leftAxis=await texts.nth(await texts.count()-2).boundingBox(),leftBox=await viewport.boundingBox();expect(leftAxis.x).toBeGreaterThanOrEqual(leftBox.x);expect(leftAxis.x+leftAxis.width).toBeLessThanOrEqual(leftBox.x+leftBox.width+1);
+ }else{await expect(earlier).toHaveCount(0);await expect(later).toHaveCount(0);}
+ expect(sessions.get(page).reads).toHaveLength(before);expect(new URL(page.url()).hash).toBe(hash);await expect(chart(page).locator('.chart-selection')).toHaveCount(0);await expect(selected(page)).toContainText('107374182400');expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+});
+
+test('volume native touch drag after scrolling preserves exact identity and cancels without a window mutation',async({page})=>{
+ await page.setViewportSize({width:320,height:1100});await mount(page,{key:historyKeyA});const viewport=panel(page).getByRole('region',{name:'Volume history chart area',exact:true});const hash=new URL(page.url()).hash,count=sessions.get(page).reads.length,cdp=await page.context().newCDPSession(page);let touching=false;
+ try{for(const cancel of [true,false]){await viewport.evaluate(node=>{node.scrollLeft=150;});await viewport.scrollIntoViewIfNeeded();const g=await viewport.evaluate(node=>{const svg=node.querySelector('svg'),box=node.getBoundingClientRect(),m=svg.getScreenCTM();const p=svg.createSVGPoint();p.x=48;p.y=105;const first=p.matrixTransform(m);p.x=620;const last=p.matrixTransform(m);const start=Math.max(first.x+5,box.left+20),end=Math.min(last.x-5,box.right-20);return{start,end,y:first.y,from:(start-first.x)/(last.x-first.x),to:(end-first.x)/(last.x-first.x)};});expect(g.end).toBeGreaterThan(g.start);
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:g.start,y:g.y,id:1}]});touching=true;await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:g.end,y:g.y,id:1}]});await expect(chart(page).locator('.chart-selection')).toHaveCount(1);await cdp.send('Input.dispatchTouchEvent',{type:cancel?'touchCancel':'touchEnd',touchPoints:[]});touching=false;await expect(chart(page).locator('.chart-selection')).toHaveCount(0);
+  if(cancel){expect(new URL(page.url()).hash).toBe(hash);expect(sessions.get(page).reads).toHaveLength(count);}else{await expect.poll(()=>new URL(page.url()).hash).not.toBe(hash);const params=new URLSearchParams(new URL(page.url()).hash.split('?')[1]);expect(params.get('volumeKey')).toBe(historyKeyA);expect(params.get('volumeRevision')).toBe('1');for(const [name,fraction]of[['from',g.from],['to',g.to]])expect(Math.abs(Date.parse(params.get(name))-(Date.parse(historyFromUtc)+fraction*(Date.parse(historyToUtc)-Date.parse(historyFromUtc))))).toBeLessThan(1000);await expect(selected(page)).toContainText('4 received rows');}
+ }}finally{if(touching)await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await cdp.detach();}
+});
+
 test('shared crosshair and pointer drag use completion-axis window while preserving exact volume selection',async({page})=>{
  await mount(page,{key:historyKeyA});await page.getByRole('button',{name:'Align completion time',exact:true}).click();await expect(chart(page).locator('.chart-crosshair line')).toHaveCount(1);await chart(page).scrollIntoViewIfNeeded();const svg=await chart(page).boundingBox();await page.mouse.move(svg.x+svg.width*.3,svg.y+svg.height*.5);await page.mouse.down();await page.mouse.move(svg.x+svg.width*.7,svg.y+svg.height*.5);await page.mouse.up();await expect.poll(()=>new URL(page.url()).hash).not.toContain('from='+encodeURIComponent(historyFromUtc));await expect(panel(page)).toContainText(historyKeyA);await expect(selected(page)).toContainText('4 received rows');
 });

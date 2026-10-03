@@ -9,7 +9,7 @@ import "./harness.css";
 
 const initialWindow = { fromUtc: "2026-01-15T12:00:00.000Z", toUtc: "2026-01-15T13:00:00.000Z" };
 type Window = typeof initialWindow;
-type Preset = "mixed" | "missing" | "single" | "gap";
+type Preset = "mixed" | "missing" | "single" | "gap" | "large";
 const samples = {
   mixed: [
     { time: initialWindow.fromUtc, value: 0 },
@@ -28,6 +28,12 @@ const samples = {
     { time: "2026-01-15T12:30:00.000Z", value: null },
     { time: "2026-01-15T12:50:00.000Z", value: 30 },
     { time: initialWindow.toUtc, value: 40 },
+  ],
+  large: [
+    { time: initialWindow.fromUtc, value: 1_000_000_000 },
+    { time: "2026-01-15T12:15:00.000Z", value: null },
+    { time: "2026-01-15T12:30:00.000Z", value: 1_100_000_000 },
+    { time: initialWindow.toUtc, value: 1_200_000_000 },
   ],
 } satisfies Record<Preset, ObservationSeries["items"]>;
 const companion: readonly ObservationSeries[] = [{ id: "companion", label: "Throughput", items: [
@@ -80,6 +86,7 @@ function Harness() {
           <option value="missing">No numeric observations</option>
           <option value="single">One observation</option>
           <option value="gap">Two runs separated by a gap</option>
+          <option value="large">Large exact axis values</option>
         </select>
       </label>
       <label>Time display

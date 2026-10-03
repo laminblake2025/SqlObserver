@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { alpha, beta, at, cursor, collector, database, evidence, logicalFile } from './healthFixture.mjs';
+import { alertLifecycleHistoryBackend, lifecycleFixtureBinding } from '../tools/alert-lifecycle-history-fixture.mjs';
 
 const sessions = new WeakMap();
 const panel = page => page.getByRole('region', { name: /^Server summary for/ });
@@ -14,6 +15,7 @@ const json = (route, value) => route.fulfill({ status: 200, contentType: 'applic
 
 test.beforeEach(async ({ page }) => {
   const session = { unexpected: [], requests: [], fixtures: new Map([[alpha, evidence(alpha)], [beta, evidence(beta)]]), intercept: undefined };
+  const lifecycle = alertLifecycleHistoryBackend({ count: 0, cutoffUtc: at });
   sessions.set(page, session);
   page.on('pageerror', error => session.unexpected.push(`Page error: ${error.message}`));
   await page.route('**/*', async route => {
@@ -31,6 +33,12 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === '/api/v1/overview' && [alpha, beta].includes(url.searchParams.get('targetId'))) {
       return json(route, { targetId: url.searchParams.get('targetId'), fromUtc: url.searchParams.get('fromUtc'),
         toUtc: url.searchParams.get('toUtc'), refreshedAtUtc: at, targets: [], excludedTargets: 0, evidence: [] });
+    }
+    // Retained alert history is independent of the empty Overview snapshot.
+    // Exercise its native empty receipt without allowing any backend traffic.
+    if (/^\/api\/v1\/observation-targets\/[^/]+\/alerts\/history$/.test(url.pathname)) {
+      const item = lifecycleFixtureBinding(url);
+      if (session.fixtures.has(item.binding.targetId)) return json(route, lifecycle.read(item.binding, item.cursor));
     }
     const match = /^\/api\/v1\/observation-targets\/([^/]+)\/health(?:\/(databases|files|database-option-changes|server-configuration-snapshot|server-configuration-changes))?$/.exec(url.pathname);
     const fixture = match && session.fixtures.get(match[1]);

@@ -135,7 +135,9 @@ test('a newer native grouping revision cancels the old attempt and requires an e
   const first = await startHeld(page), context = contexts.get(page); context.revisions.set(alpha, 2);
   await cancelRequest(page, first.request, () => page.getByRole('button', { name: 'Publish Alpha revision 2', exact: true }).click());
   await first.pending.finish(); await expect(form(page)).toHaveCount(0); await expect(callbacks(page)).toHaveText('0');
+  await expect(page.getByRole('status').filter({ hasText: /^Server labels changed\./ })).toContainText('Open Edit grouping');
   await expect(edit(page)).toBeDisabled(); await reload(page).click(); await expect(callbacks(page)).toHaveText('1');
+  await expect(page.getByRole('status').filter({ hasText: /^The draft was discarded\./ })).toContainText('open Edit grouping after the refreshed overview arrives');
   await open(page); await expect(environment(page)).toHaveValue('remote-east'); await expect(tags(page)).toHaveValue('remote');
   context.handler = undefined; await environment(page).fill('confirmed-revision'); await save(page).click();
   await expect(callbacks(page)).toHaveText('2'); expect(context.mutations[1].body.expectedRevision).toBe(2);

@@ -41,7 +41,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
     if (!editing || currentTarget?.canManageGrouping && currentTarget.lifecycle !== 'retired' && currentTarget.groupingRevision === editing.revision) return;
     setEditing(null);
     setNotice(currentTarget?.canManageGrouping && currentTarget.lifecycle !== 'retired'
-      ? 'Server labels changed. The old draft was discarded. Open Edit labels to load the current revision.'
+      ? 'Server labels changed. The old draft was discarded. Open Edit grouping to load the current revision.'
       : 'Grouping access is unavailable. The draft was discarded. Target Administrator access on this server unlocks grouping changes.');
   }, [editing, currentTarget]);
   useEffect(() => {
@@ -63,7 +63,7 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
     setRecoveries(previous => new Map(previous).set(targetId, {
       targetId, reason: previous.get(targetId)?.reason ?? 'unknown', reloadSnapshot: currentSnapshot.current,
     }));
-    setNotice('The draft was discarded. Reloading current server labels; open Edit labels after the refreshed overview arrives.');
+    setNotice('The draft was discarded. Reloading current server labels; open Edit grouping after the refreshed overview arrives.');
     onGroupingUpdated();
   };
   const edit = (target: OverviewTarget) => {

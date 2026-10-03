@@ -107,11 +107,16 @@ test("threshold loader pins rule listing across paging and bounds reads without 
 test("rendered chart contains bands, median and threshold lines with accessible inert reference evidence",async()=>{
   const require=createRequire(import.meta.url);
   let javascript=(await transformWithOxc(await readFile(new URL("../src/features/overview/OverviewChart.tsx",import.meta.url),"utf8"),"OverviewChart.tsx",{jsx:{runtime:"automatic"}})).code;
+  let viewport=(await transformWithOxc(await readFile(new URL("../src/components/ChartPlotViewport.tsx",import.meta.url),"utf8"),"ChartPlotViewport.tsx",{jsx:{runtime:"automatic"}})).code;
+  const emptyStyle="data:text/javascript;base64,"+Buffer.from("export {};").toString("base64");
+  for(const [key,value]of Object.entries({react:pathToFileURL(require.resolve("react")).href,"react/jsx-runtime":pathToFileURL(require.resolve("react/jsx-runtime")).href,"./chartPlotViewport.css":emptyStyle}))viewport=viewport.replaceAll(JSON.stringify(key),JSON.stringify(value));
+  const viewportModule="data:text/javascript;base64,"+Buffer.from(viewport).toString("base64");
   const timeStub="data:text/javascript;base64,"+Buffer.from("export const useTimeDisplay=()=>({mode:'utc'});").toString("base64");
   const replacements={react:pathToFileURL(require.resolve("react")).href,"react/jsx-runtime":pathToFileURL(require.resolve("react/jsx-runtime")).href,
     "../../TimeDisplayContext":timeStub,"../../timeDisplay":new URL("../src/timeDisplay.ts",import.meta.url).href,
     "./chartTimeModel":new URL("../src/features/overview/chartTimeModel.ts",import.meta.url).href,
     "../../components/useChartGesture":new URL("../src/components/useChartGesture.ts",import.meta.url).href,
+    "../../components/ChartPlotViewport.tsx":viewportModule,
     "./overviewChartRange":new URL("../src/features/overview/overviewChartRange.ts",import.meta.url).href,
     "./chartReferenceModel.ts":new URL("../src/features/overview/chartReferenceModel.ts",import.meta.url).href,
     // This SSR loader omits the style-only module; mounted dark/keyboard/axe checks load the actual CSS.

@@ -1,3 +1,1 @@
-.overview-plot-scroll { min-width: 0; max-width: 100%; overflow-x: auto; margin: 4px; }
-.overview-plot-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.overview-plot-scroll > .overview-chart { display: block; min-width: 650px; height: auto; }
+.overview-chart { user-select: none; }

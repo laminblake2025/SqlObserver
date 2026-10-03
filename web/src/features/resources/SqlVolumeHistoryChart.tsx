@@ -3,6 +3,7 @@ import { useTimeDisplay } from "../../TimeDisplayContext.tsx";
 import { formatDisplayTime } from "../../timeDisplay.ts";
 import { chartSvgX, chartUtcAtX } from "../overview/chartTimeModel.ts";
 import { useChartGesture } from "../../components/useChartGesture.ts";
+import { ChartPlotViewport } from "../../components/ChartPlotViewport.tsx";
 import { utcMicroseconds } from "../../utcTimestamp.ts";
 import { approximateVolumeAxisLabel, approximateVolumeGib, volumeHistoryCompletionFraction, volumeHistorySegments, volumeHistoryUtc, type VolumeHistoryPage, type VolumeHistorySample, type VolumeIdentityKind } from "./sqlVolumeHistoryModel.ts";
 interface Point { readonly row: VolumeHistorySample; readonly fraction: number; readonly value: number }
@@ -26,7 +27,7 @@ export function SqlVolumeHistoryChart({ current, previous, fromUtc, toUtc, cross
   let crosshair: bigint | null = null;
   try { if (crosshairUtc) crosshair = utcMicroseconds(volumeHistoryUtc(crosshairUtc)); } catch { /* An invalid shared crosshair does not alter received evidence. */ }
   return <figure className="volume-history-chart"><figcaption>Available capacity · approximate GiB · collection completion time</figcaption>
-    <div className="volume-history-chart-area" role="region" aria-label="Volume history chart area" tabIndex={0}>
+    <ChartPlotViewport label="Volume history chart area" contextKey={JSON.stringify([fromUtc,toUtc,current[0]?.instanceId,current[0]?.targetRevision,current[0]?.sampleTargetRevision,current[0]?.volumeKey])} canSelectWindow={Boolean(onSelectWindow)}>
     <svg className="chart chart-interactive" viewBox="0 0 650 225" role="img" aria-label="SQL volume available capacity by collection completion"
       onPointerDown={event => { const p = position(event); if (event.button === 0 && event.isPrimary && p !== null && gesture.begin(event.pointerId, p)) event.currentTarget.setPointerCapture(event.pointerId); }}
       onPointerMove={event => { const p = position(event); if (event.isPrimary && gesture.acceptsPointer(event.pointerId) && p !== null) { onCrosshairChange?.(chartUtcAtX(p, fromUtc, toUtc)); gesture.move(event.pointerId, p); } }}
@@ -38,6 +39,6 @@ export function SqlVolumeHistoryChart({ current, previous, fromUtc, toUtc, cross
       {crosshair !== null && crosshair >= from && crosshair < to && <g className="chart-crosshair"><line x1={x(Number(crosshair-from)/Number(shift))} x2={x(Number(crosshair-from)/Number(shift))} y1="30" y2="180" /></g>}
       {gesture.start !== null && gesture.end !== null && <rect className="chart-selection" x={Math.min(gesture.start,gesture.end)} y="30" width={Math.abs(gesture.end-gesture.start)} height="150" />}
       <text x="48" y="218">{formatDisplayTime(fromUtc,mode,true)}</text><text x="620" y="218" textAnchor="end">{formatDisplayTime(toUtc,mode,true)}</text>
-    </svg></div><p className="table-note">Solid: selected window{previous ? "; dashed: previous equal-length window shifted for comparison" : ""}. Gauges are received observations, with no interpolation to the window edges. Mount-point and unknown file identities show individual observations without cross-run lines. Gaps, missing capacity, total-capacity changes and completion intervals over ten minutes break lines; this visual rule does not alter native coverage counts. Exact bytes and actual SQL observation times appear in the received evidence tables.</p>
+    </svg></ChartPlotViewport><p className="table-note">Solid: selected window{previous ? "; dashed: previous equal-length window shifted for comparison" : ""}. Gauges are received observations, with no interpolation to the window edges. Mount-point and unknown file identities show individual observations without cross-run lines. Gaps, missing capacity, total-capacity changes and completion intervals over ten minutes break lines; this visual rule does not alter native coverage counts. Exact bytes and actual SQL observation times appear in the received evidence tables.</p>
   </figure>;
 }

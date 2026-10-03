@@ -59,9 +59,10 @@ for (const width of [320, 390, 768, 1440]) {
         await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('waitCategory')).toBe('6');
       }
       await expect(page.locator('main')).toBeVisible();
-      if (surface === 'resources') {
-        const plots = page.locator('.overview-plot-scroll');
-        expect(await plots.count()).toBeGreaterThanOrEqual(6);
+      {
+        const plots = page.locator('.chart-plot-scroll');
+        if (surface === 'resources') expect(await plots.count()).toBeGreaterThanOrEqual(6);
+        if (['fleet', 'server', 'waits'].includes(name)) expect(await plots.count()).toBeGreaterThan(0);
         const geometry = await plots.evaluateAll(elements => elements.map(element => ({
           named: Boolean(element.getAttribute('aria-label')), focusable: element.tabIndex === 0,
           axisSizes: [...element.querySelectorAll('svg text')].map(text =>
@@ -70,7 +71,7 @@ for (const width of [320, 390, 768, 1440]) {
         for (const plot of geometry) {
           expect(plot.named && plot.focusable).toBe(true);
           expect(plot.axisSizes.length).toBeGreaterThan(0);
-          expect(Math.min(...plot.axisSizes)).toBeGreaterThanOrEqual(10);
+          expect(Math.min(...plot.axisSizes)).toBeGreaterThanOrEqual(11);
         }
       }
       expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');

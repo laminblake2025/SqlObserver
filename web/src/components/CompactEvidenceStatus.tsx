@@ -17,6 +17,12 @@ export function ChartEvidenceIndicator({ label, series }: { readonly label: stri
   return <EvidenceDisclosure label={`${label} evidence: ${status.summary}`} attention={status.attention}>
     {status.rows.length ? <ul>{status.rows.map((row, index) => <li key={index}>{row.label}: {row.state} · {row.observed} observed of {row.total} loaded sample buckets{row.missing ? ` · ${row.missing} missing` : ""}.</li>)}</ul>
       : <p>No source series was returned for this chart. Check collection and target access, then refresh.</p>}
+    {status.rows.length > 0 && status.attention && <>
+      <p>Check the selected window, collection settings and target access, then refresh. Refresh cannot recreate missing historical samples.</p>
+      {status.rows.some(row => row.observed > 0) && <p>Received observations remain visible; their source state still applies.</p>}
+      {status.rows.some(row => row.state === "disabled") && <p>Target Administrator access is required to enable disabled collection for this server.</p>}
+      {status.rows.some(row => row.state === "unsupported") && <p>Unsupported sources require a supported collector and platform; refreshing alone does not add source support.</p>}
+    </>}
     <p>Counts describe the loaded buckets. They do not establish continuous coverage, freshness, or a health verdict. Missing observations remain gaps.</p>
   </EvidenceDisclosure>;
 }

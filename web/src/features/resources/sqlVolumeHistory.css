@@ -6,8 +6,5 @@
 .volume-window-history .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
 .volume-window-history td small { display: block; margin-top: .3rem; }
 .volume-history-chart { min-width: 0; margin-inline: 0; }
-.volume-history-chart-area { overflow-x: auto; }
-.volume-history-chart-area:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.volume-history-chart svg { display: block; width: 100%; min-width: 650px; height: auto; }
 .volume-history-chart figcaption { margin-block: .5rem; }
 @media (max-width: 560px) { .volume-window-history, .panel.volume-history-subpanel { padding: 14px; } }

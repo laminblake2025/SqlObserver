@@ -8,13 +8,15 @@ import { useOverviewAnalytics } from './useOverviewAnalytics';
 import { OverviewChart } from './OverviewChart';
 import { FleetServerGrid } from './FleetServerGrid';
 import type { OverviewResource, OverviewScope, OverviewSnapshot } from './overviewTypes';
+import { ChartAlignmentControls } from '../../components/ChartAlignmentControls.tsx';
+import { chartInspectionHref, readChartInspection } from '../../components/chartInspectionModel.ts';
+import { useChartInspection } from '../../components/useChartInspection.ts';
 
 const labels:Record<string,string>={'host.cpu.percent':'Host CPU','host.memory.available_bytes':'Available host memory','host.volume.free_bytes':'Volume free space','host.volume.read_latency_ms':'Volume read latency','host.volume.write_latency_ms':'Volume write latency','replication.latency_seconds':'Replication latency (worst subscription)'};
 export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd:()=>void;canAddServer:boolean}) {
   const {mode}=useTimeDisplay();
   const timeLabel=(value:string)=>formatDisplayTime(value,mode);
-  const scope=readOverviewScope(location.hash);
-  const [crosshairUtc,setCrosshairUtc]=useState<string|null>(null);
+  const selectionHash=location.hash, scope=readOverviewScope(selectionHash);
   const [workload,setWorkload]=useState('engine.batch_requests_per_second');
   const [workloadView,setWorkloadView]=useState<'server'|'database'>('database');
   const [resourceMetric,setResourceMetric]=useState('host.cpu.percent');
@@ -22,6 +24,12 @@ export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd
   const [serverSearch,setServerSearch]=useState('');
   const [groupingRefresh,setGroupingRefresh]=useState(0);
   const result=useOverviewAnalytics(scope,refresh+groupingRefresh); const data=result.data;
+  const controlsContext=JSON.stringify([scope.target,scope.range,scope.from,scope.to,scope.databaseId,scope.compare]);
+  const alignmentContext=JSON.stringify([controlsContext,selectionHash]);
+  const requestedChartAt=readChartInspection(selectionHash);
+  const inspection=useChartInspection(alignmentContext,data?.fromUtc,data?.toUtc,requestedChartAt);
+  const crosshairUtc=inspection.crosshairUtc;
+  const setCrosshairUtc=(utc:string|null)=>{if(location.hash===selectionHash)inspection.setCrosshairUtc(utc);};
   // Keep the authorized selector choices while evidence reloads; no old evidence is shown under a new selection.
   const [choices,setChoices]=useState(data?.targets??[]);
   if (data && choices!==data.targets) setChoices(data.targets);
@@ -51,7 +59,11 @@ export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd
       ? `Refreshing analytics… Showing the previous snapshot window ${timeLabel(data.fromUtc)} to ${timeLabel(data.toUtc)}, refreshed ${timeLabel(data.refreshedAtUtc)}.`
       : `Loading analytics for ${scope.target?'the selected server':'all authorized servers'}…`}</p>}
     {result.error&&<p role="alert" className="status-message">{result.error}</p>}
-    {data&&<><div className="overview-coverage" role="status"><span className={current===data.evidence.length?'coverage-dot':'coverage-dot partial'}/><strong>{current}/{data.evidence.length} servers reporting current SQL core evidence</strong><span>{data.excludedTargets} disabled/retired excluded from All servers</span><small>Refreshed {timeLabel(data.refreshedAtUtc)} · SQL core freshness does not imply coverage for other sources</small></div>
+    {data&&<><ChartAlignmentControls key={controlsContext} context={controlsContext} label="Fleet" fromUtc={data.fromUtc} toUtc={data.toUtc}
+      requestedUtc={requestedChartAt} crosshairUtc={crosshairUtc}
+      onAlign={utc=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash,utc);}}
+      onClear={()=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
+      <div className="overview-coverage" role="status"><span className={current===data.evidence.length?'coverage-dot':'coverage-dot partial'}/><strong>{current}/{data.evidence.length} servers reporting current SQL core evidence</strong><span>{data.excludedTargets} disabled/retired excluded from All servers</span><small>Refreshed {timeLabel(data.refreshedAtUtc)} · SQL core freshness does not imply coverage for other sources</small></div>
       {data.targets.length===0?<section className="panel overview-panel"><h2>Start monitoring your SQL environment</h2><p>{canAddServer ? "Add a server to see workload trends, contention, and operational evidence." : "A Target Administrator with all-target access can add a server."}</p>{canAddServer ? <button onClick={onAdd}>+ Add server</button> : null}</section>:<>
       <div className="kpi-grid overview-kpis"><section className="kpi"><p>Instances needing attention</p><strong>{data.evidence.some(e=>e.activeAlerts.value!==null||e.blockedSessions.value!==null)?new Set(data.evidence.filter(e=>e.issues.length).map(e=>e.targetId)).size:'—'}</strong><small>Observed exceptions · monitoring gaps shown separately</small></section>{([['activeAlerts','Active alerts'],['blockedSessions','Blocked sessions now'],['deadlocks','Deadlocks in window']] as const).map(([key,label])=>{const total=aggregateValue(data.evidence,key);return <section className="kpi" key={key}><p>{label}</p><strong>{total.text}</strong><small>{total.note}</small></section>;})}</div>
       <div className="overview-main"><section className="panel overview-panel"><div className="overview-panel-heading"><div><p className="eyebrow">WORKLOAD</p><h2>How busy is your SQL environment?</h2></div><div className="overview-workload-controls"><label>Metric<select aria-label="Workload metric" value={workloadMetric} onChange={e=>setWorkload(e.target.value)}>{databaseBreakdown?<option value="activity.user_sessions">Observed user sessions by database</option>:<><option value="engine.batch_requests_per_second">Batch requests / sec</option><option value="engine.user_connections">Connections</option></>}</select></label>{scope.target&&<label>Break down by<select aria-label="Workload breakdown" value={workloadView} onChange={e=>setWorkloadView(e.target.value as 'server'|'database')}><option value="database">Database</option><option value="server">Server</option></select></label>}</div></div><OverviewChart series={allSeries.filter(s=>s.metric===workloadMetric)} previous={previous.filter(s=>s.metric===workloadMetric)} fromUtc={data.fromUtc} toUtc={data.toUtc} {...chartInteraction}/>{databaseBreakdown?<small>Observed user sessions are grouped by database context, including idle user sessions. Server-wide batch requests/sec cannot be attributed to individual databases.{databaseSeriesPartial?' The busiest database series are shown when the database count exceeds the bounded overview limit.':''}</small>:workload.endsWith('per_second')&&<small>Rates require two successful samples with the same engine start marker. Older history without the marker is unavailable.</small>}</section>

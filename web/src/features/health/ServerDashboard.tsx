@@ -21,7 +21,9 @@ import { AgentFailureEvidence } from "../operations/AgentFailureHistoryPanel.tsx
 import { useChartReferences } from "../overview/useChartReferences.ts";
 import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, readDashboardTimelineSelection, readAlertLifecycleTimelineIdentity,
   type DashboardTimelineSelection } from "../../components/dashboardTimelineSelectionModel.ts";
-import { utcMicroseconds } from "../../utcTimestamp.ts";
+import { ChartAlignmentControls } from "../../components/ChartAlignmentControls.tsx";
+import { chartInspectionHref, readChartInspection } from "../../components/chartInspectionModel.ts";
+import { useChartInspection } from "../../components/useChartInspection.ts";
 import { DashboardBaselineCards } from "./DashboardBaselineCards.tsx";
 import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.tsx";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
@@ -39,9 +41,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
-  const inspectionKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
-  const [hover, setHover] = useState<{ readonly key: string; readonly utc: string | null }>();
-  const setCrosshairUtc = (utc: string | null) => setHover({ key: inspectionKey, utc });
+  const inspectionKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId, scope.compare]);
+  const requestedChartAt = readChartInspection(selectionHash);
   const requestedSelection = readDashboardTimelineSelection(selectionHash, instanceId);
   const selectedScope = { ...scope, target: instanceId };
   const result = useOverviewAnalytics(selectedScope, refresh, targetRevision);
@@ -89,15 +90,10 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     })),
   ], timelineWindow.fromUtc, timelineWindow.toUtc,pinnedExactEvent) : [];
   const restoredEvent = requestedSelection && timelineEvents.find(event => matchesDashboardTimelineSelection(requestedSelection, event));
-  const hoveredUtc = hover?.key === inspectionKey ? hover.utc : null;
-  const inWindow = (value: string | null | undefined) => {
-    if (!value || !timelineWindow) return false;
-    try {
-      const utc = (time: string) => utcMicroseconds(time.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"));
-      return utc(value) >= utc(timelineWindow.fromUtc) && utc(value) < utc(timelineWindow.toUtc);
-    } catch { return false; }
-  };
-  const crosshairUtc = inWindow(hoveredUtc) ? hoveredUtc : restoredEvent?.timeUtc ?? null;
+  const alignmentContext = JSON.stringify([inspectionKey, selectionHash]);
+  const inspection = useChartInspection(alignmentContext, timelineWindow?.fromUtc, timelineWindow?.toUtc, requestedChartAt, restoredEvent?.timeUtc);
+  const crosshairUtc = inspection.crosshairUtc;
+  const setCrosshairUtc = (utc: string | null) => { if (location.hash === selectionHash) inspection.setCrosshairUtc(utc); };
   const selectTimeline = (selection: DashboardTimelineSelection | undefined) => {
     if (location.hash !== selectionHash) return;
     setCrosshairUtc(null);
@@ -138,6 +134,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     <h4>{label}</h4>
     <ChartEvidenceIndicator label={label} series={evidence?.series.filter(series => series.metric === metric) ?? []} />
     <OverviewChart
+      scrollablePlotLabel={`${label} plot`}
       series={evidence?.series.filter(series => series.metric === metric) ?? []}
       previous={previous?.series.filter(series => series.metric === metric)}
       fromUtc={data!.fromUtc}
@@ -174,7 +171,11 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || alerts.list.loading || alerts.detail.loading || agentHistory.loading}
         sourceNotes={timelineNotes} blocking={{ evidence: blockingEvidence, targetRevision, onInspect: inspectBlocker }} />
     </>}
-    {timelineWindow&&<><DashboardTimeline events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
+    {timelineWindow&&<><ChartAlignmentControls key={inspectionKey} context={inspectionKey} label="Dashboard" headingLevel={4} {...timelineWindow}
+      requestedUtc={requestedChartAt} crosshairUtc={crosshairUtc}
+      onAlign={utc=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash,utc);}}
+      onClear={()=>{if(location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
+      <DashboardTimeline events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
       selection={requestedSelection} onSelectionChange={selectTimeline} pinnedExactEvent={pinnedExactEvent}
       loading={timeline.loading||alerts.list.loading||alerts.detail.loading}
       onSelectWindow={window=>{setCrosshairUtc(null);change({range:"custom",from:window.fromUtc,to:window.toUtc});}}
@@ -202,6 +203,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
           <h4>Memory pressure</h4>
           <ChartEvidenceIndicator label="Memory pressure" series={memorySeries(evidence)} />
           <OverviewChart
+            scrollablePlotLabel="Memory pressure plot"
             series={memorySeries(evidence)}
             previous={memorySeries(previous)}
             references={chartReferences.references}
