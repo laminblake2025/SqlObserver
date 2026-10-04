@@ -1,4 +1,3 @@
-using System.Data;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Principal;
@@ -20,20 +19,6 @@ namespace SqlObserver.IntegrationTests.SqlServer;
 public sealed class PairedCpuNativeQualificationTests(ITestOutputHelper output)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private const string IdentityAttestationSql = """
-        SET NOCOUNT ON;
-        SELECT
-          CONVERT(bit, CASE WHEN SUSER_SID() = @expected_sid THEN 1 ELSE 0 END),
-          CONVERT(bit, CASE WHEN SUSER_SID(ORIGINAL_LOGIN()) = @expected_sid THEN 1 ELSE 0 END),
-          CONVERT(bit, CASE WHEN IS_SRVROLEMEMBER(N'sysadmin') = 0 THEN 1 ELSE 0 END),
-          CONVERT(bit, CASE WHEN CONNECTIONPROPERTY(N'auth_scheme') IN (N'KERBEROS', N'NTLM') THEN 1 ELSE 0 END),
-          CONVERT(bit, CASE WHEN CONNECTIONPROPERTY(N'net_transport') = N'TCP' THEN 1 ELSE 0 END),
-          CONVERT(bit, CASE WHEN (SELECT encrypt_option FROM sys.dm_exec_connections
-             WHERE session_id = @@SPID AND parent_connection_id IS NULL) = N'TRUE' THEN 1 ELSE 0 END),
-          CONVERT(bit, CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, N'CONTROL SERVER') = 0 THEN 1 ELSE 0 END),
-          CONVERT(bit, CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, N'ALTER ANY LOGIN') = 0 THEN 1 ELSE 0 END);
-        """;
-
     [Fact]
     [Trait("Category", "RequiresSqlServer")]
     [Trait("Category", "RequiresPairedCpuQualification")]
@@ -124,11 +109,16 @@ public sealed class PairedCpuNativeQualificationTests(ITestOutputHelper output)
         var reader = new SqlServerCpuTargetWitnessReader(context.Contract.Key);
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
         int started = 0;
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-            await reader.ReadBracketAsync(context.Contract.ExecutionRequest(context.Profile), (witness, token) =>
-            {
-                started++; return context.Native.StartOperation(context.Contract.Host, witness, token);
-            }, cancellation.Token));
+        byte[] sidBytes = MonitorSidBytes(context.Contract);
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await reader.ReadAttestedBracketAsync(context.Contract.ExecutionRequest(context.Profile), sidBytes, (witness, token) =>
+                {
+                    started++; return context.Native.StartOperation(context.Contract.Host, witness, token);
+                }, cancellation.Token));
+        }
+        finally { CryptographicOperations.ZeroMemory(sidBytes); }
         Assert.Equal(0, started);
         Emit("pre_cancelled_request", new { nativeStarterCalls = started, requestCancelled = true,
             qualifiesNativeProviderCancellation = false, targetComparisonAdmitted = false });
@@ -164,49 +154,66 @@ public sealed class PairedCpuNativeQualificationTests(ITestOutputHelper output)
         Assert.True(profile.Permissions.Any(item => item.PermissionId.Value == required &&
             item.Scope == PermissionEvidenceScope.Server && item.Outcome == PermissionEvidenceOutcome.Granted),
             "Actual discovery did not grant the version-specific CPU witness state permission.");
-        await AttestSqlMonitorIdentityAsync(contract);
         return new(contract, profile, new WindowsCpuAssociationSamplingReader(
             new WindowsCpuTcpAssociationReader(contract.Key), new WindowsTargetCpuPairReader(contract.Key)));
     }
 
-    private async Task AttestSqlMonitorIdentityAsync(PairedCpuQualificationLabContract contract)
+    private async Task<SqlCpuWitnessBracket<WindowsCpuAssociationSamplingResult>> CaptureAsync(Context context)
     {
-        if (!OperatingSystem.IsWindows()) throw new XunitException("SQL monitor attestation requires the Windows monitoring token.");
-        byte[] sidBytes;
-        try { var sid = new SecurityIdentifier(contract.ExpectedWindowsSid); sidBytes = new byte[sid.BinaryLength]; sid.GetBinaryForm(sidBytes, 0); }
-        catch (ArgumentException) { throw new XunitException("The configured Windows monitor identity is not a valid native SID; configured identity is withheld."); }
+        byte[] sidBytes = MonitorSidBytes(context.Contract);
         try
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await using SqlConnection connection = await new SqlServerIntegratedConnectionFactory()
-                .OpenConnectionAsync(contract.Policy, deadline.Token);
-            await using SqlCommand command = connection.CreateCommand(); command.CommandTimeout = 5; command.CommandText = IdentityAttestationSql;
-            command.Parameters.Add("expected_sid", SqlDbType.VarBinary, sidBytes.Length).Value = sidBytes;
-            await using var rows = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, deadline.Token);
-            Assert.Equal(8, rows.FieldCount); Assert.True(await rows.ReadAsync(deadline.Token), "SQL monitor attestation returned no row.");
-            bool currentMatched = rows.GetBoolean(0), originalMatched = rows.GetBoolean(1), nonSysadmin = rows.GetBoolean(2),
-                integrated = rows.GetBoolean(3), tcp = rows.GetBoolean(4), encrypted = rows.GetBoolean(5),
-                noControlServer = rows.GetBoolean(6), noAlterAnyLogin = rows.GetBoolean(7);
-            Assert.False(await rows.ReadAsync(deadline.Token), "SQL monitor attestation returned ambiguous rows.");
-            Emit("separate_sql_identity_preflight", new { currentIdentityMatched = currentMatched, originalIdentityMatched = originalMatched,
-                nonSysadmin, integrated, tcp, encrypted, noControlServer, noAlterAnyLogin, attestsOwnedBracketSessionIdentity = false });
-            Assert.True(currentMatched && originalMatched && nonSysadmin && integrated && tcp && encrypted && noControlServer && noAlterAnyLogin,
-                "The separate production SQL connection did not attest the configured current/original monitor SID, non-sysadmin context without CONTROL SERVER/ALTER ANY LOGIN, and integrated encrypted TCP. Private identities are withheld.");
+            CollectorExecutionRequest request = context.Contract.ExecutionRequest(context.Profile);
+            var captured = await new SqlServerCpuTargetWitnessReader(context.Contract.Key).ReadAttestedBracketAsync(
+                request, sidBytes, (witness, token) =>
+                    context.Native.StartOperation(context.Contract.Host, witness, token), CancellationToken.None);
+            foreach (var identity in new[] { captured.BeforeIdentity, captured.AfterIdentity })
+            {
+                Assert.Equal(request.TargetId, identity.TargetId); Assert.Equal(request.TargetRevision, identity.TargetRevision);
+                Assert.Equal(request.RunId, identity.RunId);
+                Assert.Equal(captured.Bracket.Before.ConnectionSessionId, identity.ConnectionSessionId);
+                Assert.Equal(captured.Bracket.Before.ClientConnectionId, identity.ClientConnectionId);
+                Assert.Equal(captured.Bracket.Before.TcpConnection!.ServerConnectionId, identity.ServerConnectionId);
+                Assert.Equal(captured.Bracket.Before.TcpConnection.ServerSessionId, identity.ServerSessionId);
+                Assert.True(identity.CurrentIdentityMatched && identity.OriginalIdentityMatched && identity.NonSysadmin &&
+                    identity.Integrated && identity.Tcp && identity.Encrypted && identity.NoControlServer && identity.NoAlterAnyLogin,
+                    "The owned bracket did not attest the configured monitor identity and bounded security context; private identities are withheld.");
+            }
+            Assert.Equal(1, captured.BeforeIdentity.Ordinal); Assert.Equal(2, captured.AfterIdentity.Ordinal);
+            Assert.True(captured.BeforeIdentity.ObservedAtUtc <= captured.Bracket.Before.SourceObservedAtUtc);
+            Assert.True(captured.AfterIdentity.ObservedAtUtc >= captured.Bracket.After.SourceObservedAtUtc);
+            Emit("owned_sql_identity_attestation", new
+            {
+                attestsOwnedBracketSessionIdentity = true, bothContextsMatchedRequest = true,
+                beforeObservedUtc = captured.BeforeIdentity.ObservedAtUtc, afterObservedUtc = captured.AfterIdentity.ObservedAtUtc,
+                beforeOrdinal = captured.BeforeIdentity.Ordinal, afterOrdinal = captured.AfterIdentity.Ordinal,
+                currentIdentityMatched = captured.BeforeIdentity.CurrentIdentityMatched && captured.AfterIdentity.CurrentIdentityMatched,
+                originalIdentityMatched = captured.BeforeIdentity.OriginalIdentityMatched && captured.AfterIdentity.OriginalIdentityMatched,
+                nonSysadmin = captured.BeforeIdentity.NonSysadmin && captured.AfterIdentity.NonSysadmin,
+                integrated = captured.BeforeIdentity.Integrated && captured.AfterIdentity.Integrated,
+                tcp = captured.BeforeIdentity.Tcp && captured.AfterIdentity.Tcp,
+                encrypted = captured.BeforeIdentity.Encrypted && captured.AfterIdentity.Encrypted,
+                noControlServer = captured.BeforeIdentity.NoControlServer && captured.AfterIdentity.NoControlServer,
+                noAlterAnyLogin = captured.BeforeIdentity.NoAlterAnyLogin && captured.AfterIdentity.NoAlterAnyLogin,
+                completeLeastPrivilegeAudit = false, targetComparisonAdmitted = false,
+            });
+            return captured.Bracket;
         }
         catch (XunitException) { throw; }
-        catch (Exception failure) { throw SafeFailure("separate_sql_identity_preflight", failure); }
+        catch (Exception failure) { throw SafeFailure("owned_sql_tcp_cpu_tcp_attested_bracket", failure); }
         finally { CryptographicOperations.ZeroMemory(sidBytes); }
     }
 
-    private async Task<SqlCpuWitnessBracket<WindowsCpuAssociationSamplingResult>> CaptureAsync(Context context)
+    private static byte[] MonitorSidBytes(PairedCpuQualificationLabContract contract)
     {
+        if (!OperatingSystem.IsWindows()) throw new XunitException("SQL monitor attestation requires the Windows monitoring token.");
         try
         {
-            return await new SqlServerCpuTargetWitnessReader(context.Contract.Key).ReadBracketAsync(
-                context.Contract.ExecutionRequest(context.Profile), (witness, token) =>
-                    context.Native.StartOperation(context.Contract.Host, witness, token), CancellationToken.None);
+            var sid = new SecurityIdentifier(contract.ExpectedWindowsSid);
+            var bytes = new byte[sid.BinaryLength]; sid.GetBinaryForm(bytes, 0); return bytes;
         }
-        catch (Exception failure) { throw SafeFailure("owned_sql_tcp_cpu_tcp_bracket", failure); }
+        catch (ArgumentException)
+        { throw new XunitException("The configured monitor SID is invalid; private identity is withheld."); }
     }
 
     private static void AssertCandidate(Context context, SqlCpuWitnessBracket<WindowsCpuAssociationSamplingResult> capture)

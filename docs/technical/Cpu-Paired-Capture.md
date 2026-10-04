@@ -28,6 +28,36 @@ process ID are distinct continuity evidence. The SQL source reports the SQL PID;
 the source owner captures its own collector PID. Local helpers accept fixed,
 bounded reads, not arbitrary scripts, counter paths, remote hosts or credentials.
 
+The identity-attested read path additionally checks the independently provisioned
+monitor SID against SQL's current and original login on this same owned
+connection before and after native sampling. Both boundaries require integrated
+encrypted TCP, a non-sysadmin context and no effective `CONTROL SERVER` or
+`ALTER ANY LOGIN`. The typed evidence contains comparison booleans and exact
+capture context, without returning raw SIDs or login names. A separate discovery
+connection or Windows process-token check cannot substitute for either boundary.
+
+These are actor and connection binding checks. They do not prove uninterrupted
+permissions or absence of all elevated grants, qualify the native fault/version
+matrix, establish hardware identity, or change CPU comparison admission. SQL's
+[SUSER_SID](https://learn.microsoft.com/en-us/sql/t-sql/functions/suser-sid-transact-sql)
+reflects the current execution context; [ORIGINAL_LOGIN](https://learn.microsoft.com/en-us/sql/t-sql/functions/original-login-transact-sql)
+identifies the original connecting login. Missing or mismatched evidence fails
+closed; it is not replaced with the expected identity.
+
+This is the internal opt-in `ReadAttestedBracketAsync` path used by the native
+qualification harness. It returns `SqlCpuAttestedWitnessBracket<T>` with the
+ordinary bracket and separate `BeforeIdentity`/`AfterIdentity` proofs. The order
+is identity-before, SQL before-witness, native completion and disposal, SQL
+after-witness, then identity-after, all under the original capture deadline.
+An initial identity refusal starts no native sampler; a final refusal publishes
+no successful bracket.
+
+Public `ReadBracketAsync` remains deliberately unattested. The existing staged
+`PairedCpuCaptureSource`, private schema-1 capture writer and diagnostic history
+are unchanged. Their retained rows do not gain identity proofs through this
+change. The fixed application identity query does not alter the pinned v1/v2
+SQL witness assets or accept an arbitrary script or qualification flag.
+
 A candidate requires complete bounded IPv4 and IPv6 owner tables and exactly one
 established SQL-owned server tuple plus its collector-owned reverse at both
 captures. Same-handle process creation epochs and explicit `WAIT_TIMEOUT` liveness
@@ -184,9 +214,10 @@ or continuity claim is stored.
 
 The [native qualification guide](../../tools/qualification/paired-cpu/native-sql-qualification.md)
 defines the opt-in monitor identity, independently provisioned host binding,
-separate SQL identity preflight, exact commands and limited scenario assertions.
-The separate preflight is not SID attestation on the owned bracket session or a
-complete grants audit.
+same-owned-session before/after SQL identity evidence, exact commands and limited
+scenario assertions. Process-token checks and capability discovery remain
+separate prerequisites. A pre-cancelled capture produces no bracket identity
+proof, and a successful identity pair is not a complete grants audit.
 
 The broader native matrix remains open: actual SQL Server 2019/2022/2025 under the
 monitor identity, wrong-host/remote/multiple-instance and denied-permission cases,

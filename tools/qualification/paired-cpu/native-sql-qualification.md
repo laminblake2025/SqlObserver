@@ -61,7 +61,7 @@ or a checked-in shell script.
 | `SQLOBSERVER_CPU_EXPECTED_HOST_FINGERPRINT` | Independently provisioned nonzero 64-character lowercase-hex UUID-derived host HMAC for the selected target. |
 | `SQLOBSERVER_CPU_FINGERPRINT_KEY` | Secret nonzero 64-character lowercase-hex fingerprint key matching that host binding. |
 | `SQLOBSERVER_CPU_EXPECTED_SQL_MAJOR` | `15`, `16` or `17` for SQL Server 2019, 2022 or 2025. |
-| `SQLOBSERVER_CPU_EXPECTED_WINDOWS_SID` | Independently provisioned SID of the intended monitoring Windows identity. The harness compares it with the actual process identity and SQL preflight identity evidence. |
+| `SQLOBSERVER_CPU_EXPECTED_WINDOWS_SID` | Independently provisioned SID of the intended monitoring Windows identity. The harness compares it with the actual process identity and requires current/original SQL identity matches on the owned capture connection before and after native sampling. |
 
 There is no connection-string, password, caller PID, certificate-trust bypass or
 native-qualification input. Run from the repository root under the monitoring
@@ -98,23 +98,44 @@ by this invocation.
 
 ## What the scenario observes
 
-The harness performs a separate SQL monitor preflight through the production
-connection factory. It compares the expected Windows SID with the actual process
-identity and compares SQL current/original login SIDs, recording comparison
-booleans rather than raw principal identities. All eight SQL preflight checks
-must pass: current SID matched, original SID matched, non-sysadmin context,
-integrated authentication, TCP transport, encrypted transport, effective
-`CONTROL SERVER` absent and effective `ALTER ANY LOGIN` absent. The last two
-checks use `HAS_PERMS_BY_NAME`; the harness does not remove grants or bypass a
-failed permission check. SQL's `SUSER_SID()` refers to the
-current context; `SUSER_SID(ORIGINAL_LOGIN())` checks the original login lookup.
-Lookup or collation failure remains a gap, not a reason to disable validation.
-See [Microsoft's SUSER_SID documentation](https://learn.microsoft.com/en-us/sql/t-sql/functions/suser-sid-transact-sql).
+The harness checks the actual Windows process token and performs production
+capability discovery. Those checks remain separate from SQL capture-session
+identity. It no longer opens another SQL connection for an identity preflight.
+Both actual-capture cases require identity evidence before and after native
+sampling on the same connection owned by the SQL witness reader.
 
-This separate preflight does not attest the SID on the connection subsequently
-owned by the SQL bracket. The two effective-permission exclusions narrow the
-permitted monitoring context; they are not a complete grants or least-privilege
-audit. Preserve that distinction when reporting the result.
+The harness uses the internal opt-in `ReadAttestedBracketAsync` path. Its
+`SqlCpuAttestedWitnessBracket<T>` contains the ordinary `Bracket` plus
+`BeforeIdentity` and `AfterIdentity`. The sequence is identity-before, SQL
+before-witness, native completion and disposal, SQL after-witness, then
+identity-after. Both identity receipts must bind the execution and the witness
+connection. Missing, mismatched or refused evidence prevents publication; an
+initial refusal starts no native sampler.
+
+All eight identity checks must pass at each boundary: current SID matched,
+original SID matched, non-sysadmin context, integrated authentication, TCP
+transport, encrypted transport, effective `CONTROL SERVER` absent and effective
+`ALTER ANY LOGIN` absent. Only comparison booleans are reported; principal names,
+SID bytes and the configured SID are withheld. SQL's `SUSER_SID()` identifies the
+current security context, including impersonation; `SUSER_SID(ORIGINAL_LOGIN())`
+looks up the login that originally connected. Lookup or collation failure is a
+refusal, not permission to disable validation. See Microsoft's
+[SUSER_SID](https://learn.microsoft.com/en-us/sql/t-sql/functions/suser-sid-transact-sql)
+and [ORIGINAL_LOGIN](https://learn.microsoft.com/en-us/sql/t-sql/functions/original-login-transact-sql)
+documentation.
+
+This binds the observed actor checks to the actual capture connection. It is not
+a complete grants audit, proof of unchanged permissions between probes, or
+qualification of every SQL version, native provider or failure scenario. The two
+effective-permission exclusions narrow the accepted monitoring context without
+establishing universal least privilege.
+
+The public `ReadBracketAsync` path remains deliberately unattested. Existing
+`PairedCpuCaptureSource`, schema-1 persistence and retained diagnostic API are
+unchanged; older or ordinary capture receipts must not be described as carrying
+this new identity pair. The v1/v2 pinned witness SQL assets are unchanged. The
+opt-in identity query is fixed application code and accepts only the privately
+copied expected SID, not a caller-supplied script or qualification flag.
 
 The SQL reader holds one connection while collecting the before-witness,
 TCP-before, raw CPU pair, TCP-after and SQL after-witness. It uses the pinned SQL
@@ -140,8 +161,9 @@ reader's original request budget, at most 30 seconds. Each child must stop and
 dispose before the next stage. Cancellation does not prove termination: unproven
 termination or cleanup retains ownership and quarantines that target. A late
 payload cannot become a successful sample or authorize an overlapping retry.
-These are capture budgets, not a 30-second limit for discovery, the separate
-identity preflight and the entire test invocation together.
+These are capture budgets, not a 30-second limit for discovery and the entire
+test invocation together. The capture's same-session identity reads are inside
+its original budget.
 
 ## Scenario assertions and recorded evidence
 
@@ -149,9 +171,9 @@ The native class contains three separately reported cases:
 
 | Case | Required result; limited scope |
 |---|---|
-| `ActualSqlAndLocalNativeSocketProcessEvidenceProduceOnlyACandidate` | Actual complete captures and a positive `CandidateLocalAssociation` are required. A missing/ambiguous/denied native association fails this case. It does not require usable PDH process arithmetic and does not bless it. |
-| `ActualCandidateRawCountersHaveIndependentArithmeticEligibilityWithoutAdmission` | A positive candidate is required again. The original staged evidence keeps process arithmetic unavailable with `SourceQualificationAbsent`; independent OS arithmetic must be available. Only after that actual candidate, a separately labelled test-only numerical view must produce available process and OS arithmetic with matched native intervals. Missing counters or interval mismatch fail this case. Raw counter objects/timestamps are unchanged, and the original source evidence remains unqualified. |
-| `PreCancelledRequestNeverStartsNativeSamplingAndDoesNotQualifyProviderCancellation` | A request cancelled before capture must start no native child. Discovery and separate identity preflight still run. This does not test cancellation while a native provider or helper is active. |
+| `ActualSqlAndLocalNativeSocketProcessEvidenceProduceOnlyACandidate` | Actual complete captures, the validated same-session identity pair and a positive `CandidateLocalAssociation` are required. A missing/ambiguous/denied native association fails this case. It does not require usable PDH process arithmetic and does not bless it. |
+| `ActualCandidateRawCountersHaveIndependentArithmeticEligibilityWithoutAdmission` | The validated same-session identity pair and a positive candidate are required again. The original staged evidence keeps process arithmetic unavailable with `SourceQualificationAbsent`; independent OS arithmetic must be available. Only after that actual candidate, a separately labelled test-only numerical view must produce available process and OS arithmetic with matched native intervals. Missing counters or interval mismatch fail this case. Raw counter objects/timestamps are unchanged, and the original source evidence remains unqualified. |
+| `PreCancelledRequestNeverStartsNativeSamplingAndDoesNotQualifyProviderCancellation` | A request cancelled before capture must start no native child. Process identity and discovery still run; no SQL bracket identity proof is produced. This does not test cancellation while a native provider or helper is active. |
 
 The test-only numerical view changes the declared numerical provenance for the
 arithmetic assertion; it is not returned as a newly admitted production source.
@@ -161,7 +183,7 @@ qualification report.
 
 xUnit output uses the prefix `PAIRED_CPU_NATIVE_EVIDENCE`, followed by bounded JSON
 with the envelope `{schemaVersion: 1, scenario, evidence}`. The scenario records
-process-identity and separate SQL-identity comparison booleans, observed discovery
+process-identity and owned before/after SQL-identity comparison booleans, observed discovery
 outcomes, candidate/gap reasons, clock/process epochs, raw counter types/statuses/
 time bases/decimal-string values, table accounting and explicit absent-admission
 results. The separate records `original_staged_arithmetic` and

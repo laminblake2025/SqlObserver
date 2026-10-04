@@ -1310,3 +1310,25 @@ Two complete failed attempts preserve source/logs/reports/traces/captures. Repai
 Evidence: `artifacts/dashboard-availability-access-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md`, `manual-review.json` and `index.html`. Access lifetime and diagnostic limits: `docs/technical/Availability-Evidence-Access-Ownership.md`. Final local identity is recorded in `commit.json`. Original17,092 design files and both supplied plans remain hash-verified unchanged.
 
 Native paired CPU comparison, running/long-running Agent access/association/duration and physical failover source/admission remain unfinished requirements. Synthetic UI evidence does not qualify native SQL Server behavior. The configured SSH route remains unavailable; corrected host/network details are pending and no unchanged probe was repeated. The optional assistant is nonblocking. The broader dashboard and original repository plan remain active. No production migration/deployment, GitHub push or upload occurred.
+
+## CPU identity on the owned capture connection — 2026-10-04 UTC
+
+The next source qualification dependency closes the native harness's separate-connection identity gap. Independent source and test owners implemented the opt-in attested bracket; a diagnostic/documentation reviewer checked the final seams, and the lead integrated and qualified frozen inputs serially. The ordinary public CPU capture remains unattested. Existing pinned SQL witness assets, schema1 persistence, retained diagnostics, UI and absent-admission contracts retain their current semantics.
+
+The fixed parameterized identity query runs on the same SQL connection before witness1 and after witness2. Native TCP/CPU/TCP work completes and disposes before witness2 and final identity checks. Both typed receipts require all eight actor/security comparisons and bind target/revision/run, source UTC, owned session, SqlClient connection and actual SQL connection/session identities within their own namespaces. Bounded SID copies are made before await, withheld from receipts/errors and cleared after use. Missing, malformed, denied, mismatched or inconsistently timed evidence refuses an attested result. Initial refusal starts no native helper. The original capture deadline, cancellation, cleanup and quarantine remain in effect.
+
+**413/413 selected managed cases pass**, with no failures, skipped cases or retries:360 full affected CPU cases, including60 new identity cases, and53 native environment-contract cases. The updated native harness's three live facts compiled but were not executed; managed evidence is not native identity proof or source admission. Whitespace passes. Each complete owner matches the final1281 recorded source/tool inputs; no exceptions or passing subsets were used.
+
+| Requested requirement | Result for this checkpoint |
+|---|---|
+| Independent owners / one lead | Separate source, tests and diagnostic/docs lanes; lead integration and serial frozen validation. |
+| Diagnostic-screen review | Necessary CPU capture actor-binding gap repaired; source admission and native matrix remain open. |
+| Interaction tests | Exact typed parsing, eight refusal checks, every identity namespace, sequencing, SID snapshot/wipe, deadline/cancellation, quarantine and ordinary-path regression coverage. |
+| Dark theme / accessibility / responsive | No UI change;768 prior qualified UI inputs and77 screenshots remain byte-identical. Prior203-case UI evidence retained without redundant browser checks. |
+| Final integrated validation | 413 managed cases plus native-harness compilation and whitespace; native cases expressly unexecuted. |
+| Screenshots and summary | Prior22 dedicated and55 affected captures linked with original provenance; current requirement matrix saved locally. |
+| Dashboard scope | CPU source qualification dependency only; no native mutation, permission expansion, migration, source activation or API/UI admission. |
+
+Evidence: `artifacts/dashboard-cpu-owned-identity-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `unchanged-ui.json`, whole-owner source/log/TRX folders and `commit.json`. Native invocation and limits: `tools/qualification/paired-cpu/native-sql-qualification.md` and `docs/technical/Cpu-Paired-Capture.md`. The existing local `sqldm-lab` alias currently has no DNS result; no unchanged IP probe was repeated. No successful native receipt is claimed.
+
+Native CPU supported-version/fault qualification and a reviewed measurement/admission contract remain required for SQL-versus-host trends/API/MCP. Agent activity still needs a usable bounded read path and execution/time qualification before canonical/dashboard integration. AG transitions require a passive retained event source and actual native qualification; physical movement, cause or uninterrupted coverage cannot be invented from snapshot changes. The optional assistant is nonblocking. The broader dashboard and original plan remain active. No production deployment, GitHub push or upload occurred.

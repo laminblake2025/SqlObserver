@@ -42,16 +42,45 @@ public sealed class SqlServerCpuTargetWitnessReader
         Func<SqlCpuTargetWitness, CancellationToken, ICpuNativeSamplingOperation<T>> startNative,
         CancellationToken cancellationToken)
     {
+        var result = await ReadCoreAsync(request, null, startNative, cancellationToken).ConfigureAwait(false);
+        return result.Bracket;
+    }
+
+    internal async ValueTask<SqlCpuAttestedWitnessBracket<T>> ReadAttestedBracketAsync<T>(CollectorExecutionRequest request,
+        ReadOnlyMemory<byte> expectedMonitorSid,
+        Func<SqlCpuTargetWitness, CancellationToken, ICpuNativeSamplingOperation<T>> startNative,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request); ArgumentNullException.ThrowIfNull(startNative);
+        cancellationToken.ThrowIfCancellationRequested();
+        byte[] expected = SqlCpuMonitorIdentityValidation.CopyExpectedSid(expectedMonitorSid.Span);
+        try
+        {
+            var result = await ReadCoreAsync(request, expected, startNative, cancellationToken).ConfigureAwait(false);
+            return new(result.Bracket, result.BeforeIdentity!, result.AfterIdentity!);
+        }
+        finally { CryptographicOperations.ZeroMemory(expected); }
+    }
+
+    private sealed record OwnedResult<T>(SqlCpuWitnessBracket<T> Bracket,
+        SqlCpuMonitorIdentityEvidence? BeforeIdentity, SqlCpuMonitorIdentityEvidence? AfterIdentity);
+
+    private async ValueTask<OwnedResult<T>> ReadCoreAsync<T>(CollectorExecutionRequest request,
+        ReadOnlyMemory<byte>? expectedMonitorSid,
+        Func<SqlCpuTargetWitness, CancellationToken, ICpuNativeSamplingOperation<T>> startNative,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(startNative);
         cancellationToken.ThrowIfCancellationRequested();
         if (!active.TryAdd(request.TargetId.Value, 0))
             throw new InvalidOperationException("A CPU witness operation already owns this target.");
-        try { return await ReadOwnedAsync(request, startNative, cancellationToken).ConfigureAwait(false); }
+        try { return await ReadOwnedAsync(request, expectedMonitorSid, startNative, cancellationToken).ConfigureAwait(false); }
         finally { active.TryRemove(request.TargetId.Value, out _); }
     }
 
-    private async ValueTask<SqlCpuWitnessBracket<T>> ReadOwnedAsync<T>(CollectorExecutionRequest request,
+    private async ValueTask<OwnedResult<T>> ReadOwnedAsync<T>(CollectorExecutionRequest request,
+        ReadOnlyMemory<byte>? expectedMonitorSid,
         Func<SqlCpuTargetWitness, CancellationToken, ICpuNativeSamplingOperation<T>> startNative,
         CancellationToken cancellationToken)
     {
@@ -64,8 +93,25 @@ public sealed class SqlServerCpuTargetWitnessReader
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(request.Timeout.Value < MaximumDuration ? request.Timeout.Value : MaximumDuration);
         await using ISqlCpuWitnessSession session = await source.OpenAsync(request, key, deadline.Token).ConfigureAwait(false);
+        ISqlCpuMonitorIdentitySession? identitySession = null;
+        SqlCpuMonitorIdentityEvidence? beforeIdentity = null, afterIdentity = null;
+        if (expectedMonitorSid is { } expected)
+        {
+            identitySession = session as ISqlCpuMonitorIdentitySession ??
+                throw new InvalidDataException("The owned SQL CPU session cannot attest monitor identity.");
+            beforeIdentity = await identitySession.AttestAsync(expected, 1, deadline.Token).ConfigureAwait(false);
+            RequireIdentityRequest(request, beforeIdentity, 1);
+            SqlCpuMonitorIdentityValidation.RequireAllowed(beforeIdentity);
+            deadline.Token.ThrowIfCancellationRequested();
+        }
         SqlCpuTargetWitness before = await session.ReadAsync(1, deadline.Token).ConfigureAwait(false);
         RequireRequest(request, before, 1);
+        if (beforeIdentity is not null)
+        {
+            SqlCpuMonitorIdentityValidation.RequireWitness(beforeIdentity, before);
+            if (beforeIdentity.ObservedAtUtc > before.SourceObservedAtUtc)
+                throw new InvalidDataException("SQL CPU monitor identity precedes its witness only with consistent source clocks.");
+        }
         deadline.Token.ThrowIfCancellationRequested();
         ICpuNativeSamplingOperation<T> operation = startNative(before, deadline.Token)
             ?? throw new InvalidDataException("Native CPU operation is missing.");
@@ -106,7 +152,14 @@ public sealed class SqlServerCpuTargetWitnessReader
         SqlCpuTargetWitness after = await session.ReadAsync(2, deadline.Token).ConfigureAwait(false);
         RequireRequest(request, after, 2);
         deadline.Token.ThrowIfCancellationRequested();
-        return new(before, native!, after, SqlCpuWitnessContinuity.Evaluate(before, after));
+        if (identitySession is not null)
+        {
+            afterIdentity = await identitySession.AttestAsync(expectedMonitorSid!.Value, 2, deadline.Token).ConfigureAwait(false);
+            RequireIdentityRequest(request, afterIdentity, 2);
+            SqlCpuMonitorIdentityValidation.RequirePair(beforeIdentity!, afterIdentity, before, after);
+            deadline.Token.ThrowIfCancellationRequested();
+        }
+        return new(new(before, native!, after, SqlCpuWitnessContinuity.Evaluate(before, after)), beforeIdentity, afterIdentity);
     }
 
     private static async Task CleanupProofAsync<T>(ICpuNativeSamplingOperation<T> operation, Task cleanup)
@@ -137,6 +190,14 @@ public sealed class SqlServerCpuTargetWitnessReader
             throw new InvalidDataException("SQL CPU witness does not belong to the exact collector execution.");
     }
 
+    private static void RequireIdentityRequest(CollectorExecutionRequest request, SqlCpuMonitorIdentityEvidence receipt, int ordinal)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+        if (receipt.TargetId != request.TargetId || receipt.TargetRevision != request.TargetRevision ||
+            receipt.RunId != request.RunId || receipt.Ordinal != ordinal)
+            throw new InvalidDataException("SQL CPU monitor identity does not belong to the exact collector execution.");
+    }
+
     private static void RequireProfile(CollectorExecutionRequest request)
     {
         CapabilityProfile profile = request.CapabilityProfile;
@@ -160,6 +221,66 @@ public sealed class SqlServerCpuTargetWitnessReader
         IOperationalHealthRowReader reader, IdentityFingerprintKey key, Guid sessionId,
         Guid clientConnectionId, int ordinal, int collectorProcessId, CancellationToken cancellationToken) =>
         ParseCoreAsync(request, reader, key, sessionId, clientConnectionId, ordinal, 2, collectorProcessId, cancellationToken);
+
+    internal static async ValueTask<SqlCpuMonitorIdentityEvidence> ParseMonitorIdentityAsync(CollectorExecutionRequest request,
+        IOperationalHealthRowReader reader, Guid sessionId, Guid clientConnectionId, int ordinal,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request); ArgumentNullException.ThrowIfNull(reader);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (reader.FieldCount != 12 || !await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            throw new InvalidDataException("SQL CPU monitor identity requires exactly one row of its approved width.");
+        SqlCpuMonitorIdentityEvidence receipt;
+        try
+        {
+            if (reader.IsDBNull(0)) throw new InvalidDataException("SQL CPU monitor identity source time is missing.");
+            DateTime observed = reader.GetDateTime(0);
+            if (observed.Kind == DateTimeKind.Local) throw new InvalidDataException("SQL CPU monitor source UTC cannot carry a local kind.");
+            bool Boolean(int field)
+            {
+                if (reader.IsDBNull(field)) throw new InvalidDataException("SQL CPU monitor identity comparison is missing.");
+                return reader.GetBoolean(field);
+            }
+            bool currentMatched = Boolean(1), originalMatched = Boolean(2), nonSysadmin = Boolean(3),
+                integrated = Boolean(4), tcp = Boolean(5), encrypted = Boolean(6),
+                noControlServer = Boolean(7), noAlterAnyLogin = Boolean(8);
+            if (reader.IsDBNull(9)) throw new InvalidDataException("SQL CPU monitor connection identity is missing.");
+            Guid serverConnectionId = reader.GetGuid(9);
+            if (reader.IsDBNull(10)) throw new InvalidDataException("SQL CPU monitor session identity is missing.");
+            int serverSessionId = reader.GetInt32(10);
+            if (reader.IsDBNull(11) || reader.GetInt32(11) != 1)
+                throw new InvalidDataException("SQL CPU monitor identity schema is unsupported.");
+            receipt = new(request.TargetId, request.TargetRevision, request.RunId, sessionId, clientConnectionId,
+                ordinal, new DateTimeOffset(DateTime.SpecifyKind(observed, DateTimeKind.Utc)), serverConnectionId,
+                serverSessionId, currentMatched, originalMatched, nonSysadmin, integrated, tcp, encrypted,
+                noControlServer, noAlterAnyLogin);
+        }
+        catch (Exception failure) when (failure is InvalidCastException or ArgumentException or IndexOutOfRangeException)
+        { throw new InvalidDataException("SQL CPU monitor identity row has an invalid source shape."); }
+        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            throw new InvalidDataException("SQL CPU monitor identity exceeds its one-row bound.");
+        cancellationToken.ThrowIfCancellationRequested();
+        SqlCpuMonitorIdentityValidation.RequireAllowed(receipt);
+        return receipt;
+    }
+
+    // Fixed, read-only, parameterized qualification query. This opt-in source
+    // does not alter either existing pinned SQL CPU witness asset.
+    internal static string LoadMonitorIdentityQuery() => """
+        SET NOCOUNT ON;
+        SELECT SYSUTCDATETIME(),
+          CONVERT(bit, CASE WHEN SUSER_SID() = @expected_sid THEN 1 ELSE 0 END),
+          CONVERT(bit, CASE WHEN SUSER_SID(ORIGINAL_LOGIN()) = @expected_sid THEN 1 ELSE 0 END),
+          CONVERT(bit, CASE WHEN IS_SRVROLEMEMBER(N'sysadmin') = 0 THEN 1 ELSE 0 END),
+          CONVERT(bit, CASE WHEN CONNECTIONPROPERTY(N'auth_scheme') IN (N'KERBEROS', N'NTLM') THEN 1 ELSE 0 END),
+          CONVERT(bit, CASE WHEN c.net_transport = N'TCP' AND c.protocol_type = N'TSQL'
+            AND c.parent_connection_id IS NULL AND CONNECTIONPROPERTY(N'physical_net_transport') = N'TCP' THEN 1 ELSE 0 END),
+          CONVERT(bit, CASE WHEN c.encrypt_option = N'TRUE' THEN 1 ELSE 0 END),
+          CONVERT(bit, CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, N'CONTROL SERVER') = 0 THEN 1 ELSE 0 END),
+          CONVERT(bit, CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, N'ALTER ANY LOGIN') = 0 THEN 1 ELSE 0 END),
+          c.connection_id, CONVERT(int, c.session_id), CONVERT(int, 1)
+        FROM sys.dm_exec_connections AS c WHERE c.session_id = @@SPID;
+        """;
 
     private static async ValueTask<SqlCpuTargetWitness> ParseCoreAsync(CollectorExecutionRequest request,
         IOperationalHealthRowReader reader, IdentityFingerprintKey key, Guid sessionId,
@@ -264,6 +385,12 @@ internal interface ISqlCpuWitnessSession : IAsyncDisposable
     ValueTask<SqlCpuTargetWitness> ReadAsync(int ordinal, CancellationToken cancellationToken);
 }
 
+internal interface ISqlCpuMonitorIdentitySession : ISqlCpuWitnessSession
+{
+    ValueTask<SqlCpuMonitorIdentityEvidence> AttestAsync(ReadOnlyMemory<byte> expectedMonitorSid, int ordinal,
+        CancellationToken cancellationToken);
+}
+
 internal sealed class SqlCpuWitnessSource : ISqlCpuWitnessSource
 {
     public async ValueTask<ISqlCpuWitnessSession> OpenAsync(CollectorExecutionRequest request, IdentityFingerprintKey key, CancellationToken cancellationToken)
@@ -275,12 +402,38 @@ internal sealed class SqlCpuWitnessSource : ISqlCpuWitnessSource
     }
 
     private sealed class Session(SqlConnection connection, CollectorExecutionRequest request,
-        IdentityFingerprintKey key, string query) : ISqlCpuWitnessSession
+        IdentityFingerprintKey key, string query) : ISqlCpuMonitorIdentitySession
     {
         private readonly Guid sessionId = Guid.NewGuid();
         private readonly Guid clientId = connection.ClientConnectionId;
         private readonly int collectorProcessId = Environment.ProcessId;
         private int previousOrdinal;
+        private int previousIdentityOrdinal;
+
+        public async ValueTask<SqlCpuMonitorIdentityEvidence> AttestAsync(ReadOnlyMemory<byte> expectedMonitorSid,
+            int ordinal, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ordinal is not (1 or 2) || previousOrdinal != (ordinal == 1 ? 0 : 2) ||
+                Interlocked.CompareExchange(ref previousIdentityOrdinal, ordinal, ordinal - 1) != ordinal - 1)
+                throw new InvalidOperationException("SQL CPU monitor attestations must surround the ordered witness reads.");
+            byte[] expected = SqlCpuMonitorIdentityValidation.CopyExpectedSid(expectedMonitorSid.Span);
+            try
+            {
+                RequireConnection();
+                await using var command = new SqlCommand(SqlServerCpuTargetWitnessReader.LoadMonitorIdentityQuery(), connection)
+                { CommandTimeout = Math.Max(1, (int)Math.Ceiling(Math.Min(request.Timeout.Value.TotalSeconds, 5))) };
+                command.Parameters.Add("@expected_sid", SqlDbType.VarBinary, expected.Length).Value = expected;
+                await using SqlDataReader reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.SingleResult,
+                    cancellationToken).ConfigureAwait(false);
+                SqlCpuMonitorIdentityEvidence receipt = await SqlServerCpuTargetWitnessReader.ParseMonitorIdentityAsync(request,
+                    new SqlDataReaderOperationalHealthRowReader(reader), sessionId, clientId, ordinal,
+                    cancellationToken).ConfigureAwait(false);
+                RequireConnection();
+                return receipt;
+            }
+            finally { CryptographicOperations.ZeroMemory(expected); }
+        }
 
         public async ValueTask<SqlCpuTargetWitness> ReadAsync(int ordinal, CancellationToken cancellationToken)
         {
