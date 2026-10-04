@@ -1,4 +1,5 @@
 import { alpha, beta, database, evidence } from './healthFixture.mjs';
+import { activityFixture } from './activityFixture.mjs';
 export { alpha, beta };
 export const origin = 'http://127.0.0.1:4328';
 export const from = '2026-01-15T12:00:00.000Z', to = '2026-01-15T13:00:00.000Z';
@@ -6,6 +7,9 @@ export function healthNavigationHash(options = {}) {
   return `#/health?${new URLSearchParams({ target: alpha, range: 'custom', from, to, compare: '1', ...options })}`;
 }
 export function healthNavigationResponse(url) {
+  const blocking = /^\/api\/v1\/observation-targets\/([^/]+)\/activity\/blocking\/current$/.exec(url.pathname);
+  if (blocking && [alpha, beta].includes(blocking[1]) && url.searchParams.toString() === 'limit=256')
+    return activityFixture(blocking[1])['blocking/current'];
   if (url.pathname === '/api/v1/overview') {
     if (![alpha, beta].includes(url.searchParams.get('targetId'))) throw new Error('Unexpected overview target');
     return { targetId: url.searchParams.get('targetId'), fromUtc: url.searchParams.get('fromUtc'),

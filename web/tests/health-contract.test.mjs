@@ -2,9 +2,19 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { clearApiCache } from "../src/apiClient.ts";
-import { getTargetHealth, getTargetHealthEvidence, getDatabaseHealth, HealthRequestError } from "../src/features/health/healthApi.ts";
+import { getTargetHealth, getTargetHealthEvidence, getDatabaseHealth, getServerConfigurationSnapshot,
+  setServerConfigurationCollection, subscribeHealthReadDenials, HealthRequestError } from "../src/features/health/healthApi.ts";
 import { syntheticCollector } from "../tools/health-contract-fixture.mjs";
-import { alpha, evidence, logicalFile } from "../component-tests/healthFixture.mjs";
+import { alpha, beta, evidence, logicalFile } from "../component-tests/healthFixture.mjs";
+
+const response = value => new Response(JSON.stringify(value), {
+  headers: { "content-type": "application/json", "cache-control": "no-store" },
+});
+const sourceFor = path => String(path).split("?")[0].endsWith("/files") ? "files"
+  : String(path).split("?")[0].endsWith("/databases") ? "databases" : "target";
+function deferred() {
+  let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve };
+}
 
 test("native health aggregation binds bounded same-origin reads and preserves exact counters and collector evidence", async () => {
   const previous = globalThis.fetch, source = evidence(), calls = []; source.files.items = [logicalFile()]; clearApiCache();
@@ -88,4 +98,180 @@ test("database health paging encodes the target and continuation cursor", async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+for (const failed of ["target", "databases", "files"]) {
+  test(`latest health ${failed} failure preserves the independently validated sibling sources`, async () => {
+    const previous = globalThis.fetch, source = evidence(), updates = []; clearApiCache();
+    globalThis.fetch = async path => sourceFor(path) === failed
+      ? new Response("private provider details", { status: 503 }) : response(source[sourceFor(path)]);
+    try {
+      const result = await getTargetHealthEvidence(alpha, new AbortController().signal, { onSource: value => updates.push(value) });
+      assert.equal(result[failed], undefined);
+      assert.deepEqual(result.errors, { [failed]: "The health request failed safely." });
+      for (const sibling of ["target", "databases", "files"].filter(value => value !== failed)) {
+        assert.equal(result[sibling].instanceId, alpha);
+        assert.equal(result[sibling].repositoryTimeUtc, source[sibling].repositoryTimeUtc);
+      }
+      assert.equal(updates.length, 3);
+      assert.equal(updates.find(value => value.source === failed).value, undefined);
+      assert.equal(JSON.stringify(result).includes("private provider"), false);
+    } finally { globalThis.fetch = previous; clearApiCache(); }
+  });
+}
+
+test("invalid latest health source is isolated rather than replaced by a fabricated empty receipt", async () => {
+  const previous = globalThis.fetch, source = evidence(); clearApiCache();
+  globalThis.fetch = async path => response(sourceFor(path) === "files" ? { ...source.files, instanceId: beta } : source[sourceFor(path)]);
+  try {
+    const result = await getTargetHealthEvidence(alpha, new AbortController().signal);
+    assert.equal(result.files, undefined);
+    assert.match(result.errors.files, /invalid or mismatched/);
+    assert.equal(result.target.instanceId, alpha); assert.equal(result.databases.instanceId, alpha);
+  } finally { globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("all unavailable latest sources return only their errors with no synthetic successful snapshot", async () => {
+  const previous = globalThis.fetch; clearApiCache();
+  globalThis.fetch = async () => new Response("unavailable", { status: 503 });
+  try {
+    const result = await getTargetHealthEvidence(alpha, new AbortController().signal);
+    assert.deepEqual(Object.keys(result).sort(), ["errors"]);
+    assert.deepEqual(Object.keys(result.errors).sort(), ["databases", "files", "target"]);
+  } finally { globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("validated latest source is delivered before held siblings finish, retaining source clocks", async () => {
+  const previous = globalThis.fetch, source = evidence(), hold = deferred(), delivered = deferred(), updates = []; clearApiCache();
+  globalThis.fetch = async path => sourceFor(path) === "files" ? hold.promise : response(source[sourceFor(path)]);
+  try {
+    const read = getTargetHealthEvidence(alpha, new AbortController().signal, { onSource: value => {
+      updates.push(value); if (value.source === "target") delivered.resolve(value);
+    } });
+    const first = await delivered.promise;
+    assert.equal(first.value.repositoryTimeUtc, source.target.repositoryTimeUtc);
+    assert.equal(updates.some(value => value.source === "files"), false);
+    hold.resolve(new Response("unavailable", { status: 503 }));
+    const result = await read;
+    assert.equal(result.target.repositoryTimeUtc, first.value.repositoryTimeUtc);
+    assert.equal(result.files, undefined); assert.match(result.errors.files, /failed safely/);
+  } finally { hold.resolve(response(source.files)); globalThis.fetch = previous; clearApiCache(); }
+});
+
+for (const denied of ["target", "databases", "files"]) for (const status of [401, 403]) {
+  test(`actual ${status} from ${denied} takes priority over an earlier failure and aborts pending health peers`, async () => {
+    const previous = globalThis.fetch, source = evidence(), hold = deferred(), failure = deferred(); clearApiCache();
+    const siblings = ["target", "databases", "files"].filter(value => value !== denied);
+    let peerSignal, denials = 0; const updates = [];
+    globalThis.fetch = async (path, options) => {
+      const key = sourceFor(path);
+      if (key === siblings[0]) return new Response("ordinary failure", { status: 503 });
+      if (key === denied) { await failure.promise; return new Response("private authorization details", { status }); }
+      peerSignal = options.signal; return hold.promise;
+    };
+    try {
+      const read = getTargetHealthEvidence(alpha, new AbortController().signal, {
+        onSource: value => { updates.push(value); if (value.error) failure.resolve(); },
+        onAccessDenied: error => { denials++; assert.equal(error.status, status); },
+      });
+      await assert.rejects(read, error => error instanceof HealthRequestError && error.status === status && !error.message.includes("private"));
+      assert.equal(denials, 1); assert.equal(peerSignal.aborted, true);
+      assert.deepEqual(updates.map(value => value.source), [siblings[0]]);
+      hold.resolve(response(source[siblings[1]]));
+      await Promise.resolve(); assert.equal(updates.length, 1);
+    } finally { failure.resolve(); hold.resolve(response(source[siblings[1]])); globalThis.fetch = previous; clearApiCache(); }
+  });
+}
+
+test("already-cancelled aggregate health read performs no I/O or callbacks", async () => {
+  const previous = globalThis.fetch; let calls = 0, notifications = 0; clearApiCache();
+  globalThis.fetch = async () => { calls++; return new Response("denied", { status: 403 }); };
+  try {
+    const controller = new AbortController(), reason = new Error("Context changed"); controller.abort(reason);
+    await assert.rejects(getTargetHealthEvidence(alpha, controller.signal, {
+      onSource: () => notifications++, onAccessDenied: () => notifications++,
+    }), error => error === reason);
+    assert.equal(calls, 0); assert.equal(notifications, 0);
+  } finally { globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("health-only denial subscriptions isolate targets, survive listener errors and stop on unsubscribe", async () => {
+  const previous = globalThis.fetch, alphaStatuses = [], betaStatuses = []; clearApiCache();
+  const unsubscribe = subscribeHealthReadDenials(alpha, error => alphaStatuses.push(error.status));
+  const removeThrowing = subscribeHealthReadDenials(alpha, () => { throw new Error("Subscriber failed"); });
+  const removeBeta = subscribeHealthReadDenials(beta, error => betaStatuses.push(error.status));
+  globalThis.fetch = async () => new Response("private details", { status: 403 });
+  try {
+    await assert.rejects(getServerConfigurationSnapshot(alpha, new AbortController().signal), error => error instanceof HealthRequestError && error.status === 403);
+    assert.deepEqual(alphaStatuses, [403]); assert.deepEqual(betaStatuses, []);
+    unsubscribe(); removeThrowing();
+    await assert.rejects(getTargetHealth(alpha, new AbortController().signal), HealthRequestError);
+    assert.deepEqual(alphaStatuses, [403]);
+    await assert.rejects(getTargetHealth(beta, new AbortController().signal), HealthRequestError);
+    assert.deepEqual(betaStatuses, [403]);
+  } finally { unsubscribe(); removeThrowing(); removeBeta(); globalThis.fetch = previous; clearApiCache(); }
+});
+
+for (const status of [401, 403]) test(`aborted late ${status} health read cannot notify mounted listeners`, async () => {
+  const previous = globalThis.fetch, started = deferred(), hold = deferred(); let notified = 0; clearApiCache();
+  const unsubscribe = subscribeHealthReadDenials(alpha, () => notified++);
+  globalThis.fetch = async () => { started.resolve(); return hold.promise; };
+  try {
+    const controller = new AbortController(), reason = new Error("Old window retired");
+    const rejected = assert.rejects(getTargetHealth(alpha, controller.signal), error => error === reason);
+    await started.promise; controller.abort(reason); hold.resolve(new Response("denied", { status }));
+    await rejected; await Promise.resolve(); assert.equal(notified, 0);
+  } finally { unsubscribe(); hold.resolve(new Response("denied", { status })); globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("old target ABA request cannot deliver denial to a newly registered health owner", async () => {
+  const previous = globalThis.fetch, started = deferred(), hold = deferred(); let oldCalls = 0, newCalls = 0; clearApiCache();
+  const oldUnsubscribe = subscribeHealthReadDenials(alpha, () => oldCalls++); let newUnsubscribe = () => {};
+  globalThis.fetch = async () => { started.resolve(); return hold.promise; };
+  try {
+    const rejected = assert.rejects(getTargetHealth(alpha, new AbortController().signal), HealthRequestError);
+    await started.promise; oldUnsubscribe(); newUnsubscribe = subscribeHealthReadDenials(alpha, () => newCalls++);
+    hold.resolve(new Response("denied", { status: 401 })); await rejected;
+    assert.equal(oldCalls, 0); assert.equal(newCalls, 0);
+    globalThis.fetch = async () => new Response("denied", { status: 403 });
+    await assert.rejects(getTargetHealth(alpha, new AbortController().signal), HealthRequestError);
+    assert.equal(newCalls, 1);
+  } finally { oldUnsubscribe(); newUnsubscribe(); hold.resolve(new Response("denied", { status: 401 })); globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("collector permission gaps and refused configuration mutations are not health read denials", async () => {
+  const previous = globalThis.fetch; let calls = 0; clearApiCache();
+  const unsubscribe = subscribeHealthReadDenials(alpha, () => calls++);
+  const source = evidence(alpha, { state: "degraded", reason: "permission_denied", hasVisibilityGap: true, lastExecutionOutcome: "permission_denied" });
+  globalThis.fetch = async (_path, options) => options.method === "PUT"
+    ? new Response("mutation denied", { status: 403 }) : response(source.target);
+  try {
+    const result = await getTargetHealth(alpha, new AbortController().signal);
+    assert.equal(result.collectors[0].reason, "permission_denied"); assert.equal(calls, 0);
+    await assert.rejects(setServerConfigurationCollection(alpha, 1, false, true, new AbortController().signal), error => error.status === 403);
+    assert.equal(calls, 0);
+  } finally { unsubscribe(); globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("caller cancellation carrying a status never becomes a native aggregate denial", async () => {
+  const previous = globalThis.fetch, started = deferred(), hold = deferred(); let calls = 0, notifications = 0; clearApiCache();
+  globalThis.fetch = async () => { if (++calls === 3) started.resolve(); return hold.promise; };
+  try {
+    const controller = new AbortController(), reason = new HealthRequestError("Context canceled", 403);
+    const rejected = assert.rejects(getTargetHealthEvidence(alpha, controller.signal, {
+      onSource: () => notifications++, onAccessDenied: () => notifications++,
+    }), error => error === reason);
+    await started.promise; controller.abort(reason); hold.resolve(new Response("denied", { status: 401 }));
+    await rejected; assert.equal(notifications, 0);
+  } finally { hold.resolve(new Response("denied", { status: 401 })); globalThis.fetch = previous; clearApiCache(); }
+});
+
+test("aggregate denial callback cannot replace the actual native error", async () => {
+  const previous = globalThis.fetch; clearApiCache();
+  globalThis.fetch = async () => new Response("denied", { status: 401 });
+  try {
+    await assert.rejects(getTargetHealthEvidence(alpha, new AbortController().signal, {
+      onAccessDenied: () => { throw new Error("Callback failure"); },
+    }), error => error instanceof HealthRequestError && error.status === 401);
+  } finally { globalThis.fetch = previous; clearApiCache(); }
 });

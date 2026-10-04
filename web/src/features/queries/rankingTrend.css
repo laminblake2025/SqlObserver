@@ -3,7 +3,7 @@
 .ranking-trend path { fill: none; stroke: var(--series-1); stroke-width: 1.7; stroke-linejoin: round; }
 .ranking-trend circle { fill: var(--series-1); stroke: var(--surface-soft); stroke-width: .8; }
 .ranking-trend small, .ranking-trend p, .ranking-trend li { color: var(--muted); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
-.ranking-trend button, .ranking-trend summary { font-size: .75rem; min-height: 32px; }
+.ranking-trend button, .ranking-trend summary { font-size: .75rem; min-width: 44px; min-height: 44px; }
 .ranking-trend summary { cursor: pointer; padding-block: .35rem; color: var(--text); }
 .ranking-trend details { min-width: 0; }
 .ranking-trend-values { max-height: 220px; overflow: auto; min-width: 0; }

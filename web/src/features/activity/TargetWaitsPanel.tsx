@@ -17,6 +17,7 @@ import { queryJumpHref } from "../../components/commandPaletteModel";
 import { readWaitCategory, waitCategoryHref } from "./waitSelectionModel.ts";
 import { WaitCapturedSessionsPanel } from "./WaitCapturedSessionsPanel";
 import { retainSessionWaitCategoryHref, retainSessionWaitCaptureHref } from "./waitCapturedSessionsModel.ts";
+import "./waitsEvidence.css";
 
 export interface TargetWaitsPanelProps {
   readonly instanceId: string;
@@ -55,7 +56,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {access.denied && <p role="alert">Waits access was denied. Previously received protected evidence was removed. Automatic reads stay stopped for each source until its explicit retry succeeds.</p>}
     {scope.databaseId !== undefined ? <p className="table-note">Server wait totals and trends remain server-wide. Query Store contributors are filtered within the loaded ranking for database ID {scope.databaseId}.</p> : null}
-    {window && <section className="panel" aria-label="Wait categories over time">
+    {window && <section className="panel waits-evidence-panel" aria-label="Wait categories over time">
       <h3>Wait categories over time</h3>
       <p>Five-minute deltas across the selected window. Empty, partial, legacy, and incomparable buckets remain gaps. Older history may need new collector runs before summaries become available.</p>
       {trendLoading && <p role="status">Loading wait trend…</p>}
@@ -64,7 +65,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       {trendSource.denied && <p role="status">Wait trend unavailable after access denial. No zero-wait trend has been substituted.</p>}
       {trend && <WaitTrendChart trend={trend} onSelectWindow={onSelectWindow} />}
     </section>}
-    {window && <section className="panel" aria-label="Query Store plans by wait category">
+    {window && <section className="panel waits-evidence-panel" aria-label="Query Store plans by wait category">
       <h3>Queries with matching Query Store waits</h3>
       <p>Query Store plan wait deltas are a separate source from the server wait trend above. They can point to queries worth investigating, but do not account for all server waits or identify a current waiting session.</p>
       {queryCategory === null && <p role="status">The requested Query Store wait category is invalid. Choose a supported category; no other category has been selected.</p>}
@@ -96,7 +97,7 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
     </section>}
     <WaitCapturedSessionsPanel access={access} instanceId={instanceId} scope={scope} timeWindow={window} refresh={refresh} selectionHash={selectionHash} />
     {scope.range !== "custom" && <CurrentWaits key={historyContext} access={access} instanceId={instanceId} refresh={refresh} />}
-    <section className="panel" aria-label="Selected wait history">
+    <section className="panel waits-evidence-panel" aria-label="Selected wait history">
       <h3>Selected-window history</h3>
       {window && <p className="activity-evidence">{formatDisplayTime(window.fromUtc, mode)} to {formatDisplayTime(window.toUtc, mode)}. Rows are paged; the table does not claim full-window coverage until its final page.</p>}
       {selection.state === "unavailable" && <p role="status">{selection.message}</p>}
@@ -186,7 +187,7 @@ function CurrentWaits({ instanceId, refresh, access }: { readonly instanceId: st
     if (cursor !== undefined) await load(index, cursor, true, false);
   }
   const visiblePage = access.allowed("current") ? page : undefined;
-  return <section className="panel" aria-label="Current server waits" aria-busy={loading}>
+  return <section className="panel waits-evidence-panel" aria-label="Current server waits" aria-busy={loading}>
     <h3>Live wait snapshot</h3>
     {!access.allowed("current") && <p role="status">Current wait snapshot unavailable after access denial. Received rows and the retained first page were removed.</p>}
     {loading && !visiblePage && <p role="status">Loading current waits...</p>}

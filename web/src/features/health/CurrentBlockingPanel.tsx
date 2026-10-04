@@ -21,6 +21,10 @@ export function CurrentBlockingPanel({ instanceId, scope, evidence, selectedRoot
     <div className="section-heading"><div><p className="eyebrow">Current activity</p><h4 id="server-blocking-heading" tabIndex={-1}>Blocking chains</h4></div><a href={overviewHref(scope, "activity", instanceId)}>Open sessions and blocking →</a></div>
     {page === undefined && error === undefined && <p role="status">Loading current blocking…</p>}
     {error && <p role="status">{error} {page ? "Showing the previous snapshot." : ""}</p>}
+    {evidence.denied && <p className="server-dashboard-blocking-meta">Protected blocking evidence was removed. Restore same-target read access, then explicitly retry; changing the history window or refreshing other sources does not restore access.</p>}
+    {error && evidence.retry && <button type="button" className="secondary-button" disabled={loading} onClick={evidence.retry}>
+      {evidence.denied ? "Retry current blocking access" : "Retry current blocking"}
+    </button>}
     {page && <>
       <p className="server-dashboard-blocking-meta">{page.evidence?.completedAtUtc ? `Collection completed ${formatTime(page.evidence.completedAtUtc)}` : `Collection time unavailable; repository checked ${formatTime(page.repositoryTimeUtc)}`}. {retained ? "Previous received snapshot" : "Received current snapshot"}, independent of the selected timeline window. {loading ? "Refresh pending." : ""}</p>
       {groups.length === 0 && <p className="empty-state">{complete && !retained ? "No blocked sessions in this complete received collection." : "No blocking rows on this page; collection is retained, incomplete or unavailable."}</p>}

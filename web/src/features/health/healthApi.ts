@@ -10,7 +10,8 @@ import type {
   DatabaseOptionChangeResult,
   ServerConfigurationChangeResult,
   ServerConfigurationSnapshotResult,
-  TargetHealthEvidence,
+  TargetHealthReadResult,
+  TargetHealthSourceRead,
   TargetHealthSnapshot,
 } from "./healthTypes";
 
@@ -144,28 +145,66 @@ export async function getDatabaseFileHealth(
 export async function getTargetHealthEvidence(
   instanceId: string,
   signal: AbortSignal,
-): Promise<TargetHealthEvidence> {
-  const [target, databases, files] = await Promise.allSettled([
-    getTargetHealth(instanceId, signal),
-    getDatabaseHealth(instanceId, signal),
-    getDatabaseFileHealth(instanceId, signal),
-  ]);
-  if (target.status === "rejected") {
-    throw target.reason;
+  callbacks: { readonly onSource?: (read: TargetHealthSourceRead) => void;
+    readonly onAccessDenied?: (error: HealthRequestError) => void } = {},
+): Promise<TargetHealthReadResult> {
+  if (signal.aborted) throw signal.reason;
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal.reason);
+  signal.addEventListener("abort", cancel, { once: true });
+  let denied: HealthRequestError | undefined;
+  let result: TargetHealthReadResult = { errors: {} };
+  async function read(source: "target" | "databases" | "files", work: () => Promise<TargetHealthSourceRead>) {
+    try {
+      const next = await work();
+      if (controller.signal.aborted) throw controller.signal.reason;
+      result = { ...result, [source]: next.value };
+      callbacks.onSource?.(next);
+    } catch (error) {
+      if (signal.aborted) throw signal.reason;
+      if (error instanceof HealthRequestError && (error.status === 401 || error.status === 403)) {
+        if (!denied) {
+          denied = error;
+          controller.abort(error);
+          try { callbacks.onAccessDenied?.(error); } catch { /* Preserve the actual native denial. */ }
+        }
+        throw denied;
+      }
+      if (denied) throw denied;
+      if (controller.signal.aborted || signal.aborted) throw controller.signal.reason ?? signal.reason;
+      const message = error instanceof HealthRequestError ? error.message : "The health request failed safely.";
+      result = { ...result, errors: { ...result.errors, [source]: message } };
+      callbacks.onSource?.({ source, error: message });
+    }
   }
+  try {
+    await Promise.all([
+      read("target", async () => ({ source: "target", value: await getTargetHealth(instanceId, controller.signal) })),
+      read("databases", async () => ({ source: "databases", value: await getDatabaseHealth(instanceId, controller.signal) })),
+      read("files", async () => ({ source: "files", value: await getDatabaseFileHealth(instanceId, controller.signal) })),
+    ]);
+    if (denied) throw denied;
+    if (signal.aborted) throw signal.reason;
+    return result;
+  } finally { signal.removeEventListener("abort", cancel); }
+}
 
-  if (databases.status === "rejected") {
-    throw databases.reason;
-  }
-
-  if (files.status === "rejected") {
-    throw files.reason;
-  }
-
-  return { target: target.value, databases: databases.value, files: files.value };
+type HealthDenialListener = { readonly notify: (error: HealthRequestError) => void };
+const healthDenialListeners = new Map<string, Set<HealthDenialListener>>();
+/** A mounted health family owns its latch. Requests capture registrations so old-context denials cannot notify a new ABA context. */
+export function subscribeHealthReadDenials(instanceId: string, notify: (error: HealthRequestError) => void): () => void {
+  const key = instanceId.toLowerCase();
+  const listener = { notify };
+  const listeners = healthDenialListeners.get(key) ?? new Set<HealthDenialListener>();
+  listeners.add(listener); healthDenialListeners.set(key, listeners);
+  return () => { listeners.delete(listener); if (!listeners.size && healthDenialListeners.get(key) === listeners) healthDenialListeners.delete(key); };
 }
 
 async function getJson<T>(path: string, signal: AbortSignal, parse: (value: unknown) => T): Promise<T> {
+  const targetPath = /^\/api\/v1\/observation-targets\/([^/?]+)\/health(?:\/|\?|$)/u.exec(path);
+  const target = targetPath ? decodeURIComponent(targetPath[1]!).toLowerCase() : undefined;
+  const listeners = target ? healthDenialListeners.get(target) : undefined;
+  const capturedListeners = [...listeners ?? []];
   let response: Response;
   try {
     response = await apiFetch(path, {
@@ -185,7 +224,12 @@ async function getJson<T>(path: string, signal: AbortSignal, parse: (value: unkn
 
   if (signal.aborted) throw signal.reason;
   if (!response.ok) {
-    throw new HealthRequestError(getSafeHealthFailure(response.status), response.status);
+    const error = new HealthRequestError(getSafeHealthFailure(response.status), response.status);
+    if (response.status === 401 || response.status === 403) for (const listener of capturedListeners) {
+      if (!listeners?.has(listener)) continue;
+      try { listener.notify(error); } catch { /* A listener cannot mask the actual native authorization error. */ }
+    }
+    throw error;
   }
 
   try {
@@ -202,6 +246,8 @@ async function getJson<T>(path: string, signal: AbortSignal, parse: (value: unkn
 
 function getSafeHealthFailure(status: number): string {
   switch (status) {
+    case 401:
+      return "Your health read access could not be verified. Restore access and explicitly retry.";
     case 403:
       return "You are not authorized to view health for this target.";
     case 404:

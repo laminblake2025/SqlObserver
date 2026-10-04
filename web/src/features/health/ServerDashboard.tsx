@@ -7,6 +7,7 @@ import { issueHref, overviewEvidenceFooter, overviewHref, overviewWindow, ranked
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
+import { HeadBlockerAnswer } from "./HeadBlockerAnswer.tsx";
 import { useCurrentBlockingEvidence } from "./useCurrentBlockingEvidence.ts";
 import { ServerWaitTrendPanel } from "./ServerWaitTrendPanel";
 import type { TargetHealthState } from "./healthTypes";
@@ -33,7 +34,7 @@ import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.t
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 import "./serverHistoryDisclosure.css";
 
-export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules, active = true }: {
+export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules, active = true, onAccessDenied }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly scope: OverviewScope;
@@ -44,6 +45,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   readonly selectionHash: string;
   readonly canReadRules: boolean;
   readonly active?: boolean;
+  readonly onAccessDenied?: (status: 401 | 403) => void;
 }) {
   const { mode } = useTimeDisplay();
   const timeLabel = (value: string) => formatDisplayTime(value, mode);
@@ -52,10 +54,10 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const requestedChartAt = readChartInspection(selectionHash);
   const requestedSelection = readDashboardTimelineSelection(selectionHash, instanceId);
   const selectedScope = { ...scope, target: instanceId };
-  const result = useOverviewAnalytics(selectedScope, refresh, targetRevision);
+  const result = useOverviewAnalytics(selectedScope, refresh, targetRevision, onAccessDenied);
   const data = result.data;
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
-  const blockingEvidence = useCurrentBlockingEvidence(instanceId, targetRevision, blockingRefresh, Boolean(data && evidence));
+  const blockingEvidence = useCurrentBlockingEvidence(instanceId, targetRevision, blockingRefresh, active, onAccessDenied);
   const [blockerSelection, setBlockerSelection] = useState<{ key: string; sessionId: number }>();
   const blockerKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, blockingEvidence.page?.evidence?.runId]);
   const inspectBlocker = (sessionId: number) => {
@@ -192,6 +194,11 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       : "Loading server timeline…"}</p>}
     {result.error && <p role="alert" className="status-message">{result.error}</p>}
     {data && !evidence && <p className="empty-state">No authorized dashboard evidence was returned for this server.</p>}
+    {active && !(data && evidence) && <section className="panel dashboard-investigation" aria-labelledby="independent-blocking-heading">
+      <p className="eyebrow">Investigate current activity</p><h4 id="independent-blocking-heading">Current blocking evidence</h4>
+      <p className="dashboard-investigation-note">Historical analytics has not supplied comparable dashboard evidence. Current blocking is read independently; it does not reconstruct the selected history window.</p>
+      <HeadBlockerAnswer evidence={blockingEvidence} targetRevision={targetRevision} formatTime={timeLabel} onInspect={inspectBlocker} />
+    </section>}
     {data && evidence && <>
       <div className="kpi-grid server-dashboard-kpis">
         <DashboardCount label="Active alerts now" value={evidence.activeAlerts} />
@@ -251,8 +258,6 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
           <small>GiB. SQL process physical memory is used memory; OS available memory via SQL and host available memory are free memory. They are separate measurements and need not add up to total host memory.</small>
         </section>
       </div>
-      <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} evidence={blockingEvidence} targetRevision={targetRevision}
-        selectedRoot={blockerSelection?.key === blockerKey ? blockerSelection.sessionId : undefined} />
       {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
       <section className="compact-evidence-footer" aria-label="Dashboard evidence status">
         <p>Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. Refreshed {timeLabel(data.refreshedAtUtc)}.</p>
@@ -265,6 +270,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       </section>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
+    {active && <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} evidence={blockingEvidence} targetRevision={targetRevision}
+      selectedRoot={blockerSelection?.key === blockerKey ? blockerSelection.sessionId : undefined} />}
     {timelineWindow&&<div ref={alertEvidence} id={alertEvidenceId} tabIndex={-1} role="region" aria-label="Alert history evidence" className="server-history-evidence-location">
       <AlertLifecycleHistoryPanel history={alerts} scope={fixedTimelineScope} selectedEvent={selectedLifecycleEvent} onSelectEvent={selectLifecycleEvent}
         onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/>

@@ -383,7 +383,16 @@ export function App() {
           <div><strong>SQL Observer</strong><span>SQL Server diagnostics</span></div>
         </div>
         <p className="nav-label">MONITOR</p>
-        <nav aria-label="Main navigation">
+        <nav aria-label="Main navigation" onFocus={event => {
+          const link = event.target;
+          const scroller = event.currentTarget;
+          if (!(link instanceof HTMLAnchorElement) || scroller.scrollWidth <= scroller.clientWidth) return;
+          const viewport = scroller.getBoundingClientRect(), bounds = link.getBoundingClientRect();
+          const left = viewport.left + scroller.clientLeft, right = left + scroller.clientWidth;
+          // Preserve native keyboard/vertical focus scrolling, then reveal the complete link locally.
+          if (bounds.left < left) scroller.scrollLeft -= Math.ceil(left - bounds.left);
+          else if (bounds.right > right) scroller.scrollLeft += Math.ceil(bounds.right - right);
+        }}>
           {navigationDestinations.map((key) => (
             <a
               key={key}

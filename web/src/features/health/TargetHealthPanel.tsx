@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { Tabs } from "../../components/DiagnosticUi";
 import { healthSectionHref } from "../../dashboardModel";
@@ -12,7 +12,7 @@ import { ServerConfigurationChanges } from "./ServerConfigurationChanges";
 import { ServerConfigurationSnapshot } from "./ServerConfigurationSnapshot";
 import "./healthNavigationFrame.css";
 
-import { getDatabaseHealth, getTargetHealthEvidence, HealthRequestError } from "./healthApi";
+import { getDatabaseHealth, getTargetHealthEvidence, HealthRequestError, subscribeHealthReadDenials } from "./healthApi";
 import {
   coreMetricDefinition,
   formatCoreMetricValue,
@@ -28,7 +28,8 @@ import type {
   DatabaseFileHealthSummary,
   DatabaseHealthPage,
   DatabaseHealthSummary,
-  TargetHealthEvidence,
+  TargetHealthReadResult,
+  TargetHealthSource,
   TargetHealthState,
 } from "./healthTypes";
 
@@ -72,6 +73,26 @@ interface RecoveryContext {
   readonly canGeneratePermissions: boolean;
 }
 
+interface LatestHealthAccess {
+  readonly key: string;
+  mounted: boolean;
+  denied: boolean;
+  generation: number;
+  request?: AbortController;
+  recoverRequested: boolean;
+}
+interface LatestHealthRead {
+  readonly access: LatestHealthAccess;
+  readonly evidence: TargetHealthReadResult;
+  readonly loading: boolean;
+  readonly pendingSources: readonly TargetHealthSource[];
+  readonly message?: string;
+}
+const latestHealthSources: readonly TargetHealthSource[] = ["target", "databases", "files"];
+const latestHealthSourceLabels: Readonly<Record<TargetHealthSource, string>> = {
+  target: "Core and collector health", databases: "Database inventory", files: "Logical-file inventory",
+};
+
 export interface TargetHealthPanelProps {
   readonly embedded?: boolean;
   readonly instanceId: string;
@@ -94,13 +115,16 @@ export interface TargetHealthPanelProps {
 export function TargetHealthPanel({ embedded = false, instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const evidenceKey = JSON.stringify([instanceId.toLowerCase(), targetRevision]);
-  const [receivedKey, setReceivedKey] = useState<string>();
-  const [receivedEvidence, setEvidence] = useState<TargetHealthEvidence>();
-  const evidence = receivedKey === evidenceKey && receivedEvidence?.target.instanceId.toLowerCase() === instanceId.toLowerCase()
-    ? receivedEvidence : undefined;
-  const [failure, setMessage] = useState<{ key: string; message: string }>();
-  const message = failure?.key === evidenceKey ? failure.message : undefined;
-  const [loading, setLoading] = useState(true);
+  const access = useMemo<LatestHealthAccess>(() => ({ key: evidenceKey, mounted: false,
+    denied: false, generation: 0, recoverRequested: false }), [evidenceKey]);
+  const currentAccess = useRef(access); currentAccess.current = access;
+  const [received, setReceived] = useState<LatestHealthRead>();
+  const read = received?.access === access ? received : undefined;
+  const denied = access.denied;
+  const evidence = denied ? undefined : read?.evidence;
+  const message = read?.message;
+  const loading = read?.loading ?? !denied;
+  const [retry, setRetry] = useState(0);
   const [localTab, setTab] = useState<"summary" | "databases" | "collection">(selectedSection ?? "summary");
   // Route-owned sections are resolved during render, including an absent URL
   // selection restored by Back. Local state remains available to standalone consumers.
@@ -109,42 +133,71 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
   const snapshot = evidence?.target;
   const recoveryContext: RecoveryContext = { instanceId, scope, canGeneratePermissions: canManageConfiguration };
 
-  useEffect(() => {
-    let active = true;
-    let request: AbortController | undefined;
-
-    async function refresh() {
-      const currentRequest = new AbortController();
-      request = currentRequest;
-      try {
-        const next = await getTargetHealthEvidence(instanceId, currentRequest.signal);
-        if ([next.target.instanceId, next.databases.instanceId, next.files.instanceId]
-          .some(targetId => targetId.toLowerCase() !== instanceId.toLowerCase())) {
-          throw new HealthRequestError("Health evidence did not match the selected server. Refresh to retry.");
-        }
-        if (active) {
-          setReceivedKey(evidenceKey);
-          setEvidence(next);
-          setMessage(undefined);
-        }
-      } catch (error: unknown) {
-        if (active && currentRequest.signal.aborted === false) {
-          setMessage({ key: evidenceKey, message: getSafeMessage(error) });
-          if (error instanceof HealthRequestError && [401, 403].includes(error.status ?? 0)) setEvidence(undefined);
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    setMessage(undefined);
-    setLoading(true);
-    void refresh();
+  const refuseAccess = useCallback((error: HealthRequestError) => {
+    if (currentAccess.current !== access || !access.mounted || access.denied && !access.request) return;
+    access.denied = true;
+    access.generation++;
+    const request = access.request; access.request = undefined;
+    request?.abort(error);
+    setReceived({ access, evidence: { errors: {} }, loading: false, pendingSources: [], message: getSafeMessage(error) });
+  }, [access]);
+  const dashboardAccessDenied = useCallback((status: 401 | 403) => {
+    refuseAccess(new HealthRequestError(status === 401
+      ? "Your health read access could not be verified. Restore access and explicitly retry."
+      : "You are not authorized to view health for this target.", status));
+  }, [refuseAccess]);
+  useLayoutEffect(() => {
+    access.mounted = true;
+    const unsubscribe = subscribeHealthReadDenials(instanceId, refuseAccess);
     return () => {
-      active = false;
-      request?.abort();
+      unsubscribe(); access.mounted = false; access.generation++;
+      access.request?.abort(); access.request = undefined;
     };
-  }, [instanceId, targetRevision, evidenceKey, healthRefresh]);
+  }, [access, refuseAccess]);
+
+  useEffect(() => {
+    const recovery = access.recoverRequested; access.recoverRequested = false;
+    if (access.request || access.denied && !recovery) return;
+    const controller = new AbortController();
+    const generation = ++access.generation; access.request = controller;
+    const current = () => access.mounted && currentAccess.current === access &&
+      access.generation === generation && !controller.signal.aborted;
+    setReceived(previous => ({ access, evidence: previous?.access === access ? previous.evidence : { errors: {} },
+      loading: true, pendingSources: latestHealthSources, message: undefined }));
+    void getTargetHealthEvidence(instanceId, controller.signal, {
+      onAccessDenied: refuseAccess,
+      onSource: source => {
+        if (!current() || recovery || access.denied) return;
+        setReceived(previous => {
+          if (!current() || access.denied) return previous;
+          const before = previous?.access === access ? previous.evidence : { errors: {} };
+          const next = source.error === undefined
+            ? { ...before, [source.source]: source.value, errors: { ...before.errors, [source.source]: undefined } }
+            : { ...before, errors: { ...before.errors, [source.source]: source.error } };
+          return { access, evidence: next, loading: true,
+            pendingSources: (previous?.access === access ? previous.pendingSources : latestHealthSources).filter(value => value !== source.source) };
+        });
+      },
+    }).then(next => {
+      if (!current()) return;
+      if (recovery) {
+        const verified = Boolean(next.target || next.databases || next.files);
+        if (verified) access.denied = false;
+        setReceived({ access, evidence: next, loading: false, pendingSources: [],
+          message: verified ? undefined : "No latest health source was verified. Restore read access and retry health access." });
+      } else setReceived(previous => current() && previous?.access === access
+        ? { ...previous, loading: false, pendingSources: [] } : previous);
+    }).catch(error => {
+      if (!current()) return;
+      if (error instanceof HealthRequestError && (error.status === 401 || error.status === 403)) { refuseAccess(error); return; }
+      setReceived(previous => ({ access, evidence: previous?.access === access ? previous.evidence : { errors: {} },
+        loading: false, pendingSources: [], message: getSafeMessage(error) }));
+    }).finally(() => { if (access.request === controller) access.request = undefined; });
+  }, [access, healthRefresh, retry]);
+  const retryHealth = () => {
+    if (!access.mounted || access.request || currentAccess.current !== access) return;
+    access.recoverRequested = access.denied; setRetry(value => value + 1);
+  };
 
   return (
     <section className="health-screen" aria-labelledby="health-heading">
@@ -164,52 +217,67 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
             value={tab}
             onChange={(value) => { const section = value as "summary" | "databases" | "collection"; if (onSelectSection) onSelectSection(section); else setTab(section); }}
         />
-        {loading && <p role="status">{snapshot
-          ? `Refreshing latest health evidence… Previously received snapshots evaluated at ${formatTimestamp(snapshot.repositoryTimeUtc)} remain visible.`
-          : "Loading health evidence…"}</p>}
+        {loading && <p role="status">Loading health evidence…</p>}
+        {denied && <p>Health read access was denied. Protected latest snapshots, dashboard and health-history evidence were removed. Automatic health reads remain stopped until an explicit retry.</p>}
         {message !== undefined && <p role="alert" className="status-message">{message}</p>}
-        {message !== undefined && snapshot && !loading && <p role="status">Previously received latest snapshots remain visible, evaluated at {formatTimestamp(snapshot.repositoryTimeUtc)}. The failed read has not refreshed this evidence.</p>}
-        {!snapshot && !loading && <p role="status">No latest health snapshot has been received for this server. Missing evidence is not an all-clear signal.</p>}
+        {!denied && latestHealthSources.map(source => {
+          const receipt = evidence?.[source], error = evidence?.errors[source];
+          const pending = read?.pendingSources.includes(source) ?? true;
+          const label = latestHealthSourceLabels[source];
+          return <div key={source} role="group" aria-label={`${label} read status`}>
+            {pending && <p role="status">{label}: reading latest evidence…{receipt ? ` The received snapshot checked at ${formatTimestamp(receipt.repositoryTimeUtc)} remains visible.` : " No validated snapshot has been received yet."}</p>}
+            {error && <p role="alert">{label}: {error} {receipt
+              ? `Previously received evidence checked at ${formatTimestamp(receipt.repositoryTimeUtc)} remains visible; this source was not refreshed.`
+              : "No validated snapshot is available for this source. Missing evidence is not an all-clear signal."}</p>}
+          </div>;
+        })}
+        {(denied || message || latestHealthSources.some(source => evidence?.errors[source])) && <button type="button" className="secondary-button" disabled={loading} onClick={retryHealth}>{denied ? "Retry health access" : "Retry latest health evidence"}</button>}
+        {!denied && !snapshot && !loading && <p role="status">No latest core and collector health snapshot has been received for this server. Independent database, file and history sources can still be available; missing evidence is not an all-clear signal.</p>}
       </div>
-      <div className="health-dashboard-pane" hidden={tab !== "summary"}>
+      {!denied && <div className="health-dashboard-pane" key={`dashboard:${evidenceKey}`} hidden={tab !== "summary"}>
         <ServerDashboard active={tab === "summary"} instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
           targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
+          onAccessDenied={dashboardAccessDenied}
           blockingRefresh={blockingRefresh}
           configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
-      </div>
-      <section className="health-latest-pane" aria-labelledby="health-latest-heading">
+      </div>}
+      {!denied && <section className="health-latest-pane" key={`latest:${evidenceKey}`} aria-labelledby="health-latest-heading">
         <h3 id="health-latest-heading">{tab === "summary" ? "Latest server snapshots" : tab === "databases" ? "Latest database and logical-file snapshots" : "Latest collection health"}</h3>
         <p className="table-note">{tab === "summary"
           ? "Core metrics and configuration snapshots show their latest evidence; they do not rewind with the dashboard. Configuration changes follow the selected time window."
           : tab === "databases"
             ? "Database and logical-file summaries show their latest snapshots. Database-option changes follow the selected time window."
             : "Collector health shows the latest snapshot, independently of the selected historical window. Source observation and repository times are shown alongside each observation."}</p>
-        {evidence === undefined ? null : <>
+        {snapshot && <>
           <div className="health-summary">
-            <span className={`health-state health-${evidence.target.state}`}>
-              {stateLabels[evidence.target.state]}
+            <span className={`health-state health-${snapshot.state}`}>
+              {stateLabels[snapshot.state]}
             </span>
             <p>
-              Evaluated using repository time: {formatTimestamp(evidence.target.repositoryTimeUtc)}
+              Evaluated using repository time: {formatTimestamp(snapshot.repositoryTimeUtc)}
             </p>
           </div>
           {tab === "summary" ? <>
-            <HealthMetricStrip metrics={evidence.target.coreMetrics} />
+            <HealthMetricStrip metrics={snapshot.coreMetrics} />
             <p className="detail-note">For unavailable or incomplete core metrics, review <a href={healthSectionHref(scope, instanceId, "collection")}>collection health</a> for source reasons and recovery guidance.</p>
             <details className="supporting-evidence"><summary>All latest core metric samples</summary>
-              <CoreMetrics metrics={evidence.target.coreMetrics} />
+              <CoreMetrics metrics={snapshot.coreMetrics} />
             </details>
-            <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh}
-              canManage={canManageConfiguration} />
-            <ServerConfigurationChanges selectedRunId={selectedConfigurationRunId} targetRevision={targetRevision} instanceId={instanceId} scope={scope} refresh={refresh}
-              collector={evidence.target.collectors.find(item => item.collectorId === "engine.configurations")}
-              canManage={canManageConfiguration} />
-            <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div></details>
+            <details className="supporting-evidence"><summary>Collector snapshot summary</summary><div className="collector-grid">{snapshot.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div></details>
           </> : null}
-          {tab === "databases" ? <><DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} /><DatabaseHealth targetRevision={targetRevision} instanceId={instanceId} firstPage={evidence.databases} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} /><DatabaseFileHealth page={evidence.files} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} /></> : null}
-          {tab === "collection" ? <div className="collector-grid">{evidence.target.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div> : null}
+          {tab === "collection" ? <div className="collector-grid">{snapshot.collectors.map((collector) => <CollectorHealthCard collector={collector} recoveryContext={recoveryContext} key={collector.collectorId} />)}</div> : null}
         </>}
-      </section>
+        {tab === "summary" && <>
+          <ServerConfigurationSnapshot instanceId={instanceId} refresh={refresh} canManage={canManageConfiguration} />
+          <ServerConfigurationChanges selectedRunId={selectedConfigurationRunId} targetRevision={targetRevision} instanceId={instanceId} scope={scope} refresh={refresh}
+            collector={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")} canManage={canManageConfiguration} />
+        </>}
+        {tab === "databases" && <>
+          <DatabaseOptionChanges instanceId={instanceId} scope={scope} refresh={refresh} />
+          {evidence?.databases && <DatabaseHealth targetRevision={targetRevision} instanceId={instanceId} firstPage={evidence.databases} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} />}
+          {evidence?.files && <DatabaseFileHealth page={evidence.files} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} />}
+        </>}
+      </section>}
     </section>
   );
 }

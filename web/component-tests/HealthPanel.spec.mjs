@@ -5,6 +5,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { alpha, beta, at, cursor, collector, database, evidence, logicalFile } from './healthFixture.mjs';
 import { alertLifecycleHistoryBackend, lifecycleFixtureBinding } from '../tools/alert-lifecycle-history-fixture.mjs';
 import { serverLifecycleHistoryBackend, serverLifecycleFixtureBinding } from '../tools/server-lifecycle-history-fixture.mjs';
+import { activityFixture } from './activityFixture.mjs';
 
 const sessions = new WeakMap();
 const panel = page => page.getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ });
@@ -30,6 +31,9 @@ test.beforeEach(async ({ page }) => {
     if (request.method() !== 'GET') {
       session.unexpected.push(`${request.method()} ${url.href}`); return route.abort();
     }
+    const blocking = /^\/api\/v1\/observation-targets\/([^/]+)\/activity\/blocking\/current$/.exec(url.pathname);
+    if (blocking && session.fixtures.has(blocking[1]) && url.searchParams.toString() === 'limit=256')
+      return json(route, activityFixture(blocking[1])['blocking/current']);
     if (/^\/api\/v1\/observation-targets\/[^/]+\/lifecycle\/history$/.test(url.pathname)) {
       const item = serverLifecycleFixtureBinding(url);
       if (session.fixtures.has(item.binding.targetId)) return json(route, serverLifecycle.read(item.binding, item.cursor));
@@ -37,6 +41,9 @@ test.beforeEach(async ({ page }) => {
     // The real dashboard receives an authorized native empty snapshot. Health
     // remains mounted; unrelated chart/timeline/agent sources are not needed.
     if (url.pathname === '/api/v1/overview' && [alpha, beta].includes(url.searchParams.get('targetId'))) {
+      const denied = session.overviewDenied && (session.overviewDenied.period === 'primary'
+        || url.searchParams.get('fromUtc') !== '2026-01-15T12:00:00.000Z');
+      if (denied) return route.fulfill({ status: session.overviewDenied.status, contentType: 'text/plain', body: 'PRIVATE_OVERVIEW_DENIAL' });
       return json(route, { targetId: url.searchParams.get('targetId'), fromUtc: url.searchParams.get('fromUtc'),
         toUtc: url.searchParams.get('toUtc'), refreshedAtUtc: at, targets: [], excludedTargets: 0, evidence: [] });
     }
@@ -247,7 +254,7 @@ test('keeps exact large file counters, bounded page evidence and database contex
   await expect(files(page).getByRole('heading', { name: 'Synthetic_data' })).toBeVisible();
 });
 
-test('sanitizes a failed native response and retries through an external refresh', async ({ page }) => {
+test('sanitizes a denied native response and requires an explicit access retry', async ({ page }) => {
   const secret = 'provider password=synthetic-secret; connectionString=private; <script>window.healthInjected=true</script>';
   let fail = true;
   sessions.get(page).intercept = async (route, _url, _id, kind) => {
@@ -262,6 +269,8 @@ test('sanitizes a failed native response and retries through an external refresh
   expect(await page.evaluate(() => window.healthInjected)).toBeUndefined();
   fail = false;
   await page.getByRole('button', { name: 'Refresh health evidence' }).click();
+  await expect(panel(page).getByRole('alert')).toHaveText('You are not authorized to view health for this target.');
+  await panel(page).getByRole('button', { name: 'Retry health access', exact: true }).click();
   await expect(panel(page).getByRole('tab', { name: 'Collection health' })).toBeVisible();
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
 });
@@ -380,7 +389,7 @@ test('embedded navigation and independent dashboard remain available when the la
   const navigation = panel(page).getByRole('tablist', { name: 'Server summary sections', exact: true });
   await expect(navigation).toBeVisible();
   await expect(panel(page).getByRole('alert').filter({ hasText: 'The health request failed safely.' })).toBeVisible();
-  await expect(panel(page).getByText('No latest health snapshot has been received for this server. Missing evidence is not an all-clear signal.', { exact: true })).toBeVisible();
+  await expect(panel(page).getByText('No latest core and collector health snapshot has been received for this server. Independent database, file and history sources can still be available; missing evidence is not an all-clear signal.', { exact: true })).toBeVisible();
   await expect(panel(page).locator('.health-dashboard-pane')).toBeVisible();
   await navigation.getByRole('tab', { name: 'Databases', exact: true }).click();
   await expect(panel(page).locator('.health-dashboard-pane')).toBeHidden();
@@ -407,3 +416,110 @@ test('switching sections preserves the mounted dashboard disclosure and owned so
   await expect(summary.locator('..')).toHaveAttribute('open', '');
   expect(sessions.get(page).requests.filter(path => path.includes('/alerts/history'))).toHaveLength(reads);
 });
+
+for (const unavailable of ['databases', 'files']) test(`a ${unavailable} outage keeps core and independently readable change history visible`, async ({ page }) => {
+  const fixture = evidence(); fixture.databases.items = [database(7, 'Independent database')]; fixture.files.items = [logicalFile()];
+  sessions.get(page).fixtures.set(alpha, fixture);
+  sessions.get(page).intercept = async (route, _url, _id, kind) => {
+    if (kind !== unavailable) return false;
+    await route.fulfill({ status: 503, contentType: 'text/plain', body: 'SECRET_PARTIAL_FAILURE' }); return true;
+  };
+  await open(page, 'Dashboard');
+  await expect(panel(page).locator('.health-summary')).toContainText('Current evidence');
+  await expect(panel(page).getByRole('region', { name: 'Server configuration changes', exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('alert').filter({ hasText: 'The health request failed safely.' })).toBeVisible();
+  await panel(page).getByRole('tab', { name: 'Databases', exact: true }).click();
+  await expect(panel(page).getByRole('region', { name: 'Database option changes', exact: true })).toBeVisible();
+  if (unavailable === 'files') {
+    await expect(inventory(page)).toContainText('Independent database'); await expect(files(page)).toHaveCount(0);
+  } else {
+    await expect(files(page)).toContainText('Synthetic_data'); await expect(inventory(page)).toHaveCount(0);
+  }
+  await expect(panel(page)).not.toContainText('SECRET_PARTIAL_FAILURE');
+});
+
+test('a pending file read does not hold successfully validated core or database evidence hostage', async ({ page }) => {
+  const fixture = evidence(); fixture.databases.items = [database(7, 'Immediate database')]; sessions.get(page).fixtures.set(alpha, fixture);
+  let announce, release;
+  const started = new Promise(resolve => { announce = resolve; }), gate = new Promise(resolve => { release = resolve; });
+  sessions.get(page).intercept = async (route, _url, _id, kind) => {
+    if (kind !== 'files') return false; announce(); await gate; await json(route, fixture.files); return true;
+  };
+  await open(page, 'Databases'); await started;
+  await expect(inventory(page)).toContainText('Immediate database');
+  await expect(files(page)).toHaveCount(0);
+  await panel(page).getByRole('tab', { name: 'Collection health', exact: true }).click();
+  await expect(panel(page).getByRole('article').filter({ has: page.getByRole('heading', { name: 'inventory.databases', exact: true }) })).toBeVisible();
+  release();
+  await panel(page).getByRole('tab', { name: 'Databases', exact: true }).click(); await expect(files(page)).toBeVisible();
+});
+
+for (const status of [401, 403]) test(`file HTTP${status} has priority over core503 and aborts a held peer without automatic recovery`, async ({ page }) => {
+  const session = sessions.get(page); let announce, release, finished, heldRequest;
+  const started = new Promise(resolve => { announce = resolve; }), gate = new Promise(resolve => { release = resolve; });
+  const ended = new Promise(resolve => { finished = resolve; });
+  session.intercept = async (route, _url, _id, kind) => {
+    if (kind === 'databases') {
+      heldRequest = route.request(); announce(); await gate;
+      try { await json(route, evidence().databases); } catch { expect(heldRequest.failure()?.errorText).toContain('ERR_ABORTED'); }
+      finished(); return true;
+    }
+    if (kind === 'files') { await started; await route.fulfill({ status, contentType: 'text/plain', body: 'SECRET_DENIAL_PRIORITY' }); return true; }
+    if (kind === undefined) { await route.fulfill({ status: 503 }); return true; }
+    return false;
+  };
+  await open(page, 'Databases'); await started;
+  await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+  await expect.poll(() => heldRequest.failure()?.errorText).toContain('ERR_ABORTED');
+  await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+  await expect(panel(page).getByRole('region', { name: 'Database option changes', exact: true })).toHaveCount(0);
+  release(); await ended;
+  const reads = session.requests.length;
+  await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+  await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+  expect(session.requests).toHaveLength(reads);
+  session.intercept = undefined;
+  await panel(page).getByRole('button', { name: 'Retry health access', exact: true }).click();
+  await expect(inventory(page)).toBeVisible();
+  await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toHaveCount(0);
+  await expect(panel(page)).not.toContainText('SECRET_DENIAL_PRIORITY');
+});
+
+test('independent option-history denial clears all retained health siblings until explicit access recovery', async ({ page }) => {
+  const fixture = evidence(); fixture.databases.items = [database(7, 'Protected independent database')]; fixture.files.items = [logicalFile()];
+  const session = sessions.get(page); session.fixtures.set(alpha, fixture); await open(page, 'Databases');
+  await expect(inventory(page)).toContainText('Protected independent database');
+  await panel(page).getByRole('tab', { name: 'Dashboard', exact: true }).click();
+  session.intercept = async (route, _url, _id, kind) => {
+    if (kind !== 'database-option-changes') return false;
+    await route.fulfill({ status: 403, contentType: 'text/plain', body: 'PRIVATE_OPTIONS' }); return true;
+  };
+  await panel(page).getByRole('tab', { name: 'Databases', exact: true }).click();
+  await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+  await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+  await expect(panel(page)).not.toContainText('Protected independent database');
+  await expect(panel(page)).not.toContainText('PRIVATE_OPTIONS');
+});
+
+for (const period of ['primary', 'comparison']) for (const status of [401, 403])
+  test(`${period} analytics HTTP${status} clears protected health siblings while ordinary source failures remain independent`, async ({ page }) => {
+    const fixture = evidence(); fixture.databases.items = [database(7, 'Protected analytics sibling')]; fixture.files.items = [logicalFile()];
+    const session = sessions.get(page); session.fixtures.set(alpha, fixture);
+    await open(page, 'Databases', `?navigation=true#/health?${new URLSearchParams({ target: alpha, range: 'custom',
+      from: '2026-01-15T12:00:00.000Z', to: '2026-01-15T13:00:00.000Z', compare: '1', healthSection: 'databases' })}`);
+    await expect(inventory(page)).toContainText('Protected analytics sibling');
+    session.overviewDenied = { period, status };
+    await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+    await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+    await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+    await expect(panel(page).locator('.server-dashboard')).toHaveCount(0);
+    await expect(panel(page)).not.toContainText('Protected analytics sibling');
+    await expect(panel(page)).not.toContainText('PRIVATE_OVERVIEW_DENIAL');
+    const reads = session.requests.length;
+    await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+    await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+    expect(session.requests).toHaveLength(reads);
+    session.overviewDenied = undefined;
+    await panel(page).getByRole('button', { name: 'Retry health access', exact: true }).click();
+    await expect(inventory(page)).toContainText('Protected analytics sibling');
+  });

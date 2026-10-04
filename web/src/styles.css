@@ -455,6 +455,7 @@ html:has(.workspace-fleet-strip) { scroll-padding-top: calc(var(--workspace-flee
 .dashboard-timeline-coverage ul { padding-left: 20px; }
 .dashboard-timeline-coverage li { margin-block: 6px; }
 .server-dashboard-blocking { padding: 20px; }
+.server-dashboard-blocking button, .dashboard-head-blockers button, .health-navigation-frame > button { min-width: 44px; min-height: 44px; }
 .server-dashboard-blocking .section-heading { align-items: baseline; }
 .server-dashboard-blocking h4, .server-dashboard-blocking h5 { margin: 0; }
 .server-dashboard-blocking-meta { color: var(--muted); font-size: 12px; }
@@ -475,6 +476,9 @@ html:has(.workspace-fleet-strip) { scroll-padding-top: calc(var(--workspace-flee
 .tab { min-height: 42px; margin-bottom: -1px; padding: 9px 18px; color: var(--muted-deep); background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; font-weight: 700; }
 .tab:hover { color: var(--teal-deep); background: var(--teal-soft); }
 .tab.is-active { color: var(--teal-deep); border-bottom-color: var(--teal); }
+.query-performance-screen > .tabs .tab { min-width: 44px; min-height: 44px; }
+.query-performance-screen > .tabs .tab:focus-visible { outline: 3px solid var(--focus); outline-offset: -5px; }
+@media (forced-colors: active) { .query-performance-screen > .tabs .tab:focus-visible { outline-color: Highlight; } }
 .supporting-evidence { margin-top: 18px; border-top: 1px solid var(--border); }
 .supporting-evidence > summary, .evidence-disclosure > summary { padding: 15px 0; color: var(--teal-deep); cursor: pointer; font-weight: 750; }
 .supporting-evidence-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
@@ -740,8 +744,9 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .brand-lockup strong { font-size: 17px; }
   .brand-lockup span:not(.brand-mark) { font-size: 11px; }
   .nav-label, .sidebar-footer { display: none; }
-  .sidebar nav { display: flex; gap: 4px; max-width: 100%; overflow-x: auto; padding-bottom: 2px; }
-  .sidebar nav a { flex: 0 0 auto; min-height: 39px; padding: 8px 10px; font-size: 12px; }
+  .sidebar nav { display: flex; gap: 4px; max-width: 100%; overflow-x: auto; padding-inline: 2px; padding-bottom: 2px; }
+  .sidebar nav a { flex: 0 0 auto; min-width: 44px; min-height: 44px; padding: 8px 10px; font-size: 12px; }
+  .sidebar nav a:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
   .sidebar nav a > span { width: 16px; font-size: 16px; }
   .topbar { padding: 12px 16px; font-size: 11px; }
   .topbar-time-controls { justify-content: flex-start; }
@@ -811,6 +816,8 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
 @media (forced-colors: active) {
+  .sidebar { background: Canvas; }
+  .sidebar nav a:focus-visible { outline-color: Highlight; }
   .chart-series, .chart-marker, .deadlock-edge, .chart-threshold,
   .chart-crosshair line { stroke: CanvasText; }
   .chart-marker, .deadlock-diagram marker path { fill: CanvasText; }

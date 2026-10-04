@@ -23,6 +23,13 @@ function nullableUtc(value: unknown): boolean {
   } catch { return false; }
 }
 
+export class OverviewRequestError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message); this.name = 'OverviewRequestError'; this.status = status;
+  }
+}
+
 export async function getOverview(target: string, window: {fromUtc: string; toUtc: string}, signal: AbortSignal): Promise<OverviewSnapshot> {
   const params = new URLSearchParams({...window,useLatestStatus:'true'}); if (target) params.set('targetId',target);
   let response: Response;
@@ -33,7 +40,8 @@ export async function getOverview(target: string, window: {fromUtc: string; toUt
       ? 'Overview evidence exceeded the response limit or could not be decoded.'
       : 'Overview evidence is temporarily unavailable.');
   }
-  if (!response.ok) throw new Error(response.status === 403 ? 'This server selection is unavailable or outside your access.' : response.status === 400 ? 'The selected time range is invalid.' : response.status === 504 ? 'Overview took too long to load. Try a shorter time range or a single server.' : 'Overview evidence is temporarily unavailable.');
+  if (signal.aborted) throw signal.reason;
+  if (!response.ok) throw new OverviewRequestError(response.status === 403 ? 'This server selection is unavailable or outside your access.' : response.status === 401 ? 'Your access could not be verified. Refresh to retry.' : response.status === 400 ? 'The selected time range is invalid.' : response.status === 504 ? 'Overview took too long to load. Try a shorter time range or a single server.' : 'Overview evidence is temporarily unavailable.', response.status);
   let value: OverviewSnapshot;
   try { value = JSON.parse(await readBoundedBody(response, signal, 1_048_576)) as OverviewSnapshot; }
   catch {

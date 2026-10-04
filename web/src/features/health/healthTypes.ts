@@ -253,3 +253,17 @@ export interface TargetHealthEvidence {
   readonly databases: DatabaseHealthPage;
   readonly files: DatabaseFileHealthPage;
 }
+
+export type TargetHealthSource = "target" | "databases" | "files";
+/** Independently validated latest receipts. Missing sources are never empty successful pages. */
+export interface TargetHealthReadResult {
+  readonly target?: TargetHealthSnapshot;
+  readonly databases?: DatabaseHealthPage;
+  readonly files?: DatabaseFileHealthPage;
+  readonly errors: Readonly<Partial<Record<TargetHealthSource, string>>>;
+}
+export type TargetHealthSourceRead =
+  | { readonly source: "target"; readonly value: TargetHealthSnapshot; readonly error?: never }
+  | { readonly source: "databases"; readonly value: DatabaseHealthPage; readonly error?: never }
+  | { readonly source: "files"; readonly value: DatabaseFileHealthPage; readonly error?: never }
+  | { readonly source: TargetHealthSource; readonly error: string; readonly value?: never };

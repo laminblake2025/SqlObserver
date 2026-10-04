@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getOverview } from './overviewApi';
+import { getOverview, OverviewRequestError } from './overviewApi';
 import { overviewWindow } from './overviewModel';
 import type { OverviewScope, OverviewSnapshot } from './overviewTypes';
 import { utcMicroseconds } from '../../utcTimestamp.ts';
@@ -12,7 +12,8 @@ function formatUtc(value: bigint): string {
   return fraction === 0n ? base : base.replace('Z', `${fraction.toString().padStart(3,'0')}Z`);
 }
 
-export function useOverviewAnalytics(scope: OverviewScope, refresh: number, targetRevision?: number) {
+export function useOverviewAnalytics(scope: OverviewScope, refresh: number, targetRevision?: number, onAccessDenied?: (status: 401 | 403) => void) {
+  const denialCallback = useRef(onAccessDenied); denialCallback.current = onAccessDenied;
   // This is the caller's known configuration boundary, not a revision supplied by the Overview DTO.
   const boundary = JSON.stringify([scope.target.toLowerCase(), targetRevision, scope.compare, scope.databaseId]);
   const generation = useRef({ boundary, number: 0 });
@@ -46,9 +47,19 @@ export function useOverviewAnalytics(scope: OverviewScope, refresh: number, targ
           try {
             const previous = await getOverview(scope.target,{fromUtc:formatUtc(utc(window.fromUtc)-duration),toUtc:window.fromUtc},controller.signal);
             if (current()) setResult({key,scopeKey,readScopeKey,data,previous,loading:false});
-          } catch { if (current()) setResult({key,scopeKey,readScopeKey,data,loading:false,comparisonError:'Previous-period evidence is unavailable.'}); }
+          } catch (failure) {
+            if (!current()) return;
+            if (failure instanceof OverviewRequestError && (failure.status === 401 || failure.status === 403)) {
+              denialCallback.current?.(failure.status);
+              if (current()) setResult({key,scopeKey,readScopeKey,loading:false,error:failure.message});
+            } else setResult({key,scopeKey,readScopeKey,data,loading:false,comparisonError:'Previous-period evidence is unavailable.'});
+          }
         }
-      } catch (error) { if (current()) setResult({key,scopeKey,readScopeKey,loading:false,error:error instanceof Error ? error.message : 'Overview is unavailable.'}); }
+      } catch (error) {
+        if (!current()) return;
+        if (error instanceof OverviewRequestError && (error.status === 401 || error.status === 403)) denialCallback.current?.(error.status);
+        if (current()) setResult({key,scopeKey,readScopeKey,loading:false,error:error instanceof Error ? error.message : 'Overview is unavailable.'});
+      }
     })();
     return () => controller.abort();
   },[key]);
