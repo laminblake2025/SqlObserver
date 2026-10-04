@@ -7,7 +7,7 @@ export const toUtc = '2026-08-25T13:00:00.000Z';
 export const observedAtUtc = '2026-08-25T12:00:00.000Z';
 // Native v1 snapshot cursor: standard-base64 outer and PascalCase inner tie key.
 export const projectionCursor = (fileId, id = target) => Buffer.from(`${id}|${observedAtUtc}|${Buffer.from(JSON.stringify({
-  Kind: 'tempdb', RunId: runId, Revision: 4, From: null, To: null, A: String(fileId), B: '', C: '', D: '',
+  Kind: 'ag.databases', RunId: runId, Revision: 4, From: null, To: null, A: String(fileId).padStart(64, '0'), B: String(fileId + 1000).padStart(64, '0'), C: '', D: '',
 })).toString('base64')}`).toString('base64');
 export const cursor = projectionCursor(50);
 export const lastCursor = projectionCursor(100);
@@ -80,3 +80,6 @@ export function fixture(id = target) {
     'backup-assessment': backupAssessment(id), 'availability-replicas': availability(id), 'availability-databases': availability(id),
   };
 }
+
+// Native v1 AG database rows exercise the unchanged generic operational projection lifecycle.
+export function databaseRow(value=1, overrides={}) { return {groupFingerprint:String(value).padStart(64,'0'),databaseFingerprint:String(value+1000).padStart(64,'0'),synchronizationState:'SYNCHRONIZED',databaseState:'ONLINE',visibilityScope:'PrimaryAllKnown',stateAvailable:true,...overrides}; }

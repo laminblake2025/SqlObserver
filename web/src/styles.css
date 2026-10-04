@@ -816,7 +816,28 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 }
 
 @media (forced-colors: active) {
-  .sidebar { background: Canvas; }
+  :root {
+    --navy: Canvas; --navy-deep: Canvas; --navy-soft: Canvas;
+    --canvas: Canvas; --surface: Canvas; --surface-soft: Canvas;
+    --surface-hover: Canvas; --surface-table: Canvas;
+    --surface-teal: Canvas; --surface-warning: Canvas;
+    --teal-soft: Canvas; --amber-soft: Canvas; --red-soft: Canvas; --slate-soft: Canvas;
+    --text: CanvasText; --muted: CanvasText; --muted-deep: CanvasText;
+    --teal: CanvasText; --teal-deep: CanvasText; --amber: CanvasText;
+    --red: CanvasText; --slate: CanvasText; --footer-muted: CanvasText;
+    --border: CanvasText; --border-strong: CanvasText; --border-teal: CanvasText;
+    --border-warning: CanvasText; --amber-border: CanvasText; --gridline: CanvasText;
+    --placeholder: GrayText; --focus: Highlight; --focus-on-dark: Highlight;
+    --action-background: ButtonFace; --action-hover: ButtonFace; --action-text: ButtonText;
+    --series-1: CanvasText; --series-2: CanvasText; --series-3: CanvasText;
+    --series-4: CanvasText; --series-5: CanvasText; --series-6: CanvasText;
+    --series-7: CanvasText; --series-8: CanvasText; --series-9: CanvasText; --series-10: CanvasText;
+  }
+  .sidebar { color: CanvasText; background: Canvas; }
+  .brand-lockup span:not(.brand-mark), .brand-mark,
+  .sidebar-footer, .topbar-separator { color: CanvasText; }
+  .sidebar nav a, .sidebar nav a:hover, .sidebar nav a > span,
+  .sidebar nav a[aria-current="page"] > span { color: LinkText; }
   .sidebar nav a:focus-visible { outline-color: Highlight; }
   .chart-series, .chart-marker, .deadlock-edge, .chart-threshold,
   .chart-crosshair line { stroke: CanvasText; }

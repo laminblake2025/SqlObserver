@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { TimeDisplayProvider } from "../src/TimeDisplayContext";
 import { OperationsPanel } from "../src/features/operations/OperationsPanel";
 import { healthCheckHref, healthCheckTab } from "../src/features/operations/agentHistoryModel";
+import {readTempDbSelection,tempDbSelectionHref,retainedTempDbSelectionHref} from "../src/features/operations/tempDbSelectionModel";
 import { readOverviewScope } from "../src/features/overview/overviewModel";
 import "../src/styles.css";
 import "./harness.css";
@@ -30,7 +31,7 @@ function Harness() {
       }}>{targets.map(target => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
       <button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh context</button>
     </fieldset>
-    <OperationsPanel instanceId={scope.target} targetRevision={4} scope={scope} initialTab={tab} refresh={refresh} />
+    <OperationsPanel instanceId={scope.target} targetRevision={4} scope={scope} initialTab={tab} refresh={refresh} selectedTempDb={readTempDbSelection(hash,scope.target)} onSelectTempDb={(selection,window) => {location.hash=window ? retainedTempDbSelectionHref(scope,window,selection) : tempDbSelectionHref(scope,selection);}} onRetainTempDbWindow={(window,selection)=>{location.hash=retainedTempDbSelectionHref(scope,window,selection);}} />
   </main>;
 }
 

@@ -43,6 +43,7 @@ import { TargetHealthPanel } from "./features/health/TargetHealthPanel";
 import { OverviewPage } from "./features/overview/OverviewPage";
 import { overviewHref, readOverviewScope } from "./features/overview/overviewModel";
 import { healthCheckHref } from "./features/operations/agentHistoryModel.ts";
+import { readTempDbSelection, tempDbSelectionHref, clearTempDbSelectionHref, retainedTempDbSelectionHref, retainTempDbSelectionHref } from "./features/operations/tempDbSelectionModel.ts";
 import { OperationsPanel } from "./features/operations/OperationsPanel";
 import { queryViewHref, readQueryViewSelection } from "./features/queries/queryViewModel";
 import { retainChartInspectionHref } from "./components/chartInspectionModel.ts";
@@ -109,7 +110,7 @@ export function App() {
   const surface = route.analyticsSurface ?? "incidents";
   const usesTimeContext = route.page === "overview" || route.page === "health" || route.page === "activity" || route.page === "waits" || route.page === "resources" || route.page === "queries" || route.page === "deadlocks" || route.page === "operations" || route.page === "alerts" || route.page === "reports" ||
     (route.page === "analytics" && surface !== "jobs" && surface !== "backfill");
-  const maxTimeRangeDays = route.page === "analytics" || route.page === "reports" && reportSelection.state === "valid" &&
+  const maxTimeRangeDays = route.page === "analytics" || route.page === "operations" && route.healthCheck === "tempdb" || route.page === "reports" && reportSelection.state === "valid" &&
     (reportSelection.kind === "performance-window" || reportSelection.kind === "incident-evidence") ? 7 : 31;
   const isRewind = usesTimeContext && scope.range === "custom";
   const [access, setAccess] = useState<{ targetId: string | null; value: MyAccess }>();
@@ -561,7 +562,25 @@ export function App() {
                 }} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}
               {route.page === "permissions" && <TargetPermissionScriptPanel key={props.instanceId} targetId={props.instanceId} displayName={props.displayName} host={selected!.host} canGenerate={canManageRules} onClose={closeTarget} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} />}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)}
+                selectedTempDb={readTempDbSelection(location.hash, props.instanceId)}
+                onSelectTempDb={(selection, window) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "tempdb" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  const currentScope = { ...readOverviewScope(location.hash), target: props.instanceId };
+                  location.hash = selection === undefined ? clearTempDbSelectionHref(location.hash) : window ? retainedTempDbSelectionHref(currentScope, window, selection) : tempDbSelectionHref(currentScope, selection);
+                }}
+                onRetainTempDbWindow={(window, selection) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "tempdb" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  let href = retainedTempDbSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, window, selection);
+                  if (readTempDbSelection(location.hash, props.instanceId) === null) {
+                    const source = new URLSearchParams(location.hash.split("?")[1]), destination = new URLSearchParams(href.split("?")[1]);
+                    for (const key of ["tempDbRun", "tempDbRevision"]) for (const value of source.getAll(key)) destination.append(key, value);
+                    href = `${href.split("?")[0]}?${destination}`;
+                  }
+                  location.hash = href;
+                }} />}
               {route.page === "reports" && <ReportsPanel {...props} scope={scope} selection={reportSelection}
                 onSelectKind={kind => {
                   const currentRoute = readRoute(location.hash);
@@ -601,6 +620,7 @@ export function App() {
 function retainDiagnosticSelectionHref(href: string, currentHash: string): string {
   let next = retainDashboardTimelineHref(href, currentHash);
   next = retainResourceSelectionHref(next, currentHash);
+  next = retainTempDbSelectionHref(next, currentHash);
   next = retainActivitySelectionHref(next, currentHash);
   next = retainWaitCategoryHref(next, currentHash);
   next = retainSessionWaitCategoryHref(next, currentHash);

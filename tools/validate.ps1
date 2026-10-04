@@ -1885,7 +1885,7 @@ function Assert-RepositoryShape {
     $m12ReportsTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs'
     foreach ($m12ReportsPath in @($m12ReportsContractPath, $m12ReportsSchemaPath, $m12ReportsPinPath, $m12ReportsProducerPath, $m12ReportsTestPath)) { if (-not (Test-Path -LiteralPath $m12ReportsPath -PathType Leaf)) { throw 'M12 reports certification asset is missing.' } }
     $m12ReportsContractHash = (Get-FileHash -LiteralPath $m12ReportsContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ReportsSchemaHash = (Get-FileHash -LiteralPath $m12ReportsSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12ReportsContractHash -cne 'd677a30c8fb07d3af322c6b2abbe0cef5cd70a1d92250860accf9af236ca8365' -or $m12ReportsSchemaHash -cne 'cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
+    if ($m12ReportsContractHash -cne 'f8a5340ecd0a545126fa65a7909d86c1aac6cd14498e3974d80da93c4415debc' -or $m12ReportsSchemaHash -cne 'cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
     if ([IO.File]::ReadAllText($m12ReportsPinPath) -cne "$m12ReportsContractHash  m12-reports-contract.v1.json`n$m12ReportsSchemaHash  m12-reports-contract.v1.schema.json`n") { throw 'M12 reports contract pin is not exact LF-closed.' }
     $m12ReportsSchema = Get-Content -LiteralPath $m12ReportsSchemaPath -Raw | ConvertFrom-Json; $m12ReportsContract = Get-Content -LiteralPath $m12ReportsContractPath -Raw | ConvertFrom-Json
     if ($m12ReportsSchema.additionalProperties -ne $false -or $m12ReportsContract.'$schema' -cne 'm12-reports-contract.v1.schema.json' -or $m12ReportsContract.producerId -cne 'm12-reports-harness') { throw 'M12 reports contract/schema must be closed and self-identifying.' }
@@ -1895,13 +1895,13 @@ function Assert-RepositoryShape {
     'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
     'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
     'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
-    'database/migrations/checksums.sha256' = '5be1aee5f5b0aff086a569714cf6b14ad0632f041f65152ac3236269260f45da'
+    'database/migrations/checksums.sha256' = '63005dba678457b1d15f4da295e032d334844c1c502ec2dd003afa08faa73916'
     'src/SqlObserver.Reporting/ReportContracts.cs' = 'f22cb37ebc9fba15fa01d1215e902a38b5e43f02c494585f06bcac0214b89dd0'
     'src/SqlObserver.Reporting/ReportRendering.cs' = '08bba74ded22122a4a08f03dbfd6a254a7b786b352a3c3390a000a64552a824c'
     'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '61e1b6a3f5b66a9583089572ee2ebfe2fb0e7fa08a50ff6c23450441561e7865'
     'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs' = '9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74'
     'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs' = '6596309e5ff693b47c6952f8f3be12314c14e15bc601e588705b3ac990e64cdd'
-    'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e'
+    'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = 'e7aa4a9e68a5ccc512ea141c7f34e25cd963c30c41d3be5a6455ee639293d938'
     'database/migrations/0288_saved_incident_workspace.sql' = '6e04b0c7d6ae18827b273a2742dce33369ef0c6d11d7e2a461a3a4814cd7b2e3'
     'database/migrations/0289_saved_incident_listing.sql' = '91f8a79793e3ba7fa36199a676a46ce26664af0b3d9e531fc8ee792c021daf12'
     'database/migrations/0290_saved_investigation_reports.sql' = '61fd92379f9a0e95bf8affabf43865b225913c8dd11bfffe73ff7289bf00012b'
@@ -1947,7 +1947,7 @@ function Assert-RepositoryShape {
         'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlTargetControlPlane.cs' = 'ddeb8b07190ce6be7e95ba615b97ce45ae8b7d2ae0625a97704d3c0f23a48881'
         'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCompatibilityPort.cs' = '41ef7ad9222fc32fde5a637fe356e5f17961766762f1fd7bcfdec9e12a0e98be'
         'src/SqlObserver.Infrastructure.PostgreSql/packages.lock.json' = '8e59cdd654f5c8f859219cb3c27a94915981e6dec3dec2f6048af724e22de3ec'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '2638f3ad2478f664acba5af405d2b0effb1af3b9d22a79a710cc9a2bc687592e'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = 'e7aa4a9e68a5ccc512ea141c7f34e25cd963c30c41d3be5a6455ee639293d938'
         'tests/SqlObserver.IntegrationTests.PostgreSql/packages.lock.json' = 'ee6fe6dc91f4e777dfa0f14c82cd97fc0ad39b01b367269c46e8ad9c7a133de1'
         'tests/SqlObserver.IntegrationTests.PostgreSql/M12ObservabilityCertificationTests.cs' = 'a0c43cf977cd867df8ca68fd2883249f59b18e1f21e7a0ab63af43f9d3e3fe3a'
         'tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj' = '6f9c982af8bb9d2cb3613c8725a87a6d66b4fe0d3d22dc2bf117c02022111ebe'

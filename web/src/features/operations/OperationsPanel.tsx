@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
 import { AnalyticsSurfacePanel } from "../analytics/AnalyticsSurfacePanel";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
@@ -15,6 +15,9 @@ import { AvailabilityEvidencePanel } from "./AvailabilityEvidencePanel";
 import { BackupAssessmentPanel } from "./BackupAssessmentPanel";
 import { AgentFailureHistoryPanel } from "./AgentFailureHistoryPanel";
 import { healthCheckHref, type HealthCheckTab } from "./agentHistoryModel.ts";
+import { useTempDbWindowHistory } from "./useTempDbWindowHistory";
+import { TempDbWindowHistoryPanel } from "./TempDbWindowHistoryPanel";
+import { tempDbWindow, tempDbContextIdentity, type TempDbSelection } from "./tempDbWindowHistoryModel";
 
 type OperationsTab = HealthCheckTab;
 
@@ -35,34 +38,43 @@ const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly 
   availability: ["ag-replicas", "ag-databases"],
 };
 
-export function OperationsPanel({ instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false }: { readonly instanceId: string; readonly targetRevision: number; readonly initialTab?: OperationsTab; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean }) {
+export function OperationsPanel({ instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false, selectedTempDb, onSelectTempDb, onRetainTempDbWindow }: { readonly instanceId: string; readonly targetRevision: number; readonly initialTab?: OperationsTab; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean; readonly selectedTempDb?: TempDbSelection | null; readonly onSelectTempDb?: (selection: TempDbSelection | undefined, window?: {fromUtc:string;toUtc:string}) => void; readonly onRetainTempDbWindow?: (window: {fromUtc:string;toUtc:string}, selection?: TempDbSelection) => void }) {
   const tabKey = JSON.stringify([instanceId.toLowerCase(), initialTab]);
   const [selectedTab, setSelectedTab] = useState<{ key: string; value: OperationsTab }>();
   const tab = selectedTab?.key === tabKey ? selectedTab.value : initialTab;
   const context = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
   const projections = {
     backups: useOperationalProjection("backups", instanceId, context, refresh),
-    "tempdb-summary": useOperationalProjection("tempdb-summary", instanceId, context, refresh),
-    "tempdb-files": useOperationalProjection("tempdb-files", instanceId, context, refresh),
     "ag-replicas": useOperationalProjection("ag-replicas", instanceId, context, refresh),
     "ag-databases": useOperationalProjection("ag-databases", instanceId, context, refresh),
   };
   const cards: OperationsState = { agent: { loading: false }, backups: projections.backups.card,
-    "tempdb-summary": projections["tempdb-summary"].card, "tempdb-files": projections["tempdb-files"].card,
+    "tempdb-summary": { loading: false }, "tempdb-files": { loading: false },
     "ag-replicas": projections["ag-replicas"].card, "ag-databases": projections["ag-databases"].card };
   const model = buildOperationsRenderModel(cards);
-  const renderCard = (kind: OperationalKind) => kind === "agent" ? null :
+  const renderCard = (kind: OperationalKind) => kind === "agent" || kind === "tempdb-summary" || kind === "tempdb-files" ? null :
     <OperationCard card={model.cards[kind]} key={kind} actions={projections[kind]} />;
   const activeKinds = tab === "replication" ? [] : tabKinds[tab];
+  const tempDbScopeKey = scope.range === "custom" ? tempDbContextIdentity({targetId:instanceId,targetRevision,fromUtc:scope.from ?? "",toUtc:scope.to ?? ""}) : JSON.stringify([instanceId.toLowerCase(),targetRevision,scope.range]);
+  const retainedTempDbWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const previousTempDbScope = useRef(tempDbScopeKey);
+  if (previousTempDbScope.current !== tempDbScopeKey) { previousTempDbScope.current = tempDbScopeKey; retainedTempDbWindow.current = undefined; }
+  const tempDbContext = useMemo(() => {
+    try { const window = retainedTempDbWindow.current?.key === tempDbScopeKey ? retainedTempDbWindow.current.window : overviewWindow(scope, Date.now()); const bounded = tempDbWindow(window.fromUtc, window.toUtc); if (selectedTempDb !== undefined) retainedTempDbWindow.current = {key:tempDbScopeKey,window:bounded}; return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined }; }
+    catch (failure) { return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid TempDB history window." }; }
+  }, [instanceId, targetRevision, tempDbScopeKey, refresh, selectedTempDb]);
+  const tempDbHistory = useTempDbWindowHistory(tab === "tempdb" ? tempDbContext.binding : undefined, selectedTempDb, refresh);
+  const receivedTempDbWindow = tempDbHistory.list.pages[0] ?? tempDbHistory.detail.pages[0] ?? tempDbContext.binding;
+  const retainTempDbWindow = () => { if (receivedTempDbWindow) { tempDbHistory.retain(); retainedTempDbWindow.current = {key:tempDbScopeKey,window:receivedTempDbWindow}; onRetainTempDbWindow?.(receivedTempDbWindow, tempDbHistory.selected ?? undefined); } };
   return <section className="operations-screen" aria-label="Health checks">
-    <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB pressure, availability, and replication from collected evidence.</p></div></div>
+    <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB usage evidence, availability, and replication from collected evidence.</p></div></div>
     <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
     <nav className="toolbar" aria-label="Additional health checks">
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>
     </nav>
     <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
-    {scope.range === "custom" && <p className="table-note">Rewind applies to backup assessments, per-replica AG evidence and SQL Agent first-observed history. Earlier projection cards read the latest source when requested and can retain an investigated receipt.</p>}
+    {scope.range === "custom" && <p className="table-note">Rewind applies to TempDB completion-window history, backup assessments, per-replica AG evidence and SQL Agent first-observed history. Earlier projection cards read the latest source when requested and can retain an investigated receipt.</p>}
     {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
       : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
       <details className="supporting-evidence"><summary>Earlier availability summary (received v1 snapshots)</summary>
@@ -71,7 +83,7 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
         <details className="supporting-evidence"><summary>Earlier backup observations (received v1 snapshots)</summary>
           <div className="operations-stack">{activeKinds.map(renderCard)}</div>
         </details></> : tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} scope={scope} />
-        : <div className="operations-stack">{activeKinds.map(renderCard)}</div>}
+        : <>{tempDbContext.error && <p role="alert">{tempDbContext.error}</p>}<TempDbWindowHistoryPanel history={tempDbHistory} selected={selectedTempDb} onSelectReceipt={selection => onSelectTempDb?.(selection, receivedTempDbWindow)} onRetainWindow={retainTempDbWindow} /></>}
   </section>;
 }
 

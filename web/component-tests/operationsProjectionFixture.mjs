@@ -2,7 +2,7 @@
 export const alpha = '11111111-1111-4111-8111-000000000001', beta = '11111111-1111-4111-8111-000000000002';
 export const fromUtc = '2026-01-15T12:00:00.123456Z', toUtc = '2026-01-15T13:00:00.123456Z';
 export const providerText = 'SECRET_PROJECTION_PROVIDER <img src="https://projection.invalid" onerror="window.projectionInjected=true">';
-export const runId = (generation, kind = 'tempdb-files', target = alpha) => `${target === beta ? '44444444' : '33333333'}-3333-4333-8333-${String(generation * 100 + (kind === 'backups' ? 2 : kind.startsWith('ag-') ? 3 : 1)).padStart(12, '0')}`;
+export const runId = (generation, kind = 'ag-databases', target = alpha) => `${target === beta ? '44444444' : '33333333'}-3333-4333-8333-${String(generation * 100 + (kind === 'backups' ? 2 : kind.startsWith('ag-') ? 3 : 1)).padStart(12, '0')}`;
 export const paths = {
   backups: '/api/v1/observation-targets/:id/backups', 'tempdb-summary': '/api/v1/observation-targets/:id/tempdb',
   'tempdb-files': '/api/v1/observation-targets/:id/tempdb/files', 'ag-replicas': '/api/v1/observation-targets/:id/availability-groups/replicas',
@@ -13,7 +13,7 @@ export const paths = {
 };
 export const legacyKinds = ['backups', 'tempdb-summary', 'tempdb-files', 'ag-replicas', 'ag-databases'];
 export const collectorKind = kind => kind.startsWith('tempdb-') ? 'tempdb' : kind.startsWith('ag-') ? 'availability' : kind;
-export function routeHash(target = alpha, check = 'tempdb') {
+export function routeHash(target = alpha, check = 'availability') {
   return `#/operations?${new URLSearchParams({ target, range: 'custom', from: fromUtc, to: toUtc, databaseId: '7', check })}`;
 }
 const fingerprint = (item, salt) => (BigInt(item.generation) * 1000n + BigInt(item.index) * 100n + BigInt(salt)).toString(16).padStart(64, '0');

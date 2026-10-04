@@ -13,7 +13,7 @@ function Harness() {
   const [refresh, setRefresh] = useState(0), [mounted, setMounted] = useState(true), [commit, setCommit] = useState("");
   const owningPanel = useRef<HTMLDivElement>(null);
   const scope = readOverviewScope(hash);
-  const selectedTab = healthCheckTab(new URLSearchParams(hash.split("?")[1]).get("check")) ?? "tempdb";
+  const selectedTab = healthCheckTab(new URLSearchParams(hash.split("?")[1]).get("check")) ?? "availability";
   useEffect(() => {
     const listener = () => setHash(location.hash);
     addEventListener("hashchange", listener); return () => removeEventListener("hashchange", listener);

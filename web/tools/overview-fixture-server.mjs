@@ -18,6 +18,7 @@ import {handleSqlVolumeFixture} from './sql-volume-fixture.mjs';
 import {handleSqlVolumeHistoryFixture} from './sql-volume-history-fixture.mjs';
 import {handleDatabaseFileWindowHistoryFixture} from './database-file-window-history-fixture.mjs';
 import {handleCpuCaptureWindowHistoryFixture} from './cpu-capture-window-history-fixture.mjs';
+import {handleTempDbWindowHistoryFixture} from '../component-tests/tempDbWindowHistoryFixture.mjs';
 import {handleMaintenanceEditFixture} from './maintenance-edit-fixture.mjs';
 import {handleMaintenanceSeriesFixture} from './maintenance-series-fixture.mjs';
 import {handleWaitCapturedSessionFixture} from './wait-captured-session-fixture.mjs';
@@ -57,6 +58,8 @@ const utcTicks=value=>{
 const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ const tempDbHistory=handleTempDbWindowHistoryFixture(url,req);
+ if(tempDbHistory)return send(res,tempDbHistory.body,tempDbHistory.status);
  const cpuHistory=handleCpuCaptureWindowHistoryFixture(url,req);
  if(cpuHistory)return send(res,cpuHistory.body,cpuHistory.status);
  const fileHistory=handleDatabaseFileWindowHistoryFixture(url,req);

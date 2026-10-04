@@ -1,0 +1,17 @@
+.tempdb-window-history{min-width:0;display:grid;gap:1rem;padding:20px}
+.tempdb-window-history>section{min-width:0;border-top:1px solid var(--border);padding-top:1rem}
+.tempdb-window-history p,.tempdb-window-history dd,.tempdb-window-history th,.tempdb-window-history td{overflow-wrap:anywhere}
+.tempdb-window-history h4,.tempdb-window-history h5,.tempdb-window-history h6{margin:.5rem 0;font-size:1rem}
+.tempdb-window-history small{display:block;margin-top:.35rem;color:var(--muted)}
+.tempdb-window-history .table-scroll{max-width:100%;overflow-x:auto}
+.tempdb-window-history table{min-width:780px;width:100%}
+.tempdb-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0}
+.tempdb-window-history button,.tempdb-window-history summary{min-height:44px;min-width:44px}
+.tempdb-window-history summary{display:list-item;padding:.65rem .35rem;cursor:pointer;overflow-wrap:anywhere}
+.tempdb-window-history button:focus-visible,.tempdb-window-history summary:focus-visible,.tempdb-window-history [tabindex]:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.tempdb-receipt{color:var(--muted);font-size:.88rem;overflow-wrap:anywhere}
+.tempdb-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin:.75rem 0}
+.tempdb-facts>div{min-width:0}.tempdb-facts dt{font-weight:600}.tempdb-facts dd{margin:.3rem 0 0}
+.tempdb-diagnostics>section{min-width:0;border-top:1px solid var(--border);margin-top:1rem;padding-top:.75rem}
+@media(max-width:600px){.tempdb-window-history{padding:14px}.tempdb-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.tempdb-actions button{white-space:normal;overflow-wrap:anywhere}.tempdb-facts{grid-template-columns:1fr}}
+@media(forced-colors:active){.tempdb-window-history button:focus-visible,.tempdb-window-history summary:focus-visible,.tempdb-window-history [tabindex]:focus-visible{outline-color:Highlight}}

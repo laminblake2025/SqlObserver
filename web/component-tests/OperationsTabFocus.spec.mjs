@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import {tempDbHistoryBackend,tempDbHistoryReadBinding,tempDbHistoryJson} from './tempDbWindowHistoryFixture.mjs';
 import { target, otherTarget, fromUtc, toUtc, requestPath, routeHash, fixture } from './operationsFixture.mjs';
 import { nativeValue } from './analyticsWorkflowFixture.mjs';
 
@@ -18,7 +19,7 @@ function key(path) {
 }
 
 test.beforeEach(async ({ page }) => {
-  const session = { registry: new Map(), requests: [], unexpected: [] };
+  const session = { registry: new Map(), requests: [], unexpected: [], tempdb:tempDbHistoryBackend() };
   sessions.set(page, session);
   for (const id of [target, otherTarget]) {
     for (const [kind, body] of Object.entries(fixture(id))) session.registry.set(key(requestPath(kind, id)), body);
@@ -36,6 +37,7 @@ test.beforeEach(async ({ page }) => {
       return route.abort();
     }
     if (!/^\/api(?:\/|$)/.test(url.pathname)) return route.continue();
+    const historyRead=tempDbHistoryReadBinding(url);if(historyRead){if(request.method()!=='GET'){session.unexpected.push('Non-read TempDB history request');return route.abort();}session.requests.push(request);const b=session.tempdb;return tempDbHistoryJson(route,historyRead.selection?b.snapshot(historyRead.binding,historyRead.selection,historyRead.cursor,historyRead.limit):b.read(historyRead.binding,historyRead.cursor,historyRead.limit));}
     const body = request.method() === 'GET' && session.registry.get(key(url.href));
     if (!body) {
       session.unexpected.push(`Unregistered API: ${request.method()} ${url.href}`);

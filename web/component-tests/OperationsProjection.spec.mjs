@@ -6,11 +6,11 @@ import { alpha, beta, paths, legacyKinds, collectorKind, routeHash, runId, proje
 
 const origin = 'http://127.0.0.1:4328', sessions = new WeakMap();
 const panel = page => page.getByRole('region', { name: 'Health checks', exact: true });
-const card = (page, label = 'TempDB files') => panel(page).getByRole('article', { name: label, exact: true });
-const button = (page, action, label = 'TempDB files') => card(page, label).getByRole('button', { name: `${action} ${label} ${action === 'Return' ? 'to latest' : action === 'Retry' || action === 'Cancel' ? 'read' : 'page'}`, exact: true });
-const namedTable = (page, kind = 'tempdb-files', label = 'TempDB files') => card(page, label).getByRole('table', { name: new RegExp(`^${kind} named evidence`) });
+const card = (page, label = 'Availability Group databases') => panel(page).getByRole('article', { name: label, exact: true });
+const button = (page, action, label = 'Availability Group databases') => card(page, label).getByRole('button', { name: `${action} ${label} ${action === 'Return' ? 'to latest' : action === 'Retry' || action === 'Cancel' ? 'read' : 'page'}`, exact: true });
+const namedTable = (page, kind = 'ag-databases', label = 'Availability Group databases') => card(page, label).getByRole('table', { name: new RegExp(`^${kind} named evidence`) });
 const refresh = page => page.getByRole('button', { name: 'Refresh workspace', exact: true });
-const reads = (page, kind = 'tempdb-files') => sessions.get(page).reads.filter(item => item.kind === kind);
+const reads = (page, kind = 'ag-databases') => sessions.get(page).reads.filter(item => item.kind === kind);
 const firstCommit = async page => JSON.parse(await page.getByRole('status', { name: 'First committed projection context', exact: true }).textContent());
 async function json(route, body, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(body) });
@@ -62,31 +62,30 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => {
   expect(sessions.get(page).unexpected, 'Only registered local native-shaped API requests; external traffic and runtime errors are refused').toEqual([]);
 });
-async function mount(page, tab = 'tempdb') {
+async function mount(page, tab = 'availability') {
   await page.goto(`/component-tests/operations-projection.html${routeHash(alpha, tab)}`);
   await expect(page.getByRole('heading', { name: 'Operations projection harness', exact: true })).toBeVisible();
-  if (tab === 'tempdb') await expectFile(page, 1001);
+  if (tab === 'availability') await expectFile(page, 1001);
   else await supporting(page, tab === 'backups' ? 'Earlier backup observations' : 'Earlier availability summary');
 }
 async function supporting(page, label) {
   const summary = panel(page).locator('summary').filter({ hasText: label });
   if (!await summary.evaluate(element => element.parentElement.open)) await summary.click();
 }
+const databaseIdentity = id => (BigInt(Math.floor(id / 1000)) * 1000n + BigInt(Math.floor((id % 1000 - 1) / 50)) * 100n + BigInt((id % 1000 - 1) % 50 + 1) + 600n).toString(16).padStart(64, '0');
 async function expectFile(page, id) {
-  const summary = card(page).locator('summary').filter({ hasText: /^Browse TempDB file evidence \(/ });
-  await expect(summary).toBeVisible();
-  if (!await summary.evaluate(element => element.parentElement.open)) await summary.click();
-  await expect(namedTable(page).getByRole('cell', { name: String(id), exact: true })).toBeVisible();
+  await supporting(page, 'Earlier availability summary');
+  await expect(namedTable(page).getByRole('cell', { name: databaseIdentity(id), exact: true })).toBeVisible();
 }
-async function missingFile(page, id) { await expect(namedTable(page).getByRole('cell', { name: String(id), exact: true })).toHaveCount(0); }
+async function missingFile(page, id) { await expect(namedTable(page).getByRole('cell', { name: databaseIdentity(id), exact: true })).toHaveCount(0); }
 async function nextFilePage(page, id = 1051) { await button(page, 'Next').click(); await expectFile(page, id); }
 
-test('investigated TempDB pages survive polling and unread expired cursors until an explicit latest recovery', async ({ page }) => {
+test('investigated Availability Group pages survive polling and unread expired cursors until an explicit latest recovery', async ({ page }) => {
   await mount(page); await nextFilePage(page); const session = sessions.get(page); session.generation = 2;
-  await refresh(page).click(); await expect(card(page, 'TempDB summary').locator('.operation-projection-receipt')).toContainText(runId(2));
+  await refresh(page).click(); await expect(card(page, 'Availability Group replicas').locator('.operation-projection-receipt')).toContainText(runId(2));
   await expectFile(page, 1051); await missingFile(page, 2001);
   await expect(card(page).locator('.operation-projection-receipt')).toContainText(runId(1));
-  expect(reads(page)).toHaveLength(2); expect(reads(page, 'tempdb-summary')).toHaveLength(2);
+  expect(reads(page)).toHaveLength(2); expect(reads(page, 'ag-replicas')).toHaveLength(2);
   await button(page, 'Next').click(); await expect(card(page).getByRole('alert')).toBeVisible();
   await expectFile(page, 1051); await missingFile(page, 1101); expect(reads(page).at(-1).generation).toBe(1);
   await button(page, 'Previous').click(); await expectFile(page, 1001);
@@ -95,21 +94,21 @@ test('investigated TempDB pages survive polling and unread expired cursors until
 });
 test('previous and first restore original validated pages rather than replacing them with a polled first page', async ({ page }) => {
   await mount(page); await nextFilePage(page); await nextFilePage(page, 1101); const session = sessions.get(page); session.generation = 2;
-  await refresh(page).click(); await expect(card(page, 'TempDB summary').locator('.operation-projection-receipt')).toContainText(runId(2));
+  await refresh(page).click(); await expect(card(page, 'Availability Group replicas').locator('.operation-projection-receipt')).toContainText(runId(2));
   const count = reads(page).length; await button(page, 'Previous').click(); await expectFile(page, 1051);
   await button(page, 'First').click(); await expectFile(page, 1001); await button(page, 'Next').click(); await expectFile(page, 1051);
   expect(reads(page)).toHaveLength(count); await expect(namedTable(page).getByRole('row')).toHaveCount(51);
 });
 test('successful explicit latest resets only after its fresh receipt and later idle polls resume', async ({ page }) => {
   await mount(page); await nextFilePage(page); const session = sessions.get(page); session.generation = 2;
-  const pending = held(); session.handler = (route, item) => item.kind === 'tempdb-files' && !item.cursor ? pending.handle(route, item) : false;
+  const pending = held(); session.handler = (route, item) => item.kind === 'ag-databases' && !item.cursor ? pending.handle(route, item) : false;
   await button(page, 'Return').click(); await pending.started; await expectFile(page, 1051);
   await expect(button(page, 'Return')).toBeDisabled(); await pending.release(); await expectFile(page, 2001); await missingFile(page, 1051);
   session.handler = undefined; session.generation = 3; await refresh(page).click(); await expectFile(page, 3001);
 });
 test('failed explicit latest retains the investigated receipt and retry repeats that latest operation', async ({ page }) => {
   await mount(page); await nextFilePage(page); const session = sessions.get(page), pending = held(503); session.generation = 2;
-  session.handler = (route, item) => item.kind === 'tempdb-files' && !item.cursor ? pending.handle(route, item) : false;
+  session.handler = (route, item) => item.kind === 'ag-databases' && !item.cursor ? pending.handle(route, item) : false;
   await button(page, 'Return').click(); await pending.started; await expectFile(page, 1051); await pending.release();
   await expect(card(page).getByRole('alert')).toBeVisible(); await expectFile(page, 1051);
   session.handler = undefined; await button(page, 'Retry').click(); await expectFile(page, 2001); expect(reads(page).at(-1).cursor).toBeNull();
@@ -117,46 +116,46 @@ test('failed explicit latest retains the investigated receipt and retry repeats 
 });
 test('failed continuation retries its original cursor without silently changing to the latest run', async ({ page }) => {
   await mount(page); const session = sessions.get(page);
-  session.handler = async (route, item) => { if (item.kind !== 'tempdb-files' || !item.cursor) return false; await json(route, { detail: providerText }, 503); return true; };
+  session.handler = async (route, item) => { if (item.kind !== 'ag-databases' || !item.cursor) return false; await json(route, { detail: providerText }, 503); return true; };
   await button(page, 'Next').click(); await expect(card(page).getByRole('alert')).toBeVisible(); await expectFile(page, 1001);
   const failed = reads(page).at(-1); session.handler = undefined;
-  // Different collectors may advance independently; this TempDB run remains current.
-  session.collectorGenerations.backups = 2; session.collectorGenerations.availability = 2;
+  // Different collectors may advance independently; this Availability Group run remains current.
+  session.collectorGenerations.backups = 2; session.collectorGenerations.tempdb = 2;
   await button(page, 'Retry').click(); await expectFile(page, 1051);
   expect(reads(page).at(-1).cursor).toBe(failed.cursor); expect(reads(page).at(-1).generation).toBe(1);
 });
 test('same-task duplicate Next clicks create one continuation owner and retain the current page while pending', async ({ page }) => {
   await mount(page); const session = sessions.get(page), pending = held();
-  session.handler = (route, item) => item.kind === 'tempdb-files' && item.cursor ? pending.handle(route, item) : false;
+  session.handler = (route, item) => item.kind === 'ag-databases' && item.cursor ? pending.handle(route, item) : false;
   await button(page, 'Next').evaluate(element => { element.click(); element.click(); }); await pending.started;
   expect(reads(page).filter(item => item.cursor)).toHaveLength(1); await expectFile(page, 1001);
   await expect(button(page, 'Cancel')).toBeEnabled(); await pending.release(); await expectFile(page, 1051);
 });
 test('Cancel aborts only its card and Retry resumes the cancelled continuation without mixing snapshots', async ({ page }) => {
   await mount(page); const session = sessions.get(page), pending = held();
-  session.handler = (route, item) => item.kind === 'tempdb-files' && item.cursor ? pending.handle(route, item) : false;
+  session.handler = (route, item) => item.kind === 'ag-databases' && item.cursor ? pending.handle(route, item) : false;
   await button(page, 'Next').click(); const { request, item } = await pending.started;
   const aborted = page.waitForEvent('requestfailed', { predicate: value => value === request }); await button(page, 'Cancel').click(); await aborted;
-  await expectFile(page, 1001); await expect(card(page, 'TempDB summary').getByRole('alert')).toHaveCount(0);
+  await expectFile(page, 1001); await expect(card(page, 'Availability Group replicas').getByRole('alert')).toHaveCount(0);
   session.handler = undefined; await button(page, 'Retry').click(); await expectFile(page, 1051); expect(reads(page).at(-1).cursor).toBe(item.cursor);
   await pending.release(); await expectFile(page, 1051); await missingFile(page, 1001);
 });
 
 for (const change of ['target', 'revision', 'window', 'database']) test(`changed ${change} hides receipts on its first commit and fences a held old continuation`, async ({ page }) => {
   await mount(page); const session = sessions.get(page), pending = held();
-  session.handler = (route, item) => item.kind === 'tempdb-files' && item.cursor ? pending.handle(route, item) : false;
+  session.handler = (route, item) => item.kind === 'ag-databases' && item.cursor ? pending.handle(route, item) : false;
   await button(page, 'Next').click(); const { request } = await pending.started;
   const aborted = page.waitForEvent('requestfailed', { predicate: value => value === request }); session.handler = undefined; session.generation = 2;
   if (change === 'target') await page.getByRole('combobox', { name: 'Selected server', exact: true }).selectOption(beta);
   else if (change === 'revision') { session.revision = 2; await page.getByRole('button', { name: 'Advance target revision', exact: true }).click(); }
   else await page.getByRole('combobox', { name: change === 'window' ? 'Diagnostic window' : 'Database context', exact: true }).selectOption(change === 'window' ? 'second' : '8');
   await aborted; expect((await firstCommit(page)).projectionText.join(' ')).not.toContain(runId(1));
-  await pending.release(); await expectFile(page, 2001); await expect(card(page).locator('.operation-projection-receipt')).toContainText(runId(2, 'tempdb-files', change === 'target' ? beta : alpha));
+  await pending.release(); await expectFile(page, 2001); await expect(card(page).locator('.operation-projection-receipt')).toContainText(runId(2, 'ag-databases', change === 'target' ? beta : alpha));
   await expect(card(page).getByRole('alert')).toHaveCount(0); await missingFile(page, 1051);
 });
 test('unmount aborts outstanding reads and late receipts cannot replace a remounted context', async ({ page }) => {
   await mount(page); const session = sessions.get(page), pending = held();
-  session.handler = (route, item) => item.kind === 'tempdb-files' && item.cursor ? pending.handle(route, item) : false;
+  session.handler = (route, item) => item.kind === 'ag-databases' && item.cursor ? pending.handle(route, item) : false;
   await button(page, 'Next').click(); const { request } = await pending.started;
   const aborted = page.waitForEvent('requestfailed', { predicate: value => value === request });
   await page.getByRole('button', { name: 'Unmount operations', exact: true }).click(); await aborted;
@@ -165,7 +164,7 @@ test('unmount aborts outstanding reads and late receipts cannot replace a remoun
 });
 test('a newer idle poll cancels the older automatic read and owns the displayed receipt', async ({ page }) => {
   await mount(page); const session = sessions.get(page), pending = held(); session.generation = 2;
-  session.handler = (route, item) => item.kind === 'tempdb-files' ? pending.handle(route, item) : false;
+  session.handler = (route, item) => item.kind === 'ag-databases' ? pending.handle(route, item) : false;
   await refresh(page).click(); const { request } = await pending.started; await expectFile(page, 1001);
   const aborted = page.waitForEvent('requestfailed', { predicate: value => value === request }); session.handler = undefined; session.generation = 3;
   await refresh(page).click(); await aborted; await expectFile(page, 3001); await pending.release(); await expectFile(page, 3001);
@@ -173,7 +172,7 @@ test('a newer idle poll cancels the older automatic read and owns the displayed 
 });
 for (const field of ['runId', 'targetRevision', 'observedAtUtc']) test(`changed native ${field} continuation is refused while the last validated page remains visible`, async ({ page }) => {
   await mount(page); sessions.get(page).handler = async (route, item) => {
-    if (item.kind !== 'tempdb-files' || !item.cursor) return false;
+    if (item.kind !== 'ag-databases' || !item.cursor) return false;
     const value = projection(item);
     if (field === 'runId') value.runId = runId(2);
     else if (field === 'targetRevision') value.targetRevision += 1;
@@ -185,7 +184,7 @@ for (const field of ['runId', 'targetRevision', 'observedAtUtc']) test(`changed 
 });
 for (const status of [401, 403]) test(`HTTP ${status} removes authorized retained rows and rechecking latest needs a validated new receipt`, async ({ page }) => {
   await mount(page); await nextFilePage(page); const session = sessions.get(page);
-  session.handler = async (route, item) => { if (item.kind !== 'tempdb-files') return false; await json(route, { detail: providerText }, status); return true; };
+  session.handler = async (route, item) => { if (item.kind !== 'ag-databases') return false; await json(route, { detail: providerText }, status); return true; };
   await button(page, 'Return').click(); await expect(card(page).getByRole('alert')).toBeVisible();
   await expect(card(page).getByRole('table')).toHaveCount(0); await expect(card(page)).not.toContainText(runId(1));
   session.handler = undefined; session.generation = 2; await button(page, 'Return').click(); await expectFile(page, 2001);
@@ -193,10 +192,11 @@ for (const status of [401, 403]) test(`HTTP ${status} removes authorized retaine
 });
 test('native PermissionDenied collector state remains an explicit source gap, distinct from caller denial', async ({ page }) => {
   sessions.get(page).handler = async (route, item) => {
-    if (item.kind !== 'tempdb-files') return false;
+    if (item.kind !== 'ag-databases') return false;
     await json(route, { ...projection(item), state: 'PermissionDenied', items: [], hasMore: false, nextCursor: null }); return true;
   };
   await page.goto(`/component-tests/operations-projection.html${routeHash()}`);
+  await supporting(page, 'Earlier availability summary');
   await expect(card(page)).toContainText('The collector could not read this evidence');
   await expect(card(page).locator('.operation-projection-receipt')).toContainText(runId(1));
   await expect(card(page).getByRole('table')).toHaveCount(0); await expect(card(page).getByRole('alert')).toHaveCount(0);
@@ -226,7 +226,7 @@ test('backup and both availability legacy trails retain independently beneath bo
 });
 test('wrong-target receipts fail safely and never render a row under another server heading', async ({ page }) => {
   await mount(page); sessions.get(page).handler = async (route, item) => {
-    if (item.kind !== 'tempdb-files' || !item.cursor) return false;
+    if (item.kind !== 'ag-databases' || !item.cursor) return false;
     await json(route, { ...projection(item), targetId: beta }); return true;
   };
   await button(page, 'Next').click(); await expect(card(page).getByRole('alert')).toBeVisible(); await expectFile(page, 1001); await missingFile(page, 1051);
@@ -234,7 +234,7 @@ test('wrong-target receipts fail safely and never render a row under another ser
 
 for (const width of [320, 390, 768, 1440]) test(`native projection investigation is accessible in dark layout at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 1200 }); await mount(page); await nextFilePage(page);
-  const article = card(page), scroller = article.getByRole('region', { name: 'tempdb-files named evidence scrollable evidence', exact: true });
+  const article = card(page), scroller = article.getByRole('region', { name: 'ag-databases named evidence scrollable evidence', exact: true });
   await page.keyboard.press('Tab'); await button(page, 'Previous').focus(); await page.keyboard.press('Enter'); await expectFile(page, 1001);
   await button(page, 'Next').focus(); await page.keyboard.press('Enter'); await expectFile(page, 1051);
   await scroller.focus(); await expect(scroller).toBeFocused();
@@ -250,7 +250,7 @@ for (const width of [320, 390, 768, 1440]) test(`native projection investigation
     expect(bounds.x).toBeGreaterThanOrEqual(owner.x - 1); expect(bounds.x + bounds.width).toBeLessThanOrEqual(owner.x + owner.width + 1);
   }
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
-  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
+  const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations;
   await info.attach(`operations-projection-${width}-axe`, { body: JSON.stringify(violations, null, 2), contentType: 'application/json' }); expect(violations).toEqual([]);
   await scroller.evaluate(element => { element.scrollLeft = 0; element.scrollTop = 0; element.blur(); });
   await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); });
