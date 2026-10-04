@@ -3,6 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { nativeFileObservedUtc } from '../tools/dashboard-native-insights-fixture.mjs';
+import { databaseFileWindowHistoryBackend } from '../tools/database-file-window-history-fixture.mjs';
 
 const origin = 'http://127.0.0.1:4326';
 const first = '11111111-1111-4111-8111-000000000001', second = '11111111-1111-4111-8111-000000000002';
@@ -14,7 +15,7 @@ const fileHash = (file = '1', target = first) => hash('resources', { resourceDat
 const params = page => new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
 const trend = page => page.getByRole('region', { name: 'Selected plan delta trend', exact: true });
 const waits = page => page.getByRole('region', { name: 'Selected plan wait category trend', exact: true });
-const files = page => page.getByRole('region', { name: 'Database file I/O', exact: true });
+const files = page => page.getByRole('region', { name: 'Database file allocation and autogrowth history', exact: true });
 const allocation = page => page.locator('details[aria-label="Selected file allocation and autogrowth"]');
 async function setup(page, mode = 'normal') {
   await page.clock.install({ time: new Date('2026-10-02T12:30:00.000Z') });
@@ -101,35 +102,46 @@ test('selected plan and changed window reject a delayed prior plan response', as
 test('selected file allocation preserves exact bytes percent growth unknown maximum and loaded snapshot in Rewind', async ({ page }) => {
   await setup(page); await page.goto('/' + fileHash()); await openAllocation(page);
   await expect(allocation(page)).toContainText('9223372036854775807 bytes'); await expect(allocation(page)).toContainText('67108864 bytes per growth event');
-  await expect(allocation(page)).toContainText('loaded file snapshot'); await expect(allocation(page)).toContainText('Rewind');
+  await expect(allocation(page)).toContainText('exact retained receipt'); await expect(allocation(page)).toContainText('Rewind');
   const chosen = files(page).getByRole('button', { name: 'View read and write latency trend for database 5, file SYNTHETIC_percent_log', exact: true });
   await chosen.click(); await expect(chosen).toHaveAttribute('aria-pressed', 'true');
-  await expect(allocation(page)).toContainText('10% per growth event'); await expect(allocation(page)).toContainText('No finite maximum reported (unlimited or unknown)');
-  await expect(allocation(page)).toContainText('Log'); expect(params(page).get('resourceFileId')).toBe('2');
+  await expect(allocation(page)).toContainText('10% per growth event'); await expect(allocation(page)).toContainText('Unlimited or unknown; source does not distinguish');
+  await expect(allocation(page)).toContainText('log / online'); expect(params(page).get('resourceFileId')).toBe('2');
   expect(params(page).get('from')).toBe(from); expect(params(page).get('to')).toBe(to);
   await page.reload(); await openAllocation(page); await expect(allocation(page)).toContainText('10% per growth event');
   expect(params(page).get('resourceDatabaseId')).toBe('5'); expect(params(page).get('resourceFileId')).toBe('2');
 });
 
-test('missing off-page stale and failed file allocation never substitute unrelated facts', async ({ page }) => {
-  await setup(page); await page.goto('/' + fileHash('3')); await openAllocation(page);
-  await expect(allocation(page)).toContainText('The selected file is absent from this loaded snapshot page.');
+test('missing and off-page historical file allocation never substitute another received row', async ({ page }) => {
+  await setup(page); const backend=databaseFileWindowHistoryBackend({fileCount:102});
+  await page.route('**/resources/files/history**',async route=>{
+    const url=new URL(route.request().url()),p=url.searchParams,binding={targetId:url.pathname.split('/')[4],targetRevision:Number(p.get('targetRevision')),fromUtc:p.get('fromUtc'),toUtc:p.get('toUtc')};
+    const run=/\/history\/([a-f0-9-]+)$/.exec(url.pathname),cursor=p.get('cursor')??undefined,limit=Number(p.get('limit'));
+    await route.fulfill({status:200,json:run?backend.snapshot(binding,{runId:run[1],sampleTargetRevision:Number(p.get('sampleTargetRevision'))},cursor,limit):backend.read(binding,cursor,limit)});
+  });
+  await page.goto('/' + fileHash('102')); await openAllocation(page);
+  await expect(allocation(page)).toContainText('Selected file allocation is unavailable in received exact snapshot pages.');
   await expect(allocation(page)).not.toContainText('9223372036854775807 bytes');
-  await files(page).getByRole('button', { name: 'Next file page', exact: true }).click();
-  await expect(allocation(page)).toContainText('Autogrowth disabled (zero increment reported)');
-  await page.goto('/' + fileHash('99')); await openAllocation(page); await expect(allocation(page)).toContainText('no other file has been substituted.');
+  await files(page).getByRole('button', { name: 'Next file snapshot page', exact: true }).click();
+  await expect(allocation(page)).toContainText('Autogrowth disabled');
+  await page.goto('/' + fileHash('999')); await openAllocation(page); await expect(allocation(page)).toContainText("No other file's configuration is substituted.");
+});
+
+test('partial failed and delayed historical file reads keep their source identity explicit',async({page})=>{
+  await setup(page);
   await page.context().addCookies([{ name: 'nativeInsightsMode', value: 'file-stale', url: origin }]);
-  await page.goto('/' + fileHash()); await page.reload(); await openAllocation(page); await expect(allocation(page)).toContainText('The evidence may be stale or incomplete.');
+  await page.goto('/' + fileHash()); await page.reload(); await openAllocation(page); await expect(allocation(page)).toContainText('Receipt status: partial');
   let release, started = false, returned = false; const gate = new Promise(resolveGate => { release = resolveGate; });
-  await page.route('**/observation-targets/' + first + '/health/files?*', async route => {
+  await page.route('**/observation-targets/' + first + '/resources/files/history/*?*', async route => {
     const response = await route.fetch(); started = true; await gate; await route.fulfill({ response }).catch(() => {}); returned = true;
   });
   await page.reload(); await expect.poll(() => started).toBe(true);
   try { await page.evaluate(next => { location.hash = next; }, fileHash('1', second)); await openAllocation(page); await expect(files(page)).toContainText('SYNTHETIC_exact_data_02'); }
   finally { release(); }
   await expect.poll(() => returned).toBe(true); expect(params(page).get('target')).toBe(second);
-  await page.context().addCookies([{ name: 'nativeInsightsMode', value: 'file-error', url: origin }]); await page.reload(); await openAllocation(page);
-  await expect(allocation(page)).not.toContainText('9223372036854775807 bytes'); await expect(files(page)).toContainText('unavailable');
+  await page.context().addCookies([{ name: 'nativeInsightsMode', value: 'file-error', url: origin }]); await page.reload();
+  await expect(files(page).getByRole('region',{name:'File collection receipts',exact:true}).getByRole('alert')).toBeVisible();
+  await expect(allocation(page)).toContainText('Unavailable');await expect(files(page)).not.toContainText('9223372036854775807 bytes');
 });
 
 test('health check workflow links preserve exact scope and choose configuration or database options explicitly', async ({ page }) => {
@@ -151,7 +163,7 @@ for (const width of [320, 390, 768, 1440]) for (const surface of ['selected-plan
     await page.setViewportSize({ width, height: 1000 }); await setup(page);
     if (surface === 'selected-plan-waits') { await page.goto('/' + queryHash()); await expect(waits(page)).toBeVisible(); await openWaitValues(page); await expect(page.getByText('Query performance request failed.', { exact: true })).toHaveCount(0); }
     else { await page.goto('/' + fileHash()); await openAllocation(page); await expect(allocation(page)).toContainText('9223372036854775807 bytes'); }
-    const scroll = surface === 'selected-plan-waits' ? waits(page).getByRole('region', { name: 'Selected plan hourly wait values', exact: true }) : files(page).getByRole('region', { name: 'Loaded database file counters', exact: true });
+    const scroll = surface === 'selected-plan-waits' ? waits(page).getByRole('region', { name: 'Selected plan hourly wait values', exact: true }) : files(page).getByRole('region', { name: 'Historical database file facts', exact: true });
     await scroll.focus(); await expect(scroll).toBeFocused();
     if (await scroll.evaluate(element => element.scrollWidth > element.clientWidth)) { await scroll.press('ArrowRight'); await expect.poll(() => scroll.evaluate(element => element.scrollLeft)).toBeGreaterThan(0); await scroll.evaluate(element => { element.scrollLeft = 0; }); }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);

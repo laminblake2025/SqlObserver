@@ -978,3 +978,32 @@ Uninstrumented native probes succeeded for both IPv4 and IPv6 loopback sockets, 
 | Dashboard-only scope | No platform/runtime/storage/API redesign or production admission; staged CPU source dependency only. |
 
 The original plan and dashboard end state remain unfinished. Native SQL Server monitoring-identity qualification, canonical CPU history/API/UI integration, AG transition qualification and running Agent sources remain open. The prior unavailable SSH lab was not retried; no GitHub push/upload occurred. Completion/checkpoint records bind this evidence to the local commit without rebinding prior screenshot qualification.
+
+## Database-file shared-window history checkpoint — 2026-10-04 UTC
+
+Three independent owners implemented the read contracts/HTTP boundaries, PostgreSQL projection, and Resources UI/mounted interactions in non-overlapping files. Diagnostic and dark-theme/accessibility reviews ran independently. The lead integrated the routes, application registration, global refresh/access context, synthetic fixtures and built-App journeys, then resolved the actual paging/focus and compact-action seams. Execution stayed serial against frozen inputs.
+
+Resources allocation and autogrowth now follow completed `database.files` attempts in the shared Live/Rewind window. Receipt browsing includes failed, lost, empty and missing-payload attempts; it never skips to an older successful snapshot. Exact run/sample-revision URL pins are independent of the loaded receipt page. Current authorization/revision fences remain distinct from immutable older sample revisions. Numeric database/file IDs identify only the exact received receipt, not physical incarnation or continuous growth.
+
+The new forward migration 0358 reads the authoritative `telemetry.database_file_snapshot` source with canonical run-v2 outcomes; it does not depend on the unused file mirror or sealed original run mirror. Reads remain bounded, scoped, repeatable and private/no-store. Signed continuations preserve window, original cutoff, read epoch and issuance lifetime. Allocation, limits, increments and cumulative counters remain exact Int64 strings; directional stalls and percent growth are separate. Missing observations are never zero-filled or labelled healthy. Source observation, ingestion and completion clocks stay distinct.
+
+The authoritative file source currently has no supported scheduled expiry. Retention duration is unknown, and unrelated metric policies do not imply file retention. Native tests qualify canonical commits, seal/reclamation, source revisions, permission boundaries, immutable manifests and the 10,001-receipt cap. The 250,000-file window/10,000-file run guards are enforced but oversized native producer payloads are not a qualification claim: the existing producer is bounded at 1,000 files.
+
+Final qualification passed **228/228**, zero failed/skipped/automatic-retry selected cases, with strict TypeScript, .NET builds/analyzers, production build and asset integrity. Groups: unit/preamble17, HTTP26, real PostgreSQL/production HTTP21, Node41, mounted52, built-App18, native-insights14, volume-browsing6, Resources-context13 and Resources-accessibility20. Mounted coverage comprises33 current history cases plus19 regressions for the explicitly legacy retained-files API harness; that harness does not substitute for the real dashboard journeys.
+
+All **2270 frozen inputs** remained unchanged through final checks. Earlier backend/model passes were compared against their actual unchanged consumed source scopes after frontend repairs. No passing subsets were aggregated. Nine complete failed attempts and consumed source bytes remain preserved, including the actual default-to-explicit continuation reset, disappearing recovery focus and tall file-action button. The existing compact-button height assertion remains intact. Legacy tests now assert exact receipt pinning and the truthful missing-file state; Live tests distinguish startup fallback reads from requests after pinning and await explicit refresh completion.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Multiple independent subagents and integration lead | Three non-overlapping owners plus independent reviews; lead integrated and executed qualification. |
+| Dark theme | Shared theme, contained tables, wrapped identifiers and visible keyboard/forced-colors focus. |
+| Diagnostic-screen review | Receipt outcomes, source clocks, revision/loss and exact configuration remain separate from health, free capacity, physical continuity and forecasts. |
+| Interaction tests | Exact URL/history restoration, Live pinning, continuation/smaller pages, explicit refresh, retry/cancel, denial purge, context/ABA and stale-response ownership pass. |
+| Accessibility/responsive checks | Final Chromium axe, keyboard focus/scroll and overflow checks at320/390/768/1440px, including partial evidence and long inert names. Manual screen-reader/device coverage is not claimed. |
+| Validation after integration | Complete affected owning groups pass against final frozen code/assets; source scopes and asset hashes verified. |
+| Screenshots | Fresh62-image gallery, including built-App full/viewport/focus/partial captures and affected Resources surfaces. Prior qualified screenshot bytes were restored and preserved separately. |
+| Dashboard-only scope | Historical file evidence and its read/API/Resources dependency only; existing SQL Server collector unchanged. |
+
+Evidence lives at `artifacts/dashboard-file-window-history-2026-10-04/`: `index.html`, `validation.md`, `completion.json`, `frozen-inputs.json`, whole attempt logs/TRX/Playwright reports and screenshot hashes. Final JS SHA-256 is `bf877afabc1552e3bada245d3211800223075e3a3d58f776f48a43fe1cde0245`; CSS is `ec7f67bd2b1ff5fd53d7ccf42b211e1d9c477e557b6ae49069bde2e9c378ba73`; migration0358 is `e45e80ecdc398cc9606f9ce1c48f6273ed6bfe8f5aaed2d81acbe61ce75bb697`.
+
+Browser fixtures and screenshots are synthetic. PostgreSQL18.4 and production HTTP are real, with only authentication replaced. SQL Server collector, Windows Negotiate and lab least-privilege behavior are not certified here. Paired CPU admission/history/API/UI, AG transitions and running Agent sources remain open; optional assistant work is not a prerequisite. The broader dashboard/plan remains unfinished. The prior unavailable SSH VM was not retried, and no GitHub push/upload occurred. The local checkpoint record binds final evidence to this commit.

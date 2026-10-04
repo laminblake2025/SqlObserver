@@ -570,7 +570,7 @@ test('revoking Query Text Reader while captured SQL is pending hides the action 
   await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
 });
 
-test('Resources URL restores file node and inspection while pointer stays transient and fixed investigation freezes only the loaded window', async ({ page }) => {
+test('Resources URL restores receipt file node and inspection while pointer stays transient and selecting a file freezes the loaded window', async ({ page }) => {
   await resourceUrlFixture(page);
   let loadedWindow;
   page.on('response', async response => {
@@ -586,7 +586,8 @@ test('Resources URL restores file node and inspection while pointer stays transi
   await resources.getByRole('combobox', { name: 'NUMA node', exact: true }).selectOption('1');
   await resources.getByLabel('Resource inspection time (UTC)', { exact: true }).fill('2026-09-26T11:30:00.125');
   await resources.getByRole('button', { name: 'Align resource charts', exact: true }).press('Enter');
-  await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ range: '1h', resourceDatabaseId: '5', resourceFileId: '1', numaNodeId: '1', resourceAt: '2026-09-26T11:30:00.125Z' });
+  await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ range: 'custom', ...loadedWindow, resourceDatabaseId: '5', resourceFileId: '1', numaNodeId: '1', resourceAt: '2026-09-26T11:30:00.125Z', fileSnapshotRevision: '1' });
+  expect(scope(page).get('fileSnapshotRun')).toMatch(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
   const selectedUrl = page.url();
   const cpu = resources.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true }) }).locator('.overview-chart');
   await cpu.scrollIntoViewIfNeeded(); const box = await cpu.boundingBox(); expect(box).not.toBeNull();
@@ -608,7 +609,7 @@ test('Resources URL restores file node and inspection while pointer stays transi
   await expect.poll(() => loadedWindow).toBeTruthy();
   const fixedParams = new URLSearchParams((await fixed.getAttribute('href')).split('?')[1]);
   expect(Object.fromEntries(fixedParams)).toMatchObject({ target: first, range: 'custom', ...loadedWindow, resourceDatabaseId: '5', resourceFileId: '1', numaNodeId: '1' });
-  expect(scope(page).get('range')).toBe('1h');
+  expect(scope(page).get('range')).toBe('custom');
   await fixed.press('Enter');
   await assertHistoricalScope(page, first, fixedParams.get('from'), fixedParams.get('to'));
   await expect(file).toHaveAttribute('aria-pressed', 'true');
@@ -619,7 +620,7 @@ test('Resources missing file node and out-of-window inspection remain explicit t
   await page.goto(`${href('resources', first, '1h')}&resourceDatabaseId=5&resourceFileId=99&numaNodeId=99&resourceAt=2026-09-26T10%3A00%3A00.000Z`);
   const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 01', exact: true });
   for (let attempt = 0; attempt < 2; attempt++) {
-    await expect(resources).toContainText('The selected file is not in the loaded snapshot page. Its identity is retained; no other file has been selected.');
+    await expect(resources).toContainText('This exact file is not in received pages. Its numeric identity is retained; no other file is selected.');
     await expect(resources).toContainText('Requested NUMA node 99 is not in the loaded node inventory. No other node has been selected.');
     await expect(resources).toContainText('Requested resource inspection time is outside the loaded shared window.');
     await expect(resources.getByRole('combobox', { name: 'NUMA node', exact: true })).toHaveValue('99');
@@ -1711,12 +1712,13 @@ test('database context scopes loaded cache and file rows without relabelling ser
   await mainNavigation(page).getByRole('link', { name: 'Resources', exact: true }).click();
   await workspaceDatabase(page).selectOption('6');
   await assertDatabaseScope(page, 6);
-  const files = page.getByRole('region', { name: 'Database file I/O', exact: true });
-  await expect(files.getByRole('table')).toContainText('Warehouse_data');
-  await expect(files.getByRole('table')).not.toContainText('Orders_data');
-  await expect(page.getByText('CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.', { exact: true })).toBeVisible();
+  const files = page.getByRole('region', { name: 'Database file allocation and autogrowth history', exact: true });
+  const facts = files.getByRole('region', { name: 'Historical database file facts', exact: true });
+  await expect(facts.getByRole('table')).toContainText('Warehouse_data');
+  await expect(facts.getByRole('table')).not.toContainText('Orders_data');
+  await expect(page.getByText('Rows are filtered to database ID 6 within this received page. Empty filtered pages do not mean the database has no files.', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true })).toBeVisible();
-  await expect(files).toContainText('Showing 1 of 2 loaded files for database ID 6');
+  await expect(facts.getByRole('table').locator('tbody > tr')).toHaveCount(1);
   await files.getByRole('button', { name: 'View read and write latency trend for database 6, file Warehouse_data', exact: true }).click();
   const selectedFile = page.getByRole('region', { name: 'Selected file latency history', exact: true });
   await expect(selectedFile).toContainText('Database 6 / Warehouse_data');
@@ -1732,7 +1734,8 @@ test('unknown database scope stays explicit through missing inventory and clears
   await assertDatabaseScope(page, 99);
   await expect(workspaceDatabase(page).getByRole('option', { name: 'Database ID 99 (not in loaded inventory)', exact: true })).toHaveCount(1);
   await expect(page.locator('.database-scope-status')).toContainText('2 databases loaded');
-  await expect(page.getByText('No file rows for the selected database are present in this loaded page. Browse other file pages to continue.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rows are filtered to database ID 99 within this received page. Empty filtered pages do not mean the database has no files.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No file facts are present on this received page. Review the receipt state, loss and database filter.', { exact: true })).toBeVisible();
   await page.route(`**/${first}/health/databases?*`, route => route.fulfill({ status: 503, json: {} }));
   await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
   await expect(page.locator('.database-scope-status')).toContainText('Database inventory unavailable.');
@@ -1741,7 +1744,7 @@ test('unknown database scope stays explicit through missing inventory and clears
   await workspaceDatabase(page).selectOption('');
   await expect.poll(() => scope(page).get('databaseId')).toBe(null);
   await expect(workspaceDatabase(page)).toHaveValue('');
-  await expect(page.getByRole('region', { name: 'Database file I/O', exact: true }).getByRole('table')).toContainText('Orders_data');
+  await expect(page.getByRole('region', { name: 'Historical database file facts', exact: true }).getByRole('table')).toContainText('Orders_data');
   await page.goto(`${href('resources')}&databaseId=32768`);
   await expect(workspaceDatabase(page)).toHaveValue('');
 });
@@ -2331,15 +2334,15 @@ test('Resources rejects a malformed refreshed file snapshot while retaining inde
   await resourceUrlFixture(page);
   const crashes = []; page.on('pageerror', error => crashes.push(error.message));
   await page.goto(href('resources'));
-  const files = page.getByRole('region', { name: 'Loaded database file counters', exact: true });
+  const files = page.getByRole('region', { name: 'Historical database file facts', exact: true });
   await expect(files).toContainText('Orders_data');
-  await page.route(`**/observation-targets/${first}/health/files?*`, async route => {
+  await page.route(`**/observation-targets/${first}/resources/files/history/*?*`, async route => {
     const response = await route.fetch(), body = await response.json();
     body.items[0].readCount = '-1'; body.items[0].logicalName = 'SYNTHETIC rejected file';
     await route.fulfill({ response, json: body });
   });
   await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
-  await expect(page.getByRole('alert').filter({ hasText: healthContractFailure })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Database file history returned invalid or mismatched evidence.' })).toBeVisible();
   await expect(files).toContainText('Orders_data');
   await expect(page.getByText('SYNTHETIC rejected file', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Per-NUMA page life expectancy', exact: true }).locator('.overview-chart')).toHaveCount(2);

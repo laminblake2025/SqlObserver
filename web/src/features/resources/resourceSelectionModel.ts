@@ -5,8 +5,11 @@ import { resourceInspectionUtc } from "./resourceInspectionModel.ts";
 
 export interface ResourceFileSelection { readonly databaseId: number; readonly fileId: number }
 export interface ResourceVolumeSelection { readonly sampleTargetRevision: number; readonly volumeKey: string }
+export interface ResourceFileSnapshotSelection { readonly runId: string; readonly sampleTargetRevision: number }
 export interface ResourceSelection {
   readonly file?: ResourceFileSelection;
+  readonly fileSnapshot?: ResourceFileSnapshotSelection;
+  readonly invalidFileSnapshot?: boolean;
   readonly volume?: ResourceVolumeSelection;
   readonly invalidVolume?: boolean;
   readonly numaNodeId?: number;
@@ -70,12 +73,13 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
   if (params.getAll("target").length !== 1 || !target || !validTarget(target) ||
     (expectedTarget !== undefined && target.toLowerCase() !== expectedTarget.toLowerCase())) return {};
   const scope = readOverviewScope(hash);
-  const hasSelection = ["resourceDatabaseId", "resourceFileId", "numaNodeId", "resourceAt", "volumeRevision", "volumeKey"].some(key => params.has(key));
+  const hasSelection = ["resourceDatabaseId", "resourceFileId", "fileSnapshotRun", "fileSnapshotRevision", "numaNodeId", "resourceAt", "volumeRevision", "volumeKey"].some(key => params.has(key));
   if (hasSelection && !validBaseContext(params, scope)) return {
     invalidContext: true,
     issues: ["Requested resource selections have invalid or ambiguous database and time context. Clear resource selections before choosing new evidence."],
     ...(params.has("numaNodeId") ? { invalidNode: true } : {}),
     ...(params.has("volumeRevision") || params.has("volumeKey") ? { invalidVolume: true } : {}),
+    ...(params.has("fileSnapshotRun") || params.has("fileSnapshotRevision") ? { invalidFileSnapshot: true } : {}),
   };
   const issues: string[] = [];
   let file: ResourceFileSelection | undefined;
@@ -84,6 +88,16 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
   let invalidNode = false;
   let volume: ResourceVolumeSelection | undefined;
   let invalidVolume = false;
+  let fileSnapshot: ResourceFileSnapshotSelection | undefined;
+  let invalidFileSnapshot = false;
+  if (params.has("fileSnapshotRun") || params.has("fileSnapshotRevision")) {
+    const runId = params.get("fileSnapshotRun"), sampleTargetRevision = revision(params.get("fileSnapshotRevision"));
+    if (params.getAll("fileSnapshotRun").length !== 1 || params.getAll("fileSnapshotRevision").length !== 1 ||
+        runId === null || !validTarget(runId) || sampleTargetRevision === undefined) {
+      invalidFileSnapshot = true;
+      issues.push("The requested file snapshot run or sample revision is invalid. Clear the snapshot selection or choose an exact received receipt; no other snapshot has been selected.");
+    } else fileSnapshot = { runId: runId.toLowerCase(), sampleTargetRevision };
+  }
   if (params.has("volumeRevision") || params.has("volumeKey")) {
     const sampleTargetRevision = revision(params.get("volumeRevision"));
     const key = params.get("volumeKey");
@@ -117,7 +131,7 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
       if (scope.range === "custom") inspectionUtc = resourceInspectionUtc(inspectionUtc, scope.from ?? "", scope.to ?? "");
     } catch { inspectionUtc = undefined; issues.push("The requested resource inspection time is invalid or outside the shared window. Align another time or clear resource selections."); }
   }
-  return { ...(file ? { file } : {}), ...(volume ? { volume } : {}), ...(invalidVolume ? { invalidVolume: true } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
+  return { ...(file ? { file } : {}), ...(fileSnapshot ? { fileSnapshot } : {}), ...(invalidFileSnapshot ? { invalidFileSnapshot: true } : {}), ...(volume ? { volume } : {}), ...(invalidVolume ? { invalidVolume: true } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
     ...(inspectionUtc ? { inspectionUtc } : {}), ...(issues.length ? { issues } : {}), ...(invalidNode ? { invalidNode: true } : {}) };
 }
 
@@ -129,6 +143,10 @@ export function resourceSelectionHref(scope: OverviewScope, selection: ResourceS
   if (validFile(selection.file, scope)) {
     params.set("resourceDatabaseId", String(selection.file!.databaseId));
     params.set("resourceFileId", String(selection.file!.fileId));
+  }
+  if (selection.fileSnapshot && validTarget(selection.fileSnapshot.runId) && Number.isSafeInteger(selection.fileSnapshot.sampleTargetRevision) && selection.fileSnapshot.sampleTargetRevision >= 1) {
+    params.set("fileSnapshotRun", selection.fileSnapshot.runId.toLowerCase());
+    params.set("fileSnapshotRevision", String(selection.fileSnapshot.sampleTargetRevision));
   }
   if (selection.volume && volumeKey.test(selection.volume.volumeKey) && Number.isSafeInteger(selection.volume.sampleTargetRevision) && selection.volume.sampleTargetRevision >= 1) {
     params.set("volumeRevision", String(selection.volume.sampleTargetRevision));
@@ -155,5 +173,15 @@ export function retainResourceSelectionHref(href: string, currentHash: string): 
   if (currentScope.target.toLowerCase() !== target.toLowerCase()) return href;
   const nextScope = readOverviewScope(href);
   if (!validBaseContext(destination, nextScope)) return href;
-  return resourceSelectionHref(nextScope, readResourceSelection(currentHash, target));
+  return preserveInvalidFileSnapshotHref(resourceSelectionHref(nextScope, readResourceSelection(currentHash, target)), currentHash);
+}
+
+/** An invalid explicit snapshot pin remains explicit until the user clears or replaces it. */
+export function preserveInvalidFileSnapshotHref(href: string, currentHash: string): string {
+  const current=readOverviewScope(currentHash),next=readOverviewScope(href);
+  if(current.target.toLowerCase()!==next.target.toLowerCase()||!readResourceSelection(currentHash,current.target).invalidFileSnapshot)return href;
+  const [path,query]=href.split("?"),destination=new URLSearchParams(query),source=new URLSearchParams(currentHash.split("?")[1]);
+  if(!/^#\/?resources$/u.test(path??"")||!validBaseContext(destination,next))return href;
+  for(const key of ["fileSnapshotRun","fileSnapshotRevision"]){destination.delete(key);for(const value of source.getAll(key))destination.append(key,value);}
+  return `${path}?${destination}`;
 }

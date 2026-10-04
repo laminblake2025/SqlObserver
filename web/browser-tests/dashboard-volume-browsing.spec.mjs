@@ -54,7 +54,7 @@ test.beforeEach(async ({ page }) => {
     }
     const match = /^\/api\/v1\/observation-targets\/([^/]+)(?:\/(.+))?$/.exec(url.pathname);
     if (!match || ![alpha, beta].includes(match[1])) return reject();
-    if (!match[2] || supporting.has(match[2])) { context.supporting.push(url); return route.continue(); }
+    if (!match[2] || supporting.has(match[2]) || /^resources\/files\/history(?:\/[a-f0-9-]+)?$/.test(match[2])) { context.supporting.push(url); return route.continue(); }
     if (match[2] === 'resources/volumes/history') {
       if (url.searchParams.get('targetRevision') !== '1' || url.searchParams.get('limit') !== '25' ||
           !url.searchParams.get('fromUtc') || !url.searchParams.get('toUtc') ||
@@ -85,10 +85,10 @@ async function open(page) { await page.goto(href(alpha)); await expectPage(page,
 test('real workspace polling retains browsed volume evidence and cached pages until explicit latest renewal', async ({ page }) => {
   await open(page); await next(page).click(); await expectPage(page, 1);
   const context = contexts.get(page); context.run = latestRun; context.expired = true;
-  const nativeReads = context.requests.length, fileReads = context.supporting.filter(url => url.pathname.endsWith('/health/files')).length;
+  const nativeReads = context.requests.length, fileReads = context.supporting.filter(url => url.pathname.endsWith('/resources/files/history')).length;
   await next(page).focus(); const focused = await next(page).elementHandle();
   await page.clock.runFor(61_000);
-  await expect.poll(() => context.supporting.filter(url => url.pathname.endsWith('/health/files')).length).toBeGreaterThan(fileReads);
+  await expect.poll(() => context.supporting.filter(url => url.pathname.endsWith('/resources/files/history')).length).toBeGreaterThan(fileReads);
   await expectPage(page, 1); expect(context.requests).toHaveLength(nativeReads); await expect(next(page)).toBeFocused();
   await expect(table(page).locator('caption')).toHaveText('Retained SQL-reported volume capacity');
   await expect(panel(page)).toContainText('automatic volume refresh paused');

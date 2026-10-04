@@ -337,7 +337,7 @@ for (const width of [320, 390, 768, 1440]) {
     await page.goto(`/#/resources?${new URLSearchParams({ target, range: '1h', resourceDatabaseId: '5', resourceFileId: '99', numaNodeId: '99', resourceAt: '2026-09-26T10:00:00.000Z' })}`);
     const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 02', exact: true });
     await expect(resources).toContainText('Requested NUMA node 99 is not in the loaded node inventory. No other node has been selected.');
-    await expect(resources).toContainText('The selected file is not in the loaded snapshot page.');
+    await expect(resources).toContainText('This exact file is not in received pages. Its numeric identity is retained; no other file is selected.');
     await expect(resources).toContainText('Requested resource inspection time is outside the loaded shared window.');
     await expect(resources.locator('.chart-crosshair')).toHaveCount(0);
     await auditResponsiveState(page, testInfo, 'resource-missing-url-selections');
