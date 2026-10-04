@@ -117,11 +117,12 @@ test("production API sends each stream's signed cursor and a fixed cutoff with s
 test("API maps stale, role denial, invalid evidence and streamed size failures without reflecting response bodies", async () => {
   const original = globalThis.fetch;
   try {
-    for (const status of [400, 403, 409, 503, 504]) {
+    for (const status of [400, 401, 403, 409, 503, 504]) {
       globalThis.fetch = async () => new Response("provider-secret", { status });
       await assert.rejects(() => getAvailabilityEvidence(target, "databases", at, new AbortController().signal, "cursor"),
         failure => failure instanceof AvailabilityEvidenceError && !failure.message.includes("provider") &&
-          failure.restart === (status === 400 || status === 409) && failure.retryable === (status !== 403));
+          failure.restart === (status === 400 || status === 409) && failure.retryable === (status !== 401 && status !== 403) &&
+          (![401,403].includes(status) || failure.status === status && failure.message === "A Viewer, Operator or TargetAdministrator role scoped to this server is required."));
     }
     globalThis.fetch = async () => new Response(JSON.stringify({ ...page(), targetId: run }));
     await assert.rejects(() => getAvailabilityEvidence(target, "replicas", at, new AbortController().signal), /could not be verified/);

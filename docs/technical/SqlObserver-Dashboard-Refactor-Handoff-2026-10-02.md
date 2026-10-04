@@ -1283,3 +1283,30 @@ Four complete failed attempts preserve source/logs and available TRX/browser rep
 Evidence: `artifacts/dashboard-backup-availability-history-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md`, `operations-test-migration.md` and `index.html`. Source/privacy/time semantics: `docs/technical/Backup-Availability-Window-History.md`. Migration0364 SHA256:`6442cbf7ffe63c18a9c1bbd8dc9ee9e75418def4751a1f778398d69ac0636c35`. Original17,092 design files and both supplied plans remain hash-verified unchanged.
 
 Real local PostgreSQL18.4 qualifies production read roles/HTTP, canonical sealed-source accounting, exact/list bounds, cursor mutation/expiry and source disappearance. Owner-driven partition detach and synthetic canonical overflow/newer-schema fixtures qualify reader boundaries; they do not certify an authorized production retention workflow or actual v2 producer admission. Browser sources and screenshots are synthetic. Native paired CPU admission, running/long-running Agent qualification and physical failover remain open; the configured SSH route remains unavailable and no unchanged probe was repeated. The optional assistant is nonblocking. The broader dashboard and original repository plan remain active. No production migration/deployment, GitHub push or upload occurred.
+
+## Primary availability access ownership — 2026-10-04 UTC
+
+Independent product, interaction-test and scoped dark-theme/accessibility owners worked in parallel; the lead integrated the changes, reviewed final evidence and ran affected validation serially. Diagnostic review found that the primary v2 AG panel lost HTTP denial status, omitted current revision/authority from its context, and could retain sibling facts or reopen denied reads after polling or tab remount.
+
+Both primary streams now share an access owner while retaining independent publication cutoffs and paging. Either HTTP401/403 clears both streams and aborts siblings before publication. Polling, window changes under the same authority and Health checks category changes preserve the denial latch until explicit access recovery. Target/current-revision/authority/window/request/mount/raw-URL fences reject late callbacks and A → B → A replies. Temporary errors and cancellation preserve actual facts and the original attempted cutoff/cursor. A whole workspace leave or reload starts a fresh owner and normal server authorization; no persistent browser-wide denial policy is claimed.
+
+Scoped dark styles wrap expanded fingerprints, provide 44px controls/disclosures and inset keyboard focus, and support forced colors. Recovery moves focus within owned evidence without stealing outside workspace focus. Distinct publications retain their mismatch warning; incomplete coverage, remote reported state, literal offset-free SQL local clocks and RPO limits remain explicit.
+
+**203/203 affected cases pass**, with no skipped cases or retries: 15 contract, 112 mounted, 58 built App and 18 forced-color cases. TypeScript, production build, asset generation/verification and whitespace checks pass. The 768-input freeze is verified. Earlier owners retain only precise per-file generated-output/unimported-test exceptions recorded in `validation.json`; complete consuming owners reran after repairs, without passing-subset aggregation. The existing entry chunk warning remains (1,701.60kB minified, 407.68kB gzip).
+
+Two complete failed attempts preserve source/logs/reports/traces/captures. Repairs corrected the new harness observation wrapping and native scroll readiness, then the built screenshot helper's pointer activation before keyboard-focus assertions. Production source and assets stayed unchanged during both test repairs; strict bounds, traffic, axe and zero-retry settings were preserved.
+
+| Requested requirement | Result for this checkpoint |
+|---|---|
+| Independent owners and one lead | Product, test and theme/accessibility lanes; fresh diagnostic review; lead integration and serial validation. |
+| Dark-theme work | Scoped tokens, wrapped opaque values and visible inset focus, including system colors. |
+| Diagnostic-screen review | Primary AG sibling disclosure/access-ownership defect repaired; source/time/coverage limits retained. |
+| Interaction tests | Complete affected owners cover denial purge, explicit retry, tab retention, stale/ABA/raw-route fences, current authority/revision/window, independent paging, retry and cancellation. |
+| Accessibility/responsive | Keyboard recovery, outside-focus preservation, named local scrollports, axe, 320/390/768/1440 dark layouts, 320/1440 forced colors and 320px at 200% CSS zoom. Native browser zoom/device/screen-reader certification is not claimed. |
+| Final integrated validation | 203 passing cases plus types/build/assets/whitespace, with exact consumed-input evidence. |
+| Screenshots and summary | 22 dedicated final synthetic captures and 55 regenerated affected captures; 188 prior captures restored/hash-verified. Requirement matrix and screenshot gallery saved locally. |
+| Dashboard scope | Frontend primary AG ownership only; no backend, migration, permission expansion or source activation. |
+
+Evidence: `artifacts/dashboard-availability-access-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md`, `manual-review.json` and `index.html`. Access lifetime and diagnostic limits: `docs/technical/Availability-Evidence-Access-Ownership.md`. Final local identity is recorded in `commit.json`. Original17,092 design files and both supplied plans remain hash-verified unchanged.
+
+Native paired CPU comparison, running/long-running Agent access/association/duration and physical failover source/admission remain unfinished requirements. Synthetic UI evidence does not qualify native SQL Server behavior. The configured SSH route remains unavailable; corrected host/network details are pending and no unchanged probe was repeated. The optional assistant is nonblocking. The broader dashboard and original repository plan remain active. No production migration/deployment, GitHub push or upload occurred.

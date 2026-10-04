@@ -26,7 +26,7 @@ function availability(item) {
       : { ...identity, databaseFingerprint: hash(100), synchronizationState: 'SYNCHRONIZED', synchronizationHealth: 'HEALTHY', databaseState: 'ONLINE',
         isSuspended: false, logSendQueueKb: 0, logSendRateKbPerSecond: 0, redoQueueKb: 0, redoRateKbPerSecond: null, sourceLastCommitLocal: '2026-09-30T01:30:00.123456' };
   });
-  return { schemaVersion: 2, targetId: item.target, atUtc: item.atUtc, targetRevision: 2, runId,
+  return { schemaVersion: 2, targetId: item.target, atUtc: item.atUtc, targetRevision: states.get(item.page).revision, runId,
     sourceObservedAtUtc: new Date(Date.parse(item.atUtc) - 60000).toISOString(), completedAtUtc: new Date(Date.parse(item.atUtc) - 59000).toISOString(),
     state: 'Complete', evidenceStatus: 'retained', sourceRows: 102, outputItems: 102, retainedItems: 102,
     lossKind: 'none', truncated: false, collectorEnabled: true, items, hasMore: !item.cursor, nextCursor: item.cursor ? null : `${item.kind}-page-2` };
@@ -155,7 +155,12 @@ for (const surface of Object.keys(definitions)) test(`${surface} fences held con
 for (const surface of Object.keys(definitions)) test(`${surface} drops received rows after permission denial`, async ({ page }) => {
   await mount(page, surface);
   states.get(page).handler = async (route, item) => { if (!item.cursor) return false; await json(route, { detail: 'SECRET_PROVIDER_RESPONSE' }, 403); return true; };
-  await button(page, surface, 'next').click(); await expect(evidence(page, surface).getByRole('alert')).toBeVisible();
+  await button(page, surface, 'next').click();
+  if (surface === 'availability') {
+    const family = page.getByRole('region', { name: 'Per-replica availability evidence', exact: true });
+    await expect(family.getByRole('alert')).toBeVisible(); await expect(family.getByRole('table')).toHaveCount(0);
+    await expect(family.getByRole('button', { name: 'Retry AG evidence access', exact: true })).toBeVisible();
+  } else await expect(evidence(page, surface).getByRole('alert')).toBeVisible();
   await expect(evidence(page, surface).locator('tbody tr')).toHaveCount(0); await expect(page.getByText('SECRET_PROVIDER_RESPONSE')).toHaveCount(0);
 });
 

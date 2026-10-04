@@ -5,11 +5,13 @@ import { parseAvailabilityPage, type AvailabilityPage, type AvailabilityStream }
 export class AvailabilityEvidenceError extends Error {
   readonly restart: boolean;
   readonly retryable: boolean;
-  constructor(message: string, restart = false, retryable = true) {
+  readonly status?: number;
+  constructor(message: string, restart = false, retryable = true, status?: number) {
     super(message);
     this.name = "AvailabilityEvidenceError";
     this.restart = restart;
     this.retryable = retryable;
+    this.status = status;
   }
 }
 
@@ -29,7 +31,7 @@ export async function getAvailabilityEvidence(targetId: string, stream: Availabi
     if ((response.status === 400 && cursor !== undefined) || response.status === 409)
       throw new AvailabilityEvidenceError("The AG snapshot changed or its cursor expired. Restart both streams from the first page.", true);
     if (response.status === 401 || response.status === 403)
-      throw new AvailabilityEvidenceError("A Viewer, Operator or TargetAdministrator role scoped to this server is required.", false, false);
+      throw new AvailabilityEvidenceError("A Viewer, Operator or TargetAdministrator role scoped to this server is required.", false, false, response.status);
     if (response.status === 400)
       throw new AvailabilityEvidenceError("Choose a valid UTC cutoff for AG evidence.", false, false);
     throw new AvailabilityEvidenceError(response.status === 504 ? "AG evidence timed out. Retry this page."

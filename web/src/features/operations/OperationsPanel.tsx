@@ -5,6 +5,7 @@ import "./operationsProjection.css";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { overviewWindow } from "../overview/overviewModel";
 import { AvailabilityEvidencePanel } from "./AvailabilityEvidencePanel";
+import type { AvailabilityEvidenceAccessOwner } from "./useAvailabilityEvidence";
 import { BackupAssessmentPanel } from "./BackupAssessmentPanel";
 import { AgentFailureHistoryPanel } from "./AgentFailureHistoryPanel";
 import { healthCheckHref, type HealthCheckTab } from "./agentHistoryModel.ts";
@@ -60,6 +61,9 @@ export function OperationsPanel({
   selectedBackupHistory, selectedAvailabilityHistory, onSelectBackupHistory, onSelectAvailabilityHistory,
   onRetainBackupHistoryWindow, onRetainAvailabilityHistoryWindow, accessContext = "",
 }: OperationsPanelProps) {
+  const primaryAgAuthority = JSON.stringify([instanceId.toLowerCase(), targetRevision, accessContext]);
+  const primaryAgAccess = useRef<{ authority: string; owner: AvailabilityEvidenceAccessOwner }>({ authority: primaryAgAuthority, owner: {} });
+  if (primaryAgAccess.current.authority !== primaryAgAuthority) primaryAgAccess.current = { authority: primaryAgAuthority, owner: {} };
   const tabKey = JSON.stringify([instanceId.toLowerCase(), initialTab]);
   const [selectedTab, setSelectedTab] = useState<{ key: string; value: OperationsTab }>();
   const tab = selectedTab?.key === tabKey ? selectedTab.value : initialTab;
@@ -141,7 +145,7 @@ export function OperationsPanel({
     <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
     {scope.range === "custom" && <p className="table-note">Rewind selects completion-window TempDB, replication and supporting legacy backup/AG receipts. Primary backup assessments and per-replica v2 AG evidence use the declared window end as their assessment/publication cutoff; their start does not filter snapshot rows. SQL Agent history uses first-observed time.</p>}
     {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
-      : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
+      : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} targetRevision={targetRevision} accessContext={accessContext} accessOwner={primaryAgAccess.current.owner} scope={scope} refresh={refresh} />
       {availabilityContext.error && <p role="alert">{availabilityContext.error}</p>}<BackupAvailabilityWindowHistoryPanel kind="availability" history={availabilityHistory} selected={selectedAvailabilityHistory} onSelectReceipt={selection => onSelectAvailabilityHistory?.(selection, receivedAvailabilityWindow)} onRetainWindow={retainAvailabilityWindow} />
       </> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
         {backupContext.error && <p role="alert">{backupContext.error}</p>}<BackupAvailabilityWindowHistoryPanel kind="backup" history={backupHistory} selected={selectedBackupHistory} onSelectReceipt={selection => onSelectBackupHistory?.(selection, receivedBackupWindow)} onRetainWindow={retainBackupWindow} />

@@ -39,7 +39,7 @@ function Harness() {
     <button type="button" onClick={() => setMounted(value => !value)}>{mounted ? "Unmount operations" : "Mount operations"}</button>
   </div><output aria-label="First committed operations context" className="harness-observations">{commit}</output>
   {mounted && <><h2>{target === alpha ? "Alpha" : "Beta"}</h2><div ref={evidence}>
-    {surface === "availability" && <AvailabilityEvidencePanel instanceId={target} scope={scope} refresh={refresh} />}
+    {surface === "availability" && <AvailabilityEvidencePanel instanceId={target} targetRevision={revision} scope={scope} refresh={refresh} />}
     {surface === "backups" && <BackupAssessmentPanel instanceId={target} scope={scope} refresh={refresh} />}
     {surface === "agent" && <AgentFailureHistoryPanel instanceId={target} targetRevision={revision} scope={scope} refresh={refresh} />}
     {surface === "dashboard" && <DashboardAgent target={target} revision={revision} scope={scope} refresh={refresh} />}

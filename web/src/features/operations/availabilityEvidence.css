@@ -1,0 +1,52 @@
+.availability-evidence {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.availability-evidence > *,
+.availability-evidence-facts > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.availability-evidence p,
+.availability-evidence-facts dt,
+.availability-evidence-facts dd {
+  overflow-wrap: anywhere;
+}
+
+.availability-evidence button,
+.availability-evidence summary {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.availability-evidence .availability-identity > summary {
+  display: list-item;
+  padding: .65rem .35rem;
+  color: var(--teal-deep);
+  cursor: pointer;
+}
+
+.availability-evidence .availability-identity code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.availability-evidence button:focus-visible,
+.availability-evidence summary:focus-visible,
+.availability-evidence .availability-evidence-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+@media (forced-colors: active) {
+  .availability-evidence button:focus-visible,
+  .availability-evidence summary:focus-visible,
+  .availability-evidence .availability-evidence-scroll:focus-visible {
+    outline-color: Highlight;
+  }
+}
