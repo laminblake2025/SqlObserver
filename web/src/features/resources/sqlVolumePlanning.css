@@ -1,0 +1,22 @@
+.sql-volume-planning { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; min-width: 0; padding: 20px; }
+.sql-volume-planning > *, .sql-volume-planning section, .sql-volume-planning details { min-width: 0; max-width: 100%; }
+.sql-volume-planning h3, .sql-volume-planning h4, .sql-volume-planning p { margin: 0 0 .75rem; }
+.sql-volume-planning p, .sql-volume-planning dt { overflow-wrap: anywhere; }
+.sql-volume-planning details { border: 1px solid var(--border); border-radius: 8px; margin-top: .75rem; padding: .5rem; overflow-wrap: anywhere; }
+.sql-volume-planning summary { display: list-item; min-height: 44px; align-content: center; padding: .5rem; cursor: pointer; }
+.sql-volume-planning button { min-height: 44px; min-width: 44px; overflow-wrap: anywhere; }
+.volume-planning-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .75rem 0; }
+.volume-planning-actions p { flex-basis: 100%; margin: 0; }
+.sql-volume-planning .table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.sql-volume-planning table { min-width: 780px; width: 100%; }
+.sql-volume-planning th, .sql-volume-planning td { vertical-align: top; padding: .75rem; }
+.sql-volume-planning td:first-child { overflow-wrap: anywhere; }
+.sql-volume-planning small { display: block; margin-top: .35rem; color: var(--muted); }
+.volume-planning-identity, .volume-planning-facts dd { overflow-wrap: anywhere; }
+.volume-planning-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: .75rem; }
+.volume-planning-facts > div { min-width: 0; }
+.volume-planning-facts dt { color: var(--muted); }
+.volume-planning-facts dd { margin: .25rem 0 0; }
+.sql-volume-planning :is(button, summary, .table-scroll):focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+@media (max-width: 560px) { .sql-volume-planning { padding: 14px; } .sql-volume-planning th, .sql-volume-planning td { padding: .6rem; } }
+@media (forced-colors: active) { .sql-volume-planning :is(button, summary, .table-scroll):focus-visible { outline-color: Highlight; } .sql-volume-planning details, .sql-volume-planning .table-scroll { border-color: CanvasText; } }

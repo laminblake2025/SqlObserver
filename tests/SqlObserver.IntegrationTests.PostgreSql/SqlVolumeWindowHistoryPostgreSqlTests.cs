@@ -236,7 +236,7 @@ internal static class SqlVolumeWindowHistoryFixture
         query.Parameters.Add("sample", NpgsqlDbType.Bigint).Value = (object?)sampleRevision ?? DBNull.Value; query.Parameters.Add("key", NpgsqlDbType.Bytea).Value = key is null ? DBNull.Value : Convert.FromHexString(key); query.Parameters.Add("cursor", NpgsqlDbType.Jsonb).Value = cursor is null ? DBNull.Value : cursor.Value.GetRawText();
         await using NpgsqlDataReader rows = await query.ExecuteReaderAsync(); Assert.True(await rows.NextResultAsync()); Assert.True(await rows.ReadAsync()); JsonDocument result = JsonDocument.Parse(rows.GetString(0)); await rows.DisposeAsync(); await transaction.CommitAsync(); return result;
     }
-    private static async Task CutoverCanonicalForeignKeysAsync(RepositoryTestDatabase database)
+    internal static async Task CutoverCanonicalForeignKeysAsync(RepositoryTestDatabase database)
     {
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync(); var children = new List<string>();
         await using (var inventory = new NpgsqlCommand("SELECT child_relation::text FROM control.collection_run_identity_fk_targets();", connection)) await using (NpgsqlDataReader rows = await inventory.ExecuteReaderAsync()) while (await rows.ReadAsync()) children.Add(rows.GetString(0));

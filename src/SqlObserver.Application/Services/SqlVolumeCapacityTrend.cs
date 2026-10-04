@@ -29,14 +29,17 @@ public static class SqlVolumeCapacityTrendEstimator
             current.ObservedAtUtc - samples[^1].ObservedAtUtc > TimeSpan.FromDays(1))
             return new(current.VolumeKey, "insufficient_history", samples.Count, null);
 
-        double origin = samples[0].ObservedAtUtc.ToUnixTimeSeconds() / 86400d;
-        double meanX = samples.Average(sample => sample.ObservedAtUtc.ToUnixTimeSeconds() / 86400d - origin);
-        double meanY = samples.Average(sample => (double)sample.AvailableBytes);
+        DateTimeOffset origin = samples[0].ObservedAtUtc;
+        long originBytes = samples[0].AvailableBytes;
+        // Subtract exact Int64 capacities before floating-point regression: a
+        // one-byte change near Int64.MaxValue must not disappear during casting.
+        double meanX = samples.Average(sample => (sample.ObservedAtUtc - origin).TotalDays);
+        double meanY = samples.Average(sample => (double)(sample.AvailableBytes - originBytes));
         double xx = 0, xy = 0, yy = 0;
         foreach (SqlVolumeDailyCapacitySample sample in samples)
         {
-            double x = sample.ObservedAtUtc.ToUnixTimeSeconds() / 86400d - origin - meanX;
-            double y = sample.AvailableBytes - meanY;
+            double x = (sample.ObservedAtUtc - origin).TotalDays - meanX;
+            double y = (double)(sample.AvailableBytes - originBytes) - meanY;
             xx += x * x;
             xy += x * y;
             yy += y * y;

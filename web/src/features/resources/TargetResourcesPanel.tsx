@@ -8,11 +8,13 @@ import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 
 import { DatabaseFileIoTrendPanel, type SelectedDatabaseFile } from "./DatabaseFileIoTrendPanel";
 import { BufferNodePlePanel } from "./BufferNodePlePanel";
-import { SqlVolumePanel } from "./SqlVolumePanel";
+import { SqlVolumePlanningPanel } from "./SqlVolumePlanningPanel.tsx";
+import { useSqlVolumePlanning } from "./useSqlVolumePlanning.ts";
+import { sqlVolumePlanningWindow, type SqlVolumePlanningSelection } from "./sqlVolumePlanningModel.ts";
 import { SqlVolumeHistoryPanel } from "./SqlVolumeHistoryPanel";
 import { useChartReferences } from "../overview/useChartReferences.ts";
 import { resourceInspectionInputUtc, resourceInspectionUtc } from "./resourceInspectionModel.ts";
-import { readResourceSelection, resourceSelectionHref, preserveInvalidFileSnapshotHref, preserveInvalidCpuCaptureHref, resourceWindowMatches, type ResourceSelection } from "./resourceSelectionModel.ts";
+import { readResourceSelection, resourceSelectionHref, preserveInvalidFileSnapshotHref, preserveInvalidCpuCaptureHref, preserveInvalidVolumePlanningHref, resourceWindowMatches, type ResourceSelection } from "./resourceSelectionModel.ts";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 
 import { useDatabaseFileWindowHistory } from "./useDatabaseFileWindowHistory.ts";
@@ -85,7 +87,8 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     if (!/^#\/?resources(?:\?|$)/u.test(location.hash) || latestScope.target.toLowerCase() !== instanceId.toLowerCase()) return;
     const href = resourceSelectionHref(latestScope, clearAll ? {} : { ...readResourceSelection(location.hash, instanceId), ...change });
     const withFilePin = clearAll || Object.hasOwn(change,"fileSnapshot") ? href : preserveInvalidFileSnapshotHref(href,location.hash);
-    location.hash = clearAll || Object.hasOwn(change,"cpuCapture") ? withFilePin : preserveInvalidCpuCaptureHref(withFilePin,location.hash);
+    const withCpuPin = clearAll || Object.hasOwn(change,"cpuCapture") ? withFilePin : preserveInvalidCpuCaptureHref(withFilePin,location.hash);
+    location.hash = clearAll || Object.hasOwn(change,"volumePlanning") ? withCpuPin : preserveInvalidVolumePlanningHref(withCpuPin,location.hash);
   };
   const changeInspectionTime = (utc: string | null) => {
     if (utc === null) { setInspection(undefined); return; }
@@ -124,7 +127,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     if(latestScope.databaseId!==scope.databaseId||latestScope.range==="custom"&&!resourceWindowMatches(latestScope.from??"",latestScope.to??"",inspectionWindow.fromUtc,inspectionWindow.toUtc)||latestScope.range!=="custom"&&latestScope.range!==scope.range)return;
     const selection = { ...readResourceSelection(location.hash,instanceId), ...(file ? {file} : {}), ...(clearSnapshot ? {fileSnapshot:undefined} : snapshot ? {fileSnapshot:snapshot} : {}) };
     const href=resourceSelectionHref({...latestScope,range:"custom",from:inspectionWindow.fromUtc,to:inspectionWindow.toUtc},selection);
-    location.hash=preserveInvalidCpuCaptureHref(clearSnapshot || snapshot ? href : preserveInvalidFileSnapshotHref(href,location.hash),location.hash);
+    location.hash=preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(clearSnapshot || snapshot ? href : preserveInvalidFileSnapshotHref(href,location.hash),location.hash),location.hash);
   };
   const cpuWindow = (() => {
     if (resourceSelection.invalidContext) return { window: undefined, error: "The requested CPU capture has ambiguous shared context. Clear resource selections before choosing evidence." };
@@ -142,9 +145,27 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     const selected = { ...latestSelection, cpuCapture: capture };
     const pinnedScope = capture || retainWindow ? { ...latestScope, range: "custom" as const, from: inspectionWindow.fromUtc, to: inspectionWindow.toUtc } : latestScope;
     const href = preserveInvalidFileSnapshotHref(resourceSelectionHref(pinnedScope, selected), location.hash);
-    location.hash = retainWindow && latestSelection.invalidCpuCapture ? preserveInvalidCpuCaptureHref(href, location.hash) : href;
+    location.hash = preserveInvalidVolumePlanningHref(retainWindow && latestSelection.invalidCpuCapture ? preserveInvalidCpuCaptureHref(href, location.hash) : href, location.hash);
   };
-  const isRewind = scope.range === "custom";
+  const planningWindow = (() => {
+    if (resourceSelection.invalidContext) return { window: undefined, error: "The requested volume planning receipt has ambiguous shared context. Clear resource selections before choosing evidence." };
+    try { return inspectionWindow ? { window: sqlVolumePlanningWindow(inspectionWindow.fromUtc, inspectionWindow.toUtc), error: undefined }
+      : { window: undefined, error: "Choose a valid shared time window for volume planning." }; }
+    catch (failure) { return { window: undefined, error: failure instanceof Error ? failure.message : "Choose a valid volume planning window." }; }
+  })();
+  const volumePlanning = useSqlVolumePlanning(planningWindow.window ? { targetId: instanceId, targetRevision, ...planningWindow.window } : undefined,
+    resourceSelection.invalidVolumePlanning || resourceSelection.invalidContext ? null : resourceSelection.volumePlanning, manualRefresh, accessContext);
+  const beginVolumePlanning = (receipt?: SqlVolumePlanningSelection, retainWindow = false) => {
+    const latestScope = readOverviewScope(location.hash), latestSelection = readResourceSelection(location.hash, instanceId);
+    const receivedWindow = volumePlanning.snapshot.pages[0] ?? volumePlanning.list.pages[0] ?? inspectionWindow;
+    if (!receivedWindow || !inspectionWindow || latestSelection.invalidContext || !/^#\/?resources(?:\?|$)/u.test(location.hash) || latestScope.target.toLowerCase() !== instanceId.toLowerCase()) return;
+    if (latestScope.databaseId !== scope.databaseId || latestScope.range === "custom" && !resourceWindowMatches(latestScope.from ?? "", latestScope.to ?? "", receivedWindow.fromUtc, receivedWindow.toUtc)
+      || latestScope.range !== "custom" && latestScope.range !== scope.range || !resourceWindowMatches(receivedWindow.fromUtc, receivedWindow.toUtc, inspectionWindow.fromUtc, inspectionWindow.toUtc)) return;
+    const selected = { ...latestSelection, volumePlanning: receipt };
+    const pinnedScope = receipt || retainWindow ? { ...latestScope, range: "custom" as const, from: receivedWindow.fromUtc, to: receivedWindow.toUtc } : latestScope;
+    const href = preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(pinnedScope, selected), location.hash), location.hash);
+    location.hash = retainWindow && latestSelection.invalidVolumePlanning ? preserveInvalidVolumePlanningHref(href, location.hash) : href;
+  };
 
   const chart = (title: string, metric: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
     <h3>{title}</h3>
@@ -169,9 +190,9 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     <p className="table-note">CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.</p>
     {resourceSelection.issues?.map(issue => <p role="alert" key={issue}>{issue}</p>)}
-    {(resourceSelection.cpuCapture || resourceSelection.invalidCpuCapture || resourceSelection.file || resourceSelection.fileSnapshot || resourceSelection.invalidFileSnapshot || resourceSelection.volume || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
+    {(resourceSelection.volumePlanning || resourceSelection.invalidVolumePlanning || resourceSelection.cpuCapture || resourceSelection.invalidCpuCapture || resourceSelection.file || resourceSelection.fileSnapshot || resourceSelection.invalidFileSnapshot || resourceSelection.volume || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
       <button type="button" className="secondary-button" onClick={() => updateSelection({}, true)}>Clear resource selections</button>}
-    {inspectionWindow && <p><a href={preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(chartScope, resourceSelection),location.hash),location.hash)}>Open fixed resource investigation</a></p>}
+    {inspectionWindow && <p><a href={preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(chartScope, resourceSelection),location.hash),location.hash),location.hash)}>Open fixed resource investigation</a></p>}
     <section className="panel server-dashboard-chart" aria-label="Resource chart alignment">
       <h3>Inspect resource charts at one time</h3>
       <p id={inspectionDescriptionId} className="activity-evidence">Align loaded CPU, memory, PLE and file-latency charts to one UTC instant. The marker does not add observations or fill gaps. This keeps the workspace window unchanged.</p>
@@ -220,7 +241,9 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       selectedNodeId={resourceSelection.numaNodeId} onSelectNode={nodeId => updateSelection({ numaNodeId: nodeId })}
       crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime}
       onSelectWindow={onSelectWindow} />}
-    <SqlVolumePanel instanceId={instanceId} targetRevision={targetRevision} refresh={refresh} isRewind={isRewind} />
+    <SqlVolumePlanningPanel history={volumePlanning} windowError={planningWindow.error}
+      selectionInvalid={resourceSelection.invalidVolumePlanning || resourceSelection.invalidContext} explicitSelection={resourceSelection.volumePlanning}
+      onSelectReceipt={receipt => beginVolumePlanning(receipt)} onRetainWindow={() => beginVolumePlanning(volumePlanning.selected ?? undefined, true)} />
     {inspectionWindow && <SqlVolumeHistoryPanel instanceId={instanceId} targetRevision={targetRevision} fromUtc={inspectionWindow.fromUtc} toUtc={inspectionWindow.toUtc}
       compare={scope.compare} refresh={refresh} selectedVolume={resourceSelection.invalidVolume || resourceSelection.invalidContext ? null : resourceSelection.volume}
       onSelectVolume={volume => updateSelection({ volume })} crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime} onSelectWindow={onSelectWindow} />}
@@ -241,7 +264,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       <p>Selected window: {formatDisplayTime(result.data.fromUtc, mode)} to {formatDisplayTime(result.data.toUtc, mode)}. Refreshed {formatDisplayTime(result.data.refreshedAtUtc, mode)}.</p>
       <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} Â· {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
       <EvidenceDisclosure label="Collection evidence details" attention={evidence.gaps.length > 0 || evidence.collectionState !== "current"}>
-        <p>CPU, memory and volume history follow this loaded window. PLE and selected-file latency state their own coverage. File counters describe an exact retained receipt in the shared completion window; latest volume capacity and its forecast are separate Live evidence. Missing observations are never filled with zero.</p>
+        <p>CPU, memory and volume history follow this loaded window. PLE and selected-file latency state their own coverage. File counters and volume capacities describe exact retained receipts in the shared completion window. Volume planning uses the 14-day lookback anchored to its selected receipt. Missing observations are never filled with zero.</p>
         <p>Last SQL core observation: {evidence.lastObservedUtc ? formatDisplayTime(evidence.lastObservedUtc, mode) : "unavailable"}. Source status does not establish a health verdict.</p>
       </EvidenceDisclosure>
       <ReferenceEvidenceStatus {...chartReferences} />

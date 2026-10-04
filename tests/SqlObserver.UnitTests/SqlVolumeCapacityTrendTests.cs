@@ -48,6 +48,16 @@ public sealed class SqlVolumeCapacityTrendTests
         M4TestData.TargetId, M4TestData.TargetRevision, Key, SqlVolumeIdentityKind.VolumeId,
         1, available is null ? null : 20_000, available, Today);
 
+    [Fact]
+    public void SmallDeclineNearInt64MaximumRemainsDepletingBeyondSupportedHorizon()
+    {
+        var current = new SqlVolumeObservation(M4TestData.TargetId, M4TestData.TargetRevision, Key,
+            SqlVolumeIdentityKind.VolumeId, 1, long.MaxValue, long.MaxValue - 6, Today);
+        SqlVolumeDailyCapacitySample[] samples = Enumerable.Range(0, 7).Select(index =>
+            new SqlVolumeDailyCapacitySample(Key, Today.AddDays(index - 6), long.MaxValue, long.MaxValue - index)).ToArray();
+        Assert.Equal("beyond_horizon", SqlVolumeCapacityTrendEstimator.Estimate(current, samples).State);
+    }
+
     private static SqlVolumeDailyCapacitySample Sample(int daysFromToday, long available) =>
         new(Key, Today.AddDays(daysFromToday), 20_000, available);
 

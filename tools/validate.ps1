@@ -1885,7 +1885,7 @@ function Assert-RepositoryShape {
     $m12ReportsTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs'
     foreach ($m12ReportsPath in @($m12ReportsContractPath, $m12ReportsSchemaPath, $m12ReportsPinPath, $m12ReportsProducerPath, $m12ReportsTestPath)) { if (-not (Test-Path -LiteralPath $m12ReportsPath -PathType Leaf)) { throw 'M12 reports certification asset is missing.' } }
     $m12ReportsContractHash = (Get-FileHash -LiteralPath $m12ReportsContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ReportsSchemaHash = (Get-FileHash -LiteralPath $m12ReportsSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12ReportsContractHash -cne 'f8a5340ecd0a545126fa65a7909d86c1aac6cd14498e3974d80da93c4415debc' -or $m12ReportsSchemaHash -cne 'cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
+    if ($m12ReportsContractHash -cne '14396d30c3c305afa450b15e7cd93c4dcef022f0689eaf215f1248bcdd66dee6' -or $m12ReportsSchemaHash -cne 'cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
     if ([IO.File]::ReadAllText($m12ReportsPinPath) -cne "$m12ReportsContractHash  m12-reports-contract.v1.json`n$m12ReportsSchemaHash  m12-reports-contract.v1.schema.json`n") { throw 'M12 reports contract pin is not exact LF-closed.' }
     $m12ReportsSchema = Get-Content -LiteralPath $m12ReportsSchemaPath -Raw | ConvertFrom-Json; $m12ReportsContract = Get-Content -LiteralPath $m12ReportsContractPath -Raw | ConvertFrom-Json
     if ($m12ReportsSchema.additionalProperties -ne $false -or $m12ReportsContract.'$schema' -cne 'm12-reports-contract.v1.schema.json' -or $m12ReportsContract.producerId -cne 'm12-reports-harness') { throw 'M12 reports contract/schema must be closed and self-identifying.' }
@@ -1895,7 +1895,7 @@ function Assert-RepositoryShape {
     'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
     'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
     'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
-    'database/migrations/checksums.sha256' = '63005dba678457b1d15f4da295e032d334844c1c502ec2dd003afa08faa73916'
+    'database/migrations/checksums.sha256' = '789e82e88554adf48e717694c8d1ae18a591b995da8f59f465b162284015d67f'
     'src/SqlObserver.Reporting/ReportContracts.cs' = 'f22cb37ebc9fba15fa01d1215e902a38b5e43f02c494585f06bcac0214b89dd0'
     'src/SqlObserver.Reporting/ReportRendering.cs' = '08bba74ded22122a4a08f03dbfd6a254a7b786b352a3c3390a000a64552a824c'
     'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '61e1b6a3f5b66a9583089572ee2ebfe2fb0e7fa08a50ff6c23450441561e7865'

@@ -1193,3 +1193,34 @@ The configured lab SSH route192.168.50.76:22 timed out in one fresh bounded read
 Final screenshot review found a mobile defect the document-overflow assertion did not catch: the receipt table expanded an implicit grid column, and the outer panel hid surrounding text. The TempDB panel now uses an explicit `minmax(0,1fr)` track and constrained child/details widths; only wide tables overflow their own scroll region. Existing320/390/768/1440 component and App cases now measure internal text, disclosures, controls and scroll-region bounds before/after browsing, open receipt identity fields, and assert genuine mobile local scrolling.
 
 The complete119-case mounted group,24-case built-App group and18-case forced-color screen group ran again against rebuilt final assets. All passed. The overall final qualified count remains317; unchanged native, Node and TypeScript checks do not consume the CSS/spec repair inputs, and exact exceptions are recorded in validation.json. The initial local checkpoint452e0bc and its84 screenshots/metadata remain preserved in `before-mobile-clip-repair`; final gallery captures replace its clipped scenes. Final84-image gallery,2442-input freeze, prior122-image restoration and requirement matrix are verified. No SQL/native source, collector activation, external push or upload changed.
+
+## SQL volume planning in Live and Rewind — 2026-10-04 UTC
+
+Three independent owners handled the canonical backend contract, Resources dark-theme/runtime work and interaction/accessibility coverage. The lead integrated routes/DI, URL pins, fixtures and integrity pins, resolved defects and ran qualification serially after freezing source. File ownership remained separate.
+
+Resources capacity planning now uses canonical completion-window receipts and an exact run/sample revision, including older off-list selections. The newest attempt is selected by default even when failed, missing or empty; older success is never substituted. Capacities remain exact Int64 decimal strings. SQL observation, ingestion and repository completion clocks remain distinct. Forecasts use the selected receipt's inclusive 14-day completion lookback; unsuitable or overflowing history refuses an estimate while preserving exact raw evidence. Matching opaque keys do not certify physical-volume continuity or native health.
+
+Forward migration 0362 introduces bounded same-target authorized reads and original-expiry signed continuations. It also replaces the legacy capacity helper's original-run references with canonical references, retaining that API's observation-axis semantics. Valid planning pins survive database/compare changes and equivalent microseconds; genuine time changes retire the planning pin. Browsing fixes a fresh Live investigation to its received window/tuple. Exact selected provenance exposes outcome, loss kind, minimum lost and stored/expected source volumes independently of list membership. Denial purge, paging/cache, retries, cancellation and context/ABA fences remain explicit.
+
+The changed controls use dark tokens, inset focus and 44px minimum targets. The inline planning link is underlined. Removing the artificial 320px page floor and allowing mobile toolbar time controls to shrink repairs actual 200% zoom reflow; wide evidence tables scroll locally without hiding surrounding content.
+
+Final whole affected groups passed **424/424** with no skipped cases or flaky retries: Node contracts 80, unit 41, HTTP/authorization 87, real PostgreSQL 34, release pins 7, mounted components 108, built App 30, browsing 6, evidence contracts 13 and forced colors 18. Types, production build, asset integrity and staged whitespace pass. Final consumed inputs match the 2464-input freeze; exact unconsumed-input exceptions are recorded. The existing bundle-size warning remains.
+
+Real local PostgreSQL 18.4 exercises production migration/read roles, sealed original-run boundaries, canonical writers, cursor mutation/expiry and overflow/refusal. The genuine five-day forecast uses a private container clock and administratively configured daily test cadence. Cadence management, retention-worker behavior, native SQL capture and physical identity are not certified.
+
+Seven complete failed attempts retain source/logs and available TRX/reports/traces. Repairs addressed analyzer naming/task consumption, stale reference inventory and invalid native fixtures, color-only links, actual zoom overflow, actual time-pin retention, stale disclosure assertion order and missing selected loss metadata. Production constraints and strict assertions were retained; complete owning groups reran without aggregating passing subsets.
+
+| Requested requirement | Result for this checkpoint |
+|---|---|
+| Multiple independent agents and one lead | Complete; separate owners and lead integration. |
+| Dark-theme work | Complete for changed workflows, including forced colors and light preference. |
+| Diagnostic-screen review | Latest-only planning gap closed with exact historical source evidence. |
+| Interaction tests | Complete affected groups cover URLs, paging, context changes, cancellation and denial. |
+| Accessibility/responsive checks | 320/390/768/1440 workflows; forced colors and 200% zoom at 320/1440; nine primary forced-color screens. |
+| Final integrated validation | 424 passed cases plus types/build/assets/whitespace on final consumed inputs. |
+| Screenshots and completion summary | 69 synthetic screenshots and requirement matrix; 148 prior captures restored and hash-verified. |
+| Dashboard-refactor scope | Resources planning and its scoped canonical read dependency; no native activation or permission expansion. |
+
+Evidence: `artifacts/dashboard-volume-planning-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md` and `index.html`. Read/source/privacy semantics: `docs/technical/Sql-Volume-Planning-Window.md`. Migration 0362 SHA-256: `c197eeb9f687bec7d413eb41e57c80476752dcbae2bb041eb280e3e406f5af2c`.
+
+The configured SSH route 192.168.50.76:22 remains unavailable; host/network clarification is pending and no unchanged probe was repeated. Native CPU comparison, running/long-running Agent qualification, physical failover, other latest-only operational evidence, replication exact-attempt history and the optional assistant remain open. The broader dashboard and original repository plan remain active. No production migration, GitHub push or upload occurred.

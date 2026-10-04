@@ -103,6 +103,10 @@ builder.Services.AddSingleton<ISqlVolumeWindowHistoryRepositoryPort>(static serv
     services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlVolumeWindowHistory);
 builder.Services.AddSingleton<ISqlVolumeWindowHistoryService, SqlVolumeWindowHistoryService>();
 builder.Services.AddSingleton<SqlVolumeWindowHistoryCursorProtector>();
+builder.Services.AddSingleton<ISqlVolumePlanningWindowReadPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlVolumePlanningWindow);
+builder.Services.AddSingleton<ISqlVolumePlanningWindowService, SqlVolumePlanningWindowService>();
+builder.Services.AddSingleton<SqlVolumePlanningWindowCursorProtector>();
 builder.Services.AddSingleton<IDatabaseFileWindowHistoryReadPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().DatabaseFileWindowHistory);
 builder.Services.AddSingleton<IDatabaseFileWindowHistoryService, DatabaseFileWindowHistoryService>();
@@ -290,6 +294,7 @@ app.MapTargetHealthEndpoints();
 app.MapBackupZoneQualificationEndpoints();
 app.MapBackupFreshnessPolicyEndpoints();
 app.MapSqlVolumeEndpoints();
+app.MapSqlVolumePlanningWindowEndpoints();
 app.MapServerLifecycleHistoryEndpoints();
 app.MapDatabaseFileWindowHistoryEndpoints();
 app.MapCpuCaptureWindowHistoryEndpoints();

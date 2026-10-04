@@ -10,14 +10,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $MaximumOutput=65536;$MaximumError=8192;$MaximumMilliseconds=300000;$MaximumJsonBytes=32768
 $ProducerId='m12-reports-harness';$ArtifactKind='reports-exports-evidence'
-$ApprovedContractSha256='f8a5340ecd0a545126fa65a7909d86c1aac6cd14498e3974d80da93c4415debc';$ApprovedContractSchemaSha256='cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266'
+$ApprovedContractSha256='14396d30c3c305afa450b15e7cd93c4dcef022f0689eaf215f1248bcdd66dee6';$ApprovedContractSchemaSha256='cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266'
 $ApprovedAssetPins=[ordered]@{
     'database/migrations/0021_reports_exports.sql' = 'e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986'
     'database/migrations/0022_runtime_startup_repairs.sql' = '1c2726afe570ff7a8db169afc6469196d3c27ad73d33b2f5702de5130b31d64d'
     'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
     'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
     'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
-    'database/migrations/checksums.sha256' = '63005dba678457b1d15f4da295e032d334844c1c502ec2dd003afa08faa73916'
+    'database/migrations/checksums.sha256' = '789e82e88554adf48e717694c8d1ae18a591b995da8f59f465b162284015d67f'
     'src/SqlObserver.Reporting/ReportContracts.cs' = 'f22cb37ebc9fba15fa01d1215e902a38b5e43f02c494585f06bcac0214b89dd0'
     'src/SqlObserver.Reporting/ReportRendering.cs' = '08bba74ded22122a4a08f03dbfd6a254a7b786b352a3c3390a000a64552a824c'
     'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '61e1b6a3f5b66a9583089572ee2ebfe2fb0e7fa08a50ff6c23450441561e7865'

@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 // Tests run against the final built assets and explicitly synthetic loopback data.
 export default defineConfig({
   testDir: './browser-tests',
-  testMatch: ['dashboard-refactor.spec.mjs', 'dashboard-accessibility.spec.mjs', 'dashboard-forced-colors.spec.mjs', 'dashboard-chart-access.spec.mjs', 'dashboard-diagnostic-alignment.spec.mjs', 'dashboard-file-window-history.spec.mjs', 'dashboard-cpu-capture-history.spec.mjs', 'dashboard-tempdb-history.spec.mjs', 'operations-projections.spec.mjs'],
+  testMatch: ['dashboard-refactor.spec.mjs', 'dashboard-accessibility.spec.mjs', 'dashboard-forced-colors.spec.mjs', 'dashboard-chart-access.spec.mjs', 'dashboard-diagnostic-alignment.spec.mjs', 'dashboard-file-window-history.spec.mjs', 'dashboard-cpu-capture-history.spec.mjs', 'dashboard-tempdb-history.spec.mjs', 'dashboard-volume-planning.spec.mjs', 'dashboard-volume-window-history.spec.mjs', 'operations-projections.spec.mjs'],
   timeout: 30_000,
   workers: 1,
   retries: 0,

@@ -90,7 +90,6 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.list_server_wait_category_trend_legacy/3
             function reporting.list_server_wait_history_legacy/7
             function reporting.list_server_wait_summary_legacy/6
-            function reporting.list_sql_volume_capacity_history/4
             function reporting.list_sql_volume_snapshot_legacy/5
             function reporting.overview_database_activity_history_legacy/5
             function reporting.read_m10_backfill_page_legacy/10
