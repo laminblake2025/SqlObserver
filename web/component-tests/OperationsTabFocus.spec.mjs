@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {tempDbHistoryBackend,tempDbHistoryReadBinding,tempDbHistoryJson} from './tempDbWindowHistoryFixture.mjs';
+import {replicationHistoryBackend,replicationHistoryReadBinding,replicationHistoryJson,replicationHistoryMicro} from './replicationWindowHistoryFixture.mjs';
 import { target, otherTarget, fromUtc, toUtc, requestPath, routeHash, fixture } from './operationsFixture.mjs';
-import { nativeValue } from './analyticsWorkflowFixture.mjs';
 
 const origin = 'http://127.0.0.1:4328';
 const sessions = new WeakMap();
@@ -19,15 +19,10 @@ function key(path) {
 }
 
 test.beforeEach(async ({ page }) => {
-  const session = { registry: new Map(), requests: [], unexpected: [], tempdb:tempDbHistoryBackend() };
+  const session = { registry: new Map(), requests: [], unexpected: [], tempdb:tempDbHistoryBackend(), replication:replicationHistoryBackend({count:0}) };
   sessions.set(page, session);
   for (const id of [target, otherTarget]) {
     for (const [kind, body] of Object.entries(fixture(id))) session.registry.set(key(requestPath(kind, id)), body);
-    for (const surface of ['replication/status', 'replication/evidence']) {
-      const query = new URLSearchParams({ fromUtc, toUtc, limit: '200' });
-      session.registry.set(key(`/api/v1/observation-targets/${id}/analytics/${surface}?${query}`),
-        nativeValue({ targetId: id, surface, fromUtc, toUtc, limit: 200 }, { generation: 1, revision: 4, total: 0 }));
-    }
   }
   page.on('pageerror', error => session.unexpected.push(`Page error: ${error.message}`));
   await page.route('**/*', async route => {
@@ -37,6 +32,14 @@ test.beforeEach(async ({ page }) => {
       return route.abort();
     }
     if (!/^\/api(?:\/|$)/.test(url.pathname)) return route.continue();
+    const replicationRead=replicationHistoryReadBinding(url);
+    if(replicationRead){
+      const allowed=['targetRevision','fromUtc','toUtc','limit','cursor'];
+      if(request.method()!=='GET'||replicationRead.selection||![target,otherTarget].includes(replicationRead.binding.targetId)||replicationRead.binding.targetRevision!==4||replicationHistoryMicro(replicationRead.binding.fromUtc)!==replicationHistoryMicro(fromUtc)||replicationHistoryMicro(replicationRead.binding.toUtc)!==replicationHistoryMicro(toUtc)||replicationRead.limit!==100||[...url.searchParams.keys()].some(k=>!allowed.includes(k)||url.searchParams.getAll(k).length!==1)){
+        session.unexpected.push('Unregistered replication history binding '+url.href);return route.abort();
+      }
+      session.requests.push(request);return replicationHistoryJson(route,session.replication.read(replicationRead.binding,replicationRead.cursor,replicationRead.limit));
+    }
     const historyRead=tempDbHistoryReadBinding(url);if(historyRead){if(request.method()!=='GET'){session.unexpected.push('Non-read TempDB history request');return route.abort();}session.requests.push(request);const b=session.tempdb;return tempDbHistoryJson(route,historyRead.selection?b.snapshot(historyRead.binding,historyRead.selection,historyRead.cursor,historyRead.limit):b.read(historyRead.binding,historyRead.cursor,historyRead.limit));}
     const body = request.method() === 'GET' && session.registry.get(key(url.href));
     if (!body) {
@@ -114,6 +117,65 @@ async function capture(page, name) {
   await page.screenshot({ path: `${screenshots}/${name}.png`, fullPage: true });
 }
 
+async function fullyVisibleSelectedTab(page, name) {
+  const selectedTab = tab(page, name);
+  await expect(selectedTab).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(() => selectedTab.evaluate(element => {
+    const owner = element.closest('[role="tablist"]'), outer = owner.getBoundingClientRect();
+    const scale = outer.width / owner.offsetWidth, bounds = element.getBoundingClientRect();
+    const left = outer.left + owner.clientLeft * scale, right = left + owner.clientWidth * scale;
+    return bounds.width > 0 ? Math.max(0, left - bounds.left, bounds.right - right, -bounds.left, bounds.right - innerWidth) : Infinity;
+  }), 'The entire selected tab must fit the actual local scrollport and viewport, including CSS zoom').toBeLessThanOrEqual(1);
+}
+
+for (const [check, name] of [['replication', 'Replication'], ['availability', 'Availability groups']]) {
+  for (const initialWidth of [320, 1440]) {
+    test(`direct ${check} tab is revealed without focus or vertical scrolling at ${initialWidth}px, reload, resize and zoom`, async ({ page }) => {
+      await page.setViewportSize({ width: initialWidth, height: 1000 });
+      await page.goto(`/component-tests/operations.html${routeHash(target, check)}`);
+      await expect(page.getByRole('heading', { name: 'Operations panel harness', exact: true })).toBeVisible();
+      await fullyVisibleSelectedTab(page, name);
+      await expect(tab(page, name)).not.toBeFocused();
+      expect(await page.evaluate(() => scrollY)).toBe(0);
+      await page.reload();
+      await fullyVisibleSelectedTab(page, name);
+      await expect(tab(page, name)).not.toBeFocused();
+      expect(await page.evaluate(() => scrollY)).toBe(0);
+
+      const retainedFocus = page.getByRole('button', { name: 'Refresh context', exact: true });
+      await retainedFocus.evaluate(element => element.focus({ preventScroll: true }));
+      for (const width of [1440, 768, 390, 320]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await fullyVisibleSelectedTab(page, name);
+        await expect(retainedFocus).toBeFocused();
+        expect(await page.evaluate(() => scrollY)).toBe(0);
+      }
+      await page.evaluate(() => document.documentElement.style.zoom = '2');
+      await fullyVisibleSelectedTab(page, name);
+      await expect(retainedFocus).toBeFocused();
+      expect(await page.evaluate(() => scrollY)).toBe(0);
+      await page.addInitScript(() => {
+        const applyZoom = () => {
+          if (!document.documentElement) return false;
+          document.documentElement.style.zoom = '2';
+          return true;
+        };
+        if (!applyZoom()) {
+          const observer = new MutationObserver(() => { if (applyZoom()) observer.disconnect(); });
+          observer.observe(document, { childList: true });
+        }
+      });
+      await page.reload();
+      await fullyVisibleSelectedTab(page, name);
+      await expect(tab(page, name)).not.toBeFocused();
+      expect(await page.evaluate(() => scrollY)).toBe(0);
+      const folder = fileURLToPath(new URL('../../artifacts/dashboard-replication-history-2026-10-04/screenshots/', import.meta.url));
+      await mkdir(folder, { recursive: true });
+      await page.screenshot({ path: `${folder}operations-direct-${check}-${initialWidth}-zoom.png`, fullPage: true });
+    });
+  }
+}
+
 for (const width of [320, 390, 768, 1440]) {
   for (const forcedColors of [false, true]) {
     test(`Operations tab focus stays painted inside the scroller at ${width}${forcedColors ? ' in forced colors' : ' in dark theme'}`, async ({ page }) => {
@@ -139,8 +201,8 @@ for (const width of [320, 390, 768, 1440]) {
         expect(last.scrollLeft).toBeGreaterThan(0);
         expect(last.remaining).toBeLessThanOrEqual(1);
       }
-      await expect(panel(page).getByRole('region', { name: 'Replication status', exact: true })).toContainText('Received page 1');
-      await expect(panel(page).getByRole('region', { name: 'Replication evidence', exact: true })).toContainText('Received page 1');
+      await expect(panel(page).getByRole('region', { name: 'Replication window history', exact: true })).toContainText('No completed replication collection attempts');
+      await expect(panel(page).getByRole('region', { name: 'Replication history coverage', exact: true })).toContainText('0 completed attempts');
       await capture(page, `operations-tab-focus-${width}-${forcedColors ? 'forced-colors-' : ''}last`);
 
       await page.keyboard.press('ArrowLeft');

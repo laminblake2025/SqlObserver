@@ -335,26 +335,34 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     public async Task PartitionMaintenanceExtendsOnlyActiveM10Streams()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        static async Task<string[]> ReadParentsAsync(NpgsqlConnection connection)
+        {
+            await using var inspect = new NpgsqlCommand("""
+                SELECT parent_schema::text, parent_table::text
+                FROM system.partition_registry
+                WHERE partition_granularity='day'
+                  AND range_start=(current_date+8)::timestamptz
+                ORDER BY parent_schema,parent_table;
+                """, connection);
+            await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+            var parents = new List<string>();
+            while (await reader.ReadAsync()) parents.Add($"{reader.GetString(0)}.{reader.GetString(1)}");
+            return parents.ToArray();
+        }
+        string[] before = await ReadParentsAsync(connection);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         await using var maintain = collector.CreateCommand("SELECT control.ensure_m10_partition_set(current_date+1);");
         Assert.Equal(33, (int)(await maintain.ExecuteScalarAsync())!);
-
-        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
-        await using var inspect = new NpgsqlCommand("""
-            SELECT parent_schema::text, parent_table::text
-            FROM system.partition_registry
-            WHERE partition_granularity='day'
-              AND range_start=(current_date+8)::timestamptz
-            ORDER BY parent_schema,parent_table;
-            """, connection);
-        await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
-        var parents = new List<string>();
-        while (await reader.ReadAsync())
-            parents.Add($"{reader.GetString(0)}.{reader.GetString(1)}");
-        Assert.Equal(3, parents.Count);
-        Assert.Equal("analytics.metric_rollup_v2", parents[0]);
-        Assert.Equal("telemetry.host_metric_snapshot_v2", parents[1]);
-        Assert.Equal("telemetry.replication_snapshot_v2", parents[2]);
+        string[] after = await ReadParentsAsync(connection);
+        // Other independently maintained streams may already own this date.
+        // This call must create exactly the three active M10 daily streams.
+        string[] added = after.Except(before, StringComparer.Ordinal).ToArray();
+        Assert.Collection(added,
+            item => Assert.Equal("analytics.metric_rollup_v2", item),
+            item => Assert.Equal("telemetry.host_metric_snapshot_v2", item),
+            item => Assert.Equal("telemetry.replication_snapshot_v2", item));
+        Assert.Equal(before, after.Except(added, StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
@@ -824,8 +832,16 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         Assert.Equal(0, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
         await using (var snapshot = new NpgsqlCommand(originalJobs, inspection))
             Assert.Equal(originalDigest, await snapshot.ExecuteScalarAsync());
+        const string schedulerLedger = "SELECT to_jsonb(m)::text FROM system.schema_migration m WHERE migration_number=296;";
+        string schedulerLedgerBefore;
+        await using (var ledger = new NpgsqlCommand(schedulerLedger, inspection))
+            schedulerLedgerBefore = Assert.IsType<string>(await ledger.ExecuteScalarAsync());
+        // A repeated bounded request selects the next pending migration in the
+        // full catalog; it must leave the already applied scheduler migration intact.
         MigrationBatchResult repeatUpgrade = await migrator.ApplyPendingAsync(new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), default);
-        Assert.False(repeatUpgrade.HasFailures); Assert.Empty(repeatUpgrade.Results);
+        Assert.False(repeatUpgrade.HasFailures); Assert.Equal(297, Assert.Single(repeatUpgrade.Results).Migration.Number.Value);
+        await using (var ledger = new NpgsqlCommand(schedulerLedger, inspection))
+            Assert.Equal(schedulerLedgerBefore, Assert.IsType<string>(await ledger.ExecuteScalarAsync()));
         Assert.True(await ScalarBoolAsync(inspection, """
             SELECT count(*)=129 AND bool_and(jobs=33 AND rollups=30 AND derivations=3 AND revision=current_revision) FROM (
               SELECT j.instance_id,count(*) jobs,count(*) FILTER(WHERE job_kind='rollup') rollups,
@@ -1122,13 +1138,20 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
             schemaVersion = 1, targetId = target.ToString(), targetRevision = 1,
             items = new[] { new { observedAtUtc = observed.ToString("O"), topologyFingerprint = new string('e', 64), role = "primary", synchronizationState = "synchronized", pendingCommands = 3, latencySeconds = 1.5, visibilityScope = 1, stateAvailable = true } },
         });
-        Guid replicationRun = Guid.NewGuid();
-        (long replicationToken, Guid replicationOwner) = await AcquireLeaseAsync(collector, "collector/m10-replication", Guid.NewGuid());
-        (string replicationStatus, int replicationCount) = await CommitReplicationAsync(connection, replicationRun, target, "collector/m10-replication", replicationOwner, replicationToken, digest, replicationPayload, digest);
+        // The compatibility payload/replay seam now requires a genuine canonical
+        // run identity. This is an open attempt, not a fabricated completed run.
+        await ReplicationWindowFixture.EnableAsync(database, target);
+        var canonical = await ReplicationWindowFixture.BeginAsync(database, collector,
+            new PostgreSqlCollectorRuntimeRepositoryPort(collector), target);
+        Guid replicationRun = canonical.Id.Value;
+        long replicationToken = canonical.Lease.FencingToken.Value;
+        Guid replicationOwner = canonical.Lease.Owner.Value;
+        string replicationWorkKey = canonical.Lease.Key.Value;
+        (string replicationStatus, int replicationCount) = await CommitReplicationAsync(connection, replicationRun, target, replicationWorkKey, replicationOwner, replicationToken, digest, replicationPayload, digest);
         Assert.Equal("committed", replicationStatus);
         Assert.Equal(1, replicationCount);
         string changedReplicationPayload = replicationPayload.Replace("synchronized", "unknown", StringComparison.Ordinal);
-        PostgresException replicationDivergence = await Assert.ThrowsAsync<PostgresException>(() => CommitReplicationAsync(connection, replicationRun, target, "collector/m10-replication", replicationOwner, replicationToken, digest, changedReplicationPayload, digest));
+        PostgresException replicationDivergence = await Assert.ThrowsAsync<PostgresException>(() => CommitReplicationAsync(connection, replicationRun, target, replicationWorkKey, replicationOwner, replicationToken, digest, changedReplicationPayload, digest));
         Assert.Equal("40001", replicationDivergence.SqlState);
 
         // Command counts must keep their unit through the public surface.

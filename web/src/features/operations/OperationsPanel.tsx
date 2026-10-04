@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTimeFormatter } from "../../TimeDisplayContext";
-import { AnalyticsSurfacePanel } from "../analytics/AnalyticsSurfacePanel";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
 import { EvidenceTable } from "../../components/EvidenceTable";
 import { healthSectionHref } from "../../dashboardModel";
@@ -18,6 +17,10 @@ import { healthCheckHref, type HealthCheckTab } from "./agentHistoryModel.ts";
 import { useTempDbWindowHistory } from "./useTempDbWindowHistory";
 import { TempDbWindowHistoryPanel } from "./TempDbWindowHistoryPanel";
 import { tempDbWindow, tempDbContextIdentity, type TempDbSelection } from "./tempDbWindowHistoryModel";
+import { useReplicationWindowHistory } from "./useReplicationWindowHistory";
+import { ReplicationWindowHistoryPanel } from "./ReplicationWindowHistoryPanel";
+import { replicationWindow, replicationContextIdentity, type ReplicationSelection } from "./replicationWindowHistoryModel";
+import { retainReplicationSelectionHref } from "./replicationSelectionModel";
 
 type OperationsTab = HealthCheckTab;
 
@@ -38,10 +41,36 @@ const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly 
   availability: ["ag-replicas", "ag-databases"],
 };
 
-export function OperationsPanel({ instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false, selectedTempDb, onSelectTempDb, onRetainTempDbWindow }: { readonly instanceId: string; readonly targetRevision: number; readonly initialTab?: OperationsTab; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean; readonly selectedTempDb?: TempDbSelection | null; readonly onSelectTempDb?: (selection: TempDbSelection | undefined, window?: {fromUtc:string;toUtc:string}) => void; readonly onRetainTempDbWindow?: (window: {fromUtc:string;toUtc:string}, selection?: TempDbSelection) => void }) {
+export function OperationsPanel({ instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false, selectedTempDb, onSelectTempDb, onRetainTempDbWindow, selectedReplication, onSelectReplication, onRetainReplicationWindow, accessContext = "" }: { readonly instanceId: string; readonly targetRevision: number; readonly initialTab?: OperationsTab; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean; readonly selectedTempDb?: TempDbSelection | null; readonly onSelectTempDb?: (selection: TempDbSelection | undefined, window?: {fromUtc:string;toUtc:string}) => void; readonly onRetainTempDbWindow?: (window: {fromUtc:string;toUtc:string}, selection?: TempDbSelection) => void; readonly selectedReplication?: ReplicationSelection | null; readonly onSelectReplication?: (selection: ReplicationSelection | undefined, window?: {fromUtc:string;toUtc:string}) => void; readonly onRetainReplicationWindow?: (window: {fromUtc:string;toUtc:string}, selection?: ReplicationSelection) => void; readonly accessContext?: string }) {
   const tabKey = JSON.stringify([instanceId.toLowerCase(), initialTab]);
   const [selectedTab, setSelectedTab] = useState<{ key: string; value: OperationsTab }>();
   const tab = selectedTab?.key === tabKey ? selectedTab.value : initialTab;
+  const section = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const scroller = section.current?.querySelector<HTMLDivElement>(':scope > [role="tablist"]');
+    if (!scroller) return;
+    function revealSelected() {
+      const selected = scroller!.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
+      if (!selected || scroller!.scrollWidth <= scroller!.clientWidth) return;
+      const viewport = scroller!.getBoundingClientRect(), bounds = selected.getBoundingClientRect();
+      const scale = viewport.width / scroller!.offsetWidth;
+      if (!Number.isFinite(scale) || scale <= 0) return;
+      const left = viewport.left + scroller!.clientLeft * scale, right = left + scroller!.clientWidth * scale;
+      // Reveal locally without moving focus or the page's vertical position.
+      if (bounds.left < left) scroller!.scrollLeft -= Math.ceil((left - bounds.left) / scale);
+      else if (bounds.right > right) scroller!.scrollLeft += Math.ceil((bounds.right - right) / scale);
+    }
+    revealSelected();
+    let width = scroller.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const nextWidth = scroller.clientWidth;
+      if (nextWidth === width) return;
+      width = nextWidth;
+      revealSelected();
+    });
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [tab]);
   const context = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
   const projections = {
     backups: useOperationalProjection("backups", instanceId, context, refresh),
@@ -66,15 +95,26 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
   const tempDbHistory = useTempDbWindowHistory(tab === "tempdb" ? tempDbContext.binding : undefined, selectedTempDb, refresh);
   const receivedTempDbWindow = tempDbHistory.list.pages[0] ?? tempDbHistory.detail.pages[0] ?? tempDbContext.binding;
   const retainTempDbWindow = () => { if (receivedTempDbWindow) { tempDbHistory.retain(); retainedTempDbWindow.current = {key:tempDbScopeKey,window:receivedTempDbWindow}; onRetainTempDbWindow?.(receivedTempDbWindow, tempDbHistory.selected ?? undefined); } };
-  return <section className="operations-screen" aria-label="Health checks">
+  const replicationScopeKey = scope.range === "custom" ? replicationContextIdentity({targetId:instanceId,targetRevision,fromUtc:scope.from ?? "",toUtc:scope.to ?? ""}) : JSON.stringify([instanceId.toLowerCase(),targetRevision,scope.range]);
+  const retainedReplicationWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const previousReplicationScope = useRef(replicationScopeKey);
+  if (previousReplicationScope.current !== replicationScopeKey) { previousReplicationScope.current = replicationScopeKey; retainedReplicationWindow.current = undefined; }
+  const replicationContext = useMemo(() => {
+    try { const window = retainedReplicationWindow.current?.key === replicationScopeKey ? retainedReplicationWindow.current.window : overviewWindow(scope, Date.now()); const bounded = replicationWindow(window.fromUtc, window.toUtc); if (selectedReplication !== undefined) retainedReplicationWindow.current = {key:replicationScopeKey,window:bounded}; return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined }; }
+    catch (failure) { return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid replication history window." }; }
+  }, [instanceId, targetRevision, replicationScopeKey, refresh, selectedReplication]);
+  const replicationHistory = useReplicationWindowHistory(tab === "replication" ? replicationContext.binding : undefined, selectedReplication, refresh, accessContext);
+  const receivedReplicationWindow = replicationHistory.list.pages[0] ?? replicationHistory.detail.pages[0] ?? replicationContext.binding;
+  const retainReplicationWindow = () => { if (receivedReplicationWindow) { replicationHistory.retain(); retainedReplicationWindow.current = {key:replicationScopeKey,window:receivedReplicationWindow}; onRetainReplicationWindow?.(receivedReplicationWindow, replicationHistory.selected ?? undefined); } };
+  return <section ref={section} className="operations-screen" aria-label="Health checks">
     <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB usage evidence, availability, and replication from collected evidence.</p></div></div>
-    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
+    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = retainReplicationSelectionHref(healthCheckHref(scope, instanceId, value as OperationsTab), location.hash); }} />
     <nav className="toolbar" aria-label="Additional health checks">
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>
     </nav>
     <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
-    {scope.range === "custom" && <p className="table-note">Rewind applies to TempDB completion-window history, backup assessments, per-replica AG evidence and SQL Agent first-observed history. Earlier projection cards read the latest source when requested and can retain an investigated receipt.</p>}
+    {scope.range === "custom" && <p className="table-note">Rewind applies to TempDB and replication completion-window history, backup assessments, per-replica AG evidence and SQL Agent first-observed history. Earlier projection cards read the latest source when requested and can retain an investigated receipt.</p>}
     {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
       : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
       <details className="supporting-evidence"><summary>Earlier availability summary (received v1 snapshots)</summary>
@@ -82,7 +122,7 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
       </details></> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
         <details className="supporting-evidence"><summary>Earlier backup observations (received v1 snapshots)</summary>
           <div className="operations-stack">{activeKinds.map(renderCard)}</div>
-        </details></> : tab === "replication" ? <ReplicationTab instanceId={instanceId} refresh={refresh} scope={scope} />
+        </details></> : tab === "replication" ? <>{replicationContext.error && <p role="alert">{replicationContext.error}</p>}<ReplicationWindowHistoryPanel history={replicationHistory} selected={selectedReplication} onSelectReceipt={selection => onSelectReplication?.(selection, receivedReplicationWindow)} onRetainWindow={retainReplicationWindow} /></>
         : <>{tempDbContext.error && <p role="alert">{tempDbContext.error}</p>}<TempDbWindowHistoryPanel history={tempDbHistory} selected={selectedTempDb} onSelectReceipt={selection => onSelectTempDb?.(selection, receivedTempDbWindow)} onRetainWindow={retainTempDbWindow} /></>}
   </section>;
 }
@@ -178,17 +218,6 @@ function namedRows(kind: OperationalKind, items: readonly Record<string, unknown
     if (kind === "ag-replicas") return { "Group fingerprint": item.groupFingerprint, "Replica fingerprint": item.replicaFingerprint, Role: item.role, "Operational state": item.operationalState, "Connected state": item.connectedState, Visibility: item.visibilityScope, "State available": item.stateAvailable };
     return { "Group fingerprint": item.groupFingerprint, "Database fingerprint": item.databaseFingerprint, "Synchronization state": item.synchronizationState, "Database state": item.databaseState, Visibility: item.visibilityScope, "State available": item.stateAvailable };
   });
-}
-
-function ReplicationTab({ instanceId, refresh, scope }: { readonly instanceId: string; readonly refresh: number; readonly scope: OverviewScope }) {
-  const window = useMemo(() => {
-    try {
-      const selected = overviewWindow(scope, Date.now());
-      return Date.parse(selected.toUtc) - Date.parse(selected.fromUtc) <= 7 * 86400000 ? selected : undefined;
-    } catch { return undefined; }
-  }, [scope.range, scope.from, scope.to, refresh]);
-  if (!window) return <p role="status">Replication evidence supports windows of up to seven days. Choose a shorter valid window in the time bar.</p>;
-  return <div className="replication-tab"><div className="evidence-callout">Replication observations follow the selected time window. Source timestamps and coverage remain explicit; missing observations do not establish healthy replication.</div><div className="replication-grid"><AnalyticsSurfacePanel targetId={instanceId} surface="replication/status" timeWindow={window} refresh={refresh} /><AnalyticsSurfacePanel targetId={instanceId} surface="replication/evidence" timeWindow={window} refresh={refresh} /></div></div>;
 }
 
 function formatValue(value: unknown): string {

@@ -54,6 +54,26 @@ public sealed class M10ReplicationContractTests
     }
 
     [Fact]
+    public void PersistenceRowIdentityDistinguishesSubscriptionsOfTheSamePublication()
+    {
+        var first = new ReplicationObservation(M4TestData.TargetId, M4TestData.TargetRevision,
+            ReplicationTopologyState.Transactional, ReplicationRole.Distributor,
+            new string('a', 64), new string('b', 64), ReplicationStatus.Healthy, 1, 1m, 1m,
+            ReplicationLastSuccessAge.UnknownAge, ReplicationCoverage.Complete);
+        var second = first with { SubscriptionFingerprint = new string('c', 64) };
+        string Fingerprint(ReplicationObservation item) => (string)typeof(PostgreSqlCollectorRuntimeRepositoryPort)
+            .GetMethod("ReplicationRowFingerprint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [item, Key])!;
+        Assert.NotEqual(Fingerprint(first), Fingerprint(second));
+        Assert.Equal(Fingerprint(first), Fingerprint(first with { PendingCommands = 5 }));
+        Assert.NotEqual(Fingerprint(first), Fingerprint(first with { Role = ReplicationRole.Subscriber }));
+        Assert.NotEqual(first.PublicationFingerprint, Fingerprint(first));
+        var gap = first with { PublicationFingerprint = null, SubscriptionFingerprint = null,
+            Coverage = ReplicationCoverage.VisibilityGap, VisibilityGapFingerprint = new string('d', 64) };
+        Assert.Equal(gap.VisibilityGapFingerprint, Fingerprint(gap));
+    }
+
+    [Fact]
     public async Task ParserPreservesBoundMonitorEvidenceAndRelativeAge()
     {
         var target = M4TestData.TargetId;

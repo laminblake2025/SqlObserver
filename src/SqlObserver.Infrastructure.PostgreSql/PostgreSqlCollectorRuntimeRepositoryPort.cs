@@ -1016,8 +1016,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
             items = snapshot?.Items.Select(item => new
             {
                 observedAtUtc = snapshot.ObservedAtUtc,
-                topologyFingerprint = item.PublicationFingerprint ?? item.SubscriptionFingerprint ?? item.VisibilityGapFingerprint ??
-                    ReplicationIdentityFingerprint.Gap(item.TargetId.Value, item.TargetRevision.Value, (int)item.Topology, (int)item.Role, 0, _fingerprintKey ?? throw new InvalidOperationException("Replication persistence requires the configured identity fingerprint key.")),
+                topologyFingerprint = ReplicationRowFingerprint(item, _fingerprintKey ?? throw new InvalidOperationException("Replication persistence requires the configured identity fingerprint key.")),
                 databaseFingerprint = item.SubscriptionFingerprint,
                 role = item.Role.ToString().ToLowerInvariant(),
                 synchronizationState = item.Status.ToString().ToLowerInvariant(),
@@ -1035,6 +1034,22 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                     : null,
             }).ToArray() ?? Array.Empty<object>(),
         };
+    }
+
+    // A publication can have several subscriptions. The stored row key must
+    // bind both opaque identities instead of collapsing every subscription
+    // into the publication key. Existing retained keys remain opaque legacy
+    // identities; this versioned key makes no continuity claim across versions.
+    private static string ReplicationRowFingerprint(ReplicationObservation item, IdentityFingerprintKey key)
+    {
+        if (item.PublicationFingerprint is null && item.SubscriptionFingerprint is null)
+            return item.VisibilityGapFingerprint ?? ReplicationIdentityFingerprint.Gap(item.TargetId.Value,
+                item.TargetRevision.Value, (int)item.Topology, (int)item.Role, 0, key);
+        string input = "sqlobserver-replication-row-v2\0" +
+            ((int)item.Topology).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\0" +
+            ((int)item.Role).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\0" +
+            (item.PublicationFingerprint ?? "") + "\0" + (item.SubscriptionFingerprint ?? "");
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input))).ToLowerInvariant();
     }
 
     private static async ValueTask<CollectorRunCommitResult> CommitQueryPerformanceWithCanonicalLifecycleAsync(

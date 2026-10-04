@@ -1,0 +1,22 @@
+.replication-window-history{min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;padding:20px}
+.replication-window-history>*{min-width:0;max-width:100%}
+.replication-window-history details,.replication-window-history .replication-receipt{min-width:0;max-width:100%}
+.replication-window-history>section{min-width:0;border-top:1px solid var(--border);padding-top:1rem}
+.replication-window-history p,.replication-window-history dt,.replication-window-history dd,.replication-window-history th,.replication-window-history td{overflow-wrap:anywhere}
+.replication-window-history h4,.replication-window-history h5{margin:.5rem 0;font-size:1rem}
+.replication-window-history small{display:block;margin-top:.35rem;color:var(--muted)}
+.replication-window-history .table-scroll{min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}
+.replication-window-history table{min-width:860px;width:100%}
+.replication-window-history th,.replication-window-history td{padding:.65rem;vertical-align:top}
+.replication-window-history caption{text-align:left;padding:.5rem;color:var(--muted)}
+.replication-history-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.75rem 0;min-width:0}
+.replication-history-actions>span{flex-basis:100%;overflow-wrap:anywhere}
+.replication-window-history button,.replication-window-history summary{min-height:44px;min-width:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.replication-window-history summary{display:list-item;padding:.65rem .35rem;cursor:pointer}
+.replication-window-history button:focus-visible,.replication-window-history summary:focus-visible,.replication-window-history [tabindex]:focus-visible{outline:3px solid var(--focus);outline-offset:-3px}
+.replication-receipt{color:var(--muted);font-size:.88rem;overflow-wrap:anywhere}
+.replication-qualification{padding:.75rem;border-inline-start:3px solid var(--teal);background:var(--surface-soft)}
+.replication-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin:.75rem 0}
+.replication-facts>div{min-width:0}.replication-facts dt{font-weight:600}.replication-facts dd{margin:.3rem 0 0}
+@media(max-width:600px){.replication-window-history{padding:14px}.replication-history-actions{display:grid;grid-template-columns:minmax(0,1fr)}.replication-facts{grid-template-columns:1fr}}
+@media(forced-colors:active){.replication-window-history button:focus-visible,.replication-window-history summary:focus-visible,.replication-window-history [tabindex]:focus-visible{outline-color:Highlight}.replication-qualification{border-color:CanvasText}}

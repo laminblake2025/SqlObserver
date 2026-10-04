@@ -44,6 +44,7 @@ import { OverviewPage } from "./features/overview/OverviewPage";
 import { overviewHref, readOverviewScope } from "./features/overview/overviewModel";
 import { healthCheckHref } from "./features/operations/agentHistoryModel.ts";
 import { readTempDbSelection, tempDbSelectionHref, clearTempDbSelectionHref, retainedTempDbSelectionHref, retainTempDbSelectionHref } from "./features/operations/tempDbSelectionModel.ts";
+import { readReplicationSelection, replicationSelectionHref, clearReplicationSelectionHref, retainedReplicationSelectionHref, retainReplicationSelectionHref } from "./features/operations/replicationSelectionModel.ts";
 import { OperationsPanel } from "./features/operations/OperationsPanel";
 import { queryViewHref, readQueryViewSelection } from "./features/queries/queryViewModel";
 import { retainChartInspectionHref } from "./components/chartInspectionModel.ts";
@@ -562,7 +563,25 @@ export function App() {
                 }} />}
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}
               {route.page === "permissions" && <TargetPermissionScriptPanel key={props.instanceId} targetId={props.instanceId} displayName={props.displayName} host={selected!.host} canGenerate={canManageRules} onClose={closeTarget} />}
-              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)}
+              {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} accessContext={JSON.stringify(myAccess)}
+                selectedReplication={readReplicationSelection(location.hash, props.instanceId)}
+                onSelectReplication={(selection, window) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "replication" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  const currentScope = { ...readOverviewScope(location.hash), target: props.instanceId };
+                  location.hash = selection === undefined ? clearReplicationSelectionHref(location.hash) : window ? retainedReplicationSelectionHref(currentScope, window, selection) : replicationSelectionHref(currentScope, selection);
+                }}
+                onRetainReplicationWindow={(window, selection) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "replication" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  let href = retainedReplicationSelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, window, selection);
+                  if (readReplicationSelection(location.hash, props.instanceId) === null) {
+                    const source = new URLSearchParams(location.hash.split("?")[1]), destination = new URLSearchParams(href.split("?")[1]);
+                    for (const key of ["replicationRun", "replicationRevision"]) for (const value of source.getAll(key)) destination.append(key, value);
+                    href = `${href.split("?")[0]}?${destination}`;
+                  }
+                  location.hash = href;
+                }}
                 selectedTempDb={readTempDbSelection(location.hash, props.instanceId)}
                 onSelectTempDb={(selection, window) => {
                   const currentRoute = readRoute(location.hash);
@@ -621,6 +640,7 @@ function retainDiagnosticSelectionHref(href: string, currentHash: string): strin
   let next = retainDashboardTimelineHref(href, currentHash);
   next = retainResourceSelectionHref(next, currentHash);
   next = retainTempDbSelectionHref(next, currentHash);
+  next = retainReplicationSelectionHref(next, currentHash);
   next = retainActivitySelectionHref(next, currentHash);
   next = retainWaitCategoryHref(next, currentHash);
   next = retainSessionWaitCategoryHref(next, currentHash);

@@ -16,6 +16,9 @@
 .operations-screen > .tabs .tab {
   min-width: 44px;
   min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .operations-screen > .tabs .tab:focus-visible {
