@@ -1,133 +1,20 @@
-import { test, expect } from '@playwright/test';
+import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { mkdir } from 'node:fs/promises';
-
-const origin = 'http://127.0.0.1:4322';
-const first = '11111111-1111-4111-8111-000000000001';
-const second = '11111111-1111-4111-8111-000000000002';
-const run = '22222222-2222-4222-8222-222222222222';
-const newerRun = '33333333-3333-4333-8333-333333333333';
-const observedAtUtc = '2026-10-03T12:00:00.123456Z';
-const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.123456Z';
-const sessions = new WeakMap();
-const card = page => page.getByRole('article', { name: 'Availability Group databases', exact: true });
-const rows = page => card(page).getByRole('table', { name: /^ag-databases named evidence/ }).locator('tbody tr');
-const control = (page, label) => card(page).getByRole('button', { name: label, exact: true });
-const scope = page => Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.split('?')[1]));
-const cursor = (target, runId = run) => Buffer.from(`${target}|2026-10-03T12:00:00.1234560+00:00|${Buffer.from(JSON.stringify({
-  Kind: 'ag.databases', RunId: runId, Revision: 1, From: null, To: null, A: String(50).padStart(64,'0'), B: String(1050).padStart(64,'0'), C: '', D: '',
-})).toString('base64')}`).toString('base64');
-function pageFor(target, kind, continuation, runId = run) {
-  const base = { targetId: target, targetRevision: 1, runId, evidence: { observedAtUtc }, observedAtUtc,
-    state: 'Complete', items: [], hasMore: false, nextCursor: null, truncated: false };
-  if (kind !== 'availability-groups/databases') return { ...base, runId: null, evidence: null, state: 'NoData', visibilityScope: 'PrimaryAllKnown' };
-  const firstId = continuation ? 51 : 1;
-  return { ...base, visibilityScope:'PrimaryAllKnown', items: Array.from({ length: continuation ? 1 : 50 }, (_, index) => ({ groupFingerprint:String(firstId+index).padStart(64,'0'),databaseFingerprint:String(firstId+index+1000).padStart(64,'0'),synchronizationState:'SYNCHRONIZED',databaseState:'ONLINE',visibilityScope:'PrimaryAllKnown',stateAvailable:true })),
-    hasMore: !continuation, nextCursor: continuation ? null : cursor(target, runId) };
-}
-async function json(route, body, status = 200) {
-  await route.fulfill({ status, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(body) });
-}
-test.beforeEach(async ({ page }) => {
-  sessions.set(page, { reads: [], errors: [], handler: undefined, runId: run });
-  page.on('pageerror', error => sessions.get(page).errors.push(error.message));
-  await page.context().addCookies([{ name: 'dashboardRefactor', value: '1', url: origin },
-    { name: 'chartReferenceRole', value: 'viewer', url: origin }]);
-  await page.route(/\/api\/v1\/observation-targets\/[^/]+\/(?:backups|availability-groups\/(?:replicas|databases))(?:\?|$)/, async route => {
-    const url = new URL(route.request().url());
-    const [, target, kind] = /^\/api\/v1\/observation-targets\/([^/]+)\/(.*)$/.exec(url.pathname);
-    const session = sessions.get(page), continuation = url.searchParams.get('cursor');
-    expect(route.request().method()).toBe('GET'); expect(url.searchParams.get('limit')).toBe('50');
-    expect([first, second]).toContain(target);
-    const receipt = { target, kind, cursor: continuation }; session.reads.push(receipt);
-    if (session.handler && await session.handler(route, receipt)) return;
-    if (continuation) expect(continuation).toBe(cursor(target, session.runId));
-    await json(route, pageFor(target, kind, continuation, session.runId));
-  });
-});
-test.afterEach(async ({ page }) => { expect(sessions.get(page).errors).toEqual([]); });
-async function open(page) {
-  await page.goto(`/#/operations?${new URLSearchParams({ target: first, databaseId: '7', range: 'custom', from, to, check: 'availability' })}`);
-  await openFileEvidence(page);
-  await expect(rows(page)).toHaveCount(50);
-}
-async function openFileEvidence(page) {
-  const summary = page.getByRole('region',{name:'Health checks',exact:true}).locator('summary').filter({hasText:'Earlier availability summary'});
-  await expect(summary).toBeVisible();
-  await expect(card(page).getByRole('table', { name: /^ag-databases named evidence/ })).toHaveCount(0);
-  await summary.focus();
-  await summary.press('Enter');
-}
-async function contextUnchanged(page, target = first) {
-  expect(scope(page)).toMatchObject({ target, range: 'custom', from, to, check: 'availability' });
-  // Database IDs belong to one target; native App navigation clears them on server change.
-  expect(scope(page).databaseId).toBe(target === first ? '7' : undefined);
-}
-for (const width of [320, 1440]) test(`Operations projection preserves a paged investigation and shared URL on Refresh at ${width}`, async ({ page }) => {
-  await page.setViewportSize({ width, height: 1000 }); await open(page);
-  await control(page, 'Next Availability Group databases page').focus(); await page.keyboard.press('Enter');
-  await expect(rows(page)).toHaveCount(1); await expect(rows(page).first().getByRole('cell').first()).toHaveText(String(51).padStart(64,'0'));
-  const count = sessions.get(page).reads.filter(item => item.kind === 'availability-groups/databases').length;
-  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
-  await expect(card(page)).toContainText('Retained');
-  await expect(rows(page)).toHaveCount(1); expect(sessions.get(page).reads.filter(item => item.kind === 'availability-groups/databases')).toHaveLength(count);
-  await contextUnchanged(page);
-  await control(page, 'Previous Availability Group databases page').focus(); await page.keyboard.press('Enter');
-  await expect(rows(page)).toHaveCount(50); expect(sessions.get(page).reads.filter(item => item.kind === 'availability-groups/databases')).toHaveLength(count);
-  await control(page, 'Next Availability Group databases page').click(); await expect(rows(page)).toHaveCount(1);
-  expect(sessions.get(page).reads.filter(item => item.kind === 'availability-groups/databases')).toHaveLength(count);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-  expect((await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);
-  // Capture the received card below pinned navigation without changing behavioral-check width.
-  const box = await card(page).boundingBox();
-  await page.setViewportSize({ width, height: Math.max(1000, Math.ceil(box.height) + 800) });
-  await card(page).scrollIntoViewIfNeeded(); await page.evaluate(() => document.activeElement?.blur());
-  await mkdir('../artifacts/dashboard-operations-projections/screenshots', { recursive: true });
-  await card(page).screenshot({ path: `../artifacts/dashboard-operations-projections/screenshots/built-projection-${width}.png` });
-});
-
-test('Operations projection retries the same failed cursor and only successful explicit latest replaces the retained page', async ({ page }) => {
-  await open(page); const session = sessions.get(page);
-  session.handler = async (route, item) => {
-    if (item.kind !== 'availability-groups/databases') return false;
-    await json(route, { detail: 'SECRET_NATIVE_FAILURE' }, 503); return true;
-  };
-  await control(page, 'Next Availability Group databases page').click(); await expect(card(page).getByRole('alert')).toBeVisible();
-  await expect(rows(page)).toHaveCount(50);
-  const failedCursor = session.reads.at(-1).cursor;
-  session.handler = undefined; await control(page, 'Retry Availability Group databases read').click();
-  await expect(rows(page)).toHaveCount(1); expect(session.reads.at(-1).cursor).toBe(failedCursor);
-  session.handler = async (route, item) => {
-    if (item.kind !== 'availability-groups/databases') return false;
-    await json(route, {}, 503); return true;
-  };
-  await control(page, 'Return Availability Group databases to latest').click(); await expect(card(page).getByRole('alert')).toBeVisible();
-  await expect(rows(page)).toHaveCount(1);
-  session.handler = undefined; session.runId = newerRun;
-  await control(page, 'Return Availability Group databases to latest').click(); await expect(rows(page)).toHaveCount(50);
-  await expect(card(page)).toContainText(newerRun); await expect(card(page).getByRole('alert')).toHaveCount(0);
-  await contextUnchanged(page); await expect(page.locator('body')).not.toContainText('SECRET_NATIVE_FAILURE');
-});
-
-test('Operations projection aborts a held continuation on server navigation and rejects its late receipt', async ({ page }) => {
-  await open(page); let announce, release, finished;
-  const started = new Promise(resolve => { announce = resolve; });
-  const gate = new Promise(resolve => { release = resolve; });
-  const ended = new Promise(resolve => { finished = resolve; });
-  sessions.get(page).handler = async (route, item) => {
-    if (item.target !== first || item.kind !== 'availability-groups/databases' || !item.cursor) return false;
-    announce(route.request()); await gate;
-    await json(route, pageFor(first, 'availability-groups/databases', true)).catch(() => {}); finished(); return true;
-  };
-  await control(page, 'Next Availability Group databases page').click(); const request = await started;
-  const aborted = page.waitForEvent('requestfailed', { predicate: item => item === request });
-  sessions.get(page).runId = newerRun;
-  await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second); await aborted;
-  await openFileEvidence(page);
-  await expect(rows(page)).toHaveCount(50); release(); await ended;
-  await contextUnchanged(page, second);
-  await expect(rows(page)).toHaveCount(50); await expect(card(page)).toContainText(newerRun);
-  await expect(card(page)).not.toContainText(run);
-  expect(sessions.get(page).reads.filter(item => item.kind === 'availability-groups/databases').at(-1).target).toBe(second);
-  await expect(card(page).getByRole('alert')).toHaveCount(0);
-});
+import {mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {backupAvailabilityBackend,backupAvailabilityReceipt,backupAvailabilityHeld,backupAvailabilityJson,installBackupAvailabilityFixture,backupAvailabilityAlpha as first,backupAvailabilityBeta as second} from '../component-tests/backupAvailabilityWindowHistoryFixture.mjs';
+const origin='http://127.0.0.1:4322',from='2026-09-26T08:00:00.123456Z',to='2026-09-26T12:00:00.123456Z',sessions=new WeakMap();
+const binding=target=>({targetId:target,targetRevision:1,fromUtc:from,toUtc:to}),fp=n=>BigInt(n).toString(16).padStart(64,'0');
+const card=page=>page.getByRole('region',{name:'Earlier availability receipt history',exact:true}),detail=page=>card(page).getByRole('region',{name:'Selected earlier availability receipt',exact:true});
+const rows=page=>detail(page).getByRole('region',{name:'Received earlier availability databases',exact:true}).getByRole('table').locator('tbody tr');
+const control=(page,label)=>card(page).getByRole('button',{name:label,exact:true}),scope=page=>Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.split('?')[1]));
+const response=(s,r)=>r.selection?s.backends[r.kind].snapshot(r.kind,r.stream,r.binding,r.selection,r.cursor,r.limit):s.backends[r.kind].read(r.kind,r.binding,r.cursor,r.limit);
+test.beforeEach(async({page})=>{await page.clock.setFixedTime(new Date('2026-10-04T12:00:00Z'));await page.context().addCookies([{name:'dashboardRefactor',value:'1',url:origin},{name:'chartReferenceRole',value:'viewer',url:origin}]);sessions.set(page,await installBackupAvailabilityFixture(page,{origin,allowApp:true,backends:{backup:backupAvailabilityBackend(),availability:backupAvailabilityBackend({databaseCount:101})}}));});
+test.afterEach(async({page})=>expect(sessions.get(page).errors,'The migrated built workflow retains strict finite API and page-error guards').toEqual([]));
+async function openFileEvidence(page){const browser=card(page).getByText('Browse earlier availability collection receipts',{exact:true});if(!await browser.evaluate(e=>e.parentElement.open))await browser.press('Enter');const summary=detail(page).getByText('Browse earlier availability databases from selected receipt',{exact:true});if(!await summary.evaluate(e=>e.parentElement.open))await summary.press('Enter');}
+async function open(page){await page.goto('/#/operations?'+new URLSearchParams({target:first,databaseId:'7',range:'custom',from,to,check:'availability'}));await openFileEvidence(page);await expect(rows(page)).toHaveCount(100);}
+async function contextUnchanged(page,target=first){expect(scope(page)).toMatchObject({target,range:'custom',from,to,check:'availability'});expect(scope(page).databaseId).toBe(target===first?'7':undefined);}
+const reads=page=>sessions.get(page).reads.filter(r=>r.stream==='databases');
+for(const width of [320,1440])test(`Operations supporting history preserves a paged investigation and shared URL on Refresh at ${width}`,async({page})=>{await page.setViewportSize({width,height:1000});await open(page);await control(page,'Next earlier availability databases page').press('Enter');await expect(rows(page)).toHaveCount(1);await expect(rows(page).first().getByRole('cell').first()).toContainText(fp(1101));const count=reads(page).length;await page.getByRole('button',{name:'↻ Refresh',exact:true}).click();await expect(rows(page)).toHaveCount(1);expect(reads(page)).toHaveLength(count);await contextUnchanged(page);await control(page,'Previous earlier availability databases page').press('Enter');await expect(rows(page)).toHaveCount(100);expect(reads(page)).toHaveLength(count);await control(page,'Next earlier availability databases page').press('Enter');await expect(rows(page)).toHaveCount(1);expect(reads(page)).toHaveLength(count);expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','best-practice']).analyze()).violations).toEqual([]);const folder=fileURLToPath(new URL('../../artifacts/dashboard-backup-availability-history-2026-10-04/screenshots/',import.meta.url));await mkdir(folder,{recursive:true});await card(page).screenshot({path:folder+`built-migrated-projection-${width}.png`});});
+test('Operations supporting history retries the exact failed cursor and only successful explicit latest replaces retained rows',async({page})=>{await open(page);const s=sessions.get(page);s.handler=async(route,r)=>r.stream==='databases'?(await backupAvailabilityJson(route,{detail:'SECRET_NATIVE_FAILURE'},503),true):false;await control(page,'Next earlier availability databases page').click();await expect(control(page,'Retry earlier availability databases read')).toBeVisible();await expect(rows(page)).toHaveCount(100);const failedCursor=reads(page).at(-1).cursor;s.handler=undefined;await control(page,'Retry earlier availability databases read').press('Enter');await expect(rows(page)).toHaveCount(1);expect(reads(page).at(-1).cursor).toBe(failedCursor);s.handler=async(route,r)=>r.stream==='list'?(await backupAvailabilityJson(route,{},503),true):false;await control(page,'Return earlier availability to latest in window').click();await expect(control(page,'Retry earlier availability receipts read')).toBeVisible();await expect(rows(page)).toHaveCount(1);s.handler=undefined;s.backends.availability.settings.generation=2;await control(page,'Return earlier availability to latest in window').click();await expect(detail(page).locator('details.earlier-observations').filter({hasText:'Browse earlier availability databases from selected receipt'})).toContainText('Stream receipt run '+backupAvailabilityReceipt('availability',0,binding(first),s.backends.availability.settings).runId);await openFileEvidence(page);await expect(rows(page)).toHaveCount(100);await expect(detail(page)).toContainText(backupAvailabilityReceipt('availability',0,binding(first),{generation:2}).runId);await expect(card(page).getByRole('alert')).toHaveCount(0);await contextUnchanged(page);await expect(page.locator('body')).not.toContainText('SECRET_NATIVE_FAILURE');});
+test('Operations supporting history aborts held continuation on target navigation and refuses late prior-target evidence',async({page})=>{await open(page);const s=sessions.get(page),pending=backupAvailabilityHeld();s.handler=(route,r)=>r.binding.targetId===first&&r.stream==='databases'&&r.cursor?pending.handle(route,response(s,r)):false;await control(page,'Next earlier availability databases page').click();const request=await pending.started,aborted=page.waitForEvent('requestfailed',{predicate:r=>r===request});s.backends.availability.settings.generation=2;await page.getByRole('combobox',{name:'Target server',exact:true}).selectOption(second);await aborted;await openFileEvidence(page);await expect(rows(page)).toHaveCount(100);await pending.finish();await contextUnchanged(page,second);await expect(detail(page)).toContainText(backupAvailabilityReceipt('availability',0,binding(second),{generation:2}).runId);await expect(detail(page)).not.toContainText(backupAvailabilityReceipt('availability',0,binding(first)).runId);expect(reads(page).at(-1).binding.targetId).toBe(second);await expect(card(page).getByRole('alert')).toHaveCount(0);});

@@ -20,6 +20,7 @@ import {handleDatabaseFileWindowHistoryFixture} from './database-file-window-his
 import {handleCpuCaptureWindowHistoryFixture} from './cpu-capture-window-history-fixture.mjs';
 import {handleTempDbWindowHistoryFixture} from '../component-tests/tempDbWindowHistoryFixture.mjs';
 import {handleReplicationWindowHistoryFixture} from '../component-tests/replicationWindowHistoryFixture.mjs';
+import {handleBackupAvailabilityWindowHistoryFixture} from '../component-tests/backupAvailabilityWindowHistoryFixture.mjs';
 import {handleSqlVolumePlanningFixture} from '../component-tests/sqlVolumePlanningFixture.mjs';
 import {handleMaintenanceEditFixture} from './maintenance-edit-fixture.mjs';
 import {handleMaintenanceSeriesFixture} from './maintenance-series-fixture.mjs';
@@ -60,6 +61,8 @@ const utcTicks=value=>{
 const ticksUtc=value=>new Date(Number(value/1000n)).toISOString().slice(0,19)+'.'+String(value%1000000n).padStart(6,'0')+'Z';
 createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
+ const backupAvailabilityHistory=handleBackupAvailabilityWindowHistoryFixture(url,req);
+ if(backupAvailabilityHistory)return send(res,backupAvailabilityHistory.body,backupAvailabilityHistory.status);
  const replicationHistory=handleReplicationWindowHistoryFixture(url,req);
  if(replicationHistory)return send(res,replicationHistory.body,replicationHistory.status);
  const volumePlanning=handleSqlVolumePlanningFixture(url,req);

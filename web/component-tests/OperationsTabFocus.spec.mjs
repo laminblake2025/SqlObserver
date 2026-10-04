@@ -4,11 +4,12 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {tempDbHistoryBackend,tempDbHistoryReadBinding,tempDbHistoryJson} from './tempDbWindowHistoryFixture.mjs';
 import {replicationHistoryBackend,replicationHistoryReadBinding,replicationHistoryJson,replicationHistoryMicro} from './replicationWindowHistoryFixture.mjs';
+import {backupAvailabilityBackend,backupAvailabilityReadBinding,backupAvailabilityJson,validBackupAvailabilityRead} from './backupAvailabilityWindowHistoryFixture.mjs';
 import { target, otherTarget, fromUtc, toUtc, requestPath, routeHash, fixture } from './operationsFixture.mjs';
 
 const origin = 'http://127.0.0.1:4328';
 const sessions = new WeakMap();
-const screenshots = fileURLToPath(new URL('../../artifacts/dashboard-agent-activity-source-2026-10-04/screenshots/', import.meta.url));
+const screenshots = fileURLToPath(new URL('../../artifacts/dashboard-backup-availability-history-2026-10-04/screenshots/', import.meta.url));
 const panel = page => page.getByRole('region', { name: 'Health checks', exact: true });
 const categories = page => panel(page).getByRole('tablist', { name: 'Health check categories', exact: true });
 const tab = (page, name) => categories(page).getByRole('tab', { name, exact: true });
@@ -19,7 +20,7 @@ function key(path) {
 }
 
 test.beforeEach(async ({ page }) => {
-  const session = { registry: new Map(), requests: [], unexpected: [], tempdb:tempDbHistoryBackend(), replication:replicationHistoryBackend({count:0}) };
+  const session = { registry: new Map(), requests: [], unexpected: [], tempdb:tempDbHistoryBackend(), replication:replicationHistoryBackend({count:0}),history:backupAvailabilityBackend({count:0}) };
   sessions.set(page, session);
   for (const id of [target, otherTarget]) {
     for (const [kind, body] of Object.entries(fixture(id))) session.registry.set(key(requestPath(kind, id)), body);
@@ -32,6 +33,8 @@ test.beforeEach(async ({ page }) => {
       return route.abort();
     }
     if (!/^\/api(?:\/|$)/.test(url.pathname)) return route.continue();
+    const supporting=backupAvailabilityReadBinding(url);
+    if(supporting){if(request.method()!=='GET'||!validBackupAvailabilityRead(supporting,[target,otherTarget])){session.unexpected.push('Unregistered supporting-history binding '+url.href);return route.abort();}session.requests.push(request);return backupAvailabilityJson(route,supporting.selection?session.history.snapshot(supporting.kind,supporting.stream,supporting.binding,supporting.selection,supporting.cursor,supporting.limit):session.history.read(supporting.kind,supporting.binding,supporting.cursor,supporting.limit));}
     const replicationRead=replicationHistoryReadBinding(url);
     if(replicationRead){
       const allowed=['targetRevision','fromUtc','toUtc','limit','cursor'];
@@ -169,7 +172,7 @@ for (const [check, name] of [['replication', 'Replication'], ['availability', 'A
       await fullyVisibleSelectedTab(page, name);
       await expect(tab(page, name)).not.toBeFocused();
       expect(await page.evaluate(() => scrollY)).toBe(0);
-      const folder = fileURLToPath(new URL('../../artifacts/dashboard-replication-history-2026-10-04/screenshots/', import.meta.url));
+      const folder = screenshots;
       await mkdir(folder, { recursive: true });
       await page.screenshot({ path: `${folder}operations-direct-${check}-${initialWidth}-zoom.png`, fullPage: true });
     });

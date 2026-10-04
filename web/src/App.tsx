@@ -45,6 +45,8 @@ import { overviewHref, readOverviewScope } from "./features/overview/overviewMod
 import { healthCheckHref } from "./features/operations/agentHistoryModel.ts";
 import { readTempDbSelection, tempDbSelectionHref, clearTempDbSelectionHref, retainedTempDbSelectionHref, retainTempDbSelectionHref } from "./features/operations/tempDbSelectionModel.ts";
 import { readReplicationSelection, replicationSelectionHref, clearReplicationSelectionHref, retainedReplicationSelectionHref, retainReplicationSelectionHref } from "./features/operations/replicationSelectionModel.ts";
+import { readBackupAvailabilitySelection, backupAvailabilitySelectionHref, clearBackupAvailabilitySelectionHref,
+  retainedBackupAvailabilitySelectionHref, retainBackupAvailabilitySelectionHref, retainBackupAvailabilityRawPin } from "./features/operations/backupAvailabilitySelectionModel.ts";
 import { OperationsPanel } from "./features/operations/OperationsPanel";
 import { queryViewHref, readQueryViewSelection } from "./features/queries/queryViewModel";
 import { retainChartInspectionHref } from "./components/chartInspectionModel.ts";
@@ -564,6 +566,34 @@ export function App() {
               {route.page === "destinations" && <TargetDestinationsPanel {...props} refresh={refresh} canManage={canManageDestinations} selectedId={readAdminSelection(location.hash, "destinations", props.instanceId)} onSelect={id => selectAdminItem("destinations", id)} />}
               {route.page === "permissions" && <TargetPermissionScriptPanel key={props.instanceId} targetId={props.instanceId} displayName={props.displayName} host={selected!.host} canGenerate={canManageRules} onClose={closeTarget} />}
               {route.page === "operations" && <OperationsPanel instanceId={props.instanceId} targetRevision={selected!.configurationRevision} initialTab={route.healthCheck} scope={scope} refresh={slowRefresh} canManageBackupPolicies={canManageBackupPolicies(myAccess, props.instanceId)} accessContext={JSON.stringify(myAccess)}
+                selectedBackupHistory={readBackupAvailabilitySelection(location.hash, "backup", props.instanceId)}
+                onSelectBackupHistory={(selection, window) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "backups" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  const currentScope = { ...readOverviewScope(location.hash), target: props.instanceId };
+                  location.hash = selection === undefined ? clearBackupAvailabilitySelectionHref(location.hash, "backup") : window ? retainedBackupAvailabilitySelectionHref(currentScope, "backup", window, selection) : backupAvailabilitySelectionHref(currentScope, "backup", selection);
+                }}
+                onRetainBackupHistoryWindow={(window, selection) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "backups" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  let href = retainedBackupAvailabilitySelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, "backup", window, selection);
+                  if (readBackupAvailabilitySelection(location.hash, "backup", props.instanceId) === null) href = retainBackupAvailabilityRawPin(href, location.hash, "backup");
+                  location.hash = href;
+                }}
+                selectedAvailabilityHistory={readBackupAvailabilitySelection(location.hash, "availability", props.instanceId)}
+                onSelectAvailabilityHistory={(selection, window) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "availability" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  const currentScope = { ...readOverviewScope(location.hash), target: props.instanceId };
+                  location.hash = selection === undefined ? clearBackupAvailabilitySelectionHref(location.hash, "availability") : window ? retainedBackupAvailabilitySelectionHref(currentScope, "availability", window, selection) : backupAvailabilitySelectionHref(currentScope, "availability", selection);
+                }}
+                onRetainAvailabilityHistoryWindow={(window, selection) => {
+                  const currentRoute = readRoute(location.hash);
+                  if (location.hash !== renderedHash || currentRoute.page !== "operations" || currentRoute.healthCheck !== "availability" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  let href = retainedBackupAvailabilitySelectionHref({ ...readOverviewScope(location.hash), target: props.instanceId }, "availability", window, selection);
+                  if (readBackupAvailabilitySelection(location.hash, "availability", props.instanceId) === null) href = retainBackupAvailabilityRawPin(href, location.hash, "availability");
+                  location.hash = href;
+                }}
                 selectedReplication={readReplicationSelection(location.hash, props.instanceId)}
                 onSelectReplication={(selection, window) => {
                   const currentRoute = readRoute(location.hash);
@@ -641,6 +671,7 @@ function retainDiagnosticSelectionHref(href: string, currentHash: string): strin
   next = retainResourceSelectionHref(next, currentHash);
   next = retainTempDbSelectionHref(next, currentHash);
   next = retainReplicationSelectionHref(next, currentHash);
+  next = retainBackupAvailabilitySelectionHref(next, currentHash);
   next = retainActivitySelectionHref(next, currentHash);
   next = retainWaitCategoryHref(next, currentHash);
   next = retainSessionWaitCategoryHref(next, currentHash);

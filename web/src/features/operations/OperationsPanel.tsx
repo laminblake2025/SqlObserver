@@ -1,13 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useTimeFormatter } from "../../TimeDisplayContext";
-import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
-import { EvidenceTable } from "../../components/EvidenceTable";
+import { Tabs } from "../../components/DiagnosticUi";
 import { healthSectionHref } from "../../dashboardModel";
-import type { OperationsState } from "./operationsState";
-import { useOperationalProjection } from "./useOperationalProjection.ts";
 import "./operationsProjection.css";
-import { buildOperationsRenderModel, type OperationsRenderCard } from "./operationsRenderModel";
-import type { OperationalKind, OperationalPage } from "./operationsTypes";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { overviewWindow } from "../overview/overviewModel";
 import { AvailabilityEvidencePanel } from "./AvailabilityEvidencePanel";
@@ -21,10 +15,12 @@ import { useReplicationWindowHistory } from "./useReplicationWindowHistory";
 import { ReplicationWindowHistoryPanel } from "./ReplicationWindowHistoryPanel";
 import { replicationWindow, replicationContextIdentity, type ReplicationSelection } from "./replicationWindowHistoryModel";
 import { retainReplicationSelectionHref } from "./replicationSelectionModel";
+import { useBackupAvailabilityWindowHistory } from "./useBackupAvailabilityWindowHistory";
+import { BackupAvailabilityWindowHistoryPanel } from "./BackupAvailabilityWindowHistoryPanel";
+import { backupAvailabilityWindow, backupAvailabilityContextIdentity, type BackupAvailabilitySelection } from "./backupAvailabilityWindowHistoryModel";
+import { retainBackupAvailabilitySelectionHref } from "./backupAvailabilitySelectionModel";
 
 type OperationsTab = HealthCheckTab;
-
-// Existing projection labels remain visible within the grouped tabs: Backups, SQL Agent failures, TempDB summary, TempDB files, Availability Group replicas, and Availability Group databases.
 
 const tabs: readonly { readonly value: OperationsTab; readonly label: string }[] = [
   { value: "backups", label: "Backups" },
@@ -34,14 +30,36 @@ const tabs: readonly { readonly value: OperationsTab; readonly label: string }[]
   { value: "replication", label: "Replication" },
 ];
 
-const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly OperationalKind[]>> = {
-  backups: ["backups"],
-  agent: ["agent"],
-  tempdb: ["tempdb-summary", "tempdb-files"],
-  availability: ["ag-replicas", "ag-databases"],
-};
+interface OperationsWindow { readonly fromUtc: string; readonly toUtc: string }
+export interface OperationsPanelProps {
+  readonly instanceId: string;
+  readonly targetRevision: number;
+  readonly initialTab?: OperationsTab;
+  readonly refresh: number;
+  readonly scope: OverviewScope;
+  readonly canManageBackupPolicies?: boolean;
+  readonly selectedTempDb?: TempDbSelection | null;
+  readonly onSelectTempDb?: (selection: TempDbSelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainTempDbWindow?: (window: OperationsWindow, selection?: TempDbSelection) => void;
+  readonly selectedReplication?: ReplicationSelection | null;
+  readonly onSelectReplication?: (selection: ReplicationSelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainReplicationWindow?: (window: OperationsWindow, selection?: ReplicationSelection) => void;
+  readonly selectedBackupHistory?: BackupAvailabilitySelection | null;
+  readonly selectedAvailabilityHistory?: BackupAvailabilitySelection | null;
+  readonly onSelectBackupHistory?: (selection: BackupAvailabilitySelection | undefined, window?: OperationsWindow) => void;
+  readonly onSelectAvailabilityHistory?: (selection: BackupAvailabilitySelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainBackupHistoryWindow?: (window: OperationsWindow, selection?: BackupAvailabilitySelection) => void;
+  readonly onRetainAvailabilityHistoryWindow?: (window: OperationsWindow, selection?: BackupAvailabilitySelection) => void;
+  readonly accessContext?: string;
+}
 
-export function OperationsPanel({ instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false, selectedTempDb, onSelectTempDb, onRetainTempDbWindow, selectedReplication, onSelectReplication, onRetainReplicationWindow, accessContext = "" }: { readonly instanceId: string; readonly targetRevision: number; readonly initialTab?: OperationsTab; readonly refresh: number; readonly scope: OverviewScope; readonly canManageBackupPolicies?: boolean; readonly selectedTempDb?: TempDbSelection | null; readonly onSelectTempDb?: (selection: TempDbSelection | undefined, window?: {fromUtc:string;toUtc:string}) => void; readonly onRetainTempDbWindow?: (window: {fromUtc:string;toUtc:string}, selection?: TempDbSelection) => void; readonly selectedReplication?: ReplicationSelection | null; readonly onSelectReplication?: (selection: ReplicationSelection | undefined, window?: {fromUtc:string;toUtc:string}) => void; readonly onRetainReplicationWindow?: (window: {fromUtc:string;toUtc:string}, selection?: ReplicationSelection) => void; readonly accessContext?: string }) {
+export function OperationsPanel({
+  instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false,
+  selectedTempDb, onSelectTempDb, onRetainTempDbWindow,
+  selectedReplication, onSelectReplication, onRetainReplicationWindow,
+  selectedBackupHistory, selectedAvailabilityHistory, onSelectBackupHistory, onSelectAvailabilityHistory,
+  onRetainBackupHistoryWindow, onRetainAvailabilityHistoryWindow, accessContext = "",
+}: OperationsPanelProps) {
   const tabKey = JSON.stringify([instanceId.toLowerCase(), initialTab]);
   const [selectedTab, setSelectedTab] = useState<{ key: string; value: OperationsTab }>();
   const tab = selectedTab?.key === tabKey ? selectedTab.value : initialTab;
@@ -71,19 +89,6 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
     observer.observe(scroller);
     return () => observer.disconnect();
   }, [tab]);
-  const context = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
-  const projections = {
-    backups: useOperationalProjection("backups", instanceId, context, refresh),
-    "ag-replicas": useOperationalProjection("ag-replicas", instanceId, context, refresh),
-    "ag-databases": useOperationalProjection("ag-databases", instanceId, context, refresh),
-  };
-  const cards: OperationsState = { agent: { loading: false }, backups: projections.backups.card,
-    "tempdb-summary": { loading: false }, "tempdb-files": { loading: false },
-    "ag-replicas": projections["ag-replicas"].card, "ag-databases": projections["ag-databases"].card };
-  const model = buildOperationsRenderModel(cards);
-  const renderCard = (kind: OperationalKind) => kind === "agent" || kind === "tempdb-summary" || kind === "tempdb-files" ? null :
-    <OperationCard card={model.cards[kind]} key={kind} actions={projections[kind]} />;
-  const activeKinds = tab === "replication" ? [] : tabKinds[tab];
   const tempDbScopeKey = scope.range === "custom" ? tempDbContextIdentity({targetId:instanceId,targetRevision,fromUtc:scope.from ?? "",toUtc:scope.to ?? ""}) : JSON.stringify([instanceId.toLowerCase(),targetRevision,scope.range]);
   const retainedTempDbWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
   const previousTempDbScope = useRef(tempDbScopeKey);
@@ -106,123 +111,41 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
   const replicationHistory = useReplicationWindowHistory(tab === "replication" ? replicationContext.binding : undefined, selectedReplication, refresh, accessContext);
   const receivedReplicationWindow = replicationHistory.list.pages[0] ?? replicationHistory.detail.pages[0] ?? replicationContext.binding;
   const retainReplicationWindow = () => { if (receivedReplicationWindow) { replicationHistory.retain(); retainedReplicationWindow.current = {key:replicationScopeKey,window:receivedReplicationWindow}; onRetainReplicationWindow?.(receivedReplicationWindow, replicationHistory.selected ?? undefined); } };
+  const earlierScopeKey = scope.range === "custom" ? backupAvailabilityContextIdentity({ targetId: instanceId, targetRevision, fromUtc: scope.from ?? "", toUtc: scope.to ?? "" }) : JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range]);
+  const retainedBackupWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const retainedAvailabilityWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const previousEarlierScope = useRef(earlierScopeKey);
+  if (previousEarlierScope.current !== earlierScopeKey) { previousEarlierScope.current = earlierScopeKey; retainedBackupWindow.current = undefined; retainedAvailabilityWindow.current = undefined; }
+  function resolveEarlierWindow(selected: BackupAvailabilitySelection | null | undefined, retained: typeof retainedBackupWindow) {
+    try {
+      const window = retained.current?.key === earlierScopeKey ? retained.current.window : overviewWindow(scope, Date.now()), bounded = backupAvailabilityWindow(window.fromUtc, window.toUtc);
+      if (selected !== undefined) retained.current = { key: earlierScopeKey, window: bounded };
+      return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined };
+    } catch (failure) { return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid earlier collection history window." }; }
+  }
+  const backupContext = useMemo(() => resolveEarlierWindow(selectedBackupHistory, retainedBackupWindow), [instanceId, targetRevision, earlierScopeKey, refresh, selectedBackupHistory]);
+  const availabilityContext = useMemo(() => resolveEarlierWindow(selectedAvailabilityHistory, retainedAvailabilityWindow), [instanceId, targetRevision, earlierScopeKey, refresh, selectedAvailabilityHistory]);
+  const backupHistory = useBackupAvailabilityWindowHistory(tab === "backups" ? backupContext.binding : undefined, "backup", selectedBackupHistory, refresh, accessContext);
+  const availabilityHistory = useBackupAvailabilityWindowHistory(tab === "availability" ? availabilityContext.binding : undefined, "availability", selectedAvailabilityHistory, refresh, accessContext);
+  const receivedBackupWindow = backupHistory.list.pages[0] ?? backupHistory.backup.pages[0] ?? backupContext.binding;
+  const receivedAvailabilityWindow = availabilityHistory.list.pages[0] ?? availabilityHistory.replicas.pages[0] ?? availabilityHistory.databases.pages[0] ?? availabilityContext.binding;
+  function retainBackupWindow() { if (receivedBackupWindow) { backupHistory.retain(); retainedBackupWindow.current = { key: earlierScopeKey, window: receivedBackupWindow }; onRetainBackupHistoryWindow?.(receivedBackupWindow, backupHistory.selected ?? undefined); } }
+  function retainAvailabilityWindow() { if (receivedAvailabilityWindow) { availabilityHistory.retain(); retainedAvailabilityWindow.current = { key: earlierScopeKey, window: receivedAvailabilityWindow }; onRetainAvailabilityHistoryWindow?.(receivedAvailabilityWindow, availabilityHistory.selected ?? undefined); } }
   return <section ref={section} className="operations-screen" aria-label="Health checks">
     <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB usage evidence, availability, and replication from collected evidence.</p></div></div>
-    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = retainReplicationSelectionHref(healthCheckHref(scope, instanceId, value as OperationsTab), location.hash); }} />
+    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = retainBackupAvailabilitySelectionHref(retainReplicationSelectionHref(healthCheckHref(scope, instanceId, value as OperationsTab), location.hash), location.hash); }} />
     <nav className="toolbar" aria-label="Additional health checks">
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>
     </nav>
     <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
-    {scope.range === "custom" && <p className="table-note">Rewind applies to TempDB and replication completion-window history, backup assessments, per-replica AG evidence and SQL Agent first-observed history. Earlier projection cards read the latest source when requested and can retain an investigated receipt.</p>}
+    {scope.range === "custom" && <p className="table-note">Rewind selects completion-window TempDB, replication and supporting legacy backup/AG receipts. Primary backup assessments and per-replica v2 AG evidence use the declared window end as their assessment/publication cutoff; their start does not filter snapshot rows. SQL Agent history uses first-observed time.</p>}
     {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
       : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} scope={scope} refresh={refresh} />
-      <details className="supporting-evidence"><summary>Earlier availability summary (received v1 snapshots)</summary>
-        <div className="operations-stack">{activeKinds.map(renderCard)}</div>
-      </details></> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
-        <details className="supporting-evidence"><summary>Earlier backup observations (received v1 snapshots)</summary>
-          <div className="operations-stack">{activeKinds.map(renderCard)}</div>
-        </details></> : tab === "replication" ? <>{replicationContext.error && <p role="alert">{replicationContext.error}</p>}<ReplicationWindowHistoryPanel history={replicationHistory} selected={selectedReplication} onSelectReceipt={selection => onSelectReplication?.(selection, receivedReplicationWindow)} onRetainWindow={retainReplicationWindow} /></>
+      {availabilityContext.error && <p role="alert">{availabilityContext.error}</p>}<BackupAvailabilityWindowHistoryPanel kind="availability" history={availabilityHistory} selected={selectedAvailabilityHistory} onSelectReceipt={selection => onSelectAvailabilityHistory?.(selection, receivedAvailabilityWindow)} onRetainWindow={retainAvailabilityWindow} />
+      </> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
+        {backupContext.error && <p role="alert">{backupContext.error}</p>}<BackupAvailabilityWindowHistoryPanel kind="backup" history={backupHistory} selected={selectedBackupHistory} onSelectReceipt={selection => onSelectBackupHistory?.(selection, receivedBackupWindow)} onRetainWindow={retainBackupWindow} />
+        </> : tab === "replication" ? <>{replicationContext.error && <p role="alert">{replicationContext.error}</p>}<ReplicationWindowHistoryPanel history={replicationHistory} selected={selectedReplication} onSelectReceipt={selection => onSelectReplication?.(selection, receivedReplicationWindow)} onRetainWindow={retainReplicationWindow} /></>
         : <>{tempDbContext.error && <p role="alert">{tempDbContext.error}</p>}<TempDbWindowHistoryPanel history={tempDbHistory} selected={selectedTempDb} onSelectReceipt={selection => onSelectTempDb?.(selection, receivedTempDbWindow)} onRetainWindow={retainTempDbWindow} /></>}
   </section>;
-}
-
-function OperationCard({ card, actions }: { readonly card: OperationsRenderCard; readonly actions: ReturnType<typeof useOperationalProjection> }) {
-  const formatTime = useTimeFormatter();
-  const page = card.page;
-  const tone = card.status === "Complete" ? "current" : card.status === "Error" || card.status === "PermissionDenied" ? "critical" : card.status === "Partial" || card.status === "Degraded" ? "warning" : "unavailable";
-  return <article className="operation-card operation-projection-card panel" aria-label={card.label} aria-busy={card.loading}>
-    <div className="operation-card-heading"><div><p className="eyebrow">{card.kind.toUpperCase()}</p><h3>{card.label}</h3></div><EvidenceStatus label={card.loading ? "Loading" : page?.state ?? card.status} detail={page ? `${page.state === "NoData" ? "Checked" : "Snapshot receipt"} ${formatTime(page.observedAtUtc)}` : undefined} tone={tone} /></div>
-    <p className="operation-projection-note">This projection reads the latest source snapshot when requested. Rewind and database selection do not filter these server-wide rows. Each card has an independent source receipt.</p>
-    {card.retained && <p className="operation-projection-retained">Retained projection investigation. Workspace polling does not replace this card. Previously read pages restore locally; unread pages need an unexpired native continuation.</p>}
-    {card.loading && <div className="operation-state"><p role="status">{page ? "Reading bounded evidence; the received page remains visible…" : "Loading bounded evidence…"}</p><button type="button" onClick={actions.cancel}>Cancel {card.label} read</button></div>}
-    {card.error && <div className="operation-state"><p role="alert">{card.error}</p>{card.canRetry && <button type="button" disabled={card.loading} onClick={actions.retry}>Retry {card.label} read</button>}</div>}
-    {page && <>
-      {(card.loading || card.error) && <p className="operation-projection-note">Showing the previously received page while this read is pending or unavailable. The receipt below describes that evidence; it does not establish current state.</p>}
-      <p className="operation-projection-receipt">{page.runId ? `Received source run: ${page.runId}` : "No source run"} · {page.runId ? "Source target revision" : "Reported target revision"}: {page.targetRevision}. This receipt does not certify current configuration or health.</p>
-      <OperationCoverage page={page} kind={card.kind} />
-      {card.kind === "tempdb-summary" && <><TempDbSummary page={page} /><p className="operation-projection-note">Summary totals belong to this source run. Browse TempDB files independently; another card can have a different receipt.</p></>}
-      {page.state === "NoData" && <p className="empty-state">No observation is available for this target. Check the collector status in Server summary.</p>}
-      {page.state === "Unsupported" && <p className="empty-state">This collector is unsupported by the target. Check the discovered platform and version in Server summary.</p>}
-      {page.state === "PermissionDenied" && <p className="empty-state">The collector could not read this evidence. Ask a Target Administrator to check the monitored SQL Server read permissions.</p>}
-      {page.items.length ? card.kind === "tempdb-files"
-        ? <details className="evidence-disclosure" key={`${page.targetId}:${page.targetRevision}`}><summary>Browse TempDB file evidence ({page.items.length} rows on this page)</summary><NamedOperationEvidence kind={card.kind} page={page} /></details>
-        : <NamedOperationEvidence kind={card.kind} page={page} />
-        : card.kind !== "tempdb-summary" && page.state === "Complete" ? <p className="empty-state">No bounded rows were reported by this observation.</p> : null}
-      {page.items.length > 0 && <details className="evidence-disclosure"><summary>Secondary projection fields</summary><EvidenceTable label={`${card.label} secondary evidence`} rows={card.items} /></details>}
-    </>}
-    <nav className="operation-projection-controls operation-pagination pager" aria-label={`${card.label} pages`}>
-      <span>Page {card.pageIndex + 1}</span>
-      {card.kind !== "tempdb-summary" && <>
-        <button type="button" disabled={card.loading || !page || card.pageIndex === 0} onClick={actions.first}>First {card.label} page</button>
-        <button type="button" disabled={card.loading || !page || card.pageIndex === 0} onClick={actions.previous}>Previous {card.label} page</button>
-        <button type="button" disabled={!card.canLoadMore} onClick={actions.next}>Next {card.label} page</button>
-      </>}
-      <button type="button" disabled={card.loading} onClick={actions.latest}>Return {card.label} to latest</button>
-    </nav>
-  </article>;
-}
-
-function OperationCoverage({ page, kind }: { readonly page: OperationalPage; readonly kind: OperationalKind }) {
-  const formatTime = useTimeFormatter();
-  const availability = kind === "ag-replicas" || kind === "ag-databases";
-  return <div className="operation-coverage">
-    <span>{page.state === "NoData" ? "Repository no-data check time" : "Snapshot receipt time"}: {formatTime(page.observedAtUtc)}</span>
-    {page.state === "Partial" && <strong>Partial source observation · source coverage is incomplete</strong>}
-    {page.truncated && <strong>{availability ? "Additional snapshot rows exist beyond this page" : "Partial capture · additional rows may be missing"}</strong>}
-    {page.visibilityScope && <span>{availability ? "First row visibility on this page" : "Visibility"}: {page.visibilityScope}</span>}
-    {page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatTime(page.coverageFromUtc)} to {formatTime(page.coverageToUtc)}</span> : null}
-    {kind === "agent" && <small>Execution start uses the SQL Server local clock without a time-zone offset. Job names and messages are unavailable.</small>}
-  </div>;
-}
-
-function TempDbSummary({ page }: { readonly page: OperationalPage }) {
-  const values: readonly [string, unknown][] = [["Total bytes", page.totalBytes], ["Used bytes", page.usedBytes], ["Log total bytes", page.logTotalBytes], ["Log used bytes", page.logUsedBytes]];
-  return <div className="operation-metrics">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{formatValue(value)}</strong></div>)}</div>;
-}
-
-function NamedOperationEvidence({ kind, page }: { readonly kind: OperationalKind; readonly page: OperationalPage }) {
-  const formatTime = useTimeFormatter();
-  const rows = namedRows(kind, page.items, formatTime);
-  return <div className="named-evidence"><h4>Available fields</h4><EvidenceTable label={`${kind} named evidence`} rows={rows} /></div>;
-}
-
-function namedRows(kind: OperationalKind, items: readonly Record<string, unknown>[], formatTime: (value: string | null | undefined) => string): readonly Record<string, unknown>[] {
-  return items.map((item) => {
-    if (kind === "backups") return {
-      "Database fingerprint": item.databaseFingerprint,
-      "Backup kind": item.kind,
-      "Last finish": typeof item.lastFinishUtc === "string" ? formatTime(item.lastFinishUtc) : "Unavailable",
-      "Size bytes": item.sizeBytes,
-      "Copy only": item.copyOnly,
-      "Checksum": item.hasChecksum,
-      "Damaged": item.isDamaged,
-      Coverage: item.coverage,
-    };
-    if (kind === "agent") return {
-      "Job identifier": item.jobId,
-      "Record scope": item.isJobOutcome === true ? "Job outcome" : item.isJobOutcome === false ? "Job step" : "Not reported",
-      "Counts as failed job": typeof item.countsAsJobFailure === "boolean" ? item.countsAsJobFailure : "Not reported",
-      "History instance": item.historyInstanceId,
-      "Step": item.stepId,
-      "Run status": item.runStatus,
-      "Failure kind": item.failureKind,
-      Severity: item.severity,
-      "Retry attempt": item.retryAttempt,
-      "Duration seconds": item.durationSeconds,
-      "Execution started (server local)": item.sourceLocalStart ?? item.SourceLocalStart ?? "Not reported",
-      "First observed": typeof item.firstObservedAtUtc === "string" ? formatTime(item.firstObservedAtUtc) : "Unavailable",
-      "Failure fingerprint": item.failureFingerprint,
-    };
-    if (kind === "tempdb-files") return { "File identifier": item.fileId, "Size bytes": item.sizeBytes, "Used bytes": item.usedBytes, "Free bytes": item.freeBytes, State: item.state };
-    if (kind === "ag-replicas") return { "Group fingerprint": item.groupFingerprint, "Replica fingerprint": item.replicaFingerprint, Role: item.role, "Operational state": item.operationalState, "Connected state": item.connectedState, Visibility: item.visibilityScope, "State available": item.stateAvailable };
-    return { "Group fingerprint": item.groupFingerprint, "Database fingerprint": item.databaseFingerprint, "Synchronization state": item.synchronizationState, "Database state": item.databaseState, Visibility: item.visibilityScope, "State available": item.stateAvailable };
-  });
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return "Unavailable";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  try { return JSON.stringify(value); } catch { return "Unavailable"; }
 }

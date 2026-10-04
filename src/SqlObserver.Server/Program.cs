@@ -123,6 +123,10 @@ builder.Services.AddSingleton<IReplicationWindowHistoryReadPort>(static services
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ReplicationWindowHistory);
 builder.Services.AddSingleton<IReplicationWindowHistoryService, ReplicationWindowHistoryService>();
 builder.Services.AddSingleton<ReplicationWindowHistoryCursorProtector>();
+builder.Services.AddSingleton<IBackupAvailabilityWindowHistoryReadPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupAvailabilityWindowHistory);
+builder.Services.AddSingleton<IBackupAvailabilityWindowHistoryService, BackupAvailabilityWindowHistoryService>();
+builder.Services.AddSingleton<BackupAvailabilityWindowHistoryCursorProtector>();
 builder.Services.AddSingleton<IServerLifecycleHistoryReadPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerLifecycleHistory);
 builder.Services.AddSingleton<IServerLifecycleHistoryService, ServerLifecycleHistoryService>();
@@ -304,6 +308,7 @@ app.MapDatabaseFileWindowHistoryEndpoints();
 app.MapCpuCaptureWindowHistoryEndpoints();
 app.MapTempDbWindowHistoryEndpoints();
 app.MapReplicationWindowHistoryEndpoints();
+app.MapBackupAvailabilityWindowHistoryEndpoints();
 app.MapDatabaseFileIoTrendEndpoints();
 app.MapBufferNodePleWindowEndpoints();
 app.MapOverviewEndpoints();

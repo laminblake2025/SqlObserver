@@ -2,6 +2,7 @@ import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
+import {backupAvailabilityReadBinding,validBackupAvailabilityRead,handleBackupAvailabilityWindowHistoryFixture,backupAvailabilityMicro} from '../component-tests/backupAvailabilityWindowHistoryFixture.mjs';
 
 const origin='http://127.0.0.1:4322';
 const target='11111111-1111-4111-8111-000000000002';
@@ -53,6 +54,41 @@ async function registeredLegacyNoData(route,url,reads){
  await route.fulfill({status:200,contentType:'application/json',headers:{'cache-control':'no-store'},body:JSON.stringify(body)});return true;
 }
 
+async function registeredSupportingHistory(route,url,reads){
+ const read=backupAvailabilityReadBinding(url);if(!read)return false;
+ expect(route.request().method()).toBe('GET');expect(validBackupAvailabilityRead(read,[target])).toBe(true);
+ expect(read.binding.targetRevision).toBe(1);expect(read.selection).toBeUndefined();expect(read.cursor).toBeUndefined();
+ const result=handleBackupAvailabilityWindowHistoryFixture(url,{method:'GET',headers:{cookie:''}});
+ expect(result.status).toBe(200);expect(result.body).toMatchObject({targetId:target,state:'unavailable',reason:'no_completed_runs',sourceQualification:'legacy_v1',items:[],nextCursor:null,coverage:{runCount:0,completeRunCount:0,gapRunCount:0,retainedRowCount:0}});
+ reads.push(read);
+ await route.fulfill({status:result.status,contentType:'application/json',headers:{'cache-control':'no-store'},body:JSON.stringify(result.body)});return true;
+}
+
+async function inspectDormantSupportingHistory(page,reads,legacyReads){
+ expect(legacyReads,'Folded supporting sources do not eagerly fetch removed legacy projections').toEqual([]);
+ expect(reads,'Folded supporting sources do not eagerly fetch canonical history').toEqual([]);
+ for(const [kind,category]of [['backup','Backups'],['availability','Availability groups']]){
+  await page.getByRole('tab',{name:category,exact:true}).press('Enter');
+  const panel=page.getByRole('region',{name:`Earlier ${kind} receipt history`,exact:true}),summary=panel.getByText(`Browse earlier ${kind} collection receipts`,{exact:true}),before=reads.length;
+  expect(await summary.evaluate(e=>e.parentElement.open)).toBe(false);
+  await summary.press('Enter');
+  await expect(panel.getByRole('region',{name:`Earlier ${kind} history coverage`,exact:true})).toContainText(`No completed earlier ${kind} collection attempts are retained in this window.`);
+  expect(reads.slice(before).map(r=>({kind:r.kind,stream:r.stream}))).toEqual([{kind,stream:'list'}]);
+  const received=reads.at(-1),scope=new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+  expect(scope.get('range')).toBe('custom');expect(scope.get('check')).toBe(kind==='backup'?'backups':'availability');
+  expect(backupAvailabilityMicro(scope.get('from'))).toBe(backupAvailabilityMicro(received.binding.fromUtc));expect(backupAvailabilityMicro(scope.get('to'))).toBe(backupAvailabilityMicro(received.binding.toUtc));
+  await expect(panel.getByRole('table').locator('tbody tr')).toHaveCount(0);
+  await expect(panel.locator('details.earlier-observations')).toHaveCount(0);
+  const box=await panel.boundingBox();
+  for(const control of await panel.locator('button,summary').all())if(await control.isVisible()){const b=await control.boundingBox();expect(b.width).toBeGreaterThanOrEqual(44);expect(b.height).toBeGreaterThanOrEqual(44);expect(b.x).toBeGreaterThanOrEqual(box.x-1);expect(b.x+b.width).toBeLessThanOrEqual(box.x+box.width+1);}
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','best-practice']).analyze()).violations).toEqual([]);
+ }
+ expect(legacyReads).toEqual([]);expect(reads).toHaveLength(2);
+ const refresh=page.getByRole('button',{name:'↻ Refresh',exact:true});await refresh.press('Tab');await page.keyboard.press('Shift+Tab');await expect(refresh).toBeFocused();await refresh.scrollIntoViewIfNeeded();
+ expect(await refresh.evaluate(e=>e.matches(':focus-visible')&&parseFloat(getComputedStyle(e).outlineWidth)>=2)).toBe(true);
+}
+
 async function open(page,surface){
  await page.context().addCookies([{name:'dashboardRefactor',value:'1',url:origin},{name:'chartReferenceRole',value:'viewer',url:origin},
   ...(['health','queries','waits'].includes(surface)?[{name:'timelineFixture',value:'1',url:origin}]:[]),
@@ -90,21 +126,21 @@ async function keyboardFocus(page){
 }
 
 for(const width of [320,1440])for(const[name,surface]of screens)test(`${name}: forced colors preserve accessible evidence and keyboard focus at ${width}px`,async({page},info)=>{
- const errors=[],unknown=[],registeredNoData=[];
+ const errors=[],unknown=[],registeredNoData=[],registeredHistory=[];
  page.on('pageerror',error=>errors.push(error.message));
  page.on('response',response=>{const url=new URL(response.url());if(url.origin===origin&&url.pathname.startsWith('/api/')&&response.status()===404)unknown.push('Unregistered API: '+url.pathname);});
- await page.route('**/*',async route=>{const request=route.request(),url=new URL(request.url());if(url.origin!==origin){unknown.push('External request: '+url.origin);return route.abort();}if(url.pathname.startsWith('/api/')&&request.method()!=='GET'){unknown.push('Unexpected API method: '+request.method());return route.abort();}registeredQuery(url);if(await registeredLegacyNoData(route,url,registeredNoData))return;return route.continue();});
+ await page.route('**/*',async route=>{const request=route.request(),url=new URL(request.url());if(url.origin!==origin){unknown.push('External request: '+url.origin);return route.abort();}if(url.pathname.startsWith('/api/')&&request.method()!=='GET'){unknown.push('Unexpected API method: '+request.method());return route.abort();}registeredQuery(url);if(await registeredSupportingHistory(route,url,registeredHistory))return;if(await registeredLegacyNoData(route,url,registeredNoData))return;return route.continue();});
  await page.emulateMedia({forcedColors:'active',colorScheme:'light'});await page.setViewportSize({width,height:1000});await open(page,surface);
  expect(await page.evaluate(()=>matchMedia('(forced-colors: active)').matches)).toBe(true);
  // Forced-colors legitimately computes color-scheme as "light dark". The test
  // audits actual browser system colors rather than insisting on a dark string.
  const painted=await keyboardFocus(page);
+ if(surface==='operations')await inspectDormantSupportingHistory(page,registeredHistory,registeredNoData);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth),'Wide evidence must scroll locally, not widen the document').toBeLessThanOrEqual(1);
  const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa','best-practice']).analyze();
  await info.attach('forced-colors-accessibility',{body:JSON.stringify(axe.violations,null,2),contentType:'application/json'});await info.attach('forced-colors-keyboard-focus',{body:JSON.stringify(painted,null,2),contentType:'application/json'});
  expect(axe.violations,JSON.stringify(axe.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>n.target)})))).toEqual([]);expect(errors).toEqual([]);expect(unknown).toEqual([]);
- if(surface==='operations')expect([...new Set(registeredNoData)].sort()).toEqual(['availability-groups/databases','availability-groups/replicas','backups']);
- const folder=fileURLToPath(new URL('../../artifacts/dashboard-tempdb-history-2026-10-04/screenshots/forced-screens/',import.meta.url));await mkdir(folder,{recursive:true});
+ const folder=fileURLToPath(new URL('../../artifacts/dashboard-backup-availability-history-2026-10-04/screenshots/forced-screens/',import.meta.url));await mkdir(folder,{recursive:true});
  const focusPath=folder+`${name}-${width}-forced-focus.png`;await page.screenshot({path:focusPath});await info.attach(`${name}-${width}-forced-focus`,{path:focusPath,contentType:'image/png'});
  await page.evaluate(()=>{document.activeElement?.blur();scrollTo({top:0,left:0,behavior:'instant'});});const path=folder+`${name}-${width}-forced.png`;await page.screenshot({path,fullPage:true});await info.attach(`${name}-${width}-forced`,{path,contentType:'image/png'});
 });

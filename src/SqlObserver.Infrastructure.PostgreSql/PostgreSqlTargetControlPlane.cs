@@ -43,6 +43,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         CpuCaptureWindowHistory = new PostgreSqlCpuCaptureWindowHistoryRepositoryPort(dataSource);
         TempDbWindowHistory = new PostgreSqlTempDbWindowHistoryRepositoryPort(dataSource);
         ReplicationWindowHistory = new PostgreSqlReplicationWindowHistoryRepositoryPort(dataSource);
+        BackupAvailabilityWindowHistory = new PostgreSqlBackupAvailabilityWindowHistoryRepositoryPort(dataSource);
         BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
         OverviewHistory = new PostgreSqlOverviewHistoryPort(dataSource);
         OverviewLatestStatus = new PostgreSqlOverviewLatestStatusPort(dataSource);
@@ -112,6 +113,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public ICpuCaptureWindowHistoryReadPort CpuCaptureWindowHistory { get; }
     public ITempDbWindowHistoryReadPort TempDbWindowHistory { get; }
     public IReplicationWindowHistoryReadPort ReplicationWindowHistory { get; }
+    public IBackupAvailabilityWindowHistoryReadPort BackupAvailabilityWindowHistory { get; }
     public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }
     public IOverviewHistoryRepositoryPort OverviewHistory { get; }
     public IOverviewLatestStatusRepositoryPort OverviewLatestStatus { get; }
