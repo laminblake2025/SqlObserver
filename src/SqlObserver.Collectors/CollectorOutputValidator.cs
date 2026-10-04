@@ -63,7 +63,9 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         else if (request.DeadlockReadContext is not null || result.DeadlockReadProof is not null)
             throw new InvalidDataException("Deadlock read context belongs only to the incremental deadlock contract.");
 
-        int sourceRowBound = manifest.Id.Value == "sql-agent.failures"
+        int sourceRowBound = manifest.Id.Value == "cpu.paired-capture"
+            ? CpuPairedCaptureObservation.MaximumSourceFrames
+            : manifest.Id.Value == "sql-agent.failures"
             ? OperationalHealthBounds.AgentScanRows
             : manifest.Id.Value == "backups.status" && manifest.ManifestVersion.Value == 2
                 ? BackupV2ReadSnapshot.MaximumRows + 1
@@ -110,7 +112,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             (payload.PlanCacheContent?.Items.Count ?? 0) > Contract.MaxPlanCacheContentObservations ||
             (payload.PlanCacheContent is not null && Contract.MaxPlanCacheContentObservations == 0) ||
             payload.ServerConfigurations.Items.Count > Contract.MaxServerConfigurationObservations ||
-            (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations)
+            (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations ||
+            (payload.CpuPairedCapture is null ? 0 : 1) > Contract.MaxCpuPairedCaptureObservations)
         {
             throw new InvalidDataException("Collector output exceeded its registered output cardinality.");
         }
@@ -164,6 +167,18 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         {
             throw new InvalidDataException("Collector inventory output belongs to a different target revision.");
         }
+
+        if (manifest.Id.Value == "cpu.paired-capture")
+        {
+            if (manifest.ManifestVersion.Value != 1 || manifest.OutputSchemaVersion.Value != 1 ||
+                manifest.OutputKind != CollectorOutputKind.CpuPairedCapture ||
+                Contract.MaxCpuPairedCaptureObservations != 1)
+                throw new InvalidDataException("CPU capture requires its exact staged output contract.");
+            CpuPairedCaptureOutputValidation.Validate(payload, request.TargetId, request.TargetRevision,
+                request.RunId, result.Outcome, result.Accounting, result.Loss);
+        }
+        else if (payload.CpuPairedCapture is not null || manifest.OutputKind == CollectorOutputKind.CpuPairedCapture)
+            throw new InvalidDataException("CPU capture output belongs only to its declared collector.");
 
         if (manifest.Id.Value == "server.lifecycle")
         {

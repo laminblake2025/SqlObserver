@@ -23,6 +23,7 @@ public sealed class WindowsCpuTcpAssociationReaderTests
         WindowsCpuTcpAssociationRequest request = Request(); var helper = new Helper(Output());
         var result = await new WindowsCpuTcpAssociationReader(Key, helper).ReadAsync(request, CancellationToken.None);
         Assert.Equal("partial", result.State); Assert.Equal("source_qualification_absent", result.Reason);
+        Assert.Equal(Encoding.UTF8.GetByteCount(Output().ToJsonString()), result.HelperOutputBytes);
         Assert.Equal(PairedCpuNativeQualification.Absent, result.NativeQualification); Assert.False(result.TargetComparisonAdmitted);
         CpuTcpNativeFrame frame = Assert.IsType<CpuTcpNativeFrame>(result.Frame);
         Assert.Equal(request.Witness.RunId, frame.Binding.RunId); Assert.Equal(request.Witness.TargetRevision, frame.Binding.TargetRevision);

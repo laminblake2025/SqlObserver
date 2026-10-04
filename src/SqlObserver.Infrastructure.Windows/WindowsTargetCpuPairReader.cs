@@ -41,6 +41,9 @@ public sealed record WindowsTargetCpuPairReadResult(string State, string Reason,
     uint ProcessStatusBefore = 0, uint ProcessStatusAfter = 0, uint OsStatusBefore = 0, uint OsStatusAfter = 0,
     string ProcessReason = "source_qualification_absent")
 {
+    /// <summary>Actual parsed UTF-8 helper envelope bytes; unknown before parsing.
+    /// This is neither TDS wire accounting nor a count of enumerated PDH instances.</summary>
+    public int? HelperOutputBytes { get; init; }
     public PairedCpuNativeQualification NativeQualification { get; } = PairedCpuNativeQualification.Absent;
     public bool TargetComparisonAdmitted { get; }
     public WindowsCpuPairFrameWitness? BeforeWitness { get; init; }
@@ -181,6 +184,9 @@ public sealed class WindowsTargetCpuPairReader
     }
 
     public WindowsTargetCpuPairReadResult Parse(WindowsTargetCpuPairRequest request, ReadOnlySpan<byte> bytes)
+        => ParseCore(request, bytes) with { HelperOutputBytes = bytes.Length };
+
+    private WindowsTargetCpuPairReadResult ParseCore(WindowsTargetCpuPairRequest request, ReadOnlySpan<byte> bytes)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (bytes.Length is 0 or > MaximumOutputBytes) throw new InvalidDataException("CPU helper output exceeds its bound.");

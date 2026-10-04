@@ -30,6 +30,9 @@ public sealed record WindowsCpuTcpAssociationRequest
 /// <summary>One native capture is not a qualified target association or CPU interval.</summary>
 public sealed record WindowsCpuTcpAssociationReadResult(string State, string Reason, CpuTcpNativeFrame? Frame = null)
 {
+    /// <summary>Actual parsed UTF-8 helper envelope bytes; unknown before parsing.
+    /// This excludes SQL/TDS wire bytes and native table rows filtered by the helper.</summary>
+    public int? HelperOutputBytes { get; init; }
     public PairedCpuNativeQualification NativeQualification { get; } = PairedCpuNativeQualification.Absent;
     public bool TargetComparisonAdmitted { get; }
 }
@@ -112,6 +115,9 @@ public sealed class WindowsCpuTcpAssociationReader
     }
 
     public WindowsCpuTcpAssociationReadResult Parse(WindowsCpuTcpAssociationRequest request, ReadOnlySpan<byte> bytes)
+        => ParseCore(request, bytes) with { HelperOutputBytes = bytes.Length };
+
+    private WindowsCpuTcpAssociationReadResult ParseCore(WindowsCpuTcpAssociationRequest request, ReadOnlySpan<byte> bytes)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (bytes.Length is 0 or > MaximumOutputBytes) throw new InvalidDataException("TCP capture exceeds its output bound.");

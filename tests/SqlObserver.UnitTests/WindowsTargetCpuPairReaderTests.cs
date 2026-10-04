@@ -22,6 +22,7 @@ public sealed class WindowsTargetCpuPairReaderTests
         WindowsTargetCpuPairRequest request = Request();
         WindowsTargetCpuPairReadResult result = await reader.ReadAsync(request, CancellationToken.None);
         Assert.Equal("partial", result.State); Assert.Equal("source_qualification_absent", result.Reason);
+        Assert.Equal(Encoding.UTF8.GetByteCount(Output().ToJsonString()), result.HelperOutputBytes);
         Assert.Equal(PairedCpuNativeQualification.Absent, result.NativeQualification); Assert.False(result.TargetComparisonAdmitted);
         PairedCpuEndpoint before = Assert.IsType<PairedCpuEndpoint>(result.Before), after = Assert.IsType<PairedCpuEndpoint>(result.After);
         Assert.Equal(request.Binding.RunId, before.Binding.RunId); Assert.Equal(before.QueryId, after.QueryId);

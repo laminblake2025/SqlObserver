@@ -754,6 +754,8 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
+            if (request.Work.CollectorId.Value == "cpu.paired-capture")
+                return await CommitCpuPairedCaptureAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             bool activityCollector = IsActivityCollector(request.Work.CollectorId);
             bool deadlockCollector = request.Work.CollectorId.Value == "deadlocks.system-health";
             bool databaseInventoryV2 = request.Work.CollectorId.Value == "database.inventory" &&
@@ -1693,6 +1695,16 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
+        if (request.Work.CollectorId.Value == "cpu.paired-capture")
+        {
+            if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
+                throw new InvalidDataException("CPU capture requires its exact staged version and output schema.");
+            CpuPairedCaptureOutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.RunId, request.Summary.Outcome,
+                request.Summary.Accounting, request.Summary.Loss);
+        }
+        else if (request.Payload.CpuPairedCapture is not null)
+            throw new InvalidDataException("CPU capture requires its declared collector.");
         if (request.Work.CollectorId.Value == "queries.performance" &&
             (request.Work.CollectorManifestVersion is not (1 or 2 or 3) ||
              request.Work.OutputSchemaVersion != request.Work.CollectorManifestVersion))
@@ -1861,6 +1873,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         ValidateM10Payload(request);
         bool exactKind = request.Work.CollectorId.Value switch
         {
+            "cpu.paired-capture" => request.Payload.ItemCount == (request.Payload.CpuPairedCapture is null ? 0 : 1),
             "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,
             "replication.health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,
             "storage.volume" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,

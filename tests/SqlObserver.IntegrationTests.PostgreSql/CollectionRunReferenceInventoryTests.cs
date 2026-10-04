@@ -61,8 +61,11 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.commit_m10_collection_run/28
             function control.commit_m9_collection_run/28
             function control.commit_query_performance_collection_run_canonical/34
+            function control.commit_query_performance_v2/36
+            function control.commit_query_performance_v3/37
             function control.commit_query_store_group_collection_run/28
             function control.commit_server_configuration_collection_run/28
+            function control.commit_server_lifecycle_collection_run/28
             function control.commit_sql_volume_collection_run/28
             function control.cutover_collection_run_identity_fks/1
             function control.ensure_target_collector_schedules/0
@@ -73,6 +76,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function control.validate_collection_run_identity_fk/1
             function control.verify_collection_run_v2_fleet_fenced/1
             function control.verify_collection_run_v2_window/5
+            function events.apply_plan_cache_content_batch/4
             function reporting.count_buffer_node_ple_gaps_legacy/3
             function reporting.get_buffer_manager_ple_trend_legacy/3
             function reporting.get_buffer_node_ple_trend_legacy/4
@@ -92,6 +96,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             function reporting.read_m10_backfill_page_legacy/10
             function reporting.read_m10_rollup_derivation_inputs_legacy/9
             function reporting.sql_core_metric_inputs/6
+            function system.collection_run_reference_holds/2
             function telemetry.capture_server_wait_category_summary_v1/0
             function telemetry.insert_collection_run_runtime/13
             function telemetry.lock_collection_run_runtime/1
@@ -434,13 +439,22 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
         await using (NpgsqlDataReader reader = await columns.ExecuteReaderAsync())
             while (await reader.ReadAsync()) columnsWithRunIds.Add(reader.GetString(0));
         string expectedColumns = """
+            alerting.deadlock_source_snapshot.run_id
             alerting.evaluation_queue.run_id
             analytics.evidence_packet_v2.source_run_id
+            analytics.saved_incident_evidence.source_run_id
             control.collector_schedule.active_run_id
+            control.deadlock_read_checkpoint.run_id
+            control.server_lifecycle_checkpoint.run_id
             events.blocking_edge.collection_run_id
             events.blocking_edge_v2.collection_run_id
+            events.deadlock_read_receipt.run_id
             events.deadlock_summary.collection_run_id
             events.deadlock_summary_v2.collection_run_id
+            events.plan_cache_content_link.run_id
+            events.plan_cache_content_receipt.run_id
+            events.plan_cache_runtime_delta.run_id
+            events.plan_cache_runtime_receipt.run_id
             events.query_performance_content_link.collection_run_id
             events.query_performance_database_status.collection_run_id
             events.query_performance_observation.collection_run_id
@@ -456,6 +470,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             events.query_store_group_delta.run_id
             events.query_text_access_audit.collection_run_id
             events.server_configuration_change.run_id
+            system.collection_run_retirement_context.run_id
             system.query_run_retention_blocked.run_id
             system.query_run_retention_scan_cursor.run_id
             system.query_run_retirement.run_id
@@ -471,10 +486,14 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.availability_replica_evidence.run_id
             telemetry.backup_status_snapshot.run_id
             telemetry.backup_status_snapshot_v2.run_id
+            telemetry.backup_v2_database.run_id
+            telemetry.backup_v2_sample.run_id
+            telemetry.backup_v2_scan.run_id
             telemetry.collection_run.run_id
             telemetry.collection_run_identity.run_id
             telemetry.collection_run_outcome.run_id
             telemetry.collection_run_v2.run_id
+            telemetry.cpu_paired_capture_receipt.run_id
             telemetry.database_file_snapshot.collection_run_id
             telemetry.database_file_snapshot_v2.collection_run_id
             telemetry.database_inventory_snapshot.collection_run_id
@@ -485,6 +504,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.raw_metric_sample.collection_run_id
             telemetry.replication_snapshot_v2.run_id
             telemetry.server_configuration_snapshot.run_id
+            telemetry.server_lifecycle_receipt.run_id
             telemetry.server_wait_snapshot.collection_run_id
             telemetry.server_wait_snapshot_v2.collection_run_id
             telemetry.sql_agent_failure.run_id
@@ -499,6 +519,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.tempdb_snapshot_v2.run_id
             telemetry.visibility_gap.run_id
             """;
-        Assert.Equal(expectedColumns.Split('\n'), columnsWithRunIds);
+        Assert.True(expectedColumns.Split('\n').SequenceEqual(columnsWithRunIds, StringComparer.Ordinal),
+            "Unexpected UUID run-column inventory:\n" + string.Join('\n', columnsWithRunIds));
     }
 }

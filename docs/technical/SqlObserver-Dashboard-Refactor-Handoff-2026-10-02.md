@@ -1034,3 +1034,33 @@ The native scenario was **not executed**: all twelve independent qualification e
 | Dashboard-only scope | Staged CPU diagnostic-source qualification harness only; no production source admission or runtime/storage/API redesign. |
 
 Evidence: `artifacts/dashboard-cpu-native-harness-2026-10-04/` contains the requirement summary/gallery index, frozen completion record, complete attempts and source bytes, restore-byte repair and SSH route metadata. The guide at `tools/qualification/paired-cpu/native-sql-qualification.md` defines exact configuration/commands and the remaining matrix. The overall dashboard and original plan remain unfinished. No GitHub push/upload occurred; the local checkpoint record binds final evidence to this commit.
+
+
+## Staged paired CPU capture and canonical persistence checkpoint â€” 2026-10-04 UTC
+
+Three independent lanes owned source/domain/unit fixtures, PostgreSQL migration/writer/native fixtures and documentation/review. The lead integrated the adapter, shared output contract, canonical dispatch, byte accounting and exact run-reference inventories. Fresh read-only reviews covered deadline/cleanup, security prechecks, staging, persistence and the repaired native fixtures. Only the lead executed checks, serially against frozen source.
+
+One source-owned SQL-before/TCP-before/raw-CPU-pair/TCP-after/SQL-after sequence now produces a bounded, sanitized private receipt. It retains exact raw Int64 counters, seven-digit source clocks, fixed refusal reasons and numerical eligibility without admitting a CPU comparison. Qualification stays absent, hardware/admission flags false and all public percentages null. Original native source objects are preserved. Addresses, routing tuples and process names are omitted; persisted directional diagnostics cannot reconstruct the discarded tuple proof.
+
+The staged ICollector adapter remains outside the production catalog/DI/scheduler. Its 60-second default cadence, 30-second minimum and 30-second timeout obey the repository contract and bound the original request, including host resolution. Known parsed helper UTF-8 lengths and the declared SQL logical upper bound remain distinct from generated receipt bytes and measured TDS traffic. Unknown helper lengths are null, never evidence that no I/O occurred. Missing-host refusal receipts can have zero source response bytes and nonempty generated output. Actual failures cannot carry usable capture or invented partial coverage.
+
+Forward migration 0359 adds append-only, forced-RLS daily receipts, closed native JSON validation, exact target/revision/run fences, canonical outcomes, immutable replay/digest and reviewed run-retention dependencies. It uses the canonical v2 run shape. The explicit partition helper requires the catalog-reconciliation lease; retention is disabled by default with no inferred lifetime and a three-partition floor. Approved day-based policy bounds remain90 through3650. Collector/Server/Auditor have no direct table privileges. The existing internal dependency role intentionally bypasses RLS for retention protection; an ordinary temporary non-bypass probe qualifies exact target isolation without changing production grants.
+
+Final whole owning groups passed **643/643**, zero failures/skips: unit 525 and actual PostgreSQL 18.4 118. Both groups used the same 2285 unchanged frozen inputs, strict compilation/analyzers, full migrations and the pinned isolated-clock18.4-v2 image. Docker CLI and .NET use their standard endpoints; a forced DOCKER_HOST had broken existing backup helpers and is removed from the test child environment. Existing clock-sensitive expiry/backup cases pass in the final whole group.
+
+Complete failed attempts and consumed source bytes remain preserved: analyzer-repair-unit, case-syntax-repair-postgres, catalog-column-diagnostic, final-inventory-postgres, fixture-repair-cpu-diagnostic, harness-repair-postgres, initial-postgres, initial-unit, pipe-uri-repair-postgres. Fixes cover strict analyzer and valid profile fixtures, migration CASE syntax, manifest interval bounds, reviewed exact catalog expectations, automatic schedule insertion, canonical target-revision cancellation, exactly one new disabled-policy audit row and a non-bypass RLS probe. Exact assertions remain; the cancellation test compares the entire canonical completion before and after rejection. No passing subsets were aggregated.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Independent subagents and integration lead | Three non-overlapping implementation/review lanes; lead resolved integration and ran qualification serially. |
+| Dark theme | Prior qualified frontend unchanged; all 682 frontend inputs and exact JS/CSS verified. |
+| Diagnostic-screen review | Private CPU capture/storage progressed without inventing CPU health; native admission/history/API/UI, current Agent and qualified AG transition sources remain open. |
+| Interaction tests | Final source/deadline/refusal/adapter/accounting and native commit/replay/fencing groups pass; prior browser interactions remain bound to unchanged UI. |
+| Accessibility/responsive | Prior axe/keyboard/focus/overflow evidence at 320/390/768/1440px preserved with exact unchanged UI; no new manual device/screen-reader claim. |
+| Validation after integration | Complete final unit/PostgreSQL groups pass on identical frozen source; actual SQL/Windows qualification is not claimed. |
+| Screenshots | All 62 prior synthetic gallery images hash-verified at original checkpoint 27efa7c; no new CPU UI or live lab capture claimed. |
+| Dashboard-only scope | Staged CPU diagnostic source/canonical receipt dependency; no production activation or unrelated redesign. |
+
+Migration 0359 SHA-256 is `ce67c0c98abcee286fb89be17dd366cd104cabbb18fe7d82db2ed99859f5d11f`. Evidence lives at `artifacts/dashboard-cpu-paired-capture-2026-10-04/`: requirement summary/gallery index, frozen completion record, final review, complete attempts/source bytes/TRX, native inventory review and checkpoint metadata. The source boundary guide is `docs/technical/Cpu-Paired-Capture.md`.
+
+The fresh configured SSH attempt timed out at 192.168.50.76:22; the current route/VPN clarification remains pending. Native supported-version/failure qualification and monitoring-identity behavior, CPU retained reads/API/MCP/dashboard series/admission, running/long-running Agent sources and qualified AG transitions remain open. The broader dashboard and original plan remain incomplete. No GitHub push/upload occurred.

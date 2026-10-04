@@ -265,6 +265,7 @@ public enum CollectorOutputKind
     QueryStoreGroups = 17,
     ServerConfigurations = 18,
     ServerLifecycle = 19,
+    CpuPairedCapture = 20,
 }
 
 public sealed class CollectorResiliencePolicy
