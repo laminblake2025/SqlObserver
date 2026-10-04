@@ -2381,6 +2381,9 @@ foreach ($testProject in $testProjectsToRun) {
     if ($testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj') {
         # AG qualification requires an explicit trusted primary/secondary pair.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAvailabilityGroup' } else { "($filter)&Category!=RequiresAvailabilityGroup" }
+        # Paired CPU qualification runs co-located with SQL under its own
+        # monitoring identity and independently provisioned host binding.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresPairedCpuQualification' } else { "($filter)&Category!=RequiresPairedCpuQualification" }
         # This test creates and drops its own Query Store databases. It is
         # selected explicitly for a disposable SQL Server lab, never by the
         # ordinary Local or Release sweep.

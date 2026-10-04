@@ -265,6 +265,15 @@
           "SqlObserver.Domain": "[1.0.0, )"
         }
       },
+      "sqlobserver.infrastructure.windows": {
+        "type": "Project",
+        "dependencies": {
+          "SqlObserver.Application": "[1.0.0, )",
+          "SqlObserver.Collector.Abstractions": "[1.0.0, )",
+          "System.Diagnostics.EventLog": "[10.0.11, )",
+          "System.Security.Cryptography.ProtectedData": "[10.0.11, )"
+        }
+      },
       "Microsoft.Data.SqlClient": {
         "type": "CentralTransitive",
         "requested": "[7.0.2, )",

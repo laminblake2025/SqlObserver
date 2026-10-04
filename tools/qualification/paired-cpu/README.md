@@ -66,6 +66,12 @@ late sample. Unit tests include providers that ignore cancellation.
 
 ## Required lab qualification before activation
 
+The [native SQL/Windows qualification guide](native-sql-qualification.md) describes
+the dedicated opt-in harness for a co-located SQL endpoint under the monitoring
+identity. Its environment-contract tests and compilation do not certify the native
+scenario. A successful finite scenario also does not activate production admission
+or replace the remaining qualification matrix below.
+
 | Boundary | Required native evidence |
 |---|---|
 | Target/process association | Independently qualified same-machine SQL endpoint/process mapping under the configured routing and current target/host revisions. |
