@@ -81,6 +81,11 @@ async function supporting(page, label) {
   const summary = panel(page).locator('summary').filter({ hasText: label });
   if (!await summary.evaluate(element => element.parentElement.open)) await summary.click();
 }
+async function browseFiles(page) {
+  const summary = files(page).locator('summary').filter({ hasText: /^Browse TempDB file evidence \(/ });
+  await expect(summary).toBeVisible();
+  if (!await summary.evaluate(element => element.parentElement.open)) await summary.click();
+}
 async function expectContextLinks(page, id = target) {
   for (const [label, section] of [['Configuration drift', 'summary'], ['Database options', 'databases']]) {
     const href = await panel(page).getByRole('link', { name: label, exact: true }).getAttribute('href');
@@ -107,6 +112,7 @@ test('the grouped tabs expose six distinct sources, current Agent history, and s
   await tab(page, 'TempDB').click();
   await expect(card(page, 'TempDB summary').locator('.operation-metrics > div')
     .filter({ has: page.getByText('Total bytes', { exact: true }) }).locator('strong')).toHaveText('1024');
+  await browseFiles(page);
   await expect(namedFiles(page)).toContainText(providerText);
   await expect(page.locator('img, [onerror]')).toHaveCount(0);
   expect(await page.evaluate(() => window.operationsInjected)).toBeUndefined();
@@ -161,6 +167,7 @@ test('cancelling pending evidence aborts its request and retry obtains a fresh b
   await old.release();
   register(page, 'tempdb-files', operational('tempdb-files', target, { items: [tempFile(9)] }));
   await files(page).getByRole('button', { name: 'Retry TempDB files read', exact: true }).click();
+  await browseFiles(page);
   await expect(namedFiles(page).getByRole('row')).toHaveCount(2);
   await expect(namedFiles(page).getByRole('row').nth(1).getByRole('cell').first()).toHaveText('9');
   await expect(files(page).getByRole('alert')).toHaveCount(0);
@@ -173,6 +180,7 @@ test('paging replaces bounded rows, preserves the investigated page on failure, 
   register(page, 'tempdb-files', undefined, { cursor, handler: next.handle });
   register(page, 'tempdb-files', { providerDetail: 'OPERATIONS_PROVIDER_SECRET' }, { cursor: lastCursor, status: 503 });
   await mount(page, 'tempdb');
+  await browseFiles(page);
   await expect(namedFiles(page).getByRole('row')).toHaveCount(51);
   await files(page).getByRole('button', { name: 'Next TempDB files page', exact: true }).click();
   await next.started;
@@ -205,6 +213,7 @@ test('a server change cancels pending evidence and its late response cannot repl
   const cancelled = page.waitForEvent('requestfailed', { predicate: failed => failed === request });
   await page.getByRole('combobox', { name: 'Server context', exact: true }).selectOption(otherTarget);
   await cancelled;
+  await browseFiles(page);
   await expect(namedFiles(page).getByRole('row').nth(1).getByRole('cell').first()).toHaveText('88');
   await old.release();
   await expect(namedFiles(page).getByRole('row')).toHaveCount(2);
@@ -234,6 +243,7 @@ test('modern AG evidence labels unknown local state and fences correlation until
 
 test('Operations remains keyboard accessible without page overflow at narrow and desktop widths', async ({ page }, info) => {
   await mount(page, 'tempdb');
+  await browseFiles(page);
   await expect(namedFiles(page)).toBeVisible();
   const directory = fileURLToPath(new URL('../../artifacts/dashboard-operations-projections/screenshots/', import.meta.url));
   await mkdir(directory, { recursive: true });
@@ -246,6 +256,7 @@ test('Operations remains keyboard accessible without page overflow at narrow and
     await tab(page, 'SQL Agent').press('ArrowRight');
     await expect(tab(page, 'TempDB')).toBeFocused();
     await expect(tab(page, 'TempDB')).toHaveAttribute('aria-selected', 'true');
+    await browseFiles(page);
     await expect(namedFiles(page)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze()).violations;
@@ -254,5 +265,43 @@ test('Operations remains keyboard accessible without page overflow at narrow and
     const path = `${directory}operations-panel-${width}.png`;
     await page.screenshot({ path, fullPage: true });
     await info.attach(`operations-panel-${width}`, { path, contentType: 'image/png' });
+  }
+});
+
+test('TempDB raw file evidence starts collapsed while receipt, coverage, totals and paging stay visible', async ({ page }, info) => {
+  register(page, 'tempdb-files', operational('tempdb-files', target, {
+    state: 'Partial', truncated: true, items: Array.from({ length: 50 }, (_, index) => tempFile(index + 1)),
+    hasMore: true, nextCursor: cursor,
+  }));
+  await mount(page, 'tempdb');
+  const summary = files(page).locator('summary').filter({ hasText: 'Browse TempDB file evidence (50 rows on this page)' });
+  await expect(summary).toBeVisible();
+  await expect(summary.locator('..')).not.toHaveAttribute('open');
+  await expect(namedFiles(page)).toHaveCount(0);
+  await expect(files(page).locator('.operation-projection-receipt')).toBeVisible();
+  await expect(files(page).getByText('Partial source observation · source coverage is incomplete', { exact: true })).toBeVisible();
+  await expect(files(page).getByText('Partial capture · additional rows may be missing', { exact: true })).toBeVisible();
+  await expect(files(page).getByRole('button', { name: 'Next TempDB files page', exact: true })).toBeEnabled();
+  await expect(files(page).getByRole('button', { name: 'Return TempDB files to latest', exact: true })).toBeVisible();
+  await expect(card(page, 'TempDB summary').locator('.operation-metrics strong')).toHaveText(['1024', '256', '512', '0']);
+  const count = sessions.get(page).requests.filter(request => key(request.url()) === key(requestPath('tempdb-files'))).length;
+  await summary.focus();
+  await summary.press('Enter');
+  await expect(summary).toBeFocused();
+  await expect(namedFiles(page).getByRole('row')).toHaveCount(51);
+  expect(sessions.get(page).requests.filter(request => key(request.url()) === key(requestPath('tempdb-files')))).toHaveLength(count);
+  await summary.press('Space');
+  await expect(summary).toBeFocused();
+  await expect(namedFiles(page)).toHaveCount(0);
+  await expect(files(page).getByRole('button', { name: 'Next TempDB files page', exact: true })).toBeEnabled();
+  const directory = fileURLToPath(new URL('../../artifacts/dashboard-ui-integration-2026-10-04/screenshots/', import.meta.url));
+  await mkdir(directory, { recursive: true });
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(summary).toBeFocused();
+    const path = `${directory}tempdb-files-collapsed-${width}.png`;
+    await page.screenshot({ path, fullPage: true });
+    await info.attach(`tempdb-files-collapsed-${width}`, { path, contentType: 'image/png' });
   }
 });

@@ -290,7 +290,7 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
         if (activityAccessDenied(failure)) { access.deny(); return; }
         consecutiveFailures.current++;
         retryAfter.current = Date.now() + Math.min(60_000, 10_000 * 2 ** consecutiveFailures.current);
-        setError("Refresh failed for the current request; retrying with backoff.");
+        setError("Refresh failed for the current request.");
         setErrorKey(requestKey);
       }
     }).finally(() => access.finish(ticket));
@@ -427,7 +427,11 @@ export function LiveSessionsPanel({ instanceId, displayName, initialHistoryAtUtc
     {currentRestoration?.message && <p className="empty-state" role="status">{currentRestoration.message}</p>}
     {selectionMessage && <p className="table-note" role="status">{selectionMessage}</p>}
     <p role="status">{requestMode === "history" ? "Historical evidence · automatic refresh paused" : paused ? "Paused" : workspacePaused ? "Workspace live updates paused" : !visible ? "Hidden · refresh paused" : cursor ? "Browsing snapshot pages · refresh paused" : "Refresh every 10 seconds"}{loading ? " · Refreshing…" : ""}. Observed: {gap ? "No snapshot in this minute" : displayPage?.observedUtc ? timeLabel(displayPage.observedUtc) : "Unavailable"}. Snapshot: {displayPage?.snapshotId ?? "Unavailable"}. {selectedSnapshot?.deadlockEventId ? "Deadlock-triggered snapshot." : ""} {displayPage?.state === "stale" || (displayPage !== undefined && displayError) ? "Stale evidence." : ""}</p>
-    {displayError && <p role="alert">{displayError}</p>}{displayPage?.truncated && <p role="status">Collection was truncated at 512 rows. Missing sessions may exist.</p>}
+    {displayError && <p role="alert">{displayError}{displayError === "Refresh failed for the current request." && (requestMode === "history"
+      ? " Automatic refresh is paused. Select Refresh now to retry this captured snapshot."
+      : paused || workspacePaused || !visible || cursor
+        ? " Automatic refresh is paused. Select Refresh now to retry this request."
+        : " Automatic live retries use backoff.")}</p>}{displayPage?.truncated && <p role="status">Collection was truncated at 512 rows. Missing sessions may exist.</p>}
     <p>Cumulative CPU is milliseconds, not CPU percentage. Reads, writes and logical reads are cumulative counts. Memory is session memory for idle sessions and granted request memory for active requests. Short requests between samples may not appear.</p>
     {displayPage && <BlockingSnapshot page={displayPage} groups={blockingGroups} selectedGroupKey={blockingGroupKey} onSelectGroup={selectChain} />}
     {displayPage && <p className="blocking-chain-counts" role="status">Showing {visibleRows.length} of {displayPage.rows.length} loaded session rows{blockingGroupKey !== "" ? ` · Blocking chain: ${selectedBlockingGroup?.rootLabel ?? blockingGroupKey}` : ""}. Chain filtering is local to this loaded page and preserves the server-side filters and row order. Other pages, excluded sessions, and truncated capture can contain additional chain members.</p>}

@@ -93,7 +93,10 @@ function OperationCard({ card, actions }: { readonly card: OperationsRenderCard;
       {page.state === "NoData" && <p className="empty-state">No observation is available for this target. Check the collector status in Server summary.</p>}
       {page.state === "Unsupported" && <p className="empty-state">This collector is unsupported by the target. Check the discovered platform and version in Server summary.</p>}
       {page.state === "PermissionDenied" && <p className="empty-state">The collector could not read this evidence. Ask a Target Administrator to check the monitored SQL Server read permissions.</p>}
-      {page.items.length ? <NamedOperationEvidence kind={card.kind} page={page} /> : card.kind !== "tempdb-summary" && page.state === "Complete" ? <p className="empty-state">No bounded rows were reported by this observation.</p> : null}
+      {page.items.length ? card.kind === "tempdb-files"
+        ? <details className="evidence-disclosure" key={`${page.targetId}:${page.targetRevision}`}><summary>Browse TempDB file evidence ({page.items.length} rows on this page)</summary><NamedOperationEvidence kind={card.kind} page={page} /></details>
+        : <NamedOperationEvidence kind={card.kind} page={page} />
+        : card.kind !== "tempdb-summary" && page.state === "Complete" ? <p className="empty-state">No bounded rows were reported by this observation.</p> : null}
       {page.items.length > 0 && <details className="evidence-disclosure"><summary>Secondary projection fields</summary><EvidenceTable label={`${card.label} secondary evidence`} rows={card.items} /></details>}
     </>}
     <nav className="operation-projection-controls operation-pagination pager" aria-label={`${card.label} pages`}>

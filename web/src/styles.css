@@ -147,6 +147,7 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .topbar-search kbd { margin-left: 8px; padding: 2px 5px; color: var(--muted-deep); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 4px; font: inherit; font-size: 10px; }
 .command-palette { width: min(620px, calc(100vw - 28px)); max-height: min(720px, calc(100vh - 48px)); padding: 20px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 24px 64px rgb(11 30 51 / 24%); }
 .command-palette::backdrop { background: rgb(3 8 14 / 76%); }
+.command-palette button, .command-palette input { min-height: 44px; }
 .command-palette-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .command-palette-header h2 { margin-bottom: 4px; }
 .command-palette-header p { margin-bottom: 16px; color: var(--muted); font-size: 13px; }
@@ -157,6 +158,8 @@ code, .fingerprint { font-family: ui-monospace, SFMono-Regular, Consolas, "Liber
 .command-palette-results { display: grid; gap: 4px; max-height: 430px; overflow: auto; }
 .command-palette-result { display: grid; gap: 3px; width: 100%; min-height: 58px; padding: 9px 12px; text-align: left; border-color: transparent; }
 .command-palette-result:hover, .command-palette-result:focus-visible { background: var(--surface-hover); border-color: var(--border-teal); }
+.command-palette-result:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+@media (forced-colors: active) { .command-palette-result:focus-visible { outline-color: Highlight; } }
 .command-palette-result span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .command-palette-result, .command-palette-result strong { min-width: 0; overflow-wrap: anywhere; }
 .command-palette-empty { padding: 14px; color: var(--muted); }

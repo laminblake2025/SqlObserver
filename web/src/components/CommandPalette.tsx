@@ -267,7 +267,12 @@ export function CommandPalette({ open, onClose, scope }: {
           (buttons[index + (event.key === "ArrowDown" ? 1 : -1)] ?? (event.key === "ArrowUp" ? search.current : buttons[0]))?.focus();
         }}>
         <strong>{database.name}</strong><span>Database ID {database.databaseId}</span>
-      </button>) : mode === "queries" ? verifiedQuery === queryIdentity && <button className="command-palette-result" type="button" onClick={jumpQuery}><strong>Open query history</strong><span>Database ID {queryDatabaseId} · {query.trim().slice(0, 12)}…</span></button> : alertMatches.map(alert => <button key={`${alert.targetId}:${alert.alertId}`} className="command-palette-result" type="button" onClick={() => jumpAlert(alert)}
+      </button>) : mode === "queries" ? verifiedQuery === queryIdentity && <button className="command-palette-result" type="button" onClick={jumpQuery}
+        onKeyDown={event => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          if (event.key === "ArrowUp") search.current?.focus();
+        }}><strong>Open query history</strong><span>Database ID {queryDatabaseId} · {query.trim().slice(0, 12)}…</span></button> : alertMatches.map(alert => <button key={`${alert.targetId}:${alert.alertId}`} className="command-palette-result" type="button" onClick={() => jumpAlert(alert)}
         onKeyDown={event => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();

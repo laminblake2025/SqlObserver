@@ -72,7 +72,12 @@ async function supporting(page, label) {
   const summary = panel(page).locator('summary').filter({ hasText: label });
   if (!await summary.evaluate(element => element.parentElement.open)) await summary.click();
 }
-async function expectFile(page, id) { await expect(namedTable(page).getByRole('cell', { name: String(id), exact: true })).toBeVisible(); }
+async function expectFile(page, id) {
+  const summary = card(page).locator('summary').filter({ hasText: /^Browse TempDB file evidence \(/ });
+  await expect(summary).toBeVisible();
+  if (!await summary.evaluate(element => element.parentElement.open)) await summary.click();
+  await expect(namedTable(page).getByRole('cell', { name: String(id), exact: true })).toBeVisible();
+}
 async function missingFile(page, id) { await expect(namedTable(page).getByRole('cell', { name: String(id), exact: true })).toHaveCount(0); }
 async function nextFilePage(page, id = 1051) { await button(page, 'Next').click(); await expectFile(page, id); }
 

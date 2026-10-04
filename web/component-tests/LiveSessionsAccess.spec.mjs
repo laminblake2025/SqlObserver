@@ -91,3 +91,43 @@ test('missing linked deadlock never automatically substitutes another event capt
   await expect(history(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toHaveCount(0);
   expect(session.reads.filter(item => item.source === 'activity/live')).toHaveLength(before);
 });
+
+test('historical metadata failure requires an explicit retry of the same captured snapshot', async ({ page }) => {
+  await open(page);
+  await live(page).getByRole('button', { name: 'History', exact: true }).click();
+  await expect(history(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  const session = sessions.get(page);
+  session.handler = async (route, item) => item.source === 'activity/live' ? (await json(route, {}, 503), true) : false;
+  await history(page).getByRole('button', { name: 'Refresh now', exact: true }).click();
+  await expect(history(page).getByRole('alert')).toHaveText('Refresh failed for the current request. Automatic refresh is paused. Select Refresh now to retry this captured snapshot.');
+  await expect(history(page)).toContainText('Historical evidence · automatic refresh paused');
+  await expect(history(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  const failed = session.reads.filter(item => item.source === 'activity/live').at(-1);
+  expect(new URL(failed.url).searchParams.get('snapshot')).toBe('55555555-5555-4555-8555-555555555555');
+  session.handler = undefined;
+  const retry = history(page).getByRole('button', { name: 'Refresh now', exact: true });
+  await retry.focus();
+  await retry.press('Enter');
+  await expect(history(page).getByRole('alert')).toHaveCount(0);
+  await expect(history(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  expect(session.reads.filter(item => item.source === 'activity/live').at(-1).url).toBe(failed.url);
+});
+
+test('live failure discloses backoff only while polling is active and paused recovery stays explicit', async ({ page }) => {
+  await open(page);
+  const session = sessions.get(page);
+  session.handler = async (route, item) => item.source === 'activity/live' ? (await json(route, {}, 503), true) : false;
+  await poll(page);
+  await expect(live(page).getByRole('alert')).toHaveText('Refresh failed for the current request. Automatic live retries use backoff.');
+  const count = session.reads.filter(item => item.source === 'activity/live').length;
+  await live(page).getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(live(page).getByRole('alert')).toHaveText('Refresh failed for the current request. Automatic refresh is paused. Select Refresh now to retry this request.');
+  expect(session.reads.filter(item => item.source === 'activity/live')).toHaveLength(count);
+  await expect(live(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  session.handler = undefined;
+  await live(page).getByRole('button', { name: 'Refresh now', exact: true }).click();
+  await expect(live(page).getByRole('alert')).toHaveCount(0);
+  await expect(live(page).getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(live(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  expect(session.reads.filter(item => item.source === 'activity/live')).toHaveLength(count + 1);
+});

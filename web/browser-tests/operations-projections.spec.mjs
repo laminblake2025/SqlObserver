@@ -50,7 +50,16 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => { expect(sessions.get(page).errors).toEqual([]); });
 async function open(page) {
   await page.goto(`/#/operations?${new URLSearchParams({ target: first, databaseId: '7', range: 'custom', from, to, check: 'tempdb' })}`);
+  await openFileEvidence(page);
   await expect(rows(page)).toHaveCount(50);
+}
+async function openFileEvidence(page) {
+  const summary = card(page).locator('summary').filter({ hasText: /^Browse TempDB file evidence/ });
+  await expect(summary).toContainText('50 rows on this page');
+  await expect(card(page).getByRole('table', { name: /^tempdb-files named evidence/ })).toHaveCount(0);
+  await expect(control(page, 'Next TempDB files page')).toBeVisible();
+  await summary.focus();
+  await summary.press('Enter');
 }
 async function contextUnchanged(page, target = first) {
   expect(scope(page)).toMatchObject({ target, range: 'custom', from, to, check: 'tempdb' });
@@ -117,6 +126,7 @@ test('Operations projection aborts a held continuation on server navigation and 
   const aborted = page.waitForEvent('requestfailed', { predicate: item => item === request });
   sessions.get(page).runId = newerRun;
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second); await aborted;
+  await openFileEvidence(page);
   await expect(rows(page)).toHaveCount(50); release(); await ended;
   await contextUnchanged(page, second);
   await expect(rows(page)).toHaveCount(50); await expect(card(page)).toContainText(newerRun);
