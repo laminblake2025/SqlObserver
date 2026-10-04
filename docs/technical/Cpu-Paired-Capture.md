@@ -177,7 +177,7 @@ The `cpu_paired_captures` retention policy starts disabled with a null lifetime
 and three daily partitions preserved. Its native revision/audit policy pipeline
 requires a global Security Administrator context and a finite day-based lifetime
 of 90 through 3,650 days when supplied. These native policy bounds do not activate
-retention or expose a history API. No cross-run CPU checkpoint, inferred baseline
+retention. No cross-run CPU checkpoint, inferred baseline
 or continuity claim is stored.
 
 ## Open qualification and product work
@@ -194,9 +194,38 @@ restart/PID/boot/host-binding changes, controlled load, localization, processor
 groups/topology and in-flight provider cancellation/timeout/termination. Managed
 fixtures and local non-SQL ABI probes do not close those gates.
 
-Retained-history read contracts, API/MCP projections, public CPU comparison and
-dashboard series are separate work. This checkpoint makes no frontend change and
-does not complete CPU dashboard support. Current/long-running SQL Agent job data
+## Retained capture diagnostics
+
+The Resources screen reads canonical completed `cpu.paired-capture` attempts through
+the protected `/api/v1/observation-targets/{instanceId}/resources/cpu/captures`
+list route and its `/{runId}` exact route. Both bind the current target revision
+and a shared completion-time window of at most 31 days. An exact pin also names
+the sample revision; it can retain older evidence without treating that evidence
+as the current target configuration. Failed attempts remain visible instead of
+falling back to an older successful capture.
+
+List continuations preserve the original cutoff, fifteen-minute expiry and
+retained-manifest epoch. The list is bounded to 10,000 attempts, with at most 100
+receipts per page. Exact reads remain available independently of that list bound.
+The Server role invokes the scoped read function and has no direct private-table
+grant. The read function validates the immutable stored envelope before projecting
+safe diagnostic fields. Routing tuples, session identities, fingerprints and
+process names remain private. Source clocks preserve seven fractional digits;
+raw signed counters use exact decimal strings.
+
+The screen distinguishes receipt coverage from source qualification. Every response
+keeps qualification absent, hardware verification and comparison admission false,
+and CPU percentages null. An available receipt list does not establish a CPU
+baseline, health status or continuity between runs. A missing or expired private
+payload yields a visible gap, with the canonical attempt preserved.
+
+Resources URLs retain an exact CPU run and sample revision through the shared
+window and database controls. Malformed pins remain visible until explicitly
+cleared or replaced. Paging, refresh, cancellation and access changes fence stale
+responses; a denied read purges retained content until access is explicitly retried.
+
+MCP projections, public CPU comparison and dashboard series remain separate work.
+This diagnostic history does not complete CPU dashboard support. Current/long-running SQL Agent job data
 and qualified AG transition sources remain independent open dependencies; a
 failure-history duration or sampled role change does not complete them.
 

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import {cpuCaptureFixtureBinding} from '../tools/cpu-capture-window-history-fixture.mjs';
 
 const origin = 'http://127.0.0.1:4334';
 const alpha = '11111111-1111-4111-8111-000000000001', beta = '11111111-1111-4111-8111-000000000002';
@@ -54,6 +55,14 @@ test.beforeEach(async ({ page }) => {
     }
     const match = /^\/api\/v1\/observation-targets\/([^/]+)(?:\/(.+))?$/.exec(url.pathname);
     if (!match || ![alpha, beta].includes(match[1])) return reject();
+    if (match[2] === 'resources/cpu/captures') {
+      const cpu = cpuCaptureFixtureBinding(url);
+      if (!cpu || cpu.selection || cpu.cursor || cpu.limit !== 100 || cpu.binding.targetRevision !== 1
+          || cpu.binding.targetId !== match[1] || !cpu.binding.fromUtc || !cpu.binding.toUtc
+          || [...url.searchParams.keys()].some(key => !['targetRevision', 'limit', 'fromUtc', 'toUtc'].includes(key)
+            || url.searchParams.getAll(key).length !== 1)) return reject();
+      context.supporting.push(url); return route.continue();
+    }
     if (!match[2] || supporting.has(match[2]) || /^resources\/files\/history(?:\/[a-f0-9-]+)?$/.test(match[2])) { context.supporting.push(url); return route.continue(); }
     if (match[2] === 'resources/volumes/history') {
       if (url.searchParams.get('targetRevision') !== '1' || url.searchParams.get('limit') !== '25' ||

@@ -1064,3 +1064,32 @@ Complete failed attempts and consumed source bytes remain preserved: analyzer-re
 Migration 0359 SHA-256 is `ce67c0c98abcee286fb89be17dd366cd104cabbb18fe7d82db2ed99859f5d11f`. Evidence lives at `artifacts/dashboard-cpu-paired-capture-2026-10-04/`: requirement summary/gallery index, frozen completion record, final review, complete attempts/source bytes/TRX, native inventory review and checkpoint metadata. The source boundary guide is `docs/technical/Cpu-Paired-Capture.md`.
 
 The fresh configured SSH attempt timed out at 192.168.50.76:22; the current route/VPN clarification remains pending. Native supported-version/failure qualification and monitoring-identity behavior, CPU retained reads/API/MCP/dashboard series/admission, running/long-running Agent sources and qualified AG transitions remain open. The broader dashboard and original plan remain incomplete. No GitHub push/upload occurred.
+
+## Retained CPU diagnostic history dashboard checkpoint — 2026-10-04 UTC
+
+Three independent lanes owned the domain/service/routes and HTTP contracts, PostgreSQL read projection/native fixtures, and dark Resources UI/interactions/accessibility fixtures. The lead integrated production registration, exact URL pins, shared context, synthetic fixture routes and real PostgreSQL HTTP journeys, then executed all checks serially. Fresh source reviews covered authorization, native scope/epoch/privacy, frontend ownership and theme/focus boundaries.
+
+Resources now browses canonical completed CPU capture attempts and independently reads an exact run/sample revision within the shared completion window. Failures, payload expiry, older revisions, invalid URL pins and list-bound refusals remain explicit. No older successful capture substitutes for a failed or missing selected run. Protected continuations retain their original cutoff, manifest epoch and fifteen-minute expiry. Literal seven-digit source clocks and exact decimal Int64 counters survive the native API and browser projection; private routing tuples, fingerprints and process names remain withheld.
+
+Forward migration 0360 grants only the scoped read entry point to Server. Stored wrappers, canonical bindings, digest and qualification are checked before detail projection. The staged producer remains unregistered; retention remains disabled by default. Qualification is absent, hardware/comparison flags false and CPU percentages null throughout the API and UI. This completes retained diagnostic history, not native CPU health admission, CPU series or MCP coverage.
+
+Final affected groups passed **334/334**, with no failures or skips in the successful whole groups: unit/preamble21, HTTP26, actual PostgreSQL18.4/canonical writer/inventory58, parser/transport/URL78, mounted CPU/file67, built App CPU/file31, Resources context13, Resources accessibility20, native insights14 and volume browsing6. TypeScript, production build and generated asset verification passed. Every owning check preserved unchanged source during execution; its consumed inputs and final browser asset hashes match the final 2304-input freeze. Unrelated frontend test-only repairs do not require repeating unchanged native checks.
+
+Four full failed attempts remain preserved with original source, assertions, screenshots and traces. `components-01` caught hash-navigation timing and an incorrect shared-validator wording assertion. `app-01` caught tests expecting the discarded bootstrap window instead of the loaded authoritative window. `app-02` encountered Chromium `ERR_NO_BUFFER_SPACE` before an existing file test could navigate; a fresh full31-case run passed. `volume-browsing-01` caught a strict local fixture allowlist missing the new CPU GET; the narrow route registration preserved origin/method/target/query guards. No product behavior was relaxed and no passing subsets were combined.
+
+The final Git whitespace check found one extra blank line at the end of the new endpoint file. Only that trailing newline was removed, and the whole unit/HTTP/PostgreSQL groups were repeated against the final bytes. Frontend consumed source and generated assets remained unchanged. The original bytes and formatting repair note remain in the evidence folder.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Independent subagents and integration lead | Non-overlapping backend/storage/UI lanes; fresh source review; lead resolved integration and ran final checks. |
+| Dark theme | Shared theme tokens, readable raw values and clear qualification states; four-width axe/keyboard checks pass. |
+| Diagnostic-screen review | Exact retained CPU evidence and failures remain truthful; current Agent and qualified AG transition sources remain open. |
+| Interaction tests | Exact links, reload/history, Live-to-Rewind, continuation/local paging, refresh/cancel/retry, denial and stale/ABA fences pass. |
+| Accessibility/responsive | 320/390/768/1440px, keyboard focus, 44px controls, local overflow and forced colors verified; no manual screen-reader/device certification claim. |
+| Validation after integration | Whole affected groups pass against final consumed source and built assets, including real PostgreSQL and production HTTP. |
+| Screenshots | 18 fresh CPU captures plus affected-screen captures in the 71-image synthetic gallery; all62 prior gallery images preserved and hash-verified. |
+| Dashboard-only scope | Resources diagnostics and its canonical read dependency; no production collector activation or unrelated redesign. |
+
+Migration0360 SHA-256 is `8b38736c45e6687f8f5d5ba53a7736b3810f4dd4235e1f94e52e021e56bed286`. Evidence lives at `artifacts/dashboard-cpu-capture-history-2026-10-04/`: requirement summary/gallery, successful and failed whole attempts, source snapshots/TRX/traces, consumed-input verification and local checkpoint metadata. The boundary guide is `docs/technical/Cpu-Paired-Capture.md`.
+
+Native Windows/SQL supported-version/failure qualification, monitoring identity, CPU health admission/series/MCP, running/long-running Agent sources and qualified AG transitions remain open. The prior fresh SSH route failure remains unresolved; no repeated retry or invented lab success is recorded. The broader dashboard and original plan remain incomplete. No GitHub push/upload occurred.

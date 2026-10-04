@@ -6,7 +6,10 @@ import { resourceInspectionUtc } from "./resourceInspectionModel.ts";
 export interface ResourceFileSelection { readonly databaseId: number; readonly fileId: number }
 export interface ResourceVolumeSelection { readonly sampleTargetRevision: number; readonly volumeKey: string }
 export interface ResourceFileSnapshotSelection { readonly runId: string; readonly sampleTargetRevision: number }
+export interface ResourceCpuCaptureSelection { readonly runId: string; readonly sampleTargetRevision: number }
 export interface ResourceSelection {
+  readonly cpuCapture?: ResourceCpuCaptureSelection;
+  readonly invalidCpuCapture?: boolean;
   readonly file?: ResourceFileSelection;
   readonly fileSnapshot?: ResourceFileSnapshotSelection;
   readonly invalidFileSnapshot?: boolean;
@@ -73,13 +76,14 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
   if (params.getAll("target").length !== 1 || !target || !validTarget(target) ||
     (expectedTarget !== undefined && target.toLowerCase() !== expectedTarget.toLowerCase())) return {};
   const scope = readOverviewScope(hash);
-  const hasSelection = ["resourceDatabaseId", "resourceFileId", "fileSnapshotRun", "fileSnapshotRevision", "numaNodeId", "resourceAt", "volumeRevision", "volumeKey"].some(key => params.has(key));
+  const hasSelection = ["resourceDatabaseId", "resourceFileId", "fileSnapshotRun", "fileSnapshotRevision", "cpuCaptureRun", "cpuCaptureRevision", "numaNodeId", "resourceAt", "volumeRevision", "volumeKey"].some(key => params.has(key));
   if (hasSelection && !validBaseContext(params, scope)) return {
     invalidContext: true,
     issues: ["Requested resource selections have invalid or ambiguous database and time context. Clear resource selections before choosing new evidence."],
     ...(params.has("numaNodeId") ? { invalidNode: true } : {}),
     ...(params.has("volumeRevision") || params.has("volumeKey") ? { invalidVolume: true } : {}),
     ...(params.has("fileSnapshotRun") || params.has("fileSnapshotRevision") ? { invalidFileSnapshot: true } : {}),
+    ...(params.has("cpuCaptureRun") || params.has("cpuCaptureRevision") ? { invalidCpuCapture: true } : {}),
   };
   const issues: string[] = [];
   let file: ResourceFileSelection | undefined;
@@ -90,6 +94,16 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
   let invalidVolume = false;
   let fileSnapshot: ResourceFileSnapshotSelection | undefined;
   let invalidFileSnapshot = false;
+  let cpuCapture: ResourceCpuCaptureSelection | undefined;
+  let invalidCpuCapture = false;
+  if (params.has("cpuCaptureRun") || params.has("cpuCaptureRevision")) {
+    const runId = params.get("cpuCaptureRun"), sampleTargetRevision = revision(params.get("cpuCaptureRevision"));
+    if (params.getAll("cpuCaptureRun").length !== 1 || params.getAll("cpuCaptureRevision").length !== 1 ||
+        runId === null || !validTarget(runId) || sampleTargetRevision === undefined) {
+      invalidCpuCapture = true;
+      issues.push("The requested CPU capture run or sample revision is invalid. Clear the capture selection or choose an exact received receipt; no other capture has been selected.");
+    } else cpuCapture = { runId: runId.toLowerCase(), sampleTargetRevision };
+  }
   if (params.has("fileSnapshotRun") || params.has("fileSnapshotRevision")) {
     const runId = params.get("fileSnapshotRun"), sampleTargetRevision = revision(params.get("fileSnapshotRevision"));
     if (params.getAll("fileSnapshotRun").length !== 1 || params.getAll("fileSnapshotRevision").length !== 1 ||
@@ -131,7 +145,7 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
       if (scope.range === "custom") inspectionUtc = resourceInspectionUtc(inspectionUtc, scope.from ?? "", scope.to ?? "");
     } catch { inspectionUtc = undefined; issues.push("The requested resource inspection time is invalid or outside the shared window. Align another time or clear resource selections."); }
   }
-  return { ...(file ? { file } : {}), ...(fileSnapshot ? { fileSnapshot } : {}), ...(invalidFileSnapshot ? { invalidFileSnapshot: true } : {}), ...(volume ? { volume } : {}), ...(invalidVolume ? { invalidVolume: true } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
+  return { ...(cpuCapture ? { cpuCapture } : {}), ...(invalidCpuCapture ? { invalidCpuCapture: true } : {}), ...(file ? { file } : {}), ...(fileSnapshot ? { fileSnapshot } : {}), ...(invalidFileSnapshot ? { invalidFileSnapshot: true } : {}), ...(volume ? { volume } : {}), ...(invalidVolume ? { invalidVolume: true } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
     ...(inspectionUtc ? { inspectionUtc } : {}), ...(issues.length ? { issues } : {}), ...(invalidNode ? { invalidNode: true } : {}) };
 }
 
@@ -143,6 +157,10 @@ export function resourceSelectionHref(scope: OverviewScope, selection: ResourceS
   if (validFile(selection.file, scope)) {
     params.set("resourceDatabaseId", String(selection.file!.databaseId));
     params.set("resourceFileId", String(selection.file!.fileId));
+  }
+  if (selection.cpuCapture && validTarget(selection.cpuCapture.runId) && Number.isSafeInteger(selection.cpuCapture.sampleTargetRevision) && selection.cpuCapture.sampleTargetRevision >= 1) {
+    params.set("cpuCaptureRun", selection.cpuCapture.runId.toLowerCase());
+    params.set("cpuCaptureRevision", String(selection.cpuCapture.sampleTargetRevision));
   }
   if (selection.fileSnapshot && validTarget(selection.fileSnapshot.runId) && Number.isSafeInteger(selection.fileSnapshot.sampleTargetRevision) && selection.fileSnapshot.sampleTargetRevision >= 1) {
     params.set("fileSnapshotRun", selection.fileSnapshot.runId.toLowerCase());
@@ -173,7 +191,7 @@ export function retainResourceSelectionHref(href: string, currentHash: string): 
   if (currentScope.target.toLowerCase() !== target.toLowerCase()) return href;
   const nextScope = readOverviewScope(href);
   if (!validBaseContext(destination, nextScope)) return href;
-  return preserveInvalidFileSnapshotHref(resourceSelectionHref(nextScope, readResourceSelection(currentHash, target)), currentHash);
+  return preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(nextScope, readResourceSelection(currentHash, target)), currentHash), currentHash);
 }
 
 /** An invalid explicit snapshot pin remains explicit until the user clears or replaces it. */
@@ -183,5 +201,18 @@ export function preserveInvalidFileSnapshotHref(href: string, currentHash: strin
   const [path,query]=href.split("?"),destination=new URLSearchParams(query),source=new URLSearchParams(currentHash.split("?")[1]);
   if(!/^#\/?resources$/u.test(path??"")||!validBaseContext(destination,next))return href;
   for(const key of ["fileSnapshotRun","fileSnapshotRevision"]){destination.delete(key);for(const value of source.getAll(key))destination.append(key,value);}
+  return `${path}?${destination}`;
+}
+
+/** Malformed explicit CPU pins survive unrelated context changes until cleared or replaced. */
+export function preserveInvalidCpuCaptureHref(href: string, currentHash: string): string {
+  const current = readOverviewScope(currentHash), next = readOverviewScope(href);
+  if (current.target.toLowerCase() !== next.target.toLowerCase() || !readResourceSelection(currentHash, current.target).invalidCpuCapture) return href;
+  const [path, query] = href.split("?"), destination = new URLSearchParams(query), source = new URLSearchParams(currentHash.split("?")[1]);
+  if (!/^#\/?resources$/u.test(path ?? "") || !validBaseContext(destination, next)) return href;
+  for (const key of ["cpuCaptureRun", "cpuCaptureRevision"]) {
+    destination.delete(key);
+    for (const value of source.getAll(key)) destination.append(key, value);
+  }
   return `${path}?${destination}`;
 }

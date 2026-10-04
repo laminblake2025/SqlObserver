@@ -12,12 +12,15 @@ import { SqlVolumePanel } from "./SqlVolumePanel";
 import { SqlVolumeHistoryPanel } from "./SqlVolumeHistoryPanel";
 import { useChartReferences } from "../overview/useChartReferences.ts";
 import { resourceInspectionInputUtc, resourceInspectionUtc } from "./resourceInspectionModel.ts";
-import { readResourceSelection, resourceSelectionHref, preserveInvalidFileSnapshotHref, resourceWindowMatches, type ResourceSelection } from "./resourceSelectionModel.ts";
+import { readResourceSelection, resourceSelectionHref, preserveInvalidFileSnapshotHref, preserveInvalidCpuCaptureHref, resourceWindowMatches, type ResourceSelection } from "./resourceSelectionModel.ts";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 
 import { useDatabaseFileWindowHistory } from "./useDatabaseFileWindowHistory.ts";
 import { DatabaseFileWindowHistoryPanel } from "./DatabaseFileWindowHistoryPanel.tsx";
 import { fileHistoryWindow, type FileSnapshotSelection } from "./databaseFileWindowHistoryModel.ts";
+import { useCpuCaptureWindowHistory } from "./useCpuCaptureWindowHistory.ts";
+import { CpuCaptureWindowHistoryPanel } from "./CpuCaptureWindowHistoryPanel.tsx";
+import { cpuCaptureWindow, type CpuCaptureSelection } from "./cpuCaptureWindowHistoryModel.ts";
 
 const memoryMetrics = new Set([
   "engine.process_physical_memory_bytes", "engine.os_available_memory_bytes",
@@ -81,7 +84,8 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     const latestScope = readOverviewScope(location.hash);
     if (!/^#\/?resources(?:\?|$)/u.test(location.hash) || latestScope.target.toLowerCase() !== instanceId.toLowerCase()) return;
     const href = resourceSelectionHref(latestScope, clearAll ? {} : { ...readResourceSelection(location.hash, instanceId), ...change });
-    location.hash = clearAll || Object.hasOwn(change,"fileSnapshot") ? href : preserveInvalidFileSnapshotHref(href,location.hash);
+    const withFilePin = clearAll || Object.hasOwn(change,"fileSnapshot") ? href : preserveInvalidFileSnapshotHref(href,location.hash);
+    location.hash = clearAll || Object.hasOwn(change,"cpuCapture") ? withFilePin : preserveInvalidCpuCaptureHref(withFilePin,location.hash);
   };
   const changeInspectionTime = (utc: string | null) => {
     if (utc === null) { setInspection(undefined); return; }
@@ -120,7 +124,25 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     if(latestScope.databaseId!==scope.databaseId||latestScope.range==="custom"&&!resourceWindowMatches(latestScope.from??"",latestScope.to??"",inspectionWindow.fromUtc,inspectionWindow.toUtc)||latestScope.range!=="custom"&&latestScope.range!==scope.range)return;
     const selection = { ...readResourceSelection(location.hash,instanceId), ...(file ? {file} : {}), ...(clearSnapshot ? {fileSnapshot:undefined} : snapshot ? {fileSnapshot:snapshot} : {}) };
     const href=resourceSelectionHref({...latestScope,range:"custom",from:inspectionWindow.fromUtc,to:inspectionWindow.toUtc},selection);
-    location.hash=clearSnapshot || snapshot ? href : preserveInvalidFileSnapshotHref(href,location.hash);
+    location.hash=preserveInvalidCpuCaptureHref(clearSnapshot || snapshot ? href : preserveInvalidFileSnapshotHref(href,location.hash),location.hash);
+  };
+  const cpuWindow = (() => {
+    if (resourceSelection.invalidContext) return { window: undefined, error: "The requested CPU capture has ambiguous shared context. Clear resource selections before choosing evidence." };
+    try { return inspectionWindow ? { window: cpuCaptureWindow(inspectionWindow.fromUtc, inspectionWindow.toUtc), error: undefined }
+      : { window: undefined, error: "Choose a valid shared time window for CPU capture evidence." }; }
+    catch (failure) { return { window: undefined, error: failure instanceof Error ? failure.message : "Choose a valid CPU capture history window." }; }
+  })();
+  const cpuHistory = useCpuCaptureWindowHistory(cpuWindow.window ? { targetId: instanceId, targetRevision, ...cpuWindow.window } : undefined,
+    resourceSelection.invalidCpuCapture || resourceSelection.invalidContext ? null : resourceSelection.cpuCapture, manualRefresh, accessContext);
+  const beginCpuInvestigation = (capture?: CpuCaptureSelection, retainWindow = false) => {
+    const latestScope = readOverviewScope(location.hash), latestSelection = readResourceSelection(location.hash, instanceId);
+    if (!inspectionWindow || latestSelection.invalidContext || !/^#\/?resources(?:\?|$)/u.test(location.hash) || latestScope.target.toLowerCase() !== instanceId.toLowerCase()) return;
+    if (latestScope.databaseId !== scope.databaseId || latestScope.range === "custom" && !resourceWindowMatches(latestScope.from ?? "", latestScope.to ?? "", inspectionWindow.fromUtc, inspectionWindow.toUtc)
+      || latestScope.range !== "custom" && latestScope.range !== scope.range) return;
+    const selected = { ...latestSelection, cpuCapture: capture };
+    const pinnedScope = capture || retainWindow ? { ...latestScope, range: "custom" as const, from: inspectionWindow.fromUtc, to: inspectionWindow.toUtc } : latestScope;
+    const href = preserveInvalidFileSnapshotHref(resourceSelectionHref(pinnedScope, selected), location.hash);
+    location.hash = retainWindow && latestSelection.invalidCpuCapture ? preserveInvalidCpuCaptureHref(href, location.hash) : href;
   };
   const isRewind = scope.range === "custom";
 
@@ -141,15 +163,15 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       ? "SQL process used" : item.metric === "engine.os_available_memory_bytes"
         ? "OS available via SQL" : "Collector host available" })) ?? [];
   return <section className="activity-screen" aria-labelledby="resources-heading">
-    <div className="screen-intro"><div><p className="eyebrow">Server · resources</p>
+    <div className="screen-intro"><div><p className="eyebrow">Server Â· resources</p>
       <h2 id="resources-heading">Resources for {displayName}</h2>
       <p>SQL Server CPU, memory, per-NUMA page life expectancy, and selected-file latency follow the shared time window. File allocation and autogrowth follow actual collection completions inside this window; cumulative counters remain separate from window latency.</p>
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     <p className="table-note">CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.</p>
     {resourceSelection.issues?.map(issue => <p role="alert" key={issue}>{issue}</p>)}
-    {(resourceSelection.file || resourceSelection.fileSnapshot || resourceSelection.invalidFileSnapshot || resourceSelection.volume || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
+    {(resourceSelection.cpuCapture || resourceSelection.invalidCpuCapture || resourceSelection.file || resourceSelection.fileSnapshot || resourceSelection.invalidFileSnapshot || resourceSelection.volume || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
       <button type="button" className="secondary-button" onClick={() => updateSelection({}, true)}>Clear resource selections</button>}
-    {inspectionWindow && <p><a href={preserveInvalidFileSnapshotHref(resourceSelectionHref(chartScope, resourceSelection),location.hash)}>Open fixed resource investigation</a></p>}
+    {inspectionWindow && <p><a href={preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(chartScope, resourceSelection),location.hash),location.hash)}>Open fixed resource investigation</a></p>}
     <section className="panel server-dashboard-chart" aria-label="Resource chart alignment">
       <h3>Inspect resource charts at one time</h3>
       <p id={inspectionDescriptionId} className="activity-evidence">Align loaded CPU, memory, PLE and file-latency charts to one UTC instant. The marker does not add observations or fill gaps. This keeps the workspace window unchanged.</p>
@@ -169,7 +191,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     </section>
     {result.loading && <p role="status">{result.data && evidence
       ? `Refreshing resource history; previously loaded evidence remains visible for ${formatDisplayTime(result.data.fromUtc, mode)} to ${formatDisplayTime(result.data.toUtc, mode)}.`
-      : "Loading resource history…"}</p>}
+      : "Loading resource historyâ€¦"}</p>}
     {result.error && <p role="alert">{result.error}</p>}
     {result.data && !evidence && <p role="status">No authorized resource evidence was returned for this server.</p>}
     {result.data && evidence && <>
@@ -202,6 +224,9 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     {inspectionWindow && <SqlVolumeHistoryPanel instanceId={instanceId} targetRevision={targetRevision} fromUtc={inspectionWindow.fromUtc} toUtc={inspectionWindow.toUtc}
       compare={scope.compare} refresh={refresh} selectedVolume={resourceSelection.invalidVolume || resourceSelection.invalidContext ? null : resourceSelection.volume}
       onSelectVolume={volume => updateSelection({ volume })} crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime} onSelectWindow={onSelectWindow} />}
+    <CpuCaptureWindowHistoryPanel history={cpuHistory} windowError={cpuWindow.error}
+      selectionInvalid={resourceSelection.invalidCpuCapture || resourceSelection.invalidContext} explicitSelection={resourceSelection.cpuCapture}
+      onSelectCapture={capture => beginCpuInvestigation(capture)} onRetainWindow={() => beginCpuInvestigation(cpuHistory.selected ?? undefined, true)} />
     <DatabaseFileWindowHistoryPanel history={fileHistory} windowError={fileWindow.error}
       selectionInvalid={resourceSelection.invalidFileSnapshot || resourceSelection.invalidContext}
       explicitSelection={resourceSelection.fileSnapshot} selectedFile={resourceSelection.file} databaseId={scope.databaseId}
@@ -214,7 +239,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
       refresh={refresh} onSelectWindow={onSelectWindow} />}
     {result.data && evidence && <section className="compact-evidence-footer" aria-label="Resources evidence status">
       <p>Selected window: {formatDisplayTime(result.data.fromUtc, mode)} to {formatDisplayTime(result.data.toUtc, mode)}. Refreshed {formatDisplayTime(result.data.refreshedAtUtc, mode)}.</p>
-      <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} · {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
+      <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} Â· {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
       <EvidenceDisclosure label="Collection evidence details" attention={evidence.gaps.length > 0 || evidence.collectionState !== "current"}>
         <p>CPU, memory and volume history follow this loaded window. PLE and selected-file latency state their own coverage. File counters describe an exact retained receipt in the shared completion window; latest volume capacity and its forecast are separate Live evidence. Missing observations are never filled with zero.</p>
         <p>Last SQL core observation: {evidence.lastObservedUtc ? formatDisplayTime(evidence.lastObservedUtc, mode) : "unavailable"}. Source status does not establish a health verdict.</p>

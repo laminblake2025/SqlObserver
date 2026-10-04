@@ -321,7 +321,7 @@ public sealed class CpuPairedCaptureCommitPostgreSqlTests(PostgreSql18Fixture fi
         return database;
     }
 
-    private static async Task<Guid> SeedAsync(RepositoryTestDatabase database)
+    internal static async Task<Guid> SeedAsync(RepositoryTestDatabase database)
     {
         // Explicit disposable-fixture admission only. No production registry or default schedule changes.
         var manifest = Assert.IsType<CollectorManifest>(typeof(PairedCpuCaptureCollector).GetMethod("CreateManifest", Hidden)!.Invoke(null, null));
@@ -358,8 +358,8 @@ public sealed class CpuPairedCaptureCommitPostgreSqlTests(PostgreSql18Fixture fi
         return target;
     }
 
-    private sealed record Run(CollectorDueWorkItem Work, CollectorRunId Id, WorkerLeaseIdentity Lease);
-    private static async Task<Run> BeginAsync(RepositoryTestDatabase database, NpgsqlDataSource collector,
+    internal sealed record Run(CollectorDueWorkItem Work, CollectorRunId Id, WorkerLeaseIdentity Lease);
+    internal static async Task<Run> BeginAsync(RepositoryTestDatabase database, NpgsqlDataSource collector,
         PostgreSqlCollectorRuntimeRepositoryPort runtime, Guid target)
     {
         await ExecuteAsync(database, "UPDATE control.collector_schedule SET next_due_at=clock_timestamp()-interval '1 second' WHERE instance_id=@target AND collector_id='cpu.paired-capture';", ("target", target));
@@ -372,7 +372,7 @@ public sealed class CpuPairedCaptureCommitPostgreSqlTests(PostgreSql18Fixture fi
         return new(work, id, lease);
     }
 
-    private static CpuPairedCaptureObservation Capture(Run run, bool complete = true, bool noSourceResponse = false)
+    internal static CpuPairedCaptureObservation Capture(Run run, bool complete = true, bool noSourceResponse = false)
     {
         var binding = new PairedCpuBinding(run.Work.TargetId, run.Work.TargetRevision, run.Id, Fingerprint, 10);
         var host = new PairedCpuHostEvidence(Fingerprint, Machine, ExactLargeInteger, PairedCpuHostWitness.NativeMachineAndBoot);
@@ -404,7 +404,7 @@ public sealed class CpuPairedCaptureCommitPostgreSqlTests(PostgreSql18Fixture fi
             complete ? null : noSourceResponse ? "host_binding_unavailable" : "wrong_host", complete ? null : "permission_denied", complete ? null : "tcp_source_unavailable", complete ? null : "process_mapping_ambiguous");
     }
 
-    private static CommitCollectorRunRequest Commit(Run run, CpuPairedCaptureObservation? capture,
+    internal static CommitCollectorRunRequest Commit(Run run, CpuPairedCaptureObservation? capture,
         CollectorRunOutcome outcome = CollectorRunOutcome.Succeeded, CollectorRunReason reason = CollectorRunReason.Completed)
     {
         var payload = capture is null ? CollectorPayload.Empty : new CollectorPayload(cpuPairedCapture: capture);
@@ -445,12 +445,12 @@ public sealed class CpuPairedCaptureCommitPostgreSqlTests(PostgreSql18Fixture fi
         await using var command = database.DataSource.CreateCommand("SELECT to_jsonb(r)::text FROM telemetry.cpu_paired_capture_receipt r WHERE run_id=@run;");
         command.Parameters.AddWithValue("run", run.Value); return Assert.IsType<string>(await command.ExecuteScalarAsync());
     }
-    private static async Task<long> CountAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
+    internal static async Task<long> CountAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
     {
         await using var command = database.DataSource.CreateCommand(sql); foreach (var p in parameters) command.Parameters.AddWithValue(p.Name, p.Value);
         object? value = await command.ExecuteScalarAsync(); return value is null ? 0 : Assert.IsType<long>(value);
     }
-    private static async Task ExecuteAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
+    internal static async Task ExecuteAsync(RepositoryTestDatabase database, string sql, params (string Name, object Value)[] parameters)
     {
         await using var command = database.DataSource.CreateCommand(sql); foreach (var p in parameters) command.Parameters.AddWithValue(p.Name, p.Value);
         await command.ExecuteNonQueryAsync();
