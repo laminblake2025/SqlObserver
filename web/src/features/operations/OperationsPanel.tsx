@@ -56,7 +56,7 @@ export function OperationsPanel({ instanceId, targetRevision, initialTab = "back
   const activeKinds = tab === "replication" ? [] : tabKinds[tab];
   return <section className="operations-screen" aria-label="Health checks">
     <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB pressure, availability, and replication from collected evidence.</p></div></div>
-    <Tabs label="Health check categories" tabs={tabs} value={tab} onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
+    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = healthCheckHref(scope, instanceId, value as OperationsTab); }} />
     <nav className="toolbar" aria-label="Additional health checks">
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>

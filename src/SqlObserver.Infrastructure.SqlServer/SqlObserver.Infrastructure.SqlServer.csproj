@@ -4,6 +4,9 @@
     <AssemblyName>SqlObserver.Infrastructure.SqlServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver15-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver15-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver16-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver16-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver17-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/sql/server.lifecycle.sqlserver15-17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.LifecycleSourceAssets.server.lifecycle.sqlserver15-17-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/sql/cpu.target-witness.sqlserver15-17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.CpuWitnessSourceAssets.cpu.target-witness.sqlserver15-17-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/sql/cpu.target-witness.sqlserver15-17-windows.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.CpuWitnessSourceAssets.cpu.target-witness.sqlserver15-17-windows.v2.sql" />

@@ -13,6 +13,16 @@
   background: var(--surface);
 }
 
+.operations-screen > .tabs .tab {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.operations-screen > .tabs .tab:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -5px;
+}
+
 .operations-screen .operation-projection-receipt,
 .operations-screen .operation-projection-retained,
 .operations-screen .operation-projection-note,
@@ -102,6 +112,10 @@
 }
 
 @media (forced-colors: active) {
+  .operations-screen > .tabs .tab:focus-visible {
+    outline-color: Highlight;
+  }
+
   .operations-screen .operation-projection-retained {
     border-color: CanvasText;
   }
