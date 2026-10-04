@@ -12,6 +12,46 @@ async function mount(page,extra={}){await page.goto(href(extra));await expect(de
 async function browse(page){const summary=receipts(page).locator('summary').first();if(!await receipts(page).evaluate(e=>e.open))await summary.click();}
 async function files(page){const summary=detail(page).locator('summary').filter({hasText:/Browse TempDB file/iu});await expect(summary).toBeVisible();if(!await summary.evaluate(e=>e.parentElement.open))await summary.click();return detail(page).getByRole('table').last();}
 const responseFor=(session,read)=>read.selection?session.backend.snapshot(read.binding,read.selection,read.cursor,read.limit):session.backend.read(read.binding,read.cursor,read.limit);
+
+async function containedEvidence(page){
+ const geometry=await panel(page).evaluate(root=>{
+  const box=root.getBoundingClientRect(),style=getComputedStyle(root);
+  const left=box.left+parseFloat(style.borderLeftWidth)+parseFloat(style.paddingLeft);
+  const right=box.right-parseFloat(style.borderRightWidth)-parseFloat(style.paddingRight);
+  const visible=element=>element.getClientRects().length>0&&element.getBoundingClientRect().width>0;
+  const nodes=[...root.querySelectorAll(':scope > *, header, p, details, summary, .tempdb-receipt, .table-scroll')].filter(visible).map(element=>{
+   const rect=element.getBoundingClientRect();
+   return{label:element.tagName+' '+(element.getAttribute('aria-label')??element.className),left:rect.left,right:rect.right};
+  });
+  const scrolls=[...root.querySelectorAll('.table-scroll')].filter(visible).map(element=>{
+   const parent=element.parentElement,parentBox=parent.getBoundingClientRect(),parentStyle=getComputedStyle(parent);
+   const available=parentBox.width-parseFloat(parentStyle.paddingLeft)-parseFloat(parentStyle.paddingRight)-parseFloat(parentStyle.borderLeftWidth)-parseFloat(parentStyle.borderRightWidth);
+   return{label:element.getAttribute('aria-label'),client:element.clientWidth,scroll:element.scrollWidth,available,overflow:getComputedStyle(element).overflowX};
+  });
+  return{left,right,viewport:innerWidth,nodes,scrolls};
+ });
+ expect(geometry.right-geometry.left).toBeGreaterThan(0);
+ for(const node of geometry.nodes){
+  expect(node.left,node.label+' left edge must fit panel content').toBeGreaterThanOrEqual(geometry.left-1);
+  expect(node.right,node.label+' right edge must fit panel content').toBeLessThanOrEqual(geometry.right+1);
+  expect(node.left,node.label+' must fit viewport').toBeGreaterThanOrEqual(-1);
+  expect(node.right,node.label+' must fit viewport').toBeLessThanOrEqual(geometry.viewport+1);
+ }
+ for(const scroll of geometry.scrolls){
+  expect(scroll.client,scroll.label+' must have a real local viewport').toBeGreaterThan(0);
+  expect(scroll.client,scroll.label+' must fit parent content').toBeLessThanOrEqual(scroll.available+1);
+  expect(scroll.client,scroll.label+' must fit panel content').toBeLessThanOrEqual(geometry.right-geometry.left+1);
+  expect(['auto','scroll'],scroll.label+' must scroll locally').toContain(scroll.overflow);
+  if(geometry.viewport<=390)expect(scroll.scroll,scroll.label+' must overflow locally on mobile').toBeGreaterThan(scroll.client);
+ }
+ return geometry;
+}
+async function openReceiptIdentities(page){
+ for(const summary of await panel(page).locator('.tempdb-receipt summary').all()){
+  if(!await summary.evaluate(element=>element.parentElement.open))await summary.press('Enter');
+ }
+}
+
 test.beforeEach(async({page})=>{await page.clock.setFixedTime(new Date('2026-10-04T12:00:00Z'));await page.addInitScript(()=>localStorage.setItem('sqlobserver.timeDisplayMode','utc'));sessions.set(page,await installTempDbHistoryFixture(page));});
 test.afterEach(async({page})=>expect(sessions.get(page).errors,'Only bounded registered native-shaped reads may run').toEqual([]));
 
@@ -84,7 +124,7 @@ test('whole-window overflow does not suppress independent exact selected receipt
  sessions.get(page).backend.settings.count=10001;await page.goto(href({tempDbRun:tempDbHistoryReceipt().runId,tempDbRevision:'1'}));await expect(button(page,'Retry TempDB history read')).toBeVisible();await expect(detail(page)).toContainText('9007199254741505');expect(sessions.get(page).reads.filter(r=>r.selection)).toHaveLength(1);
 });
 for(const width of [320,390,768,1440])test(`dark TempDB evidence at ${width}px has strict overflow, keyboard access, visible focus and WCAG21A`,async({page},info)=>{
- await page.setViewportSize({width,height:1000});await mount(page);await browse(page);const table=await files(page),scroll=table.locator('..');await scroll.scrollIntoViewIfNeeded();await scroll.press('ArrowRight');await expect(scroll).toBeFocused();if(await scroll.evaluate(e=>e.scrollWidth>e.clientWidth))await expect.poll(()=>scroll.evaluate(e=>e.scrollLeft)).toBeGreaterThan(0);const focus=await scroll.evaluate(e=>({style:getComputedStyle(e).outlineStyle,width:parseFloat(getComputedStyle(e).outlineWidth)}));expect(focus.style).not.toBe('none');expect(focus.width).toBeGreaterThanOrEqual(2);
+ await page.setViewportSize({width,height:1000});await mount(page);await containedEvidence(page);await browse(page);await containedEvidence(page);const table=await files(page),scroll=table.locator('..');await openReceiptIdentities(page);const geometry=await containedEvidence(page);expect(geometry.scrolls).toHaveLength(2);await info.attach('tempdb-panel-geometry',{body:JSON.stringify(geometry,null,2),contentType:'application/json'});await scroll.scrollIntoViewIfNeeded();await scroll.press('ArrowRight');await expect(scroll).toBeFocused();if(await scroll.evaluate(e=>e.scrollWidth>e.clientWidth))await expect.poll(()=>scroll.evaluate(e=>e.scrollLeft)).toBeGreaterThan(0);const focus=await scroll.evaluate(e=>({style:getComputedStyle(e).outlineStyle,width:parseFloat(getComputedStyle(e).outlineWidth)}));expect(focus.style).not.toBe('none');expect(focus.width).toBeGreaterThanOrEqual(2);
  for(const name of ['Refresh TempDB window history','Refresh selected TempDB receipt','Next TempDB receipts page']){const box=await button(page,name).boundingBox();expect(box.height).toBeGreaterThanOrEqual(44);expect(box.width).toBeGreaterThanOrEqual(44);}
  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);expect(await page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme)).toBe('dark');const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();await info.attach('tempdb-axe',{body:JSON.stringify(axe.violations,null,2),contentType:'application/json'});expect(axe.violations).toEqual([]);const folder=fileURLToPath(new URL('../../artifacts/dashboard-tempdb-history-2026-10-04/screenshots/',import.meta.url));await mkdir(folder,{recursive:true});await page.screenshot({path:folder+`tempdb-component-${width}-focus.png`});await page.evaluate(()=>{document.activeElement?.blur();scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:folder+`tempdb-component-${width}.png`,fullPage:true});
 });

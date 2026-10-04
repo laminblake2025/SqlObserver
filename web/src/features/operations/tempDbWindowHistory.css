@@ -1,4 +1,6 @@
-.tempdb-window-history{min-width:0;display:grid;gap:1rem;padding:20px}
+.tempdb-window-history{min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;padding:20px}
+.tempdb-window-history>*{min-width:0;max-width:100%}
+.tempdb-window-history details,.tempdb-window-history .tempdb-receipt{min-width:0;max-width:100%}
 .tempdb-window-history>section{min-width:0;border-top:1px solid var(--border);padding-top:1rem}
 .tempdb-window-history p,.tempdb-window-history dd,.tempdb-window-history th,.tempdb-window-history td{overflow-wrap:anywhere}
 .tempdb-window-history h4,.tempdb-window-history h5,.tempdb-window-history h6{margin:.5rem 0;font-size:1rem}

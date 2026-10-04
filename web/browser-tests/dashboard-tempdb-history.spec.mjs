@@ -12,6 +12,46 @@ async function open(page,extra={}){await page.goto(href(extra));await expect(det
 async function browse(page){const summary=panel(page).getByText('Browse TempDB collection receipts',{exact:true});if(!await summary.evaluate(e=>e.parentElement.open))await summary.press('Enter');}
 async function files(page){const summary=detail(page).getByText('Browse TempDB files from selected receipt',{exact:true});if(!await summary.evaluate(e=>e.parentElement.open))await summary.press('Enter');return detail(page).getByRole('region',{name:'Received TempDB files from selected receipt',exact:true});}
 async function capture(page,name){const folder=fileURLToPath(new URL('../../artifacts/dashboard-tempdb-history-2026-10-04/screenshots/',import.meta.url));await mkdir(folder,{recursive:true});await page.screenshot({path:folder+name+'.png',fullPage:true});}
+
+async function containedEvidence(page){
+ const geometry=await panel(page).evaluate(root=>{
+  const box=root.getBoundingClientRect(),style=getComputedStyle(root);
+  const left=box.left+parseFloat(style.borderLeftWidth)+parseFloat(style.paddingLeft);
+  const right=box.right-parseFloat(style.borderRightWidth)-parseFloat(style.paddingRight);
+  const visible=element=>element.getClientRects().length>0&&element.getBoundingClientRect().width>0;
+  const nodes=[...root.querySelectorAll(':scope > *, header, p, details, summary, .tempdb-receipt, .table-scroll')].filter(visible).map(element=>{
+   const rect=element.getBoundingClientRect();
+   return{label:element.tagName+' '+(element.getAttribute('aria-label')??element.className),left:rect.left,right:rect.right};
+  });
+  const scrolls=[...root.querySelectorAll('.table-scroll')].filter(visible).map(element=>{
+   const parent=element.parentElement,parentBox=parent.getBoundingClientRect(),parentStyle=getComputedStyle(parent);
+   const available=parentBox.width-parseFloat(parentStyle.paddingLeft)-parseFloat(parentStyle.paddingRight)-parseFloat(parentStyle.borderLeftWidth)-parseFloat(parentStyle.borderRightWidth);
+   return{label:element.getAttribute('aria-label'),client:element.clientWidth,scroll:element.scrollWidth,available,overflow:getComputedStyle(element).overflowX};
+  });
+  return{left,right,viewport:innerWidth,nodes,scrolls};
+ });
+ expect(geometry.right-geometry.left).toBeGreaterThan(0);
+ for(const node of geometry.nodes){
+  expect(node.left,node.label+' left edge must fit panel content').toBeGreaterThanOrEqual(geometry.left-1);
+  expect(node.right,node.label+' right edge must fit panel content').toBeLessThanOrEqual(geometry.right+1);
+  expect(node.left,node.label+' must fit viewport').toBeGreaterThanOrEqual(-1);
+  expect(node.right,node.label+' must fit viewport').toBeLessThanOrEqual(geometry.viewport+1);
+ }
+ for(const scroll of geometry.scrolls){
+  expect(scroll.client,scroll.label+' must have a real local viewport').toBeGreaterThan(0);
+  expect(scroll.client,scroll.label+' must fit parent content').toBeLessThanOrEqual(scroll.available+1);
+  expect(scroll.client,scroll.label+' must fit panel content').toBeLessThanOrEqual(geometry.right-geometry.left+1);
+  expect(['auto','scroll'],scroll.label+' must scroll locally').toContain(scroll.overflow);
+  if(geometry.viewport<=390)expect(scroll.scroll,scroll.label+' must overflow locally on mobile').toBeGreaterThan(scroll.client);
+ }
+ return geometry;
+}
+async function openReceiptIdentities(page){
+ for(const summary of await panel(page).locator('.tempdb-receipt summary').all()){
+  if(!await summary.evaluate(element=>element.parentElement.open))await summary.press('Enter');
+ }
+}
+
 test.beforeEach(async({page})=>{await page.clock.setFixedTime(new Date('2026-10-04T12:00:00Z'));await page.context().addCookies([{name:'dashboardRefactor',value:'1',url:origin},{name:'chartReferenceRole',value:'viewer',url:origin}]);await page.addInitScript(()=>localStorage.setItem('sqlobserver.timeDisplayMode','utc'));sessions.set(page,await installTempDbHistoryFixture(page,{origin,allowOtherApi:true}));});
 test.afterEach(async({page})=>expect(sessions.get(page).errors,'No external traffic or unknown TempDB query shape').toEqual([]));
 for(const mode of ['failedLatest','missingLatest','emptyLatest'])test(`built App keeps newest ${mode} as default instead of choosing an older successful receipt`,async({page})=>{
@@ -36,7 +76,7 @@ test('missing selected payload and independent list cap have explicit recovery w
  const s=sessions.get(page);s.backend.settings.count=10001;s.backend.settings.detailAbsent=true;await page.goto(href({tempDbRun:tempDbHistoryReceipt(1).runId,tempDbRevision:'1'}));await expect(button(page,'Retry TempDB history read')).toBeVisible();await expect(detail(page)).toContainText('not retained');await expect(detail(page)).not.toContainText('9007199254741505');expect(scope(page).tempDbRun).toBe(tempDbHistoryReceipt(1).runId);
 });
 for(const width of [320,390,768,1440])test(`built TempDB workflow is dark, keyboard-scrollable and WCAG21A at ${width}px`,async({page},info)=>{
- await page.setViewportSize({width,height:1000});await open(page);await browse(page);const scroll=await files(page);await scroll.scrollIntoViewIfNeeded();await scroll.press('ArrowRight');await expect(scroll).toBeFocused();if(await scroll.evaluate(e=>e.scrollWidth>e.clientWidth))await expect.poll(()=>scroll.evaluate(e=>e.scrollLeft)).toBeGreaterThan(0);expect(await scroll.evaluate(e=>parseFloat(getComputedStyle(e).outlineWidth))).toBeGreaterThanOrEqual(2);for(const label of ['Refresh TempDB window history','Refresh selected TempDB receipt','Clear selected TempDB receipt']){if(await button(page,label).count()){const box=await button(page,label).boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);}}expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);expect(await page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme)).toBe('dark');const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();await info.attach('tempdb-built-axe',{body:JSON.stringify(axe.violations,null,2),contentType:'application/json'});expect(axe.violations).toEqual([]);await capture(page,`tempdb-built-${width}-focus`);await page.evaluate(()=>{document.activeElement?.blur();scrollTo({top:0,left:0,behavior:'instant'});});await capture(page,`tempdb-built-${width}`);
+ await page.setViewportSize({width,height:1000});await open(page);await containedEvidence(page);await browse(page);await containedEvidence(page);const scroll=await files(page);await openReceiptIdentities(page);const geometry=await containedEvidence(page);expect(geometry.scrolls).toHaveLength(2);await info.attach('tempdb-built-panel-geometry',{body:JSON.stringify(geometry,null,2),contentType:'application/json'});await scroll.scrollIntoViewIfNeeded();await scroll.press('ArrowRight');await expect(scroll).toBeFocused();if(await scroll.evaluate(e=>e.scrollWidth>e.clientWidth))await expect.poll(()=>scroll.evaluate(e=>e.scrollLeft)).toBeGreaterThan(0);expect(await scroll.evaluate(e=>parseFloat(getComputedStyle(e).outlineWidth))).toBeGreaterThanOrEqual(2);for(const label of ['Refresh TempDB window history','Refresh selected TempDB receipt','Clear selected TempDB receipt']){if(await button(page,label).count()){const box=await button(page,label).boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);}}expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);expect(await page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme)).toBe('dark');const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();await info.attach('tempdb-built-axe',{body:JSON.stringify(axe.violations,null,2),contentType:'application/json'});expect(axe.violations).toEqual([]);await capture(page,`tempdb-built-${width}-focus`);await page.evaluate(()=>{document.activeElement?.blur();scrollTo({top:0,left:0,behavior:'instant'});});await capture(page,`tempdb-built-${width}`);
 });
 for(const width of [320,1440])test(`built TempDB forced colors retains visible keyboard control focus at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:1000});await page.emulateMedia({forcedColors:'active'});await open(page);const refresh=button(page,'Refresh selected TempDB receipt');await refresh.press('Tab');await page.keyboard.press('Shift+Tab');await expect(refresh).toBeFocused();expect(await refresh.evaluate(e=>parseFloat(getComputedStyle(e).outlineWidth))).toBeGreaterThanOrEqual(2);expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);await capture(page,`tempdb-built-${width}-forced-focus`);
