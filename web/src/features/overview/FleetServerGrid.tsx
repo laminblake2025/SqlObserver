@@ -3,6 +3,7 @@ import { useBackupSummaryClock } from './useBackupSummaryClock';
 import { fleetServerRows, groupFleetServerRows, type FleetGrouping, type FleetSignal } from './fleetGridModel';
 import { FleetServerGroupingEditor, type GroupingRecoveryReason } from './FleetServerGroupingEditor';
 import { backupAssessmentHref, overviewHref } from './overviewModel';
+import { retainChartInspectionHref } from '../../components/chartInspectionModel.ts';
 import { healthCheckHref } from '../operations/agentHistoryModel';
 import type { OverviewScope, OverviewSnapshot, OverviewTarget, OverviewValue } from './overviewTypes';
 
@@ -117,14 +118,14 @@ export function FleetServerGrid({ snapshot, scope, search, onSearch, formatTime,
       {groups.map(group => <tbody key={group.label ?? 'all'}>
         {group.label && <tr className="fleet-group-row"><th scope="rowgroup" colSpan={9}>{groupBy === 'tag' ? 'Tag' : 'Environment'}: {group.label} <small>· {group.rows.length} servers</small></th></tr>}
         {group.rows.map(row => <tr key={row.target.targetId}>
-        <td><a href={overviewHref(scope, 'health', row.target.targetId)}>{row.target.displayName}</a>
+        <td><a href={retainChartInspectionHref(overviewHref(scope, 'health', row.target.targetId), location.hash)}>{row.target.displayName}</a>
           <small>{row.target.environment ?? 'Unassigned'} · {row.target.tags.length ? row.target.tags.join(', ') : 'No tags'}</small>
           {row.target.canManageGrouping && row.target.lifecycle !== 'retired' && <button type="button" className="table-link" disabled={recoveries.has(row.target.targetId.toLowerCase())} aria-label={`Edit grouping for ${row.target.displayName}`} onClick={() => edit(row.target)}>Edit grouping</button>}
         </td>
         <td><a href={overviewHref(scope, 'alerts', row.target.targetId)}>{count(row.evidence?.activeAlerts)} active alerts</a><small>{row.attentionCount} observed issues · SQL core {row.evidence?.collectionState?.replaceAll('_', ' ') ?? 'unavailable'}</small></td>
         <SignalCell label="SQL scheduler CPU" signal={row.signals.cpu} href={overviewHref(scope, 'resources', row.target.targetId)} />
         <SignalCell label="OS free via SQL" signal={row.signals.memory} href={overviewHref(scope, 'resources', row.target.targetId)} />
-        <SignalCell label="Waits" signal={row.signals.waits} href={overviewHref(scope, 'waits', row.target.targetId)} />
+        <SignalCell label="Waits" signal={row.signals.waits} href={retainChartInspectionHref(overviewHref(scope, 'waits', row.target.targetId), location.hash)} />
         <SignalCell label="Blocking" signal={row.signals.blocking} href={overviewHref(scope, 'activity', row.target.targetId)} />
         <SignalCell label="Backups" signal={row.signals.backups} href={backupAssessmentHref(scope, row.target.targetId, row.evidence?.backupSummary?.assessedAtUtc ?? null)} />
         <SignalCell label="HA" signal={row.signals.ha} href={healthCheckHref(scope, row.target.targetId, 'availability')} />

@@ -45,6 +45,7 @@ import { overviewHref, readOverviewScope } from "./features/overview/overviewMod
 import { healthCheckHref } from "./features/operations/agentHistoryModel.ts";
 import { OperationsPanel } from "./features/operations/OperationsPanel";
 import { queryViewHref, readQueryViewSelection } from "./features/queries/queryViewModel";
+import { retainChartInspectionHref } from "./components/chartInspectionModel.ts";
 import { TargetQueryPerformancePanel } from "./features/queries/TargetQueryPerformancePanel";
 import { TargetResourcesPanel } from "./features/resources/TargetResourcesPanel";
 import { queryPerformanceDefaultHref, resolveQueryWindow, type QueryWindowResult } from "./features/queries/queryWindowModel";
@@ -513,7 +514,11 @@ export function App() {
           {props ? (
             <div className="target-surface" key={`${props.instanceId}:${route.page}`}>
               {route.page === "health" && <TargetHealthPanel {...props} embedded scope={scope} refresh={slowRefresh} healthRefresh={blockingRefresh} blockingRefresh={blockingRefresh} selectedDatabaseId={scope.databaseId} onSelectDatabase={changeDatabaseContext} selectedSection={route.healthSection} selectedConfigurationRunId={route.configurationRunId}
-                onSelectSection={section => { location.hash = retainDashboardTimelineHref(healthSectionHref(readOverviewScope(location.hash), props.instanceId, section), location.hash); }}
+                onSelectSection={section => {
+                  const currentHash = location.hash, currentRoute = readRoute(currentHash);
+                  if (currentHash !== renderedHash || currentRoute.page !== "health" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
+                  location.hash = retainChartInspectionHref(retainDashboardTimelineHref(healthSectionHref(readOverviewScope(currentHash), props.instanceId, section), currentHash), currentHash);
+                }}
                 canManageConfiguration={canManageRules} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} targetRevision={selected!.configurationRevision} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} selectionHash={location.hash}
@@ -527,13 +532,13 @@ export function App() {
                   const href = selection.cacheSelection
                     ? overviewHref({ ...scope, databaseId: selection.cacheSelection.databaseId }, "queries", props.instanceId)
                     : location.hash;
-                  location.hash = queryViewHref(href, selection);
+                  location.hash = queryViewHref(retainChartInspectionHref(href, location.hash), selection);
                 }} timeWindow={queryWindow.window} refresh={slowRefresh} canReadText={canReadQueryText(myAccess, props.instanceId)} initialQuerySelection={route.databaseId !== undefined && route.queryFingerprint !== undefined ? { databaseId: route.databaseId, queryFingerprint: route.queryFingerprint, planFingerprint: route.planFingerprint, sourceKind: route.querySource } : undefined}
                 onSelectQuery={(databaseId, queryFingerprint, planFingerprint, sourceKind) => {
                   const currentRoute = readRoute(location.hash);
                   if (location.hash !== renderedHash || currentRoute.page !== "queries" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
-                  const href = queryViewHref(queryJumpHref(scope, props.instanceId, databaseId, queryFingerprint,
-                    planFingerprint, sourceKind), queryView);
+                  const href = queryViewHref(retainChartInspectionHref(queryJumpHref(scope, props.instanceId, databaseId, queryFingerprint,
+                    planFingerprint, sourceKind), location.hash), queryView);
                   window.history.replaceState(window.history.state, "", href);
                   setRoute(readRoute(href));
                 }}
@@ -602,7 +607,7 @@ function retainDiagnosticSelectionHref(href: string, currentHash: string): strin
   next = retainSessionWaitCaptureHref(next, currentHash);
   next = retainAdminSelectionHref(next, currentHash);
   next = retainDeadlockSelectionHref(next, currentHash);
-  return retainAnalyticsSurfaceHref(retainReportSelectionHref(next, currentHash), currentHash);
+  return retainChartInspectionHref(retainAnalyticsSurfaceHref(retainReportSelectionHref(next, currentHash), currentHash), currentHash);
 }
 
 function retainDashboardTimelineHref(href: string, currentHash: string): string {

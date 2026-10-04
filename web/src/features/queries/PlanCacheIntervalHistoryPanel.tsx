@@ -1,4 +1,4 @@
-import { ObservationChart } from "../../components/ObservationChart";
+import { QueryObservationChart as ObservationChart } from "./QueryChartInspection.tsx";
 import { PlanCacheContentPanel } from "./PlanCacheContentPanel";
 import type { PlanCacheContentKind } from "./queryPerformanceTypes";
 import { cacheIntervalRateLabel, formatCacheIntervalRate, maximumCacheTrendSamples, planCacheIntervalTrend } from "./planCacheIntervalTrendModel";

@@ -2,7 +2,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { ObservationChart } from "../../components/ObservationChart";
+import { ChartAlignmentControls } from "../../components/ChartAlignmentControls.tsx";
+import { chartInspectionHref, readChartInspection, retainChartInspectionHref } from "../../components/chartInspectionModel.ts";
+import { useChartInspection } from "../../components/useChartInspection.ts";
 import type { ObservationSeries } from "../../components/observationChartModel";
+import { utcMicroseconds } from "../../utcTimestamp.ts";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { ActivityReadBoundary, activityAccessDenied, useActivityBoundary, useActivitySource, useBoundarySnapshot, type ActivityReadOwner } from "./activityAccess.ts";
 import { getCurrentServerWaitPage, getServerWaitHistoryPage } from "./activityApi";
@@ -20,6 +24,7 @@ import { retainSessionWaitCategoryHref, retainSessionWaitCaptureHref } from "./w
 import "./waitsEvidence.css";
 
 export interface TargetWaitsPanelProps {
+  readonly active?: boolean;
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
@@ -30,7 +35,7 @@ export interface TargetWaitsPanelProps {
   readonly selectionHash?: string;
 }
 
-export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refresh, onSelectWindow, selectionHash = location.hash, targetRevision }: TargetWaitsPanelProps) {
+export function TargetWaitsPanel({ active = true, instanceId, displayName, onClose, scope, refresh, onSelectWindow, selectionHash = location.hash, targetRevision }: TargetWaitsPanelProps) {
   const { mode } = useTimeDisplay();
   const selection = useMemo(() => resolveActivityWindow({ ...scope,
     from: scope.from?.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1"),
@@ -50,6 +55,26 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
   const history = historySource.value, historyError = historySource.error, historyLoading = historySource.loading;
   const trend = trendSource.value, trendError = trendSource.error, trendLoading = trendSource.loading;
   const queryRanking = rankingSource.value, queryRankingError = rankingSource.error;
+  const requestedChartAt = readChartInspection(selectionHash);
+  const chartTimeIdentity = (value: string | undefined) => value === undefined ? undefined
+    : utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1")).toString();
+  const alignmentContext = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.databaseId,
+    active, access.epoch, chartTimeIdentity(window?.fromUtc), chartTimeIdentity(window?.toUtc),
+    chartTimeIdentity(trend?.fromUtc), chartTimeIdentity(trend?.toUtc)]);
+  const inspectionContext = JSON.stringify([alignmentContext, selectionHash]);
+  const inspection = useChartInspection(inspectionContext, trend?.fromUtc, trend?.toUtc, requestedChartAt);
+  const interaction = useRef({ context: inspectionContext, access });
+  if (interaction.current.context !== inspectionContext || interaction.current.access !== access)
+    interaction.current = { context: inspectionContext, access };
+  const owner = interaction.current;
+  const mounted = useRef(false);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const interactionCurrent = () => mounted.current && active && interaction.current === owner
+    && access.allowed("trend") && location.hash === selectionHash;
+  const hoverChart = (utc: string | null) => { if (interactionCurrent()) inspection.setCrosshairUtc(utc); };
+  const selectChartWindow = onSelectWindow && active ? (next: { readonly fromUtc: string; readonly toUtc: string }) => {
+    if (interactionCurrent()) onSelectWindow(next);
+  } : undefined;
   return <section className="activity-screen" aria-labelledby="waits-heading">
     <div className="screen-intro"><div><p className="eyebrow">Server · waits</p><h2 id="waits-heading">Waits for {displayName}</h2>
       <p>Wait totals are cumulative SQL Server counters. Historical rows show a delta only when the preceding collector run is comparable; a reset or missing baseline remains unknown.</p>
@@ -63,13 +88,26 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
       {trendError && <p role="alert">{trendError}{trend ? " Previously received trend remains displayed." : ""}</p>}
       {(trendSource.denied || trendError) && <button type="button" disabled={trendLoading} onClick={trendSource.retry}>Retry wait trend</button>}
       {trendSource.denied && <p role="status">Wait trend unavailable after access denial. No zero-wait trend has been substituted.</p>}
-      {trend && <WaitTrendChart trend={trend} onSelectWindow={onSelectWindow} />}
+      {trend && <>
+        {active && <ChartAlignmentControls key={alignmentContext} context={alignmentContext} label="Waits" headingLevel={4} clearFallbackNote=""
+          fromUtc={trend.fromUtc} toUtc={trend.toUtc} requestedUtc={requestedChartAt} crosshairUtc={inspection.crosshairUtc}
+          onAlign={utc => {
+            if (!interactionCurrent()) return;
+            inspection.setCrosshairUtc(null); location.hash = chartInspectionHref(selectionHash, utc);
+          }}
+          onClear={() => {
+            if (!interactionCurrent()) return;
+            inspection.setCrosshairUtc(null); location.hash = chartInspectionHref(selectionHash);
+          }} />}
+        <WaitTrendChart key={inspectionContext} trend={trend} crosshairUtc={active ? inspection.crosshairUtc : null}
+          onCrosshairChange={hoverChart} onSelectWindow={selectChartWindow} />
+      </>}
     </section>}
     {window && <section className="panel waits-evidence-panel" aria-label="Query Store plans by wait category">
       <h3>Queries with matching Query Store waits</h3>
       <p>Query Store plan wait deltas are a separate source from the server wait trend above. They can point to queries worth investigating, but do not account for all server waits or identify a current waiting session.</p>
       {queryCategory === null && <p role="status">The requested Query Store wait category is invalid. Choose a supported category; no other category has been selected.</p>}
-      <label>Query Store category <select value={queryCategory ?? ""} onChange={event => { if (location.hash === selectionHash) location.hash = retainSessionWaitCaptureHref(retainSessionWaitCategoryHref(waitCategoryHref({ ...scope, target: instanceId }, Number(event.target.value)), selectionHash), selectionHash); }}>
+      <label>Query Store category <select value={queryCategory ?? ""} onChange={event => { if (location.hash === selectionHash) location.hash = retainChartInspectionHref(retainSessionWaitCaptureHref(retainSessionWaitCategoryHref(waitCategoryHref({ ...scope, target: instanceId }, Number(event.target.value)), selectionHash), selectionHash), selectionHash); }}>
         {queryCategory === null && <option value="" disabled>Choose a supported category</option>}
         {queryStoreWaitCategories.map((name, category) => category === 11 ? null :
           <option key={category} value={category}>{name}</option>)}
@@ -110,8 +148,10 @@ export function TargetWaitsPanel({ instanceId, displayName, onClose, scope, refr
   </section>;
 }
 
-function WaitTrendChart({ trend, onSelectWindow }: {
+function WaitTrendChart({ trend, crosshairUtc, onCrosshairChange, onSelectWindow }: {
   readonly trend: WaitTrendResponse;
+  readonly crosshairUtc: string | null;
+  readonly onCrosshairChange: (utc: string | null) => void;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }) {
   const chart = waitTrendChartData(trend);
@@ -121,7 +161,8 @@ function WaitTrendChart({ trend, onSelectWindow }: {
   }));
   return <>
     <ObservationChart label="Server wait time by category (ms per five minutes)" series={series}
-      fromUtc={trend.fromUtc} toUtc={trend.toUtc} onSelectWindow={onSelectWindow} />
+      fromUtc={trend.fromUtc} toUtc={trend.toUtc} crosshairUtc={crosshairUtc}
+      onCrosshairChange={onCrosshairChange} onSelectWindow={onSelectWindow} />
     <p className="activity-evidence">{chart.comparableBuckets} of {chart.totalBuckets} buckets are comparable across all categories among committed runs; {chart.totalBuckets - chart.comparableBuckets} remain gaps.{chart.oversizedValues ? ` ${chart.oversizedValues} values exceed chart precision and are shown as gaps.` : ""} Repository time: {trend.repositoryTimeUtc}.</p>
   </>;
 }

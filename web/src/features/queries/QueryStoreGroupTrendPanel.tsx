@@ -1,4 +1,4 @@
-import { ObservationChart } from "../../components/ObservationChart";
+import { QueryObservationChart as ObservationChart, useSharedQueryChartInspection } from "./QueryChartInspection.tsx";
 import { useEffect, useState, type FormEvent } from "react";
 import { queryStoreGroupTrendSeries, queryStoreGroupTrendSummary, queryStoreGroupWaitCategories, queryStoreGroupWaitTrend, queryPlanInspectionUtc } from "./queryStoreGroupTrendModel";
 import type { QueryStoreGroupTrend } from "./queryPerformanceTypes";
@@ -54,6 +54,7 @@ function PlanTrendCharts({ trend, onSelectWindow, timeLabel, waitCategoryNames, 
   readonly selection?: PlanTrendSelection;
   readonly onSelectionChange: (selection: Omit<PlanTrendSelection, "context">) => void;
 }) {
+  const sharedInspection = useSharedQueryChartInspection();
   const category = selection?.category ?? null;
   const [input, setInput] = useState("");
   const [edited, setEdited] = useState(false);
@@ -78,6 +79,7 @@ function PlanTrendCharts({ trend, onSelectWindow, timeLabel, waitCategoryNames, 
     catch (failure) { onSelectionChange({ ...selection, inspectionUtc: undefined, inspectionInvalid: undefined }); setHover(null); setError(failure instanceof Error ? failure.message : "Choose a valid plan inspection time."); }
   }
   return <>
+    {sharedInspection && <p className="table-note">Shared Queries alignment governs chart markers when selected. Plan-only alignment is retained separately; clear shared Queries alignment to use the saved plan-only marker.</p>}
     <form className="toolbar" aria-label="Plan chart inspection" onSubmit={align}>
       <label>Plan inspection time (UTC)<input type="datetime-local" step="0.001" value={input} onChange={event => { setInput(event.target.value); setEdited(true); }} /></label>
       <button type="submit" className="secondary-button">Align plan charts</button>

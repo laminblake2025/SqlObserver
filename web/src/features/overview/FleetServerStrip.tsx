@@ -1,6 +1,7 @@
 import { fleetServerRows } from './fleetGridModel';
 import { useBackupSummaryClock } from './useBackupSummaryClock';
 import { overviewHref } from './overviewModel';
+import { retainChartInspectionHref } from '../../components/chartInspectionModel.ts';
 import type { OverviewScope, OverviewSnapshot } from './overviewTypes';
 
 export function FleetServerStrip({ snapshot, scope, stickyOffset, busy = false }: {
@@ -22,7 +23,7 @@ export function FleetServerStrip({ snapshot, scope, stickyOffset, busy = false }
       const summary = !row.evidence ? 'Evidence unavailable' : row.attentionCount > 0
         ? `${row.attentionCount} observed ${row.attentionCount === 1 ? 'issue' : 'issues'}`
         : row.evidence.gaps.length > 0 ? 'Coverage gaps' : 'No observed exceptions';
-      return <li key={row.target.targetId}><a href={overviewHref(scope, 'health', row.target.targetId)}
+      return <li key={row.target.targetId}><a href={retainChartInspectionHref(overviewHref(scope, 'health', row.target.targetId), location.hash)}
         aria-current={scope.target.toLowerCase() === row.target.targetId.toLowerCase() ? 'location' : undefined}
         aria-label={`${row.target.displayName}: ${summary}. ${signals.map(([label, signal]) => `${label}: ${signal.detail}`).join('. ')}`}>
         <span className="fleet-strip-name">{row.target.displayName}</span>

@@ -2,10 +2,12 @@ import { useId, useState } from "react";
 import { chartInspectionInWindow, chartInspectionUtc } from "./chartInspectionModel.ts";
 import "./chartAlignment.css";
 
-export function ChartAlignmentControls({ context, label, headingLevel = 2, fromUtc, toUtc, requestedUtc, crosshairUtc, onAlign, onClear }: {
+export function ChartAlignmentControls({ context, label, headingLevel = 2, fromUtc, toUtc, requestedUtc, crosshairUtc, onAlign, onClear,
+  clearFallbackNote = "An independently selected timeline event can still align charts." }: {
   readonly context: string; readonly label: string; readonly fromUtc: string; readonly toUtc: string;
   readonly requestedUtc: string | null | undefined; readonly crosshairUtc: string | null;
   readonly headingLevel?: 2 | 4;
+  readonly clearFallbackNote?: string;
   readonly onAlign: (utc: string) => void; readonly onClear: () => void;
 }) {
   const description = useId(), source = requestedUtc ?? "", sourceIdentity = requestedUtc === null ? "invalid" : requestedUtc ?? "absent";
@@ -36,6 +38,6 @@ export function ChartAlignmentControls({ context, label, headingLevel = 2, fromU
     {requestedUtc && !chartInspectionInWindow(requestedUtc, fromUtc, toUtc) && <p role="status">Requested chart inspection time is outside the loaded window. Align another time or clear alignment.</p>}
     <p role="status">{crosshairUtc ? <>Chart inspection time: <time dateTime={crosshairUtc}>{crosshairUtc}</time>. Missing evidence remains unavailable.</> : "No chart alignment selected. Use the UTC input or move the pointer over a loaded chart."}</p>
     <small>Loaded window: {fromUtc} to {toUtc}, excluding the end.</small>
-    <small>Clear removes the UTC selection. An independently selected timeline event can still align charts.</small>
+    <small>Clear removes the UTC selection.{clearFallbackNote ? ` ${clearFallbackNote}` : ""}</small>
   </section>;
 }

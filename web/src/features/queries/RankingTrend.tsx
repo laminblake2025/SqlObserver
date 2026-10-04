@@ -3,12 +3,16 @@ import { cacheRankingTrend, queryStoreRankingTrend, rankingTrendRequestKey, rank
 import type { RankingTrendPreview, RankingTrendRequest } from "./rankingTrendModel.ts";
 import type { QueryPerformanceMetric } from "./queryPerformanceTypes.ts";
 import { useRankingTrends } from "./useRankingTrends.tsx";
+import { useSharedQueryChartInspection } from "./QueryChartInspection.tsx";
+import { chartInspectionInWindow } from "../../components/chartInspectionModel.ts";
 
 export function RankingTrend({ request, metric, category = null, label, onInspect, formatTime, unavailableReason }: {
   readonly request?: RankingTrendRequest; readonly metric: QueryPerformanceMetric | "waits"; readonly category?: number | null;
   readonly label: string; readonly onInspect: () => void; readonly formatTime: (value: string) => string; readonly unavailableReason?: string;
 }) {
   const queue = useRankingTrends(), wrapper = useRef<HTMLDivElement>(null), detailsId = useId();
+  const inspection = useSharedQueryChartInspection();
+  const crosshair = request && chartInspectionInWindow(inspection?.crosshairUtc, request.fromUtc, request.toUtc) ? inspection?.crosshairUtc : null;
   const key = request ? rankingTrendRequestKey(request) : "unavailable";
   const [limit, setLimit] = useState<string>();
   useEffect(() => {
@@ -43,6 +47,7 @@ export function RankingTrend({ request, metric, category = null, label, onInspec
             {segment.points.length > 1 && <path d={segment.points.map((point, index) => `${index === 0 ? "M" : "L"}${x(point.timeUtc).toFixed(3)},${y(point.value).toFixed(3)}`).join(" ")} />}
             {segment.points.map((point, index) => <circle key={`${point.timeUtc}:${index}`} cx={x(point.timeUtc)} cy={y(point.value)} r="2.4" />)}
           </g>)}
+          {crosshair && <g className="ranking-trend-crosshair"><line x1={x(crosshair)} x2={x(crosshair)} y1="4" y2="44" /><title>Shared chart inspection: {crosshair}. Missing observations remain unavailable.</title></g>}
         </svg> : <small>No qualified comparable trend points in this loaded history.</small>}
         <small>{preview.unit}{count === 1 ? " · One point; no trend line" : ""}{preview.precisionOmissions ? ` · ${preview.precisionOmissions} values exceed plotting precision` : ""}</small>
         <details><summary>Trend values and coverage</summary><p>{preview.source}.</p><p>{preview.coverage}</p>

@@ -9,7 +9,7 @@ import { OverviewChart } from './OverviewChart';
 import { FleetServerGrid } from './FleetServerGrid';
 import type { OverviewResource, OverviewScope, OverviewSnapshot } from './overviewTypes';
 import { ChartAlignmentControls } from '../../components/ChartAlignmentControls.tsx';
-import { chartInspectionHref, readChartInspection } from '../../components/chartInspectionModel.ts';
+import { chartInspectionHref, readChartInspection, retainChartInspectionHref } from '../../components/chartInspectionModel.ts';
 import { useChartInspection } from '../../components/useChartInspection.ts';
 
 const labels:Record<string,string>={'host.cpu.percent':'Host CPU','host.memory.available_bytes':'Available host memory','host.volume.free_bytes':'Volume free space','host.volume.read_latency_ms':'Volume read latency','host.volume.write_latency_ms':'Volume write latency','replication.latency_seconds':'Replication latency (worst subscription)'};
@@ -33,8 +33,8 @@ export function OverviewPage({refresh,onAdd,canAddServer}: {refresh:number;onAdd
   // Keep the authorized selector choices while evidence reloads; no old evidence is shown under a new selection.
   const [choices,setChoices]=useState(data?.targets??[]);
   if (data && choices!==data.targets) setChoices(data.targets);
-  const navigate=(change:Partial<typeof scope>)=>{setCrosshairUtc(null);location.hash=overviewHref({...scope,...change,...(change.target !== undefined && change.target.toLowerCase() !== scope.target.toLowerCase() ? {databaseId:undefined} : {})});};
-  const href=(page:string,target:string)=>overviewHref(scope,page,target);
+  const navigate=(change:Partial<typeof scope>)=>{setCrosshairUtc(null);location.hash=retainChartInspectionHref(overviewHref({...scope,...change,...(change.target !== undefined && change.target.toLowerCase() !== scope.target.toLowerCase() ? {databaseId:undefined} : {})}),location.hash);};
+  const href=(page:string,target:string)=>retainChartInspectionHref(overviewHref(scope,page,target),location.hash);
   const resources=data?.evidence.flatMap(e=>e.resources)??[];
   const allSeries=data?.evidence.flatMap(e=>e.series)??[];
   const previous=result.previous?.evidence.flatMap(e=>e.series)??[];

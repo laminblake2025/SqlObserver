@@ -1150,3 +1150,15 @@ Evidence: `artifacts/dashboard-independent-evidence-2026-10-04/completion.md`, `
 | Dashboard-only scope | Frontend read composition/presentation/styles/tests; no native activation or unrelated redesign. |
 
 This completes the independent-source and diagnostic-focus follow-ups from the previous UI checkpoint. Native paired CPU admission, running/long-running Agent source admission and qualified AG transitions remain open; the broader dashboard and original repository plan remain unfinished. No native mutation, deployment, SSH retry or GitHub push/upload occurred.
+
+## 2026-10-04: Queries and Waits shared chart inspection
+
+Closed the frontend shared-crosshair gap found in the diagnostic-screen audit. Queries history, selected-plan charts and row previews share the saved UTC inspection; Waits uses the same controls on its received server trend. The exact microsecond `chartAt` URL is independent of query/plan/wait selections. Half-open loaded windows bound each marker, while drawing coordinates remain approximate. Existing plan-only alignment is an explicitly disclosed fallback when shared Queries alignment is cleared.
+
+Three non-overlapping agents owned Queries runtime, Waits runtime/theme review, and built-App interaction/accessibility tests. The lead integrated the shared URL helper, App and fleet links, 44 px control styling, review, serial final validation and evidence. Same-server/window navigation, database/filter edits and Health-tab round trips retain alignment; target/window changes drop it. Invalid or repeated raw selections remain explicit until repaired or cleared. Retired hash/context/gesture owners cannot mutate a new workspace or restore protected evidence after caller denial.
+
+Final frozen-code qualification: **180 passed cases** (20 URL contracts, 127 complete owning component cases, 33 complete built-App cases), TypeScript, final production build and asset generation/verification. **36 synthetic screenshots**, dark 320/390/768/1440, light-system-preference resilience and forced-color 320/1440, axe, focus geometry, 44 px alignment controls, and zero document overflow in the new workflows. 60 prior screenshot bytes restored and verified; 1 failed whole attempt preserved. Input hashes remained unchanged through checks. The existing large JavaScript bundle warning remains.
+
+Authoritative local evidence: `artifacts/dashboard-diagnostic-alignment-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, and `index.html`. The completion document gives a requirement-by-requirement matrix distinguishing this patch, prior implemented workflows, and incomplete source dependencies.
+
+This is not completion of the full plan. Native CPU comparison admission, Agent activity access/association/elapsed-time qualification, physical failover qualification, fully historical latest-only cards, and the optional assistant remain incomplete. Existing fleet CPU/memory/HA dots describe available evidence rather than admitted health verdicts. No database/native tests, collector activation, external upload or GitHub push were needed or performed for this frontend patch.

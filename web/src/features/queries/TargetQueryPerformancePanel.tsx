@@ -4,7 +4,8 @@ import { PlanCacheIntervalPanel } from "./PlanCacheIntervalPanel";
 import { invalidQuerySelectionMessage } from "../../dashboardModel";
 import { metricsForObservation, queryPerformanceDatabaseOptions } from "./querySelection";
 import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
-import { ObservationChart } from "../../components/ObservationChart";
+import { QueryObservationChart as ObservationChart, QueryChartInspectionContext, useQueryChartInspection } from "./QueryChartInspection.tsx";
+import { ChartAlignmentControls } from "../../components/ChartAlignmentControls.tsx";
 import { QueryStoreGroupTrendPanel, type GroupTrendState } from "./QueryStoreGroupTrendPanel";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
@@ -154,6 +155,9 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
     setHistory(undefined); setHistorySelection(undefined); setPlan(undefined); setGroupTrend(undefined); setMessage(undefined); clearContent();
     selectionRequest.current?.abort(); historyRequest.current?.abort(); pagingRequest.current?.abort(); waitRequest.current?.abort(); trendRequest.current?.abort(); setPaging(false);
   }, evidenceContext);
+  const chartInspection = useQueryChartInspection(JSON.stringify([instanceId.toLowerCase(), contentTimeKey(timeWindow.fromUtc),
+    contentTimeKey(timeWindow.toUtc), selectedDatabaseId, selectionInvalid, initialQuerySelection, viewSelection]),
+    instanceId, timeWindow.fromUtc, timeWindow.toUtc, readAccess, selectedDatabaseId);
   useEffect(() => { if (!canReadText) { textRequest.current?.abort(); planContentRequest.current?.abort(); setTextResult(undefined); setPlanResult(undefined); } }, [canReadText]);
   const clearContent = () => { textRequest.current?.abort(); planContentRequest.current?.abort(); waitRequest.current?.abort(); setTextResult(undefined); setPlanResult(undefined); setWaitResult(undefined); };
   useEffect(() => { clearContent(); }, [contentContext]);
@@ -364,9 +368,13 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
   const rowTrendContext = JSON.stringify([instanceId.toLowerCase(), timeWindow.fromUtc, timeWindow.toUtc, view, ranking, rankingSource, database, refresh,
     page?.items.map(item => `${item.collectionRunId}:${item.observationKey}`)]);
   if (readAccess.denied) return <section className="query-performance-screen" aria-label="Query evidence access"><h2>Queries for {displayName}</h2><p role="alert">Query evidence access was denied. Retained rankings, history, waits, trends, and protected content were removed. Restore read access for this server, then explicitly retry.</p><button type="button" onClick={readAccess.retry}>Retry query access</button><button type="button" className="secondary-button" onClick={onClose}>Close</button></section>;
-  return <QueryReadAccessContext.Provider value={readAccess}><RankingTrendProvider contextKey={rowTrendContext}><section className="query-performance-screen" aria-labelledby="query-performance-heading">
+  return <QueryReadAccessContext.Provider value={readAccess}><QueryChartInspectionContext.Provider value={chartInspection}><RankingTrendProvider contextKey={rowTrendContext}><section className="query-performance-screen" aria-labelledby="query-performance-heading">
     <div className="health-heading-row"><div><p className="eyebrow">Server · queries</p><h2 id="query-performance-heading">Queries for {displayName}</h2></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     {selectionInvalid ? <p role="alert" className="status-message">{invalidQuerySelectionMessage}</p> : null}
+    <ChartAlignmentControls key={chartInspection.context} context={chartInspection.context} label="Queries"
+      clearFallbackNote="An independently saved plan-only selection can still align its own plan charts."
+      fromUtc={timeWindow.fromUtc} toUtc={timeWindow.toUtc} requestedUtc={chartInspection.requestedUtc}
+      crosshairUtc={chartInspection.crosshairUtc} onAlign={utc => chartInspection.align(utc)} onClear={() => chartInspection.align()} />
     {message === undefined || view === "cache" ? null : <p role="alert" className="status-message">{message}</p>}
     {status === undefined || view === "cache" ? null : <div className="activity-evidence"><EvidenceStatus label={`${status.source ?? "unavailable"} evidence · ${status.coverage}`} detail={`${status.sourceState}${status.truncated ? " · truncated" : ""} · repository snapshot ${timeLabel(status.snapshotUtc)}`} tone={status.sourceState === "read_write" && !status.truncated ? "current" : status.sourceState === "unavailable" ? "unavailable" : "warning"} /><details className="supporting-evidence"><summary>Database collection attempts ({status.databaseStatuses.length})</summary><div>{status.databaseStatuses.length === 0 ? "No per-database attempts were recorded." : status.databaseStatuses.map(x => <span key={x.databaseId} className="badge">{displayDatabase(x.databaseId)}: {x.status} · {x.sourceState} · fallback {x.fallbackAttempted ? "used" : "not used"} · {x.reason} · {x.lossKind} ({x.minimumLostItems} items, {x.minimumLostBytes} bytes{ x.lossCountIsExact ? ", exact" : ", lower bound"}){x.truncated ? " · truncated" : ""}</span>)}</div></details></div>}
     <Tabs label="Query views" revealFocusedTab tabs={[{ value: "top", label: "Top queries" }, { value: "regressed", label: `Regressed${visibleRegressions.length ? ` (${visibleRegressions.length})` : ""}` }, { value: "cache", label: "Cache interval deltas" }]}
@@ -451,7 +459,7 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
         onSelectWindow={onSelectWindow} timeLabel={timeLabel} waitCategoryNames={waitCategoryNames}
         selection={viewSelection.planTrendSelection} onSelectionChange={selection => {
           const context = queryPlanTrendContext(renderedPlanHash);
-          if (!context || typeof location !== "undefined" && location.hash !== renderedPlanHash) return;
+          if (!context || !chartInspection.owns() || typeof location !== "undefined" && location.hash !== renderedPlanHash) return;
           onViewSelectionChange({ ...viewSelection, planTrendSelection: { ...selection, context } });
         }} />}
 
@@ -485,5 +493,5 @@ export function TargetQueryPerformancePanel({ instanceId, displayName, onClose, 
       </table></div> : null}
     </section>}
 
-  </section></RankingTrendProvider></QueryReadAccessContext.Provider>;
+  </section></RankingTrendProvider></QueryChartInspectionContext.Provider></QueryReadAccessContext.Provider>;
 }
