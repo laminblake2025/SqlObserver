@@ -7,7 +7,7 @@ public enum SqlCpuPhysicalTransport { Unknown, Tcp, NamedPipe, SharedMemory }
 public enum SqlCpuWitnessGap
 {
     None, TargetBoundary, RevisionBoundary, RunBoundary, ConnectionBoundary,
-    SourceIncomplete, EngineBoundary, ClockBoundary, CounterReset, TopologyBoundary,
+    SourceIncomplete, EngineBoundary, ClockBoundary, CounterReset, TopologyBoundary, SchemaBoundary,
 }
 
 /// <summary>A SQL-owned source receipt. SQL node names are not hardware UUIDs,
@@ -18,7 +18,8 @@ public sealed record SqlCpuTargetWitness
         CollectorRunId runId, Guid connectionSessionId, Guid clientConnectionId, int ordinal,
         DateTimeOffset sourceObservedAtUtc, ServerLifecycleEngineEvidence engine,
         SqlCpuPhysicalTransport physicalTransport, long? processUserTimeMs,
-        long? processKernelTimeMs, int? sqlReportedLogicalProcessors)
+        long? processKernelTimeMs, int? sqlReportedLogicalProcessors,
+        SqlCpuTcpConnectionEvidence? tcpConnection = null, int sourceSchemaVersion = 1)
     {
         TargetId = targetId ?? throw new ArgumentNullException(nameof(targetId));
         TargetRevision = targetRevision ?? throw new ArgumentNullException(nameof(targetRevision));
@@ -26,7 +27,7 @@ public sealed record SqlCpuTargetWitness
         Engine = engine ?? throw new ArgumentNullException(nameof(engine));
         if (connectionSessionId == Guid.Empty || clientConnectionId == Guid.Empty || ordinal is not (1 or 2) ||
             !Enum.IsDefined(physicalTransport) || processUserTimeMs < 0 || processKernelTimeMs < 0 ||
-            sqlReportedLogicalProcessors is <= 0 or > 4096)
+            sqlReportedLogicalProcessors is <= 0 or > 4096 || sourceSchemaVersion is not (1 or 2))
             throw new ArgumentException("SQL CPU source witness is invalid.");
         ConnectionSessionId = connectionSessionId;
         ClientConnectionId = clientConnectionId;
@@ -36,6 +37,8 @@ public sealed record SqlCpuTargetWitness
         ProcessUserTimeMs = processUserTimeMs;
         ProcessKernelTimeMs = processKernelTimeMs;
         SqlReportedLogicalProcessors = sqlReportedLogicalProcessors;
+        TcpConnection = tcpConnection;
+        SourceSchemaVersion = sourceSchemaVersion;
     }
 
     public MonitoredInstanceId TargetId { get; }
@@ -51,6 +54,8 @@ public sealed record SqlCpuTargetWitness
     public long? ProcessKernelTimeMs { get; }
     /// <summary>SQL-reported topology, never a substitute for the PDH all-group denominator.</summary>
     public int? SqlReportedLogicalProcessors { get; }
+    public SqlCpuTcpConnectionEvidence? TcpConnection { get; }
+    public int SourceSchemaVersion { get; }
     public bool LocalWindowsProcessAssociationQualified { get; }
     public bool HardwareIdentityVerified { get; }
 }
@@ -66,6 +71,7 @@ public static class SqlCpuWitnessContinuity
         if (before.TargetId != after.TargetId) return SqlCpuWitnessGap.TargetBoundary;
         if (before.TargetRevision != after.TargetRevision) return SqlCpuWitnessGap.RevisionBoundary;
         if (before.RunId != after.RunId) return SqlCpuWitnessGap.RunBoundary;
+        if (before.SourceSchemaVersion != after.SourceSchemaVersion) return SqlCpuWitnessGap.SchemaBoundary;
         if (before.ConnectionSessionId != after.ConnectionSessionId ||
             before.ClientConnectionId != after.ClientConnectionId || before.Ordinal != 1 || after.Ordinal != 2)
             return SqlCpuWitnessGap.ConnectionBoundary;

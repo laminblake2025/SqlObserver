@@ -29,7 +29,7 @@ public sealed record WindowsTargetCpuPairRequest(HostTarget Target, PairedCpuBin
 public sealed record WindowsCpuPairFrameWitness(long? ProcessCreationBefore100ns,
     long? ProcessCreationAfter100ns, long? ProcessExitAfter100ns,
     uint LogicalProcessorsBefore, uint LogicalProcessorsAfter,
-    int ProcessInstances, bool ProcessMappingAmbiguous);
+    int ProcessInstances, bool ProcessMappingAmbiguous, uint? ProcessWaitResultAfter = null);
 
 /// <summary>Raw staged evidence. NativeQualification remains absent until the local
 /// Windows source and SQL PID/node binding have been independently qualified.</summary>
@@ -187,7 +187,7 @@ public sealed class WindowsTargetCpuPairReader
         using JsonDocument document = JsonDocument.Parse(bytes.ToArray(), new JsonDocumentOptions { MaxDepth = 8 });
         JsonElement root = document.RootElement;
         Closed(root, "schema", "queryId", "before", "after");
-        if (root.GetProperty("schema").GetInt32() != 1 || !Guid.TryParseExact(root.GetProperty("queryId").GetString(), "D", out Guid query) || query == Guid.Empty)
+        if (root.GetProperty("schema").GetInt32() != 2 || !Guid.TryParseExact(root.GetProperty("queryId").GetString(), "D", out Guid query) || query == Guid.Empty)
             throw new InvalidDataException("CPU helper schema or query identity is invalid.");
         var before = Frame(root.GetProperty("before"), request.Binding.SqlProcessId); var after = Frame(root.GetProperty("after"), request.Binding.SqlProcessId);
         string expected = request.Target.Binding.HostFingerprint.Value;
@@ -220,7 +220,7 @@ public sealed class WindowsTargetCpuPairReader
     private FrameData Frame(JsonElement value, int? requestedPid)
     {
         Closed(value, "observedAtUtc", "monotonic100ns", "machineUuid", "bootFileTime100ns", "processCreation100ns",
-            "processCreationAfter100ns", "processExitAfter100ns", "processName", "processImage", "processStatus", "osStatus",
+            "processCreationAfter100ns", "processExitAfter100ns", "processWaitResultAfter", "processName", "processImage", "processStatus", "osStatus",
             "logicalProcessors", "logicalProcessorsAfter", "processInstances", "processMappingAmbiguous", "process", "os", "idProcess");
         string observedText = value.GetProperty("observedAtUtc").GetString() ?? "";
         if (!DateTimeOffset.TryParseExact(observedText, "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture,
@@ -242,10 +242,12 @@ public sealed class WindowsTargetCpuPairReader
         PdhCpuRawCounter? process = Counter(value.GetProperty("process"));
         long? creation = NullableLong(value.GetProperty("processCreation100ns"));
         long? creationAfter = NullableLong(value.GetProperty("processCreationAfter100ns")), exitAfter = NullableLong(value.GetProperty("processExitAfter100ns"));
-        if (creation is <= 0 || creationAfter is <= 0 || exitAfter is < 0) throw new InvalidDataException("CPU source process times are invalid.");
+        if (creation is <= 0 || creationAfter is <= 0) throw new InvalidDataException("CPU source process creation times are invalid.");
         bool mappingAmbiguous = value.GetProperty("processMappingAmbiguous").GetBoolean();
-        var witness = new WindowsCpuPairFrameWitness(creation, creationAfter, exitAfter, checked((uint)processors), checked((uint)processorsAfter), count, mappingAmbiguous);
-        bool processUnstable = creation is not null && (creationAfter != creation || exitAfter != 0);
+        uint? wait = value.GetProperty("processWaitResultAfter").ValueKind == JsonValueKind.Null ? null : value.GetProperty("processWaitResultAfter").GetUInt32();
+        var witness = new WindowsCpuPairFrameWitness(creation, creationAfter, exitAfter, checked((uint)processors), checked((uint)processorsAfter), count, mappingAmbiguous, wait);
+        // Exit FILETIME is undefined while running; only the held-handle wait proves liveness.
+        bool processUnstable = creation is not null && (creationAfter != creation || wait != CpuTcpProcessEpoch.StillRunningWaitResult);
         string? host = uuid == Guid.Empty || uuid == Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff") ? null :
             HostIdentityFingerprint.FromOpaqueIdentity(uuidText!, _key).Value;
         long? boot = NullableLong(value.GetProperty("bootFileTime100ns"));
@@ -373,6 +375,7 @@ public static class CpuPairNative {
  [DllImport("api-ms-win-core-realtime-l1-1-1.dll")] public static extern void QueryInterruptTimePrecise(out ulong time);
  [DllImport("kernel32.dll",SetLastError=true)] public static extern IntPtr OpenProcess(uint rights,bool inherit,int id);
  [DllImport("kernel32.dll",SetLastError=true)] public static extern bool GetProcessTimes(IntPtr process,out long creation,out long exit,out long kernel,out long user);
+ [DllImport("kernel32.dll",SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr process,uint milliseconds);
  [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] public static extern bool QueryFullProcessImageNameW(IntPtr process,uint flags,StringBuilder name,ref uint size);
  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
  public static object Counter(Raw value,uint type,uint status,IntPtr handle,bool timed) { long timeBase=0; if(timed) { uint baseStatus=PdhGetCounterTimeBase(handle,out timeBase); if(status==0)status=baseStatus; } return new { counterType=type,cStatus=value.CStatus,firstValue=value.FirstValue.ToString(CultureInfo.InvariantCulture),secondValue=value.SecondValue.ToString(CultureInfo.InvariantCulture),timestamp100ns=(((ulong)value.High<<32)|value.Low).ToString(CultureInfo.InvariantCulture),multiCount=value.MultiCount,apiStatus=status,timeBase=timeBase.ToString(CultureInfo.InvariantCulture) }; }
@@ -420,7 +423,7 @@ try {
  $queryId=[Guid]::NewGuid().ToString('D'); $frames=@()
  for($sample=0;$sample-lt 2;$sample++) {
   $hostWitness=Host-Witness
-  $processHandle=[CpuPairNative]::OpenProcess(0x1000,$false,$sqlProcessId)
+  $processHandle=[CpuPairNative]::OpenProcess(0x101000,$false,$sqlProcessId)
   $creation=[long]0; $exit=[long]0; $kernel=[long]0; $user=[long]0; $processName=$null; $processImage=$null; $processCreation=$null; $processStatus=[uint32]0
   if($processHandle-eq [IntPtr]::Zero){$processStatus=[uint32][Runtime.InteropServices.Marshal]::GetLastWin32Error()}
   try {
@@ -449,17 +452,18 @@ try {
    }
    if($processStatus-eq 0 -and $idAdd-ne 0){$processStatus=$idAdd}
    if($processStatus-eq 0 -and $processAdd-ne 0){$processStatus=$processAdd}
-   $creationAfter=[long]0; $exitAfter=[long]0; $creationAfterText=$null; $exitAfterText=$null
+   $creationAfter=[long]0; $exitAfter=[long]0; $creationAfterText=$null; $exitAfterText=$null; $processWait=$null
    if($processHandle-ne [IntPtr]::Zero) {
     if([CpuPairNative]::GetProcessTimes($processHandle,[ref]$creationAfter,[ref]$exitAfter,[ref]$kernel,[ref]$user)) { $creationAfterText=$creationAfter.ToString([Globalization.CultureInfo]::InvariantCulture);$exitAfterText=$exitAfter.ToString([Globalization.CultureInfo]::InvariantCulture) }
     elseif($processStatus-eq 0){$processStatus=[uint32][Runtime.InteropServices.Marshal]::GetLastWin32Error()}
+    $processWait=[CpuPairNative]::WaitForSingleObject($processHandle,0)
    }
    $processorsAfter=[CpuPairNative]::GetActiveProcessorCount(0xffff)
-   $frames+=@{ observedAtUtc=$observed;monotonic100ns=$mono.ToString([Globalization.CultureInfo]::InvariantCulture);machineUuid=$hostWitness.machineUuid;bootFileTime100ns=$hostWitness.bootFileTime100ns;processCreation100ns=$processCreation;processCreationAfter100ns=$creationAfterText;processExitAfter100ns=$exitAfterText;processName=$processName;processImage=$processImage;processStatus=$processStatus;osStatus=$osAdd;logicalProcessors=$processors;logicalProcessorsAfter=$processorsAfter;processInstances=$instances;processMappingAmbiguous=$mappingAmbiguous;process=$procRaw;os=$osRaw;idProcess=$idRaw }
+   $frames+=@{ observedAtUtc=$observed;monotonic100ns=$mono.ToString([Globalization.CultureInfo]::InvariantCulture);machineUuid=$hostWitness.machineUuid;bootFileTime100ns=$hostWitness.bootFileTime100ns;processCreation100ns=$processCreation;processCreationAfter100ns=$creationAfterText;processExitAfter100ns=$exitAfterText;processWaitResultAfter=$processWait;processName=$processName;processImage=$processImage;processStatus=$processStatus;osStatus=$osAdd;logicalProcessors=$processors;logicalProcessorsAfter=$processorsAfter;processInstances=$instances;processMappingAmbiguous=$mappingAmbiguous;process=$procRaw;os=$osRaw;idProcess=$idRaw }
   } finally { if($processHandle-ne [IntPtr]::Zero){[void][CpuPairNative]::CloseHandle($processHandle)} }
   if($sample-eq 0){Start-Sleep -Milliseconds 500}
  }
- @{schema=1;queryId=$queryId;before=$frames[0];after=$frames[1]} | ConvertTo-Json -Compress -Depth 6
+ @{schema=2;queryId=$queryId;before=$frames[0];after=$frames[1]} | ConvertTo-Json -Compress -Depth 6
 } catch [UnauthorizedAccessException] { exit 3 } catch [Microsoft.Management.Infrastructure.CimException] { if($_.Exception.NativeErrorCode-eq 2){exit 3};exit 2 } catch { exit 2 } finally { if($query-ne [IntPtr]::Zero){[void][CpuPairNative]::PdhCloseQuery($query)} }
 """;
 }

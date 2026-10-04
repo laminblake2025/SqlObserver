@@ -97,7 +97,6 @@ public sealed class WindowsTargetCpuPairReaderTests
 
     [Theory]
     [InlineData("processCreationAfter100ns", "20")]
-    [InlineData("processExitAfter100ns", "11")]
     public async Task SameHandlePostReadProcessRaceRemovesProcessCounterAndRetainsExactWitness(string field, string value)
     {
         JsonObject json = Output(); json["after"]![field] = value;
@@ -107,6 +106,33 @@ public sealed class WindowsTargetCpuPairReaderTests
         Assert.NotNull(result.AfterWitness); Assert.Equal(10L, result.AfterWitness.ProcessCreationBefore100ns);
         Assert.Equal(field == "processCreationAfter100ns" ? 20L : 10L, result.AfterWitness.ProcessCreationAfter100ns);
         Assert.Equal(field == "processExitAfter100ns" ? 11L : 0L, result.AfterWitness.ProcessExitAfter100ns);
+    }
+
+    [Theory]
+    [InlineData(0U)]
+    [InlineData(0xffffffffU)]
+    [InlineData(null)]
+    public async Task OnlyExplicitHeldHandleWaitProvesProcessLiveness(uint? waitResult)
+    {
+        JsonObject json = Output(); json["after"]!["processWaitResultAfter"] = waitResult;
+        var result = await new WindowsTargetCpuPairReader(Key, new Helper(json)).ReadAsync(Request(), CancellationToken.None);
+        Assert.Equal("process_race", result.ProcessReason);
+        Assert.Null(result.After!.ProcessCounter); Assert.Null(result.After.SqlProcessCreationFileTime100ns);
+        Assert.NotNull(result.After.OsCounter); Assert.Equal(waitResult, result.AfterWitness!.ProcessWaitResultAfter);
+    }
+
+    [Theory]
+    [InlineData(12345L)]
+    [InlineData(long.MinValue)]
+    [InlineData(long.MaxValue)]
+    public async Task UndefinedRunningExitFileTimeIsRetainedWithoutOverridingExplicitLiveness(long undefinedExit)
+    {
+        JsonObject json = Output(); json["after"]!["processExitAfter100ns"] = undefinedExit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var result = await new WindowsTargetCpuPairReader(Key, new Helper(json)).ReadAsync(Request(), CancellationToken.None);
+        Assert.NotNull(result.After!.ProcessCounter); Assert.Equal(10L, result.After.SqlProcessCreationFileTime100ns);
+        Assert.Equal(undefinedExit, result.AfterWitness!.ProcessExitAfter100ns);
+        Assert.Equal(258U, result.AfterWitness.ProcessWaitResultAfter);
+        Assert.False(result.TargetComparisonAdmitted);
     }
 
     [Fact]
@@ -187,7 +213,7 @@ public sealed class WindowsTargetCpuPairReaderTests
         Assert.Equal("invalid_source_output", (await reader.ReadAsync(Request(), CancellationToken.None)).Reason);
         JsonObject json = Output(); json["remoteComputer"] = "not-allowed";
         Assert.Equal("invalid_source_output", (await new WindowsTargetCpuPairReader(Key, new Helper(json)).ReadAsync(Request(), CancellationToken.None)).Reason);
-        byte[] duplicate = Encoding.UTF8.GetBytes(Output().ToJsonString().Replace("\"schema\":1", "\"schema\":1,\"schema\":1", StringComparison.Ordinal));
+        byte[] duplicate = Encoding.UTF8.GetBytes(Output().ToJsonString().Replace("\"schema\":2", "\"schema\":2,\"schema\":2", StringComparison.Ordinal));
         Assert.Equal("invalid_source_output", (await new WindowsTargetCpuPairReader(Key, new Helper(duplicate)).ReadAsync(Request(), CancellationToken.None)).Reason);
     }
 
@@ -317,13 +343,13 @@ public sealed class WindowsTargetCpuPairReaderTests
             ["observedAtUtc"] = after ? "2026-10-03T12:00:00.5000000Z" : "2026-10-03T12:00:00.0000000Z",
             ["monotonic100ns"] = after ? "2005000000" : "2000000000", ["machineUuid"] = Machine,
             ["bootFileTime100ns"] = "100", ["processCreation100ns"] = "10", ["processCreationAfter100ns"] = "10",
-            ["processExitAfter100ns"] = "0", ["processName"] = "sqlservr.exe",
+            ["processExitAfter100ns"] = "0", ["processWaitResultAfter"] = 258U, ["processName"] = "sqlservr.exe",
             ["processImage"] = "C:\\SQL\\sqlservr.exe", ["processStatus"] = 0U, ["osStatus"] = 0U,
             ["logicalProcessors"] = 128, ["logicalProcessorsAfter"] = 128, ["processInstances"] = 20, ["processMappingAmbiguous"] = false,
             ["process"] = Counter(PdhCpuRawCounter.ProcessTimerType, after ? "9223372036854775807" : "9223372036854775707", after ? "105000000" : "100000000", "140000000000000001"),
             ["os"] = Counter(PdhCpuRawCounter.OsIdleInverseTimerType, after ? "51000000" : "50000000", after ? "105000000" : "100000000", "140000000000000002"),
             ["idProcess"] = Counter(0x10000, "10", "0", "140000000000000003", "0"),
         };
-        return new() { ["schema"] = 1, ["queryId"] = Guid.NewGuid().ToString("D"), ["before"] = Frame(false), ["after"] = Frame(true) };
+        return new() { ["schema"] = 2, ["queryId"] = Guid.NewGuid().ToString("D"), ["before"] = Frame(false), ["after"] = Frame(true) };
     }
 }

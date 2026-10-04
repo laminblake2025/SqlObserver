@@ -951,3 +951,30 @@ Full failed attempts are preserved under artifacts/dashboard-cpu-source-2026-10-
 | Dashboard-refactor scope | Source foundation progressed. Native Windows/SQL association/permissions and remote deployment, CPU canonical persistence/history/API/UI admission, AG transition qualification and running Agent sources remain open. Overall plan is unfinished. |
 
 The final artifact index, source hashes, TRX/logs, native redacted evidence, unchanged frontend verification and checkpoint metadata live at artifacts/dashboard-cpu-source-2026-10-03/. Native qualification scenarios are listed in tools/qualification/paired-cpu/README.md. The unavailable SSH lab was not retried and no GitHub push/upload occurred.
+
+## Paired CPU TCP ownership checkpoint — 2026-10-04 UTC
+
+Independent owners supplied the numeric socket/process association contracts, native Windows TCP reader, source parser tests and sequential native sampling coordinator in non-overlapping files. A separate read-only lane reviewed the SQL/native provenance; another reviewed final coordinator cleanup. The lead integrated the version-2 SQL source, repaired raw process-liveness semantics, resolved strict analyzer issues and performed serial validation. Changes remain a staged dashboard source dependency, with no collector registration, canonical payload, migration, API/MCP exposure or UI activation.
+
+The new eighteen-field SQL source reads every connection row for the owned current session. It retains TCP/TSQL socket fields only for a parentless row; extra rows fail cardinality rather than being hidden by TOP 1. SQL connection ID, SQL session ID and SqlClient connection ID are distinct continuity evidence. The source owner captures its actual process ID. Configured integrated authentication, mandatory validated TLS, explicit TCP and disabled MARS remain in use. The new source is checksum-pinned at `04ae4d76f6b750ed3112483a483636fbe29e2a42cd788478bbe7454b6a68b87c`; approved version-1 bytes remain unchanged.
+
+The fixed Windows helper captures complete bounded IPv4/IPv6 owner tables and every state for the exact tuple and reverse. A candidate requires exactly one established server tuple owned by SQL's reported PID and its reverse owned by the actual collector PID. Same-handle creation epochs and explicit WAIT_TIMEOUT prove local process continuity; undefined running-process exit FILETIME is retained without being interpreted as liveness. The raw CPU helper now uses schema 2 with this explicit wait witness. Numeric addresses, scope, host/boot identity, run/revision, connection/session identity, monotonic order and UTC bounds are checked without DNS/name/proxy fallback.
+
+The coordinator captures TCP-before, raw CPU pair, TCP-after under one 26-second deadline, itself bounded by the original SQL execution deadline (maximum30 seconds). Each child must stop and dispose before the next begins. An unproven child keeps parent completion pending and its target quarantined; a late payload cannot become a successful sample. Candidate association is independent of PDH arithmetic availability, and still leaves native qualification absent, target admission false and hardware identity unverified.
+
+Final qualification at `artifacts/dashboard-cpu-tcp-2026-10-04/final-qualified-unit/` passed **268/268**, zero skips, against **1577 frozen inputs** unchanged through qualification. Owning groups: TCP domain60, schema-2 SQL37, TCP Windows30, native composition10, raw Windows35, raw CPU domain48, same-connection SQL38, host binding10. Strict .NET build/analyzers passed. Complete prior attempts remain preserved: initial CA1822, subsequent CA1859/CA1068, and a lead test-helper argument edit that caused syntax errors. The corrected final run includes the entire owning group; no subset aggregation or muted checks were used.
+
+Uninstrumented native probes succeeded for both IPv4 and IPv6 loopback sockets, checking exact forward/reverse owners and held-handle liveness, plus raw CPU schema-2 liveness on the owned Python parent. They preserve exact source bytes, output hashes and redacted native fields. These are local native ABI probes with non-SQL processes and synthetic SQL provenance, not SQL Server/TLS/least-privilege/target-admission qualification. Existing raw PDH process-name ambiguity still removes process-counter evidence; it does not erase independent OS counters.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Multiple subagents and one integration lead | Independent source/test owners plus read-only reviews; lead alone executed checks, integration repairs and checkpoint. |
+| Dark theme | Unchanged qualified frontend; all669 inputs still match the prior final UI run. |
+| Diagnostic screens | Source ownership gaps improved; CPU remains staged and cannot be rendered as an admitted SQL/OS comparison. |
+| Interaction tests | Final268 source/lifecycle cases pass; prior mounted/browser interactions remain bound to the unchanged UI. |
+| Accessibility and responsive checks | Prior axe, keyboard, focus and overflow results at320/390/768/1440px remain applicable. No broader device/assistive-technology claim. |
+| Validation after integration | Complete owning group plus exact fixed-helper native probes against final sources, with preserved failures and frozen hashes. |
+| Screenshots | Existing246-image gallery and normal desktop/mobile screenshots are linked from this checkpoint's artifact index. They show synthetic DTO fixtures and unchanged frontend, not newly collected CPU data. |
+| Dashboard-only scope | No platform/runtime/storage/API redesign or production admission; staged CPU source dependency only. |
+
+The original plan and dashboard end state remain unfinished. Native SQL Server monitoring-identity qualification, canonical CPU history/API/UI integration, AG transition qualification and running Agent sources remain open. The prior unavailable SSH lab was not retried; no GitHub push/upload occurred. Completion/checkpoint records bind this evidence to the local commit without rebinding prior screenshot qualification.

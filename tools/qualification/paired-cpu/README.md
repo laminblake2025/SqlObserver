@@ -27,6 +27,38 @@ The existing integrated connection factory preserves mandatory validated TLS and
 explicit TCP routing; no routing, trust, credential or privilege change is made.
 Actual shared-memory transport is evidence only, not automatic admission.
 
+## Staged TCP association source
+
+The version-2 SQL witness reads all `sys.dm_exec_connections` rows for `@@SPID`
+on the owned MARS-disabled connection. The parser requires one eighteen-field
+row and retains the SQL connection GUID and session ID independently of the
+SqlClient connection GUID. Only a TCP/TSQL row with no parent supplies socket
+fields. The actual reader process captures its own PID; SQL `host_process_id`
+and caller-supplied process names are not ownership evidence. The approved
+version-1 source bytes remain unchanged.
+
+The local Windows reader captures complete bounded IPv4 and IPv6 owner tables,
+including every state for the exact forward and reverse tuple. A candidate
+requires one established forward tuple owned by the SQL-reported PID and one
+reverse tuple owned by the actual collector process. Numeric address bytes,
+scope and ports must match; DNS, port 1433, aliases, proxy rewriting and a
+missing remote tuple cannot substitute for this evidence.
+
+The sampling coordinator owns TCP-before, raw CPU pair, and TCP-after in that
+order under one deadline. Completion includes child termination and cleanup;
+unproven cleanup quarantines the target. SQL-before and SQL-after bracket this
+operation on the same connection. The qualifier also checks exact target/run/
+revision, connection/session continuity, process creation and explicit handle
+liveness, host/boot epochs, monotonic ordering and UTC bounds. The raw CPU
+helper uses schema 2 and requires `WAIT_TIMEOUT` from its held process handle;
+running-process exit FILETIME is retained but cannot prove liveness.
+
+Even a complete local association is only `CandidateLocalAssociation`.
+`NativeQualification` remains absent and `TargetComparisonAdmitted` remains
+false. No collector registration, canonical persistence, HTTP/MCP exposure or
+dashboard series is activated by these sources. Real Windows SQL Server tests
+under the monitoring identity remain required before source admission.
+
 Native work must be owned until completion proves it stopped. Cancellation is
 advisory; bounded termination and cleanup are separate. An unproven operation
 quarantines the target rather than allowing overlapping retries or accepting a

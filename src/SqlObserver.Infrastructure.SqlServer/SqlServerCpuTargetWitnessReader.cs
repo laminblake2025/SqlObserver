@@ -22,7 +22,7 @@ public sealed record SqlCpuWitnessBracket<T>(SqlCpuTargetWitness Before, T Nativ
 /// never reroutes an endpoint or relaxes the integrated TLS connection policy.</summary>
 public sealed class SqlServerCpuTargetWitnessReader
 {
-    public static readonly TimeSpan MaximumDuration = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan MaximumDuration = TimeSpan.FromSeconds(30);
     private readonly IdentityFingerprintKey key;
     private readonly ISqlCpuWitnessSource source;
     private readonly ConcurrentDictionary<Guid, Task> quarantined = new();
@@ -151,13 +151,24 @@ public sealed class SqlServerCpuTargetWitnessReader
             throw new UnauthorizedAccessException("SQL CPU witnesses require the bounded integrated monitoring profile.");
     }
 
-    internal static async ValueTask<SqlCpuTargetWitness> ParseAsync(CollectorExecutionRequest request,
+    internal static ValueTask<SqlCpuTargetWitness> ParseAsync(CollectorExecutionRequest request,
         IOperationalHealthRowReader reader, IdentityFingerprintKey key, Guid sessionId,
-        Guid clientConnectionId, int ordinal, CancellationToken cancellationToken)
+        Guid clientConnectionId, int ordinal, CancellationToken cancellationToken) =>
+        ParseCoreAsync(request, reader, key, sessionId, clientConnectionId, ordinal, 1, 0, cancellationToken);
+
+    internal static ValueTask<SqlCpuTargetWitness> ParseTcpAsync(CollectorExecutionRequest request,
+        IOperationalHealthRowReader reader, IdentityFingerprintKey key, Guid sessionId,
+        Guid clientConnectionId, int ordinal, int collectorProcessId, CancellationToken cancellationToken) =>
+        ParseCoreAsync(request, reader, key, sessionId, clientConnectionId, ordinal, 2, collectorProcessId, cancellationToken);
+
+    private static async ValueTask<SqlCpuTargetWitness> ParseCoreAsync(CollectorExecutionRequest request,
+        IOperationalHealthRowReader reader, IdentityFingerprintKey key, Guid sessionId,
+        Guid clientConnectionId, int ordinal, int schema, int collectorProcessId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (reader.FieldCount != 12 || !await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            throw new InvalidDataException("SQL CPU witness requires exactly one twelve-field row.");
+        if (schema == 2 && collectorProcessId <= 0) throw new ArgumentOutOfRangeException(nameof(collectorProcessId));
+        if (reader.FieldCount != (schema == 1 ? 12 : 18) || !await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            throw new InvalidDataException("SQL CPU witness requires exactly one row of its approved width.");
         if (reader.IsDBNull(0)) throw new InvalidDataException("SQL CPU witness source time is missing.");
         DateTime observed = reader.GetDateTime(0);
         if (observed.Kind == DateTimeKind.Local) throw new InvalidDataException("SQL source UTC cannot carry a local kind.");
@@ -176,7 +187,25 @@ public sealed class SqlServerCpuTargetWitnessReader
         long? startTicks = Long(5), currentTicks = Long(6), userTime = Long(7), kernelTime = Long(8);
         int? processors = Int(9);
         string? transport = Name(10);
-        if (reader.IsDBNull(11) || reader.GetInt32(11) != 1)
+        SqlCpuTcpConnectionEvidence? tcp = null;
+        if (schema == 2)
+        {
+            string? serverAddress = Name(11); int? serverPort = Int(12);
+            string? clientAddress = Name(13); int? clientPort = Int(14);
+            Guid? connectionId = reader.IsDBNull(15) ? null : reader.GetGuid(15);
+            int? serverSessionId = Int(16);
+            bool anyTcpField = serverAddress is not null || serverPort is not null || clientAddress is not null ||
+                clientPort is not null || connectionId is not null || serverSessionId is not null;
+            if (anyTcpField)
+            {
+                if (transport != "TCP" || connectionId is null || serverSessionId is null)
+                    throw new InvalidDataException("SQL CPU TCP ownership fields are incomplete or conflict with transport.");
+                tcp = new(connectionId.Value, serverSessionId.Value, serverAddress, serverPort,
+                    clientAddress, clientPort, collectorProcessId);
+            }
+        }
+        int schemaField = schema == 1 ? 11 : 17;
+        if (reader.IsDBNull(schemaField) || reader.GetInt32(schemaField) != schema)
             throw new InvalidDataException("SQL CPU witness schema is missing or unsupported.");
         var engine = new ServerLifecycleEngineEvidence(
             node is null ? null : ServerLifecycleIdentityFingerprint.PhysicalNode(node, key),
@@ -192,7 +221,7 @@ public sealed class SqlServerCpuTargetWitnessReader
         };
         var receipt = new SqlCpuTargetWitness(request.TargetId, request.TargetRevision, request.RunId,
             sessionId, clientConnectionId, ordinal, new DateTimeOffset(DateTime.SpecifyKind(observed, DateTimeKind.Utc)),
-            engine, kind, userTime, kernelTime, processors);
+            engine, kind, userTime, kernelTime, processors, tcpConnection: tcp, sourceSchemaVersion: schema);
         if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             throw new InvalidDataException("SQL CPU witness exceeds its one-row bound.");
         cancellationToken.ThrowIfCancellationRequested();
@@ -203,6 +232,15 @@ public sealed class SqlServerCpuTargetWitnessReader
     {
         const string resource = "SqlObserver.Infrastructure.SqlServer.CpuWitnessSourceAssets.cpu.target-witness.sqlserver15-17-windows.v1.sql";
         const string checksum = "86c64863d16f99cf7fd2ac969356c11f307969b3a07a348bcbe8218b3acfce99";
+        return LoadPinnedQuery(resource, checksum, assembly);
+    }
+
+    internal static string LoadTcpQuery(Assembly? assembly = null) => LoadPinnedQuery(
+        "SqlObserver.Infrastructure.SqlServer.CpuWitnessSourceAssets.cpu.target-witness.sqlserver15-17-windows.v2.sql",
+        "04ae4d76f6b750ed3112483a483636fbe29e2a42cd788478bbe7454b6a68b87c", assembly);
+
+    private static string LoadPinnedQuery(string resource, string checksum, Assembly? assembly)
+    {
         using Stream source = (assembly ?? typeof(SqlServerCpuTargetWitnessReader).Assembly).GetManifestResourceStream(resource)
             ?? throw new InvalidDataException("The SQL CPU witness source is missing.");
         if (source.Length is <= 0 or > 4096) throw new InvalidDataException("The SQL CPU witness source exceeds its bound.");
@@ -230,7 +268,7 @@ internal sealed class SqlCpuWitnessSource : ISqlCpuWitnessSource
 {
     public async ValueTask<ISqlCpuWitnessSession> OpenAsync(CollectorExecutionRequest request, IdentityFingerprintKey key, CancellationToken cancellationToken)
     {
-        string query = SqlServerCpuTargetWitnessReader.LoadQuery();
+        string query = SqlServerCpuTargetWitnessReader.LoadTcpQuery();
         var factory = new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName);
         SqlConnection connection = await factory.OpenConnectionAsync(request.ConnectionPolicy, cancellationToken).ConfigureAwait(false);
         return new Session(connection, request, key, query);
@@ -241,6 +279,7 @@ internal sealed class SqlCpuWitnessSource : ISqlCpuWitnessSource
     {
         private readonly Guid sessionId = Guid.NewGuid();
         private readonly Guid clientId = connection.ClientConnectionId;
+        private readonly int collectorProcessId = Environment.ProcessId;
         private int previousOrdinal;
 
         public async ValueTask<SqlCpuTargetWitness> ReadAsync(int ordinal, CancellationToken cancellationToken)
@@ -252,8 +291,9 @@ internal sealed class SqlCpuWitnessSource : ISqlCpuWitnessSource
             { CommandTimeout = Math.Max(1, (int)Math.Ceiling(Math.Min(request.Timeout.Value.TotalSeconds, 5))) };
             await using SqlDataReader reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.SingleResult,
                 cancellationToken).ConfigureAwait(false);
-            SqlCpuTargetWitness receipt = await SqlServerCpuTargetWitnessReader.ParseAsync(request,
-                new SqlDataReaderOperationalHealthRowReader(reader), key, sessionId, clientId, ordinal, cancellationToken).ConfigureAwait(false);
+            SqlCpuTargetWitness receipt = await SqlServerCpuTargetWitnessReader.ParseTcpAsync(request,
+                new SqlDataReaderOperationalHealthRowReader(reader), key, sessionId, clientId, ordinal,
+                collectorProcessId, cancellationToken).ConfigureAwait(false);
             RequireConnection();
             return receipt;
         }
