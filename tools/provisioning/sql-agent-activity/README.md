@@ -1,9 +1,11 @@
 # SQL17 Agent activity signed-module qualification candidate
 
-This folder is an **offline review package**. It does not install anything, connect to SQL Server,
-grant permissions, activate a collector, or establish native qualification. Executable installation
-and removal are **not implemented**. `capture-v1.sql` is a proposed procedure definition, not a
-complete deployment script. Do not run it in isolation and treat the result as installed safely.
+The original `New-QualificationPlan.ps1` remains an **offline review package**. Its manifest describes
+that preview's capabilities; it does not connect to SQL Server or install anything. The separate
+[finite trial library](trial/README.md) implements transactional installation, verification and
+removal for controlled qualification. It does not activate a production collector or establish
+native qualification merely by building. `capture-v1.sql` is a proposed procedure definition,
+not a complete deployment script. Do not run it in isolation and treat the result as installed safely.
 
 Generate a reviewable JSON plan locally:
 
@@ -114,3 +116,7 @@ permissions as Granted. The existing reader's direct-permission gate is unchange
 - [Signature validity function](https://learn.microsoft.com/en-us/sql/relational-databases/system-functions/sys-fn-check-object-signatures-transact-sql?view=sql-server-ver17)
 - [Public certificate bytes](https://learn.microsoft.com/en-us/sql/t-sql/functions/certencoded-transact-sql?view=sql-server-ver17)
 - [Private-key removal](https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-certificate-transact-sql?view=sql-server-ver17)
+
+## Finite trial result — 2026-10-05
+
+The separate [trial library](trial/README.md) now has a passing actual-monitor SQL17 run: three native cases, zero skips, signed reads through the production parser, and coordinator-verified normal removal restoring the original baseline. [Evidence and limitations](../../../artifacts/dashboard-agent-module-trial-2026-10-05/completion.json). Agent was stopped; full visibility, running/session/time semantics, signature/DENY negatives, crash recovery and production adapter/admission remain open. The original offline preview and its manifest retain their original scope.
