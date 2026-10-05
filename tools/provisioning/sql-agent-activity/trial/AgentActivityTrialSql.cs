@@ -87,10 +87,11 @@ public static class AgentActivityTrialSql
     }
 
     public static async Task<TrialSnapshot> InstallAsync(SqlConnection connection, SqlTransaction transaction,
-        TrialBaseline baseline, byte[] pinnedModuleUtf8, CancellationToken cancellationToken)
+        TrialBaseline baseline, byte[] pinnedModuleUtf8, CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(pinnedModuleUtf8);
+        ValidatePolicy(policy);
         byte[] moduleBytes = (byte[])pinnedModuleUtf8.Clone();
         ValidateModule(moduleBytes);
         RequireAbsent(baseline.Snapshot);
@@ -144,33 +145,46 @@ public static class AgentActivityTrialSql
                 EXEC sys.sp_executesql @ddl;
                 SET @ddl=N'ADD SIGNATURE TO OBJECT::[sqlobserver_agent].[capture_v1] BY CERTIFICATE [SqlObserverAgentActivityCertificateV1] WITH PASSWORD = '+QUOTENAME(@password,'''')+N';';
                 EXEC sys.sp_executesql @ddl;
-                SET @ddl=N'GRANT EXECUTE ON OBJECT::[sqlobserver_agent].[capture_v1] TO '+QUOTENAME(@monitor)+N';';
+                SET @ddl=N'GRANT EXECUTE ON OBJECT::[sqlobserver_agent].[capture_v1] TO '+QUOTENAME(@monitor)
+                    +CASE WHEN @metadataPolicy=1 THEN N' AS [SqlObserverAgentActivitySchemaOwnerV1]' ELSE N'' END+N';';
                 EXEC sys.sp_executesql @ddl;
                 ALTER CERTIFICATE [SqlObserverAgentActivityCertificateV1] REMOVE PRIVATE KEY;
                 """, cancellationToken, P("@password", SqlDbType.NVarChar, password, 128),
-                P("@monitor", SqlDbType.NVarChar, current.Monitor.Principal, 128)).ConfigureAwait(false);
+                P("@monitor", SqlDbType.NVarChar, current.Monitor.Principal, 128),
+                P("@metadataPolicy", SqlDbType.Bit, policy == TrialInstallationPolicy.MetadataVerificationV2)).ConfigureAwait(false);
         }
         finally { password = string.Empty; }
-        return await CaptureInstalledAsync(connection, transaction, baseline, cancellationToken).ConfigureAwait(false);
+        if (policy == TrialInstallationPolicy.MetadataVerificationV2)
+        {
+            await ExecuteAsync(connection, transaction, """
+                USE [master];
+                DECLARE @ddl nvarchar(max)=N'GRANT VIEW DEFINITION ON OBJECT::[sqlobserver_agent].[capture_v1] TO '
+                  +QUOTENAME(@monitor)+N' AS [SqlObserverAgentActivitySchemaOwnerV1]; GRANT VIEW DEFINITION ON CERTIFICATE::[SqlObserverAgentActivityCertificateV1] TO '
+                  +QUOTENAME(@monitor)+N' AS [dbo];';
+                EXEC sys.sp_executesql @ddl;
+                """, cancellationToken, P("@monitor", SqlDbType.NVarChar, current.Monitor.Principal, 128)).ConfigureAwait(false);
+        }
+        return await CaptureInstalledAsync(connection, transaction, baseline, cancellationToken, policy).ConfigureAwait(false);
     }
 
     public static async Task<TrialSnapshot> CaptureInstalledAsync(SqlConnection connection, SqlTransaction transaction,
-        TrialBaseline baseline, CancellationToken cancellationToken)
+        TrialBaseline baseline, CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
         ArgumentNullException.ThrowIfNull(baseline);
+        ValidatePolicy(policy);
         var state = await CaptureAsync(connection, transaction, baseline.Snapshot.Monitor.Principal,
             baseline.Snapshot.DeploymentId, cancellationToken,baseline.Snapshot.Monitor.MasterUserId==0).ConfigureAwait(false);
-        ValidateInstalled(baseline, state);
+        ValidateInstalled(baseline, state, policy);
         return state;
     }
 
     public static async Task RemoveAsync(SqlConnection connection, SqlTransaction transaction,
-        TrialBaseline baseline, TrialSnapshot expectedInstalled, CancellationToken cancellationToken)
+        TrialBaseline baseline, TrialSnapshot expectedInstalled, CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(expectedInstalled);
-        ValidateInstalled(baseline, expectedInstalled);
-        TrialSnapshot actual = await CaptureInstalledAsync(connection, transaction, baseline, cancellationToken).ConfigureAwait(false);
+        ValidateInstalled(baseline, expectedInstalled, policy);
+        TrialSnapshot actual = await CaptureInstalledAsync(connection, transaction, baseline, cancellationToken, policy).ConfigureAwait(false);
         ValidateExactSnapshot(expectedInstalled, actual);
         await RemoveVerifiedObjectsAsync(connection,transaction,baseline,cancellationToken).ConfigureAwait(false);
     }
@@ -178,34 +192,34 @@ public static class AgentActivityTrialSql
     /// <summary>Removes only the attested module signature inside the caller's transaction. The caller must
     /// persist the unsigned postimage before commit; no monitor test can observe an uncommitted removal.</summary>
     public static async Task<TrialSnapshot> RemoveSignatureAsync(SqlConnection connection,SqlTransaction transaction,
-        TrialBaseline baseline,TrialSnapshot expectedSigned,CancellationToken cancellationToken)
+        TrialBaseline baseline,TrialSnapshot expectedSigned,CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
-        ValidateInstalled(baseline,expectedSigned);
-        TrialSnapshot actual=await CaptureInstalledAsync(connection,transaction,baseline,cancellationToken).ConfigureAwait(false);
+        ValidateInstalled(baseline,expectedSigned,policy);
+        TrialSnapshot actual=await CaptureInstalledAsync(connection,transaction,baseline,cancellationToken,policy).ConfigureAwait(false);
         ValidateExactSnapshot(expectedSigned,actual);
         await ExecuteAsync(connection,transaction,"""
             USE [master]; SET XACT_ABORT ON; SET LOCK_TIMEOUT 5000;
             DROP SIGNATURE FROM [sqlobserver_agent].[capture_v1]
               BY CERTIFICATE [SqlObserverAgentActivityCertificateV1];
             """,cancellationToken).ConfigureAwait(false);
-        return await CaptureUnsignedAsync(connection,transaction,baseline,expectedSigned,cancellationToken).ConfigureAwait(false);
+        return await CaptureUnsignedAsync(connection,transaction,baseline,expectedSigned,cancellationToken,policy).ConfigureAwait(false);
     }
 
     public static async Task<TrialSnapshot> CaptureUnsignedAsync(SqlConnection connection,SqlTransaction transaction,
-        TrialBaseline baseline,TrialSnapshot expectedSigned,CancellationToken cancellationToken)
+        TrialBaseline baseline,TrialSnapshot expectedSigned,CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
-        ValidateInstalled(baseline,expectedSigned);
+        ValidateInstalled(baseline,expectedSigned,policy);
         var actual=await CaptureAsync(connection,transaction,baseline.MonitorPrincipal,baseline.DeploymentId,
             cancellationToken,baseline.Snapshot.Monitor.MasterUserId==0).ConfigureAwait(false);
-        ValidateUnsigned(baseline,expectedSigned,actual);
+        ValidateUnsigned(baseline,expectedSigned,actual,policy);
         return actual;
     }
 
     public static async Task RemoveUnsignedAsync(SqlConnection connection,SqlTransaction transaction,
-        TrialBaseline baseline,TrialSnapshot expectedSigned,TrialSnapshot expectedUnsigned,CancellationToken cancellationToken)
+        TrialBaseline baseline,TrialSnapshot expectedSigned,TrialSnapshot expectedUnsigned,CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
-        ValidateUnsigned(baseline,expectedSigned,expectedUnsigned);
-        var actual=await CaptureUnsignedAsync(connection,transaction,baseline,expectedSigned,cancellationToken).ConfigureAwait(false);
+        ValidateUnsigned(baseline,expectedSigned,expectedUnsigned,policy);
+        var actual=await CaptureUnsignedAsync(connection,transaction,baseline,expectedSigned,cancellationToken,policy).ConfigureAwait(false);
         ValidateExactSnapshot(expectedUnsigned,actual);
         await RemoveVerifiedObjectsAsync(connection,transaction,baseline,cancellationToken).ConfigureAwait(false);
     }
@@ -214,7 +228,7 @@ public static class AgentActivityTrialSql
         TrialBaseline baseline,CancellationToken cancellationToken)
     {
         // Only fixed, receipt-verified package objects are dropped. Object deletion removes its
-        // package-created EXECUTE grant. The optional user name is receipt-verified and QUOTENAME-escaped.
+        // package-created EXECUTE and policy-specific metadata grants. The optional user name is receipt-verified and QUOTENAME-escaped.
         await ExecuteAsync(connection, transaction, """
             USE [master]; SET XACT_ABORT ON; SET LOCK_TIMEOUT 5000;
             DROP PROCEDURE [sqlobserver_agent].[capture_v1];
@@ -270,9 +284,9 @@ public static class AgentActivityTrialSql
 
     /// <summary>An unsigned image is authorized only as the exact single-signature removal from an independently
     /// valid signed postimage. No definition, identity, ownership, permission or other fact may change.</summary>
-    public static void ValidateUnsigned(TrialBaseline baseline,TrialSnapshot expectedSigned,TrialSnapshot unsignedSnapshot)
+    public static void ValidateUnsigned(TrialBaseline baseline,TrialSnapshot expectedSigned,TrialSnapshot unsignedSnapshot, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
-        ValidateInstalled(baseline,expectedSigned);
+        ValidateInstalled(baseline,expectedSigned,policy);
         ArgumentNullException.ThrowIfNull(unsignedSnapshot);
         var expectedUnsigned=expectedSigned with {
             Facts=Order(expectedSigned.Facts.Where(x=>x.Kind!="signature").Select(x=>
@@ -281,9 +295,10 @@ public static class AgentActivityTrialSql
         ValidateExactSnapshot(expectedUnsigned,unsignedSnapshot);
     }
 
-    public static void ValidateInstalled(TrialBaseline baseline, TrialSnapshot installed)
+    public static void ValidateInstalled(TrialBaseline baseline, TrialSnapshot installed, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {
         ArgumentNullException.ThrowIfNull(baseline); ArgumentNullException.ThrowIfNull(installed);
+        ValidatePolicy(policy);
         RequireAbsent(baseline.Snapshot); ValidateInventory(installed);
         bool ownsMonitor = baseline.Snapshot.Monitor.MasterUserId==0;
         if (baseline.Snapshot.Identity != installed.Identity ||
@@ -354,23 +369,46 @@ public static class AgentActivityTrialSql
             ("msdb",Obj("certificate_user").Id,1,activity,0,"SELECT","G"),
             ("master",installed.Monitor.MasterUserId,1,Obj("module").Id,0,"EXECUTE","G")
         };
+        TrialGrant[] metadataGrants = policy == TrialInstallationPolicy.MetadataVerificationV2
+            ? [new("master", installed.Monitor.MasterUserId, Obj("owner_user").Id, 1, Obj("module").Id, 0, "VIEW DEFINITION", "G"),
+               new("master", installed.Monitor.MasterUserId, 1, 25, Obj("master_certificate").Id, 0, "VIEW DEFINITION", "G")]
+            : [];
+        if (metadataGrants.Length != 0)
+        {
+            expected = [..expected, ..metadataGrants.Select(x => (x.Scope,x.GranteeId,x.Class,x.MajorId,x.MinorId,x.Name,x.State))];
+            if (metadataGrants.Any(x => installed.PackagePermissions.Count(y => y == x) != 1 ||
+                installed.MonitorPermissions.Count(y => y == x) != 1))
+                throw new InvalidDataException("Metadata grants differ from the exact policy recipient, grantor or object.");
+            var executeGrant = new TrialGrant("master", installed.Monitor.MasterUserId, Obj("owner_user").Id, 1, Obj("module").Id, 0, "EXECUTE", "G");
+            if (installed.PackagePermissions.Count(x => x == executeGrant) != 1 || installed.MonitorPermissions.Count(x => x == executeGrant) != 1)
+                throw new InvalidDataException("Monitor EXECUTE inventories disagree under the metadata policy.");
+        }
         bool ImplicitConnect(TrialGrant x) => ownsMonitor && x.Scope=="master" && x.GranteeId==installed.Monitor.MasterUserId &&
             x.GrantorId==1 && x.Class==0 && x.MajorId==0 && x.MinorId==0 && x.Name=="CONNECT" && x.State=="G";
         if (installed.PackagePermissions.Count(ImplicitConnect)>1)
             throw new InvalidDataException("Temporary monitor CONNECT inventory is not exact.");
         var actual = installed.PackagePermissions.Where(x=>!ImplicitConnect(x)).Select(x => (x.Scope,x.GranteeId,x.Class,x.MajorId,x.MinorId,x.Name,x.State)).ToArray();
-        if (actual.Length != 5 || expected.Any(x => actual.Count(y => y == x) != 1))
-            throw new InvalidDataException("Package grants differ from the exact five-grant plan.");
+        if (actual.Length != expected.Length || expected.Any(x => actual.Count(y => y == x) != 1))
+            throw new InvalidDataException("Package grants differ from the exact installation policy.");
         if (ownsMonitor && !installed.MonitorPermissions.Where(x=>x.Scope=="master").SequenceEqual(
             installed.PackagePermissions.Where(x=>x.Scope=="master" && x.GranteeId==installed.Monitor.MasterUserId)))
             throw new InvalidDataException("Temporary monitor permission inventories disagree.");
-        var originalMonitor = installed.MonitorPermissions.Where(x => !ImplicitConnect(x) && !(x.Scope == "master" && x.Class == 1 && x.MajorId == Obj("module").Id)).ToArray();
+        var originalMonitor = installed.MonitorPermissions.Where(x => !ImplicitConnect(x) &&
+            !metadataGrants.Contains(x) && !(x.Scope == "master" && x.Class == 1 && x.MajorId == Obj("module").Id &&
+                (policy == TrialInstallationPolicy.ExecuteOnlyV1 ||
+                    (x.GranteeId == installed.Monitor.MasterUserId && x.GrantorId == Obj("owner_user").Id && x.MinorId == 0 && x.Name == "EXECUTE" && x.State == "G")))).ToArray();
         if (!originalMonitor.SequenceEqual(baseline.Snapshot.MonitorPermissions))
             throw new InvalidDataException("Pre-existing monitor permissions changed.");
         var baselineFacts = installed.Facts.Where(x => (x.Kind is "monitor_role" or "monitor_mapping" or "base_object") &&
             !(ownsMonitor && x.Scope=="master" && x.Kind=="monitor_mapping")).ToArray();
         if (!baselineFacts.SequenceEqual(baseline.Snapshot.Facts))
             throw new InvalidDataException("Pre-existing monitor mappings, roles or base source objects changed.");
+    }
+
+    private static void ValidatePolicy(TrialInstallationPolicy policy)
+    {
+        if (policy is not (TrialInstallationPolicy.ExecuteOnlyV1 or TrialInstallationPolicy.MetadataVerificationV2))
+            throw new InvalidDataException("Unknown trial installation policy.");
     }
 
     private static void RequireAbsent(TrialSnapshot snapshot)

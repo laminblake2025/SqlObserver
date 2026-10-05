@@ -28,7 +28,7 @@ public static class TrialCoordinator
 
     public static Task<TrialRunResult> RunAsync(SqlConnection connection, string principal, Guid deploymentId,
         byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualify, CancellationToken cancellationToken)
-        => RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualify, null, cancellationToken);
+        => RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualify, null, TrialInstallationPolicy.ExecuteOnlyV1, cancellationToken);
 
     /// <summary>Qualifies the signed module, records a committed unsigned postimage, then qualifies
     /// permission denial under the same actual monitor. Both callbacks must join their owned processes.</summary>
@@ -37,12 +37,24 @@ public static class TrialCoordinator
         Func<CancellationToken, Task<bool>> qualifyUnsigned, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(qualifyUnsigned);
-        return RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualifySigned, qualifyUnsigned, cancellationToken);
+        return RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualifySigned, qualifyUnsigned, TrialInstallationPolicy.ExecuteOnlyV1, cancellationToken);
+    }
+
+    /// <summary>Uses the separately versioned metadata-verification grant policy. Both callbacks must
+    /// finish their owned monitor processes; signed and unsigned states retain exact journal provenance.</summary>
+    public static Task<TrialRunResult> RunMetadataVerificationAsync(SqlConnection connection, string principal, Guid deploymentId,
+        byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualifySigned,
+        Func<CancellationToken, Task<bool>> qualifyUnsigned, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(qualifySigned);
+        ArgumentNullException.ThrowIfNull(qualifyUnsigned);
+        return RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualifySigned, qualifyUnsigned,
+            TrialInstallationPolicy.MetadataVerificationV2, cancellationToken);
     }
 
     private static async Task<TrialRunResult> RunCoreAsync(SqlConnection connection, string principal, Guid deploymentId,
         byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualify,
-        Func<CancellationToken, Task<bool>>? qualifyUnsigned, CancellationToken cancellationToken)
+        Func<CancellationToken, Task<bool>>? qualifyUnsigned, TrialInstallationPolicy policy, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection); ArgumentNullException.ThrowIfNull(qualify);
         AgentActivityTrialSql.ValidateModule(moduleUtf8);
@@ -60,10 +72,12 @@ public static class TrialCoordinator
                 TrialBaseline baseline = await AgentActivityTrialSql.CaptureBaselineAsync(connection, transaction, principal, deploymentId, cancellationToken).ConfigureAwait(false);
                 stage = "journal_prepare";
                 journal = TrialJournal.Create(deploymentId);
-                var receipt = new TrialReceipt(qualifyUnsigned is null ? 1 : 2, deploymentId, principal, "prepared", baseline, null, null);
+                var receipt = new TrialReceipt(policy == TrialInstallationPolicy.MetadataVerificationV2 ? 3 : qualifyUnsigned is null ? 1 : 2,
+                    deploymentId, principal, "prepared", baseline, null, null,
+                    InstallationPolicyVersion: policy == TrialInstallationPolicy.MetadataVerificationV2 ? 2 : null);
                 journal.Save(receipt);
                 stage = "install_verify";
-                TrialSnapshot installed = await AgentActivityTrialSql.InstallAsync(connection, transaction, baseline, moduleUtf8, cancellationToken).ConfigureAwait(false);
+                TrialSnapshot installed = await AgentActivityTrialSql.InstallAsync(connection, transaction, baseline, moduleUtf8, cancellationToken, policy).ConfigureAwait(false);
                 receipt = receipt with { Phase = "commit_pending", Installed = installed };
                 stage = "install_commit";
                 // Write-ahead postimage: if the process dies during COMMIT, recovery checks live state.
@@ -71,12 +85,12 @@ public static class TrialCoordinator
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 journal.Save(receipt with { Phase = "installed" });
             }
-            // Recheck committed state before exposing the EXECUTE-only module to the monitor callback.
+            // Recheck the committed policy-specific state before the monitor callback.
             stage = "committed_verify";
             await using (var verify = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
             {
                 TrialReceipt receipt = journal.Read();
-                TrialSnapshot actual = await AgentActivityTrialSql.CaptureInstalledAsync(connection, verify, receipt.Baseline, cancellationToken).ConfigureAwait(false);
+                TrialSnapshot actual = await AgentActivityTrialSql.CaptureInstalledAsync(connection, verify, receipt.Baseline, cancellationToken, policy).ConfigureAwait(false);
                 AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed!, actual);
                 await verify.RollbackAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -91,7 +105,7 @@ public static class TrialCoordinator
                 {
                     TrialReceipt receipt = journal.Read();
                     TrialSnapshot unsigned = await AgentActivityTrialSql.RemoveSignatureAsync(connection, transaction,
-                        receipt.Baseline, receipt.Installed!, cancellationToken).ConfigureAwait(false);
+                        receipt.Baseline, receipt.Installed!, cancellationToken, policy).ConfigureAwait(false);
                     receipt = receipt with { Phase = "signature_remove_pending", UnsignedSnapshot = unsigned };
                     stage = "signature_remove_commit";
                     // Either exact postimage is recoverable if COMMIT acknowledgement is lost.
@@ -104,7 +118,7 @@ public static class TrialCoordinator
                 {
                     TrialReceipt receipt = journal.Read();
                     TrialSnapshot actual = await AgentActivityTrialSql.CaptureUnsignedAsync(connection, verify,
-                        receipt.Baseline, receipt.Installed!, cancellationToken).ConfigureAwait(false);
+                        receipt.Baseline, receipt.Installed!, cancellationToken, policy).ConfigureAwait(false);
                     AgentActivityTrialSql.ValidateExactSnapshot(receipt.UnsignedSnapshot!, actual);
                     await verify.RollbackAsync(cancellationToken).ConfigureAwait(false);
                 }
@@ -165,6 +179,7 @@ public static class TrialCoordinator
     private static async Task RecoverUnderLockAsync(SqlConnection connection, TrialJournal journal, string? failure, CancellationToken token)
     {
         TrialReceipt receipt = journal.Read();
+        TrialInstallationPolicy policy = TrialJournal.ResolveInstallationPolicy(receipt);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false);
         try
         {
@@ -185,7 +200,7 @@ public static class TrialCoordinator
         {
             try
             {
-                TrialSnapshot signed = await AgentActivityTrialSql.CaptureInstalledAsync(connection, transaction, receipt.Baseline, token).ConfigureAwait(false);
+                TrialSnapshot signed = await AgentActivityTrialSql.CaptureInstalledAsync(connection, transaction, receipt.Baseline, token, policy).ConfigureAwait(false);
                 AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed, signed);
             }
             catch (InvalidDataException)
@@ -196,15 +211,15 @@ public static class TrialCoordinator
             }
         }
         TrialSnapshot installed = unsigned
-            ? await AgentActivityTrialSql.CaptureUnsignedAsync(connection, transaction, receipt.Baseline, receipt.Installed, token).ConfigureAwait(false)
-            : await AgentActivityTrialSql.CaptureInstalledAsync(connection, transaction, receipt.Baseline, token).ConfigureAwait(false);
+            ? await AgentActivityTrialSql.CaptureUnsignedAsync(connection, transaction, receipt.Baseline, receipt.Installed, token, policy).ConfigureAwait(false)
+            : await AgentActivityTrialSql.CaptureInstalledAsync(connection, transaction, receipt.Baseline, token, policy).ConfigureAwait(false);
         AgentActivityTrialSql.ValidateExactSnapshot(unsigned ? receipt.UnsignedSnapshot! : receipt.Installed, installed);
         receipt = receipt with { Phase = unsigned ? "unsigned_remove_pending" : "remove_pending", FailureCode = failure };
         journal.Save(receipt);
         if (unsigned)
-            await AgentActivityTrialSql.RemoveUnsignedAsync(connection, transaction, receipt.Baseline, receipt.Installed, receipt.UnsignedSnapshot!, token).ConfigureAwait(false);
+            await AgentActivityTrialSql.RemoveUnsignedAsync(connection, transaction, receipt.Baseline, receipt.Installed, receipt.UnsignedSnapshot!, token, policy).ConfigureAwait(false);
         else
-            await AgentActivityTrialSql.RemoveAsync(connection, transaction, receipt.Baseline, receipt.Installed, token).ConfigureAwait(false);
+            await AgentActivityTrialSql.RemoveAsync(connection, transaction, receipt.Baseline, receipt.Installed, token, policy).ConfigureAwait(false);
         await transaction.CommitAsync(token).ConfigureAwait(false);
         // A second read after COMMIT proves the baseline, rather than assuming an acknowledgement.
         await using var verify = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false);
@@ -291,10 +306,28 @@ public static class TrialCoordinator
         "Base source object identity is invalid.",
         "Temporary monitor CONNECT inventory is not exact.",
         "Package grants differ from the exact five-grant plan.",
+        "Package grants differ from the exact installation policy.",
+        "Metadata grants differ from the exact policy recipient, grantor or object.",
+        "Monitor EXECUTE inventories disagree under the metadata policy.",
+        "Unknown trial installation policy.",
         "Temporary monitor permission inventories disagree.",
         "Pre-existing monitor permissions changed.",
         "Pre-existing monitor mappings, roles or base source objects changed.",
         "Trial snapshot drift requires manual review; no cleanup was authorized.",
+        "The trial receipt size is invalid.",
+        "The trial receipt is empty.",
+        "The trial receipt exceeds its bound.",
+        "The first journal record must be prepared.",
+        "The trial receipt contract is invalid.",
+        "The unsigned trial receipt contract is invalid.",
+        "The trial receipt requires its exact installed postimage.",
+        "The trial receipt provenance is invalid.",
+        "An installed postimage must be recorded before committing installation.",
+        "An unsigned postimage must be recorded before committing signature removal.",
+        "Trial provenance cannot be changed.",
+        "The trial journal transition is invalid.",
+        "The trial receipt installation policy is invalid.",
+        "The trial receipt file is invalid.",
     };
 
     private static void RequireSameSession(SqlConnection connection, Guid expected)

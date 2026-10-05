@@ -153,3 +153,64 @@ not proof about every historical descendant. The protected guest journal was not
 This qualifies controlled process exit after an acknowledged commit and completed worker cleanup.
 Uncertain COMMIT, power loss, interruption during SQL work or journal writes, in-flight cancellation,
 orphaned workers, explicit DENY, attached invalid signatures and production admission remain open.
+
+## Metadata-verification policy implementation
+
+`TrialCoordinator.RunMetadataVerificationAsync` uses immutable journal schema 3 and
+`MetadataVerificationV2` installation policy 2. The [versioned policy](installation-policy.v2.json)
+adds only monitor `VIEW DEFINITION` on the fixed module and master certificate: seven explicit
+grants in total. Existing schema 1/2 receipts and omitted policy arguments retain the exact
+five-grant `ExecuteOnlyV1` contract. No receipt is upgraded or policy inferred from live grants.
+Recovery derives its policy from the validated receipt and requires its exact signed or unsigned
+postimage before removal. The optional temporary monitor user's captured SQL-created CONNECT
+variant remains separate from the explicit grant count.
+
+Policy 2 explicitly issues module `EXECUTE` and `VIEW DEFINITION` as
+`SqlObserverAgentActivitySchemaOwnerV1`, the module's independently validated owner. The certificate
+`VIEW DEFINITION` grant is explicitly issued as `dbo`. Validation and cleanup require these exact
+grantors; they do not accept either principal interchangeably. Legacy SQL and validation behavior
+remain unchanged.
+
+The pinned [metadata probe](../verify-metadata-v2.sql) is a separate bounded read. The finite
+qualification opens the actual monitor's connection through the production integrated connection
+factory, checks the trusted DBA-installed definition, public certificate and signature before
+constructing or sending capture EXEC, then repeats the metadata check after the production parser
+finishes and before accepting its capture. Both checks and capture use the same owned SQL session;
+monitor identity and direct permissions are also checked before/after. This is test-only wiring,
+with no public production module adapter or admission change.
+
+The unsigned case must observe the missing signature and reject capture eligibility. A separate
+negative execution experiment then deliberately bypasses that eligibility check to require only
+SQL 229, with no source result sets or accepted capture. It does not qualify an attached invalid
+signature or explicit DENY. Equal metadata observations are checks at two points in time; they
+cannot exclude a privileged change-and-restore between them.
+
+Managed validation passes 394 affected tooling cases, 132 selected SQL metadata/contract cases
+and 60 pure SQL-plan cases. These are separate groups, not an aggregate unique-test count. The
+two native cases use the explicit `RequiresSqlAgentActivityMetadataModule` category, excluded
+from ordinary sweeps. Managed results and the native evidence below are separate qualification layers.
+
+Run12 is retained as a failed attempt: installation validation refused the postimage before any
+native tests executed, and cleanup verified restoration of the original baseline. The new validator
+had incorrectly required `dbo` as the module grantor. A read-only inspection of the protected,
+retained Run10 receipt confirmed that the actual module `EXECUTE` grantor was the recorded schema
+owner. The correction makes policy-2 grantors explicit and tests rejection of `dbo` for module
+grants and the schema owner for the certificate grant. The fresh Run13 result is recorded below.
+
+The [Run13 metadata qualification](../../../../artifacts/dashboard-agent-module-trial-2026-10-05/metadata-completion.json)
+passes both native cases with zero skips. The signed case verified the enrolled definition,
+public certificate, cryptographic signature validity and actual-monitor identity before/after
+capture on the same owned session. After removal of the signature, metadata remained readable,
+capture eligibility was false and the separate negative execution returned only SQL 229 with no
+source result sets. Direct permissions remained unchanged. The runner exited 0 and normal cleanup
+restored the original baseline; fallback recovery was not needed.
+
+All 2,547 packaged source inputs and four runner inputs were unchanged before/after. The final
+snapshot at 2026-10-05 10:13:43.7300142 UTC found no qualification processes/services, all five core
+services running and Agent stopped; it does not prove absence of every historical descendant.
+The two independently checked TRX digests and preserved Run12 failure are bound in the completion
+record. This qualifies the finite schema-3/policy-2 metadata experiment, not continuous stability,
+attached invalid signatures, explicit DENY, running-job association or elapsed time.
+
+The next step is an explicit module adapter with trusted, versioned, revocable enrollment before
+retention, API or UI work. No public production adapter or admission is established by this trial.
