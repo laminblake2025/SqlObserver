@@ -172,6 +172,47 @@ public static class AgentActivityTrialSql
         ValidateInstalled(baseline, expectedInstalled);
         TrialSnapshot actual = await CaptureInstalledAsync(connection, transaction, baseline, cancellationToken).ConfigureAwait(false);
         ValidateExactSnapshot(expectedInstalled, actual);
+        await RemoveVerifiedObjectsAsync(connection,transaction,baseline,cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Removes only the attested module signature inside the caller's transaction. The caller must
+    /// persist the unsigned postimage before commit; no monitor test can observe an uncommitted removal.</summary>
+    public static async Task<TrialSnapshot> RemoveSignatureAsync(SqlConnection connection,SqlTransaction transaction,
+        TrialBaseline baseline,TrialSnapshot expectedSigned,CancellationToken cancellationToken)
+    {
+        ValidateInstalled(baseline,expectedSigned);
+        TrialSnapshot actual=await CaptureInstalledAsync(connection,transaction,baseline,cancellationToken).ConfigureAwait(false);
+        ValidateExactSnapshot(expectedSigned,actual);
+        await ExecuteAsync(connection,transaction,"""
+            USE [master]; SET XACT_ABORT ON; SET LOCK_TIMEOUT 5000;
+            DROP SIGNATURE FROM [sqlobserver_agent].[capture_v1]
+              BY CERTIFICATE [SqlObserverAgentActivityCertificateV1];
+            """,cancellationToken).ConfigureAwait(false);
+        return await CaptureUnsignedAsync(connection,transaction,baseline,expectedSigned,cancellationToken).ConfigureAwait(false);
+    }
+
+    public static async Task<TrialSnapshot> CaptureUnsignedAsync(SqlConnection connection,SqlTransaction transaction,
+        TrialBaseline baseline,TrialSnapshot expectedSigned,CancellationToken cancellationToken)
+    {
+        ValidateInstalled(baseline,expectedSigned);
+        var actual=await CaptureAsync(connection,transaction,baseline.MonitorPrincipal,baseline.DeploymentId,
+            cancellationToken,baseline.Snapshot.Monitor.MasterUserId==0).ConfigureAwait(false);
+        ValidateUnsigned(baseline,expectedSigned,actual);
+        return actual;
+    }
+
+    public static async Task RemoveUnsignedAsync(SqlConnection connection,SqlTransaction transaction,
+        TrialBaseline baseline,TrialSnapshot expectedSigned,TrialSnapshot expectedUnsigned,CancellationToken cancellationToken)
+    {
+        ValidateUnsigned(baseline,expectedSigned,expectedUnsigned);
+        var actual=await CaptureUnsignedAsync(connection,transaction,baseline,expectedSigned,cancellationToken).ConfigureAwait(false);
+        ValidateExactSnapshot(expectedUnsigned,actual);
+        await RemoveVerifiedObjectsAsync(connection,transaction,baseline,cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task RemoveVerifiedObjectsAsync(SqlConnection connection,SqlTransaction transaction,
+        TrialBaseline baseline,CancellationToken cancellationToken)
+    {
         // Only fixed, receipt-verified package objects are dropped. Object deletion removes its
         // package-created EXECUTE grant. The optional user name is receipt-verified and QUOTENAME-escaped.
         await ExecuteAsync(connection, transaction, """
@@ -225,6 +266,19 @@ public static class AgentActivityTrialSql
         ArgumentNullException.ThrowIfNull(expected); ArgumentNullException.ThrowIfNull(fresh);
         RequireAbsent(expected.Snapshot); RequireAbsent(fresh.Snapshot);
         ValidateExactSnapshot(expected.Snapshot, fresh.Snapshot);
+    }
+
+    /// <summary>An unsigned image is authorized only as the exact single-signature removal from an independently
+    /// valid signed postimage. No definition, identity, ownership, permission or other fact may change.</summary>
+    public static void ValidateUnsigned(TrialBaseline baseline,TrialSnapshot expectedSigned,TrialSnapshot unsignedSnapshot)
+    {
+        ValidateInstalled(baseline,expectedSigned);
+        ArgumentNullException.ThrowIfNull(unsignedSnapshot);
+        var expectedUnsigned=expectedSigned with {
+            Facts=Order(expectedSigned.Facts.Where(x=>x.Kind!="signature").Select(x=>
+                x.Scope=="master" && x.Kind=="signature_validity" && x.Key=="module" ? x with {Value="0:0"} : x))
+        };
+        ValidateExactSnapshot(expectedUnsigned,unsignedSnapshot);
     }
 
     public static void ValidateInstalled(TrialBaseline baseline, TrialSnapshot installed)

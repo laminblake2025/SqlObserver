@@ -26,8 +26,23 @@ public static class TrialCoordinator
         finally { await ReleaseAsync(connection).ConfigureAwait(false); }
     }
 
-    public static async Task<TrialRunResult> RunAsync(SqlConnection connection, string principal, Guid deploymentId,
+    public static Task<TrialRunResult> RunAsync(SqlConnection connection, string principal, Guid deploymentId,
         byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualify, CancellationToken cancellationToken)
+        => RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualify, null, cancellationToken);
+
+    /// <summary>Qualifies the signed module, records a committed unsigned postimage, then qualifies
+    /// permission denial under the same actual monitor. Both callbacks must join their owned processes.</summary>
+    public static Task<TrialRunResult> RunSignatureRemovalAsync(SqlConnection connection, string principal, Guid deploymentId,
+        byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualifySigned,
+        Func<CancellationToken, Task<bool>> qualifyUnsigned, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(qualifyUnsigned);
+        return RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualifySigned, qualifyUnsigned, cancellationToken);
+    }
+
+    private static async Task<TrialRunResult> RunCoreAsync(SqlConnection connection, string principal, Guid deploymentId,
+        byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualify,
+        Func<CancellationToken, Task<bool>>? qualifyUnsigned, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection); ArgumentNullException.ThrowIfNull(qualify);
         AgentActivityTrialSql.ValidateModule(moduleUtf8);
@@ -45,7 +60,7 @@ public static class TrialCoordinator
                 TrialBaseline baseline = await AgentActivityTrialSql.CaptureBaselineAsync(connection, transaction, principal, deploymentId, cancellationToken).ConfigureAwait(false);
                 stage = "journal_prepare";
                 journal = TrialJournal.Create(deploymentId);
-                var receipt = new TrialReceipt(1, deploymentId, principal, "prepared", baseline, null, null);
+                var receipt = new TrialReceipt(qualifyUnsigned is null ? 1 : 2, deploymentId, principal, "prepared", baseline, null, null);
                 journal.Save(receipt);
                 stage = "install_verify";
                 TrialSnapshot installed = await AgentActivityTrialSql.InstallAsync(connection, transaction, baseline, moduleUtf8, cancellationToken).ConfigureAwait(false);
@@ -68,6 +83,35 @@ public static class TrialCoordinator
             stage = "qualification";
             passed = await qualify(cancellationToken).ConfigureAwait(false);
             if (!passed) failure = "qualification_failed";
+            if (passed && qualifyUnsigned is not null)
+            {
+                passed = false;
+                stage = "signature_remove_verify";
+                await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    TrialReceipt receipt = journal.Read();
+                    TrialSnapshot unsigned = await AgentActivityTrialSql.RemoveSignatureAsync(connection, transaction,
+                        receipt.Baseline, receipt.Installed!, cancellationToken).ConfigureAwait(false);
+                    receipt = receipt with { Phase = "signature_remove_pending", UnsignedSnapshot = unsigned };
+                    stage = "signature_remove_commit";
+                    // Either exact postimage is recoverable if COMMIT acknowledgement is lost.
+                    journal.Save(receipt);
+                    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                    journal.Save(receipt with { Phase = "unsigned" });
+                }
+                stage = "unsigned_committed_verify";
+                await using (var verify = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    TrialReceipt receipt = journal.Read();
+                    TrialSnapshot actual = await AgentActivityTrialSql.CaptureUnsignedAsync(connection, verify,
+                        receipt.Baseline, receipt.Installed!, cancellationToken).ConfigureAwait(false);
+                    AgentActivityTrialSql.ValidateExactSnapshot(receipt.UnsignedSnapshot!, actual);
+                    await verify.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                }
+                stage = "unsigned_qualification";
+                passed = await qualifyUnsigned(cancellationToken).ConfigureAwait(false);
+                if (!passed) failure = "unsigned_qualification_failed";
+            }
         }
         catch (Exception exception)
         {
@@ -136,11 +180,31 @@ public static class TrialCoordinator
         }
         if (receipt.Installed is null || receipt.Phase == "removed")
             throw new InvalidDataException("Present SQL objects have no matching owned installed receipt.");
-        TrialSnapshot installed = await AgentActivityTrialSql.CaptureInstalledAsync(connection, transaction, receipt.Baseline, token).ConfigureAwait(false);
-        AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed, installed);
-        receipt = receipt with { Phase = "remove_pending", FailureCode = failure };
+        bool unsigned = receipt.Phase is "unsigned" or "unsigned_remove_pending";
+        if (receipt.Phase == "signature_remove_pending")
+        {
+            try
+            {
+                TrialSnapshot signed = await AgentActivityTrialSql.CaptureInstalledAsync(connection, transaction, receipt.Baseline, token).ConfigureAwait(false);
+                AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed, signed);
+            }
+            catch (InvalidDataException)
+            {
+                // An uncertain signature-removal COMMIT permits only the other recorded exact
+                // image. Drift still fails its independent unsigned validation below.
+                unsigned = true;
+            }
+        }
+        TrialSnapshot installed = unsigned
+            ? await AgentActivityTrialSql.CaptureUnsignedAsync(connection, transaction, receipt.Baseline, receipt.Installed, token).ConfigureAwait(false)
+            : await AgentActivityTrialSql.CaptureInstalledAsync(connection, transaction, receipt.Baseline, token).ConfigureAwait(false);
+        AgentActivityTrialSql.ValidateExactSnapshot(unsigned ? receipt.UnsignedSnapshot! : receipt.Installed, installed);
+        receipt = receipt with { Phase = unsigned ? "unsigned_remove_pending" : "remove_pending", FailureCode = failure };
         journal.Save(receipt);
-        await AgentActivityTrialSql.RemoveAsync(connection, transaction, receipt.Baseline, receipt.Installed, token).ConfigureAwait(false);
+        if (unsigned)
+            await AgentActivityTrialSql.RemoveUnsignedAsync(connection, transaction, receipt.Baseline, receipt.Installed, receipt.UnsignedSnapshot!, token).ConfigureAwait(false);
+        else
+            await AgentActivityTrialSql.RemoveAsync(connection, transaction, receipt.Baseline, receipt.Installed, token).ConfigureAwait(false);
         await transaction.CommitAsync(token).ConfigureAwait(false);
         // A second read after COMMIT proves the baseline, rather than assuming an acknowledgement.
         await using var verify = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false);

@@ -2392,6 +2392,7 @@ foreach ($testProject in $testProjectsToRun) {
         # Signed-module qualification requires its separately reviewed temporary
         # SQL objects and actual monitoring identity; ordinary sweeps must not run it.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivitySignedModule' } else { "($filter)&Category!=RequiresSqlAgentActivitySignedModule" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityUnsignedModule' } else { "($filter)&Category!=RequiresSqlAgentActivityUnsignedModule" }
         # This test creates and drops its own Query Store databases. It is
         # selected explicitly for a disposable SQL Server lab, never by the
         # ordinary Local or Release sweep.

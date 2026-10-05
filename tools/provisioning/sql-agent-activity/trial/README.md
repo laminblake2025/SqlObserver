@@ -89,11 +89,41 @@ coordinator verified original-baseline restoration and the temporary service was
 DBA snapshots were compared in memory; local evidence contains the safe comparison result, exact
 parsed-TRX digest and reviewed implementation, not an independent copy of those snapshots.
 
-## Remaining signature-failure qualification
+## Signature-removal qualification
 
-Do not drop or alter the signature during the current callback: its immutable signed postimage
-would correctly block cleanup. A subsequent trial needs a separately versioned journal recording
-both signed and unsigned postimages and the uncertain-commit transition before committing signature
-removal. Recovery must accept only the recorded state and preserve the strict signed validator.
-Uncommitted removal on a DBA connection cannot qualify a separate monitor session. `ALTER`
-removes signatures; it does not demonstrate execution with an attached invalid signature.
+`TrialCoordinator.RunSignatureRemovalAsync` uses journal schema 2. It first performs the signed
+qualification, recaptures the exact signed state, then removes only the fixed module signature
+inside a transaction. The unsigned postimage may differ only by removal of that signature fact
+and its validity changing from `1:1` to `0:0`; definition, identities, owners, permissions and all
+other evidence remain identical. The [signature-status function](https://learn.microsoft.com/en-us/sql/relational-databases/system-functions/sys-fn-check-object-signatures-transact-sql?view=sql-server-ver17)
+reports `0:0` for an unsigned object.
+
+The journal stores both immutable postimages in `signature_remove_pending` before commit. After
+commit and a fresh exact unsigned-state check, the second bounded actual-monitor callback runs.
+Recovery accepts either recorded image only during the uncertain-commit phase; confirmed unsigned
+state permits only unsigned cleanup. `unsigned_remove_pending` records that decision before the
+normal owned-object removal and original-baseline verification. Existing schema 1 remains signed
+only, with its previous wire shape; no journal is silently upgraded. A signed trial callback may
+not change a signature on its own or bypass drift checks.
+
+The separate `RequiresSqlAgentActivityUnsignedModule` category requires explicit unsigned opt-in
+plus the original pinned enrollment. Its two native cases require canonical-bound execution to
+produce only SQL 229, invalid bounds to produce 50001, and unchanged monitor identity/direct
+permissions before and after. Any partial result, unexpected error or additional result set fails.
+The runner retains both phase results on failure and reports unknown execution counts as unknown.
+Ordinary SQL sweeps exclude both explicit native categories.
+
+The affected tooling suite passes 303 cases; the selected signed/unsigned enrollment group passes
+22, and the original pure SQL-plan suite passes 60. These groups are separate evidence, not a
+unique-test aggregate. This implementation does not itself establish native crash/uncertain-commit
+recovery, explicit DENY behavior or execution with an attached invalid signature. `ALTER` removes
+signatures, so it cannot demonstrate that last case.
+
+The [Run10 native evidence](../../../../artifacts/dashboard-agent-module-trial-2026-10-05/signature-completion.json)
+passes all five cases: three signed and two unsigned. Signed reads again matched all 12 observed
+rows to both DBA observations. After committed signature removal, the monitor received only 229
+for the canonical bound and 50001 for NULL/512/514. Its direct permission vector remained 0/0/1
+and direct syssessions SELECT remained denied before and after both unsigned cases. Both temporary
+services were deleted and the coordinator verified restoration of the original SQL baseline.
+The 2,540 packaged source inputs and four runner inputs were unchanged before/after. The protected
+journal remains on the guest; normal unsigned-state removal is qualified, crash recovery is not.

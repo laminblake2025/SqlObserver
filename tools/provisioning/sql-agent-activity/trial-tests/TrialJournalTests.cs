@@ -78,7 +78,7 @@ public sealed class TrialJournalTests
         var (baseline, _) = TrialFixture.Create(); var receipt = Receipt("prepared", baseline, null);
         receipt = mutation switch
         {
-            "schema" => receipt with { SchemaVersion = 2 },
+            "schema" => receipt with { SchemaVersion = 3 },
             "outer-deployment" => receipt with { DeploymentId = Guid.NewGuid() },
             "baseline-deployment" => receipt with { Baseline = new(baseline.Snapshot with { DeploymentId = Guid.NewGuid() }) },
             "principal" => receipt with { MonitorPrincipal = "TEST\\Other" },

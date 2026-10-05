@@ -6,7 +6,8 @@ using System.Text.Json.Serialization;
 namespace SqlObserver.AgentActivityTrial;
 
 public sealed record TrialReceipt(int SchemaVersion, Guid DeploymentId, string MonitorPrincipal,
-    string Phase, TrialBaseline Baseline, TrialSnapshot? Installed, string? FailureCode);
+    string Phase, TrialBaseline Baseline, TrialSnapshot? Installed, string? FailureCode,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TrialSnapshot? UnsignedSnapshot = null);
 
 /// <summary>Administrator/SYSTEM-only write-ahead record. Contains no signing password.</summary>
 public sealed class TrialJournal
@@ -106,10 +107,16 @@ public sealed class TrialJournal
     public static void ValidateReceipt(TrialReceipt receipt, Guid deploymentId)
     {
         ArgumentNullException.ThrowIfNull(receipt);
-        if (receipt.SchemaVersion != 1 || deploymentId == Guid.Empty || receipt.DeploymentId != deploymentId ||
+        if (receipt.SchemaVersion is not (1 or 2) || deploymentId == Guid.Empty || receipt.DeploymentId != deploymentId ||
             receipt.Baseline is null || string.IsNullOrWhiteSpace(receipt.MonitorPrincipal) ||
-            receipt.Phase is not ("prepared" or "commit_pending" or "installed" or "remove_pending" or "removed"))
+            receipt.Phase is not ("prepared" or "commit_pending" or "installed" or "remove_pending" or "removed" or
+                "signature_remove_pending" or "unsigned" or "unsigned_remove_pending"))
             throw new InvalidDataException("The trial receipt contract is invalid.");
+        bool unsignedPhase = receipt.Phase is "signature_remove_pending" or "unsigned" or "unsigned_remove_pending";
+        if (receipt.SchemaVersion == 1 && (unsignedPhase || receipt.UnsignedSnapshot is not null) ||
+            unsignedPhase && (receipt.Installed is null || receipt.UnsignedSnapshot is null) ||
+            receipt.UnsignedSnapshot is not null && (receipt.Installed is null || receipt.Phase is "prepared" or "commit_pending" or "installed"))
+            throw new InvalidDataException("The unsigned trial receipt contract is invalid.");
         if (receipt.Phase is "commit_pending" or "installed" or "remove_pending" && receipt.Installed is null)
             throw new InvalidDataException("The trial receipt requires its exact installed postimage.");
         if (receipt.Baseline.Snapshot is null || receipt.Baseline.Snapshot.Monitor is null ||
@@ -120,6 +127,7 @@ public sealed class TrialJournal
             throw new InvalidDataException("The trial receipt provenance is invalid.");
         AgentActivityTrialSql.ValidateBaselineRestored(receipt.Baseline, receipt.Baseline);
         if (receipt.Installed is not null) AgentActivityTrialSql.ValidateInstalled(receipt.Baseline, receipt.Installed);
+        if (receipt.UnsignedSnapshot is not null) AgentActivityTrialSql.ValidateUnsigned(receipt.Baseline, receipt.Installed!, receipt.UnsignedSnapshot);
     }
 
     public static void ValidateTransition(TrialReceipt before, TrialReceipt after)
@@ -129,14 +137,23 @@ public sealed class TrialJournal
         if (before.Installed is null && after.Installed is not null &&
             (before.Phase != "prepared" || after.Phase != "commit_pending"))
             throw new InvalidDataException("An installed postimage must be recorded before committing installation.");
-        if (!string.Equals(before.MonitorPrincipal, after.MonitorPrincipal, StringComparison.Ordinal) ||
+        if (before.UnsignedSnapshot is null && after.UnsignedSnapshot is not null &&
+            (before.SchemaVersion != 2 || before.Phase != "installed" || after.Phase != "signature_remove_pending"))
+            throw new InvalidDataException("An unsigned postimage must be recorded before committing signature removal.");
+        if (before.SchemaVersion != after.SchemaVersion ||
+            !string.Equals(before.MonitorPrincipal, after.MonitorPrincipal, StringComparison.Ordinal) ||
             !JsonSerializer.SerializeToUtf8Bytes(before.Baseline, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.Baseline, Options)) ||
-            before.Installed is not null && !JsonSerializer.SerializeToUtf8Bytes(before.Installed, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.Installed, Options)))
+            before.Installed is not null && !JsonSerializer.SerializeToUtf8Bytes(before.Installed, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.Installed, Options)) ||
+            before.UnsignedSnapshot is not null && !JsonSerializer.SerializeToUtf8Bytes(before.UnsignedSnapshot, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.UnsignedSnapshot, Options)))
             throw new InvalidDataException("Trial provenance cannot be changed.");
         bool allowed = before.Phase == after.Phase || (before.Phase, after.Phase) is
             ("prepared", "commit_pending") or ("prepared", "removed") or
             ("commit_pending", "installed") or ("commit_pending", "remove_pending") or ("commit_pending", "removed") or
-            ("installed", "remove_pending") or ("installed", "removed") or ("remove_pending", "removed");
+            ("installed", "remove_pending") or ("installed", "removed") or ("remove_pending", "removed") or
+            ("installed", "signature_remove_pending") or
+            ("signature_remove_pending", "unsigned") or ("signature_remove_pending", "remove_pending") or
+            ("signature_remove_pending", "unsigned_remove_pending") or ("signature_remove_pending", "removed") or
+            ("unsigned", "unsigned_remove_pending") or ("unsigned", "removed") or ("unsigned_remove_pending", "removed");
         if (!allowed) throw new InvalidDataException("The trial journal transition is invalid.");
     }
 
