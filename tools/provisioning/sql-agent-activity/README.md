@@ -120,3 +120,5 @@ permissions as Granted. The existing reader's direct-permission gate is unchange
 ## Finite trial result — 2026-10-05
 
 The separate [trial library](trial/README.md) now has a passing actual-monitor SQL17 run: three native cases, zero skips, signed reads through the production parser, and coordinator-verified normal removal restoring the original baseline. [Evidence and limitations](../../../artifacts/dashboard-agent-module-trial-2026-10-05/completion.json). Agent was stopped; full visibility, running/session/time semantics, signature/DENY negatives, crash recovery and production adapter/admission remain open. The original offline preview and its manifest retain their original scope.
+
+A subsequent [independent DBA comparison](../../../artifacts/dashboard-agent-module-trial-2026-10-05/visibility-completion.json) matched all 12 latest-session monitor rows to both DBA observations; all 12 had owner SIDs differing from the monitor SID. It qualifies that observed stopped-Agent row set, not universal visibility, exact owner continuity, running association or elapsed duration. Cleanup restored the baseline again. The affected tooling suite passes 208 managed cases.

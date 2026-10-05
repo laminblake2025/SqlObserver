@@ -58,3 +58,42 @@ these separate groups are not an aggregate unique-test count.
 This library is qualification tooling. Production module discovery, adapter admission, Agent
 session/running-job behavior, explicit-DENY/signature-removal cases and foreign-owner visibility
 remain separate work.
+
+## Independent visibility witness
+
+`TrialVisibilityWitness.CaptureAsync` reads the latest Agent session and bounded activity rows as
+the DBA before and after the actual monitor's trial. It uses the same enrolled nonpooled SQL17
+connection, verifies the original monitor login/SID and instance identity, and reads all eight
+source fields plus whether the recorded owner SID differs from the monitor SID. No job name or
+owner SID is projected. Missing owners, empty/no-foreign-owner fixtures and a 513th row refuse
+this comparison. The existing monitor permissions and jobs are unchanged.
+
+`TrialVisibilityReceipt.ReadTrx` accepts only the exact three successful native cases, a unique
+receipt from the capture case, the expected target/revision, and closed bounded JSON with no
+duplicate properties. Its digest covers the exact parsed bytes. The caller must supply the fresh
+worker-owned file and DBA SQL-clock interval. The complete ordered monitor rows must equal both
+DBA observations, with matching session details and the monitor capture inside their brackets.
+Only counts and booleans are returned in the comparison summary.
+
+This establishes agreement for the observed latest-session row set, including observed rows with
+a differing owner SID. It cannot prove continuous stability between observations, unchanged exact
+owner identities, another human's identity, universal foreign-job visibility, running association,
+or elapsed duration. The 512+lookahead/load gate remains separate. The full affected tooling suite
+passes 208 cases, including the previous 98 journal/guard/privacy cases, 44 witness cases and 66
+receipt cases. Reading the prior Run08 TRX confirms format compatibility only.
+
+The [fresh Run09 comparison](../../../../artifacts/dashboard-agent-module-trial-2026-10-05/visibility-completion.json)
+passed on 2026-10-05: all 12 monitor rows matched both DBA observations, including 12 whose owner
+SID differed from the monitor SID. The three actual-monitor tests passed with zero skips. The
+coordinator verified original-baseline restoration and the temporary service was deleted. Raw
+DBA snapshots were compared in memory; local evidence contains the safe comparison result, exact
+parsed-TRX digest and reviewed implementation, not an independent copy of those snapshots.
+
+## Remaining signature-failure qualification
+
+Do not drop or alter the signature during the current callback: its immutable signed postimage
+would correctly block cleanup. A subsequent trial needs a separately versioned journal recording
+both signed and unsigned postimages and the uncertain-commit transition before committing signature
+removal. Recovery must accept only the recorded state and preserve the strict signed validator.
+Uncommitted removal on a DBA connection cannot qualify a separate monitor session. `ALTER`
+removes signatures; it does not demonstrate execution with an attached invalid signature.
