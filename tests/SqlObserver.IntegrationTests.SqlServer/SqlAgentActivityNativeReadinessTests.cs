@@ -90,9 +90,18 @@ public sealed class SqlAgentActivityNativeReadinessTests(ITestOutputHelper outpu
                     COLLATE Latin1_General_100_BIN2=N'sqlagent.exe' AND CHARINDEX(N'"',p.path)=0;
                 """, 3, token);
             Emit(stage, new { sessions = sessionRead.Public, activity = activityRead.Public, service = serviceRead.Public,
-                serviceState = serviceRead.Outcome != "read_completed" ? "unavailable" : serviceRead.Rows != 1 ? "ambiguous_or_absent" :
+                serviceState = serviceRead.Outcome != "read_completed" ? "unavailable" : serviceRead.Rows == 0 ? "unclassified_no_strict_match" : serviceRead.Rows != 1 ? "ambiguous" :
                     serviceRead.SingleValue == 4 ? "running" : serviceRead.SingleValue == 1 ? "stopped" : "other",
                 serviceSessionAssociationQualified = false, fullJobVisibilityQualified = false });
+
+            stage = "service_filename_shape";
+            Emit(stage, await ReadServiceShapesAsync(connection, token));
+
+            var activityAssets = SqlServerAgentActivityCaptureAssetCatalog.LoadEmbedded();
+            stage = "service_projection_v2_fixtures";
+            Emit(stage, await VerifyServiceProjectionAsync(connection, activityAssets.ServiceProjectionSql, token));
+            stage = "service_projection_v2_actual";
+            Emit(stage, await ReadProjectedServicesAsync(connection, activityAssets.ServiceProjectionSql, token));
 
             stage = "identity_after";
             var after = await AttestAsync(connection, sid, token);
@@ -102,7 +111,8 @@ public sealed class SqlAgentActivityNativeReadinessTests(ITestOutputHelper outpu
             Assert.True(Stopwatch.GetElapsedTime(started) < TimeSpan.FromSeconds(30), "Readiness deadline exceeded.");
             Emit("readiness_completed", new { schemaVersion = 1, diagnosticOnly = true, actualMonitorIdentityVerified = true,
                 ownedIntegratedTlsSessionVerified = true, beforeAfterSessionStable = true, permissionProbeCount = 3,
-                boundedSelectProbeCount = 3, perCommandTimeoutSeconds = 5, totalBudgetSeconds = 30,
+                boundedSelectProbeCount = 3, additionalFilenameShapeProbeCount = 1, additionalV2ServiceProjectionProbeCount = 1,
+                serviceProjectionSqlFixturesVerified = true, perCommandTimeoutSeconds = 5, totalBudgetSeconds = 30,
                 productionAdmitted = false, fullJobVisibilityQualified = false, serviceSessionAssociationQualified = false,
                 elapsedQualified = false, longRunningQualified = false });
         }
@@ -171,5 +181,118 @@ public sealed class SqlAgentActivityNativeReadinessTests(ITestOutputHelper outpu
             capReached = Rows is null ? (bool?)null : Rows == Cap, permissionErrorNumber = PermissionErrorNumber,
             completeVisibilityProven = false };
     }
+    private static async Task<object> ReadServiceShapesAsync(SqlConnection connection, CancellationToken token)
+    {
+        const int cap = 16;
+        try
+        {
+            await using var command = new SqlCommand("USE master; SELECT TOP (16) filename FROM sys.dm_server_services;", connection) { CommandTimeout = 5 };
+            await using var reader = await command.ExecuteReaderAsync(token);
+            Assert.Equal(1, reader.FieldCount);
+            var shapes = new List<SqlAgentServiceFilenameShape>();
+            while (await reader.ReadAsync(token))
+            {
+                Assert.True(shapes.Count < cap);
+                // Check provider length before materializing; no filename is retained in evidence.
+                shapes.Add(reader.IsDBNull(0) ? SqlAgentServiceFilenameShape.Parse(null) :
+                    reader.GetChars(0, 0, null, 0, 0) > SqlAgentServiceFilenameShape.MaximumLength
+                        ? SqlAgentServiceFilenameShape.Invalid : SqlAgentServiceFilenameShape.Parse(reader.GetString(0)));
+            }
+            Assert.False(await reader.NextResultAsync(token));
+            return new { outcome = "read_completed", totalObserved = (int?)shapes.Count, rowCap = cap,
+                capReached = (bool?)(shapes.Count == cap), strictMatchCount = (int?)shapes.Count(x => x.StrictMatch),
+                candidateCount = (int?)shapes.Count(x => x.Candidate), quotedCount = (int?)shapes.Count(x => x.Quoted),
+                trailingArgumentsCount = (int?)shapes.Count(x => x.TrailingArguments),
+                ambiguousCount = (int?)shapes.Count(x => x.Ambiguous), invalidCount = (int?)shapes.Count(x => !x.Valid),
+                agentExecutableTokenCount = (int?)shapes.Count(x => x.AgentExecutableToken),
+                permissionErrorNumber = (int?)null, completeVisibilityProven = false, serviceStateInferred = false };
+        }
+        catch (SqlException failure) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(failure.Number))
+        {
+            return new { outcome = "permission_denied", totalObserved = (int?)null, rowCap = cap,
+                capReached = (bool?)null, strictMatchCount = (int?)null, candidateCount = (int?)null,
+                quotedCount = (int?)null, trailingArgumentsCount = (int?)null, ambiguousCount = (int?)null,
+                invalidCount = (int?)null, agentExecutableTokenCount = (int?)null,
+                permissionErrorNumber = (int?)failure.Number, completeVisibilityProven = false, serviceStateInferred = false };
+        }
+    }
     private void Emit(string stage, object evidence) => output.WriteLine(JsonSerializer.Serialize(new { stage, evidence }, JsonOptions));
+
+    private static async Task<object> VerifyServiceProjectionAsync(SqlConnection connection, string projection, CancellationToken token)
+    {
+        // Synthetic VALUES are read-only and exercise the exact production SQL predicate,
+        // independently of the C# diagnostic shape classifier and native permission outcome.
+        (string? Filename, bool Candidate, bool Valid)[] cases =
+        [
+            (@"C:\SQL\SQLAGENT.EXE", true, true),
+            ("\"C:\\Program Files\\SQLAGENT.EXE\"", true, true),
+            ("\"C:\\Program Files\\SQLAGENT.EXE\" -i INSTANCE", true, true),
+            ("\"C:\\SQL\\SQLAGENT.EXE\"\t-i INSTANCE", true, true),
+            ("\"C:\\SQL\\SQLAGENT.EXE\" -x \"opaque args\"", true, true),
+            (@"C:\Program Files\SQLAGENT.EXE", true, false),
+            (@"C:\SQL\SQLAGENT.EXE -i INSTANCE", true, false),
+            (@"C:\different.exe -x C:\SQLAGENT.EXE", true, false),
+            (@"C:\other -x C:\SQL\SQLAGENT.EXE", true, false),
+            ("\"C:\\SQL\\SQLAGENT.EXE\"\n-x", true, false),
+            (@"C:\sqlagent.exe\different.exe", true, false),
+            (@"C:\SQL\SQLAGENT.EXE.bak", true, false),
+            ("\"C:\\SQL\\SQLAGENT.EXE\"suffix", true, false),
+            ("\"C:\\SQL\\SQLAGENT.EXE", true, false),
+            ("C:\\SQL\\SQLAGENT.EXE\"", true, false),
+            ("\"C:\\SQL\\different.exe\" -x SQLAGENT.EXE", true, false),
+            ("\"C:\\SQL\\prefixSQLAGENT.EXE\"", true, false),
+            (@"C:\SQL\different.exe", false, false),
+            (null, false, false), ("", false, false),
+        ];
+        const string source = "FROM sys.dm_server_services AS service";
+        Assert.Equal(2, projection.Split(source, StringSplitOptions.None).Length);
+        string rows = string.Join(",", cases.Select((_, index) => $"(@filename{index},{index},0,CONVERT(datetimeoffset(7),NULL))"));
+        string sql = projection.Replace(source,
+            "FROM (VALUES " + rows + ") AS service(filename,status,process_id,last_startup_time)", StringComparison.Ordinal);
+        await using var command = new SqlCommand(sql, connection) { CommandTimeout = 5 };
+        for (int index = 0; index < cases.Length; index++)
+            command.Parameters.Add("@filename" + index, SqlDbType.NVarChar, 256).Value = (object?)cases[index].Filename ?? DBNull.Value;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        Assert.Equal(5, reader.FieldCount); var seen = new HashSet<int>();
+        while (await reader.ReadAsync(token))
+        {
+            int index = reader.GetInt32(2); Assert.InRange(index, 0, cases.Length - 1); Assert.True(seen.Add(index));
+            Assert.Equal(cases[index].Candidate, reader.GetBoolean(0)); Assert.Equal(cases[index].Valid, reader.GetBoolean(1));
+        }
+        Assert.Equal(cases.Length, seen.Count); Assert.False(await reader.NextResultAsync(token));
+        return new { fixtureCount = cases.Length, passed = true, readOnlyValues = true,
+            sharedProjectionSha256 = SqlServerAgentActivityCaptureAssetCatalog.ServiceProjectionChecksum };
+    }
+
+    private static async Task<object> ReadProjectedServicesAsync(SqlConnection connection, string projection, CancellationToken token)
+    {
+        const int cap = 16;
+        try
+        {
+            await using var command = new SqlCommand("USE master; SELECT TOP (16) candidate,valid_path,status FROM (" + projection + ") AS projected;", connection) { CommandTimeout = 5 };
+            await using var reader = await command.ExecuteReaderAsync(token);
+            Assert.Equal(3, reader.FieldCount); int rows = 0, candidates = 0, valid = 0; int? status = null;
+            while (await reader.ReadAsync(token))
+            {
+                Assert.True(++rows <= cap); bool candidate = reader.GetBoolean(0), match = reader.GetBoolean(1);
+                if (candidate) candidates++;
+                if (match) { Assert.True(candidate); valid++; status = reader.IsDBNull(2) ? null : reader.GetInt32(2); Assert.True(status is null or >= 1 and <= 7); }
+            }
+            Assert.False(await reader.NextResultAsync(token));
+            bool unique = rows < cap && candidates == 1 && valid == 1;
+            return new { outcome = "read_completed", totalObserved = (int?)rows, rowCap = cap, capReached = (bool?)(rows == cap),
+                candidateCount = (int?)candidates, validMatchCount = (int?)valid, uniqueMatch = (bool?)unique,
+                selectedServiceStatus = unique ? status : null,
+                selectedServiceState = !unique ? "unclassified" : status == 4 ? "running" : status == 1 ? "stopped" : status is null ? "unavailable" : "other",
+                permissionErrorNumber = (int?)null, serviceSessionAssociationQualified = false,
+                sharedProjectionSha256 = SqlServerAgentActivityCaptureAssetCatalog.ServiceProjectionChecksum };
+        }
+        catch (SqlException failure) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(failure.Number))
+        {
+            return new { outcome = "permission_denied", totalObserved = (int?)null, rowCap = cap, capReached = (bool?)null,
+                candidateCount = (int?)null, validMatchCount = (int?)null, uniqueMatch = (bool?)null,
+                selectedServiceStatus = (int?)null, selectedServiceState = "unavailable", permissionErrorNumber = (int?)failure.Number,
+                serviceSessionAssociationQualified = false, sharedProjectionSha256 = SqlServerAgentActivityCaptureAssetCatalog.ServiceProjectionChecksum };
+        }
+    }
 }

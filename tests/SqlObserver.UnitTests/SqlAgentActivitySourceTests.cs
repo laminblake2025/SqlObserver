@@ -222,6 +222,22 @@ public sealed class SqlAgentActivitySourceTests
     }
 
     [Fact]
+    public void V2ComposesTheSamePinnedProjectionTwiceAndPreservesV1Bytes()
+    {
+        var catalog = SqlServerAgentActivityCaptureAssetCatalog.LoadEmbedded();
+        Assert.Equal(SqlServerAgentActivityCaptureAssetCatalog.ServiceProjectionChecksum,
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(catalog.ServiceProjectionSql))).ToLowerInvariant());
+        foreach (int major in new[] { 15, 16, 17 })
+        {
+            Assert.Equal(3, catalog.GetQuery(major).Split(catalog.ServiceProjectionSql, StringSplitOptions.None).Length);
+            Assert.DoesNotContain("/*SQLAGENT_SERVICE_PROJECTION_V2*/", catalog.GetQuery(major), StringComparison.Ordinal);
+            using Stream original = typeof(SqlServerAgentActivityCaptureAssetCatalog).Assembly.GetManifestResourceStream(
+                $"SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver{major}-windows.v1.sql")!;
+            Assert.Equal("a2a6ffed75e28aeb8b0ba1b1328a53007558fc55d0f45c16096f0b5de4b8962d", Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant());
+        }
+    }
+
+    [Fact]
     public void CatalogRejectsTamperingBomCrAndUnsupportedVersions()
     {
         var catalog = SqlServerAgentActivityCaptureAssetCatalog.LoadEmbedded();
