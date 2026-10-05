@@ -22,9 +22,10 @@ public sealed class ServerLifecycleNativeQualificationTests(ITestOutputHelper ou
     public async Task ActualConsecutiveLifecycleCapturesPreserveStableEngineEvidence()
     {
         var context = await PrepareAsync();
-        var before = await CaptureAsync(context);
+        var captures = new List<object>();
+        var before = await CaptureAsync(context, captures);
         await Task.Delay(TimeSpan.FromSeconds(1));
-        var after = await CaptureAsync(context);
+        var after = await CaptureAsync(context, captures);
         Assert.NotEqual(before.RunId, after.RunId);
         Assert.True(before.SourceObservedAtUtc < after.SourceObservedAtUtc, "Consecutive actual source clocks did not advance.");
         Assert.Equal(ServerLifecycleCoverage.Complete, before.EngineCoverage);
@@ -42,6 +43,9 @@ public sealed class ServerLifecycleNativeQualificationTests(ITestOutputHelper ou
             source_consistency_verified = false, canonicalCommitPerformed = false, physicalFailoverQualified = false,
             restartTransitionQualified = false,
         });
+        // Private test evidence only; retain exact source snapshots for isolated canonical replay.
+        output.WriteLine("SERVER_LIFECYCLE_NATIVE_RECEIPTS_V1:" + JsonSerializer.Serialize(new
+        { schemaVersion = 1, captures }, JsonOptions));
     }
 
     [Fact]
@@ -89,7 +93,7 @@ public sealed class ServerLifecycleNativeQualificationTests(ITestOutputHelper ou
             qualifiesInFlightProviderCancellation = false, canonicalCommitPerformed = false });
     }
 
-    private async Task<ServerLifecycleSnapshot> CaptureAsync(Context context)
+    private async Task<ServerLifecycleSnapshot> CaptureAsync(Context context, List<object>? captures = null)
     {
         var collector = CreateCollector(context); var request = context.Contract.ExecutionRequest(context.Profile);
         CollectorExecutionResult result;
@@ -122,6 +126,8 @@ public sealed class ServerLifecycleNativeQualificationTests(ITestOutputHelper ou
             Assert.Equal(CollectorRunReason.VisibilityIncomplete, result.Reason);
         }
         else { Assert.Equal(CollectorRunOutcome.Succeeded, result.Outcome); Assert.False(result.Loss.HasLoss); }
+        captures?.Add(new { snapshot, result.Outcome, result.Reason, result.Accounting, result.Loss,
+            result.CollectorManifestVersion, result.OutputSchemaVersion });
         return snapshot;
     }
 
