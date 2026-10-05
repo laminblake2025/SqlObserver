@@ -45,7 +45,7 @@ production parsing of 12 rows, and coordinator-verified installation and normal 
 the original baseline and absent master mapping. Direct syssessions SELECT still failed with 229.
 Agent was stopped: running-session association and full job visibility remain unqualified.
 The protected guest journal was not copied locally; cleanup evidence is the coordinator's live
-post-commit baseline verification and returned result. Crash recovery was not exercised.
+post-commit baseline verification and returned result. That run did not exercise process-exit recovery.
 
 Pure validation tests are in `sql-tests/` and `../trial-tests/`. The native test class is
 `SqlAgentActivitySignedModuleQualificationTests`; it is excluded from ordinary SQL sweeps. Its
@@ -56,8 +56,8 @@ The enrolled definition hash alone is not proof of DBA verification. Final manag
 these separate groups are not an aggregate unique-test count.
 
 This library is qualification tooling. Production module discovery, adapter admission, Agent
-session/running-job behavior, explicit-DENY/signature-removal cases and foreign-owner visibility
-remain separate work.
+session/running-job behavior, explicit DENY and broader foreign-owner visibility remain separate
+work. Later signature-removal and controlled process-exit evidence is recorded below.
 
 ## Independent visibility witness
 
@@ -126,4 +126,30 @@ for the canonical bound and 50001 for NULL/512/514. Its direct permission vector
 and direct syssessions SELECT remained denied before and after both unsigned cases. Both temporary
 services were deleted and the coordinator verified restoration of the original SQL baseline.
 The 2,540 packaged source inputs and four runner inputs were unchanged before/after. The protected
-journal remains on the guest; normal unsigned-state removal is qualified, crash recovery is not.
+journal remains on the guest; that run qualified normal unsigned-state removal and did not exercise
+process-exit recovery.
+
+## Controlled exit after committed signature removal
+
+The [Run11 recovery evidence](../../../../artifacts/dashboard-agent-module-trial-2026-10-05/recovery-completion.json)
+records three signed native tests passing with zero skips. The first runner deliberately exited
+with code 73 after an acknowledged signature-removal commit and an exact unsigned-state check.
+The signed worker had already exited and its temporary service deletion was verified. A separate
+runner process with a fresh DBA connection then used the same deployment receipt to verify the
+recorded unsigned state, remove the owned objects and restore the original baseline. Recovery
+exited with code 0; the journal advanced from `unsigned` to `removed` while preserving its immutable
+baseline, signed and unsigned images.
+
+Recovery executed zero native tests. Its result intentionally reports `QualificationPassed=false`,
+`CleanupVerified=true` and `qualification_not_replayed`. The parent harness separately qualifies
+the controlled exit/recovery scenario using the exact three-test receipt, checkpoint, process
+identities and recovery evidence. This run contains no unsigned native-test phase.
+
+All 2,540 packaged source inputs and four runner inputs were unchanged before and after execution.
+The final snapshot at 2026-10-05 09:41:10.968 UTC found no qualification processes or services,
+all five existing core services running and SQL Server Agent stopped. This is a final observation,
+not proof about every historical descendant. The protected guest journal was not copied locally.
+
+This qualifies controlled process exit after an acknowledged commit and completed worker cleanup.
+Uncertain COMMIT, power loss, interruption during SQL work or journal writes, in-flight cancellation,
+orphaned workers, explicit DENY, attached invalid signatures and production admission remain open.
