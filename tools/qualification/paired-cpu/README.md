@@ -1,9 +1,12 @@
 # Paired CPU source qualification
 
-The CPU sources are staged library boundaries. They are not registered collectors,
-persisted payloads, HTTP/MCP projections or dashboard series. Raw arithmetic can be
-numerically comparable while `NativeQualification` remains absent and
-`TargetComparisonAdmitted` remains false.
+The CPU producer remains staged and is not registered with the production collector
+scheduler. Schema-1 canonical capture receipts, bounded HTTP reads and retained
+Resources diagnostics are implemented; they expose raw capture evidence, not an
+admitted SQL-versus-host CPU series. MCP coverage and admitted paired trends remain
+open. Raw arithmetic can be numerically comparable while `NativeQualification`
+remains absent and `TargetComparisonAdmitted` remains false. See the
+[capture and persistence boundary](../../../docs/technical/Cpu-Paired-Capture.md).
 
 The SQL source brackets sampling on one owned connection under the original
 collector deadline. Its pinned query preserves PID, SQL-reported node/instance,
@@ -55,9 +58,12 @@ running-process exit FILETIME is retained but cannot prove liveness.
 
 Even a complete local association is only `CandidateLocalAssociation`.
 `NativeQualification` remains absent and `TargetComparisonAdmitted` remains
-false. No collector registration, canonical persistence, HTTP/MCP exposure or
-dashboard series is activated by these sources. Real Windows SQL Server tests
-under the monitoring identity remain required before source admission.
+false. Neither the association nor retained capture diagnostics activate collector
+registration, admitted comparison values, MCP exposure or paired dashboard series.
+Real Windows SQL Server tests under the monitoring identity remain required before
+source admission. The opt-in native harness additionally checks monitor identity
+before and after sampling on the owned SQL connection; ordinary stored schema-1
+receipts do not acquire that proof retroactively.
 
 Native work must be owned until completion proves it stopped. Cancellation is
 advisory; bounded termination and cleanup are separate. An unproven operation
@@ -80,7 +86,7 @@ or replace the remaining qualification matrix below.
 | Identity | Multiple SQL instances, PDH instance-name reuse, PID exit/reuse, native creation changes, restart, boot change, binding/profile edits and responding-node changes. |
 | Topology | More than 64 logical processors, all processor groups, processor-count changes and unavailable topology. |
 | Ownership | Cancellation before/during collection, timeout, counter/provider stalls, output cap, helper exit and failed termination with no overlapping new work. |
-| Retained dashboard data | Versioned canonical persistence, exact window/epoch gaps, retention boundaries, typed API/MCP contracts, access denial and final browser journeys. None exists for this staged CPU source yet. |
+| Retained dashboard data | Raw capture persistence, completion-window/exact-run HTTP reads and retained Resources diagnostics already have scoped local qualification. Native producer qualification, a versioned admitted measurement contract, paired trends and MCP exposure remain open; local diagnostic-history tests do not admit a CPU comparison. |
 
 A local helper smoke test can verify native ABI, raw fields and missing-process
 behavior. It cannot qualify a remote SQL target, least privilege, SQL/Windows

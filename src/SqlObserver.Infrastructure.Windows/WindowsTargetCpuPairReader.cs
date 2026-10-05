@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using SqlObserver.Collector.Abstractions;
@@ -313,7 +314,7 @@ public sealed class WindowsTargetCpuPairReader
                 StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
             } };
             foreach (string argument in Arguments) process.StartInfo.ArgumentList.Add(argument);
-            process.StartInfo.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes("$sqlProcessId=" + processId.ToString(CultureInfo.InvariantCulture) + "\n" + HelperScript)));
+            process.StartInfo.ArgumentList.Add(CreateEncodedHelperCommand(processId));
             if (!process.Start()) throw new IOException("CPU helper could not start.");
             using var abort = cancellationToken.Register(() =>
             {
@@ -354,10 +355,38 @@ public sealed class WindowsTargetCpuPairReader
         }
     }
 
+    internal static string CreateEncodedHelperCommand(int processId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(processId);
+        byte[] script = Encoding.UTF8.GetBytes("$sqlProcessId=" + processId.ToString(CultureInfo.InvariantCulture) + "\n" + HelperScript);
+        using var compressed = new MemoryStream();
+        using (var gzip = new GZipStream(compressed, CompressionLevel.Optimal, leaveOpen: true)) gzip.Write(script);
+        // The fixed source exceeds Windows' command-line bound when encoded directly.
+        // Compress only our embedded script; the caller still supplies only a numeric PID.
+        string bootstrap = "$m=[IO.MemoryStream]::new([Convert]::FromBase64String('" + Convert.ToBase64String(compressed.ToArray()) +
+            "'));$z=[IO.Compression.GZipStream]::new($m,[IO.Compression.CompressionMode]::Decompress);" +
+            "$r=[IO.StreamReader]::new($z,[Text.Encoding]::UTF8);try{& ([ScriptBlock]::Create($r.ReadToEnd()))}" +
+            "finally{$r.Dispose();$z.Dispose();$m.Dispose()}";
+        string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(bootstrap));
+        if (encoded.Length > 24_000) throw new InvalidDataException("CPU helper command exceeds its bound.");
+        return encoded;
+    }
+
     // Fixed Windows PowerShell 5.1 helper. No remote computer, arbitrary path, source,
     // credential or script is accepted. PDH_RAW_COUNTER.TimeStamp is retained as local
     // FILETIME, not converted into an invented UTC observation or shared query interval.
-    private const string HelperScript = """
+    private static readonly string HelperScript = CreateHelperScript();
+
+    private static string CreateHelperScript()
+    {
+        using Stream source = typeof(WindowsTargetCpuPairReader).Assembly.GetManifestResourceStream(
+            "SqlObserver.Infrastructure.Windows.PdhTargetProcessMapping.cs")
+            ?? throw new InvalidOperationException("The native process mapping source is missing.");
+        using var reader = new StreamReader(source);
+        return HelperScriptTemplate.Replace("// EMBED_TARGET_PROCESS_MAPPING", reader.ReadToEnd(), StringComparison.Ordinal);
+    }
+
+    private const string HelperScriptTemplate = """
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
 Add-Type -TypeDefinition @'
@@ -366,9 +395,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+// EMBED_TARGET_PROCESS_MAPPING
 public static class CpuPairNative {
  [StructLayout(LayoutKind.Sequential)] public struct Raw { public uint CStatus,Low,High; public long FirstValue,SecondValue; public uint MultiCount; }
  [StructLayout(LayoutKind.Sequential)] public struct Item { public IntPtr Name; public Raw Value; }
+ public sealed class Rows { public readonly List<KeyValuePair<string,Raw>> Values=new List<KeyValuePair<string,Raw>>(); }
  [DllImport("pdh.dll",CharSet=CharSet.Unicode)] public static extern uint PdhOpenQueryW(IntPtr source,UIntPtr user,out IntPtr query);
  [DllImport("pdh.dll",CharSet=CharSet.Unicode)] public static extern uint PdhAddEnglishCounterW(IntPtr query,string path,UIntPtr user,out IntPtr counter);
  [DllImport("pdh.dll")] public static extern uint PdhCollectQueryData(IntPtr query);
@@ -387,8 +418,8 @@ public static class CpuPairNative {
  public static object Counter(Raw value,uint type,uint status,IntPtr handle,bool timed) { long timeBase=0; if(timed) { uint baseStatus=PdhGetCounterTimeBase(handle,out timeBase); if(status==0)status=baseStatus; } return new { counterType=type,cStatus=value.CStatus,firstValue=value.FirstValue.ToString(CultureInfo.InvariantCulture),secondValue=value.SecondValue.ToString(CultureInfo.InvariantCulture),timestamp100ns=(((ulong)value.High<<32)|value.Low).ToString(CultureInfo.InvariantCulture),multiCount=value.MultiCount,apiStatus=status,timeBase=timeBase.ToString(CultureInfo.InvariantCulture) }; }
  public static uint Type(IntPtr counter) { uint size=0; uint s=PdhGetCounterInfoW(counter,false,ref size,IntPtr.Zero); if(s!=0x800007D2 || size<8 || size>262144) throw new Exception("counter_info"); IntPtr memory=Marshal.AllocHGlobal((int)size); try { if(PdhGetCounterInfoW(counter,false,ref size,memory)!=0) throw new Exception("counter_info"); return unchecked((uint)Marshal.ReadInt32(memory,4)); } finally { Marshal.FreeHGlobal(memory); } }
  public static bool Missing(uint status) { return status==0x800007D1 || status==0x800007D5 || status==0xC0000BB8 || status==0xC0000BB9; }
- public static Dictionary<string,Raw> Array(IntPtr counter,out uint status,out uint count,out bool ambiguous) {
-  uint size=0; count=0; ambiguous=false; status=PdhGetRawCounterArrayW(counter,ref size,out count,IntPtr.Zero);
+ public static Rows Array(IntPtr counter,out uint status,out uint count) {
+  uint size=0; count=0; status=PdhGetRawCounterArrayW(counter,ref size,out count,IntPtr.Zero);
   if(Missing(status) || (status==0 && count==0 && size==0))return null;
   if(status!=0x800007D2 || size==0 || size>262144 || count>1024)throw new Exception("array_bound");
   uint capacity=size; IntPtr memory=Marshal.AllocHGlobal((int)capacity);
@@ -396,7 +427,7 @@ public static class CpuPairNative {
    status=PdhGetRawCounterArrayW(counter,ref size,out count,memory);
    if(Missing(status))return null;
    if(status!=0 || size>capacity || count>1024 || count*(uint)Marshal.SizeOf(typeof(Item))>size)throw new Exception("array_changed");
-   var result=new Dictionary<string,Raw>(StringComparer.Ordinal);
+   var result=new Rows();
    for(int i=0;i<count;i++) {
     Item item=(Item)Marshal.PtrToStructure(IntPtr.Add(memory,i*Marshal.SizeOf(typeof(Item))),typeof(Item));
     long offset=item.Name.ToInt64()-memory.ToInt64();
@@ -405,11 +436,23 @@ public static class CpuPairNative {
     while(length<remaining && length<=256 && Marshal.ReadInt16(item.Name,length*2)!=0)length++;
     if(length==0 || length>256 || length==remaining)throw new Exception("instance_identity");
     string name=Marshal.PtrToStringUni(item.Name,length);
-    // Legacy Process wildcard names are legitimately nonunique. No ordinal join is safe.
-    if(result.ContainsKey(name))ambiguous=true; else result.Add(name,item.Value);
+    // Preserve every row: unrelated duplicate names do not establish target ambiguity.
+    result.Values.Add(new KeyValuePair<string,Raw>(name,item.Value));
    }
    return result;
   } finally { Marshal.FreeHGlobal(memory); }
+ }
+ public static object Select(Rows idRows,Rows cpuRows,int pid,IntPtr idCounter,IntPtr cpuCounter) {
+  var ids=idRows.Values; var cpu=cpuRows.Values;
+  string[] idNames=new string[ids.Count],cpuNames=new string[cpu.Count]; long[] processIds=new long[ids.Count]; uint[] statuses=new uint[ids.Count];
+  for(int i=0;i<ids.Count;i++){idNames[i]=ids[i].Key;processIds[i]=ids[i].Value.FirstValue;statuses[i]=ids[i].Value.CStatus;}
+  for(int i=0;i<cpu.Count;i++)cpuNames[i]=cpu[i].Key;
+  int idIndex,cpuIndex;
+  var selection=SqlObserver.Infrastructure.Windows.PdhTargetProcessMapping.Select(idNames,processIds,statuses,cpuNames,pid,out idIndex,out cpuIndex);
+  bool selected=selection==SqlObserver.Infrastructure.Windows.PdhTargetProcessMappingResult.Selected;
+  return new { ambiguous=selection==SqlObserver.Infrastructure.Windows.PdhTargetProcessMappingResult.Ambiguous,
+   id=selected?Counter(ids[idIndex].Value,Type(idCounter),0,idCounter,false):null,
+   process=selected?Counter(cpu[cpuIndex].Value,Type(cpuCounter),0,cpuCounter,true):null };
  }
 }
 '@
@@ -445,13 +488,12 @@ try {
    $osRaw=$null; $procRaw=$null; $idRaw=$null; $instances=0; $mappingAmbiguous=$false
    if($osAdd-eq 0){ $raw=New-Object CpuPairNative+Raw; $type=[uint32]0; $status=[CpuPairNative]::PdhGetRawCounterValue($osCounter,[ref]$type,[ref]$raw); $osRaw=[CpuPairNative]::Counter($raw,$type,$status,$osCounter,$true) }
    if($idAdd-eq 0 -and $processAdd-eq 0){
-    $idStatus=[uint32]0; $cpuStatus=[uint32]0; $idCount=[uint32]0; $cpuCount=[uint32]0; $idAmbiguous=$false; $cpuAmbiguous=$false
-    $ids=[CpuPairNative]::Array($idCounter,[ref]$idStatus,[ref]$idCount,[ref]$idAmbiguous); $cpu=[CpuPairNative]::Array($processCounter,[ref]$cpuStatus,[ref]$cpuCount,[ref]$cpuAmbiguous)
-    $instances=[Math]::Max($idCount,$cpuCount); $mappingAmbiguous=$idAmbiguous -or $cpuAmbiguous
-    if($null-ne $ids -and $null-ne $cpu -and -not $mappingAmbiguous) {
-     $matching=@($ids.Keys | Where-Object { $ids[$_].FirstValue-eq $sqlProcessId -and $ids[$_].CStatus-in @(0,1) })
-     if($matching.Count-gt 1){$mappingAmbiguous=$true}
-     elseif($matching.Count-eq 1 -and $cpu.ContainsKey($matching[0])) { $idRaw=[CpuPairNative]::Counter($ids[$matching[0]],[CpuPairNative]::Type($idCounter),0,$idCounter,$false); $procRaw=[CpuPairNative]::Counter($cpu[$matching[0]],[CpuPairNative]::Type($processCounter),0,$processCounter,$true) }
+    $idStatus=[uint32]0; $cpuStatus=[uint32]0; $idCount=[uint32]0; $cpuCount=[uint32]0
+    $ids=[CpuPairNative]::Array($idCounter,[ref]$idStatus,[ref]$idCount); $cpu=[CpuPairNative]::Array($processCounter,[ref]$cpuStatus,[ref]$cpuCount)
+    $instances=[Math]::Max($idCount,$cpuCount)
+    if($null-ne $ids -and $null-ne $cpu) {
+     $selection=[CpuPairNative]::Select($ids,$cpu,$sqlProcessId,$idCounter,$processCounter)
+     $mappingAmbiguous=$selection.ambiguous; $idRaw=$selection.id; $procRaw=$selection.process
     }
     if($processStatus-eq 0 -and $idStatus-ne 0){$processStatus=$idStatus}
     if($processStatus-eq 0 -and $cpuStatus-ne 0){$processStatus=$cpuStatus}

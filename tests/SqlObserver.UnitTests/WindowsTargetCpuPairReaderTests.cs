@@ -15,6 +15,16 @@ public sealed class WindowsTargetCpuPairReaderTests
     private const string Machine = "11111111-1111-1111-1111-111111111111";
     private static readonly IdentityFingerprintKey Key = new(Enumerable.Repeat((byte)0xA5, 32).ToArray());
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(int.MaxValue)]
+    public void EmbeddedHelperFitsTheNativeCommandLineBound(int processId)
+    {
+        string command = WindowsTargetCpuPairReader.CreateEncodedHelperCommand(processId);
+        Assert.InRange(command.Length, 1, 24_000);
+        Assert.NotEmpty(Convert.FromBase64String(command));
+    }
+
     [Fact]
     public async Task ExactRawAnchorsStatusesAndInt64ValuesSurviveWithoutPromotingSqlInstanceAssociation()
     {

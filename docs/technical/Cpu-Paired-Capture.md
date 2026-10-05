@@ -90,8 +90,15 @@ logical processor count across processor groups.
 
 Per-counter eligibility and interval alignment are separate checks. Matching
 collection queries or wall-clock timestamps alone do not establish a paired
-interval. Ambiguous legacy Process instance names make process arithmetic
-unavailable; they do not erase independently valid OS evidence. Source identity,
+interval. Legacy Process mapping requires exactly one valid `ID Process` row for
+the requested PID, with that exact instance name occurring once in each of the
+independently ordered ID and CPU arrays. Duplicate names belonging to unrelated
+processes do not invalidate a unique target mapping. Duplicate target names or
+multiple valid target-PID rows remain ambiguous; no first-row or ordinal join is
+accepted. All rows remain bounded by the existing 256 KiB/1,024-row limits. The
+selection policy is compiled for managed tests and embedded verbatim in the fixed
+Windows PowerShell helper. Ambiguous target mapping makes process arithmetic
+unavailable; it does not erase independently valid OS evidence. Source identity,
 boot/process/topology/clock boundaries, counter reset/status/type/time-base/range
 failures and interval mismatch remain explicit.
 

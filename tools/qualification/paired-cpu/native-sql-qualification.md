@@ -22,6 +22,15 @@ counters are a separate result; they do not upgrade source admission.
   `IsSysAdmin == false`. The version-specific read permission is
   `VIEW SERVER STATE` for SQL Server 2019 or `VIEW SERVER PERFORMANCE STATE` for
   SQL Server 2022/2025. The harness makes no permission changes.
+- The Windows identity must separately have counter/CIM access and
+  `PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE` (`0x101000`) access to the
+  actual SQL process. Creation/image queries and same-handle liveness checks need
+  these rights; SQL grants and Performance Monitor Users membership alone do not
+  establish them. Both rights are checked against the process object, not the
+  Windows service object's access list. See Microsoft's
+  [process access-rights reference](https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights).
+  Denial remains a qualification failure; the harness does not grant rights,
+  enable debug privileges or replace the monitoring identity.
 - Supply the reviewed endpoint and certificate identity. The product connection
   factory uses integrated security, mandatory encryption, certificate validation
   (`TrustServerCertificate=false`) and disabled MARS. A failure is not permission
