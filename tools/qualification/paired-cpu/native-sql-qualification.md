@@ -227,3 +227,26 @@ certification for every platform or completed dashboard CPU support.
 
 See [the staged source overview](README.md) for the current implementation
 boundaries and primary API documentation.
+
+
+## Recorded native components through the Resources page
+
+`CpuComponentsNativeQualificationTests` emits a private `CPU_COMPONENT_NATIVE_RECEIPT_V1:` envelope only after its actual source assertions pass. Retain its complete successful TRX and the originating runner's exact-case, input-hash and identity evidence. The envelope is test evidence containing raw counters; it is not the public history representation.
+
+The opt-in `CpuComponentsNativeReceiptHttpTests` requires the following environment inputs:
+
+- `SQLOBSERVER_CPU_NATIVE_RECEIPT_TRX`: absolute path to that reviewed TRX.
+- `SQLOBSERVER_CPU_NATIVE_RECEIPT_SHA256`: its independently recorded SHA-256.
+- `SQLOBSERVER_CPU_NATIVE_WEB_ROOT`: absolute path to current verified `web/dist` assets.
+- `SQLOBSERVER_CPU_NATIVE_BROWSER_SCRIPT`: absolute path to `web/tools/cpu-native-receipt-acceptance.mjs`.
+- Optional `SQLOBSERVER_CPU_NATIVE_NODE`: the trusted Node executable path.
+
+With the established disposable PostgreSQL 18.4 fixture and installed browser dependencies, select it explicitly:
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj -c Release --filter FullyQualifiedName~CpuComponentsNativeReceiptHttpTests
+```
+
+The test rejects missing, failed, ambiguous or hash-mismatched native evidence. It preserves source identity, raw counters, source timestamps and accounting; repository scheduling and completion are fresh replay bookkeeping. A loopback production HTTP server uses test authentication and the compiled Resources page, without API mocks. It checks canonical replay, exact/list equality, private evidence redaction, cross-target denial, responsive rendering, URL restoration and scoped accessibility. It does not certify continuously deployed collection, durable Windows process rights, Windows HTTP authentication, or every supported SQL version.
+
+`ServerLifecycleNativeQualificationTests` is a separate explicit native category. Its three cases qualify actual stable source captures, observed coverage and pre-cancellation. They do not enable lifecycle collection, create canonical lifecycle receipts, set source consistency true, or prove physical failover/restart transitions. Ordinary local/CI sweeps exclude these lab-only categories rather than silently substituting fixtures.

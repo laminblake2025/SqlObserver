@@ -52,6 +52,14 @@ public sealed class CpuComponentsNativeQualificationTests(ITestOutputHelper outp
         Assert.Equal(value.SqlProcess.RawFormulaEligible && value.OperatingSystem.RawFormulaEligible &&
             value.SqlProcess.FromNative100ns == value.OperatingSystem.FromNative100ns &&
             value.SqlProcess.ToNative100ns == value.OperatingSystem.ToNative100ns, value.ExactPairEligible);
+        // Private qualification evidence for exact replay into an isolated repository.
+        // This closed observation contains counter evidence, not credentials, SIDs or TCP endpoints.
+        // It is deliberately distinct from the redacted public history projection.
+        output.WriteLine("CPU_COMPONENT_NATIVE_RECEIPT_V1:" + JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1, observation = value, result.Outcome, result.Reason,
+            result.Accounting, result.Loss, result.CollectorManifestVersion, result.OutputSchemaVersion,
+        }, JsonOptions));
     }
 
     [Fact]

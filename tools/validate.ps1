@@ -2387,6 +2387,7 @@ foreach ($testProject in $testProjectsToRun) {
         # Independent CPU components require the same explicitly provisioned
         # co-located monitor lab and are selected only by their native runner.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresCpuComponentsQualification' } else { "($filter)&Category!=RequiresCpuComponentsQualification" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresServerLifecycleQualification' } else { "($filter)&Category!=RequiresServerLifecycleQualification" }
         # This test creates and drops its own Query Store databases. It is
         # selected explicitly for a disposable SQL Server lab, never by the
         # ordinary Local or Release sweep.
@@ -2397,6 +2398,8 @@ foreach ($testProject in $testProjectsToRun) {
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresM12SqlServerRelease' } else { "($filter)&Category!=RequiresM12SqlServerRelease" }
     }
     if ($testProject -like '*SqlObserver.IntegrationTests.PostgreSql.csproj') {
+        # Exact native-receipt replay requires a separately hash-pinned lab artifact.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresCpuNativeReceipt' } else { "($filter)&Category!=RequiresCpuNativeReceipt" }
         # Cross-store live blocking qualification owns disposable SQL objects
         # and is selected explicitly rather than by an ordinary validation sweep.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }
