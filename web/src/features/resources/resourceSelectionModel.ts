@@ -8,7 +8,10 @@ export interface ResourceVolumeSelection { readonly sampleTargetRevision: number
 export interface ResourceFileSnapshotSelection { readonly runId: string; readonly sampleTargetRevision: number }
 export interface ResourceCpuCaptureSelection { readonly runId: string; readonly sampleTargetRevision: number }
 export interface ResourceVolumePlanningSelection { readonly runId: string; readonly sampleTargetRevision: number }
+export interface ResourceCpuObservationSelection { readonly runId: string; readonly sampleTargetRevision: number }
 export interface ResourceSelection {
+  readonly cpuObservation?: ResourceCpuObservationSelection;
+  readonly invalidCpuObservation?: boolean;
   readonly volumePlanning?: ResourceVolumePlanningSelection;
   readonly invalidVolumePlanning?: boolean;
   readonly cpuCapture?: ResourceCpuCaptureSelection;
@@ -79,13 +82,14 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
   if (params.getAll("target").length !== 1 || !target || !validTarget(target) ||
     (expectedTarget !== undefined && target.toLowerCase() !== expectedTarget.toLowerCase())) return {};
   const scope = readOverviewScope(hash);
-  const hasSelection = ["resourceDatabaseId", "resourceFileId", "fileSnapshotRun", "fileSnapshotRevision", "cpuCaptureRun", "cpuCaptureRevision", "volumePlanningRun", "volumePlanningRevision", "numaNodeId", "resourceAt", "volumeRevision", "volumeKey"].some(key => params.has(key));
+  const hasSelection = ["resourceDatabaseId", "resourceFileId", "fileSnapshotRun", "fileSnapshotRevision", "cpuCaptureRun", "cpuCaptureRevision", "cpuObservationRun", "cpuObservationRevision", "volumePlanningRun", "volumePlanningRevision", "numaNodeId", "resourceAt", "volumeRevision", "volumeKey"].some(key => params.has(key));
   if (hasSelection && !validBaseContext(params, scope)) return {
     invalidContext: true,
     issues: ["Requested resource selections have invalid or ambiguous database and time context. Clear resource selections before choosing new evidence."],
     ...(params.has("numaNodeId") ? { invalidNode: true } : {}),
     ...(params.has("volumeRevision") || params.has("volumeKey") ? { invalidVolume: true } : {}),
     ...(params.has("fileSnapshotRun") || params.has("fileSnapshotRevision") ? { invalidFileSnapshot: true } : {}),
+    ...(params.has("cpuObservationRun") || params.has("cpuObservationRevision") ? { invalidCpuObservation: true } : {}),
     ...(params.has("cpuCaptureRun") || params.has("cpuCaptureRevision") ? { invalidCpuCapture: true } : {}),
     ...(params.has("volumePlanningRun") || params.has("volumePlanningRevision") ? { invalidVolumePlanning: true } : {}),
   };
@@ -98,6 +102,8 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
   let invalidVolume = false;
   let fileSnapshot: ResourceFileSnapshotSelection | undefined;
   let invalidFileSnapshot = false;
+  let cpuObservation: ResourceCpuObservationSelection | undefined;
+  let invalidCpuObservation = false;
   let cpuCapture: ResourceCpuCaptureSelection | undefined;
   let invalidCpuCapture = false;
   let volumePlanning: ResourceVolumePlanningSelection | undefined;
@@ -109,6 +115,14 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
       invalidVolumePlanning = true;
       issues.push("The requested volume planning run or sample revision is invalid. Clear the planning selection or choose an exact received receipt; no other snapshot has been selected.");
     } else volumePlanning = { runId: runId.toLowerCase(), sampleTargetRevision };
+  }
+  if (params.has("cpuObservationRun") || params.has("cpuObservationRevision")) {
+    const runId = params.get("cpuObservationRun"), sampleTargetRevision = revision(params.get("cpuObservationRevision"));
+    if (params.getAll("cpuObservationRun").length !== 1 || params.getAll("cpuObservationRevision").length !== 1 ||
+        runId === null || !validTarget(runId) || sampleTargetRevision === undefined) {
+      invalidCpuObservation = true;
+      issues.push("The requested CPU observation run or sample revision is invalid. Clear the observation selection or choose an exact received receipt; no other observation has been selected.");
+    } else cpuObservation = { runId: runId.toLowerCase(), sampleTargetRevision };
   }
   if (params.has("cpuCaptureRun") || params.has("cpuCaptureRevision")) {
     const runId = params.get("cpuCaptureRun"), sampleTargetRevision = revision(params.get("cpuCaptureRevision"));
@@ -159,7 +173,7 @@ export function readResourceSelection(hash: string, expectedTarget?: string): Re
       if (scope.range === "custom") inspectionUtc = resourceInspectionUtc(inspectionUtc, scope.from ?? "", scope.to ?? "");
     } catch { inspectionUtc = undefined; issues.push("The requested resource inspection time is invalid or outside the shared window. Align another time or clear resource selections."); }
   }
-  return { ...(volumePlanning ? { volumePlanning } : {}), ...(invalidVolumePlanning ? { invalidVolumePlanning: true } : {}), ...(cpuCapture ? { cpuCapture } : {}), ...(invalidCpuCapture ? { invalidCpuCapture: true } : {}), ...(file ? { file } : {}), ...(fileSnapshot ? { fileSnapshot } : {}), ...(invalidFileSnapshot ? { invalidFileSnapshot: true } : {}), ...(volume ? { volume } : {}), ...(invalidVolume ? { invalidVolume: true } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
+  return { ...(cpuObservation ? { cpuObservation } : {}), ...(invalidCpuObservation ? { invalidCpuObservation: true } : {}), ...(volumePlanning ? { volumePlanning } : {}), ...(invalidVolumePlanning ? { invalidVolumePlanning: true } : {}), ...(cpuCapture ? { cpuCapture } : {}), ...(invalidCpuCapture ? { invalidCpuCapture: true } : {}), ...(file ? { file } : {}), ...(fileSnapshot ? { fileSnapshot } : {}), ...(invalidFileSnapshot ? { invalidFileSnapshot: true } : {}), ...(volume ? { volume } : {}), ...(invalidVolume ? { invalidVolume: true } : {}), ...(numaNodeId !== undefined ? { numaNodeId } : {}),
     ...(inspectionUtc ? { inspectionUtc } : {}), ...(issues.length ? { issues } : {}), ...(invalidNode ? { invalidNode: true } : {}) };
 }
 
@@ -175,6 +189,10 @@ export function resourceSelectionHref(scope: OverviewScope, selection: ResourceS
   if (validFile(selection.file, scope)) {
     params.set("resourceDatabaseId", String(selection.file!.databaseId));
     params.set("resourceFileId", String(selection.file!.fileId));
+  }
+  if (selection.cpuObservation && validTarget(selection.cpuObservation.runId) && Number.isSafeInteger(selection.cpuObservation.sampleTargetRevision) && selection.cpuObservation.sampleTargetRevision >= 1) {
+    params.set("cpuObservationRun", selection.cpuObservation.runId.toLowerCase());
+    params.set("cpuObservationRevision", String(selection.cpuObservation.sampleTargetRevision));
   }
   if (selection.cpuCapture && validTarget(selection.cpuCapture.runId) && Number.isSafeInteger(selection.cpuCapture.sampleTargetRevision) && selection.cpuCapture.sampleTargetRevision >= 1) {
     params.set("cpuCaptureRun", selection.cpuCapture.runId.toLowerCase());
@@ -213,7 +231,7 @@ export function retainResourceSelectionHref(href: string, currentHash: string): 
   const sameWindow = currentScope.range === nextScope.range && (nextScope.range !== "custom" ||
     resourceWindowMatches(currentScope.from ?? "", currentScope.to ?? "", nextScope.from ?? "", nextScope.to ?? ""));
   const compatible = sameWindow ? selection : { ...selection, volumePlanning: undefined };
-  return preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(nextScope, compatible), currentHash), currentHash), currentHash);
+  return preserveInvalidCpuObservationHref(preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(nextScope, compatible), currentHash), currentHash), currentHash), currentHash);
 }
 
 /** An invalid explicit snapshot pin remains explicit until the user clears or replaces it. */
@@ -246,6 +264,18 @@ export function preserveInvalidVolumePlanningHref(href: string, currentHash: str
   const [path, query] = href.split("?"), destination = new URLSearchParams(query), source = new URLSearchParams(currentHash.split("?")[1]);
   if (!/^#\/?resources$/u.test(path ?? "") || !validBaseContext(destination, next)) return href;
   for (const key of ["volumePlanningRun", "volumePlanningRevision"]) {
+    destination.delete(key);
+    for (const value of source.getAll(key)) destination.append(key, value);
+  }
+  return `${path}?${destination}`;
+}
+
+export function preserveInvalidCpuObservationHref(href: string, currentHash: string): string {
+  const current = readOverviewScope(currentHash), next = readOverviewScope(href);
+  if (current.target.toLowerCase() !== next.target.toLowerCase() || !readResourceSelection(currentHash, current.target).invalidCpuObservation) return href;
+  const [path, query] = href.split("?"), destination = new URLSearchParams(query), source = new URLSearchParams(currentHash.split("?")[1]);
+  if (!/^#\/?resources$/u.test(path ?? "") || !validBaseContext(destination, next)) return href;
+  for (const key of ["cpuObservationRun", "cpuObservationRevision"]) {
     destination.delete(key);
     for (const value of source.getAll(key)) destination.append(key, value);
   }

@@ -17,6 +17,7 @@ import {handleMaintenanceCalendarFixture} from './maintenance-calendar-fixture.m
 import {handleSqlVolumeFixture} from './sql-volume-fixture.mjs';
 import {handleSqlVolumeHistoryFixture} from './sql-volume-history-fixture.mjs';
 import {handleDatabaseFileWindowHistoryFixture} from './database-file-window-history-fixture.mjs';
+import {handleCpuObservationWindowHistoryFixture} from './cpu-observation-history-fixture.mjs';
 import {handleCpuCaptureWindowHistoryFixture} from './cpu-capture-window-history-fixture.mjs';
 import {handleTempDbWindowHistoryFixture} from '../component-tests/tempDbWindowHistoryFixture.mjs';
 import {handleReplicationWindowHistoryFixture} from '../component-tests/replicationWindowHistoryFixture.mjs';
@@ -69,6 +70,8 @@ createServer(async(req,res)=>{try{
  if(volumePlanning)return send(res,volumePlanning.body,volumePlanning.status);
  const tempDbHistory=handleTempDbWindowHistoryFixture(url,req);
  if(tempDbHistory)return send(res,tempDbHistory.body,tempDbHistory.status);
+ const cpuObservations=handleCpuObservationWindowHistoryFixture(url,req);
+ if(cpuObservations)return send(res,cpuObservations.body,cpuObservations.status);
  const cpuHistory=handleCpuCaptureWindowHistoryFixture(url,req);
  if(cpuHistory)return send(res,cpuHistory.body,cpuHistory.status);
  const fileHistory=handleDatabaseFileWindowHistoryFixture(url,req);

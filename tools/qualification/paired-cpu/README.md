@@ -8,6 +8,18 @@ open. Raw arithmetic can be numerically comparable while `NativeQualification`
 remains absent and `TargetComparisonAdmitted` remains false. See the
 [capture and persistence boundary](../../../docs/technical/Cpu-Paired-Capture.md).
 
+The separate `cpu.components` collector is registered but defaults off. It displays
+independently timed SQL-process and target-host values after actual source
+association checks, with explicit provider quality and gaps. Its passing SQL 2025
+native run does not qualify this strict paired contract or grant durable process
+access. See the current [dashboard checkpoint](../../../docs/technical/SqlObserver-Dashboard-Refactor-Handoff-2026-10-02.md).
+
+With the same explicitly provisioned lab environment and actual monitor identity,
+select the three independent-component cases with
+`dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter FullyQualifiedName~CpuComponentsNativeQualificationTests`.
+Ordinary validation sweeps exclude both native qualification categories; neither
+test group grants permissions or supplies missing lab configuration.
+
 The SQL source brackets sampling on one owned connection under the original
 collector deadline. Its pinned query preserves PID, SQL-reported node/instance,
 offset-free startup, start/current ticks, exact cumulative user/kernel

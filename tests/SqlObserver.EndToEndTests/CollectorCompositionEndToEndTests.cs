@@ -42,7 +42,7 @@ public sealed class CollectorCompositionEndToEndTests
                 "activity.requests", "waits.server", "blocking.current", "deadlocks.system-health", "queries.performance",
                 "backups.status", "sql-agent.failures", "tempdb.health", "availability-groups.health",
                 "host.metrics", "replication.health", "storage.volume", "queries.performance-groups",
-                "engine.buffer-nodes", "engine.configurations"],
+                "engine.buffer-nodes", "engine.configurations", "cpu.components"],
             registry.Registrations
                 .Select(static registration => registration.Manifest.Id.Value));
         Assert.Equal(2, registry

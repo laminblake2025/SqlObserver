@@ -28,6 +28,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         DatabaseOptionChanges = new PostgreSqlDatabaseOptionChangePort(dataSource);
         ServerConfigurationChanges = new PostgreSqlServerConfigurationChangePort(dataSource);
         ServerConfigurationSnapshots = new PostgreSqlServerConfigurationSnapshotPort(dataSource);
+        CpuComponentsCollectionAdministration = new PostgreSqlCpuComponentsCollectionAdministrationPort(dataSource);
         ConfigurationCollectionAdministration =
             new PostgreSqlConfigurationCollectionAdministrationPort(dataSource);
         BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
@@ -40,6 +41,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         ServerLifecycleHistory = new PostgreSqlServerLifecycleHistoryRepositoryPort(dataSource);
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         DatabaseFileWindowHistory = new PostgreSqlDatabaseFileWindowHistoryRepositoryPort(dataSource);
+        CpuComponentWindowHistory = new PostgreSqlCpuComponentWindowHistoryRepositoryPort(dataSource);
         CpuCaptureWindowHistory = new PostgreSqlCpuCaptureWindowHistoryRepositoryPort(dataSource);
         TempDbWindowHistory = new PostgreSqlTempDbWindowHistoryRepositoryPort(dataSource);
         ReplicationWindowHistory = new PostgreSqlReplicationWindowHistoryRepositoryPort(dataSource);
@@ -99,6 +101,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IDatabaseOptionChangeRepositoryPort DatabaseOptionChanges { get; }
     public IServerConfigurationChangeRepositoryPort ServerConfigurationChanges { get; }
     public IServerConfigurationSnapshotRepositoryPort ServerConfigurationSnapshots { get; }
+    public ICpuComponentsCollectionAdministrationPort CpuComponentsCollectionAdministration { get; }
     public IConfigurationCollectionAdministrationPort ConfigurationCollectionAdministration { get; }
     public IBackupZoneQualificationAdministrationPort BackupZoneQualifications { get; }
     public IBackupFreshnessPolicyPort BackupFreshnessPolicies { get; }
@@ -110,6 +113,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IServerLifecycleHistoryReadPort ServerLifecycleHistory { get; }
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IDatabaseFileWindowHistoryReadPort DatabaseFileWindowHistory { get; }
+    public ICpuComponentWindowHistoryReadPort CpuComponentWindowHistory { get; }
     public ICpuCaptureWindowHistoryReadPort CpuCaptureWindowHistory { get; }
     public ITempDbWindowHistoryReadPort TempDbWindowHistory { get; }
     public IReplicationWindowHistoryReadPort ReplicationWindowHistory { get; }

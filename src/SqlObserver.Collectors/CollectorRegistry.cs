@@ -76,6 +76,7 @@ public sealed class CollectorRegistration
             (output.MaxQueryStoreGroupObservations > 0 ? 1 : 0) +
             (output.MaxServerConfigurationObservations > 0 ? 1 : 0);
             populatedKinds += output.MaxOperationalHealthObservations > 0 ? 1 : 0;
+            populatedKinds += output.MaxCpuComponentsObservations > 0 ? 1 : 0;
         bool valid = populatedKinds == 1 && manifest.OutputKind switch
         {
             CollectorOutputKind.Metrics => output.MaxMetricSamples > 0,
@@ -93,6 +94,7 @@ public sealed class CollectorRegistration
             CollectorOutputKind.BackupsStatus or CollectorOutputKind.SqlAgentFailures or CollectorOutputKind.TempDbHealth or CollectorOutputKind.AvailabilityGroupsHealth => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.ReplicationHealth => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.CapabilityProfile => false,
+            CollectorOutputKind.CpuComponents => output.MaxCpuComponentsObservations > 0,
             _ => false,
         };
         if (!valid)
@@ -129,6 +131,7 @@ public sealed class CollectorRegistry
                 [CollectorCatalogIds.QueryStoreGroups.Value] = (17, CollectorOutputKind.QueryStoreGroups),
                 ["engine.buffer-nodes"] = (18, CollectorOutputKind.Metrics),
                 ["engine.configurations"] = (19, CollectorOutputKind.ServerConfigurations),
+                ["cpu.components"] = (20, CollectorOutputKind.CpuComponents),
             });
 
     private readonly ReadOnlyCollection<CollectorRegistration> _registrations;

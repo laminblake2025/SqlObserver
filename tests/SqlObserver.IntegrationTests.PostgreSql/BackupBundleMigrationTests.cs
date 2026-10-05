@@ -34,10 +34,9 @@ public sealed partial class PassiveCollectorBundleMigrationTests
             .CatalogEntries.Take(15).ToArray());
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var lease = await AcquireCatalogLeaseAsync(collector);
-        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
-        Assert.Equal(15, (await runtime.ReconcileCatalogAsync(
-            new ReconcileCollectorCatalogRequest(entries, lease, Timeout),
-            CancellationToken.None)).UnchangedCount);
+        // This repository stops at 0243; the current v1 deadlock bytes are from
+        // 0309 and must not be imported into the historical reconciliation.
+        Assert.Equal(15, await ReconcileDirectAsync(collector, WithPre309DeadlockBundle(entries), lease));
     }
 
     private const string PriorBackupBundle = "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484";
@@ -57,11 +56,11 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
         string currentBundle = SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum;
         Assert.All(entries.Skip(9).Take(4), entry => Assert.Equal(currentBundle, entry.AssetBundleDigest.Value));
-        CollectorCatalogEntry[] m85Entries = WithHistoricalQueryBundle(WithActivityBundle(
+        CollectorCatalogEntry[] m85Entries = WithPre309DeadlockBundle(WithHistoricalQueryBundle(WithActivityBundle(
             WithBackupManifest(
                 WithCoreBundle(entries, "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c"),
                 "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff"),
-            M80Bundle));
+            M80Bundle)));
         CollectorCatalogEntry[] backupEntries = WithBackupBundle(m85Entries, UpdatedBackupBundle);
         CollectorCatalogEntry[] priorEntries = WithBackupBundle(m85Entries, PriorBackupBundle);
         await using (var registered = database.DataSource.CreateCommand("SELECT collector_id,encode(manifest_sha256,'hex'),encode(asset_bundle_sha256,'hex') FROM control.collector_contract ORDER BY execution_order"))

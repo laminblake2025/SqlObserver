@@ -2384,6 +2384,9 @@ foreach ($testProject in $testProjectsToRun) {
         # Paired CPU qualification runs co-located with SQL under its own
         # monitoring identity and independently provisioned host binding.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresPairedCpuQualification' } else { "($filter)&Category!=RequiresPairedCpuQualification" }
+        # Independent CPU components require the same explicitly provisioned
+        # co-located monitor lab and are selected only by their native runner.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresCpuComponentsQualification' } else { "($filter)&Category!=RequiresCpuComponentsQualification" }
         # This test creates and drops its own Query Store databases. It is
         # selected explicitly for a disposable SQL Server lab, never by the
         # ordinary Local or Release sweep.

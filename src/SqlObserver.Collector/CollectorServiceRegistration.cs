@@ -207,6 +207,13 @@ public static class CollectorServiceRegistration
         services.AddSingleton<IHostMetricsCollector, HostMetricsCollector>();
         services.AddSingleton<IHostTargetResolver, PersistedHostTargetResolver>();
         services.AddSingleton<HostMetricsCollectorAdapter>();
+        services.AddSingleton(static _ => CpuComponentsAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerCpuTargetWitnessReader>();
+        services.AddSingleton<WindowsCpuTcpAssociationReader>();
+        services.AddSingleton<WindowsTargetCpuPairReader>();
+        services.AddSingleton<WindowsCpuAssociationSamplingReader>();
+        services.AddSingleton<CpuComponentsSource>();
+        services.AddSingleton<CpuComponentsCollector>();
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
         services.AddSingleton<ISensitivePayloadPort>(static provider =>
@@ -292,6 +299,7 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<SqlServerQueryStoreGroupAssetCatalog>();
         HostMetricsAssetCatalog hostCatalog = provider.GetRequiredService<HostMetricsAssetCatalog>();
         var hostBundle = new CollectorSha256Digest(hostCatalog.BundleChecksum);
+        CpuComponentsAssetCatalog cpuCatalog = provider.GetRequiredService<CpuComponentsAssetCatalog>();
         static CollectorSha256Digest Digest(string json) => new(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant());
         return new CollectorRegistry(
         [
@@ -368,6 +376,10 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerConfigurationsCollector.OutputContract),
                 Digest(configurationCatalog.ManifestJson),
                 new CollectorSha256Digest(configurationCatalog.BundleChecksum)),
+            new CollectorRegistration(20, provider.GetRequiredService<CpuComponentsCollector>(),
+                new CollectorOutputValidator(CpuComponentsCollector.OutputContract),
+                Digest(cpuCatalog.ManifestJson),
+                new CollectorSha256Digest(cpuCatalog.BundleChecksum)),
         ]);
     }
 }

@@ -15,6 +15,21 @@ public sealed class WindowsTargetCpuPairReaderTests
     private const string Machine = "11111111-1111-1111-1111-111111111111";
     private static readonly IdentityFingerprintKey Key = new(Enumerable.Repeat((byte)0xA5, 32).ToArray());
 
+    [Fact]
+    public async Task ProviderSchemaRetainsExactNativeCalculationAndOldSchemaCannotSupplyIt()
+    {
+        var json = Output(); json["schema"] = 3;
+        json["processCalculation"] = new JsonObject { ["apiStatus"] = 0, ["cStatus"] = 1, ["percent"] = "128.125" };
+        json["osCalculation"] = new JsonObject { ["apiStatus"] = 0, ["cStatus"] = 0, ["percent"] = "0" };
+        var result = await new WindowsTargetCpuPairReader(Key, new Helper(json)).ReadAsync(Request(), CancellationToken.None);
+        Assert.Equal(128.125m, result.ProcessCalculation!.Percent); Assert.Equal(0m, result.OsCalculation!.Percent);
+        var legacy = await new WindowsTargetCpuPairReader(Key, new Helper(Output())).ReadAsync(Request(), CancellationToken.None);
+        Assert.Null(legacy.ProcessCalculation); Assert.Null(legacy.OsCalculation);
+        json["processCalculation"]!["percent"] = "NaN";
+        var refused = await new WindowsTargetCpuPairReader(Key, new Helper(json)).ReadAsync(Request(), CancellationToken.None);
+        Assert.Null(refused.ProcessCalculation); Assert.Null(refused.Before);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(int.MaxValue)]

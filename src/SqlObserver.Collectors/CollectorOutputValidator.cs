@@ -63,7 +63,7 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         else if (request.DeadlockReadContext is not null || result.DeadlockReadProof is not null)
             throw new InvalidDataException("Deadlock read context belongs only to the incremental deadlock contract.");
 
-        int sourceRowBound = manifest.Id.Value == "cpu.paired-capture"
+        int sourceRowBound = manifest.Id.Value is "cpu.paired-capture" or "cpu.components"
             ? CpuPairedCaptureObservation.MaximumSourceFrames
             : manifest.Id.Value == "sql-agent.failures"
             ? OperationalHealthBounds.AgentScanRows
@@ -113,7 +113,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             (payload.PlanCacheContent is not null && Contract.MaxPlanCacheContentObservations == 0) ||
             payload.ServerConfigurations.Items.Count > Contract.MaxServerConfigurationObservations ||
             (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations ||
-            (payload.CpuPairedCapture is null ? 0 : 1) > Contract.MaxCpuPairedCaptureObservations)
+            (payload.CpuPairedCapture is null ? 0 : 1) > Contract.MaxCpuPairedCaptureObservations ||
+            (payload.CpuComponents is null ? 0 : 1) > Contract.MaxCpuComponentsObservations)
         {
             throw new InvalidDataException("Collector output exceeded its registered output cardinality.");
         }
@@ -179,6 +180,17 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         }
         else if (payload.CpuPairedCapture is not null || manifest.OutputKind == CollectorOutputKind.CpuPairedCapture)
             throw new InvalidDataException("CPU capture output belongs only to its declared collector.");
+
+        if (manifest.Id.Value == "cpu.components")
+        {
+            if (manifest.ManifestVersion.Value != 1 || manifest.OutputSchemaVersion.Value != 1 ||
+                manifest.OutputKind != CollectorOutputKind.CpuComponents || Contract.MaxCpuComponentsObservations != 1)
+                throw new InvalidDataException("CPU components require their exact versioned output contract.");
+            CpuComponentsOutputValidation.Validate(payload, request.TargetId, request.TargetRevision,
+                request.RunId, result.Outcome, result.Accounting, result.Loss);
+        }
+        else if (payload.CpuComponents is not null || manifest.OutputKind == CollectorOutputKind.CpuComponents)
+            throw new InvalidDataException("CPU components belong only to their declared collector.");
 
         if (manifest.Id.Value == "server.lifecycle")
         {

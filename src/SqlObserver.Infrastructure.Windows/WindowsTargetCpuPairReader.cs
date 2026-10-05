@@ -49,6 +49,8 @@ public sealed record WindowsTargetCpuPairReadResult(string State, string Reason,
     public bool TargetComparisonAdmitted { get; }
     public WindowsCpuPairFrameWitness? BeforeWitness { get; init; }
     public WindowsCpuPairFrameWitness? AfterWitness { get; init; }
+    public CpuComponentProviderCalculation? ProcessCalculation { get; init; }
+    public CpuComponentProviderCalculation? OsCalculation { get; init; }
 }
 
 /// <summary>Controlled process seam for cancellation, caps and parser testing.
@@ -193,8 +195,10 @@ public sealed class WindowsTargetCpuPairReader
         if (bytes.Length is 0 or > MaximumOutputBytes) throw new InvalidDataException("CPU helper output exceeds its bound.");
         using JsonDocument document = JsonDocument.Parse(bytes.ToArray(), new JsonDocumentOptions { MaxDepth = 8 });
         JsonElement root = document.RootElement;
-        Closed(root, "schema", "queryId", "before", "after");
-        if (root.GetProperty("schema").GetInt32() != 2 || !Guid.TryParseExact(root.GetProperty("queryId").GetString(), "D", out Guid query) || query == Guid.Empty)
+        int schema = root.GetProperty("schema").GetInt32();
+        if (schema == 3) Closed(root, "schema", "queryId", "before", "after", "processCalculation", "osCalculation");
+        else Closed(root, "schema", "queryId", "before", "after");
+        if (schema is not (2 or 3) || !Guid.TryParseExact(root.GetProperty("queryId").GetString(), "D", out Guid query) || query == Guid.Empty)
             throw new InvalidDataException("CPU helper schema or query identity is invalid.");
         var before = Frame(root.GetProperty("before"), request.Binding.SqlProcessId); var after = Frame(root.GetProperty("after"), request.Binding.SqlProcessId);
         string expected = request.Target.Binding.HostFingerprint.Value;
@@ -216,7 +220,25 @@ public sealed class WindowsTargetCpuPairReader
             before.Process is null || after.Process is null ? "process_counter_unavailable" : "source_qualification_absent";
         return new("partial", "source_qualification_absent", Endpoint(before), Endpoint(after), before.Id, after.Id,
             before.Name, after.Name, before.Executable, after.Executable, before.Status, after.Status, before.OsStatus, after.OsStatus, processReason)
-        { BeforeWitness = before.Witness, AfterWitness = after.Witness };
+        { BeforeWitness = before.Witness, AfterWitness = after.Witness,
+          ProcessCalculation = schema == 3 ? Calculation(root.GetProperty("processCalculation")) : null,
+          OsCalculation = schema == 3 ? Calculation(root.GetProperty("osCalculation")) : null };
+    }
+
+    private static CpuComponentProviderCalculation? Calculation(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Null) return null;
+        Closed(value, "apiStatus", "cStatus", "percent");
+        decimal? percent = null;
+        if (value.GetProperty("percent").ValueKind != JsonValueKind.Null)
+        {
+            string text = value.GetProperty("percent").GetString() ?? "";
+            if (text.Length is 0 or > 64 || !double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double native) ||
+                !double.IsFinite(native) || native < (double)decimal.MinValue || native > (double)decimal.MaxValue)
+                throw new InvalidDataException("CPU native provider calculation is not finite and bounded.");
+            percent = checked((decimal)native);
+        }
+        return new(value.GetProperty("apiStatus").GetUInt32(), value.GetProperty("cStatus").GetUInt32(), percent);
     }
 
     private sealed record FrameData(DateTimeOffset Observed, long Monotonic, PairedCpuHostEvidence Host,
@@ -399,6 +421,8 @@ using System.Text;
 public static class CpuPairNative {
  [StructLayout(LayoutKind.Sequential)] public struct Raw { public uint CStatus,Low,High; public long FirstValue,SecondValue; public uint MultiCount; }
  [StructLayout(LayoutKind.Sequential)] public struct Item { public IntPtr Name; public Raw Value; }
+ [StructLayout(LayoutKind.Explicit,Size=16)] public struct Formatted { [FieldOffset(0)] public uint CStatus; [FieldOffset(8)] public double Value; }
+ private static readonly Dictionary<IntPtr,List<Raw>> Saved=new Dictionary<IntPtr,List<Raw>>();
  public sealed class Rows { public readonly List<KeyValuePair<string,Raw>> Values=new List<KeyValuePair<string,Raw>>(); }
  [DllImport("pdh.dll",CharSet=CharSet.Unicode)] public static extern uint PdhOpenQueryW(IntPtr source,UIntPtr user,out IntPtr query);
  [DllImport("pdh.dll",CharSet=CharSet.Unicode)] public static extern uint PdhAddEnglishCounterW(IntPtr query,string path,UIntPtr user,out IntPtr counter);
@@ -406,6 +430,7 @@ public static class CpuPairNative {
  [DllImport("pdh.dll")] public static extern uint PdhCloseQuery(IntPtr query);
  [DllImport("pdh.dll")] public static extern uint PdhGetRawCounterValue(IntPtr counter,out uint type,out Raw raw);
  [DllImport("pdh.dll")] public static extern uint PdhGetCounterTimeBase(IntPtr counter,out long timeBase);
+ [DllImport("pdh.dll")] public static extern uint PdhCalculateCounterFromRawValue(IntPtr counter,uint format,ref Raw current,ref Raw previous,out Formatted value);
  [DllImport("pdh.dll",CharSet=CharSet.Unicode)] public static extern uint PdhGetRawCounterArrayW(IntPtr counter,ref uint size,out uint count,IntPtr values);
  [DllImport("pdh.dll",CharSet=CharSet.Unicode)] public static extern uint PdhGetCounterInfoW(IntPtr counter,[MarshalAs(UnmanagedType.U1)]bool explain,ref uint size,IntPtr info);
  [DllImport("kernel32.dll",SetLastError=true)] public static extern uint GetActiveProcessorCount(ushort group);
@@ -415,7 +440,8 @@ public static class CpuPairNative {
  [DllImport("kernel32.dll",SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr process,uint milliseconds);
  [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] public static extern bool QueryFullProcessImageNameW(IntPtr process,uint flags,StringBuilder name,ref uint size);
  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
- public static object Counter(Raw value,uint type,uint status,IntPtr handle,bool timed) { long timeBase=0; if(timed) { uint baseStatus=PdhGetCounterTimeBase(handle,out timeBase); if(status==0)status=baseStatus; } return new { counterType=type,cStatus=value.CStatus,firstValue=value.FirstValue.ToString(CultureInfo.InvariantCulture),secondValue=value.SecondValue.ToString(CultureInfo.InvariantCulture),timestamp100ns=(((ulong)value.High<<32)|value.Low).ToString(CultureInfo.InvariantCulture),multiCount=value.MultiCount,apiStatus=status,timeBase=timeBase.ToString(CultureInfo.InvariantCulture) }; }
+ public static object Counter(Raw value,uint type,uint status,IntPtr handle,bool timed) { long timeBase=0; if(timed) { List<Raw> values; if(!Saved.TryGetValue(handle,out values)){values=new List<Raw>();Saved.Add(handle,values);} if(values.Count>=2)throw new Exception("counter_sample_bound");values.Add(value); uint baseStatus=PdhGetCounterTimeBase(handle,out timeBase); if(status==0)status=baseStatus; } return new { counterType=type,cStatus=value.CStatus,firstValue=value.FirstValue.ToString(CultureInfo.InvariantCulture),secondValue=value.SecondValue.ToString(CultureInfo.InvariantCulture),timestamp100ns=(((ulong)value.High<<32)|value.Low).ToString(CultureInfo.InvariantCulture),multiCount=value.MultiCount,apiStatus=status,timeBase=timeBase.ToString(CultureInfo.InvariantCulture) }; }
+ public static object Calculate(IntPtr handle) { List<Raw> values; if(handle==IntPtr.Zero || !Saved.TryGetValue(handle,out values) || values.Count!=2)return null; Raw older=values[0],current=values[1];Formatted formatted;uint status=PdhCalculateCounterFromRawValue(handle,0x8200,ref current,ref older,out formatted);return new { apiStatus=status,cStatus=formatted.CStatus,percent=status==0 && (formatted.CStatus==0 || formatted.CStatus==1) && !double.IsNaN(formatted.Value) && !double.IsInfinity(formatted.Value)?formatted.Value.ToString("R",CultureInfo.InvariantCulture):null }; }
  public static uint Type(IntPtr counter) { uint size=0; uint s=PdhGetCounterInfoW(counter,false,ref size,IntPtr.Zero); if(s!=0x800007D2 || size<8 || size>262144) throw new Exception("counter_info"); IntPtr memory=Marshal.AllocHGlobal((int)size); try { if(PdhGetCounterInfoW(counter,false,ref size,memory)!=0) throw new Exception("counter_info"); return unchecked((uint)Marshal.ReadInt32(memory,4)); } finally { Marshal.FreeHGlobal(memory); } }
  public static bool Missing(uint status) { return status==0x800007D1 || status==0x800007D5 || status==0xC0000BB8 || status==0xC0000BB9; }
  public static Rows Array(IntPtr counter,out uint status,out uint count) {
@@ -509,9 +535,9 @@ try {
    $processorsAfter=[CpuPairNative]::GetActiveProcessorCount(0xffff)
    $frames+=@{ observedAtUtc=$observed;monotonic100ns=$mono.ToString([Globalization.CultureInfo]::InvariantCulture);machineUuid=$hostWitness.machineUuid;bootFileTime100ns=$hostWitness.bootFileTime100ns;processCreation100ns=$processCreation;processCreationAfter100ns=$creationAfterText;processExitAfter100ns=$exitAfterText;processWaitResultAfter=$processWait;processName=$processName;processImage=$processImage;processStatus=$processStatus;osStatus=$osAdd;logicalProcessors=$processors;logicalProcessorsAfter=$processorsAfter;processInstances=$instances;processMappingAmbiguous=$mappingAmbiguous;process=$procRaw;os=$osRaw;idProcess=$idRaw }
   } finally { if($processHandle-ne [IntPtr]::Zero){[void][CpuPairNative]::CloseHandle($processHandle)} }
-  if($sample-eq 0){Start-Sleep -Milliseconds 500}
+  if($sample-eq 0){Start-Sleep -Milliseconds 1000}
  }
- @{schema=2;queryId=$queryId;before=$frames[0];after=$frames[1]} | ConvertTo-Json -Compress -Depth 6
+ @{schema=3;queryId=$queryId;before=$frames[0];after=$frames[1];processCalculation=[CpuPairNative]::Calculate($processCounter);osCalculation=[CpuPairNative]::Calculate($osCounter)} | ConvertTo-Json -Compress -Depth 6
 } catch [UnauthorizedAccessException] { exit 3 } catch [Microsoft.Management.Infrastructure.CimException] { if($_.Exception.NativeErrorCode-eq 2){exit 3};exit 2 } catch { exit 2 } finally { if($query-ne [IntPtr]::Zero){[void][CpuPairNative]::PdhCloseQuery($query)} }
 """;
 }

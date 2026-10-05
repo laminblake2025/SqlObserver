@@ -111,6 +111,10 @@ builder.Services.AddSingleton<IDatabaseFileWindowHistoryReadPort>(static service
     services.GetRequiredService<PostgreSqlTargetControlPlane>().DatabaseFileWindowHistory);
 builder.Services.AddSingleton<IDatabaseFileWindowHistoryService, DatabaseFileWindowHistoryService>();
 builder.Services.AddSingleton<DatabaseFileWindowHistoryCursorProtector>();
+builder.Services.AddSingleton<ICpuComponentWindowHistoryReadPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().CpuComponentWindowHistory);
+builder.Services.AddSingleton<ICpuComponentWindowHistoryService, CpuComponentWindowHistoryService>();
+builder.Services.AddSingleton<CpuComponentWindowHistoryCursorProtector>();
 builder.Services.AddSingleton<ICpuCaptureWindowHistoryReadPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().CpuCaptureWindowHistory);
 builder.Services.AddSingleton<ICpuCaptureWindowHistoryService, CpuCaptureWindowHistoryService>();
@@ -174,6 +178,9 @@ builder.Services.AddSingleton<IServerConfigurationChangeRepositoryPort>(static s
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerConfigurationChanges);
 builder.Services.AddSingleton<IServerConfigurationSnapshotRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerConfigurationSnapshots);
+builder.Services.AddSingleton<ICpuComponentsCollectionAdministrationPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().CpuComponentsCollectionAdministration);
+builder.Services.AddSingleton<ICpuComponentsCollectionAdministrationService, CpuComponentsCollectionAdministrationService>();
 builder.Services.AddSingleton<IConfigurationCollectionAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ConfigurationCollectionAdministration);
 builder.Services.AddSingleton<IQueryStorePlanRegressionRepositoryPort>(static services =>
@@ -306,6 +313,7 @@ app.MapSqlVolumePlanningWindowEndpoints();
 app.MapServerLifecycleHistoryEndpoints();
 app.MapDatabaseFileWindowHistoryEndpoints();
 app.MapCpuCaptureWindowHistoryEndpoints();
+app.MapCpuComponentWindowHistoryEndpoints();
 app.MapTempDbWindowHistoryEndpoints();
 app.MapReplicationWindowHistoryEndpoints();
 app.MapBackupAvailabilityWindowHistoryEndpoints();

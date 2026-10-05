@@ -113,7 +113,8 @@ public sealed class CollectorPayload
         ServerConfigurationObservationBatch? serverConfigurations = null,
         PlanCacheRuntimeOutputBatch? planCacheRuntime = null,
         PlanCacheContentOutputBatch? planCacheContent = null,
-        CpuPairedCaptureObservation? cpuPairedCapture = null)
+        CpuPairedCaptureObservation? cpuPairedCapture = null,
+        CpuComponentsObservation? cpuComponents = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -157,6 +158,7 @@ public sealed class CollectorPayload
         OperationalHealth = operationalHealth;
         HostMetricsContext = hostMetricsContext;
         CpuPairedCapture = cpuPairedCapture;
+        CpuComponents = cpuComponents;
     }
 
     public IReadOnlyList<MetricSample> Metrics => _metrics;
@@ -178,6 +180,7 @@ public sealed class CollectorPayload
     public OperationalHealthPayload? OperationalHealth { get; }
     public HostMetricsPayloadContext? HostMetricsContext { get; }
     public CpuPairedCaptureObservation? CpuPairedCapture { get; }
+    public CpuComponentsObservation? CpuComponents { get; }
     public int ItemCount => checked(
         Metrics.Count +
         Databases.Items.Count +
@@ -193,7 +196,7 @@ public sealed class CollectorPayload
         (PlanCacheRuntime?.Items.Count ?? 0) +
         (PlanCacheContent?.Items.Count ?? 0) +
         ServerConfigurations.Items.Count +
-        (OperationalHealth?.ItemCount ?? 0) + (CpuPairedCapture is null ? 0 : 1));
+        (OperationalHealth?.ItemCount ?? 0) + (CpuPairedCapture is null ? 0 : 1) + (CpuComponents is null ? 0 : 1));
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
         Databases.Items.Sum(static item => item.EstimatedSizeBytes) +
@@ -209,7 +212,7 @@ public sealed class CollectorPayload
         (PlanCacheRuntime?.EstimatedSizeBytes ?? 0) +
         (PlanCacheContent?.EstimatedSizeBytes ?? 0) +
         ServerConfigurations.EstimatedSizeBytes +
-        (OperationalHealth?.EstimatedSizeBytes ?? 0) + (CpuPairedCapture?.EstimatedSizeBytes ?? 0));
+        (OperationalHealth?.EstimatedSizeBytes ?? 0) + (CpuPairedCapture?.EstimatedSizeBytes ?? 0) + (CpuComponents?.EstimatedSizeBytes ?? 0));
 
     public static CollectorPayload Empty { get; } = new();
 }
@@ -367,7 +370,8 @@ public sealed class CollectorOutputContract
         int maxServerConfigurationObservations = 0,
         int maxPlanCacheRuntimeObservations = 0,
         int maxPlanCacheContentObservations = 0,
-        int maxCpuPairedCaptureObservations = 0)
+        int maxCpuPairedCaptureObservations = 0,
+        int maxCpuComponentsObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -473,6 +477,8 @@ public sealed class CollectorOutputContract
         if (maxCpuPairedCaptureObservations is < 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(maxCpuPairedCaptureObservations));
         MaxCpuPairedCaptureObservations = maxCpuPairedCaptureObservations;
+        if (maxCpuComponentsObservations is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(maxCpuComponentsObservations));
+        MaxCpuComponentsObservations = maxCpuComponentsObservations;
     }
 
     public CollectorOutputSchemaVersion SchemaVersion { get; }
@@ -493,6 +499,7 @@ public sealed class CollectorOutputContract
     public int MaxServerConfigurationObservations { get; }
     public int MaxOperationalHealthObservations { get; }
     public int MaxCpuPairedCaptureObservations { get; }
+    public int MaxCpuComponentsObservations { get; }
 }
 
 /// <summary>Typed M9 payload; snapshots are immutable and contain no provider text.</summary>

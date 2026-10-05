@@ -16,6 +16,9 @@ using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
+// These rollout cases intentionally retain the 19-entry pre-CPU catalog.
+// The current 20-entry composition and reconciliation have separate CPU integration coverage.
+
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
 public sealed class BackupV2RolloutTests(PostgreSql18Fixture fixture)
@@ -157,7 +160,7 @@ public sealed class BackupV2RolloutTests(PostgreSql18Fixture fixture)
         Assert.Null(await ClaimAsync(runtime, new(Guid.NewGuid())));
         await using ServiceProvider legacyApplication = CreateApplication();
         WorkerLeaseIdentity legacyCatalog = await AcquireAsync(leases, "collector/catalog/reconcile");
-        await runtime.ReconcileCatalogAsync(new(WithLegacyDeadlocks(legacyApplication.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray()), legacyCatalog, Timeout), CancellationToken.None);
+        await runtime.ReconcileCatalogAsync(new(WithLegacyDeadlocks(legacyApplication.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(19).ToArray()), legacyCatalog, Timeout), CancellationToken.None);
         await leases.ReleaseAsync(new(legacyCatalog, Timeout), CancellationToken.None);
         Assert.Null(await ClaimAsync(runtime, legacyCatalog.Owner));
         await ExecuteAsync(database, "UPDATE control.backups_v2_worker_capability SET last_reconciled_at=clock_timestamp()-interval '6 minutes';");
@@ -212,7 +215,7 @@ public sealed class BackupV2RolloutTests(PostgreSql18Fixture fixture)
     private static async Task<CollectorCatalogEntry[]> CatalogAsync(bool agV2 = false, bool backupV2 = true)
     {
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = WithLegacyDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray());
+        CollectorCatalogEntry[] entries = WithLegacyDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(19).ToArray());
         var key = new IdentityFingerprintKey(new byte[32]);
         if (backupV2)
         {

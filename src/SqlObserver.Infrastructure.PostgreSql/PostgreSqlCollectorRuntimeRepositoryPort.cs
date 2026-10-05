@@ -42,6 +42,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
     private static readonly string ReconcileM13Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m13(", StringComparison.Ordinal);
     private static readonly string ReconcileM14Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m14(", StringComparison.Ordinal);
     private static readonly string ReconcileM15Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m15(", StringComparison.Ordinal);
+    private static readonly string ReconcileCpuComponentsSql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_cpu_components(", StringComparison.Ordinal);
     private static readonly string ReconcileDeadlocksV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_deadlocks_v2(", StringComparison.Ordinal);
     private static readonly string ReconcileAgV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_ag_v2(", StringComparison.Ordinal);
     private static readonly string ReconcileBackupsV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_backups_v2(", StringComparison.Ordinal);
@@ -371,6 +372,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         "queries.performance-groups",
         "engine.buffer-nodes",
         "engine.configurations",
+        "cpu.components",
     ];
 
     private static readonly string[] RequiredManifestDigests =
@@ -394,6 +396,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         "2a026abedbde62a7c8ad101ef1716c15a31f82b576c2610ef03e60552803e7f9",
         "2051ddb3e18434a0839e346a3b6361c2e371ce83072ea28e65956c3b6a442451",
         "0e2091d6e4e8246154aeacb7c7fe1578a9264623aae883e0ec7088b9ca266aeb",
+        "12efdd346d5f9309c3938c4f13cc58e5a5e6a6622ae8b8b4e46e1f18b16932c3",
     ];
 
     private static readonly string[] RequiredBundleDigests =
@@ -417,6 +420,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         "4d6c86e95950d0a60c72d7876283c505058b96ee25a102cf967aa8ffa220aa8a",
         "043d739a50b552e9f1859059ce067baa234d28edf669f9566e78cc7f01a0042e",
         "0eb242b28bd428bbcb5bc3ea146c6fa8739226fbc779da470e431832a156a4c9",
+        "650fdd81cc50ed82c5d9e3db2f1685a276556b4d416e61f2c2359c9bb5f70116",
     ];
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
@@ -463,6 +467,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                 .ConfigureAwait(false);
             string reconcileSql = request.Entries.Count switch
             {
+                20 => ReconcileCpuComponentsSql,
                 19 when request.Entries[7].Manifest.ManifestVersion.Value == 2 => ReconcileDeadlocksV2Sql,
                 19 when request.Entries[9].Manifest.ManifestVersion.Value == 2 => ReconcileBackupsV2Sql,
                 19 when request.Entries[12].Manifest.ManifestVersion.Value == 2 => ReconcileAgV2Sql,
@@ -754,6 +759,8 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
+            if (request.Work.CollectorId.Value == "cpu.components")
+                return await CommitCpuComponentsAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             if (request.Work.CollectorId.Value == "cpu.paired-capture")
                 return await CommitCpuPairedCaptureAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             bool activityCollector = IsActivityCollector(request.Work.CollectorId);
@@ -1651,7 +1658,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
 
     private static void ValidateCatalog(IReadOnlyList<CollectorCatalogEntry> entries)
     {
-        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18 or 19))
+        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18 or 19 or 20))
         {
             throw new InvalidDataException("PostgreSQL accepts only an exact reviewed collector catalog.");
         }
@@ -1659,25 +1666,25 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         for (int index = 0; index < entries.Count; index++)
         {
             CollectorCatalogEntry entry = entries[index];
-            bool inventoryV2 = entries.Count == 19 && index == 1 &&
+            bool inventoryV2 = entries.Count >= 19 && index == 1 &&
                 entry.Manifest.ManifestVersion.Value == 2 &&
                 entry.Manifest.OutputSchemaVersion.Value == 2 &&
                 entry.ManifestDigest.Value ==
                     "5536227e577cd6f2c3d8bdab685fcd7c10eb915d0d1f2273c3733eebd43b4f21" &&
                 entry.AssetBundleDigest.Value ==
                     "e48082564bda4f8f0a06c545640832b13dd99b01db1755ec3a2a8d0b794a7311";
-            bool deadlocksV2 = entries.Count == 19 && index == 7 &&
+            bool deadlocksV2 = entries.Count >= 19 && index == 7 &&
                 entries[9].Manifest.ManifestVersion.Value == 1 && entries[12].Manifest.ManifestVersion.Value == 1 &&
                 entries[1].Manifest.ManifestVersion.Value == 2 &&
                 entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
                 entry.ManifestDigest.Value == "1530586d171d1b0300a83b8451c60a1f4a5ae25df7279f3815b7d43702b03c1b" &&
                 entry.AssetBundleDigest.Value == "efcd15c53d0a75b30277446730f774dc40ffe6fa4ff78c1435967de56bc954fa";
-            bool backupsV2 = entries.Count == 19 && index == 9 &&
+            bool backupsV2 = entries.Count >= 19 && index == 9 &&
                 entries[1].Manifest.ManifestVersion.Value == 2 &&
                 entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
                 entry.ManifestDigest.Value == "976ca433c0fa71b658ddf69e50528e02e638e8ae72332ad67d7c3398d28d0cc0" &&
                 entry.AssetBundleDigest.Value == "b567ab905ded0118ee10c6f22f77189f8e7979f738e79f5c8ab3362cb76bbcf7";
-            bool availabilityV2 = entries.Count == 19 && index == 12 &&
+            bool availabilityV2 = entries.Count >= 19 && index == 12 &&
                 entries[1].Manifest.ManifestVersion.Value == 2 &&
                 entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
                 entry.ManifestDigest.Value == "a53b435b88a7beb14dfecc759530ec0d666fd92a069130bf175a1f947b84e009" &&
@@ -1710,6 +1717,16 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
+        if (request.Work.CollectorId.Value == "cpu.components")
+        {
+            if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
+                throw new InvalidDataException("CPU components require their exact version and schema.");
+            CpuComponentsOutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.RunId, request.Summary.Outcome,
+                request.Summary.Accounting, request.Summary.Loss);
+        }
+        else if (request.Payload.CpuComponents is not null)
+            throw new InvalidDataException("CPU components require their declared collector.");
         if (request.Work.CollectorId.Value == "cpu.paired-capture")
         {
             if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
@@ -1888,6 +1905,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         ValidateM10Payload(request);
         bool exactKind = request.Work.CollectorId.Value switch
         {
+            "cpu.components" => request.Payload.ItemCount == (request.Payload.CpuComponents is null ? 0 : 1),
             "cpu.paired-capture" => request.Payload.ItemCount == (request.Payload.CpuPairedCapture is null ? 0 : 1),
             "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,
             "replication.health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,

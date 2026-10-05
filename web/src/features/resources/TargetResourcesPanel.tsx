@@ -14,7 +14,7 @@ import { sqlVolumePlanningWindow, type SqlVolumePlanningSelection } from "./sqlV
 import { SqlVolumeHistoryPanel } from "./SqlVolumeHistoryPanel";
 import { useChartReferences } from "../overview/useChartReferences.ts";
 import { resourceInspectionInputUtc, resourceInspectionUtc } from "./resourceInspectionModel.ts";
-import { readResourceSelection, resourceSelectionHref, preserveInvalidFileSnapshotHref, preserveInvalidCpuCaptureHref, preserveInvalidVolumePlanningHref, resourceWindowMatches, type ResourceSelection } from "./resourceSelectionModel.ts";
+import { readResourceSelection, resourceSelectionHref, preserveInvalidFileSnapshotHref, preserveInvalidCpuCaptureHref, preserveInvalidCpuObservationHref, preserveInvalidVolumePlanningHref, resourceWindowMatches, type ResourceSelection } from "./resourceSelectionModel.ts";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 
 import { useDatabaseFileWindowHistory } from "./useDatabaseFileWindowHistory.ts";
@@ -24,12 +24,17 @@ import { useCpuCaptureWindowHistory } from "./useCpuCaptureWindowHistory.ts";
 import { CpuCaptureWindowHistoryPanel } from "./CpuCaptureWindowHistoryPanel.tsx";
 import { cpuCaptureWindow, type CpuCaptureSelection } from "./cpuCaptureWindowHistoryModel.ts";
 
+import { useCpuObservationHistory } from "./useCpuObservationHistory.ts";
+import { CpuCollectionControl } from "./CpuCollectionControl.tsx";
+import { CpuObservationHistoryPanel } from "./CpuObservationHistoryPanel.tsx";
+import { previousCpuObservationWindow, type CpuObservationSelection } from "./cpuObservationHistoryModel.ts";
+
 const memoryMetrics = new Set([
   "engine.process_physical_memory_bytes", "engine.os_available_memory_bytes",
   "host.memory.available_bytes",
 ]);
 
-export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, refresh, manualRefresh=0, accessContext="", onSelectWindow, targetRevision, canReadRules }: {
+export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, refresh, manualRefresh=0, accessContext="", onSelectWindow, targetRevision, canReadRules, canManageCpuCollection = false }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
@@ -39,6 +44,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   readonly accessContext?: string;
   readonly targetRevision: number;
   readonly canReadRules: boolean;
+  readonly canManageCpuCollection?: boolean;
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }) {
   const { mode } = useTimeDisplay();
@@ -88,7 +94,8 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     const href = resourceSelectionHref(latestScope, clearAll ? {} : { ...readResourceSelection(location.hash, instanceId), ...change });
     const withFilePin = clearAll || Object.hasOwn(change,"fileSnapshot") ? href : preserveInvalidFileSnapshotHref(href,location.hash);
     const withCpuPin = clearAll || Object.hasOwn(change,"cpuCapture") ? withFilePin : preserveInvalidCpuCaptureHref(withFilePin,location.hash);
-    location.hash = clearAll || Object.hasOwn(change,"volumePlanning") ? withCpuPin : preserveInvalidVolumePlanningHref(withCpuPin,location.hash);
+    const withObservationPin = clearAll || Object.hasOwn(change,"cpuObservation") ? withCpuPin : preserveInvalidCpuObservationHref(withCpuPin,location.hash);
+    location.hash = clearAll || Object.hasOwn(change,"volumePlanning") ? withObservationPin : preserveInvalidVolumePlanningHref(withObservationPin,location.hash);
   };
   const changeInspectionTime = (utc: string | null) => {
     if (utc === null) { setInspection(undefined); return; }
@@ -127,7 +134,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     if(latestScope.databaseId!==scope.databaseId||latestScope.range==="custom"&&!resourceWindowMatches(latestScope.from??"",latestScope.to??"",inspectionWindow.fromUtc,inspectionWindow.toUtc)||latestScope.range!=="custom"&&latestScope.range!==scope.range)return;
     const selection = { ...readResourceSelection(location.hash,instanceId), ...(file ? {file} : {}), ...(clearSnapshot ? {fileSnapshot:undefined} : snapshot ? {fileSnapshot:snapshot} : {}) };
     const href=resourceSelectionHref({...latestScope,range:"custom",from:inspectionWindow.fromUtc,to:inspectionWindow.toUtc},selection);
-    location.hash=preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(clearSnapshot || snapshot ? href : preserveInvalidFileSnapshotHref(href,location.hash),location.hash),location.hash);
+    location.hash=preserveInvalidCpuObservationHref(preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(clearSnapshot || snapshot ? href : preserveInvalidFileSnapshotHref(href,location.hash),location.hash),location.hash),location.hash);
   };
   const cpuWindow = (() => {
     if (resourceSelection.invalidContext) return { window: undefined, error: "The requested CPU capture has ambiguous shared context. Clear resource selections before choosing evidence." };
@@ -137,6 +144,20 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
   })();
   const cpuHistory = useCpuCaptureWindowHistory(cpuWindow.window ? { targetId: instanceId, targetRevision, ...cpuWindow.window } : undefined,
     resourceSelection.invalidCpuCapture || resourceSelection.invalidContext ? null : resourceSelection.cpuCapture, manualRefresh, accessContext);
+  const comparisonCpuWindow = (() => { try { return scope.compare && cpuWindow.window ? previousCpuObservationWindow(cpuWindow.window.fromUtc, cpuWindow.window.toUtc) : undefined; } catch { return undefined; } })();
+  const cpuObservations = useCpuObservationHistory(cpuWindow.window ? { targetId: instanceId, targetRevision, ...cpuWindow.window } : undefined,
+    resourceSelection.invalidCpuObservation || resourceSelection.invalidContext ? null : resourceSelection.cpuObservation, manualRefresh, accessContext,
+    comparisonCpuWindow ? { targetId: instanceId, targetRevision, ...comparisonCpuWindow } : undefined);
+  const beginCpuObservation = (observation?: CpuObservationSelection, retainWindow = false) => {
+    const latestScope = readOverviewScope(location.hash), latestSelection = readResourceSelection(location.hash, instanceId);
+    if (!inspectionWindow || latestSelection.invalidContext || !/^#\/?resources(?:\?|$)/u.test(location.hash) || latestScope.target.toLowerCase() !== instanceId.toLowerCase()) return;
+    if (latestScope.databaseId !== scope.databaseId || latestScope.range === "custom" && !resourceWindowMatches(latestScope.from ?? "", latestScope.to ?? "", inspectionWindow.fromUtc, inspectionWindow.toUtc)
+      || latestScope.range !== "custom" && latestScope.range !== scope.range) return;
+    const pinnedScope = observation || retainWindow ? { ...latestScope, range: "custom" as const, from: inspectionWindow.fromUtc, to: inspectionWindow.toUtc } : latestScope;
+    const href = resourceSelectionHref(pinnedScope, { ...latestSelection, cpuObservation: observation });
+    const preserve = preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(href, location.hash), location.hash), location.hash);
+    location.hash = retainWindow && latestSelection.invalidCpuObservation ? preserveInvalidCpuObservationHref(preserve, location.hash) : preserve;
+  };
   const beginCpuInvestigation = (capture?: CpuCaptureSelection, retainWindow = false) => {
     const latestScope = readOverviewScope(location.hash), latestSelection = readResourceSelection(location.hash, instanceId);
     if (!inspectionWindow || latestSelection.invalidContext || !/^#\/?resources(?:\?|$)/u.test(location.hash) || latestScope.target.toLowerCase() !== instanceId.toLowerCase()) return;
@@ -145,7 +166,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     const selected = { ...latestSelection, cpuCapture: capture };
     const pinnedScope = capture || retainWindow ? { ...latestScope, range: "custom" as const, from: inspectionWindow.fromUtc, to: inspectionWindow.toUtc } : latestScope;
     const href = preserveInvalidFileSnapshotHref(resourceSelectionHref(pinnedScope, selected), location.hash);
-    location.hash = preserveInvalidVolumePlanningHref(retainWindow && latestSelection.invalidCpuCapture ? preserveInvalidCpuCaptureHref(href, location.hash) : href, location.hash);
+    location.hash = preserveInvalidCpuObservationHref(preserveInvalidVolumePlanningHref(retainWindow && latestSelection.invalidCpuCapture ? preserveInvalidCpuCaptureHref(href, location.hash) : href, location.hash), location.hash);
   };
   const planningWindow = (() => {
     if (resourceSelection.invalidContext) return { window: undefined, error: "The requested volume planning receipt has ambiguous shared context. Clear resource selections before choosing evidence." };
@@ -164,7 +185,7 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     const selected = { ...latestSelection, volumePlanning: receipt };
     const pinnedScope = receipt || retainWindow ? { ...latestScope, range: "custom" as const, from: receivedWindow.fromUtc, to: receivedWindow.toUtc } : latestScope;
     const href = preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(pinnedScope, selected), location.hash), location.hash);
-    location.hash = retainWindow && latestSelection.invalidVolumePlanning ? preserveInvalidVolumePlanningHref(href, location.hash) : href;
+    location.hash = preserveInvalidCpuObservationHref(retainWindow && latestSelection.invalidVolumePlanning ? preserveInvalidVolumePlanningHref(href, location.hash) : href, location.hash);
   };
 
   const chart = (title: string, metric: string, note: string) => <section className="panel server-dashboard-chart" key={metric}>
@@ -190,9 +211,9 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     </div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
     <p className="table-note">CPU, memory, page life expectancy, and volume capacity remain server-wide. Database file rows are filtered only within the loaded page.</p>
     {resourceSelection.issues?.map(issue => <p role="alert" key={issue}>{issue}</p>)}
-    {(resourceSelection.volumePlanning || resourceSelection.invalidVolumePlanning || resourceSelection.cpuCapture || resourceSelection.invalidCpuCapture || resourceSelection.file || resourceSelection.fileSnapshot || resourceSelection.invalidFileSnapshot || resourceSelection.volume || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
+    {(resourceSelection.cpuObservation || resourceSelection.invalidCpuObservation || resourceSelection.volumePlanning || resourceSelection.invalidVolumePlanning || resourceSelection.cpuCapture || resourceSelection.invalidCpuCapture || resourceSelection.file || resourceSelection.fileSnapshot || resourceSelection.invalidFileSnapshot || resourceSelection.volume || resourceSelection.numaNodeId !== undefined || resourceSelection.inspectionUtc || resourceSelection.issues?.length) &&
       <button type="button" className="secondary-button" onClick={() => updateSelection({}, true)}>Clear resource selections</button>}
-    {inspectionWindow && <p><a href={preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(chartScope, resourceSelection),location.hash),location.hash),location.hash)}>Open fixed resource investigation</a></p>}
+    {inspectionWindow && <p><a href={preserveInvalidCpuObservationHref(preserveInvalidVolumePlanningHref(preserveInvalidCpuCaptureHref(preserveInvalidFileSnapshotHref(resourceSelectionHref(chartScope, resourceSelection),location.hash),location.hash),location.hash),location.hash)}>Open fixed resource investigation</a></p>}
     <section className="panel server-dashboard-chart" aria-label="Resource chart alignment">
       <h3>Inspect resource charts at one time</h3>
       <p id={inspectionDescriptionId} className="activity-evidence">Align loaded CPU, memory, PLE and file-latency charts to one UTC instant. The marker does not add observations or fill gaps. This keeps the workspace window unchanged.</p>
@@ -247,6 +268,11 @@ export function TargetResourcesPanel({ instanceId, displayName, onClose, scope, 
     {inspectionWindow && <SqlVolumeHistoryPanel instanceId={instanceId} targetRevision={targetRevision} fromUtc={inspectionWindow.fromUtc} toUtc={inspectionWindow.toUtc}
       compare={scope.compare} refresh={refresh} selectedVolume={resourceSelection.invalidVolume || resourceSelection.invalidContext ? null : resourceSelection.volume}
       onSelectVolume={volume => updateSelection({ volume })} crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime} onSelectWindow={onSelectWindow} />}
+    <CpuCollectionControl targetId={instanceId} targetRevision={targetRevision} canManage={canManageCpuCollection} accessContext={accessContext}/>
+    <CpuObservationHistoryPanel history={cpuObservations} comparison={scope.compare} fromUtc={cpuWindow.window?.fromUtc} toUtc={cpuWindow.window?.toUtc}
+      windowError={cpuWindow.error} selectionInvalid={resourceSelection.invalidCpuObservation || resourceSelection.invalidContext} explicitSelection={resourceSelection.cpuObservation}
+      onSelectObservation={observation => beginCpuObservation(observation)} onRetainWindow={() => beginCpuObservation(cpuObservations.selected ?? undefined, true)}
+      crosshairUtc={crosshairUtc} onCrosshairChange={changeInspectionTime} onSelectWindow={onSelectWindow} />
     <CpuCaptureWindowHistoryPanel history={cpuHistory} windowError={cpuWindow.error}
       selectionInvalid={resourceSelection.invalidCpuCapture || resourceSelection.invalidContext} explicitSelection={resourceSelection.cpuCapture}
       onSelectCapture={capture => beginCpuInvestigation(capture)} onRetainWindow={() => beginCpuInvestigation(cpuHistory.selected ?? undefined, true)} />

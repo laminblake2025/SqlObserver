@@ -12,6 +12,9 @@ using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
+// These rollout cases intentionally retain the 19-entry pre-CPU catalog.
+// The current 20-entry composition and reconciliation have separate CPU integration coverage.
+
 public sealed partial class M6DeadlockPostgreSqlIntegrationTests
 {
     [Fact]
@@ -31,7 +34,7 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         Assert.Equal(2, selected.Manifest.OutputSchemaVersion.Value);
         Assert.Same(services.GetRequiredService<ICollectorRuntimeRepositoryPort>(), services.GetRequiredService<IDeadlockReadRepositoryPort>());
         WorkerLeaseIdentity catalog = await DeadlockRolloutCatalogLease(legacy.Leases);
-        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries, catalog, Timeout);
+        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries.Take(19).ToArray(), catalog, Timeout);
         Assert.Equal(19, (await legacy.Runtime.ReconcileCatalogAsync(request, default)).UnchangedCount);
         long revision = await DeadlockRolloutRevision(database, legacy.Target.Value);
         Assert.Equal(legacy.Work.ScheduleRevision.Value + 1, revision);
@@ -83,7 +86,7 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         await using ServiceProvider services = IncrementalRolloutServices(collector.ConnectionString);
         CollectorRegistry registry = services.GetRequiredService<CollectorRegistry>();
         WorkerLeaseIdentity catalog = await DeadlockRolloutCatalogLease(legacy.Leases);
-        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries, catalog, Timeout);
+        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries.Take(19).ToArray(), catalog, Timeout);
         Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(async () => await legacy.Runtime.ReconcileCatalogAsync(request, default))).SqlState);
         Assert.Equal(legacy.Work.ScheduleRevision.Value, await DeadlockRolloutRevision(database, legacy.Target.Value));
         Assert.Equal(0L, await CountOutcomeRowsAsync(database, legacy.RunId.Value));
@@ -111,12 +114,12 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         await using ServiceProvider services = IncrementalRolloutServices(collector.ConnectionString);
         CollectorRegistry registry = services.GetRequiredService<CollectorRegistry>();
         WorkerLeaseIdentity catalog = await DeadlockRolloutCatalogLease(legacy.Leases);
-        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries, catalog, Timeout);
+        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries.Take(19).ToArray(), catalog, Timeout);
         long revision = await DeadlockRolloutRevision(database, legacy.Target.Value);
         var stale = new WorkerLeaseIdentity(catalog.Key, catalog.Owner, new(catalog.FencingToken.Value + 1));
         Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(async () =>
-            await legacy.Runtime.ReconcileCatalogAsync(new(registry.CatalogEntries, stale, Timeout), default))).SqlState);
-        var corrupt = registry.CatalogEntries.ToArray();
+            await legacy.Runtime.ReconcileCatalogAsync(new(registry.CatalogEntries.Take(19).ToArray(), stale, Timeout), default))).SqlState);
+        var corrupt = registry.CatalogEntries.Take(19).ToArray();
         var approved = corrupt[7];
         corrupt[7] = new(8, approved.Manifest, new(new string('0', 64)), approved.AssetBundleDigest);
         await Assert.ThrowsAsync<InvalidDataException>(async () =>
@@ -201,7 +204,7 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         await using ServiceProvider services = IncrementalRolloutServices(collector.ConnectionString);
         CollectorRegistry registry = services.GetRequiredService<CollectorRegistry>();
         WorkerLeaseIdentity catalog = await DeadlockRolloutCatalogLease(legacy.Leases);
-        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries, catalog, Timeout);
+        var request = new ReconcileCollectorCatalogRequest(registry.CatalogEntries.Take(19).ToArray(), catalog, Timeout);
         Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(async () => await legacy.Runtime.ReconcileCatalogAsync(request, default))).SqlState);
         CollectorDueWorkItem work = (await legacy.Runtime.ListDueAsync(new(16, Timeout), default)).Items.Single(item => item.TargetId == legacy.Target && item.CollectorId.Value == "deadlocks.system-health");
         var run = new CollectorRunId(Guid.NewGuid());
@@ -225,11 +228,11 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         await using ServiceProvider services = IncrementalRolloutServices(collector.ConnectionString);
         CollectorRegistry registry = services.GetRequiredService<CollectorRegistry>();
         WorkerLeaseIdentity catalog = await DeadlockRolloutCatalogLease(legacy.Leases);
-        await legacy.Runtime.ReconcileCatalogAsync(new(registry.CatalogEntries, catalog, Timeout), default);
+        await legacy.Runtime.ReconcileCatalogAsync(new(registry.CatalogEntries.Take(19).ToArray(), catalog, Timeout), default);
         await legacy.Leases.ReleaseAsync(new(catalog, Timeout), default);
         await ExecuteAsync(database, "UPDATE control.collector_schedule SET next_due_at=clock_timestamp()+interval '1 day' WHERE instance_id=@target AND collector_id<>'deadlocks.system-health';", ("target", legacy.Target.Value));
         var oldAssets = services.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>();
-        CollectorCatalogEntry[] oldEntries = registry.CatalogEntries.ToArray();
+        CollectorCatalogEntry[] oldEntries = registry.CatalogEntries.Take(19).ToArray();
         oldEntries[7] = new(8, services.GetRequiredService<SqlServerDeadlockCollector>().Manifest, new(oldAssets.Asset.ManifestChecksum), new(oldAssets.BundleChecksum));
         WorkerLeaseIdentity oldCatalog = await DeadlockRolloutCatalogLease(legacy.Leases);
         await legacy.Runtime.ReconcileCatalogAsync(new(oldEntries, oldCatalog, Timeout), default);
@@ -241,7 +244,7 @@ public sealed partial class M6DeadlockPostgreSqlIntegrationTests
         Assert.Null(await legacy.Runtime.ClaimDueAsync(new(catalog.Owner, new(TimeSpan.FromSeconds(30)), Timeout), default));
         await ExecuteAsync(database, "UPDATE control.collector_schedule SET enabled=false,collection_interval=interval '45 seconds' WHERE instance_id=@target AND collector_id='deadlocks.system-health';", ("target", legacy.Target.Value));
         WorkerLeaseIdentity refreshed = await DeadlockRolloutCatalogLease(legacy.Leases);
-        await legacy.Runtime.ReconcileCatalogAsync(new(registry.CatalogEntries, refreshed, Timeout), default);
+        await legacy.Runtime.ReconcileCatalogAsync(new(registry.CatalogEntries.Take(19).ToArray(), refreshed, Timeout), default);
         await legacy.Leases.ReleaseAsync(new(refreshed, Timeout), default);
         Assert.Null(await legacy.Runtime.ClaimDueAsync(new(refreshed.Owner, new(TimeSpan.FromSeconds(30)), Timeout), default));
         await using (var state = database.DataSource.CreateCommand("SELECT collector_version,enabled,collection_interval=interval '45 seconds' FROM control.collector_schedule WHERE instance_id=@target AND collector_id='deadlocks.system-health';"))

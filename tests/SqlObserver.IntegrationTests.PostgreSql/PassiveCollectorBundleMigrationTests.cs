@@ -11,6 +11,9 @@ using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
+// These rollout cases intentionally retain the 19-entry pre-CPU catalog.
+// The current 20-entry composition and reconciliation have separate CPU integration coverage.
+
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
 public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fixture fixture)
@@ -107,7 +110,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         Assert.False(await BufferNodeEnabledAsync());
 
         await using ServiceProvider application = CreateApplication();
-        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.ToArray();
+        CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(19).ToArray();
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         WorkerLeaseIdentity lease = await AcquireCatalogLeaseAsync(collector);
         Assert.Equal(19, (await new PostgreSqlCollectorRuntimeRepositoryPort(collector)
@@ -146,11 +149,11 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         Assert.Equal(Enumerable.Repeat(PriorBundle, 4).Append(PriorReplicationBundle), await ReadRepairedBundlesAsync(database));
         await using ServiceProvider application = CreateApplication();
         CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
-        CollectorCatalogEntry[] frozenM9Entries = WithHistoricalQueryBundle(
+        CollectorCatalogEntry[] frozenM9Entries = WithPre309DeadlockBundle(WithHistoricalQueryBundle(
             WithActivityBundle(WithBackupBundle(WithBackupManifest(
                 WithCoreBundle(entries, "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c"),
                 "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff"),
-                PriorBackupBundle), M80Bundle));
+                PriorBackupBundle), M80Bundle)));
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         WorkerLeaseIdentity lease = await AcquireCatalogLeaseAsync(collector);
         PostgresException before = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, frozenM9Entries, lease));
@@ -296,6 +299,16 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     private static CollectorCatalogEntry[] WithActivityBundle(CollectorCatalogEntry[] entries, string bundle) =>
         entries.Select(entry => entry.ExecutionOrder is >= 4 and <= 7
             ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
+            : entry).ToArray();
+
+    // Migration 0062 pins the v1 deadlock bytes through migration 0308.
+    // Migration 0309 changes only those bytes; using the current legacy catalog
+    // in a bounded earlier upgrade fixture would import that future contract.
+    private static CollectorCatalogEntry[] WithPre309DeadlockBundle(CollectorCatalogEntry[] entries) =>
+        entries.Select(entry => entry.Manifest.Id.Value == "deadlocks.system-health"
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest,
+                new CollectorSha256Digest("59cfabc2a63efa7236e61170f6ad1e3afee79e5dd79e4367ed90e49fb18214b8"),
+                new CollectorSha256Digest("57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de"))
             : entry).ToArray();
 
     private static CollectorCatalogEntry[] WithHistoricalQueryBundle(CollectorCatalogEntry[] entries) =>

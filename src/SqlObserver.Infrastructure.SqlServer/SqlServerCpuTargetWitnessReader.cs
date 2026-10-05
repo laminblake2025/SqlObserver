@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
@@ -44,6 +45,25 @@ public sealed class SqlServerCpuTargetWitnessReader
     {
         var result = await ReadCoreAsync(request, null, startNative, cancellationToken).ConfigureAwait(false);
         return result.Bracket;
+    }
+
+    /// <summary>Attests the current collector Windows token on the same owned SQL connection
+    /// before and after native sampling. Callers cannot supply or replace the expected identity.</summary>
+    public async ValueTask<SqlCpuWitnessBracket<T>> ReadCollectorAttestedBracketAsync<T>(CollectorExecutionRequest request,
+        Func<SqlCpuTargetWitness, CancellationToken, ICpuNativeSamplingOperation<T>> startNative,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        SecurityIdentifier sid = identity.User ?? throw new UnauthorizedAccessException("Collector Windows identity is unavailable.");
+        byte[] expected = new byte[sid.BinaryLength]; sid.GetBinaryForm(expected, 0);
+        try
+        {
+            var attested = await ReadAttestedBracketAsync(request, expected, startNative, cancellationToken).ConfigureAwait(false);
+            return attested.Bracket;
+        }
+        finally { CryptographicOperations.ZeroMemory(expected); }
     }
 
     internal async ValueTask<SqlCpuAttestedWitnessBracket<T>> ReadAttestedBracketAsync<T>(CollectorExecutionRequest request,
