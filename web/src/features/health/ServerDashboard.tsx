@@ -17,6 +17,7 @@ import { useDashboardTimeline } from "./useDashboardTimeline";
 import { useAlertLifecycleHistory } from "./useAlertLifecycleHistory.ts";
 import { useServerLifecycleHistory } from "./useServerLifecycleHistory.ts";
 import { ServerLifecycleHistoryPanel } from "./ServerLifecycleHistoryPanel.tsx";
+import { LifecycleCollectionControl } from "./LifecycleCollectionControl.tsx";
 import { serverLifecycleTimelineEvents, serverLifecycleEventIdentity, matchesServerLifecycleSelection, type ServerLifecycleSelection } from "./serverLifecycleHistoryModel.ts";
 import { AlertLifecycleHistoryPanel } from "./AlertLifecycleHistoryPanel.tsx";
 import { alertLifecycleTimelineEvents, lifecycleEventIdentity, matchesLifecycleSelection, type AlertLifecycleSelection } from "./alertLifecycleHistoryModel.ts";
@@ -34,7 +35,7 @@ import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.t
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
 import "./serverHistoryDisclosure.css";
 
-export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules, active = true, onAccessDenied }: {
+export function ServerDashboard({ instanceId, displayName, scope, refresh, blockingRefresh, configurationCollectorState, targetRevision, selectionHash, canReadRules, canManageLifecycleCollection = false, accessContext, active = true, onAccessDenied }: {
   readonly instanceId: string;
   readonly displayName: string;
   readonly scope: OverviewScope;
@@ -44,6 +45,8 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   readonly targetRevision: number;
   readonly selectionHash: string;
   readonly canReadRules: boolean;
+  readonly canManageLifecycleCollection?: boolean;
+  readonly accessContext?: string;
   readonly active?: boolean;
   readonly onAccessDenied?: (status: 401 | 403) => void;
 }) {
@@ -276,6 +279,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <AlertLifecycleHistoryPanel history={alerts} scope={fixedTimelineScope} selectedEvent={selectedLifecycleEvent} onSelectEvent={selectLifecycleEvent}
         onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/>
     </div>}
+    {active && accessContext !== undefined && <LifecycleCollectionControl targetId={instanceId} targetRevision={targetRevision} canManage={canManageLifecycleCollection} accessContext={accessContext} />}
     {timelineWindow&&<div ref={serverLifecycleEvidence} id={serverLifecycleEvidenceId} tabIndex={-1} role="region" aria-label="Server lifecycle evidence" className="server-history-evidence-location">
       <ServerLifecycleHistoryPanel history={serverLifecycle} selectedEvent={selectedServerLifecycleEvent} onSelectEvent={selectServerLifecycleEvent}
         onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/>

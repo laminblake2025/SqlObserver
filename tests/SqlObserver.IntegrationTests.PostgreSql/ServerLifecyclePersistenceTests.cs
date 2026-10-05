@@ -389,26 +389,8 @@ public sealed class ServerLifecyclePersistenceTests(PostgreSql18Fixture fixture)
 
     private static async Task<Guid> SeedAsync(RepositoryTestDatabase database)
     {
-        // Isolated test admission only: production registry and migration grants stay inactive.
-        var source = new SqlServerLifecycleCollector(SqlServerLifecycleAssetCatalog.LoadEmbedded(), new IdentityFingerprintKey(new byte[32]));
-        CollectorManifest manifest = source.Manifest;
-        byte[] manifestPin = SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(manifest));
-        byte[] assetPin = SHA256.HashData(Encoding.UTF8.GetBytes(SqlServerLifecycleAssetCatalog.LoadEmbedded().GetQuery(16)));
-        await ExecuteAsync(database, """
-            INSERT INTO control.collector_contract(collector_id,collector_version,execution_order,manifest_schema_version,
-              output_schema_version,manifest_sha256,asset_bundle_sha256,default_interval,minimum_interval,execution_timeout,
-              maximum_rows,maximum_response_bytes,estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval)
-            SELECT 'server.lifecycle',1,max(execution_order)+1,1,1,@manifest,@asset,@interval,@minimum,@timeout,
-              @rows,@bytes,'low',@attempts,@threshold,@open FROM control.collector_contract
-            ON CONFLICT(collector_id,collector_version) DO NOTHING;
-            GRANT EXECUTE ON FUNCTION control.commit_server_lifecycle_collection_run(uuid,uuid,bigint,text,integer,integer,
-              bigint,timestamptz,text,uuid,bigint,bytea,text,text,bigint,integer,integer,integer,bigint,bigint,text,integer,
-              boolean,integer,text,integer,jsonb,bytea) TO sqlobserver_collector;
-            """, ("manifest", manifestPin), ("asset", assetPin), ("interval", manifest.Intervals.DefaultInterval),
-            ("minimum", manifest.Intervals.HardMinimumInterval), ("timeout", manifest.Limits.CommandTimeout),
-            ("rows", manifest.Limits.MaxRows), ("bytes", manifest.Limits.MaxResponseBytes),
-            ("attempts", manifest.Resilience.MaximumAttempts), ("threshold", manifest.Resilience.CircuitFailureThreshold),
-            ("open", manifest.Resilience.CircuitOpenDuration));
+        // Synthetic transition fixtures use the installed production contract and grants.
+        Assert.Equal(1L, await CountAsync(database, "SELECT count(*) FROM control.collector_contract WHERE collector_id='server.lifecycle' AND execution_order=21;"));
         Guid target = Guid.NewGuid();
         await ExecuteAsync(database, """
             WITH sampled_clock AS MATERIALIZED (SELECT clock_timestamp() AS now_utc)

@@ -248,6 +248,8 @@ public sealed class ServerLifecycleHistoryHttpTests
             builder.UseEnvironment("ContractTesting"); builder.ConfigureLogging(logging => logging.ClearProviders());
             builder.ConfigureTestServices(services =>
             {
+                // Cursor cryptography is exercised with a real isolated provider, independent of host key storage.
+                services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
                 services.RemoveAll<IServerLifecycleHistoryReadPort>(); services.AddSingleton<IServerLifecycleHistoryReadPort>(Repository);
                 services.AddSingleton(new WindowsGroupRoleResolver([
                     new(new("S-1-5-21-1111"),[ApplicationRole.Viewer],false,[new(Target)]),

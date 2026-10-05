@@ -4,7 +4,7 @@ using System.Text;
 
 namespace SqlObserver.Infrastructure.SqlServer;
 
-/// <summary>Checksum-pinned passive lifecycle source, staged until native receipt qualification.</summary>
+/// <summary>Checksum-pinned passive lifecycle source. Native evidence qualifies only exercised branches.</summary>
 public sealed class SqlServerLifecycleAssetCatalog
 {
     private const string Resource = "SqlObserver.Infrastructure.SqlServer.LifecycleSourceAssets.server.lifecycle.sqlserver15-17-windows.v1.sql";

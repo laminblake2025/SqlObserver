@@ -214,6 +214,9 @@ public static class CollectorServiceRegistration
         services.AddSingleton<WindowsCpuAssociationSamplingReader>();
         services.AddSingleton<CpuComponentsSource>();
         services.AddSingleton<CpuComponentsCollector>();
+        services.AddSingleton(static _ => ServerLifecycleAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerLifecycleAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerLifecycleCollector>();
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
         services.AddSingleton<ISensitivePayloadPort>(static provider =>
@@ -300,6 +303,7 @@ public static class CollectorServiceRegistration
         HostMetricsAssetCatalog hostCatalog = provider.GetRequiredService<HostMetricsAssetCatalog>();
         var hostBundle = new CollectorSha256Digest(hostCatalog.BundleChecksum);
         CpuComponentsAssetCatalog cpuCatalog = provider.GetRequiredService<CpuComponentsAssetCatalog>();
+        ServerLifecycleAssetCatalog lifecycleCatalog = provider.GetRequiredService<ServerLifecycleAssetCatalog>();
         static CollectorSha256Digest Digest(string json) => new(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant());
         return new CollectorRegistry(
         [
@@ -380,6 +384,10 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(CpuComponentsCollector.OutputContract),
                 Digest(cpuCatalog.ManifestJson),
                 new CollectorSha256Digest(cpuCatalog.BundleChecksum)),
+            new CollectorRegistration(21, provider.GetRequiredService<SqlServerLifecycleCollector>(),
+                new CollectorOutputValidator(SqlServerLifecycleCollector.OutputContract),
+                Digest(lifecycleCatalog.ManifestJson),
+                new CollectorSha256Digest(lifecycleCatalog.BundleChecksum)),
         ]);
     }
 }

@@ -95,7 +95,7 @@ public sealed class CpuComponentsPostgreSqlTests(PostgreSql18Fixture fixture)
         var registrations=new ServiceCollection();registrations.AddLogging();registrations.AddSingleton<IConfiguration>(configuration);registrations.AddSqlObserverCollectorRuntime(configuration);
         await using var services=registrations.BuildServiceProvider();
         var registry=Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<CollectorRegistry>(services);
-        Assert.Equal(20,registry.CatalogEntries.Count);
+        Assert.Equal(21,registry.CatalogEntries.Count);
         await runtime.ReconcileCatalogAsync(new(registry.CatalogEntries,lease.Lease!.Identity,Timeout),CancellationToken.None);
         await using var server=database.CreateServerDataSource();var admin=new PostgreSqlCpuComponentsCollectionAdministrationPort(server);
         var state=await admin.GetAsync(new(target),1,Timeout,CancellationToken.None);Assert.False(state!.Enabled);

@@ -105,6 +105,8 @@ export interface TargetHealthPanelProps {
   readonly selectedDatabaseId?: number;
   readonly onSelectDatabase: (databaseId: number | undefined) => void;
   readonly canManageConfiguration: boolean;
+  readonly canManageLifecycleCollection?: boolean;
+  readonly accessContext?: string;
   readonly targetRevision: number;
   readonly selectionHash: string;
   readonly selectedConfigurationRunId?: string;
@@ -112,7 +114,7 @@ export interface TargetHealthPanelProps {
   readonly onSelectSection?: (section: "summary" | "databases" | "collection") => void;
 }
 
-export function TargetHealthPanel({ embedded = false, instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
+export function TargetHealthPanel({ embedded = false, instanceId, displayName, onClose, scope, refresh, healthRefresh, blockingRefresh, selectedDatabaseId, onSelectDatabase, canManageConfiguration, canManageLifecycleCollection = false, accessContext, targetRevision, selectionHash, selectedSection, selectedConfigurationRunId, onSelectSection }: TargetHealthPanelProps) {
   const formatTimestamp = useTimeFormatter();
   const evidenceKey = JSON.stringify([instanceId.toLowerCase(), targetRevision]);
   const access = useMemo<LatestHealthAccess>(() => ({ key: evidenceKey, mounted: false,
@@ -237,6 +239,7 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
       {!denied && <div className="health-dashboard-pane" key={`dashboard:${evidenceKey}`} hidden={tab !== "summary"}>
         <ServerDashboard active={tab === "summary"} instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
           targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
+          canManageLifecycleCollection={canManageLifecycleCollection} accessContext={accessContext}
           onAccessDenied={dashboardAccessDenied}
           blockingRefresh={blockingRefresh}
           configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />

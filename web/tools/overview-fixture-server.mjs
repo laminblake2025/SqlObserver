@@ -30,6 +30,7 @@ import {handleDashboardNativeInsightsFixture} from './dashboard-native-insights-
 import {handleDashboardRetainedEvidenceFixture} from './dashboard-retained-evidence-fixture.mjs';
 import {handleAlertLifecycleHistoryFixture} from './alert-lifecycle-history-fixture.mjs';
 import {handleServerLifecycleHistoryFixture} from './server-lifecycle-history-fixture.mjs';
+import {handleLifecycleCollectionFixture} from './lifecycle-collection-fixture.mjs';
 import {handleReportWorkflowFixture} from './report-workflow-fixture.mjs';
 import {nativeAlertSelectionPage} from './alert-selection-fixture.mjs';
 import {handleAlertAssignmentFixture} from './alert-assignment-fixtures.mjs';
@@ -76,6 +77,7 @@ createServer(async(req,res)=>{try{
  if(cpuHistory)return send(res,cpuHistory.body,cpuHistory.status);
  const fileHistory=handleDatabaseFileWindowHistoryFixture(url,req);
  if(fileHistory)return send(res,fileHistory.body,fileHistory.status);
+ if(handleLifecycleCollectionFixture(url,res,req,targets,send))return;
  if(handleServerLifecycleHistoryFixture(url,res,req,targets,send))return;
  if(handleAlertLifecycleHistoryFixture(url,res,req,targets,send))return;
  if(handleAnalyticsWorkflowFixture(url,res,req,targets,send))return;

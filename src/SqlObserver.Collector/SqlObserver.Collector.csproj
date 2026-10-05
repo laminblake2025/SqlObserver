@@ -23,5 +23,9 @@
     <EmbeddedResource Include="../../collectors/manifests/cpu.components.v1.json" LogicalName="SqlObserver.Collector.CpuComponentsAssets.cpu.components.v1.json" />
     <EmbeddedResource Include="../../collectors/manifests/cpu.components.assets-v1.sha256" LogicalName="SqlObserver.Collector.CpuComponentsAssets.cpu.components.assets-v1.sha256" />
     <EmbeddedResource Include="../../collectors/sql/cpu.target-witness.sqlserver15-17-windows.v2.sql" LogicalName="SqlObserver.Collector.CpuComponentsAssets.cpu.target-witness.sqlserver15-17-windows.v2.sql" />
+    <EmbeddedResource Include="../../collectors/manifests/server.lifecycle.v1.schema.json" LogicalName="SqlObserver.Collector.ServerLifecycleAssets.server.lifecycle.v1.schema.json" />
+    <EmbeddedResource Include="../../collectors/manifests/server.lifecycle.v1.json" LogicalName="SqlObserver.Collector.ServerLifecycleAssets.server.lifecycle.v1.json" />
+    <EmbeddedResource Include="../../collectors/manifests/server.lifecycle.assets-v1.sha256" LogicalName="SqlObserver.Collector.ServerLifecycleAssets.server.lifecycle.assets-v1.sha256" />
+    <EmbeddedResource Include="../../collectors/sql/server.lifecycle.sqlserver15-17-windows.v1.sql" LogicalName="SqlObserver.Collector.ServerLifecycleAssets.server.lifecycle.sqlserver15-17-windows.v1.sql" />
   </ItemGroup>
 </Project>

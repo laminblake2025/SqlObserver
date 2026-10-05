@@ -11,7 +11,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 public sealed class ServerLifecycleRetentionPolicyTests(PostgreSql18Fixture fixture)
 {
     [Fact]
-    public async Task MigrationPreservesDisabledDefaultsAndExistingPoliciesWithoutActivatingTheProducer()
+    public async Task MigrationPreservesDisabledDefaultsAndExistingPoliciesWithDefaultOffProducerAdmission()
     {
         await using var database = await fixture.CreateDatabaseAsync();
         var migrations = new PostgreSqlMigrationPort(database.DataSource);
@@ -19,10 +19,10 @@ public sealed class ServerLifecycleRetentionPolicyTests(PostgreSql18Fixture fixt
         Assert.False((await migrations.ApplyPendingAsync(new(356, timeout), CancellationToken.None)).HasFailures);
         long historyBefore = await CountAsync(database, "SELECT count(*) FROM system.retention_policy_history;");
         Assert.False((await migrations.ApplyPendingAsync(new(MigrationBatchResult.MaximumResults, timeout), CancellationToken.None)).HasFailures);
-        // Migration0359 adds the independently disabled CPU receipt policy and its audit row.
-        Assert.Equal(historyBefore + 1, await CountAsync(database, "SELECT count(*) FROM system.retention_policy_history;"));
+        // Migrations0359/0365 add independently disabled CPU receipt policies and audit rows.
+        Assert.Equal(historyBefore + 2, await CountAsync(database, "SELECT count(*) FROM system.retention_policy_history;"));
         Assert.Equal(historyBefore, await CountAsync(database,
-            "SELECT count(*) FROM system.retention_policy_history WHERE data_class<>'cpu_paired_captures';"));
+            "SELECT count(*) FROM system.retention_policy_history WHERE data_class NOT IN('cpu_paired_captures','cpu_components');"));
         Assert.Equal(1L, await CountAsync(database,
             "SELECT count(*) FROM system.retention_policy WHERE data_class='cpu_paired_captures' AND NOT enabled AND retain_for IS NULL AND minimum_partitions_to_keep=3 AND policy_revision=1;"));
         Assert.Equal(2L, await CountAsync(database, """
@@ -30,8 +30,8 @@ public sealed class ServerLifecycleRetentionPolicyTests(PostgreSql18Fixture fixt
             WHERE data_class IN ('server_lifecycle_receipts','server_lifecycle_events')
               AND NOT enabled AND retain_for IS NULL AND minimum_partitions_to_keep=3 AND policy_revision=1;
             """));
-        Assert.Equal(0L, await CountAsync(database, "SELECT count(*) FROM control.collector_contract WHERE collector_id='server.lifecycle';"));
-        Assert.Equal(0L, await CountAsync(database, """
+        Assert.Equal(1L, await CountAsync(database, "SELECT count(*) FROM control.collector_contract WHERE collector_id='server.lifecycle';"));
+        Assert.Equal(2L, await CountAsync(database, """
             SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
             WHERE n.nspname='control' AND p.proname IN ('commit_server_lifecycle_collection_run','ensure_server_lifecycle_partition_set')
               AND has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE');

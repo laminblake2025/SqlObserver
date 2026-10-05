@@ -181,6 +181,9 @@ builder.Services.AddSingleton<IServerConfigurationSnapshotRepositoryPort>(static
 builder.Services.AddSingleton<ICpuComponentsCollectionAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().CpuComponentsCollectionAdministration);
 builder.Services.AddSingleton<ICpuComponentsCollectionAdministrationService, CpuComponentsCollectionAdministrationService>();
+builder.Services.AddSingleton<IServerLifecycleCollectionAdministrationPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerLifecycleCollectionAdministration);
+builder.Services.AddSingleton<IServerLifecycleCollectionAdministrationService, ServerLifecycleCollectionAdministrationService>();
 builder.Services.AddSingleton<IConfigurationCollectionAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ConfigurationCollectionAdministration);
 builder.Services.AddSingleton<IQueryStorePlanRegressionRepositoryPort>(static services =>
@@ -311,6 +314,7 @@ app.MapBackupFreshnessPolicyEndpoints();
 app.MapSqlVolumeEndpoints();
 app.MapSqlVolumePlanningWindowEndpoints();
 app.MapServerLifecycleHistoryEndpoints();
+app.MapServerLifecycleCollectionEndpoints();
 app.MapDatabaseFileWindowHistoryEndpoints();
 app.MapCpuCaptureWindowHistoryEndpoints();
 app.MapCpuComponentWindowHistoryEndpoints();

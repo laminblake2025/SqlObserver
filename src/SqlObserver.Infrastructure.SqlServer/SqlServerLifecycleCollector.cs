@@ -7,7 +7,8 @@ using SqlObserver.Domain.Security;
 
 namespace SqlObserver.Infrastructure.SqlServer;
 
-/// <summary>Passive lifecycle receipts. Staged outside the production registry until native ingestion is qualified.</summary>
+/// <summary>Passive sampled lifecycle receipts. Production schedules require explicit opt-in;
+/// schema 1 never qualifies AG consistency or physical failover.</summary>
 public sealed class SqlServerLifecycleCollector : ISqlServerCollector
 {
     public const int MaximumRows = 1024;

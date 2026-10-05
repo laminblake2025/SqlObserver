@@ -523,7 +523,8 @@ export function App() {
                   if (currentHash !== renderedHash || currentRoute.page !== "health" || currentRoute.target.toLowerCase() !== props.instanceId.toLowerCase()) return;
                   location.hash = retainChartInspectionHref(retainDashboardTimelineHref(healthSectionHref(readOverviewScope(currentHash), props.instanceId, section), currentHash), currentHash);
                 }}
-                canManageConfiguration={canManageRules} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
+                canManageConfiguration={canManageRules} canManageLifecycleCollection={myAccess?.active === true && myAccess.targetId?.toLowerCase() === props.instanceId.toLowerCase() && myAccess.targetRoles.includes("TargetAdministrator")}
+                accessContext={JSON.stringify(myAccess)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
               {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} targetRevision={selected!.configurationRevision} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} selectionHash={location.hash}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}

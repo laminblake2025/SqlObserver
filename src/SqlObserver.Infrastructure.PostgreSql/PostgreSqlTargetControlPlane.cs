@@ -39,6 +39,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         SqlVolumeWindowHistory = new PostgreSqlSqlVolumeWindowHistoryRepositoryPort(dataSource);
         SqlVolumePlanningWindow = new PostgreSqlSqlVolumePlanningWindowRepositoryPort(dataSource);
         ServerLifecycleHistory = new PostgreSqlServerLifecycleHistoryRepositoryPort(dataSource);
+        ServerLifecycleCollectionAdministration = new PostgreSqlServerLifecycleCollectionAdministrationPort(dataSource);
         DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
         DatabaseFileWindowHistory = new PostgreSqlDatabaseFileWindowHistoryRepositoryPort(dataSource);
         CpuComponentWindowHistory = new PostgreSqlCpuComponentWindowHistoryRepositoryPort(dataSource);
@@ -111,6 +112,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public ISqlVolumeWindowHistoryRepositoryPort SqlVolumeWindowHistory { get; }
     public ISqlVolumePlanningWindowReadPort SqlVolumePlanningWindow { get; }
     public IServerLifecycleHistoryReadPort ServerLifecycleHistory { get; }
+    public IServerLifecycleCollectionAdministrationPort ServerLifecycleCollectionAdministration { get; }
     public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
     public IDatabaseFileWindowHistoryReadPort DatabaseFileWindowHistory { get; }
     public ICpuComponentWindowHistoryReadPort CpuComponentWindowHistory { get; }

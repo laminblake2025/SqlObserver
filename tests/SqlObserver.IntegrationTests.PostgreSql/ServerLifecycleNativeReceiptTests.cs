@@ -9,14 +9,15 @@ using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Security;
+using SqlObserver.Domain.Targets;
 using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.SqlServer;
 using Xunit.Abstractions;
 
 namespace SqlObserver.IntegrationTests.PostgreSql;
 
-/// <summary>Explicit isolated qualification of the staged writer using unmodified native snapshots.
-/// Admission is confined to the disposable database; no production activation or source consistency is inferred.</summary>
+/// <summary>Replay unchanged native snapshots through installed production admission in an isolated database.
+/// Replay does not qualify live scheduling prerequisites or source consistency.</summary>
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
 [Trait("Category", "RequiresServerLifecycleNativeReceipt")]
@@ -45,11 +46,17 @@ public sealed class ServerLifecycleNativeReceiptTests(PostgreSql18Fixture fixtur
         await SqlVolumeWindowHistoryFixture.SealAsync(database);
         await using (var version = database.DataSource.CreateCommand("SHOW server_version_num"))
             Assert.Equal("180004", await version.ExecuteScalarAsync());
-        Assert.False(await CanCollectorCommitAsync(database));
-        await using (var catalog = database.DataSource.CreateCommand("SELECT count(*) FROM control.collector_contract WHERE collector_id='server.lifecycle'"))
-            Assert.Equal(0L, await catalog.ExecuteScalarAsync());
-        await AdmitOnlyInDisposableDatabaseAsync(database, before);
-        try
+        Assert.True(await CanCollectorCommitAsync(database));
+        await ServerLifecycleAdmissionPostgreSqlTests.TargetAsync(database, before.TargetId.Value, before.TargetRevision.Value);
+        await ServerLifecycleAdmissionPostgreSqlTests.ReconcileAsync(database);
+        await using (var server = database.CreateServerDataSource())
+        {
+            var admin = new PostgreSqlServerLifecycleCollectionAdministrationPort(server);
+            var state = (await admin.GetAsync(before.TargetId, before.TargetRevision.Value, Timeout, CancellationToken.None))!;
+            Assert.False(state.Enabled);
+            Assert.Equal(ServerLifecycleCollectionMutationStatus.Applied, (await admin.SetAsync(
+                ServerLifecycleAdmissionPostgreSqlTests.Request(before.TargetId.Value, before.TargetRevision.Value, state.ScheduleRevision, false, true), CancellationToken.None)).Status);
+        }
         {
             await using var collector = database.CreateCollectorDataSource();
             var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
@@ -61,8 +68,7 @@ public sealed class ServerLifecycleNativeReceiptTests(PostgreSql18Fixture fixtur
             {
                 var snapshot = capture.Snapshot;
                 await ExecuteAsync(database, "UPDATE control.collector_schedule SET next_due_at=clock_timestamp()-interval '1 second' WHERE instance_id=@target AND collector_id='server.lifecycle'", ("target", snapshot.TargetId.Value));
-                var work = Assert.Single((await runtime.ListDueAsync(new(16, Timeout), CancellationToken.None)).Items,
-                    row => row.TargetId == snapshot.TargetId && row.CollectorId.Value == "server.lifecycle");
+                var work = await ReadReplayWorkAsync(database, snapshot);
                 Assert.Equal(snapshot.TargetRevision, work.TargetRevision);
                 Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(new(work, snapshot.RunId, lease, Timeout), CancellationToken.None)).Status);
                 var payload = new CollectorPayload(operationalHealth: new OperationalHealthPayload(snapshot, 1 + snapshot.Members.Count, snapshot.EstimatedSizeBytes));
@@ -110,12 +116,7 @@ public sealed class ServerLifecycleNativeReceiptTests(PostgreSql18Fixture fixtur
                 afterSourceObservedAtUtc = after.SourceObservedAtUtc, replayCompletedAtUtc = completions,
                 originalSnapshotsPreserved = true, canonicalReceiptCount = 2, idempotentReplays = 2, inferredEvents = 0,
                 sourceConsistencyVerified = false, physicalFailoverQualified = false, restartTransitionQualified = false,
-                productionAdmissionChanged = false, isolatedStagedWriterQualification = true, historyCoverage = page.Coverage }, Web));
-        }
-        finally
-        {
-            await ExecuteAsync(database, $"REVOKE EXECUTE ON FUNCTION {CommitSignature} FROM sqlobserver_collector");
-            Assert.False(await CanCollectorCommitAsync(database));
+                installedProductionAdmission = true, liveSchedulerPrerequisiteQualified = false, isolatedRecordedNativeReplay = true, historyCoverage = page.Coverage }, Web));
         }
     }
 
@@ -153,32 +154,20 @@ public sealed class ServerLifecycleNativeReceiptTests(PostgreSql18Fixture fixtur
         command.Parameters.AddWithValue("signature", CommitSignature); return Assert.IsType<bool>(await command.ExecuteScalarAsync());
     }
 
-    private static async Task AdmitOnlyInDisposableDatabaseAsync(RepositoryTestDatabase database, ServerLifecycleSnapshot snapshot)
+    private static async Task<CollectorDueWorkItem> ReadReplayWorkAsync(RepositoryTestDatabase database, ServerLifecycleSnapshot snapshot)
     {
-        var source = new SqlServerLifecycleCollector(SqlServerLifecycleAssetCatalog.LoadEmbedded(), new IdentityFingerprintKey(new byte[32]));
-        var manifest = source.Manifest;
-        await ExecuteAsync(database, $"""
-            INSERT INTO control.collector_contract(collector_id,collector_version,execution_order,manifest_schema_version,
-              output_schema_version,manifest_sha256,asset_bundle_sha256,default_interval,minimum_interval,execution_timeout,
-              maximum_rows,maximum_response_bytes,estimated_cost,maximum_attempts,circuit_failure_threshold,circuit_open_interval)
-            SELECT 'server.lifecycle',1,max(execution_order)+1,1,1,@manifest,@asset,@interval,@minimum,@timeout,
-              @rows,@bytes,'low',@attempts,@threshold,@open FROM control.collector_contract;
-            GRANT EXECUTE ON FUNCTION {CommitSignature} TO sqlobserver_collector;
-            INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
-              authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
-            VALUES(@target,@key,'Isolated native lifecycle replay','replay.invalid',1433,interval '5 seconds',
-              'windows_integrated_service_identity','mandatory_validated','active',@revision,statement_timestamp(),statement_timestamp(),statement_timestamp());
-            INSERT INTO control.collector_schedule(instance_id,collector_id,collector_version,target_revision,schedule_revision,
-              enabled,collection_interval,next_due_at,created_at,updated_at)
-            VALUES(@target,'server.lifecycle',1,@revision,1,true,interval '30 seconds',statement_timestamp(),statement_timestamp(),statement_timestamp())
-            ON CONFLICT(instance_id,collector_id) DO NOTHING;
-            UPDATE control.collector_schedule SET enabled=(collector_id='server.lifecycle') WHERE instance_id=@target;
-            """, ("manifest", SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(manifest))),
-            ("asset", SHA256.HashData(Encoding.UTF8.GetBytes(SqlServerLifecycleAssetCatalog.LoadEmbedded().GetQuery(16)))),
-            ("interval", manifest.Intervals.DefaultInterval), ("minimum", manifest.Intervals.HardMinimumInterval), ("timeout", manifest.Limits.CommandTimeout),
-            ("rows", manifest.Limits.MaxRows), ("bytes", manifest.Limits.MaxResponseBytes), ("attempts", manifest.Resilience.MaximumAttempts),
-            ("threshold", manifest.Resilience.CircuitFailureThreshold), ("open", manifest.Resilience.CircuitOpenDuration),
-            ("target", snapshot.TargetId.Value), ("revision", snapshot.TargetRevision.Value), ("key", "native.lifecycle." + snapshot.TargetId.Value.ToString("N")));
+        // Bind exact installed schedule metadata. Recorded replay intentionally bypasses due-list eligibility;
+        // no successful engine.core outcome is invented. Ordinary admission tests cover that prerequisite.
+        await using var command = database.DataSource.CreateCommand("""
+            SELECT s.schedule_revision,s.next_due_at,clock_timestamp(),s.enabled,t.host_name,t.tcp_port,t.connect_timeout
+            FROM control.collector_schedule s JOIN control.observation_target t USING(instance_id)
+            WHERE s.instance_id=@target AND s.collector_id='server.lifecycle' AND s.target_revision=@revision
+            """);
+        command.Parameters.AddWithValue("target",snapshot.TargetId.Value); command.Parameters.AddWithValue("revision",snapshot.TargetRevision.Value);
+        await using var row=await command.ExecuteReaderAsync(); Assert.True(await row.ReadAsync()); Assert.True(row.GetBoolean(3));
+        var now=row.GetFieldValue<DateTimeOffset>(2);
+        return new(snapshot.TargetId,snapshot.TargetRevision,new(new(new(row.GetString(4)),tcpPort:row.GetInt32(5)),new(row.GetTimeSpan(6))),
+            new("server.lifecycle"),1,1,new(row.GetInt64(0)),row.GetFieldValue<DateTimeOffset>(1),now,CollectorCircuitSnapshot.Closed(now),null);
     }
 
     private static async Task<string> ReadAndAssertReceiptAsync(RepositoryTestDatabase database, ServerLifecycleSnapshot snapshot, Guid? previous, string boundary)

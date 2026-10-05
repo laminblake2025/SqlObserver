@@ -93,6 +93,7 @@ public sealed class CollectorRegistration
             CollectorOutputKind.ServerConfigurations => output.MaxServerConfigurationObservations > 0,
             CollectorOutputKind.BackupsStatus or CollectorOutputKind.SqlAgentFailures or CollectorOutputKind.TempDbHealth or CollectorOutputKind.AvailabilityGroupsHealth => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.ReplicationHealth => output.MaxOperationalHealthObservations > 0,
+            CollectorOutputKind.ServerLifecycle => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.CapabilityProfile => false,
             CollectorOutputKind.CpuComponents => output.MaxCpuComponentsObservations > 0,
             _ => false,
@@ -132,6 +133,7 @@ public sealed class CollectorRegistry
                 ["engine.buffer-nodes"] = (18, CollectorOutputKind.Metrics),
                 ["engine.configurations"] = (19, CollectorOutputKind.ServerConfigurations),
                 ["cpu.components"] = (20, CollectorOutputKind.CpuComponents),
+                ["server.lifecycle"] = (21, CollectorOutputKind.ServerLifecycle),
             });
 
     private readonly ReadOnlyCollection<CollectorRegistration> _registrations;

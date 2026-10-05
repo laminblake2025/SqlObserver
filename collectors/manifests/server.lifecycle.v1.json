@@ -1,0 +1,70 @@
+{
+  "$schema": "server.lifecycle.v1.schema.json",
+  "schemaVersion": 6,
+  "collectorId": "server.lifecycle",
+  "collectorVersion": 1,
+  "displayName": "SQL Server lifecycle evidence",
+  "operationalMode": "passive",
+  "dependsOn": [
+    "capability.connection",
+    "engine.core"
+  ],
+  "supportedTargets": {
+    "product": "Microsoft SQL Server",
+    "minimumMajorVersion": 15,
+    "maximumMajorVersion": 17,
+    "platforms": [
+      "Windows"
+    ],
+    "engineEditions": [
+      2,
+      3
+    ]
+  },
+  "requiredCapabilities": [
+    "connection.tds",
+    "authentication.windows-integrated",
+    "transport.tls-validated",
+    "privilege.non-sysadmin",
+    "platform.windows"
+  ],
+  "requiredPermissionsByMajor": {
+    "15": [
+      "server.view-state",
+      "server.view-any-definition"
+    ],
+    "16": [
+      "server.view-performance-state",
+      "server.view-any-definition"
+    ],
+    "17": [
+      "server.view-performance-state",
+      "server.view-any-definition"
+    ]
+  },
+  "cadence": {
+    "defaultIntervalSeconds": 30,
+    "minimumIntervalSeconds": 10,
+    "nonOverlappingPerTarget": true
+  },
+  "executionBounds": {
+    "connectTimeoutSeconds": 5,
+    "commandTimeoutSeconds": 5,
+    "maximumRows": 1024,
+    "maximumResponseBytes": 1048576
+  },
+  "resilience": {
+    "maximumAttempts": 2,
+    "transientRetryDelayMilliseconds": 100,
+    "circuitFailureThreshold": 3,
+    "circuitOpenSeconds": 300
+  },
+  "estimatedCostClass": "low",
+  "fallback": {
+    "mode": "unsupported"
+  },
+  "queryResource": "server.lifecycle.sqlserver15-17-windows.v1.sql",
+  "outputSchemaVersion": 1,
+  "outputKind": "server-lifecycle",
+  "defaultEnabled": false
+}
