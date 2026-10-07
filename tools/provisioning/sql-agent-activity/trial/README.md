@@ -623,3 +623,42 @@ membership, ACL, flags, complete accounting/member lists and deadlines remain re
 The new identity candidate has not yet been built or run. Completed custody diagnostics
 and qualified native cases remain zero; no monitor, credentialed worker, SQL or SCM action,
 recovery permission or production admission follows from this observation. The goal is active.
+
+
+### Retained worker identity and custody joined (2026-10-07)
+
+The distinct `registration-worker-identity/` candidate completed one harmless native
+custody diagnostic. Driver 25200, Supervisor 22992 and original worker 8224 all exited
+with code 0. The result reached `CleanupJoined` / `observer_worker_custody_joined`,
+with custody verified, checkpoint persisted, original resume prior counts 1,
+custody released, original exits confirmed and both Job ledgers at total 1 / active 0.
+Neither owned Job termination was attempted. The unchanged post-exit Job membership,
+ACL, exact flags, stable accounting and complete member-list guards passed in this case.
+
+The private native identity lease captures and retains verified live process/token
+handles before ACK4. After join it validates the same held kernel process object,
+PID, raw creation/exit FILETIME, signal and exit code; it does not requery an exited
+process's image or token. Existing live pre-resume checks and Job guards remain intact.
+Historical token evidence grants no present token authority or privilege-stability claim.
+Fresh source/archive/extracted verification covered 27 files; locked restore and build
+passed with zero warnings/errors. DLL and published GUI suites agreed at 304/601,
+316/474, 152/168 and 89/105 cases/assertions. Wrapper checks passed 307/415 and stream
+checks 12/60. A copied stale-pin stream refusal remains preserved separately; after
+alignment with the new frozen sources its rerun passed. These are pure-check counts.
+
+The independent protected-journal inspection verified final path, protected ACL and
+all 3,361 UTF-8 bytes (SHA-256 `e6ac2579aef5dc1962ad514f7a86ec4f5cb5fb31d786d8bd9e8a835b8ade47fc`).
+Its epochs, custody head, separate ledgers and no-termination observations match the
+duplicate-free 64-key / 2,800-byte raw result. Evidence record:
+`artifacts/dashboard-agent-interruption-2026-10-07/worker-identity-native01-diagnostic-v1.json`
+(SHA-256 `7b7e9ac8775d928f65a7f20589478005c70e0199aee7c876e34fca916fe02be1`).
+Nonce `ce20c077-f5ec-4329-bcf6-9884bdf338cd` is retired and must not be replayed.
+
+Completed harmless custody diagnostics are now one; qualified native cases remain zero.
+The wrapper's broad success/admission flags deliberately remain false. No monitor-account,
+CWT, SQL or SCM action occurred. The synchronous credentialed-creation timeout, real
+DBA/monitor two-root cleanup and both SQL-drain gates remain unqualified. Next preparation
+is a distinct harmless monitor-account candidate with separate worker SID/profile/image,
+payload/environment pins and memory-only credential transport. No rights fallback follows
+from this success, and prior refusal causes/exit provenance retain their recorded limits.
+The broader goal remains active.
