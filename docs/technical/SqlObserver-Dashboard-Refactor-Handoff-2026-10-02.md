@@ -1647,3 +1647,69 @@ Next implement authenticated original-handle bootstrap and bounded credential-fr
 then original-worker custody before resume. Actual two-root interruption/SQL drainage, standalone
 recovery, deployed CPU/Agent/dashboard qualification and pre-return containment remain open.
 The broad goal remains active; no native, credential, SQL, service or rights change occurred here.
+
+
+## 2026-10-07: actual authenticated empty-Job bootstrap checkpoint
+
+The isolated Stage A prototype is in
+`artifacts/dashboard-agent-interruption-2026-10-07/registration-bootstrap/`.
+It uses an explicitly listed, one-shot inherited read endpoint to bootstrap an original
+suspended Supervisor, authenticates both original process epochs and pipe peers, and
+verifies duplicated custody of a fresh empty Job before releasing duplicates and joining
+the original private scope. The Supervisor creates this empty inner Job; this is distinct
+from the forthcoming Observer-created WorkerJob custody boundary.
+
+The first native attempt is retired. Its original driver joined, but the old wrapper
+retained empty stdout without its exit code; an independently opened protected journal
+contains only the initial Prepared checkpoint. Its exact failure cause and scope cleanup
+remain unknown. Later success does not resolve this earlier attempt or authorize relaunch.
+
+Two concrete source defects were repaired in a new immutable V4 freeze: the closed refusal
+filter explicitly includes InvalidDataException, which is not an IOException subclass;
+Job verification enforces exact effective LimitFlags 0x2000 without requiring ignored,
+inactive storage to be zero. Every additional active limit/breakaway flag still refuses.
+Preparation stages are journaled inside the diagnostic bound try, unknown cleanup remains
+unknown, and stream failures preserve independently available bounded output and original
+exit status. These defects are not asserted to be the unobserved first attempt's cause.
+
+Root built the exact extracted 18-file V4 freeze with locked restore and repository
+analyzers: zero warnings/errors, **304 logical cases / 601 assertions passed**. The fresh
+published GUI executable independently passed those checks, validated all **192 files /
+80,684,833 bytes** of its runtime payload, and refused malformed read-only input with
+original exit 65, exact three-key refusal, 96 stdout bytes and zero stderr. Separate
+Windows PowerShell stream-evidence regressions passed **12 cases / 60 assertions** with
+zero processes/native cases. These suites are separate from the earlier 286/887 contract
+simulation and the 833-case tooling suite; no counts are added to native qualification.
+
+V4 source manifest SHA256 `358936c3b7986db8ec1a6a184feb7725ef4c0594269139d434805b69906a56b6`;
+source archive SHA256 `5119ce73779d3718cffa29b0031524adf5f66086100884a4e1bc202d8c23335c`.
+The independently reviewed native02 wrapper manifest SHA256 is
+`db23bd70dfe056aaf046e922b2502f3cd74925a5ca934d6b1ff10b9d9ded1b03`;
+payload manifest SHA256 `a09ae57c60c22f5ab9d1ca8abc1c26441ad2df0a31ddc49e6e87e196f3615d92`.
+
+One separately reviewed finite native02 diagnostic on Server2025Test completed with
+`registered_empty_job_only` / `CleanupJoined`: original driver 23424, born
+2026-10-07T16:44:02.8425109Z, exited 0; original Supervisor 21672, born
+2026-10-07T16:44:04.1017815Z, exited 0. The actual original-thread resume returned prior
+count 1, and the outer Job ended with total 1 / active 0. Its 1,785-byte closed raw result
+matches the materialized capture. Independently opened final-path and protected-ACL
+verification read back the 1,042-byte journal; SHA256
+`482ea17f929bd6b62e21bb006fe69ade57adbc96f82d684ff53e525192de7405` matches the native
+result and scope/epoch/cleanup fields. Launch nonce
+`2acb4fc2-69cd-4655-b910-deeac150d9cf` is retired; submission markers forbid replay.
+
+Root evidence `artifacts/dashboard-agent-interruption-2026-10-07/bootstrap-native02-diagnostic-v1.json`
+SHA256 `d31772a929ad85e91f8fccd73eaaf50386a31201da9e5ab6abd330c8df65db4d` retains the raw
+report, opened-journal readback, frozen package and review pins. This is one credential-free
+empty-Job mechanism observation, with native qualified cases still zero. No worker/CWT,
+SQL/SCM, recovery, native-creation timeout or production authority follows from it.
+
+Next work has started in the separate `registration-worker-custody/` prototype: the Observer
+creates and retains the WorkerJob and original suspended worker process/thread, installs
+only process-query/wait and Job-query/terminate/read-control duplicates into the held original
+Supervisor, independently re-pulls them against its originals, and resumes its original worker
+thread exactly once after verified custody. The first diagnostic remains credential-free;
+the existing credentialed factory/API and account rights are not changed by this checkpoint.
+Actual worker custody, pre-return containment, two-root interruption/coordinator SQL drainage,
+standalone recovery, genuine attached-invalid signature, deployed CPU/Agent/AG/dashboard
+qualification and final acceptance remain open. The broad goal remains active.
