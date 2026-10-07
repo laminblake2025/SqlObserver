@@ -1786,3 +1786,34 @@ refusal handler. Both the failing operation and the exit's producer remain unkno
 The new `registration-worker-observation/` candidate is adding authenticated terminal-operation
 evidence and explicit parent termination-attempt/result observations while retaining every
 existing custody, identity, Job and cleanup guard. No new native attempt has occurred here.
+
+
+### Authenticated post-exit image query refusal (2026-10-07)
+
+One distinct credential-free `registration-worker-observation/` attempt recorded an
+authenticated Supervisor terminal refusal at `EpochQueryFullProcessImageName`, category
+`win32`, native error 31, after the original worker exited naturally with code 0.
+The driver returned 94, Supervisor exit was 87, and custody release remained false.
+Both independently held Job ledgers ended at total 1 / active 0 with original exits and
+scoped cleanup confirmed. The original worker resumed once with prior count 1, after
+verified custody and a persisted checkpoint. The protected journal was independently
+opened with its final path and ACL verified; its 4,111 UTF-8 bytes hash to
+`99a8ab8fc7027168344d453e854c11e8635ddd6f7ccc3b1bb92732ddad0fa0e4`.
+Its terminal frame, process epochs and separate Job ledgers match the captured result.
+
+The Observer recorded Supervisor-job termination attempted and accepted as true; these
+report the native call outcome, not the producer of exit 87. That producer remains unknown.
+The earlier Stage B refusal cause also remains unknown. This new attempt did not reach
+the post-exit token or Job membership checks, so neither is inferred to pass or fail.
+Nonce `e65b14a4-712f-4bf6-bfca-f7af52f1dfd8` is retired and must not be replayed.
+Actual result: `artifacts/dashboard-agent-interruption-2026-10-07/worker-observation-native01-diagnostic-v1.json`
+(SHA-256 `fb0fe4061eb16064ca72f3e58a9a6341595b179d17b63b12411d72fb425d3eb4`).
+
+Preparation now targets a native lease captured while the original worker is alive,
+retaining verified process and token handles, followed by same-kernel-object, PID,
+creation-time, signal and exit-code validation after join. Historical live token evidence
+must not be promoted into current token authority. All live pre-resume checks, Job
+membership, ACL, flags, complete accounting/member lists and deadlines remain required.
+The new identity candidate has not yet been built or run. Completed custody diagnostics
+and qualified native cases remain zero; no monitor, credentialed worker, SQL or SCM action,
+recovery permission or production admission follows from this observation. The goal is active.
