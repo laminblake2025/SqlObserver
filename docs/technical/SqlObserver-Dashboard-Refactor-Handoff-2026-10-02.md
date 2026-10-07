@@ -1713,3 +1713,64 @@ the existing credentialed factory/API and account rights are not changed by this
 Actual worker custody, pre-return containment, two-root interruption/coordinator SQL drainage,
 standalone recovery, genuine attached-invalid signature, deployed CPU/Agent/AG/dashboard
 qualification and final acceptance remain open. The broad goal remains active.
+
+
+## 2026-10-07: actual partial Observer-owned worker custody checkpoint
+
+The separate credential-free prototype is in
+`artifacts/dashboard-agent-interruption-2026-10-07/registration-worker-custody/`.
+The Observer reserves the immutable custody head before creation, retains its original
+suspended worker process/thread and separate fresh WorkerJob, and installs only noninheritable
+process query/wait and Job query/terminate/read-control duplicates into the original Supervisor.
+It authenticates the custody ACK, re-pulls the installed slots against its held originals,
+persists an acknowledged verified checkpoint and attempts its own original worker resume once.
+No thread is transferred. The harmless GUI worker waits 250ms and naturally exits.
+
+The V1 syntax-error build and V2 analyzer-error build remain preserved. The exact extracted
+22-file V3 freeze passed locked restore and repository analyzers with zero warnings/errors.
+Actual bootstrap checks passed **304 logical cases / 601 assertions**; independent worker
+checks passed **316 cases / 474 assertions**. The earlier 574 assertion estimate was a manual
+counting error, not an actual result. The fresh GUI publish independently matched both suites,
+validated **192 files / 80,849,727 bytes**, and refused malformed read-only input with original
+exit 65, exact three-key refusal and zero stderr. Windows PowerShell wrapper checks passed
+133 cases / 141 assertions and stream-evidence checks passed 12 / 60, with no native workers.
+These separate pure suites do not add to native qualification.
+
+V3 source manifest SHA256 `f8fcf14028845abbb0adfa3ba22a749e7a3ddbb68b956848658e81cf9cb37056`;
+archive SHA256 `c5d49a71f042c5924bd733d40b38f64af43bcadc7a2b178e744990d5f3779d21`.
+The reviewed 13-file wrapper manifest SHA256 is
+`ce4a61ed6d303756acc8c2e77c89102742ff20c6449daf342a17555f78ec0bdd`;
+payload manifest SHA256 `748e46fa55d3fa3756d1c197596cc3bbff866081f2330e81db9c92a0709d37a5`.
+The submission entry point durably reserves its one attempt before reading secure credentials;
+both prior reports and reservations prohibit replay. Optimized Python explicitly refuses.
+
+One separately reviewed finite native attempt on Server2025Test reached verified custody,
+checkpoint persistence and original worker resume with prior count 1. Original driver 23428,
+born 2026-10-07T17:45:03.9000666Z, exited 94; original Supervisor 24828, born
+2026-10-07T17:45:04.8706888Z, exited 87; original worker 11656, born
+2026-10-07T17:45:05.7424290Z, naturally exited 0. Both separately assigned private Jobs ended
+with total 1 / active 0, and both held original process exits and scoped cleanup were confirmed.
+
+Custody release was not acknowledged. The closed 58-key, 2,557-byte result reports
+`OriginalWorkerJoined` / `native_refused`, with `custodyReleased=false` and
+`cleanupConfirmed=true`. This is a partial mechanism observation, not a completed worker
+custody diagnostic. The exact Supervisor release-refusal cause remains unknown; the last
+Observer stage and internal exit 87 do not identify the failing Supervisor operation.
+
+Independent opened-final-path and protected-ACL inspection read back the 3,118-byte journal;
+SHA256 `b94bb2b1a72cad0ca4ca15b9df748544f48f92726bd134750d70c399d39ad2bf` matches the native
+result and both scope-bound process/job ledgers. Immutable custody-head SHA256 is
+`e03a1c3e751cc5558fd9ef2cc832abca99455103f58256c2c31baa0b0dac4b19`.
+Launch nonce `a35b83d8-a2ce-4e57-9f14-c6d92c0468f8` is retired; no replay is authorized.
+
+Root record `artifacts/dashboard-agent-interruption-2026-10-07/worker-custody-native01-diagnostic-v1.json`
+SHA256 `800b046fd0fc7f77a0885cf4b6aad4f45bf31edf0ec0512f1133ef91b781b91a` retains the raw
+capture, opened-journal readback and exact source/package/review/submission pins. Qualified
+native cases remain zero; no monitor account, CWT, SQL, SCM, recovery, hard creation timeout
+or production authority follows. Historical unknown scopes and their retired nonces remain
+unchanged. Next work must locate the release refusal using explicit operation evidence in
+a new candidate, preserving existing gates. Credentialed custody additionally requires distinct
+ordinary monitor token/profile/image/environment bindings; Administrator assumptions cannot be
+reused for SqlObserverCollector. Full two-root interruption/coordinator SQL drain, standalone
+recovery, attached-invalid signature, deployed CPU/Agent/AG/dashboard qualification and final
+acceptance remain open. The broad goal remains active.
