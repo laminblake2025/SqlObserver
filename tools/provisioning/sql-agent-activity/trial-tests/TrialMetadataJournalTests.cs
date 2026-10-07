@@ -76,7 +76,7 @@ public sealed class TrialMetadataJournalTests
     [InlineData(2, null, true)]
     [InlineData(3, 2, true)]
     [InlineData(0, null, false)]
-    [InlineData(4, 2, false)]
+    [InlineData(4, 2, true)]
     [InlineData(1, 1, false)]
     [InlineData(1, 2, false)]
     [InlineData(2, 1, false)]

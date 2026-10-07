@@ -178,6 +178,13 @@ public static class AgentActivityTrialSql
         return state;
     }
 
+    // Only the dedicated DENY helper may interpret this raw complete inventory.
+    // It validates against the independently recorded signed and denied images.
+    internal static Task<TrialSnapshot> CaptureDenyInventoryAsync(SqlConnection connection, SqlTransaction transaction,
+        TrialBaseline baseline, CancellationToken cancellationToken) =>
+        CaptureAsync(connection, transaction, baseline.MonitorPrincipal, baseline.DeploymentId,
+            cancellationToken, baseline.Snapshot.Monitor.MasterUserId == 0);
+
     public static async Task RemoveAsync(SqlConnection connection, SqlTransaction transaction,
         TrialBaseline baseline, TrialSnapshot expectedInstalled, CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
     {

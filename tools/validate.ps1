@@ -2395,6 +2395,7 @@ foreach ($testProject in $testProjectsToRun) {
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityUnsignedModule' } else { "($filter)&Category!=RequiresSqlAgentActivityUnsignedModule" }
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityMetadataModule' } else { "($filter)&Category!=RequiresSqlAgentActivityMetadataModule" }
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityProductionModule' } else { "($filter)&Category!=RequiresSqlAgentActivityProductionModule" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityExplicitDenyModule' } else { "($filter)&Category!=RequiresSqlAgentActivityExplicitDenyModule" }
         # This test creates and drops its own Query Store databases. It is
         # selected explicitly for a disposable SQL Server lab, never by the
         # ordinary Local or Release sweep.
@@ -2408,6 +2409,9 @@ foreach ($testProject in $testProjectsToRun) {
         # Exact native-receipt replay requires a separately hash-pinned lab artifact.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresCpuNativeReceipt' } else { "($filter)&Category!=RequiresCpuNativeReceipt" }
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresServerLifecycleNativeReceipt' } else { "($filter)&Category!=RequiresServerLifecycleNativeReceipt" }
+        # Connected Agent acceptance owns a disposable repository and Chromium
+        # journey, and requires explicitly provisioned local browser inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentConnectedAcceptance' } else { "($filter)&Category!=RequiresAgentConnectedAcceptance" }
         # Cross-store live blocking qualification owns disposable SQL objects
         # and is selected explicitly rather than by an ordinary validation sweep.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }

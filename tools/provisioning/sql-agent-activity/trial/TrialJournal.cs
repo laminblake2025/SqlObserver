@@ -8,7 +8,10 @@ namespace SqlObserver.AgentActivityTrial;
 public sealed record TrialReceipt(int SchemaVersion, Guid DeploymentId, string MonitorPrincipal,
     string Phase, TrialBaseline Baseline, TrialSnapshot? Installed, string? FailureCode,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TrialSnapshot? UnsignedSnapshot = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? InstallationPolicyVersion = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? InstallationPolicyVersion = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TrialSnapshot? DeniedSnapshot = null);
+
+public enum TrialDenyRecoveryAction { BaselineRestored, RemoveSigned, RestoreThenRemove }
 
 /// <summary>Administrator/SYSTEM-only write-ahead record. Contains no signing password.</summary>
 public sealed class TrialJournal
@@ -108,13 +111,20 @@ public sealed class TrialJournal
     public static void ValidateReceipt(TrialReceipt receipt, Guid deploymentId)
     {
         ArgumentNullException.ThrowIfNull(receipt);
-        if (receipt.SchemaVersion is not (1 or 2 or 3) || deploymentId == Guid.Empty || receipt.DeploymentId != deploymentId ||
+        if (receipt.SchemaVersion is not (1 or 2 or 3 or 4) || deploymentId == Guid.Empty || receipt.DeploymentId != deploymentId ||
             receipt.Baseline is null || string.IsNullOrWhiteSpace(receipt.MonitorPrincipal) ||
             receipt.Phase is not ("prepared" or "commit_pending" or "installed" or "remove_pending" or "removed" or
-                "signature_remove_pending" or "unsigned" or "unsigned_remove_pending"))
+                "signature_remove_pending" or "unsigned" or "unsigned_remove_pending" or
+                "deny_pending" or "denied" or "deny_restore_pending" or "deny_restored"))
             throw new InvalidDataException("The trial receipt contract is invalid.");
         TrialInstallationPolicy policy = ResolveInstallationPolicy(receipt);
         bool unsignedPhase = receipt.Phase is "signature_remove_pending" or "unsigned" or "unsigned_remove_pending";
+        bool denyPhase = receipt.Phase is "deny_pending" or "denied" or "deny_restore_pending" or "deny_restored";
+        if (receipt.SchemaVersion != 4 && (denyPhase || receipt.DeniedSnapshot is not null) ||
+            receipt.SchemaVersion == 4 && (unsignedPhase || receipt.UnsignedSnapshot is not null) ||
+            denyPhase && (receipt.Installed is null || receipt.DeniedSnapshot is null) ||
+            receipt.DeniedSnapshot is not null && (receipt.Installed is null || receipt.Phase is "prepared" or "commit_pending" or "installed"))
+            throw new InvalidDataException("The DENY trial receipt contract is invalid.");
         if (receipt.SchemaVersion == 1 && (unsignedPhase || receipt.UnsignedSnapshot is not null) ||
             unsignedPhase && (receipt.Installed is null || receipt.UnsignedSnapshot is null) ||
             receipt.UnsignedSnapshot is not null && (receipt.Installed is null || receipt.Phase is "prepared" or "commit_pending" or "installed"))
@@ -130,6 +140,7 @@ public sealed class TrialJournal
         AgentActivityTrialSql.ValidateBaselineRestored(receipt.Baseline, receipt.Baseline);
         if (receipt.Installed is not null) AgentActivityTrialSql.ValidateInstalled(receipt.Baseline, receipt.Installed, policy);
         if (receipt.UnsignedSnapshot is not null) AgentActivityTrialSql.ValidateUnsigned(receipt.Baseline, receipt.Installed!, receipt.UnsignedSnapshot, policy);
+        if (receipt.DeniedSnapshot is not null) AgentActivityTrialDenySql.ValidateDenied(receipt.Baseline, receipt.Installed!, receipt.DeniedSnapshot);
     }
 
     public static void ValidateTransition(TrialReceipt before, TrialReceipt after)
@@ -142,11 +153,15 @@ public sealed class TrialJournal
         if (before.UnsignedSnapshot is null && after.UnsignedSnapshot is not null &&
             (before.SchemaVersion is not (2 or 3) || before.Phase != "installed" || after.Phase != "signature_remove_pending"))
             throw new InvalidDataException("An unsigned postimage must be recorded before committing signature removal.");
+        if (before.DeniedSnapshot is null && after.DeniedSnapshot is not null &&
+            (before.SchemaVersion != 4 || before.Phase != "installed" || after.Phase != "deny_pending"))
+            throw new InvalidDataException("A denied postimage must be recorded before committing the DENY fixture.");
         if (before.SchemaVersion != after.SchemaVersion || before.InstallationPolicyVersion != after.InstallationPolicyVersion ||
             !string.Equals(before.MonitorPrincipal, after.MonitorPrincipal, StringComparison.Ordinal) ||
             !JsonSerializer.SerializeToUtf8Bytes(before.Baseline, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.Baseline, Options)) ||
             before.Installed is not null && !JsonSerializer.SerializeToUtf8Bytes(before.Installed, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.Installed, Options)) ||
-            before.UnsignedSnapshot is not null && !JsonSerializer.SerializeToUtf8Bytes(before.UnsignedSnapshot, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.UnsignedSnapshot, Options)))
+            before.UnsignedSnapshot is not null && !JsonSerializer.SerializeToUtf8Bytes(before.UnsignedSnapshot, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.UnsignedSnapshot, Options)) ||
+            before.DeniedSnapshot is not null && !JsonSerializer.SerializeToUtf8Bytes(before.DeniedSnapshot, Options).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(after.DeniedSnapshot, Options)))
             throw new InvalidDataException("Trial provenance cannot be changed.");
         bool allowed = before.Phase == after.Phase || (before.Phase, after.Phase) is
             ("prepared", "commit_pending") or ("prepared", "removed") or
@@ -156,6 +171,14 @@ public sealed class TrialJournal
             ("signature_remove_pending", "unsigned") or ("signature_remove_pending", "remove_pending") or
             ("signature_remove_pending", "unsigned_remove_pending") or ("signature_remove_pending", "removed") or
             ("unsigned", "unsigned_remove_pending") or ("unsigned", "removed") or ("unsigned_remove_pending", "removed");
+        if (before.SchemaVersion == 4)
+            allowed = before.Phase == after.Phase || (before.Phase, after.Phase) is
+                ("prepared", "commit_pending") or ("prepared", "removed") or
+                ("commit_pending", "installed") or ("commit_pending", "remove_pending") or ("commit_pending", "removed") or
+                ("installed", "deny_pending") or ("installed", "remove_pending") or
+                ("deny_pending", "denied") or ("deny_pending", "deny_restore_pending") or ("deny_pending", "deny_restored") or
+                ("denied", "deny_restore_pending") or ("deny_restore_pending", "deny_restored") or
+                ("deny_restored", "remove_pending") or ("remove_pending", "removed");
         if (!allowed) throw new InvalidDataException("The trial journal transition is invalid.");
     }
 
@@ -163,9 +186,47 @@ public sealed class TrialJournal
         (receipt.SchemaVersion, receipt.InstallationPolicyVersion) switch
         {
             (1 or 2, null) => TrialInstallationPolicy.ExecuteOnlyV1,
-            (3, 2) => TrialInstallationPolicy.MetadataVerificationV2,
+            (3 or 4, 2) => TrialInstallationPolicy.MetadataVerificationV2,
             _ => throw new InvalidDataException("The trial receipt installation policy is invalid."),
         };
+
+    /// <summary>Pure recovery decision using only the write-ahead receipt and complete live inventory.
+    /// A pending COMMIT allows its two exact possible images, never arbitrary drift.</summary>
+    public static TrialDenyRecoveryAction SelectDenyRecoveryAction(TrialReceipt receipt, TrialSnapshot actual)
+    {
+        ValidateReceipt(receipt, receipt.DeploymentId);
+        ArgumentNullException.ThrowIfNull(actual);
+        if (receipt.SchemaVersion != 4) throw new InvalidDataException("A schema4 DENY recovery receipt is required.");
+        if (actual.Objects.Count == 0)
+        {
+            AgentActivityTrialSql.ValidateBaselineRestored(receipt.Baseline, new(actual));
+            if (receipt.Phase is not ("prepared" or "commit_pending" or "remove_pending" or "removed"))
+                throw new InvalidDataException("An absent package contradicts the DENY recovery phase.");
+            return TrialDenyRecoveryAction.BaselineRestored;
+        }
+        if (receipt.Installed is null || receipt.Phase is "prepared" or "removed")
+            throw new InvalidDataException("Present SQL objects have no matching owned installed receipt.");
+        if (receipt.Phase is "denied")
+        {
+            AgentActivityTrialSql.ValidateExactSnapshot(receipt.DeniedSnapshot!, actual);
+            return TrialDenyRecoveryAction.RestoreThenRemove;
+        }
+        if (receipt.Phase is "deny_pending" or "deny_restore_pending")
+        {
+            try
+            {
+                AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed, actual);
+                return TrialDenyRecoveryAction.RemoveSigned;
+            }
+            catch (InvalidDataException)
+            {
+                AgentActivityTrialSql.ValidateExactSnapshot(receipt.DeniedSnapshot!, actual);
+                return TrialDenyRecoveryAction.RestoreThenRemove;
+            }
+        }
+        AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed, actual);
+        return TrialDenyRecoveryAction.RemoveSigned;
+    }
 
     private static string Root()
     {

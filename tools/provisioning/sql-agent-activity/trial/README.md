@@ -1,6 +1,7 @@
 # Finite SQL Agent signed-module trial
 
-This Windows/.NET 10 library provides `TrialCoordinator.PreviewAsync`, `RunAsync` and `RecoverAsync`.
+This Windows/.NET 10 library provides `TrialCoordinator.PreviewAsync`, `RunAsync`,
+`RunSignatureRemovalAsync`, `RunExplicitDenyAsync` and `RecoverAsync`.
 The caller supplies one dedicated nonpooled SQL17 sysadmin connection using the enrolled TCP endpoint,
 integrated authentication, validated TLS, the certificate host name, `master`, and no transparent
 reconnection. The actual collector Windows account remains a separate, nonsysadmin identity.
@@ -214,3 +215,36 @@ attached invalid signatures, explicit DENY, running-job association or elapsed t
 
 The next step is an explicit module adapter with trusted, versioned, revocable enrollment before
 retention, API or UI work. No public production adapter or admission is established by this trial.
+
+## Finite explicit-DENY fixture — 2026-10-07
+
+`RunExplicitDenyAsync` adds journal schema4 with installation policy2. Its three callbacks qualify
+signed capture, effective denial and restored signed capture. The immutable installed snapshot is
+preserved; a separate denied snapshot may differ only in the sole dbo-granted package certificate
+user's `SELECT ON msdb.dbo.syssessions` state, `G` to `D`. Monitor permissions, signature validity,
+definition, identities and every other grant remain exact. Fixed guarded DDL runs in the caller's
+owned transaction. The DENY is a finite failure fixture; it is not a production permission design.
+Microsoft's [module-signing guidance](https://learn.microsoft.com/en-us/sql/t-sql/statements/add-signature-transact-sql?view=sql-server-ver17)
+describes certificates as an additive permission mechanism.
+
+Write-ahead `deny_pending` and `deny_restore_pending` retain both complete postimages before
+commit. Recovery permits either exact image only in those uncertain-commit phases; confirmed
+phases require their recorded image. It restores the grant before ordinary package removal and
+verifies the original baseline. Foreign drift and unrelated changes refuse recovery. Existing
+schemas1–3 retain their prior contracts; schema4 does not permit an unsigned image.
+
+The [Run16 qualification](../../../../artifacts/dashboard-agent-deny-connected-2026-10-07/native-qualification-v1.json)
+passes four actual-monitor cases, zero skips: signed public collector capture, public reader
+refusal plus independent canonical SQL229 after DENY, NULL/512/514 bound refusal with50001,
+and restored public collector capture. Two private receipts preserve the complete bounded source
+capture and original enrollment digest. Agent stays stopped; running/session/time remains open.
+The coordinator verifies original-baseline restoration and all temporary service deletions.
+
+The reviewed Run16 wrapper closes and disposes the dedicated DBA session before a callback exits
+if an authenticated worker receipt, child PID/start and exit, or service stop/deletion is unconfirmed.
+That fences coordinator cleanup and preserves the journal. Its blind standalone/fallback recovery
+is disabled until a reviewed private worker-termination audit exists. Normal successful cleanup
+remains qualified; actual interruption and universal descendant stability remain unqualified.
+Local evidence includes554 trial contracts,211 SQL gate/receipt contracts and52 synthetic wrapper
+fence decisions. The synthetic fence cases use initially closed connections and do not certify
+open DBA teardown or native termination. Attached-invalid-signature construction remains open.

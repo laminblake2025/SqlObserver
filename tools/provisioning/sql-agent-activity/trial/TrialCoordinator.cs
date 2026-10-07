@@ -52,9 +52,24 @@ public static class TrialCoordinator
             TrialInstallationPolicy.MetadataVerificationV2, cancellationToken);
     }
 
+    /// <summary>Finite package-owned explicit-DENY failure fixture. Each callback must finish its
+    /// owned monitor process. A successful signed read, denied refusal, and restored read are distinct evidence.</summary>
+    public static Task<TrialRunResult> RunExplicitDenyAsync(SqlConnection connection, string principal, Guid deploymentId,
+        byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualifySigned,
+        Func<CancellationToken, Task<bool>> qualifyDenied, Func<CancellationToken, Task<bool>> qualifyRestored,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(qualifySigned);
+        ArgumentNullException.ThrowIfNull(qualifyDenied);
+        ArgumentNullException.ThrowIfNull(qualifyRestored);
+        return RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualifySigned, null,
+            TrialInstallationPolicy.MetadataVerificationV2, cancellationToken, qualifyDenied, qualifyRestored);
+    }
+
     private static async Task<TrialRunResult> RunCoreAsync(SqlConnection connection, string principal, Guid deploymentId,
         byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualify,
-        Func<CancellationToken, Task<bool>>? qualifyUnsigned, TrialInstallationPolicy policy, CancellationToken cancellationToken)
+        Func<CancellationToken, Task<bool>>? qualifyUnsigned, TrialInstallationPolicy policy, CancellationToken cancellationToken,
+        Func<CancellationToken, Task<bool>>? qualifyDenied = null, Func<CancellationToken, Task<bool>>? qualifyRestored = null)
     {
         ArgumentNullException.ThrowIfNull(connection); ArgumentNullException.ThrowIfNull(qualify);
         AgentActivityTrialSql.ValidateModule(moduleUtf8);
@@ -72,7 +87,7 @@ public static class TrialCoordinator
                 TrialBaseline baseline = await AgentActivityTrialSql.CaptureBaselineAsync(connection, transaction, principal, deploymentId, cancellationToken).ConfigureAwait(false);
                 stage = "journal_prepare";
                 journal = TrialJournal.Create(deploymentId);
-                var receipt = new TrialReceipt(policy == TrialInstallationPolicy.MetadataVerificationV2 ? 3 : qualifyUnsigned is null ? 1 : 2,
+                var receipt = new TrialReceipt(qualifyDenied is not null ? 4 : policy == TrialInstallationPolicy.MetadataVerificationV2 ? 3 : qualifyUnsigned is null ? 1 : 2,
                     deploymentId, principal, "prepared", baseline, null, null,
                     InstallationPolicyVersion: policy == TrialInstallationPolicy.MetadataVerificationV2 ? 2 : null);
                 journal.Save(receipt);
@@ -125,6 +140,51 @@ public static class TrialCoordinator
                 stage = "unsigned_qualification";
                 passed = await qualifyUnsigned(cancellationToken).ConfigureAwait(false);
                 if (!passed) failure = "unsigned_qualification_failed";
+            }
+            if (passed && qualifyDenied is not null)
+            {
+                passed = false;
+                stage = "deny_verify";
+                await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    TrialReceipt receipt = journal.Read();
+                    TrialSnapshot denied = await AgentActivityTrialDenySql.DenyAsync(connection, transaction,
+                        receipt.Baseline, receipt.Installed!, cancellationToken).ConfigureAwait(false);
+                    receipt = receipt with { Phase = "deny_pending", DeniedSnapshot = denied };
+                    stage = "deny_commit";
+                    journal.Save(receipt);
+                    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                    journal.Save(receipt with { Phase = "denied" });
+                }
+                stage = "denied_committed_verify";
+                await using (var verify = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    TrialReceipt receipt = journal.Read();
+                    TrialSnapshot actual = await AgentActivityTrialDenySql.CaptureDeniedAsync(connection, verify,
+                        receipt.Baseline, receipt.Installed!, cancellationToken).ConfigureAwait(false);
+                    AgentActivityTrialSql.ValidateExactSnapshot(receipt.DeniedSnapshot!, actual);
+                    await verify.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                }
+                stage = "denied_qualification";
+                bool deniedPassed = await qualifyDenied(cancellationToken).ConfigureAwait(false);
+                if (!deniedPassed) failure = "deny_qualification_failed";
+                else
+                {
+                    stage = "deny_restore_verify";
+                    await RestoreDeniedUnderLockAsync(connection, journal, cancellationToken).ConfigureAwait(false);
+                    stage = "restored_committed_verify";
+                    await using (var verify = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        TrialReceipt receipt = journal.Read();
+                        TrialSnapshot actual = await AgentActivityTrialSql.CaptureInstalledAsync(connection, verify,
+                            receipt.Baseline, cancellationToken, policy).ConfigureAwait(false);
+                        AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed!, actual);
+                        await verify.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    stage = "restored_qualification";
+                    passed = await qualifyRestored!(cancellationToken).ConfigureAwait(false);
+                    if (!passed) failure = "restored_qualification_failed";
+                }
             }
         }
         catch (Exception exception)
@@ -179,6 +239,11 @@ public static class TrialCoordinator
     private static async Task RecoverUnderLockAsync(SqlConnection connection, TrialJournal journal, string? failure, CancellationToken token)
     {
         TrialReceipt receipt = journal.Read();
+        if (receipt.SchemaVersion == 4)
+        {
+            await RecoverDenyUnderLockAsync(connection, journal, receipt, failure, token).ConfigureAwait(false);
+            return;
+        }
         TrialInstallationPolicy policy = TrialJournal.ResolveInstallationPolicy(receipt);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false);
         try
@@ -226,6 +291,73 @@ public static class TrialCoordinator
         TrialBaseline restored = await AgentActivityTrialSql.CaptureBaselineAsync(connection, verify, receipt.MonitorPrincipal, receipt.DeploymentId, token).ConfigureAwait(false);
         AgentActivityTrialSql.ValidateBaselineRestored(receipt.Baseline, restored);
         await verify.RollbackAsync(token).ConfigureAwait(false);
+        journal.Save(receipt with { Phase = "removed" });
+    }
+
+    private static async Task RestoreDeniedUnderLockAsync(SqlConnection connection, TrialJournal journal, CancellationToken token)
+    {
+        TrialReceipt receipt = journal.Read();
+        await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false))
+        {
+            await AgentActivityTrialDenySql.RestoreAsync(connection, transaction, receipt.Baseline,
+                receipt.Installed!, receipt.DeniedSnapshot!, token).ConfigureAwait(false);
+            receipt = receipt with { Phase = "deny_restore_pending" };
+            // Both complete postimages are already immutable in this receipt.
+            // An uncertain restore COMMIT can recover only exact G or exact D.
+            journal.Save(receipt);
+            await transaction.CommitAsync(token).ConfigureAwait(false);
+        }
+        await using (var verify = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false))
+        {
+            TrialSnapshot actual = await AgentActivityTrialSql.CaptureInstalledAsync(connection, verify, receipt.Baseline,
+                token, TrialInstallationPolicy.MetadataVerificationV2).ConfigureAwait(false);
+            AgentActivityTrialSql.ValidateExactSnapshot(receipt.Installed!, actual);
+            await verify.RollbackAsync(token).ConfigureAwait(false);
+        }
+        journal.Save(receipt with { Phase = "deny_restored" });
+    }
+
+    private static async Task RecoverDenyUnderLockAsync(SqlConnection connection, TrialJournal journal, TrialReceipt receipt,
+        string? failure, CancellationToken token)
+    {
+        TrialDenyRecoveryAction action;
+        await using (var inspect = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false))
+        {
+            TrialSnapshot actual = await AgentActivityTrialSql.CaptureDenyInventoryAsync(connection, inspect, receipt.Baseline, token).ConfigureAwait(false);
+            action = TrialJournal.SelectDenyRecoveryAction(receipt, actual);
+            await inspect.RollbackAsync(token).ConfigureAwait(false);
+        }
+        if (action == TrialDenyRecoveryAction.BaselineRestored)
+        {
+            journal.Save(receipt with { Phase = "removed", FailureCode = failure });
+            return;
+        }
+        if (action == TrialDenyRecoveryAction.RestoreThenRemove)
+        {
+            await RestoreDeniedUnderLockAsync(connection, journal, token).ConfigureAwait(false);
+            receipt = journal.Read();
+        }
+        else if (receipt.Phase is "deny_pending" or "deny_restore_pending")
+        {
+            // Inspection established the original signed image. No permission
+            // mutation is needed; explicitly record the resolved pending state.
+            receipt = receipt with { Phase = "deny_restored" };
+            journal.Save(receipt);
+        }
+        await using (var remove = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false))
+        {
+            await AgentActivityTrialSql.RemoveAsync(connection, remove, receipt.Baseline, receipt.Installed!, token,
+                TrialInstallationPolicy.MetadataVerificationV2).ConfigureAwait(false);
+            receipt = receipt with { Phase = "remove_pending", FailureCode = failure };
+            journal.Save(receipt);
+            await remove.CommitAsync(token).ConfigureAwait(false);
+        }
+        await using (var verify = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false))
+        {
+            TrialBaseline actual = await AgentActivityTrialSql.CaptureBaselineAsync(connection, verify, receipt.MonitorPrincipal, receipt.DeploymentId, token).ConfigureAwait(false);
+            AgentActivityTrialSql.ValidateBaselineRestored(receipt.Baseline, actual);
+            await verify.RollbackAsync(token).ConfigureAwait(false);
+        }
         journal.Save(receipt with { Phase = "removed" });
     }
 
@@ -320,6 +452,12 @@ public static class TrialCoordinator
         "The first journal record must be prepared.",
         "The trial receipt contract is invalid.",
         "The unsigned trial receipt contract is invalid.",
+        "The DENY trial receipt contract is invalid.",
+        "The DENY source object identity is invalid.",
+        "The DENY fixture requires its exact dbo-granted package permission.",
+        "A denied postimage must be recorded before committing the DENY fixture.",
+        "A schema4 DENY recovery receipt is required.",
+        "An absent package contradicts the DENY recovery phase.",
         "The trial receipt requires its exact installed postimage.",
         "The trial receipt provenance is invalid.",
         "An installed postimage must be recorded before committing installation.",
