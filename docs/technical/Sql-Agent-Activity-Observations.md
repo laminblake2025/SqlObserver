@@ -549,3 +549,42 @@ and profile/desktop compatibility must be verified before mechanism selection or
 native case. No account rights or existing ACLs were changed; neither retired CWT case
 is replayable. Native Monitor qualification, recovery and production admission remain
 absent. Two-root cleanup and both SQL drains remain deferred; the broader goal is active.
+
+
+### Service token authenticated; native worker launch remains pending (2026-10-07)
+
+The current service allow list contains Collector SID1013 and the complete service deny
+list is empty. The current Administrator token holds enabled SeImpersonatePrivilege;
+SeAssignPrimaryTokenPrivilege is absent and SeIncreaseQuotaPrivilege is present but
+disabled. These are current prerequisites, not historical launch evidence. A distinct
+SERVICE/provider-zero LogonUserW attempt succeeded once with the updated credential:
+exact Collector SID1013, primary token, session zero, 13 queried groups and no
+Administrators SID. The token was explicitly closed and the native secret cleared.
+This validates that credential for that service logon; closing the token does not prove
+logon-session termination. No worker was created and the attempt nonce is retired.
+
+The conditional ServiceTokenWithTokenV1 adapter builds with zero warnings/errors and
+passes 102 pure checks / 117 assertions against the pinned DLL. Independent source
+review accepts original process/thread ownership, cached native outcomes and once-only
+resume semantics. No CreateProcessWithTokenW call has run. Future integration must
+enforce valid UTF-16/no-NUL credentials before entry, real desktop access, held runtime
+and registered-profile leases, durable nonce reservation and custody before resume.
+Startup containment, recovery authority and production admission remain unqualified.
+
+The minimal READ_CONTROL query enumerated ten station names, read three owner/DACL
+snapshots and closed their owned handles; seven opens were refused with error 5.
+Optional metadata/enumeration refusals remain separate from successful security reads.
+No effective Collector access follows from these partial ACL snapshots. A query-only
+inspection of the existing running Collector found SID1013/primary/session zero and
+AuthenticationId 0x1-f5b9e2cc, descriptively matching Service-0x1-f5b9e2cc$ in the earlier
+inventory. Its process/token query handles were closed. Different observation times
+do not prove continuous object identity. The existing service process/token supplies
+no original-launch, worker-custody or cleanup capability and is not borrowed for launch.
+
+Evidence and reviews are preserved under artifacts/dashboard-agent-interruption-2026-10-07:
+monitor-service-prerequisites-observation-v1.json; monitor-service-authentication-observation-v2.json;
+monitor-service-token-launch-adapter-source-review-v1.json;
+monitor-existing-station-security-observation-v3.json; and the running-Collector read-only snapshot.
+Next implementation evaluates a fresh private desktop or Collector-hosted launch path;
+no existing ACL, account right, privilege, service or SQL state was changed by these queries.
+The two-root cleanup, both SQL drains and broader qualification goal remain open.
