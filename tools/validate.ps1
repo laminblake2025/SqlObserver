@@ -2417,6 +2417,8 @@ foreach ($testProject in $testProjectsToRun) {
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeReplayAcceptance' } else { "($filter)&Category!=RequiresAgentNativeReplayAcceptance" }
         # The explicitly synthetic rehearsal also owns disposable repository/browser inputs.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeReplayRehearsal' } else { "($filter)&Category!=RequiresAgentNativeReplayRehearsal" }
+        # Exporting a native repository fixture requires explicit owned output and Docker inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeRepositoryArchive' } else { "($filter)&Category!=RequiresAgentNativeRepositoryArchive" }
         # Cross-store live blocking qualification owns disposable SQL objects
         # and is selected explicitly rather than by an ordinary validation sweep.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }
