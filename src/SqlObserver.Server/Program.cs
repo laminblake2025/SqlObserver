@@ -202,6 +202,9 @@ builder.Services.AddSingleton<IConfigurationCollectionAdministrationService, Con
 builder.Services.AddSingleton<IBackupZoneQualificationAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupZoneQualifications);
 builder.Services.AddSingleton<BackupZoneQualificationAdministrationService>();
+builder.Services.AddSingleton<ISqlAgentModuleEnrollmentAdministrationPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlAgentModuleEnrollments);
+builder.Services.AddSingleton<SqlAgentModuleEnrollmentAdministrationService>();
 builder.Services.AddSingleton<IBackupFreshnessPolicyPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().BackupFreshnessPolicies);
 builder.Services.AddSingleton<BackupFreshnessPolicyService>();
@@ -310,6 +313,7 @@ app.MapSqlObserverServiceStatusEndpoints(includeRootDescriptor: webInterface is 
 app.MapObservationTargetEndpoints();
 app.MapTargetHealthEndpoints();
 app.MapBackupZoneQualificationEndpoints();
+app.MapSqlAgentModuleEnrollmentEndpoints();
 app.MapBackupFreshnessPolicyEndpoints();
 app.MapSqlVolumeEndpoints();
 app.MapSqlVolumePlanningWindowEndpoints();

@@ -96,6 +96,9 @@ public static class CollectorServiceRegistration
             (IDeadlockReadRepositoryPort)provider.GetRequiredService<ICollectorRuntimeRepositoryPort>());
         services.AddSingleton<IBackupHistoricalZoneQualificationPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupZoneQualifications);
+        services.AddSingleton<ISqlAgentModuleEnrollmentResolver>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().SqlAgentModuleEnrollments);
+        services.AddSingleton<SqlServerAgentActivityModuleCaptureReader>();
         services.AddSingleton<IQueryStoreGroupWindowPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().QueryStoreGroupWindows);
         services.AddSingleton<IAlertRepositoryPort>(static provider =>

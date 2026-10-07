@@ -4,6 +4,8 @@
     <AssemblyName>SqlObserver.Infrastructure.SqlServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.module-metadata.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentModuleAssets.sql-agent.activity.module-metadata.sqlserver17-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.module-identity.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentModuleAssets.sql-agent.activity.module-identity.sqlserver17-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver15-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver15-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver16-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver16-windows.v1.sql" />
     <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver17-windows.v1.sql" />

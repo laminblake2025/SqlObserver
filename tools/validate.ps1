@@ -2394,6 +2394,7 @@ foreach ($testProject in $testProjectsToRun) {
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivitySignedModule' } else { "($filter)&Category!=RequiresSqlAgentActivitySignedModule" }
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityUnsignedModule' } else { "($filter)&Category!=RequiresSqlAgentActivityUnsignedModule" }
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityMetadataModule' } else { "($filter)&Category!=RequiresSqlAgentActivityMetadataModule" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityProductionModule' } else { "($filter)&Category!=RequiresSqlAgentActivityProductionModule" }
         # This test creates and drops its own Query Store databases. It is
         # selected explicitly for a disposable SQL Server lab, never by the
         # ordinary Local or Release sweep.

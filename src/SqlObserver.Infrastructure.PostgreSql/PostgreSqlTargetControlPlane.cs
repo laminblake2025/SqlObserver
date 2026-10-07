@@ -32,6 +32,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         ConfigurationCollectionAdministration =
             new PostgreSqlConfigurationCollectionAdministrationPort(dataSource);
         BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
+        SqlAgentModuleEnrollments = new PostgreSqlSqlAgentModuleEnrollmentPort(dataSource);
         BackupFreshnessPolicies = new PostgreSqlBackupFreshnessPolicyPort(dataSource);
         BackupEvidence = new PostgreSqlBackupEvidencePort(dataSource);
         BackupFleetLatest = new PostgreSqlBackupFleetCachePort(dataSource);
@@ -105,6 +106,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public ICpuComponentsCollectionAdministrationPort CpuComponentsCollectionAdministration { get; }
     public IConfigurationCollectionAdministrationPort ConfigurationCollectionAdministration { get; }
     public IBackupZoneQualificationAdministrationPort BackupZoneQualifications { get; }
+    public ISqlAgentModuleEnrollmentAdministrationPort SqlAgentModuleEnrollments { get; }
     public IBackupFreshnessPolicyPort BackupFreshnessPolicies { get; }
     public IBackupEvidencePort BackupEvidence { get; }
     public IBackupFleetLatestRepositoryPort BackupFleetLatest { get; }

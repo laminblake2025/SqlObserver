@@ -1,5 +1,16 @@
 # SQL17 Agent activity signed-module qualification candidate
 
+The application now includes a separate [guarded module reader and revocable enrollment contract](../../../docs/technical/Sql-Agent-Module-Enrollment.md).
+It does not install this package or enable activity collection. The offline preview and historical
+qualification assets below retain their original scope; trusted enrollment is a separate control-plane action.
+
+The [Run15 reader/enrollment checkpoint](../../../artifacts/dashboard-agent-module-adapter-2026-10-05/completion-v3.json)
+passes two actual-monitor native cases: signed public-reader capture and unsigned precheck refusal.
+Normal cleanup restores the baseline without fallback recovery; Agent remains stopped. The earlier
+Run14 refusal exposed a client/server connection-ID namespace mismatch, now corrected with independent
+continuity checks and driver SPID binding. Real PostgreSQL/API enrollment and revocation are tested
+separately. Canonical retention, activity collection admission and running/session/time semantics remain open.
+
 The original `New-QualificationPlan.ps1` remains an **offline review package**. Its manifest describes
 that preview's capabilities; it does not connect to SQL Server or install anything. The separate
 [finite trial library](trial/README.md) implements transactional installation, verification and
@@ -81,7 +92,7 @@ matching public certificate hashes, no private keys, and exact permission invent
 `sys.crypt_properties` inventories signatures; `sys.fn_check_object_signatures` supplies
 `is_signed` and `is_signature_valid`. A metadata row alone is not a qualification result.
 
-## Native gates before any adapter or admission
+## Native qualification and admission gates
 
 1. On the actual SQL17 build, verify certificate-backed access to both msdb tables and the service
    DMV. Microsoft documents `syssessions` as sysadmin-only; this narrow candidate is unproven.
