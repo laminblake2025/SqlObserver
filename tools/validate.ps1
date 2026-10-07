@@ -2412,6 +2412,11 @@ foreach ($testProject in $testProjectsToRun) {
         # Connected Agent acceptance owns a disposable repository and Chromium
         # journey, and requires explicitly provisioned local browser inputs.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentConnectedAcceptance' } else { "($filter)&Category!=RequiresAgentConnectedAcceptance" }
+        # Native Agent replay requires a fresh, hash-pinned original authorization
+        # sidecar and capture; ordinary sweeps cannot provide those inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeReplayAcceptance' } else { "($filter)&Category!=RequiresAgentNativeReplayAcceptance" }
+        # The explicitly synthetic rehearsal also owns disposable repository/browser inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeReplayRehearsal' } else { "($filter)&Category!=RequiresAgentNativeReplayRehearsal" }
         # Cross-store live blocking qualification owns disposable SQL objects
         # and is selected explicitly rather than by an ordinary validation sweep.
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }
