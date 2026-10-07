@@ -707,3 +707,47 @@ Next work is managed preparation in a fresh observer-provenance source clone to 
 the actual CWT return/error and typed private observer failure without secret text.
 No second native launch is implied. CWT hard timeout containment, original two-root
 Coordinator DBA/Monitor cleanup and both SQL drains remain unqualified. Goal active.
+
+
+### Monitor creation error captured without changing account rights (2026-10-07)
+
+The distinct observer-provenance source retains the actual credentialed-creation
+Boolean and failed-call error before further interop. Its private journal has a new
+schema4/kind and 38 keys; the public diagnostic remains schema3 with 70 keys.
+The 44-file source passed locked restore/build with zero warnings/errors. DLL and
+published GUI suites agreed at 304/601, 316/474, 152/168, 89/105 and 443/657
+cases/assertions. These are managed checks; the published payload contains 192 files.
+
+One guarded native attempt entered and returned CWT. Driver3184 joined with exit94;
+Supervisor9868 joined with exit87. The raw 70-key result contains 2,872 UTF-8 bytes.
+Independent protected readback verified the 5,085-byte private journal, public pin,
+canonical custody-head/scope hashes and all192 runtime files with held-path/ACL checks.
+The actual syscall Boolean is false and its immediately cached failed-call error is
+1385. The bound first Observer failure records NativeCwtCall / win32 / nativeError1385.
+[Microsoft defines 1385 as ERROR_LOGON_TYPE_NOT_GRANTED](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1300-1699-).
+[Ordinary CreateProcessWithLogonW requires local interactive logon permission](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw).
+The effective policy causing this refusal has not yet been independently inspected.
+
+Evidence: artifacts/dashboard-agent-interruption-2026-10-07/monitor-observer-provenance-native01-diagnostic-v1.json
+(SHA-256 9591ffa9db06df0f1fb8c3f0b44e627248ca7ac6518ef955c4396e4a493c5d62),
+independently reviewed at 873a3200d9d55ce5c2e5e82e65f9ae39f6d0700ecd21cc13e79334f8b5106a1e.
+Nonce19f82411-28fc-4120-8faa-4ad8961b1197 is retired. Monitor launch remains null,
+cleanup remains false, worker identity/counts are null, and the producer of Supervisor87
+remains unknown. This does not establish process absence, password correctness or cleanup.
+The earlier b982e80c-6d86-469a-b285-af3b7ff44524 case retains its unknown syscall cause.
+
+The preparer's outer UTF-8 BOM refusal and the first remote read-only validation refusal
+are preserved. A local Windows PowerShell probe reproduced the epoch clock rejection:
+an untyped format array selects the wrong TryParseExact overload. Explicit string[]
+formats passed both real public epochs without changing format/UTC requirements. A fresh
+reviewed reader then completed the protected readback; the old remote failure site itself
+was not recorded. No failure, source freeze or used wrapper was rewritten or replayed.
+
+The initial installer explicitly configured the Collector for service-only logon and
+denied interactive/remote-interactive logon. That historical intent is distinct from
+current LSA policy evidence. Next work reads the exact current allow/deny assignments;
+any service-compatible launch design needs separate preparation, review and qualification.
+Existing rights and ancestor ACLs remain unchanged. There are now two entered/returned
+Monitor CWT attempts and zero qualified native Monitor cases. SQL/SCM actions, recovery
+and production admission stay false. CWT startup hard containment, original DBA/Monitor
+two-root cleanup and both SQL drains remain unqualified. The broader goal is active.
