@@ -751,3 +751,23 @@ Existing rights and ancestor ACLs remain unchanged. There are now two entered/re
 Monitor CWT attempts and zero qualified native Monitor cases. SQL/SCM actions, recovery
 and production admission stay false. CWT startup hard containment, original DBA/Monitor
 two-root cleanup and both SQL drains remain unqualified. The broader goal is active.
+
+
+### Current service-only account policy verified (2026-10-07)
+
+A query-only LSA readback now verifies a direct SeDenyInteractiveLogonRight assignment
+to Collector SID S-1-5-21-2389219679-3887908296-627854502-1013. The full allow/deny
+SID lists and successful open/enumeration/free/close statuses survived remoting and
+independent review. This current snapshot agrees with the initial service-only installer;
+it does not prove the policy at either retired creation attempt or validate a password.
+The first reader's serialization loss is preserved as partial evidence.
+
+Evidence: artifacts/dashboard-agent-interruption-2026-10-07/monitor-logon-rights-readonly-observation-v2.json
+(SHA-256 7af006b0b1fd465cfb30f60c25113b6708ae89965e7920c8b4a2e3b148d2ecdb),
+independently reviewed at b489a2dba4ea8dc9b8f5fffce13aec81b2fbd747f9807c7b6e266551037b0093.
+Next-stage design V3 preserves the service-only policy and requires a distinct original
+suspended-process launch mechanism. Service allow/deny rights, current caller privileges
+and profile/desktop compatibility must be verified before mechanism selection or a new
+native case. No account rights or existing ACLs were changed; neither retired CWT case
+is replayable. Native Monitor qualification, recovery and production admission remain
+absent. Two-root cleanup and both SQL drains remain deferred; the broader goal is active.
