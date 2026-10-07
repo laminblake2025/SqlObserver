@@ -1487,3 +1487,60 @@ binding, then both actual captures with independent source/execution/OS witnesse
 Running execution, association/time, interruption, persistent deployment, native CPU matrix,
 physical AG transition evidence and final cross-screen acceptance remain open. Admission and
 association stay false with `Absent`; the broader goal remains active.
+
+## Running-job coordinator and signature preparation checkpoint — 2026-10-07 UTC
+
+The later [running-job completion-v2 record](../../artifacts/dashboard-agent-running-job-2026-10-07/completion-v2.json)
+and [source-readiness-v2 freeze](../../artifacts/dashboard-agent-running-job-2026-10-07/source-readiness-v2.json)
+record **313** passing pure managed receipt, coordinator, worker-boundary and monitor-worker
+contracts with zero failures/skips. The native coordinator builds with zero warnings/errors;
+**zero native running/completed cases have executed**. Source, receipt and worker fences are
+prepared, while actual running execution and cleanup remain unqualified.
+
+The [more complete Probe05 baseline](../../artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-05/guest-baseline-20261007T093858172Z.json)
+finds **three older-session unfinished rows** as well as **eleven enabled foreign jobs**.
+The rows belong to session2, before latest session4; two have execution starts and one is
+requested without a start. All retain NULL stop/history IDs. Neither latest-session inactivity
+nor older-session membership proves completion or cancellation. The all-history and enabled-job
+gates both refuse the current trial. Agent stays stopped; original jobs, enabled flags and msdb
+activity/session/history rows are preserved. The earlier enabled-flag isolation proposal alone
+cannot satisfy these prerequisites.
+
+The [clean-lab plan v2](../../artifacts/dashboard-agent-running-job-2026-10-07/clean-lab-plan-v2.json)
+proposes a separate clean SQL17 default instance; destination and installation scope remain
+pending. Current source does not support a named instance. A fresh destination needs independent
+physical database GUIDs, validated TCP/TLS, the actual integrated monitor SID/deployed
+configuration, persisted CPU host binding, a fresh selected target/revision and original
+enrollment authority, plus an owned sealed repository archive. A finite proof on that lab would
+not satisfy original-selected-target or continuously deployed acceptance. No installation scope
+or permission to alter original jobs/history is inferred from this plan.
+
+Independent source and journal owners have also prepared rollback-only genuine-signature
+construction tooling. The journal binds one physical DBA session and immutable target/donor
+images, refuses unresolved reuse or replay, and requires acknowledged construction/readback
+rollbacks with exact absent-baseline and independent OS/foreign-inventory verification. The
+[expanded managed tooling suite](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/managed/trial-signature-contracts-attempt1.trx)
+passes **709** cases with zero failures/skips: the previous **578** plus **131** new
+signature/journal contracts. These are the same whole-suite cases counted once; the separate
+313-case running coordinator group remains separate evidence.
+
+The [Probe06 native construction report](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/construction-probe-06/guest-signature-construction-20261007T111503590Z.json)
+and [completion record](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/completion-v1.json)
+record a transactional, rollback-only module experiment on SQL Server build 17.0.1000.7. It was not read-only.
+The signed image and distinct genuine target/donor signatures, each 392 bytes, were verified.
+SQL `ADD SIGNATURE` refused the donor import with error 15299, state 1, yielding
+`UnsupportedDonorSignatureImport` before an attached-invalid postimage was established. This
+is evidence about that construction candidate on the observed build, not universal unsupported
+behavior. Construction/readback rollback acknowledgements, exact absent-module baseline,
+unchanged foreign-inventory digest and held stopped-Agent configuration all passed. Cleanup and
+journal `rollback_verified` were confirmed, and the exact probe process was joined after exit 0.
+The first five pre-mutation failed attempts remain preserved.
+
+Construction feasibility and attached-invalid qualification remain false. No monitor launched
+and zero native collector cases executed. No native invalid-signature monitor behavior,
+committed-invalid recovery or production admission is claimed.
+
+Admission/association remain false with `Absent`; derived elapsed/UTC job-start/long-running
+fields remain null. Running execution/time, interruption, persistent deployment, native CPU
+matrix, physical AG transition evidence and final cross-screen acceptance remain open. The
+broader goal remains active.

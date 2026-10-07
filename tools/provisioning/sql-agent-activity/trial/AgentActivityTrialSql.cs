@@ -88,6 +88,15 @@ public static class AgentActivityTrialSql
 
     public static async Task<TrialSnapshot> InstallAsync(SqlConnection connection, SqlTransaction transaction,
         TrialBaseline baseline, byte[] pinnedModuleUtf8, CancellationToken cancellationToken, TrialInstallationPolicy policy = TrialInstallationPolicy.ExecuteOnlyV1)
+        => (await InstallCoreAsync(connection, transaction, baseline, pinnedModuleUtf8, policy, null, cancellationToken).ConfigureAwait(false)).Installed;
+
+    internal static Task<(TrialSnapshot Installed, TrialSignatureBlob? Donor)> InstallWithSignatureDonorCoreAsync(
+        SqlConnection connection, SqlTransaction transaction, TrialBaseline baseline, byte[] pinnedModuleUtf8,
+        Guid fixtureId, CancellationToken cancellationToken) =>
+        InstallCoreAsync(connection, transaction, baseline, pinnedModuleUtf8, TrialInstallationPolicy.MetadataVerificationV2, fixtureId, cancellationToken);
+
+    private static async Task<(TrialSnapshot Installed, TrialSignatureBlob? Donor)> InstallCoreAsync(SqlConnection connection, SqlTransaction transaction,
+        TrialBaseline baseline, byte[] pinnedModuleUtf8, TrialInstallationPolicy policy, Guid? donorFixtureId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(pinnedModuleUtf8);
@@ -113,6 +122,7 @@ public static class AgentActivityTrialSql
         // No secret is returned in records, command text, or application output. The random secret
         // is supplied as a parameter; the fixed DDL quotes it inside SQL Server.
         string password = "Aa1!" + Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        TrialSignatureBlob? donor = null;
         try
         {
             await ExecuteAsync(connection, transaction, """
@@ -133,6 +143,8 @@ public static class AgentActivityTrialSql
             // CREATE PROCEDURE is the only statement in this exact, pinned batch.
             await ExecuteAsync(connection, transaction, "SET ANSI_NULLS ON; SET QUOTED_IDENTIFIER ON;", cancellationToken).ConfigureAwait(false);
             await ExecuteAsync(connection, transaction, new UTF8Encoding(false, true).GetString(moduleBytes), cancellationToken).ConfigureAwait(false);
+            if (donorFixtureId is { } fixture)
+                donor = await TrialAttachedInvalidSignatureSql.CreateDonorAsync(connection, transaction, baseline, fixture, password, cancellationToken).ConfigureAwait(false);
             await ExecuteAsync(connection, transaction, """
                 USE [master];
                 DECLARE @public varbinary(max)=CERTENCODED(CERT_ID(N'SqlObserverAgentActivityCertificateV1'));
@@ -164,7 +176,7 @@ public static class AgentActivityTrialSql
                 EXEC sys.sp_executesql @ddl;
                 """, cancellationToken, P("@monitor", SqlDbType.NVarChar, current.Monitor.Principal, 128)).ConfigureAwait(false);
         }
-        return await CaptureInstalledAsync(connection, transaction, baseline, cancellationToken, policy).ConfigureAwait(false);
+        return (await CaptureInstalledAsync(connection, transaction, baseline, cancellationToken, policy).ConfigureAwait(false), donor);
     }
 
     public static async Task<TrialSnapshot> CaptureInstalledAsync(SqlConnection connection, SqlTransaction transaction,
@@ -181,6 +193,13 @@ public static class AgentActivityTrialSql
     // Only the dedicated DENY helper may interpret this raw complete inventory.
     // It validates against the independently recorded signed and denied images.
     internal static Task<TrialSnapshot> CaptureDenyInventoryAsync(SqlConnection connection, SqlTransaction transaction,
+        TrialBaseline baseline, CancellationToken cancellationToken) =>
+        CaptureAsync(connection, transaction, baseline.MonitorPrincipal, baseline.DeploymentId,
+            cancellationToken, baseline.Snapshot.Monitor.MasterUserId == 0);
+
+    // Only the dedicated signature helper may interpret this complete inventory.
+    // It validates the independently saved signed image and exact attached-invalid tuple.
+    internal static Task<TrialSnapshot> CaptureSignatureInventoryAsync(SqlConnection connection, SqlTransaction transaction,
         TrialBaseline baseline, CancellationToken cancellationToken) =>
         CaptureAsync(connection, transaction, baseline.MonitorPrincipal, baseline.DeploymentId,
             cancellationToken, baseline.Snapshot.Monitor.MasterUserId == 0);

@@ -282,3 +282,65 @@ Agent-state mutation occurred in this preparation checkpoint.
 Public admission and service/session association remain `false`, qualification remains `Absent`,
 and elapsed/UTC job-start/long-running fields remain null. This preparation does not qualify
 native execution, cleanup, restart, interruption, persistent provisioning or continuous deployment.
+
+## Running-job coordinator checkpoint — 2026-10-07
+
+The later [completion-v2 checkpoint](../../../../artifacts/dashboard-agent-running-job-2026-10-07/completion-v2.json)
+and [source-readiness-v2 freeze](../../../../artifacts/dashboard-agent-running-job-2026-10-07/source-readiness-v2.json)
+record **313** passing managed receipt, coordinator, worker-boundary and monitor-worker contracts,
+zero failures/skips, and a coordinator build with zero warnings/errors. These contracts prepare
+the bounded actual-monitor protocol; **zero native running/completed cases have executed**.
+
+The more complete [Probe05 baseline](../../../../artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-05/guest-baseline-20261007T093858172Z.json)
+finds three all-history unfinished activity rows in Agent session2, older than latest session4,
+in addition to the eleven enabled foreign jobs. Two rows have execution starts and one is
+requested without a start; all have NULL stop and history IDs. Their older session establishes
+retention, not completion or cancellation. Both existing refusal gates remain enforced even
+though the latest-session unfinished count is zero and Agent is stopped with SCM PID zero.
+The earlier enabled-flag proposal does not resolve the retained-row gate. No original job flags,
+jobs or msdb history were disabled, changed or deleted.
+
+The [clean-lab plan v2](../../../../artifacts/dashboard-agent-running-job-2026-10-07/clean-lab-plan-v2.json)
+preserves the current instance and proposes a separate clean SQL17 default-instance destination.
+Destination and installation scope remain pending. Current SCM/coordinator contracts support
+the default instance only; a named instance requires separate implementation and review. Fresh
+physical database GUIDs, TLS/configuration, integrated monitor SID, deployed selected-target and
+CPU host bindings, target revision, original enrollment authority and owned repository archive
+must be established for that destination. A finite result there would bind the fresh lab, not
+qualify the original selected target or continuous deployment. Public admission/association
+remain false, qualification `Absent`, and derived execution/time fields null.
+
+## Rollback-only signature construction preparation — 2026-10-07
+
+`TrialAttachedInvalidSignatureSql` prepares genuine signed target/donor provenance and validates
+an attached-invalid image against exact target metadata and donor bytes. Its caller owns the
+transaction. `TrialSignatureConstructionJournal` is a separate rollback-only journal with
+individual-owner-SID/SYSTEM protection, fresh fixture/deployment identities, the exact physical
+DBA session and baseline digests, and immutable captured images. Pending or blocked evidence
+never authorizes replay, reconnect, commit, worker execution or automatic recovery. Terminal
+`rollback_verified` requires acknowledged construction and readback rollbacks, an exact absent
+baseline readback on the same session, and independently unchanged OS/foreign inventories.
+
+The [managed signature tooling result](../../../../artifacts/dashboard-agent-attached-invalid-2026-10-07/managed/trial-signature-contracts-attempt1.trx)
+passes **709** cases with zero failures/skips. This is the expanded whole tooling suite: the
+previous **578** cases plus **131** new signature/journal contracts, not separate totals to add
+again. The **313** running coordinator contracts are a separate owning group.
+
+The [Probe06 native construction report](../../../../artifacts/dashboard-agent-attached-invalid-2026-10-07/construction-probe-06/guest-signature-construction-20261007T111503590Z.json)
+and [completion record](../../../../artifacts/dashboard-agent-attached-invalid-2026-10-07/completion-v1.json)
+record a bounded transactional experiment on SQL Server build 17.0.1000.7. It performed module mutations
+inside the caller's rollback-only transaction; it was not a read-only probe. The signed image
+and genuine target/donor signatures were verified, with distinct 392-byte signatures. SQL
+`ADD SIGNATURE` refused importing the donor signature with error 15299, state 1, producing
+`UnsupportedDonorSignatureImport` before an attached-invalid postimage was established. This
+demonstrates refusal of that construction candidate on the observed build, not a universal claim
+about invalid-signature construction or SQL Server support.
+
+Construction and readback rollbacks were acknowledged; exact absent-module baseline readback,
+unchanged independent foreign inventory and held stopped-Agent configuration were verified.
+The journal reached `rollback_verified`, cleanup passed, and the exact probe process exited 0
+and was joined. The first five failed attempts are preserved and failed before module mutations.
+Construction feasibility and attached-invalid qualification remain false. No monitor launched,
+repository was created or native collector test executed. This result establishes no native
+invalid-signature monitor behavior, committed-invalid recovery or production admission; public
+admission/association remain false with qualification `Absent`.

@@ -77,3 +77,50 @@ Native execution and cleanup, service/session association, elapsed time, interru
 persistent provisioning and continuously deployed acceptance remain open. Admission/association
 stay false, qualification stays `Absent`, and derived elapsed/UTC job-start/long-running fields
 stay null.
+
+## Running-job source-readiness checkpoint — 2026-10-07
+
+The later [completion-v2 record](../../artifacts/dashboard-agent-running-job-2026-10-07/completion-v2.json)
+binds the [source-readiness-v2 freeze](../../artifacts/dashboard-agent-running-job-2026-10-07/source-readiness-v2.json),
+**313** passing pure managed receipt/coordinator/worker contracts with zero failures/skips,
+and a coordinator build with zero warnings/errors. **Zero native running/completed cases**
+have executed. These results prepare the witness and cleanup protocol without admitting source
+association or execution/time semantics.
+
+[Probe05](../../artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-05/guest-baseline-20261007T093858172Z.json)
+adds three unfinished all-history activity rows in older Agent session2 to the existing eleven
+enabled foreign jobs. Latest session4 has no unfinished row, but that does not satisfy the
+all-history gate. Two retained rows have starts and one is requested without a start; NULL stop
+and history IDs do not prove completion or cancellation. Agent remains stopped with SCM PID
+zero. Both gates refuse the current trial; original job flags and msdb history remain unchanged.
+
+The preservation-compatible [clean-lab plan v2](../../artifacts/dashboard-agent-running-job-2026-10-07/clean-lab-plan-v2.json)
+proposes a fresh SQL17 default-instance destination. Destination and installation scope remain
+pending; named instances are not supported by the current controller. Fresh physical identity,
+TLS, integrated monitor SID/configuration, deployed target/CPU host binding, revision and
+original authority must be qualified independently. A fresh-lab finite proof would not complete
+acceptance for the original selected target or continuously deployed collection.
+
+The separate [signature/journal tooling suite](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/managed/trial-signature-contracts-attempt1.trx)
+passes **709** pure managed cases with zero failures/skips, comprising the previous **578**
+plus **131** new signature-construction and rollback-journal contracts. This supersedes the
+earlier tooling count; it is not an additional 709 cases. The separate 313-case coordinator group
+is not an aggregate unique-test total with that suite.
+
+The later [Probe06 construction report](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/construction-probe-06/guest-signature-construction-20261007T111503590Z.json)
+and [completion record](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/completion-v1.json)
+record rollback-only module mutations on SQL Server build 17.0.1000.7, rather than a read-only probe. The signed
+image and distinct genuine 392-byte target/donor signatures passed verification. Importing the
+donor signature through `ADD SIGNATURE` was refused with SQL error 15299, state 1, and outcome
+`UnsupportedDonorSignatureImport`; no attached-invalid postimage was established. The result is
+specific to that candidate and observed build. Both construction and readback rollback
+acknowledgements, exact absent-module baseline, unchanged foreign-inventory digest and held
+stopped-Agent configuration passed. Cleanup and journal `rollback_verified` were confirmed;
+the exact probe process was joined after exit 0. The first five pre-mutation failed attempts remain
+preserved.
+
+Construction feasibility and native attached-invalid qualification remain false; zero native
+collector cases executed and no monitor launched. No invalid-signature monitor refusal,
+committed-invalid recovery or production admission is qualified. Admission/association remain
+false, qualification `Absent`, and elapsed/UTC job-start/long-running fields null. Persistent
+provisioning, interruption recovery and continuously deployed acceptance remain open.
