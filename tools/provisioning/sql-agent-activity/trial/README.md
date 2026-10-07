@@ -376,3 +376,29 @@ containment or standalone recovery case is qualified by these contracts; earlier
 are not retroactively contained. Production/association/continuous admission remains false,
 qualification remains `Absent`, and derived execution/time fields remain null. The broader goal
 is active; the separate clean SQL17 default-instance destination remains unresolved.
+
+
+## Harmless watchdog preparation and native refusal — 2026-10-07
+
+The separate containment prototype v6 passes **138** pure checks and validates its actual
+self-contained 192-file Windows payload. The separate watchdog v2 passes **76** pure checks;
+its own actual 192-file payload and repaired Windows PowerShell 5.1 bounded output capture
+were verified and independently reviewed. These are separate preparation groups, not additions
+to the 833-case tooling suite. Source packages and failed SDK-shape checks remain preserved.
+
+The [first watchdog VM report](../../../../artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-01/guest-harmless-watchdog-20261007T123815783Z.json)
+observes a freshly created harmless Administrator supervisor assigned before resume. Its deadline
+expired, termination of the held private Job was accepted, the original supervisor exited with
+code76, and the queried Job had zero active members. The original watchdog driver also exited
+and was joined. Qualification nevertheless refused: lifetime `TotalProcesses` was **2**, while
+the reviewed gate requires **1**. The additional historical member has no identity/held-exit
+provenance. An empty current scope does not establish that missing provenance.
+
+The [reviewed refusal evidence](../../../../artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-refusal-v1.json) preserves raw duplicate-free
+output, exact package/source pins, original process epochs and the fresh nonce. The original
+candidate must not be rerun unchanged, and its count gate must not be loosened. The next fresh
+diagnostic must observe suspended supervisor membership in any existing Job before assignment,
+then record bounded accounting and owned-Job PID-list snapshots without opening or adopting
+those PIDs. Unknown nesting must refuse before assignment. No monitor logon, CWT or SQL path
+was exercised. This does not qualify worker interruption/recovery, CWT/startup hard timeouts,
+all historical members, production admission or the broader goal.
