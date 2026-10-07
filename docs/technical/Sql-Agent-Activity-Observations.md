@@ -200,3 +200,34 @@ Native03 changed only the watchdog project to `WinExe`; all C# launch, environme
 The fresh harmless supervisor case reported `SupervisorJoinedOnly`: original driver PID24628 joined0, original supervisor PID11108 exited76 after deadline Job termination, and complete stable snapshots were 0/0,1/1,1/1,1/0 with only PID11108 in both nonempty lists. Any-Job membership was false before assignment. No additional member was observed in this case. Diagnostic qualification remains0; the comparison neither identifies native02 PID6228 nor proves a universal cause/fix, CWT startup containment or recovery readiness.
 
 Report `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-03/guest-harmless-watchdog-20261007T132548624Z.json` SHA256 `1456e72527f9e0ad11dd349642db9b8889b7f08bf41fec8fe014a6948d5d6d6e`; independently verified record `watchdog-winexe-diagnostic-v3.json` SHA256 `3f32ac9b43bf27248e4d10cd6082a4cfef9d786b2b4959519f84720d27b7cadd`. Earlier refusals remain preserved. No CWT/monitor/SQL/service/rights changes occurred; production and recovery admission remain closed.
+
+
+### Two-phase external-registration contracts (2026-10-07)
+
+The separate pure registration module now preserves causal creation order: early scope/permit
+messages carry no worker PID or birth, but retain the approved image and primary-token SID.
+A separately parsed immutable returned-original-handle simulation context completes the worker
+epoch after creation; incoming receipts cannot supply their own expected worker. Closed schema2
+and producer `RegistrationPureSimulationV2` reject the earlier wire version. Head/full digests,
+model-specific creator/issuer/directions, distinct nonces, original handle continuity and worker
+birth between creation permission and return are checked. Prior AnyJob=true remains a sticky
+refusal, and equal process/Job slots in the same source table are refused.
+
+Root built the exact extracted seven-file v4 freeze with locked restore and repository
+analyzers: zero warnings/errors, **286 logical cases / 887 assertions passed**.
+These are separate pure checks, not additions to the 833-case tooling suite or native qualification.
+Manifest SHA256 `8e8bb82c1a921ea49b6afde372a37b8ebb3e42f1398a64ca9276ccffe95bd72a`; archive SHA256
+`57e1f45567a5f8bbb635db2657ad85613229498cf3ea6aea3977df712bdf28b1`. Source bytes remained unchanged after the build.
+Root record `artifacts/dashboard-agent-interruption-2026-10-07/registration-managed-validation-v4.json`
+SHA256 `881f875ebfb419be5e7c3ec0cb16d172e3fe811eaba089a5ccca62abe7758d93`; independent review is retained separately. Earlier freezes, failed initial
+build and v3's 210-case/620-assertion result remain preserved.
+
+No native bootstrap, actual duplicate custody, ACK/resume/recovery authority, SQL drain or
+startup-timeout qualification follows from parsed simulation facts; all authority/admission flags
+remain false and relaunch remains forbidden. The frozen credentialed factory still uses
+CreateProcessWithLogonW with ordinary STARTUPINFO; the reviewed current-API research records
+that AsUser/WithToken Job-list proposals need a distinct implementation and actual validation.
+Next implement authenticated original-handle bootstrap and bounded credential-free Job custody,
+then original-worker custody before resume. Actual two-root interruption/SQL drainage, standalone
+recovery, deployed CPU/Agent/dashboard qualification and pre-return containment remain open.
+The broad goal remains active; no native, credential, SQL, service or rights change occurred here.

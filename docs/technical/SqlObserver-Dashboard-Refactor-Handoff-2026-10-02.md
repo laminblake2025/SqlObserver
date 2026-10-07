@@ -1616,3 +1616,34 @@ Preserve native01/native02 reports, bundles, source freezes and wrapper freezes.
 One fresh project-only `Exe`→`WinExe` comparison completed with source `SupervisorJoinedOnly` and driver exit0, while the diagnostic wrapper remains qualified0. Pinned actual apphost AMD64/PE32+/Windows subsystem2, all192 fresh runtime files, bounded redirected output, 113 pure checks and both original process epochs were independently verified. Stable complete snapshots were 0/0 empty,1/1 sole original supervisor PID11108 before resume,1/1 sole11108 before termination,1/0 empty afterward; supervisor exited76. No extra member was observed in this case, and native02's extra member remains unidentified.
 
 Preserve native03 report `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-03/guest-harmless-watchdog-20261007T132548624Z.json` SHA256 `1456e72527f9e0ad11dd349642db9b8889b7f08bf41fec8fe014a6948d5d6d6e` and reviewed `watchdog-winexe-diagnostic-v3.json` SHA256 `3f32ac9b43bf27248e4d10cd6082a4cfef9d786b2b4959519f84720d27b7cadd`. No CWT, SQL, monitor/service/rights changes or recovery admission followed. Prepare independently authenticated transfer of duplicate original worker/inner-Job handles before resume for later rehearsals; missing registration preserves evidence. Existing any-Job worker admission remains closed, and pre-return CWT containment/late-child cleanup is still unresolved. The broad goal remains active.
+
+
+### Two-phase external-registration contracts (2026-10-07)
+
+The separate pure registration module now preserves causal creation order: early scope/permit
+messages carry no worker PID or birth, but retain the approved image and primary-token SID.
+A separately parsed immutable returned-original-handle simulation context completes the worker
+epoch after creation; incoming receipts cannot supply their own expected worker. Closed schema2
+and producer `RegistrationPureSimulationV2` reject the earlier wire version. Head/full digests,
+model-specific creator/issuer/directions, distinct nonces, original handle continuity and worker
+birth between creation permission and return are checked. Prior AnyJob=true remains a sticky
+refusal, and equal process/Job slots in the same source table are refused.
+
+Root built the exact extracted seven-file v4 freeze with locked restore and repository
+analyzers: zero warnings/errors, **286 logical cases / 887 assertions passed**.
+These are separate pure checks, not additions to the 833-case tooling suite or native qualification.
+Manifest SHA256 `8e8bb82c1a921ea49b6afde372a37b8ebb3e42f1398a64ca9276ccffe95bd72a`; archive SHA256
+`57e1f45567a5f8bbb635db2657ad85613229498cf3ea6aea3977df712bdf28b1`. Source bytes remained unchanged after the build.
+Root record `artifacts/dashboard-agent-interruption-2026-10-07/registration-managed-validation-v4.json`
+SHA256 `881f875ebfb419be5e7c3ec0cb16d172e3fe811eaba089a5ccca62abe7758d93`; independent review is retained separately. Earlier freezes, failed initial
+build and v3's 210-case/620-assertion result remain preserved.
+
+No native bootstrap, actual duplicate custody, ACK/resume/recovery authority, SQL drain or
+startup-timeout qualification follows from parsed simulation facts; all authority/admission flags
+remain false and relaunch remains forbidden. The frozen credentialed factory still uses
+CreateProcessWithLogonW with ordinary STARTUPINFO; the reviewed current-API research records
+that AsUser/WithToken Job-list proposals need a distinct implementation and actual validation.
+Next implement authenticated original-handle bootstrap and bounded credential-free Job custody,
+then original-worker custody before resume. Actual two-root interruption/SQL drainage, standalone
+recovery, deployed CPU/Agent/dashboard qualification and pre-return containment remain open.
+The broad goal remains active; no native, credential, SQL, service or rights change occurred here.
