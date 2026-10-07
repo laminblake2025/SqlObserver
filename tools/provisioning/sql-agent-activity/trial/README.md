@@ -580,3 +580,15 @@ ordinary monitor token/profile/image/environment bindings; Administrator assumpt
 reused for SqlObserverCollector. Full two-root interruption/coordinator SQL drain, standalone
 recovery, attached-invalid signature, deployed CPU/Agent/AG/dashboard qualification and final
 acceptance remain open. The broad goal remains active.
+
+
+### Terminal exit provenance remains unknown
+
+The observed Supervisor exit 87 can also be produced by the Observer's existing
+`TerminateOwned` cleanup (`TerminateJobObject(..., 87)`). The partial result does not record
+whether that call was attempted or accepted. References above to a release refusal describe
+the incomplete protocol; they do not establish that the Supervisor entered its internal
+refusal handler. Both the failing operation and the exit's producer remain unknown.
+The new `registration-worker-observation/` candidate is adding authenticated terminal-operation
+evidence and explicit parent termination-attempt/result observations while retaining every
+existing custody, identity, Job and cleanup guard. No new native attempt has occurred here.
