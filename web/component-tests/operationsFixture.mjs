@@ -1,10 +1,23 @@
 // Explicit native DTOs. Synthetic evidence only; no backend or connected data.
+import { agentActivityHistoryTicks } from '../tools/agent-activity-history-fixture.mjs';
 export const target = '11111111-1111-4111-8111-111111111111';
 export const otherTarget = '44444444-4444-4444-8444-444444444444';
 export const runId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 export const fromUtc = '2026-08-25T11:00:00.000Z';
 export const toUtc = '2026-08-25T13:00:00.000Z';
 export const observedAtUtc = '2026-08-25T12:00:00.000Z';
+// Existing grouped-tab journeys register only an empty first Agent activity
+// list. Full history/detail behavior has its own owning finite fixture.
+export function validAgentActivityHistoryListRead(read, url) {
+  const allowed = ['targetRevision', 'fromUtc', 'toUtc', 'limit'];
+  try {
+    return !read.selection && read.cursor === undefined && [target, otherTarget].includes(read.binding.targetId) &&
+      read.binding.targetRevision === 4 && read.limit === 100 &&
+      agentActivityHistoryTicks(read.binding.fromUtc) === agentActivityHistoryTicks(fromUtc) &&
+      agentActivityHistoryTicks(read.binding.toUtc) === agentActivityHistoryTicks(toUtc) &&
+      [...url.searchParams.keys()].every(key => allowed.includes(key) && url.searchParams.getAll(key).length === 1);
+  } catch { return false; }
+}
 // Native v1 snapshot cursor: standard-base64 outer and PascalCase inner tie key.
 export const projectionCursor = (fileId, id = target) => Buffer.from(`${id}|${observedAtUtc}|${Buffer.from(JSON.stringify({
   Kind: 'ag.databases', RunId: runId, Revision: 4, From: null, To: null, A: String(fileId).padStart(64, '0'), B: String(fileId + 1000).padStart(64, '0'), C: '', D: '',

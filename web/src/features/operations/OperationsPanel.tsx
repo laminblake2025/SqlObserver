@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Tabs } from "../../components/DiagnosticUi";
-import { healthSectionHref } from "../../dashboardModel";
+import { healthSectionHref, readRoute } from "../../dashboardModel";
 import "./operationsProjection.css";
 import type { OverviewScope } from "../overview/overviewTypes";
 import { overviewWindow } from "../overview/overviewModel";
@@ -20,6 +20,10 @@ import { useBackupAvailabilityWindowHistory } from "./useBackupAvailabilityWindo
 import { BackupAvailabilityWindowHistoryPanel } from "./BackupAvailabilityWindowHistoryPanel";
 import { backupAvailabilityWindow, backupAvailabilityContextIdentity, type BackupAvailabilitySelection } from "./backupAvailabilityWindowHistoryModel";
 import { retainBackupAvailabilitySelectionHref } from "./backupAvailabilitySelectionModel";
+import { useAgentActivityHistory } from "./useAgentActivityHistory";
+import { AgentActivityHistoryPanel } from "./AgentActivityHistoryPanel";
+import { agentActivityWindow, type AgentActivitySelection } from "./agentActivityHistoryModel";
+import { retainAgentActivitySelectionHref } from "./agentActivitySelectionModel";
 
 type OperationsTab = HealthCheckTab;
 
@@ -45,6 +49,9 @@ export interface OperationsPanelProps {
   readonly selectedReplication?: ReplicationSelection | null;
   readonly onSelectReplication?: (selection: ReplicationSelection | undefined, window?: OperationsWindow) => void;
   readonly onRetainReplicationWindow?: (window: OperationsWindow, selection?: ReplicationSelection) => void;
+  readonly selectedAgentActivity?: AgentActivitySelection | null;
+  readonly onSelectAgentActivity?: (selection: AgentActivitySelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainAgentActivityWindow?: (window: OperationsWindow, selection?: AgentActivitySelection) => void;
   readonly selectedBackupHistory?: BackupAvailabilitySelection | null;
   readonly selectedAvailabilityHistory?: BackupAvailabilitySelection | null;
   readonly onSelectBackupHistory?: (selection: BackupAvailabilitySelection | undefined, window?: OperationsWindow) => void;
@@ -58,9 +65,11 @@ export function OperationsPanel({
   instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false,
   selectedTempDb, onSelectTempDb, onRetainTempDbWindow,
   selectedReplication, onSelectReplication, onRetainReplicationWindow,
+  selectedAgentActivity, onSelectAgentActivity, onRetainAgentActivityWindow,
   selectedBackupHistory, selectedAvailabilityHistory, onSelectBackupHistory, onSelectAvailabilityHistory,
   onRetainBackupHistoryWindow, onRetainAvailabilityHistoryWindow, accessContext = "",
 }: OperationsPanelProps) {
+  const renderedHash = location.hash;
   const primaryAgAuthority = JSON.stringify([instanceId.toLowerCase(), targetRevision, accessContext]);
   const primaryAgAccess = useRef<{ authority: string; owner: AvailabilityEvidenceAccessOwner }>({ authority: primaryAgAuthority, owner: {} });
   if (primaryAgAccess.current.authority !== primaryAgAuthority) primaryAgAccess.current = { authority: primaryAgAuthority, owner: {} };
@@ -115,6 +124,35 @@ export function OperationsPanel({
   const replicationHistory = useReplicationWindowHistory(tab === "replication" ? replicationContext.binding : undefined, selectedReplication, refresh, accessContext);
   const receivedReplicationWindow = replicationHistory.list.pages[0] ?? replicationHistory.detail.pages[0] ?? replicationContext.binding;
   const retainReplicationWindow = () => { if (receivedReplicationWindow) { replicationHistory.retain(); retainedReplicationWindow.current = {key:replicationScopeKey,window:receivedReplicationWindow}; onRetainReplicationWindow?.(receivedReplicationWindow, replicationHistory.selected ?? undefined); } };
+  const agentActivityScopeKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range,
+    scope.range === "custom" ? scope.from ?? "" : "", scope.range === "custom" ? scope.to ?? "" : ""]);
+  const retainedAgentActivityWindow = useRef<{ key: string; window: OperationsWindow } | undefined>(undefined);
+  const previousAgentActivityScope = useRef(agentActivityScopeKey);
+  if (previousAgentActivityScope.current !== agentActivityScopeKey) {
+    previousAgentActivityScope.current = agentActivityScopeKey;
+    retainedAgentActivityWindow.current = undefined;
+  }
+  const agentActivityContext = useMemo(() => {
+    try {
+      const window = retainedAgentActivityWindow.current?.key === agentActivityScopeKey
+        ? retainedAgentActivityWindow.current.window : overviewWindow(scope, Date.now());
+      const bounded = agentActivityWindow(window.fromUtc, window.toUtc);
+      if (selectedAgentActivity !== undefined) retainedAgentActivityWindow.current = { key: agentActivityScopeKey, window: bounded };
+      return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined };
+    } catch (failure) {
+      return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid Agent observation window." };
+    }
+  }, [instanceId, targetRevision, agentActivityScopeKey, refresh, selectedAgentActivity]);
+  const agentActivityHistory = useAgentActivityHistory(tab === "agent" ? agentActivityContext.binding : undefined,
+    selectedAgentActivity, refresh, accessContext);
+  const receivedAgentActivityWindow = agentActivityHistory.list.pages[0] ?? agentActivityHistory.detail.pages[0] ?? agentActivityContext.binding;
+  const retainAgentActivityWindow = () => {
+    if (receivedAgentActivityWindow) {
+      agentActivityHistory.retain();
+      retainedAgentActivityWindow.current = { key: agentActivityScopeKey, window: receivedAgentActivityWindow };
+      onRetainAgentActivityWindow?.(receivedAgentActivityWindow, agentActivityHistory.selected ?? undefined);
+    }
+  };
   const earlierScopeKey = scope.range === "custom" ? backupAvailabilityContextIdentity({ targetId: instanceId, targetRevision, fromUtc: scope.from ?? "", toUtc: scope.to ?? "" }) : JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range]);
   const retainedBackupWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
   const retainedAvailabilityWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
@@ -137,14 +175,25 @@ export function OperationsPanel({
   function retainAvailabilityWindow() { if (receivedAvailabilityWindow) { availabilityHistory.retain(); retainedAvailabilityWindow.current = { key: earlierScopeKey, window: receivedAvailabilityWindow }; onRetainAvailabilityHistoryWindow?.(receivedAvailabilityWindow, availabilityHistory.selected ?? undefined); } }
   return <section ref={section} className="operations-screen" aria-label="Health checks">
     <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB usage evidence, availability, and replication from collected evidence.</p></div></div>
-    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => { setSelectedTab({ key: tabKey, value: value as OperationsTab }); location.hash = retainBackupAvailabilitySelectionHref(retainReplicationSelectionHref(healthCheckHref(scope, instanceId, value as OperationsTab), location.hash), location.hash); }} />
+    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => {
+      const currentHash = location.hash, currentRoute = readRoute(currentHash);
+      if (currentHash !== renderedHash || currentRoute.page !== "operations"
+        || currentRoute.target.toLowerCase() !== instanceId.toLowerCase()) return;
+      setSelectedTab({ key: tabKey, value: value as OperationsTab });
+      location.hash = retainAgentActivitySelectionHref(retainBackupAvailabilitySelectionHref(retainReplicationSelectionHref(
+        healthCheckHref(scope, instanceId, value as OperationsTab), currentHash), currentHash), currentHash);
+    }} />
     <nav className="toolbar" aria-label="Additional health checks">
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
       <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>
     </nav>
     <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
-    {scope.range === "custom" && <p className="table-note">Rewind selects completion-window TempDB, replication and supporting legacy backup/AG receipts. Primary backup assessments and per-replica v2 AG evidence use the declared window end as their assessment/publication cutoff; their start does not filter snapshot rows. SQL Agent history uses first-observed time.</p>}
-    {tab === "agent" ? <AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
+    {scope.range === "custom" && <p className="table-note">Rewind selects completion-window TempDB, replication, Agent activity observations and supporting legacy backup/AG receipts. Primary backup assessments and per-replica v2 AG evidence use the declared window end as their assessment/publication cutoff; their start does not filter snapshot rows. SQL Agent failure history uses first-observed time.</p>}
+    {tab === "agent" ? <><AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
+      {agentActivityContext.error && <p role="alert">{agentActivityContext.error}</p>}
+      <AgentActivityHistoryPanel history={agentActivityHistory} selected={selectedAgentActivity}
+        onSelectReceipt={selection => onSelectAgentActivity?.(selection, receivedAgentActivityWindow)}
+        onRetainWindow={retainAgentActivityWindow} /></>
       : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} targetRevision={targetRevision} accessContext={accessContext} accessOwner={primaryAgAccess.current.owner} scope={scope} refresh={refresh} />
       {availabilityContext.error && <p role="alert">{availabilityContext.error}</p>}<BackupAvailabilityWindowHistoryPanel kind="availability" history={availabilityHistory} selected={selectedAvailabilityHistory} onSelectReceipt={selection => onSelectAvailabilityHistory?.(selection, receivedAvailabilityWindow)} onRetainWindow={retainAvailabilityWindow} />
       </> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />

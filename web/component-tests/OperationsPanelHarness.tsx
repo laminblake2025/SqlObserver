@@ -5,6 +5,7 @@ import { OperationsPanel } from "../src/features/operations/OperationsPanel";
 import { healthCheckHref, healthCheckTab } from "../src/features/operations/agentHistoryModel";
 import {readTempDbSelection,tempDbSelectionHref,retainedTempDbSelectionHref} from "../src/features/operations/tempDbSelectionModel";
 import { readOverviewScope } from "../src/features/overview/overviewModel";
+import { readAgentActivitySelection, clearAgentActivitySelectionHref, retainedAgentActivitySelectionHref } from "../src/features/operations/agentActivitySelectionModel";
 import {readBackupAvailabilitySelection,retainedBackupAvailabilitySelectionHref,type BackupAvailabilityKind,type BackupAvailabilitySelection} from "../src/features/operations/backupAvailabilitySelectionModel";
 import "../src/styles.css";
 import "./harness.css";
@@ -34,6 +35,15 @@ function Harness() {
       <button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh context</button>
     </fieldset>
     <OperationsPanel instanceId={scope.target} targetRevision={4} scope={scope} initialTab={tab} refresh={refresh} selectedTempDb={readTempDbSelection(hash,scope.target)} onSelectTempDb={(selection,window) => {location.hash=window ? retainedTempDbSelectionHref(scope,window,selection) : tempDbSelectionHref(scope,selection);}} onRetainTempDbWindow={(window,selection)=>{location.hash=retainedTempDbSelectionHref(scope,window,selection);}}
+      selectedAgentActivity={readAgentActivitySelection(hash, scope.target)}
+      onSelectAgentActivity={(selection, window) => {
+        if (location.hash !== hash || tab !== "agent") return;
+        if (selection === undefined) location.hash = clearAgentActivitySelectionHref(location.hash);
+        else if (window) location.hash = retainedAgentActivitySelectionHref(scope, window, selection);
+      }}
+      onRetainAgentActivityWindow={(window, selection) => {
+        if (location.hash === hash && tab === "agent") location.hash = retainedAgentActivitySelectionHref(scope, window, selection);
+      }}
       selectedBackupHistory={readBackupAvailabilitySelection(hash,'backup',scope.target)} selectedAvailabilityHistory={readBackupAvailabilitySelection(hash,'availability',scope.target)}
       onSelectBackupHistory={(selection,window)=>selectHistory('backup',selection,window)} onSelectAvailabilityHistory={(selection,window)=>selectHistory('availability',selection,window)}
       onRetainBackupHistoryWindow={(window,selection)=>selectHistory('backup',selection,window)} onRetainAvailabilityHistoryWindow={(window,selection)=>selectHistory('availability',selection,window)} />

@@ -6,6 +6,8 @@ import {tempDbHistoryBackend,tempDbHistoryReadBinding,tempDbHistoryJson} from '.
 import {replicationHistoryBackend,replicationHistoryReadBinding,replicationHistoryJson,replicationHistoryMicro} from './replicationWindowHistoryFixture.mjs';
 import {backupAvailabilityBackend,backupAvailabilityReadBinding,backupAvailabilityJson,validBackupAvailabilityRead} from './backupAvailabilityWindowHistoryFixture.mjs';
 import { target, otherTarget, fromUtc, toUtc, requestPath, routeHash, fixture } from './operationsFixture.mjs';
+import { validAgentActivityHistoryListRead } from './operationsFixture.mjs';
+import { agentActivityHistoryBackend, agentActivityHistoryReadBinding, agentActivityHistoryJson } from '../tools/agent-activity-history-fixture.mjs';
 
 const origin = 'http://127.0.0.1:4328';
 const sessions = new WeakMap();
@@ -20,7 +22,7 @@ function key(path) {
 }
 
 test.beforeEach(async ({ page }) => {
-  const session = { registry: new Map(), requests: [], unexpected: [], tempdb:tempDbHistoryBackend(), replication:replicationHistoryBackend({count:0}),history:backupAvailabilityBackend({count:0}) };
+  const session = { registry: new Map(), requests: [], unexpected: [], agentActivity:agentActivityHistoryBackend({count:0}), tempdb:tempDbHistoryBackend(), replication:replicationHistoryBackend({count:0}),history:backupAvailabilityBackend({count:0}) };
   sessions.set(page, session);
   for (const id of [target, otherTarget]) {
     for (const [kind, body] of Object.entries(fixture(id))) session.registry.set(key(requestPath(kind, id)), body);
@@ -33,6 +35,14 @@ test.beforeEach(async ({ page }) => {
       return route.abort();
     }
     if (!/^\/api(?:\/|$)/.test(url.pathname)) return route.continue();
+    const agentActivityRead = agentActivityHistoryReadBinding(url);
+    if (agentActivityRead) {
+      if (request.method() !== 'GET' || !validAgentActivityHistoryListRead(agentActivityRead, url)) {
+        session.unexpected.push('Unregistered Agent activity history binding '+url.href); return route.abort();
+      }
+      session.requests.push(request);
+      return agentActivityHistoryJson(route, session.agentActivity.read(agentActivityRead.binding, undefined, 100));
+    }
     const supporting=backupAvailabilityReadBinding(url);
     if(supporting){if(request.method()!=='GET'||!validBackupAvailabilityRead(supporting,[target,otherTarget])){session.unexpected.push('Unregistered supporting-history binding '+url.href);return route.abort();}session.requests.push(request);return backupAvailabilityJson(route,supporting.selection?session.history.snapshot(supporting.kind,supporting.stream,supporting.binding,supporting.selection,supporting.cursor,supporting.limit):session.history.read(supporting.kind,supporting.binding,supporting.cursor,supporting.limit));}
     const replicationRead=replicationHistoryReadBinding(url);

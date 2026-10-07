@@ -119,6 +119,10 @@ builder.Services.AddSingleton<ICpuCaptureWindowHistoryReadPort>(static services 
     services.GetRequiredService<PostgreSqlTargetControlPlane>().CpuCaptureWindowHistory);
 builder.Services.AddSingleton<ICpuCaptureWindowHistoryService, CpuCaptureWindowHistoryService>();
 builder.Services.AddSingleton<CpuCaptureWindowHistoryCursorProtector>();
+builder.Services.AddSingleton<ISqlAgentActivityWindowHistoryReadPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlAgentActivityWindowHistory);
+builder.Services.AddSingleton<ISqlAgentActivityWindowHistoryService, SqlAgentActivityWindowHistoryService>();
+builder.Services.AddSingleton<SqlAgentActivityWindowHistoryCursorProtector>();
 builder.Services.AddSingleton<ITempDbWindowHistoryReadPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().TempDbWindowHistory);
 builder.Services.AddSingleton<ITempDbWindowHistoryService, TempDbWindowHistoryService>();
@@ -184,9 +188,9 @@ builder.Services.AddSingleton<ICpuComponentsCollectionAdministrationService, Cpu
 builder.Services.AddSingleton<IServerLifecycleCollectionAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerLifecycleCollectionAdministration);
 builder.Services.AddSingleton<IServerLifecycleCollectionAdministrationService, ServerLifecycleCollectionAdministrationService>();
-    builder.Services.AddSingleton<ISqlAgentActivityObservationsCollectionAdministrationPort>(static services =>
-        services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlAgentActivityObservationsCollectionAdministration);
-    builder.Services.AddSingleton<ISqlAgentActivityObservationsCollectionAdministrationService, SqlAgentActivityObservationsCollectionAdministrationService>();
+builder.Services.AddSingleton<ISqlAgentActivityObservationsCollectionAdministrationPort>(static services =>
+    services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlAgentActivityObservationsCollectionAdministration);
+builder.Services.AddSingleton<ISqlAgentActivityObservationsCollectionAdministrationService, SqlAgentActivityObservationsCollectionAdministrationService>();
 builder.Services.AddSingleton<IConfigurationCollectionAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ConfigurationCollectionAdministration);
 builder.Services.AddSingleton<IQueryStorePlanRegressionRepositoryPort>(static services =>
@@ -325,6 +329,7 @@ app.MapServerLifecycleCollectionEndpoints();
 app.MapSqlAgentActivityObservationsCollectionEndpoints();
 app.MapDatabaseFileWindowHistoryEndpoints();
 app.MapCpuCaptureWindowHistoryEndpoints();
+app.MapSqlAgentActivityWindowHistoryEndpoints();
 app.MapCpuComponentWindowHistoryEndpoints();
 app.MapTempDbWindowHistoryEndpoints();
 app.MapReplicationWindowHistoryEndpoints();
