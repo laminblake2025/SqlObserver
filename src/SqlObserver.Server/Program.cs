@@ -184,6 +184,9 @@ builder.Services.AddSingleton<ICpuComponentsCollectionAdministrationService, Cpu
 builder.Services.AddSingleton<IServerLifecycleCollectionAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ServerLifecycleCollectionAdministration);
 builder.Services.AddSingleton<IServerLifecycleCollectionAdministrationService, ServerLifecycleCollectionAdministrationService>();
+    builder.Services.AddSingleton<ISqlAgentActivityObservationsCollectionAdministrationPort>(static services =>
+        services.GetRequiredService<PostgreSqlTargetControlPlane>().SqlAgentActivityObservationsCollectionAdministration);
+    builder.Services.AddSingleton<ISqlAgentActivityObservationsCollectionAdministrationService, SqlAgentActivityObservationsCollectionAdministrationService>();
 builder.Services.AddSingleton<IConfigurationCollectionAdministrationPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().ConfigurationCollectionAdministration);
 builder.Services.AddSingleton<IQueryStorePlanRegressionRepositoryPort>(static services =>
@@ -319,6 +322,7 @@ app.MapSqlVolumeEndpoints();
 app.MapSqlVolumePlanningWindowEndpoints();
 app.MapServerLifecycleHistoryEndpoints();
 app.MapServerLifecycleCollectionEndpoints();
+app.MapSqlAgentActivityObservationsCollectionEndpoints();
 app.MapDatabaseFileWindowHistoryEndpoints();
 app.MapCpuCaptureWindowHistoryEndpoints();
 app.MapCpuComponentWindowHistoryEndpoints();

@@ -86,7 +86,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             : manifest.Limits.MaxRows;
         if (result.Accounting.SourceRowsRead > sourceRowBound ||
             result.Accounting.ResponseBytes > manifest.Limits.MaxResponseBytes ||
-            result.Accounting.OutputBytes > manifest.Limits.MaxResponseBytes)
+            result.Accounting.OutputBytes > (manifest.OutputKind == CollectorOutputKind.SqlAgentActivityObservations
+                ? SqlAgentActivityObservationsOutputValidation.MaximumCaptureBytes : manifest.Limits.MaxResponseBytes))
         {
             throw new InvalidDataException("Collector output exceeded a manifest execution bound.");
         }
@@ -114,7 +115,8 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
             payload.ServerConfigurations.Items.Count > Contract.MaxServerConfigurationObservations ||
             (payload.OperationalHealth?.ItemCount ?? 0) > Contract.MaxOperationalHealthObservations ||
             (payload.CpuPairedCapture is null ? 0 : 1) > Contract.MaxCpuPairedCaptureObservations ||
-            (payload.CpuComponents is null ? 0 : 1) > Contract.MaxCpuComponentsObservations)
+            (payload.CpuComponents is null ? 0 : 1) > Contract.MaxCpuComponentsObservations ||
+            (payload.SqlAgentModuleCapture is null ? 0 : 1) > Contract.MaxSqlAgentActivityObservations)
         {
             throw new InvalidDataException("Collector output exceeded its registered output cardinality.");
         }
@@ -191,6 +193,17 @@ public sealed class CollectorOutputValidator : ICollectorOutputValidator
         }
         else if (payload.CpuComponents is not null || manifest.OutputKind == CollectorOutputKind.CpuComponents)
             throw new InvalidDataException("CPU components belong only to their declared collector.");
+
+        if (manifest.Id.Value == "sql-agent.activity-observations")
+        {
+            if (manifest.ManifestVersion.Value != 1 || manifest.OutputSchemaVersion.Value != 1 ||
+                manifest.OutputKind != CollectorOutputKind.SqlAgentActivityObservations || Contract.MaxSqlAgentActivityObservations != 1)
+                throw new InvalidDataException("Agent observations require their exact versioned output contract.");
+            SqlAgentActivityObservationsOutputValidation.Validate(payload, request.TargetId, request.TargetRevision,
+                request.RunId, result.Outcome, result.Accounting, result.Loss);
+        }
+        else if (payload.SqlAgentModuleCapture is not null || manifest.OutputKind == CollectorOutputKind.SqlAgentActivityObservations)
+            throw new InvalidDataException("Agent observations belong only to their declared collector.");
 
         if (manifest.Id.Value == "server.lifecycle")
         {

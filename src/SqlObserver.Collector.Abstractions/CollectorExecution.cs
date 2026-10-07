@@ -114,7 +114,8 @@ public sealed class CollectorPayload
         PlanCacheRuntimeOutputBatch? planCacheRuntime = null,
         PlanCacheContentOutputBatch? planCacheContent = null,
         CpuPairedCaptureObservation? cpuPairedCapture = null,
-        CpuComponentsObservation? cpuComponents = null)
+        CpuComponentsObservation? cpuComponents = null,
+        SqlAgentModuleCaptureResult? sqlAgentModuleCapture = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -159,6 +160,7 @@ public sealed class CollectorPayload
         HostMetricsContext = hostMetricsContext;
         CpuPairedCapture = cpuPairedCapture;
         CpuComponents = cpuComponents;
+        SqlAgentModuleCapture = sqlAgentModuleCapture;
     }
 
     public IReadOnlyList<MetricSample> Metrics => _metrics;
@@ -181,6 +183,7 @@ public sealed class CollectorPayload
     public HostMetricsPayloadContext? HostMetricsContext { get; }
     public CpuPairedCaptureObservation? CpuPairedCapture { get; }
     public CpuComponentsObservation? CpuComponents { get; }
+    public SqlAgentModuleCaptureResult? SqlAgentModuleCapture { get; }
     public int ItemCount => checked(
         Metrics.Count +
         Databases.Items.Count +
@@ -196,7 +199,7 @@ public sealed class CollectorPayload
         (PlanCacheRuntime?.Items.Count ?? 0) +
         (PlanCacheContent?.Items.Count ?? 0) +
         ServerConfigurations.Items.Count +
-        (OperationalHealth?.ItemCount ?? 0) + (CpuPairedCapture is null ? 0 : 1) + (CpuComponents is null ? 0 : 1));
+        (OperationalHealth?.ItemCount ?? 0) + (CpuPairedCapture is null ? 0 : 1) + (CpuComponents is null ? 0 : 1) + (SqlAgentModuleCapture is null ? 0 : 1));
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
         Databases.Items.Sum(static item => item.EstimatedSizeBytes) +
@@ -212,7 +215,7 @@ public sealed class CollectorPayload
         (PlanCacheRuntime?.EstimatedSizeBytes ?? 0) +
         (PlanCacheContent?.EstimatedSizeBytes ?? 0) +
         ServerConfigurations.EstimatedSizeBytes +
-        (OperationalHealth?.EstimatedSizeBytes ?? 0) + (CpuPairedCapture?.EstimatedSizeBytes ?? 0) + (CpuComponents?.EstimatedSizeBytes ?? 0));
+        (OperationalHealth?.EstimatedSizeBytes ?? 0) + (CpuPairedCapture?.EstimatedSizeBytes ?? 0) + (CpuComponents?.EstimatedSizeBytes ?? 0) + (SqlAgentModuleCapture is null ? 0 : SqlAgentActivityObservationsOutputValidation.EstimatedSizeBytes(SqlAgentModuleCapture)));
 
     public static CollectorPayload Empty { get; } = new();
 }
@@ -371,7 +374,8 @@ public sealed class CollectorOutputContract
         int maxPlanCacheRuntimeObservations = 0,
         int maxPlanCacheContentObservations = 0,
         int maxCpuPairedCaptureObservations = 0,
-        int maxCpuComponentsObservations = 0)
+        int maxCpuComponentsObservations = 0,
+        int maxSqlAgentActivityObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -479,6 +483,8 @@ public sealed class CollectorOutputContract
         MaxCpuPairedCaptureObservations = maxCpuPairedCaptureObservations;
         if (maxCpuComponentsObservations is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(maxCpuComponentsObservations));
         MaxCpuComponentsObservations = maxCpuComponentsObservations;
+        if (maxSqlAgentActivityObservations is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(maxSqlAgentActivityObservations));
+        MaxSqlAgentActivityObservations = maxSqlAgentActivityObservations;
     }
 
     public CollectorOutputSchemaVersion SchemaVersion { get; }
@@ -500,6 +506,7 @@ public sealed class CollectorOutputContract
     public int MaxOperationalHealthObservations { get; }
     public int MaxCpuPairedCaptureObservations { get; }
     public int MaxCpuComponentsObservations { get; }
+    public int MaxSqlAgentActivityObservations { get; }
 }
 
 /// <summary>Typed M9 payload; snapshots are immutable and contain no provider text.</summary>

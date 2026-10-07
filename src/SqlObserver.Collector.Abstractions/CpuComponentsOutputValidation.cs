@@ -17,7 +17,7 @@ public static class CpuComponentsOutputValidation
     {
         ArgumentNullException.ThrowIfNull(payload);
         CpuComponentsObservation? value = payload.CpuComponents;
-        if (payload.ItemCount != (value is null ? 0 : 1) || payload.OperationalHealth is not null ||
+        if (payload.ItemCount != (value is null ? 0 : 1) || payload.OperationalHealth is not null || payload.SqlAgentModuleCapture is not null ||
             payload.CpuPairedCapture is not null || payload.HostMetricsContext is not null ||
             payload.QueryPerformanceStatuses.Count != 0 || payload.QueryPerformanceTargetStatus is not null ||
             payload.QueryStoreGroups is not null || payload.PlanCacheRuntime is not null || payload.PlanCacheContent is not null ||

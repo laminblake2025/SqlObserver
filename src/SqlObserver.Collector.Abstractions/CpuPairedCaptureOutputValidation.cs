@@ -22,7 +22,7 @@ public static class CpuPairedCaptureOutputValidation
     {
         ArgumentNullException.ThrowIfNull(payload);
         CpuPairedCaptureObservation? capture = payload.CpuPairedCapture;
-        if (payload.ItemCount != (capture is null ? 0 : 1) || payload.OperationalHealth is not null ||
+        if (payload.ItemCount != (capture is null ? 0 : 1) || payload.OperationalHealth is not null || payload.SqlAgentModuleCapture is not null ||
             payload.HostMetricsContext is not null || payload.QueryPerformanceStatuses.Count != 0 ||
             payload.QueryPerformanceTargetStatus is not null || payload.QueryStoreGroups is not null ||
             payload.PlanCacheRuntime is not null || payload.PlanCacheContent is not null ||

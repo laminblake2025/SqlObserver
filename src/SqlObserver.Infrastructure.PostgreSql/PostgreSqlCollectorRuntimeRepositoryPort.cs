@@ -42,6 +42,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
     private static readonly string ReconcileM13Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m13(", StringComparison.Ordinal);
     private static readonly string ReconcileM14Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m14(", StringComparison.Ordinal);
     private static readonly string ReconcileM15Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m15(", StringComparison.Ordinal);
+    private static readonly string ReconcileSqlAgentActivityObservationsSql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_sql_agent_activity_observations(", StringComparison.Ordinal);
     private static readonly string ReconcileServerLifecycleSql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_server_lifecycle(", StringComparison.Ordinal);
     private static readonly string ReconcileCpuComponentsSql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_cpu_components(", StringComparison.Ordinal);
     private static readonly string ReconcileDeadlocksV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_deadlocks_v2(", StringComparison.Ordinal);
@@ -375,6 +376,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         "engine.configurations",
         "cpu.components",
         "server.lifecycle",
+        "sql-agent.activity-observations",
     ];
 
     private static readonly string[] RequiredManifestDigests =
@@ -400,6 +402,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         "0e2091d6e4e8246154aeacb7c7fe1578a9264623aae883e0ec7088b9ca266aeb",
         "12efdd346d5f9309c3938c4f13cc58e5a5e6a6622ae8b8b4e46e1f18b16932c3",
         "61d1fc88832caa1b98121e80f757c810ec9e2798914389550b4f52699ad6bbd6",
+        "c7e82d6b77087a0ef2ab7aec7551d5f4cb2be335129afbf6391bbf503afba15d",
     ];
 
     private static readonly string[] RequiredBundleDigests =
@@ -425,6 +428,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         "0eb242b28bd428bbcb5bc3ea146c6fa8739226fbc779da470e431832a156a4c9",
         "650fdd81cc50ed82c5d9e3db2f1685a276556b4d416e61f2c2359c9bb5f70116",
         "fc783bea8bc4f56f76a9f8c7b84e46f2205c1f20b852275ef8676fc90ef658d2",
+        "d60bbdffe9b547c0fff27b7de0fff8457f7b6e42d34f55a9a21f68c995ef06a4",
     ];
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
@@ -471,6 +475,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                 .ConfigureAwait(false);
             string reconcileSql = request.Entries.Count switch
             {
+                22 => ReconcileSqlAgentActivityObservationsSql,
                 21 => ReconcileServerLifecycleSql,
                 20 => ReconcileCpuComponentsSql,
                 19 when request.Entries[7].Manifest.ManifestVersion.Value == 2 => ReconcileDeadlocksV2Sql,
@@ -764,6 +769,8 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
+            if (request.Work.CollectorId.Value == "sql-agent.activity-observations")
+                return await CommitSqlAgentActivityAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             if (request.Work.CollectorId.Value == "cpu.components")
                 return await CommitCpuComponentsAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             if (request.Work.CollectorId.Value == "cpu.paired-capture")
@@ -1663,7 +1670,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
 
     private static void ValidateCatalog(IReadOnlyList<CollectorCatalogEntry> entries)
     {
-        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18 or 19 or 20 or 21))
+        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18 or 19 or 20 or 21 or 22))
         {
             throw new InvalidDataException("PostgreSQL accepts only an exact reviewed collector catalog.");
         }
@@ -1722,6 +1729,16 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
+        if (request.Work.CollectorId.Value == "sql-agent.activity-observations")
+        {
+            if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
+                throw new InvalidDataException("Agent observations require their exact version and schema.");
+            SqlAgentActivityObservationsOutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.RunId, request.Summary.Outcome,
+                request.Summary.Accounting, request.Summary.Loss);
+        }
+        else if (request.Payload.SqlAgentModuleCapture is not null)
+            throw new InvalidDataException("Agent observations require their declared collector.");
         if (request.Work.CollectorId.Value == "cpu.components")
         {
             if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
@@ -1910,6 +1927,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         ValidateM10Payload(request);
         bool exactKind = request.Work.CollectorId.Value switch
         {
+            "sql-agent.activity-observations" => request.Payload.ItemCount == (request.Payload.SqlAgentModuleCapture is null ? 0 : 1),
             "cpu.components" => request.Payload.ItemCount == (request.Payload.CpuComponents is null ? 0 : 1),
             "cpu.paired-capture" => request.Payload.ItemCount == (request.Payload.CpuPairedCapture is null ? 0 : 1),
             "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,

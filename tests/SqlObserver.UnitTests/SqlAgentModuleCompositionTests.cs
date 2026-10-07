@@ -11,7 +11,7 @@ namespace SqlObserver.UnitTests;
 public sealed class SqlAgentModuleCompositionTests
 {
     [Fact]
-    public async Task CollectorResolvesFreshRepositoryAuthorityWithoutRegisteringActivityScheduleOrAdministration()
+    public async Task CollectorResolvesFreshRepositoryAuthorityAndObservationAdapterWithoutAdministration()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -27,6 +27,11 @@ public sealed class SqlAgentModuleCompositionTests
         Assert.IsType<SqlServerAgentActivityModuleCaptureReader>(provider.GetRequiredService<SqlServerAgentActivityModuleCaptureReader>());
         Assert.Null(provider.GetService<ISqlAgentModuleEnrollmentAdministrationPort>());
         Assert.Null(provider.GetService<PostgreSqlTargetControlPlane>());
+        Assert.Null(provider.GetService<ISqlAgentActivityObservationsCollectionAdministrationPort>());
+        CollectorRegistration observation = Assert.Single(provider.GetRequiredService<CollectorRegistry>().Registrations,
+            item => item.Manifest.Id.Value == "sql-agent.activity-observations");
+        Assert.Equal(22, observation.ExecutionOrder);
+        Assert.IsType<SqlAgentActivityObservationsCollector>(observation.Collector);
         Assert.DoesNotContain(provider.GetRequiredService<CollectorRegistry>().Registrations,
             item => item.Manifest.Id.Value == "sql-agent.activity");
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();

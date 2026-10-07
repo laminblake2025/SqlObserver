@@ -99,6 +99,8 @@ public static class CollectorServiceRegistration
         services.AddSingleton<ISqlAgentModuleEnrollmentResolver>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().SqlAgentModuleEnrollments);
         services.AddSingleton<SqlServerAgentActivityModuleCaptureReader>();
+        services.AddSingleton(static _ => SqlAgentActivityObservationsAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlAgentActivityObservationsCollector>();
         services.AddSingleton<IQueryStoreGroupWindowPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().QueryStoreGroupWindows);
         services.AddSingleton<IAlertRepositoryPort>(static provider =>
@@ -307,6 +309,7 @@ public static class CollectorServiceRegistration
         var hostBundle = new CollectorSha256Digest(hostCatalog.BundleChecksum);
         CpuComponentsAssetCatalog cpuCatalog = provider.GetRequiredService<CpuComponentsAssetCatalog>();
         ServerLifecycleAssetCatalog lifecycleCatalog = provider.GetRequiredService<ServerLifecycleAssetCatalog>();
+        SqlAgentActivityObservationsAssetCatalog agentCatalog = provider.GetRequiredService<SqlAgentActivityObservationsAssetCatalog>();
         static CollectorSha256Digest Digest(string json) => new(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant());
         return new CollectorRegistry(
         [
@@ -391,6 +394,10 @@ public static class CollectorServiceRegistration
                 new CollectorOutputValidator(SqlServerLifecycleCollector.OutputContract),
                 Digest(lifecycleCatalog.ManifestJson),
                 new CollectorSha256Digest(lifecycleCatalog.BundleChecksum)),
+            new CollectorRegistration(22, provider.GetRequiredService<SqlAgentActivityObservationsCollector>(),
+                new CollectorOutputValidator(SqlAgentActivityObservationsCollector.OutputContract),
+                Digest(agentCatalog.ManifestJson),
+                new CollectorSha256Digest(agentCatalog.BundleChecksum)),
         ]);
     }
 }

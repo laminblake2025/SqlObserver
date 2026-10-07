@@ -267,6 +267,7 @@ public enum CollectorOutputKind
     ServerLifecycle = 19,
     CpuPairedCapture = 20,
     CpuComponents = 21,
+    SqlAgentActivityObservations = 22,
 }
 
 public sealed class CollectorResiliencePolicy

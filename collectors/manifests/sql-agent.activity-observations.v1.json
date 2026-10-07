@@ -1,0 +1,59 @@
+{
+  "$schema": "sql-agent.activity-observations.v1.schema.json",
+  "schemaVersion": 6,
+  "collectorId": "sql-agent.activity-observations",
+  "collectorVersion": 1,
+  "displayName": "SQL Agent activity observations",
+  "operationalMode": "passive",
+  "dependsOn": [
+    "capability.connection",
+    "engine.core"
+  ],
+  "supportedTargets": {
+    "product": "Microsoft SQL Server",
+    "minimumMajorVersion": 17,
+    "maximumMajorVersion": 17,
+    "platforms": [
+      "Windows"
+    ],
+    "engineEditions": [
+      2,
+      3
+    ]
+  },
+  "requiredCapabilities": [
+    "connection.tds",
+    "authentication.windows-integrated",
+    "transport.tls-validated",
+    "privilege.non-sysadmin",
+    "platform.windows"
+  ],
+  "requiredPermissionsByMajor": {
+    "17": []
+  },
+  "cadence": {
+    "defaultIntervalSeconds": 60,
+    "minimumIntervalSeconds": 30,
+    "nonOverlappingPerTarget": true
+  },
+  "executionBounds": {
+    "connectTimeoutSeconds": 5,
+    "commandTimeoutSeconds": 10,
+    "maximumRows": 513,
+    "maximumResponseBytes": 524288
+  },
+  "resilience": {
+    "maximumAttempts": 1,
+    "transientRetryDelayMilliseconds": 0,
+    "circuitFailureThreshold": 3,
+    "circuitOpenSeconds": 300
+  },
+  "estimatedCostClass": "moderate",
+  "fallback": {
+    "mode": "unsupported"
+  },
+  "queryResource": "sql-agent.activity-observations.sqlserver17-windows.v1.sql",
+  "outputSchemaVersion": 1,
+  "outputKind": "sql-agent-activity-observations",
+  "defaultEnabled": false
+}

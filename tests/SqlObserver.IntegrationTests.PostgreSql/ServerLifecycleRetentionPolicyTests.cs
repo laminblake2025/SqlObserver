@@ -20,9 +20,9 @@ public sealed class ServerLifecycleRetentionPolicyTests(PostgreSql18Fixture fixt
         long historyBefore = await CountAsync(database, "SELECT count(*) FROM system.retention_policy_history;");
         Assert.False((await migrations.ApplyPendingAsync(new(MigrationBatchResult.MaximumResults, timeout), CancellationToken.None)).HasFailures);
         // Migrations0359/0365 add independently disabled CPU receipt policies and audit rows.
-        Assert.Equal(historyBefore + 2, await CountAsync(database, "SELECT count(*) FROM system.retention_policy_history;"));
+        Assert.Equal(historyBefore + 3, await CountAsync(database, "SELECT count(*) FROM system.retention_policy_history;"));
         Assert.Equal(historyBefore, await CountAsync(database,
-            "SELECT count(*) FROM system.retention_policy_history WHERE data_class NOT IN('cpu_paired_captures','cpu_components');"));
+            "SELECT count(*) FROM system.retention_policy_history WHERE data_class NOT IN('cpu_paired_captures','cpu_components','sql_agent_activity_observations');"));
         Assert.Equal(1L, await CountAsync(database,
             "SELECT count(*) FROM system.retention_policy WHERE data_class='cpu_paired_captures' AND NOT enabled AND retain_for IS NULL AND minimum_partitions_to_keep=3 AND policy_revision=1;"));
         Assert.Equal(2L, await CountAsync(database, """
