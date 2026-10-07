@@ -30,6 +30,16 @@ public static class TrialCoordinator
         byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualify, CancellationToken cancellationToken)
         => RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualify, null, TrialInstallationPolicy.ExecuteOnlyV1, cancellationToken);
 
+    /// <summary>Runs one signed-only finite qualification with the existing metadata-verification policy.
+    /// The callback must finish its owned monitor workers and guarded fixture cleanup before returning.</summary>
+    public static Task<TrialRunResult> RunMetadataVerificationSignedAsync(SqlConnection connection, string principal, Guid deploymentId,
+        byte[] moduleUtf8, Func<CancellationToken, Task<bool>> qualify, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(qualify);
+        return RunCoreAsync(connection, principal, deploymentId, moduleUtf8, qualify, null,
+            TrialInstallationPolicy.MetadataVerificationV2, cancellationToken);
+    }
+
     /// <summary>Qualifies the signed module, records a committed unsigned postimage, then qualifies
     /// permission denial under the same actual monitor. Both callbacks must join their owned processes.</summary>
     public static Task<TrialRunResult> RunSignatureRemovalAsync(SqlConnection connection, string principal, Guid deploymentId,

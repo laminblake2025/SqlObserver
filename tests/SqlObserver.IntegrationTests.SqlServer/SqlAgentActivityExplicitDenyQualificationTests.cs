@@ -126,6 +126,7 @@ internal sealed record SqlAgentActivityNativeContext(SqlAgentProductionModuleQua
 {
     internal string? PrivateReceipt { get; set; }
     internal string? DeferredRepositoryReceipt { get; set; }
+    internal string? DeferredRunningJobReceipt { get; set; }
     internal object? SafeEvidence { get; set; }
 }
 
@@ -200,6 +201,8 @@ internal sealed class SqlAgentActivityNativeQualificationHarness(ITestOutputHelp
             if (context.PrivateReceipt is { } receipt) output.WriteLine(SqlAgentActivityCollectorNativeReceipt.Marker + receipt);
             if (context.DeferredRepositoryReceipt is { } repositoryReceipt)
                 output.WriteLine(SqlAgentActivityRepositoryNativeReceipt.Marker + repositoryReceipt);
+            if (context.DeferredRunningJobReceipt is { } runningJobReceipt)
+                output.WriteLine(SqlAgentActivityRunningJobNativeReceipt.Marker + runningJobReceipt);
         }
         catch (Exception error)
         {

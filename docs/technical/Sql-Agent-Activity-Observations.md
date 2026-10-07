@@ -55,3 +55,25 @@ The later [Run20 checkpoint](../../artifacts/dashboard-agent-repository-native-2
 The repository is a dedicated loopback PostgreSQL18.6 cluster restored from a blank, owner/ACL-preserving PostgreSQL18.4 archive with all372 migrations and sealed canonical routes. Private collector/server login roles use only their corresponding safe fixed group. Both the session login and effective collector role lack direct control-table and column mutation privileges. The existing guest PostgreSQL cluster is unchanged. Relation ACL comparison preserves raw inventories and independently compares PostgreSQL-expanded grantor, grantee, privilege and grant-option tuples; all1,621 relations match despite309 equivalent raw representations. All other state sections, including644 function definitions/raw ACLs, retain their original comparison. Seven real ACL mutations in a separate private probe are refused and each restoration passes. Column and future-object default-creation ACLs are explicitly outside that inventory comparison.
 
 All four worker termination fences, normal SQL baseline cleanup and owned PostgreSQL clean shutdown pass. The worker fence verifies cooperative receipts, exact native child exit and temporary service stop/deletion; exhaustive historical descendant cleanup remains unverified and standalone recovery stays disabled. Earlier failed trials/probes and the two pre-launch wrapper repairs are preserved. The owning checks also pass76 portable input contracts and one blank archive producer case. Public admission/association remain false with qualification `Absent`; service/session, running/local-time/elapsed, interruption, persistent provisioning and continuously deployed acceptance remain open. Run17's recorded-source dashboard replay remains separate from this finite native collection qualification.
+
+## Controlled running-job preparation — 2026-10-07
+
+Two opt-in actual-monitor tests now require a concrete repository enrollment answer on every
+authorization call, matching before/after Agent process/startup/session headers, and one exact
+owned Running or Stopped candidate. Their closed private receipt retains the full source and
+repository provenance plus ten independently supplied fixture fields. An opaque witness digest
+binds the coordinator comparison; it supplies no enrollment authority or association admission.
+The existing harness emits the receipt only after all final identity and metadata checks.
+
+The new **55** portable contracts and **76** existing repository contracts pass without skips.
+The SQL fixture/journal tooling suite passes **578** cases. These are managed proofs; the two
+new native facts have not run. The [read-only guest baseline](../../artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-03/guest-baseline-20261007T084743815Z.json)
+verified the target and unchanged stopped Agent state, but found **11 enabled existing jobs**.
+Starting Agent remains gated until a reviewed isolation strategy is available. No existing job,
+database, service configuration or Agent state changed. The earlier failed diagnostic attempts
+and corrected negative test fixtures are retained in the preparation evidence.
+
+Native execution and cleanup, service/session association, elapsed time, interruption recovery,
+persistent provisioning and continuously deployed acceptance remain open. Admission/association
+stay false, qualification stays `Absent`, and derived elapsed/UTC job-start/long-running fields
+stay null.

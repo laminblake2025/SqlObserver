@@ -1465,3 +1465,25 @@ The [Run20 checkpoint](../../artifacts/dashboard-agent-repository-native-2026-10
 The source owner implemented76 portable input contracts and three opt-in native tests. The fixture owner produced a blank owner/ACL-preserving archive with all372 migrations and implemented the private loopback PostgreSQL18.6 fixture. Independent reviews found and repaired two pre-launch wrapper issues; a separate seven-case real ACL probe qualified strict relation permission equivalence and refusal after raw default ACL representation and empty-array corrections. All1,621 relation permissions match, while function/raw metadata and other state sections retain existing strict checks. Raw artifacts and failed Run18/19/Probe01/02 attempts remain immutable. The existing guest PostgreSQL cluster is unchanged. All four worker termination fences, normal SQL baseline cleanup and owned PostgreSQL clean shutdown pass; the blank archive producer and all76 portable contracts also pass without skips.
 
 Evidence and next work: `artifacts/dashboard-agent-repository-native-2026-10-07/completion-v1.json`, `fixture-probe03-qualification-v1.json`, frozen source/runner packages, native Run20 report/TRX/private sidecar and `running-job-next-plan-v1.json`. Run17's native-source history/browser replay remains a distinct finite proof. Public admission/association stay false with qualification `Absent`. Running service/session association, local source time and execution duration, attached-invalid signatures, worker interruption recovery, persistent provisioning and continuously deployed acceptance remain open. Native CPU matrix/process access and its existing approval blocker, a physical AG transition source and final cross-screen acceptance also remain open. The broader goal stays active.
+
+## Running-job preparation checkpoint — 2026-10-07 UTC
+
+Independent owners implemented the owned SQL job/database witness and protected write-ahead
+journal, plus the two repository-backed actual-monitor running/completed tests. A separate held
+SCM/process controller is prepared in ignored artifacts. The signed-only metadata-policy entry
+point reuses schema 3; existing trial entry points and runtime admission behavior are unchanged.
+Review repaired completed-history predicate grouping and prevented deletion of unfinished owned
+requested/queued jobs. Managed verification passes **131** monitor/repository contracts and
+**578** trial contracts, with zero skips, and the separate controller builds without warnings.
+
+The successful guest inventory reports 12 jobs, 11 enabled, no unfinished latest-session activity,
+and unchanged stopped Agent configuration/PID zero. It executes zero native qualification cases
+and performs no job/database/Agent mutation. The existing jobs fail the controlled-start gate.
+`artifacts/dashboard-agent-running-job-2026-10-07/job-isolation-proposal-v1.json` describes an exact
+temporary enabled-flag isolation/restoration scope; it remains proposed. The next steps are its
+reviewed implementation/authorization, the native phase coordinator and immutable payload/receipt
+binding, then both actual captures with independent source/execution/OS witnesses and cleanup.
+
+Running execution, association/time, interruption, persistent deployment, native CPU matrix,
+physical AG transition evidence and final cross-screen acceptance remain open. Admission and
+association stay false with `Absent`; the broader goal remains active.

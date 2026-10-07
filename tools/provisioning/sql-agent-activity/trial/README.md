@@ -248,3 +248,37 @@ remains qualified; actual interruption and universal descendant stability remain
 Local evidence includes554 trial contracts,211 SQL gate/receipt contracts and52 synthetic wrapper
 fence decisions. The synthetic fence cases use initially closed connections and do not certify
 open DBA teardown or native termination. Attached-invalid-signature construction remains open.
+
+## Running-job fixture preparation — 2026-10-07
+
+`RunMetadataVerificationSignedAsync` adds a signed-only policy-2 entry point using the existing
+schema-3 module journal. The separate `TrialRunningJobWitness` and `TrialRunningJobJournal`
+prepare one owned, unscheduled LOCAL TSQL job and database. Their private inventory binds the
+same DBA connection/SPID, object GUIDs, owner SID, exact definitions, foreign jobs and permissions.
+Every uncertain create/start/delete/drop action remains recorded; pending actions cannot authorize
+retries. The protected journal permits only its individual owner SID and SYSTEM.
+
+The step writes a fresh nonce, job UUID, SPID and three independently sampled native clocks,
+polls an owned release flag for at most 1,200 iterations, and records completion. These clocks
+do not establish whole-job start or elapsed time. Running/completed source comparison requires
+the independent execution witness and the existing full-row DBA bracket. Release requires
+confirmed monitor termination. Deletion refuses unfinished requested, queued or started activity;
+database drop requires exact ownership and no remaining database sessions or requests. The
+coordinator must separately prove its held Agent process epoch before stopping that service.
+
+The portable trial suite passes **578** cases with zero skips. The new monitor receipt/input
+contracts pass **55**, alongside **76** existing repository contracts. Two opt-in native facts
+are prepared for running and completed candidates; neither has executed. A separate ignored
+SCM/process controller compiles, but its native start/stop and coordinator integration remain open.
+
+The successful read-only [guest baseline](../../../../artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-03/guest-baseline-20261007T084743815Z.json)
+finds 12 existing jobs, 11 enabled, no unfinished latest-session activity, and Agent stopped with
+SCM PID zero. The SQL DMV reports stopped status with a null PID. Existing jobs prevent the
+controlled trial: the fixture requires all foreign jobs disabled. The [temporary isolation proposal](../../../../artifacts/dashboard-agent-running-job-2026-10-07/job-isolation-proposal-v1.json)
+would change exactly those enabled flags and restore them after verified Agent stop, retaining
+supported metadata/history residue. It remains a proposed scope expansion. No job, database or
+Agent-state mutation occurred in this preparation checkpoint.
+
+Public admission and service/session association remain `false`, qualification remains `Absent`,
+and elapsed/UTC job-start/long-running fields remain null. This preparation does not qualify
+native execution, cleanup, restart, interruption, persistent provisioning or continuous deployment.
