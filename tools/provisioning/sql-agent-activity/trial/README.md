@@ -662,3 +662,48 @@ is a distinct harmless monitor-account candidate with separate worker SID/profil
 payload/environment pins and memory-only credential transport. No rights fallback follows
 from this success, and prior refusal causes/exit provenance retain their recorded limits.
 The broader goal remains active.
+
+
+### Monitor credentialed creation refused; provenance remains limited (2026-10-07)
+
+The distinct Monitor preparation passed locked restore/build with zero warnings/errors.
+DLL and published GUI suites agreed at 304/601, 316/474, 152/168, 89/105 and 333/508
+cases/assertions. The frozen wrapper passed 392/544 diagnostic and 12/60 stream cases.
+Four actual original-stdin cases (empty, partial header, partial secret, withheld EOF)
+refused with exit 65 after 10,088 / 10,087 / 10,160 / 10,151 ms while stdin remained
+open. These checks establish those input observations, not CWT startup containment.
+The repaired decoder polls the original synchronous byte pipe under its deadline;
+it does not rely on cancellation interrupting an already blocked console read.
+Earlier source, failed analyzer build, helper refusal and review records are preserved.
+
+One separately reviewed guarded submission reserved its attempt before secure inputs.
+Driver 8912 joined with exit 94 and emitted a duplicate-free 70-key / 2,873-byte
+MonitorAccountCustodyDiagnostic. It reached CreatingOriginalWorker / native_refused.
+CWT entered and returned from 20:38:17.5363508Z to 20:38:17.5492026Z; no original
+Monitor process handle or epoch was reported. Monitor launch remains null/unknown,
+not an absence claim. No custody offer, verified checkpoint or Monitor resume occurred.
+The Monitor exit and worker Job total/active observations remain null; cleanup is false.
+Supervisor 25128 joined with exit 87 and its Job ledger was total 1 / active 0.
+Its Job termination was attempted and accepted, which does not identify the producer
+of exit 87. No authenticated Supervisor terminal diagnostic was observed.
+
+The native CWT return Boolean, failed-call error and observer exception provenance
+were not persisted by this candidate. The cause remains unknown. Independent current
+artifact inspection is retained in the evidence record. A separate read-only query
+found no Security 4625/4648 events in the call window expanded by two seconds; that
+does not prove credential acceptance or process absence. A final journal snapshot
+and supplemental events cannot reconstruct unrecorded syscall error provenance.
+The wrapper skipped explicit remote-session removal but helper exit may release it;
+durable retention of those remote leases is not proven. No missing proof is repaired
+by replaying, reopening a PID, relabeling the Supervisor or adopting a process.
+
+Evidence: artifacts/dashboard-agent-interruption-2026-10-07/monitor-custody-native01-diagnostic-v1.json
+(SHA-256 8cbb7c8b3482df2365a8329fcc6f91fc65a1534c7feeacb4ccc304945b4d9ece), independently reviewed at b010671b3c5f0b05fc911c6f939a92533440f049aba56da87dbd5b72e4b919d2.
+Nonce b982e80c-6d86-469a-b285-af3b7ff44524 is retired and must not be replayed.
+One Monitor CWT attempt entered/returned; qualified native Monitor cases remain zero.
+SQL/SCM, recovery and production admission stayed false. Existing account rights and
+ancestor ACLs were unchanged; only fresh protected payload scope files were created.
+Next work is managed preparation in a fresh observer-provenance source clone to retain
+the actual CWT return/error and typed private observer failure without secret text.
+No second native launch is implied. CWT hard timeout containment, original two-root
+Coordinator DBA/Monitor cleanup and both SQL drains remain unqualified. Goal active.
