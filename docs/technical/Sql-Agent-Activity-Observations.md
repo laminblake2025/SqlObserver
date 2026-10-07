@@ -124,3 +124,35 @@ collector cases executed and no monitor launched. No invalid-signature monitor r
 committed-invalid recovery or production admission is qualified. Admission/association remain
 false, qualification `Absent`, and elapsed/UTC job-start/long-running fields null. Persistent
 provisioning, interruption recovery and continuously deployed acceptance remain open.
+
+
+## Worker interruption audit preparation — 2026-10-07
+
+`TrialWorkerTerminationAudit` adds a closed, immutable preparation contract for a future
+independently supervised interruption. `TrialJournal.ReadWithDigest()` authenticates the opened
+file handle and parses and hashes the same bounded bytes. Pure parsers cannot manufacture
+protected-read provenance. The contract binds the original supervisor, both suspended roots,
+complete process ledger, source pins, journal phase and deployment/fixture identities. Every
+process birth must fall between the independently held supervisor birth and the interruption.
+
+The expanded whole tooling suite passes **833** cases with zero failures or skips: **709** prior
+contracts plus **124** audit/journal contracts. Definitions, results, execution IDs and test entries
+link uniquely. Build validation reports zero warnings or errors. The independently reviewed
+[frozen evidence](../../artifacts/dashboard-agent-interruption-2026-10-07/audit-source-freeze-v3.json) records the exact source and test hashes.
+These totals supersede the earlier whole-suite count; they do not add to it.
+
+This is managed preparation only. Selection can return `EligibleForIndependentSqlValidation`;
+it cannot authorize SQL mutation, recovery, replay or a worker launch. Existing native recovery
+refusals remain enforced. A future gateway must independently prove all contained processes
+exited and the owned scope is empty, then fence and drain both the monitor SQL epoch and the
+coordinator DBA SQL epoch (or prove the coordinator has no SQL connection). The current monitor
+binding alone cannot discharge that coordinator requirement. SQL local `datetime` epochs remain
+separate from full-precision UTC process observations.
+
+The separate harmless containment prototype is still being qualified. Its complete published
+runtime closure, explicit launch environment, original held process epochs, external supervisor
+watchdog and native token/profile behavior require their own evidence. No native interruption,
+containment or standalone recovery case is qualified by these contracts; earlier Run16/Run20
+are not retroactively contained. Production/association/continuous admission remains false,
+qualification remains `Absent`, and derived execution/time fields remain null. The broader goal
+is active; the separate clean SQL17 default-instance destination remains unresolved.

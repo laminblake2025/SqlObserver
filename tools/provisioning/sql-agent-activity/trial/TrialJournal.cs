@@ -1,4 +1,5 @@
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,6 +13,23 @@ public sealed record TrialReceipt(int SchemaVersion, Guid DeploymentId, string M
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TrialSnapshot? DeniedSnapshot = null);
 
 public enum TrialDenyRecoveryAction { BaselineRestored, RemoveSigned, RestoreThenRemove }
+
+/// <summary>Digest and parsed metadata from the same bounded bytes. Pure parsing does not
+/// authenticate a filesystem owner; only ReadWithDigest verifies the held file's ACL.</summary>
+public sealed class TrialJournalReadDigest
+{
+    internal TrialJournalReadDigest(TrialReceipt receipt, string journalSha256, string baselineSha256,
+        string? installedSha256, int byteCount, bool protectedFileHandleVerified)
+    { Receipt = receipt; JournalSha256 = journalSha256; BaselineSha256 = baselineSha256;
+        InstalledSha256 = installedSha256; ByteCount = byteCount; ProtectedFileHandleVerified = protectedFileHandleVerified; }
+    public TrialReceipt Receipt { get; }
+    public string JournalSha256 { get; }
+    public string BaselineSha256 { get; }
+    public string? InstalledSha256 { get; }
+    public int ByteCount { get; }
+    public bool ProtectedFileHandleVerified { get; }
+    public override string ToString() => "Private same-byte trial journal read";
+}
 
 /// <summary>Administrator/SYSTEM-only write-ahead record. Contains no signing password.</summary>
 public sealed class TrialJournal
@@ -68,6 +86,82 @@ public sealed class TrialJournal
         ValidateReceipt(receipt, deploymentId);
         return receipt;
     }
+
+    /// <summary>Additive qualified-reader seam. The owner/ACL is checked on the opened
+    /// FileStream handle; that same bounded stream supplies both parsing and hashing.
+    /// This method does not authorize recovery or change legacy Read behavior.</summary>
+    public TrialJournalReadDigest ReadWithDigest()
+    {
+        ValidateDirectory(directory); RejectReparseAncestors(ReceiptPath);
+        using var stream = new FileStream(ReceiptPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        ValidateAcl(stream.GetAccessControl(), isDirectory: false);
+        if (stream.Length is <= 0 or > MaximumBytes) throw DigestReadInvalid();
+        byte[] bytes = new byte[checked((int)stream.Length)];
+        try
+        {
+            stream.ReadExactly(bytes);
+            if (stream.ReadByte() != -1) throw DigestReadInvalid();
+            return ParseDigestCore(bytes, deploymentId, protectedFileHandleVerified: true);
+        }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+    }
+
+    /// <summary>Pure same-byte parser for contract validation only. It cannot establish
+    /// protected journal provenance and never returns a protected-file read origin.</summary>
+    public static TrialJournalReadDigest ParseReadWithDigest(ReadOnlyMemory<byte> bytes, Guid deploymentId)
+        => ParseDigestCore(bytes, deploymentId, protectedFileHandleVerified: false);
+
+    // Always recompute semantic image digests at selection, even though this seam copies
+    // parsed collections. A stored origin/hash can never cover a changed typed image.
+    internal static void ValidateDigestCapsule(TrialJournalReadDigest read)
+    {
+        if (read is null || read.ByteCount is <= 0 or > MaximumBytes) throw DigestReadInvalid();
+        ValidateReceipt(read.Receipt, read.Receipt.DeploymentId);
+        string baseline = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(read.Receipt.Baseline, Options)));
+        string? installed = read.Receipt.Installed is null ? null : Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(read.Receipt.Installed, Options)));
+        if (baseline != read.BaselineSha256 || installed != read.InstalledSha256) throw DigestReadInvalid();
+    }
+
+    private static TrialJournalReadDigest ParseDigestCore(ReadOnlyMemory<byte> input, Guid deploymentId, bool protectedFileHandleVerified)
+    {
+        if (input.Length is <= 0 or > MaximumBytes || deploymentId == Guid.Empty) throw DigestReadInvalid();
+        byte[] bytes = input.ToArray();
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            RejectDigestDuplicates(document.RootElement);
+            TrialReceipt receipt = JsonSerializer.Deserialize<TrialReceipt>(bytes, Options) ?? throw DigestReadInvalid();
+            ValidateReceipt(receipt, deploymentId);
+            using JsonDocument canonical = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, Options));
+            if (!JsonElement.DeepEquals(document.RootElement, canonical.RootElement)) throw DigestReadInvalid();
+            receipt = receipt with { Baseline = new(FreezeDigestSnapshot(receipt.Baseline.Snapshot)),
+                Installed = receipt.Installed is null ? null : FreezeDigestSnapshot(receipt.Installed),
+                UnsignedSnapshot = receipt.UnsignedSnapshot is null ? null : FreezeDigestSnapshot(receipt.UnsignedSnapshot),
+                DeniedSnapshot = receipt.DeniedSnapshot is null ? null : FreezeDigestSnapshot(receipt.DeniedSnapshot) };
+            return new(receipt, Convert.ToHexStringLower(SHA256.HashData(bytes)),
+                Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(receipt.Baseline, Options))),
+                receipt.Installed is null ? null : Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(receipt.Installed, Options))),
+                bytes.Length, protectedFileHandleVerified);
+        }
+        catch (Exception error) when (error is JsonException or InvalidDataException or ArgumentException or InvalidOperationException or OverflowException or FormatException)
+        { throw DigestReadInvalid(); }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+    }
+    private static TrialSnapshot FreezeDigestSnapshot(TrialSnapshot snapshot) => snapshot with
+    { Objects = Array.AsReadOnly(snapshot.Objects.ToArray()), PackagePermissions = Array.AsReadOnly(snapshot.PackagePermissions.ToArray()),
+        MonitorPermissions = Array.AsReadOnly(snapshot.MonitorPermissions.ToArray()), Facts = Array.AsReadOnly(snapshot.Facts.ToArray()) };
+    private static void RejectDigestDuplicates(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonProperty property in value.EnumerateObject())
+            { if (!names.Add(property.Name)) throw DigestReadInvalid(); RejectDigestDuplicates(property.Value); }
+        }
+        else if (value.ValueKind == JsonValueKind.Array)
+            foreach (JsonElement item in value.EnumerateArray()) RejectDigestDuplicates(item);
+    }
+    private static InvalidDataException DigestReadInvalid() => new("Private same-byte trial journal evidence is malformed; values withheld.");
 
     public void Save(TrialReceipt receipt)
     {
