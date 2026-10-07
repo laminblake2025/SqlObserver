@@ -402,3 +402,12 @@ then record bounded accounting and owned-Job PID-list snapshots without opening 
 those PIDs. Unknown nesting must refuse before assignment. No monitor logon, CWT or SQL path
 was exercised. This does not qualify worker interruption/recovery, CWT/startup hard timeouts,
 all historical members, production admission or the broader goal.
+
+
+### Native watchdog stage diagnostics (2026-10-07, native02)
+
+The separate frozen v3 diagnostic watchdog built cleanly and passed 113 pure checks. Its actual runtime-policy validator accepted the complete self-contained publish: 192 files, 80,558,629 bytes, manifest `662c0c3319c5bc972b84778b133fea0245b97fa2ff8a1009439e845bb56d70b2`. Independent review cleared one fresh Administrator-only harmless supervisor diagnostic; no CWT, monitor, SQL, service or rights changes were performed. Every diagnostic wrapper outcome remains unqualified.
+
+The native02 driver joined with exit 94 and `PreserveForInspection`, refusing at `BeforeTerminationEvidence`. The held supervisor exited with code 76. Complete stable accounting/PID-list snapshots show: fresh Job total0/active0/empty; assigned suspended supervisor total1/active1 with only original PID19064; later before termination total2/active2 with diagnostic PIDs6228 and19064; after termination total2/active0/empty. The suspended supervisor's any-Job query succeeded and was false before assignment. The extra member was absent from the assigned-before-resume snapshot and first observed in the later post-resume snapshot. Its exact association time, image, token and birth remain unknown; no listed PID was used to reopen, adopt or target a process; termination used only the held owned Job. These observations do not establish historical provenance for the extra member.
+
+Evidence: `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-02/guest-harmless-watchdog-20261007T131500518Z.json` SHA256 `2784d7427e01fe0e5d3d0ff84e590bebf4fa43f1c0c62f0137365c3c4dc8eb0c`; independent duplicate-sensitive raw/materialized verification is recorded in `watchdog-native-diagnostic-v2.json`, SHA256 `ecc688ff672c858b53b697ccf157882361bb94ac595d326cdee3c9f595838f9d`. Original driver PID24148/birth `2026-10-07T13:15:10.5110924Z`, supervisor PID19064/birth `2026-10-07T13:15:10.6802650+00:00`, fresh retired nonce `9d01dc77-e500-4df1-8452-dca7d535c0e1` bind this case. Native01 and native02 are preserved without unchanged reruns. The total-one gate, zero qualified cases, absent native worker audit and closed recovery/production admission remain unchanged.

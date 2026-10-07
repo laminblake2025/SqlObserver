@@ -1602,3 +1602,10 @@ then record bounded accounting and owned-Job PID-list snapshots without opening 
 those PIDs. Unknown nesting must refuse before assignment. No monitor logon, CWT or SQL path
 was exercised. This does not qualify worker interruption/recovery, CWT/startup hard timeouts,
 all historical members, production admission or the broader goal.
+
+
+### Native02 diagnostic continuation (2026-10-07)
+
+The fresh watchdog stage diagnostic completed as an independently verified refusal: one suspended original member before resume, two active members at the later pre-termination snapshot, then held-root exit76 and Job active0/empty after termination. Driver PID24148 joined94; supervisor PID19064, extra diagnostic PID6228, nonce `9d01dc77-e500-4df1-8452-dca7d535c0e1`. The extra member's image/token/birth and exact association time remain unknown. No PID was reopened/adopted. The gate still requires cumulative total1 and native02 remains unqualified, with no unchanged retry.
+
+Preserve native01/native02 reports, bundles, source freezes and wrapper freezes. Native02 report SHA256 `2784d7427e01fe0e5d3d0ff84e590bebf4fa43f1c0c62f0137365c3c4dc8eb0c`; bounded root/reviewer evidence `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-diagnostic-v2.json` SHA256 `ecc688ff672c858b53b697ccf157882361bb94ac595d326cdee3c9f595838f9d`. V3 preparation built cleanly, passed 113 pure checks and validated all192 published files. No CWT, SQL, monitor/service/rights mutation or recovery/production admission was performed. Any next diagnostic needs changed frozen source, fresh pins/nonce, finite reviewed scope and the unchanged total-one gate. The broader goal remains active.

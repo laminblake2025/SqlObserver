@@ -182,3 +182,12 @@ then record bounded accounting and owned-Job PID-list snapshots without opening 
 those PIDs. Unknown nesting must refuse before assignment. No monitor logon, CWT or SQL path
 was exercised. This does not qualify worker interruption/recovery, CWT/startup hard timeouts,
 all historical members, production admission or the broader goal.
+
+
+### Watchdog membership stage observation (2026-10-07)
+
+A fresh, independently reviewed v3 diagnostic-only watchdog run located the membership discrepancy between snapshots. The private Job was empty before creation, and the suspended original supervisor belonged to no pre-existing Job. After assignment and before resume, the complete stable list contained only original PID19064 (total1/active1). The later pre-termination snapshot contained PIDs6228 and19064 (total2/active2). After held-Job termination the original supervisor exited76 and the Job reported total2/active0 with an empty complete list. The driver joined94, `PreserveForInspection`, refusing at `BeforeTerminationEvidence`.
+
+The extra member was first observed post-resume; its exact association time and identity remain unknown. Diagnostic PID6228 was never reopened or adopted. No conhost/apphost/other identity is inferred. Native02 is unqualified and retired from unchanged retry; native01 remains preserved. No CWT, SQL, monitor, service or rights mutation occurred. Recovery and production admission remain closed.
+
+Actual report: `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-02/guest-harmless-watchdog-20261007T131500518Z.json`, SHA256 `2784d7427e01fe0e5d3d0ff84e590bebf4fa43f1c0c62f0137365c3c4dc8eb0c`. Root and independent review verified recursive key uniqueness, raw/materialized equality, original driver/supervisor epochs, nonce/image/payload pins and all four stable bounded snapshots. `watchdog-native-diagnostic-v2.json` records the bounded findings, SHA256 `ecc688ff672c858b53b697ccf157882361bb94ac595d326cdee3c9f595838f9d`. Preparation passed 113 pure checks and complete published-payload validation (192 files); these checks do not qualify native CWT, SQL drainage or worker cleanup.
