@@ -20,13 +20,13 @@
     "x": 16,
     "y": 300,
     "width": 358,
-    "height": 45,
+    "height": 38,
     "minWidth": "0px"
   },
   {
     "class": "activity-capture-heading",
     "x": 16,
-    "y": 357,
+    "y": 350,
     "width": 358,
     "height": 40,
     "minWidth": "0px"
@@ -34,7 +34,7 @@
   {
     "class": "activity-capture-status",
     "x": 16,
-    "y": 405,
+    "y": 398,
     "width": 358,
     "height": 40,
     "minWidth": "0px"
@@ -42,7 +42,7 @@
   {
     "class": "activity-summary-grid",
     "x": 16,
-    "y": 457,
+    "y": 450,
     "width": 358,
     "height": 139,
     "minWidth": "0px"
@@ -50,7 +50,7 @@
   {
     "class": "activity-quick-filters",
     "x": 27,
-    "y": 654.390625,
+    "y": 647.390625,
     "width": 336,
     "height": 50,
     "minWidth": "0px"
@@ -58,7 +58,7 @@
   {
     "class": "activity-list-toolbar",
     "x": 27,
-    "y": 704.390625,
+    "y": 697.390625,
     "width": 336,
     "height": 40,
     "minWidth": "0px"
@@ -66,7 +66,7 @@
   {
     "class": "activity-session-table",
     "x": 27,
-    "y": 776.890625,
+    "y": 769.890625,
     "width": 336,
     "height": 8759.6875,
     "minWidth": "0px"
@@ -74,7 +74,7 @@
   {
     "class": "activity-session-row",
     "x": 27,
-    "y": 776.890625,
+    "y": 769.890625,
     "width": 336,
     "height": 166.59375,
     "minWidth": "0px"
@@ -82,7 +82,7 @@
   {
     "class": "activity-inspect-cell",
     "x": 287.984375,
-    "y": 787.890625,
+    "y": 780.890625,
     "width": 64.015625,
     "height": 44,
     "minWidth": "auto"

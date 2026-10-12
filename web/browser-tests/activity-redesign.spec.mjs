@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 const target = '11111111-1111-4111-8111-000000000002', origin = 'http://127.0.0.1:4358';
 const snapshotId = '55555555-5555-4555-8555-555555555555', observedUtc = '2026-10-09T16:00:00.123456Z';
-const shots = resolve('../.artifacts/activity-redesign-20261009/screenshots');
+const shots = resolve('../artifacts/web-browser/visual-reference/activity');
 const identity = (id, request = 0) => (id * 100 + request).toString(16).padStart(64, '0');
 const delta = fields => ({ seconds: 10, cpuMs: '0', reads: '0', writes: '0', logicalReads: '0', ...fields });
 const row = (sessionId, fields = {}) => ({ identity: identity(sessionId), sessionId, requestId: 0, databaseId: 7, databaseName: 'SqlObserverLabSales', login: 'lab_reader', clientHost: 'SQL-LAB-CLIENT', application: 'Lab workload', status: 'running', command: 'SELECT', isUser: true, waitType: null, blocker: null, cpuMs: '12345', memoryBytes: '1024', reads: '200', writes: '0', logicalReads: '300', elapsedMs: '2000', queryId: '77777777-7777-4777-8777-777777777777', queryState: 'available', engineStartup: '2026-10-09T10:00:00', sessionLogin: '2026-10-09T15:00:00', requestStart: '2026-10-09T15:59:58', delta: delta({}), ...fields });

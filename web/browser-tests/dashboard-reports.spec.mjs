@@ -177,7 +177,7 @@ test('Instance Health remains explicitly current under Rewind and leaving Report
   await generate(page).click(); await expect(html(page)).toBeVisible();
   const accepted = await observations(page);
   expect(accepted.observations[0].body).toEqual({ reportKind: 'instance-health', operationId: expect.any(String) });
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Waits', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Investigations', exact: true }).click();
   expect(await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('from')))
     .toBe('2026-08-01T13:45:00.123456Z');
   await page.goBack(); await expect(kind(page)).toHaveValue('instance-health');
@@ -206,6 +206,16 @@ function receipt(body, overrides = {}) {
 const jsonReceipt = (route, value) => route.fulfill({ contentType: 'application/json',
   headers: { 'cache-control': 'no-store' }, json: value });
 
+async function settlePausedReportPage(page, time) {
+  // Allow the lazy route's Suspense timer to finish before any receipt exists,
+  // then restore the exact test clock for the expiry assertions below.
+  await expect.poll(async () => {
+    await page.clock.runFor(350);
+    return generate(page).isVisible();
+  }).toBe(true);
+  await page.clock.setSystemTime(new Date(time));
+}
+
 test('built Reports expires at the native microsecond boundary without generating implicitly', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-03T11:59:59.999Z') });
   await page.clock.pauseAt(new Date('2026-10-03T11:59:59.999Z'));
@@ -216,6 +226,7 @@ test('built Reports expires at the native microsecond boundary without generatin
       snapshotUtc: '2026-10-03T12:00:00.001Z', expiresAtUtc: '2026-10-04T12:00:00.001Z' } : {}));
   });
   await page.goto(reportHref('performance-window')); const saved = new URL(page.url()).hash;
+  await settlePausedReportPage(page, '2026-10-03T11:59:59.999Z');
   await generate(page).click(); await expect(html(page)).toBeVisible();
   await page.clock.runFor(1); await expect(html(page)).toBeVisible();
   await page.clock.runFor(1); await expect(expired(page)).toBeVisible();
@@ -233,7 +244,8 @@ for (const wake of ['focus', 'visibilitychange']) test(`built Reports removes st
   await page.route(`**/api/v1/observation-targets/${target}/reports`, route => {
     const body = route.request().postDataJSON(); bodies.push(body); return jsonReceipt(route, receipt(body));
   });
-  await page.goto(reportHref('instance-health')); await generate(page).click(); await expect(html(page)).toBeVisible();
+  await page.goto(reportHref('instance-health')); await settlePausedReportPage(page, '2026-10-02T12:01:00Z');
+  await generate(page).click(); await expect(html(page)).toBeVisible();
   await page.clock.setFixedTime(new Date('2026-10-03T12:01:00Z'));
   await page.evaluate(event => (event === 'focus' ? window : document).dispatchEvent(new Event(event)), wake);
   await expect(expired(page)).toBeVisible(); await expect(html(page)).toHaveCount(0); expect(bodies).toHaveLength(1);
@@ -252,6 +264,7 @@ test('built Reports recovers an uncertain expired run before explicitly creating
       snapshotUtc: '2026-10-03T12:01:00Z', expiresAtUtc: '2026-10-04T12:01:00Z' } : {}));
   });
   await page.goto(`/#/reports?target=${target}&range=1h&reportKind=performance-window`);
+  await settlePausedReportPage(page, '2026-10-02T12:01:00Z');
   await generate(page).click(); await expect(panel(page).getByRole('alert')).toBeVisible();
   await page.clock.setFixedTime(new Date('2026-10-03T12:01:00Z'));
   await generate(page).click(); await expect(expired(page)).toBeVisible(); await expect(html(page)).toHaveCount(0);
@@ -272,7 +285,8 @@ for (const width of [320, 390, 768, 1440]) test(`expired Reports workspace suppo
     return jsonReceipt(route, receipt(body, bodies.length > 1 ? { runId: newRunId,
       snapshotUtc: '2026-10-03T12:01:00Z', expiresAtUtc: '2026-10-04T12:01:00Z' } : {}));
   });
-  await page.goto(reportHref('capacity-readiness')); await generate(page).click(); await expect(expired(page)).toBeVisible();
+  await page.goto(reportHref('capacity-readiness')); await settlePausedReportPage(page, '2026-10-03T12:01:00Z');
+  await generate(page).click(); await expect(expired(page)).toBeVisible();
   await expect(html(page)).toHaveCount(0); expect(bodies).toHaveLength(1);
   const action = generateAction(page);
   for (let step = 0; step < 70 && !await action.evaluate(element => element === document.activeElement); step++) await page.keyboard.press('Tab');

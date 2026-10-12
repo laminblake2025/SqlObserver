@@ -15,6 +15,8 @@ export async function revealHealthSupport(page) {
 }
 
 export async function revealDashboardSupport(page) {
+  const health = page.locator('summary').filter({ hasText: /^Latest health, databases & configuration$/ });
+  if (await health.count() && !await health.locator('..').evaluate(element => element.open)) await health.click();
   await expandDisclosure(page, 'Resource charts, wait history & baselines');
   const findings = page.locator('summary').filter({ hasText: /^Additional findings & observed change context \(\d+\)$/ });
   await expect(findings).toHaveCount(1);

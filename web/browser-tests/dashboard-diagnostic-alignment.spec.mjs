@@ -44,6 +44,7 @@ function registered(url) {
   if (suffix === 'activity/blocking/current') return keys(['limit']) && params.get('limit') === '256';
   if (suffix === 'deadlocks') return keys(['fromUtc', 'toUtc', 'limit', 'cursor']);
   if (['alerts/history', 'lifecycle/history'].includes(suffix)) return keys(['targetRevision', 'fromUtc', 'toUtc', 'limit', 'cursor']);
+  if (suffix === 'lifecycle/collection') return keys(['targetRevision']);
   if (suffix === 'sql-agent/failures') return keys(['fromUtc', 'toUtc', 'limit', 'cursor']);
   if (suffix === 'analytics/baselines') return keys(['metricKey', 'fromUtc', 'toUtc', 'limit']);
   if (suffix === 'analytics/sql-baselines') return keys(['targetRevision', 'metricKey', 'fromUtc', 'toUtc', 'catalogVersion', 'generation']);

@@ -33,6 +33,7 @@ async function open(page, surface = 'overview', target = first, range = 'custom'
   await page.goto(href(surface, target, range));
   await expect(page.getByRole('combobox', { name: 'Time range', exact: true })).toHaveValue(range);
   if(surface==='health')await revealHealthSupport(page);
+  if(surface==='activity')await expandDisclosure(page, 'Advanced session filters');
 }
 async function assertHistoricalScope(page, target = first, start = from, end = to) {
   await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ target, range: 'custom', from: start, to: end });
@@ -415,6 +416,7 @@ test('Investigate first promotes plan comparisons with correctly scoped temporal
   expect(Object.fromEntries(databaseScope)).toMatchObject({ target: first, range: 'custom', from, to, databaseId: '6' });
   await expect(summary).toContainText('Temporal proximity does not establish causation or the actual change time.');
   await workspaceDatabase(page).selectOption('6');
+  await revealDashboardSupport(page);
   await expect(summary.getByRole('link', { name: /^Plan regression comparison/ })).toHaveCount(1);
   await expect(planAttention(page, 6)).toBeVisible();
   await expect(summary.getByRole('link', { name: /^Plan regression comparison/ })).toHaveAttribute('href', /queryView=regressed/);
@@ -1196,13 +1198,13 @@ test('investigate-first and blocking drill-downs keep the server, window and eve
   await expect(blocking).toContainText('LCK_M_X \u00b7 12000 ms \u00b7 depth 1');
   await blocking.getByRole('link', { name: 'Open sessions and blocking \u2192', exact: true }).click();
   await assertHistoricalScope(page, second);
-  await expect(page.getByRole('heading', { name: 'SYNTHETIC SQL 02' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
   await page.goto(href('overview', second));
   const issue = page.locator('.overview-issue').filter({ hasText: 'Sessions blocked' });
   await issue.click();
   await assertHistoricalScope(page, second);
   expect(scope(page).get('at')).toBe('2026-09-26T11:59:30.000Z');
-  await expect(page.getByRole('heading', { name: 'Live sessions', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
 });
 
 for (const width of [320, 1440]) test(`built dashboard inspects the native current head blocker within rewind at ${width}`, async ({ page }) => {
@@ -1409,7 +1411,7 @@ test('deadlock relationships drill into the event activity and clear selection w
 
 test('session inspection preserves its observation when filters remove the request and clears on target change', async ({ page }) => {
   await open(page, 'activity', first, '1h');
-  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const live = page.locator('.activity-capture-screen');
   const inspect = live.getByRole('button', { name: 'Inspect 51/0', exact: true });
   await expect(inspect).toBeVisible();
   await inspect.click();
@@ -1493,33 +1495,32 @@ test('blocking chains filter loaded rows locally and preserve an unrelated inspe
   });
   await page.context().addCookies([{ name: 'blockingChainFixture', value: '1', url: origin }]);
   await open(page, 'activity', first, '1h');
-  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const live = page.locator('.activity-capture-screen');
   const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
   const chain = live.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
-  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await live.getByRole('button', { name: 'Pause', exact: true }).click();
   await table.getByRole('button', { name: 'Inspect 90/0', exact: true }).click();
   const detail = page.getByRole('region', { name: 'Session details', exact: true });
-  await expect(detail.getByRole('heading', { name: 'Session 90 / 0', exact: true })).toBeVisible();
+  await expect(detail.getByRole('heading', { name: 'Session 90', exact: true })).toBeVisible();
   const requestCount = requests.length;
-  const firstChain = live.getByRole('button', { name: 'Filter chain: Session 51', exact: true });
-  await firstChain.click();
-  await expect(firstChain).toHaveAttribute('aria-pressed', 'true');
+  await chain.selectOption('session:51');
   await expect(chain).toHaveValue('session:51');
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
   for (const id of [51, 72, 73]) await expect(table.getByRole('button', { name: `Inspect ${id}/0`, exact: true })).toBeVisible();
   await expect(table.getByRole('button', { name: 'Inspect 90/0', exact: true })).toHaveCount(0);
-  await expect(detail.getByRole('heading', { name: 'Session 90 / 0', exact: true })).toBeVisible();
+  await expect(detail.getByRole('heading', { name: 'Session 90', exact: true })).toBeVisible();
   await chain.selectOption('session:81');
-  await expect(live.getByRole('button', { name: 'Filter chain: Session 81', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(chain).toHaveValue('session:81');
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
   for (const id of [81, 82, 83]) await expect(table.getByRole('button', { name: `Inspect ${id}/0`, exact: true })).toBeVisible();
   await live.getByRole('button', { name: 'Clear chain filter', exact: true }).click();
   await expect(chain).toHaveValue('');
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
   expect(requests).toHaveLength(requestCount);
-  await firstChain.click();
+  await chain.selectOption('session:51');
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  await expandDisclosure(page, 'Advanced session filters');
   await expect(chain).toHaveValue('');
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
   await expect(detail).toHaveCount(0);
@@ -1528,12 +1529,12 @@ test('blocking chains filter loaded rows locally and preserve an unrelated inspe
 test('a selected chain disappearing from the next snapshot produces explicit zero matches', async ({ page }) => {
   await page.context().addCookies([{ name: 'blockingChainFixture', value: '1', url: origin }]);
   await open(page, 'activity', first, '1h');
-  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const live = page.locator('.activity-capture-screen');
   const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
   const chain = live.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
-  await page.getByRole('button', { name: 'Live', exact: true }).click();
-  await live.getByRole('button', { name: 'Filter chain: Session 51', exact: true }).click();
+  await live.getByRole('button', { name: 'Pause', exact: true }).click();
+  await chain.selectOption('session:51');
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
   await page.route(`**/${first}/activity/live?*`, async route => {
     const response = await route.fetch();
@@ -1544,9 +1545,10 @@ test('a selected chain disappearing from the next snapshot produces explicit zer
   await live.getByRole('button', { name: 'Refresh now', exact: true }).click();
   await expect(chain).toHaveValue('session:51');
   await expect(chain.getByRole('option', { name: 'Selected chain unavailable: session:51', exact: true })).toHaveCount(1);
-  await expect(live.getByText(/^Showing 0 of 4 loaded session rows/)).toBeVisible();
+  await expect(live.getByRole('status').filter({hasText: /^0 matching of 4 captured sessions/})).toBeVisible();
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(0);
-  await expect(live.getByText('Selected blocking chain is not present in this loaded page. No rows match; clear the chain filter or browse another snapshot/page.', { exact: true })).toBeVisible();
+  await expect(live.locator('.empty-state')).toContainText('No sessions match these filters.');
+  await expect(live.getByRole('button', { name: 'Show all captured sessions', exact: true })).toBeVisible();
   await live.getByRole('button', { name: 'Clear chain filter', exact: true }).click();
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(4);
   for (const id of [81, 82, 83, 90]) await expect(table.getByRole('button', { name: `Inspect ${id}/0`, exact: true })).toBeVisible();
@@ -1569,7 +1571,7 @@ test('workspace database follows diagnostic navigation, time edits, reload and b
   await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse / })).toHaveCount(1);
   await workspaceDatabase(page).selectOption('6');
   await assertDatabaseScope(page, 6);
-  for (const label of ['Activity', 'Query performance', 'Resources', 'Waits', 'Deadlocks', 'Health checks']) {
+  for (const label of ['Activity', 'Queries', 'Resources', 'Waits', 'Deadlocks', 'Operations']) {
     await mainNavigation(page).getByRole('link', { name: label, exact: true }).click();
     await assertDatabaseScope(page, 6);
     await assertHistoricalScope(page);
@@ -1602,7 +1604,7 @@ test('workspace database follows diagnostic navigation, time edits, reload and b
   await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse 02 / })).toHaveCount(1);
   await workspaceDatabase(page).selectOption('6');
   await assertDatabaseScope(page, 6);
-  await mainNavigation(page).getByRole('link', { name: 'Alerts', exact: true }).click();
+  await page.goto(`/#/alerts?${scope(page)}`);
   await assertDatabaseScope(page, 6);
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption('');
   await expect.poll(() => scope(page).get('target')).toBe(null);
@@ -1610,22 +1612,24 @@ test('workspace database follows diagnostic navigation, time edits, reload and b
   await expect(workspaceDatabase(page)).toHaveCount(0);
 });
 
-test('live database selection updates the URL and sends the selected database to collection reads', async ({ page }) => {
+test('live database selection updates the URL and filters the inclusive captured metadata locally', async ({ page }) => {
   const requests = [];
   page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/live')) requests.push(new URL(request.url())); });
   await databaseFixture(page);
   await page.goto(href('activity', first, '1h'));
-  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const live = page.locator('.activity-capture-screen');
   const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
-  await live.getByRole('combobox', { name: 'Database', exact: true }).selectOption('6');
+  const captureReads = requests.length;
+  await workspaceDatabase(page).selectOption('6');
   await assertDatabaseScope(page, 6);
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(1);
   await expect(table.getByRole('button', { name: 'Inspect 81/0', exact: true })).toBeVisible();
-  await expect.poll(() => requests.some(url => url.searchParams.get('databaseId') === '6')).toBe(true);
+  expect(requests.every(url => !url.searchParams.has('databaseId'))).toBe(true);
+  expect(requests).toHaveLength(captureReads);
   await workspaceDatabase(page).selectOption('5');
   await assertDatabaseScope(page, 5);
-  await expect(live.getByRole('combobox', { name: 'Database', exact: true })).toHaveValue('5');
+  await expect(workspaceDatabase(page)).toHaveValue('5');
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(2);
   await expect(table).not.toContainText('Warehouse');
 });
@@ -1717,7 +1721,7 @@ test('changing database context clears contradictory query and event selections'
   await assertDatabaseScope(page, 6);
   expect(scope(page).get('at')).toBe(null);
   expect(scope(page).get('event')).toBe(null);
-  const live = page.getByRole('region', { name: 'Live sessions', exact: true });
+  const live = page.locator('.activity-capture-screen');
   await expect(live.getByRole('button', { name: 'Inspect 81/0', exact: true })).toBeVisible();
 });
 
@@ -2297,7 +2301,7 @@ test('malformed database option and mismatched configuration history remain expl
     const response = await route.fetch(), body = await response.json(); body.fromUtc = '2026-09-26T08:00:00.000001Z';
     await route.fulfill({ response, json: body });
   });
-  await page.goto(`${href('health')}&healthSection=databases`); await revealHealthSupport(page); await revealDashboardSupport(page);
+  await page.goto(`${href('health')}&healthSection=databases`); await revealHealthSupport(page);
   await expect(page.getByRole('region', { name: 'Database option changes', exact: true })).toContainText('Option history is unavailable.');
   await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Server configuration changes', exact: true })).toContainText('Configuration history is unavailable or changed while paging.');
@@ -2676,5 +2680,6 @@ test('quiet dashboard and Resources evidence disclosures remain keyboard accessi
 
 async function openInvestigationWorkspace(page) {
   const save=page.getByRole('button', { name: 'Save investigation', exact: true });
-  if(await save.count())await expect(save).toBeVisible();else await expandDisclosure(page,'Investigation workspace');
+  if(await save.count())await expect(save).toBeVisible();
+  await expandDisclosure(page,'Investigation workspace');
 }

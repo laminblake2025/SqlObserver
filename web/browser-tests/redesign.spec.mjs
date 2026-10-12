@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 const origin = 'http://127.0.0.1:4358';
 const target = '11111111-1111-4111-8111-000000000002';
 const requests = new WeakMap(), errors = new WeakMap();
-const shotDir = resolve('../.artifacts/ui-redesign-20261009/screenshots');
+const shotDir = resolve('../artifacts/web-browser/visual-reference/redesign');
 test.beforeEach(async ({ page }) => {
   requests.set(page, []); errors.set(page, []);
   page.on('pageerror', error => errors.get(page).push(error.message));
