@@ -2504,8 +2504,12 @@ Invoke-CheckedCommand -Executable 'pnpm' -Arguments @(
 $trustedPowerShellEnvironmentName = 'SQLOBSERVER_M12_TRUSTED_PWSH_PATH'
 $trustedPowerShellWasPresent = Test-Path -LiteralPath "Env:$trustedPowerShellEnvironmentName"
 $previousTrustedPowerShellPath = [Environment]::GetEnvironmentVariable($trustedPowerShellEnvironmentName)
+$permissionParityEnvironmentName = 'SQLOBSERVER_PERMISSION_PARITY'
+$permissionParityWasPresent = Test-Path -LiteralPath "Env:$permissionParityEnvironmentName"
+$previousPermissionParity = [Environment]::GetEnvironmentVariable($permissionParityEnvironmentName)
 try {
     Set-Item -LiteralPath "Env:$trustedPowerShellEnvironmentName" -Value (Get-TrustedPowerShellPath)
+    Set-Item -LiteralPath "Env:$permissionParityEnvironmentName" -Value '1'
     foreach ($script in @('typecheck', 'test', 'build')) {
         Invoke-CheckedCommand -Executable 'pnpm' -Arguments @(
             '--dir', $webPath,
@@ -2519,6 +2523,12 @@ finally {
     }
     else {
         Remove-Item -LiteralPath "Env:$trustedPowerShellEnvironmentName" -ErrorAction SilentlyContinue
+    }
+    if ($permissionParityWasPresent) {
+        Set-Item -LiteralPath "Env:$permissionParityEnvironmentName" -Value $previousPermissionParity
+    }
+    else {
+        Remove-Item -LiteralPath "Env:$permissionParityEnvironmentName" -ErrorAction SilentlyContinue
     }
 }
 

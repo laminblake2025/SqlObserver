@@ -17,7 +17,8 @@ test.beforeEach(async({page})=>{await page.clock.install({time:new Date('2026-10
 test.afterEach(async({page})=>expect(sessions.get(page).errors,'Finite local registered reads only; no mutation or external source').toEqual([]));
 
 test('workspace refresh retains browsed receipt and cached capacities until explicit source renewal',async({page})=>{
- await open(page);await next(page).press('Enter');await expectPage(page,1);const session=sessions.get(page),reads=session.reads.length,pin=scope(page);expect(pin).toMatchObject({target:alpha,databaseId:'5',compare:'1',range:'custom'});const run=session.reads.find(read=>read.selection).selection.runId;
+ await open(page);await next(page).press('Enter');await expectPage(page,1);const session=sessions.get(page),reads=session.reads.length,pin=scope(page);expect(pin).toMatchObject({target:alpha,databaseId:'5',compare:'1',range:'custom'});const run=pin.volumePlanningRun;
+ expect(session.reads.some(read=>read.selection?.runId===run&&read.binding.fromUtc===pin.from&&read.binding.toUtc===pin.to)).toBe(true);await expect(selected(page)).toContainText(run);
  session.backend.settings.epoch++;session.backend.settings.expired=true;await next(page).focus();const focused=await next(page).elementHandle();await page.clock.runFor(61_000);await expectPage(page,1);expect(session.reads).toHaveLength(reads);await expect(next(page)).toBeFocused();expect(await focused.evaluate(node=>node.isConnected)).toBe(true);
  await page.getByRole('button',{name:'↻ Refresh',exact:true}).click();await expectPage(page,1);expect(session.reads).toHaveLength(reads);expect(scope(page)).toEqual(pin);
  await action(page,'First volume capacities page').press('Enter');await expectPage(page,0);await next(page).press('Enter');await expectPage(page,1);expect(session.reads).toHaveLength(reads);
