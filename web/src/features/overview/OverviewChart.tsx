@@ -4,6 +4,8 @@ import { formatDisplayTime } from '../../timeDisplay';
 import { chartObservedPoints, chartUtcAtX, chartSvgX } from './chartTimeModel';
 import { useChartGesture } from '../../components/useChartGesture';
 import { ChartPlotViewport } from '../../components/ChartPlotViewport.tsx';
+import { chartViewportIdentity } from '../../components/chartViewportIdentity.ts';
+import { useResponsiveChart } from '../../components/useResponsiveChart';
 import { formatOverviewChartValue, overviewChartRange } from './overviewChartRange';
 import type { OverviewSeries } from './overviewTypes';
 import { matchingReferences, type ChartReferences } from './chartReferenceModel.ts';
@@ -30,6 +32,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   interactionKey?:string;
 }) {
   const {mode}=useTimeDisplay();
+  const responsive = useResponsiveChart();
   const timeLabel=(value:string|number,compact=false)=>formatDisplayTime(value,mode,compact);
   const gesture=useChartGesture(JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity),interactionKey]),fromUtc,toUtc,onSelectWindow);
   const dragStart=gesture.start,dragEnd=gesture.end;
@@ -40,10 +43,11 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   if (!range) return <p className="overview-empty">No comparable observations in this window. Missing samples are not plotted as zero.</p>;
   const x=(time:string,shift=0)=>48+(Date.parse(time)+shift-from)/(to-from)*572;
   const y=(value:number)=>180-(value-range.minimum)/(range.maximum-range.minimum)*155;
-  const ticks=[0,.25,.5,.75,1];
+  const ticks=responsive.width<480?[0,.5,1]:[0,.25,.5,.75,1];
   const tickLabels=ticks.map(f=>formatOverviewChartValue(range.minimum+f*(range.maximum-range.minimum),range));
   const viewLeft=Math.min(0,40-(Math.max(...tickLabels.map(label=>label.length))*8+8));
   const viewWidth=650-viewLeft;
+  const longAxes=tickLabels.some(label=>label.length>10);
   const colorOrder=[...new Set([...series,...(previous??[])].map(seriesIdentity))].sort();
   const colorByIdentity=new Map(colorOrder.map((identity,index)=>[identity,index]));
   const colorFor=(s:OverviewSeries)=>colors[(colorByIdentity.get(seriesIdentity(s))??0)%colors.length];
@@ -53,7 +57,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   const pointX=(event:PointerEvent<SVGSVGElement>)=>{
     return chartSvgX(event.currentTarget,event.clientX,event.clientY);
   };
-  const plot=<svg className={`chart overview-chart${onSelectWindow?' chart-interactive':''}`} viewBox={`${viewLeft} 0 ${viewWidth} 220`} role="img" aria-label={`${series[0]?.unit} over the selected ${mode==='local'?'local-time display':'UTC'} window. Lines connect observations; missing samples remain gaps.${onSelectWindow?' Drag across the chart to select a shared time window.':''}`}
+  const plot=<svg style={{fontSize: longAxes ? 12 : responsive.fontSize * viewWidth / 650}} className={`chart overview-chart${onSelectWindow?' chart-interactive':''}`} viewBox={`${viewLeft} 0 ${viewWidth} 220`} role="img" aria-label={`${series[0]?.unit} over the selected ${mode==='local'?'local-time display':'UTC'} window. Lines connect observations; missing samples remain gaps.${onSelectWindow?' Drag across the chart to select a shared time window.':''}`}
     onPointerMove={event=>{if((!onCrosshairChange&&!onSelectWindow)||!event.isPrimary||!gesture.acceptsPointer(event.pointerId))return;const value=pointX(event);if(value===null)return;onCrosshairChange?.(chartUtcAtX(value,fromUtc,toUtc));gesture.move(event.pointerId,value);}}
     onPointerDown={event=>{if(!onSelectWindow||event.button!==0||!event.isPrimary)return;const value=pointX(event);if(value===null)return;if(gesture.begin(event.pointerId,value))event.currentTarget.setPointerCapture(event.pointerId);}}
     onPointerUp={event=>{gesture.finish(event.pointerId,pointX(event));}}
@@ -70,9 +74,11 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     {all.map(({s,shift})=>{
       const color=colorFor(s);
       const points=plotPoints(s,shift,from,to,x,y);
+      const connectedTimes=new Set<string>();
+      points.forEach((point,index)=>{if(point&&(points[index-1]||points[index+1]))connectedTimes.add(point.timeUtc);});
       return <g key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}`}>
         {lineSegments(points).map((d,index)=><path className="chart-series" d={d} fill="none" key={index} stroke={color} strokeDasharray={shift ? "5 5" : undefined} strokeLinecap="round" strokeLinejoin="round" strokeOpacity={shift ? .48 : .95} strokeWidth={shift ? 1.75 : 2.5}/>)}
-        {points.filter((point): point is PlotPoint => point !== null).map(point=><circle className="chart-marker" cx={point.x} cy={point.y} fill={shift ? "var(--surface)" : color} key={`${point.timeUtc}:${shift}`} r={shift ? 1.5 : 2} stroke={color} strokeWidth={shift ? 1 : 1.25}>
+        {points.filter((point): point is PlotPoint => point !== null).map(point=><circle className={`chart-marker${connectedTimes.has(point.timeUtc)?' chart-point-hit-target':''}`} cx={point.x} cy={point.y} fill={shift ? "var(--surface)" : color} key={`${point.timeUtc}:${shift}`} r={connectedTimes.has(point.timeUtc)?4:shift ? 1.5 : 2} stroke={color} strokeWidth={shift ? 1 : 1.25}>
           <title>{`${s.label} ${s.dimension??''} · ${timeLabel(point.timeUtc)} · ${formatOverviewChartValue(point.value,range)} ${s.unit} · ${point.samples} samples${shift?' · previous period':''}`}</title>
         </circle>)}
       </g>;
@@ -80,10 +86,11 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     {markers.filter(marker=>Date.parse(marker.timeUtc)>=from&&Date.parse(marker.timeUtc)<to).map((marker,index)=><g key={`${marker.timeUtc}:${index}`} className="chart-event-marker"><line x1={x(marker.timeUtc)} x2={x(marker.timeUtc)} y1="25" y2="180"/><circle cx={x(marker.timeUtc)} cy="24" r="4"/><title>{`${marker.label} · ${timeLabel(marker.timeUtc)}`}</title></g>)}
     {dragStart!==null&&dragEnd!==null&&<rect className="chart-selection" x={Math.min(dragStart,dragEnd)} y="25" width={Math.abs(dragEnd-dragStart)} height="155" pointerEvents="none"/>}
     {crosshairX!==null&&<g className="chart-crosshair" pointerEvents="none"><line x1={crosshairX} x2={crosshairX} y1="25" y2="180"/><text x={crosshairX>500?crosshairX-5:crosshairX+5} y="18" textAnchor={crosshairX>500?'end':'start'}>{timeLabel(crosshairTime,true)}</text></g>}
-    <text x="48" y="210">{timeLabel(from,true)}</text><text x="465" y="210">{timeLabel(to,true)}</text>
+    <text x="48" y="210">{timeLabel(from,true)}</text><text x="620" y="210" textAnchor="end">{timeLabel(to,true)}</text>
   </svg>;
   const plotLabel=scrollablePlotLabel??`${series[0]?.label??'Overview'} · ${series[0]?.metric??'observations'} plot`;
-  return <figure><ChartPlotViewport label={plotLabel} contextKey={JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity)])} canSelectWindow={Boolean(onSelectWindow)} minWidth={viewWidth}>{plot}</ChartPlotViewport><figcaption className="overview-legend">{series.map(s=><span key={`${s.targetId}:${s.metric}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
+  return <figure ref={responsive.ref}><ChartPlotViewport label={plotLabel} contextKey={JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity)])} resetKey={chartViewportIdentity(series.map(seriesIdentity), typeof location === 'undefined' ? '' : location.hash)} canSelectWindow={Boolean(onSelectWindow)} minWidth={viewWidth} adaptWidth={!longAxes}>{plot}</ChartPlotViewport><figcaption className="overview-legend" tabIndex={0} aria-label="Chart series legend">{series.map(s=><span key={`${s.targetId}:${s.metric}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
+  <details className="chart-context-details"><summary>Chart semantics & references</summary>
   <small>Vertical scale includes observations and visible references and may not start at zero.</small>
   {bands.length>0&&<small>Shaded band: {[...new Set(bands.map(band=>band.label.split(' · ')[0]))].join(', ')} · p10–p90; center line: median. Missing reference hours remain gaps.</small>}
   {selectedReferences.thresholds.length>0&&<small>Dashed horizontal lines: current enabled metric rules. Open reference details for each rule and condition.</small>}
@@ -94,6 +101,7 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
   </details>}
   {previous?.length ? <small>Dashed lines: previous equal-length window shifted for comparison. Observed bucket means; gaps and changing coverage can affect comparisons.</small> : null}
   {markers.length>0&&<small>Event lines mark available events in this window; they are not a complete event history.</small>}
+  </details>
   <details className="chart-values"><summary>View chart values</summary><div className="table-scroll" tabIndex={0} role="region" aria-label="Chart observation values"><table><thead><tr><th>Server / resource</th><th>{mode==='local'?'Local time':'UTC'}</th><th>Value</th><th>Samples</th><th>Period</th></tr></thead><tbody>{all.flatMap(({s,shift})=>s.points.map(p=><tr key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}:${p.timeUtc}`}><td>{s.label} {s.dimension}</td><td title={p.timeUtc}>{timeLabel(p.timeUtc)}</td><td>{formatOverviewChartValue(p.value,range)} {s.unit}</td><td>{p.samples}</td><td>{shift?'Previous':'Selected'}</td></tr>))}</tbody></table></div></details></figure>;
 }
 

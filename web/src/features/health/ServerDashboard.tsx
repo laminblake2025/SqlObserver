@@ -1,9 +1,9 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTimeDisplay } from "../../TimeDisplayContext";
 import { formatDisplayTime } from "../../timeDisplay";
 import { utcMicroseconds } from "../../utcTimestamp.ts";
 import { OverviewChart } from "../overview/OverviewChart";
-import { issueHref, overviewEvidenceFooter, overviewHref, overviewWindow, rankedIssues } from "../overview/overviewModel";
+import { issueHref, overviewEvidenceFooter, overviewHref, rankedIssues } from "../overview/overviewModel";
 import type { OverviewScope, OverviewValue } from "../overview/overviewTypes";
 import { useOverviewAnalytics } from "../overview/useOverviewAnalytics";
 import { CurrentBlockingPanel } from "./CurrentBlockingPanel";
@@ -30,6 +30,11 @@ import { dashboardTimelineSelectionHref, matchesDashboardTimelineSelection, read
 import { ChartAlignmentControls } from "../../components/ChartAlignmentControls.tsx";
 import { chartInspectionHref, readChartInspection } from "../../components/chartInspectionModel.ts";
 import { useChartInspection } from "../../components/useChartInspection.ts";
+import { MetricCard } from "../../components/DiagnosticUi";
+import { DiagnosticIcon } from "../../components/WorkspaceNavigation";
+import { fleetServerRows } from "../overview/fleetGridModel";
+import { useResolvedOverviewWindow } from "../overview/WorkspaceRefreshWindow";
+import { DashboardTopQueries } from "./DashboardTopQueries";
 import { DashboardBaselineCards } from "./DashboardBaselineCards.tsx";
 import { DashboardInvestigationSummary } from "./DashboardInvestigationSummary.tsx";
 import { ChartEvidenceIndicator, EvidenceDisclosure, ReferenceEvidenceStatus } from "../../components/CompactEvidenceStatus.tsx";
@@ -61,14 +66,20 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
   const data = result.data;
   const evidence = data?.evidence.find(item => item.targetId === instanceId);
   const blockingEvidence = useCurrentBlockingEvidence(instanceId, targetRevision, blockingRefresh, active, onAccessDenied);
+  const [blockingOpen, setBlockingOpen] = useState(false);
+  const [showEventMarkers, setShowEventMarkers] = useState(false);
   const [blockerSelection, setBlockerSelection] = useState<{ key: string; sessionId: number }>();
   const blockerKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, blockingEvidence.page?.evidence?.runId]);
   const inspectBlocker = (sessionId: number) => {
     if (!active || location.hash !== selectionHash) return;
     setBlockerSelection({ key: blockerKey, sessionId });
-    document.getElementById("server-blocking-heading")?.focus();
+    setBlockingOpen(true);
+    const panel = document.getElementById("server-blocking-heading");
+    const disclosure = panel?.closest("details"); if (disclosure) disclosure.open = true;
+    panel?.focus();
     document.getElementById("server-blocking-heading")?.scrollIntoView({ block: "start" });
   };
+  const signals = data ? fleetServerRows(data, "", Date.now()).find(row => row.target.targetId.toLowerCase() === instanceId.toLowerCase())?.signals : undefined;
   const previous = result.previous?.evidence.find(item => item.targetId === instanceId);
   const issues = data ? rankedIssues(data).filter(issue => issue.targetId.toLowerCase() === instanceId.toLowerCase()) : [];
   const agentHistory = useAgentHistory(instanceId, targetRevision, data && evidence ? data : undefined, refresh);
@@ -76,7 +87,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     ? [agentHistory.page.window.fromUtc, agentHistory.page.window.toUtc].map(value => utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, "$1")).toString())
     : [])]);
   const chartReferences = useChartReferences(instanceId, targetRevision, data && evidence ? data : undefined, canReadRules, refresh, evidence?.series.map(item => item.metric));
-  const fallbackWindow = useMemo(()=>{try{return overviewWindow(selectedScope,Date.now());}catch{return undefined;}},[instanceId,targetRevision,scope.range,scope.from,scope.to,refresh]);
+  const fallbackWindow = useResolvedOverviewWindow(selectedScope, refresh);
   const analyticsWindow = data && evidence ? { fromUtc:data.fromUtc,toUtc:data.toUtc } : undefined;
   const alertEvidence = useRef<HTMLDivElement>(null), alertEvidenceId = useId();
   const serverLifecycleEvidence = useRef<HTMLDivElement>(null), serverLifecycleEvidenceId = useId();
@@ -137,7 +148,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
     const href = dashboardTimelineSelectionHref(selection ? fixedTimelineScope : selectedScope, selection);
     location.hash = selection ? href : `${href}&healthSection=summary`;
   };
-  const markers = timelineEvents.map(event => ({ timeUtc: event.timeUtc, label: `${event.title} · ${event.timeBasis.replaceAll("_", " ")}` }));
+  const markers = (showEventMarkers ? timelineEvents : []).map(event => ({ timeUtc: event.timeUtc, label: `${event.title} · ${event.timeBasis.replaceAll("_", " ")}` }));
   const timelineNotes = [
     ...timeline.notes,
     alerts.denied ? "Alert lifecycle history access was denied; protected list and exact event evidence were removed. Restore target read access and explicitly retry history access."
@@ -188,10 +199,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
 
   return <section className="server-dashboard" aria-labelledby="server-dashboard-heading">
     <div className="section-heading"><div><p className="eyebrow">Server dashboard</p><h3 id="server-dashboard-heading">Investigate {displayName}</h3></div></div>
-    <div className="overview-controls server-dashboard-controls">
-      <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
-      <span className="server-dashboard-mode">Drag a chart or the timeline rail to select a shared time window. Live ranges refresh every 60 seconds.</span>
-    </div>
+
     {result.loading && <p role="status">{data
       ? `Refreshing server timeline… Showing the previous snapshot window ${timeLabel(data.fromUtc)} to ${timeLabel(data.toUtc)}, refreshed ${timeLabel(data.refreshedAtUtc)}.`
       : "Loading server timeline…"}</p>}
@@ -203,38 +211,47 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       <HeadBlockerAnswer evidence={blockingEvidence} targetRevision={targetRevision} formatTime={timeLabel} onInspect={inspectBlocker} />
     </section>}
     {data && evidence && <>
+      <HeadBlockerAnswer evidence={blockingEvidence} targetRevision={targetRevision} formatTime={timeLabel} onInspect={inspectBlocker} />
       <div className="kpi-grid server-dashboard-kpis">
+        <MetricCard label="SQL scheduler CPU" value={signals?.cpu.text ?? "—"} detail={signals?.cpu.detail ?? "Evidence unavailable"} icon={<DiagnosticIcon name="fleet"/>}/>
+        <MetricCard label="OS free via SQL" value={signals?.memory.text ?? "—"} detail={signals?.memory.detail ?? "Evidence unavailable"} icon={<DiagnosticIcon name="collection"/>}/>
         <DashboardCount label="Active alerts now" value={evidence.activeAlerts} />
-        <DashboardCount label="Blocked sessions now" value={evidence.blockedSessions} />
         <DashboardCount label="Deadlocks in window" value={evidence.deadlocks} />
       </div>
-      <DashboardBaselineCards targetId={instanceId} series={evidence.series} bands={chartReferences.references.bands}
-        fromUtc={data.fromUtc} toUtc={data.toUtc} formatTime={timeLabel} baselineStatus={chartReferences.baselineStatus} />
-      <DashboardInvestigationSummary targetId={instanceId} scope={fixedTimelineScope} fromUtc={data.fromUtc} toUtc={data.toUtc}
-        issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || alerts.list.loading || alerts.detail.loading || serverLifecycle.list.loading || serverLifecycle.detail.loading || agentHistory.loading}
-        sourceNotes={timelineNotes} blocking={{ evidence: blockingEvidence, targetRevision, onInspect: inspectBlocker }} />
+      <div className="server-dashboard-primary-charts">
+        {chart("engine.batch_requests_per_second", "SQL workload", "Comparable SQL samples; missing intervals remain gaps.")}
+        {chart("blocking.sessions", "Blocking history", "Distinct blocked sessions per observed bucket; not a continuous count.")}
+      </div>
+
     </>}
-    {timelineWindow&&<><ChartAlignmentControls key={inspectionKey} context={inspectionKey} label="Dashboard" headingLevel={4} {...timelineWindow}
-      requestedUtc={requestedChartAt} crosshairUtc={crosshairUtc}
-      onAlign={utc=>{if(!active||location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash,utc);}}
-      onClear={()=>{if(!active||location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
-      <DashboardTimeline interactionEnabled={active} contextKey={timelineContextKey} events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
+    {timelineWindow&&<><div className="server-dashboard-window-evidence"><DashboardTimeline interactionEnabled={active} contextKey={timelineContextKey} events={timelineEvents} {...timelineWindow} crosshairUtc={crosshairUtc}
       selection={requestedSelection} onSelectionChange={selectTimeline} pinnedExactEvent={pinnedExactEvent}
       loading={timeline.loading||alerts.list.loading||alerts.detail.loading||serverLifecycle.list.loading||serverLifecycle.detail.loading}
       onSelectWindow={window=>{setCrosshairUtc(null);change({range:"custom",from:window.fromUtc,to:window.toUtc});}}
-      onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes}/>
+      onSelectTime={setCrosshairUtc} sourceNotes={timelineNotes}/><DashboardTopQueries targetId={instanceId} targetRevision={targetRevision} window={analyticsWindow} scope={fixedTimelineScope} refresh={refresh} onAccessDenied={onAccessDenied}/></div>
       {selectedLifecycleEvent!==undefined&&<button type="button" className="secondary-button server-history-action" aria-controls={alertEvidenceId} onClick={()=>{
         if(!active||location.hash!==selectionHash)return;
         alertEvidence.current?.focus();alertEvidence.current?.scrollIntoView({block:"start"});
       }}>Review selected alert event evidence</button>}</>}
+    {data && evidence && <>
+      <details className="supporting-evidence dashboard-additional-findings"><summary>Additional findings & observed change context ({issues.length})</summary>
+        <DashboardInvestigationSummary targetId={instanceId} scope={fixedTimelineScope} fromUtc={data.fromUtc} toUtc={data.toUtc}
+          issues={issues} events={timelineEvents} formatTime={timeLabel} loading={result.loading || timeline.loading || alerts.list.loading || alerts.detail.loading || serverLifecycle.list.loading || serverLifecycle.detail.loading || agentHistory.loading}
+          sourceNotes={timelineNotes} />
+      </details>
+{timelineWindow && <details className="supporting-evidence" open={requestedChartAt!==undefined?true:undefined}><summary>Align chart inspection</summary><ChartAlignmentControls key={inspectionKey} context={inspectionKey} label="Dashboard" headingLevel={4} {...timelineWindow}
+      requestedUtc={requestedChartAt} crosshairUtc={crosshairUtc}
+      onAlign={utc=>{if(!active||location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash,utc);}}
+      onClear={()=>{if(!active||location.hash!==selectionHash)return;setCrosshairUtc(null);location.hash=chartInspectionHref(selectionHash);}} />
+      </details>}
+    </>}
     {selectedServerLifecycleEvent!==undefined&&<button type="button" className="secondary-button server-history-action" aria-controls={serverLifecycleEvidenceId} onClick={()=>{
       if(!active||location.hash!==selectionHash)return;
       serverLifecycleEvidence.current?.focus();serverLifecycleEvidence.current?.scrollIntoView({block:"start"});
     }}>Review selected server lifecycle evidence</button>}
     {data && evidence && <>
-      <div className="server-dashboard-charts">
-        {chart("engine.batch_requests_per_second", "SQL workload", "Batch requests per second from comparable SQL samples; missing intervals remain gaps.")}
-        {chart("blocking.sessions", "Blocked sessions", "Peak distinct blocked sessions per observed bucket; this is not a continuous count.")}
+      <details className="supporting-evidence"><summary>Resource charts, wait history & baselines</summary><DashboardBaselineCards targetId={instanceId} series={evidence.series} bands={chartReferences.references.bands}
+        fromUtc={data.fromUtc} toUtc={data.toUtc} formatTime={timeLabel} baselineStatus={chartReferences.baselineStatus} /><div className="server-dashboard-charts">
         {chart("engine.sql_scheduler_cpu_percent", "SQL scheduler CPU", "Percent of online SQL scheduler capacity used by non-preemptive workers between samples. This excludes preemptive and hidden-scheduler work; it is not total SQL process CPU.")}
         <ServerWaitTrendPanel interactionKey={String(active)} instanceId={instanceId} fromUtc={data.fromUtc} toUtc={data.toUtc} refresh={refresh}
           markers={markers}
@@ -261,7 +278,11 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
           <small>GiB. SQL process physical memory is used memory; OS available memory via SQL and host available memory are free memory. They are separate measurements and need not add up to total host memory.</small>
         </section>
       </div>
-      {evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
+      </details>{evidence.gaps.length > 0 && <details className="panel server-dashboard-gaps"><summary>Collection gaps ({evidence.gaps.length})</summary><ul>{evidence.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details>}
+    <div className="overview-controls server-dashboard-controls">
+      <label className="overview-check"><input type="checkbox" checked={scope.compare} onChange={event => change({ compare: event.target.checked })} />Compare previous period</label>
+      <label className="overview-check"><input type="checkbox" checked={showEventMarkers} onChange={event=>setShowEventMarkers(event.target.checked)}/>Show event markers on charts</label><span className="server-dashboard-mode">Drag a chart or the timeline rail to select a shared time window. Live ranges refresh every 60 seconds.</span>
+    </div>
       <section className="compact-evidence-footer" aria-label="Dashboard evidence status">
         <p>Selected window: {timeLabel(data.fromUtc)} to {timeLabel(data.toUtc)}. Refreshed {timeLabel(data.refreshedAtUtc)}.</p>
         <p>SQL core status: {evidence.collectionState.replaceAll("_", " ")} · {evidence.gaps.length} reported collection gaps. Independent sources can have different coverage.</p>
@@ -273,8 +294,9 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
       </section>
       {result.comparisonError && <p role="status">{result.comparisonError}</p>}
     </>}
-    {active && <CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} evidence={blockingEvidence} targetRevision={targetRevision}
-      selectedRoot={blockerSelection?.key === blockerKey ? blockerSelection.sessionId : undefined} />}
+    {active && <details className="supporting-evidence" open={blockingOpen} onToggle={event => setBlockingOpen(event.currentTarget.open)}><summary>Current blocking graph evidence</summary><CurrentBlockingPanel instanceId={instanceId} scope={selectedScope} evidence={blockingEvidence} targetRevision={targetRevision}
+      selectedRoot={blockerSelection?.key === blockerKey ? blockerSelection.sessionId : undefined} /></details>}
+    <details className="supporting-evidence" open={selectedLifecycleEvent!==undefined||selectedServerLifecycleEvent!==undefined?true:undefined}><summary>Retained alerts, server lifecycle & SQL Agent evidence</summary>
     {timelineWindow&&<div ref={alertEvidence} id={alertEvidenceId} tabIndex={-1} role="region" aria-label="Alert history evidence" className="server-history-evidence-location">
       <AlertLifecycleHistoryPanel history={alerts} scope={fixedTimelineScope} selectedEvent={selectedLifecycleEvent} onSelectEvent={selectLifecycleEvent}
         onRetainWindow={()=>{if(scope.range!=="custom")change({range:"custom",from:timelineWindow.fromUtc,to:timelineWindow.toUtc});}}/>
@@ -307,7 +329,7 @@ export function ServerDashboard({ instanceId, displayName, scope, refresh, block
         ? "Verify collector availability and choose a retained range; missing evidence is not an all-clear signal."
         : "A comparable dashboard source window has not been received. Open SQL Agent history to read its retained evidence independently."}</p>}
       {timelineWindow&&<p><a href={healthCheckHref(fixedTimelineScope,instanceId,"agent")}>Open SQL Agent history for this window →</a></p>}
-    </section>
+    </section></details>
   </section>;
 }
 

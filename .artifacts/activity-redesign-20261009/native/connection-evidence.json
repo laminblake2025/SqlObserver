@@ -1,0 +1,148 @@
+{
+  "checkedAtUtc": "2026-10-09T17:40:26.668Z",
+  "upstream": "https://WIN-QNGOV5GDM24:5443",
+  "targetId": "dfb2b72c-4ad4-4765-9523-528c798482f0",
+  "lastCollectionUtc": "2026-10-09T17:39:59.356934Z",
+  "metrics": 9,
+  "snapshotId": "d4198020-8d3a-41af-bf6a-eab796919a61",
+  "snapshotUtc": "2026-10-09T17:40:14.191Z",
+  "sessionRows": 0,
+  "responses": [
+    {
+      "path": "/api/v1/me",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/overview",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/me",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health/databases",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/lifecycle/collection",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/lifecycle/history",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/alerts/history",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health/server-configuration-snapshot",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health/server-configuration-changes",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health/files",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health/databases",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/blocking/current",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/overview",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/waits/trend",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/analytics/sql-baselines",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/analytics/sql-baselines",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/alerts/rules",
+      "status": 405
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health/database-option-changes",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/analytics/baselines",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/deadlocks",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/health/server-configuration-changes",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/query-performance/regressions",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/sql-agent/failures",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/query-performance/top",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/blocking/current",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/live",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/requests",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/blocking/history",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/waits/history",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/waits",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/live",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/observation-targets/dfb2b72c-4ad4-4765-9523-528c798482f0/activity/sessions",
+      "status": 200
+    }
+  ]
+}

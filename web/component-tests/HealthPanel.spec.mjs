@@ -383,6 +383,7 @@ test('embedded navigation and independent dashboard remain available when the la
     await route.fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"PRIVATE_HEALTH_ERROR"}' }); return true;
   };
   await open(page, 'Dashboard', '?embedded=true');
+  await panel(page).getByText('Latest health, databases & configuration', { exact:true }).click();
   await expect(panel(page).getByRole('heading', { name: 'Server diagnostics for Alpha', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Server summary for Alpha', exact: true })).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
@@ -405,6 +406,7 @@ test('embedded navigation and independent dashboard remain available when the la
 
 test('switching sections preserves the mounted dashboard disclosure and owned source receipts', async ({ page }) => {
   await open(page, 'Dashboard');
+  await panel(page).getByText('Retained alerts, server lifecycle & SQL Agent evidence', { exact:true }).click();
   const summary = panel(page).locator('summary').filter({ hasText: /^Browse alert lifecycle events$/ });
   await expect(summary).toBeVisible();
   await summary.focus(); await page.keyboard.press('Enter');

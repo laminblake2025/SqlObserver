@@ -19,7 +19,7 @@ const utc = (value: unknown) => utcMicroseconds(typeof value === "string" ? valu
 const guid = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value) && value !== "00000000-0000-0000-0000-000000000000";
 const text = (value: unknown) => value === null || typeof value === "string";
 /** Every metadata page is bounded before it can enter inspection or cursor restoration. */
-function validatePage(value: LivePage, parameters: URLSearchParams): void {
+export function validateLivePage(value: LivePage, parameters: URLSearchParams): void {
   if (!value || !Array.isArray(value.rows) || value.rows.length > 50 || !Array.isArray(value.databases) ||
       typeof value.state !== "string" || typeof value.truncated !== "boolean" ||
       value.nextCursor !== null && (typeof value.nextCursor !== "string" || value.nextCursor.length < 1 || value.nextCursor.length > 2048)) throw new Error("Invalid session snapshot metadata.");
@@ -37,7 +37,8 @@ function validatePage(value: LivePage, parameters: URLSearchParams): void {
     if (!row || typeof row.identity !== "string" || !/^[0-9a-f]{64}$/iu.test(row.identity) || identities.has(row.identity.toLowerCase()) ||
         !Number.isSafeInteger(row.sessionId) || row.sessionId < 1 || row.sessionId > 32767 ||
         row.requestId !== null && (!Number.isSafeInteger(row.requestId) || row.requestId < 0) ||
-        row.databaseId !== null && (!Number.isSafeInteger(row.databaseId) || row.databaseId < 1 || row.databaseId > 32767) ||
+        // Background system requests can report database_id 0 (no database context).
+        row.databaseId !== null && (!Number.isSafeInteger(row.databaseId) || row.databaseId < (row.isUser === false ? 0 : 1) || row.databaseId > 32767) ||
         typeof row.status !== "string" || typeof row.queryState !== "string" || typeof row.isUser !== "boolean" ||
         [row.databaseName, row.login, row.clientHost, row.application, row.command, row.waitType, row.queryId, row.engineStartup, row.sessionLogin, row.requestStart].some(item => !text(item)) ||
         row.blocker !== null && (!Number.isSafeInteger(row.blocker) || row.blocker < -32768 || row.blocker > 32767) ||
@@ -56,7 +57,7 @@ export async function readLive<T>(target: string, path: string, parameters: URLS
   if (!response.ok) throw new ActivityRequestError(response.status === 403 ? "You do not have permission to read this evidence." : "Collection evidence is unavailable. Displayed observations have been retained.", response.status);
   if (!(response.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) throw new Error("Invalid activity response.");
   const value = JSON.parse(await readBoundedBody(response, signal, 1024 * 1024));
-  if (path === "") validatePage(value as LivePage, parameters);
+  if (path === "") validateLivePage(value as LivePage, parameters);
   else if (path === "/query") {
     const detail = value as QueryDetail;
     if (!detail || !["available", "unavailable"].includes(detail.state) || !text(detail.text) ||

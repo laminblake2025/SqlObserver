@@ -101,9 +101,9 @@ public sealed class QueryPerformanceV2OutputTests
     [Fact]
     public void UnsupportedVersionIsRejectedEvenWithoutACacheFrame()
     {
-        CollectorManifest manifest = M4TestData.CreateManifest("queries.performance", version: 3,
+        CollectorManifest manifest = M4TestData.CreateManifest("queries.performance", version: 4,
             outputKind: CollectorOutputKind.QueryPerformance);
-        var validator = new CollectorOutputValidator(new(new(3), [], 0, 0, 0, maxQueryPerformanceObservations: 20_000));
+        var validator = new CollectorOutputValidator(new(new(4), [], 0, 0, 0, maxQueryPerformanceObservations: 20_000));
         Assert.Throws<InvalidDataException>(() => validator.Validate(manifest, M4TestData.CreateExecutionRequest(),
             Result(manifest, Payload(null))));
     }

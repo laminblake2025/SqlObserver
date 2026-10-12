@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "completedAtUtc": "2026-10-09T17:41:39.702Z",
+  "status": "passed",
+  "application": "Local SQL Observer dashboard",
+  "scope": "Activity redesign with native lab compatibility qualification; no API, schema, collector or alert-rule changes",
+  "inputs": {
+    "path": ".artifacts/activity-redesign-20261009/final-inputs.json",
+    "bytes": 151643,
+    "sha256": "f8499e052a5213031a00a07c5828144c204e3a1476f9f8d9516261cac49f876c"
+  },
+  "models": {
+    "passed": 1089,
+    "failed": 0,
+    "skipped": 0,
+    "receipt": {
+      "path": ".artifacts/activity-redesign-20261009/model-results.log",
+      "bytes": 264156,
+      "sha256": "d4e73cc498847f26f6cbb1d51c389f538d4e7a880ccd2626ed7df44b88a55d0f"
+    }
+  },
+  "browserAndComponents": {
+    "passed": 83,
+    "failed": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "Activity component and permission checks",
+        "startTime": "2026-10-09T17:37:54.220Z",
+        "duration": 47932.701,
+        "expected": 54,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0,
+        "receipt": {
+          "path": ".artifacts/activity-redesign-20261009/component-results.json",
+          "bytes": 66775,
+          "sha256": "69277ad2e10808ca390cab4cc4cd1866f75cc082a65f0a6311ac79810cac977f"
+        }
+      },
+      {
+        "name": "Activity layout, keyboard, accessibility and interaction checks",
+        "startTime": "2026-10-09T17:37:55.177Z",
+        "duration": 25997.801,
+        "expected": 8,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0,
+        "receipt": {
+          "path": ".artifacts/activity-redesign-20261009/browser-results.json",
+          "bytes": 11143,
+          "sha256": "b15ea21c1dad482ff1ab5acd3a8b7ef0b06c5a0ba8826c8bae9cc263a530fcfe"
+        }
+      },
+      {
+        "name": "History, timezone and exact-capture checks",
+        "startTime": "2026-10-09T17:40:21.256Z",
+        "duration": 16381.457,
+        "expected": 10,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0,
+        "receipt": {
+          "path": ".artifacts/activity-redesign-20261009/history-results.json",
+          "bytes": 19508,
+          "sha256": "9cf75877be3451857e37c4a0a52a51eeb1b3b5041a8ea6e0ebe272049a878131"
+        }
+      },
+      {
+        "name": "Shared navigation, capture, role and chart regression checks",
+        "startTime": "2026-10-09T17:40:22.737Z",
+        "duration": 28058.947,
+        "expected": 8,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0,
+        "receipt": {
+          "path": ".artifacts/activity-redesign-20261009/shared-shell-results.json",
+          "bytes": 10887,
+          "sha256": "c633f3925c6c2b19cdc85a383ac6c1248835d481413753736919081d8e9e4059"
+        }
+      },
+      {
+        "name": "Final UI against retained native blocking capture",
+        "startTime": "2026-10-09T17:37:55.798Z",
+        "duration": 3821.401,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0,
+        "receipt": {
+          "path": ".artifacts/activity-redesign-20261009/native/browser-results.json",
+          "bytes": 3197,
+          "sha256": "a6e3e484533322e8f1dc5c42d2e9a048c7fbb30bbd9d26c6383e18c061edfd31"
+        }
+      },
+      {
+        "name": "Connected lab and relay-isolation checks",
+        "startTime": "2026-10-09T17:40:21.272Z",
+        "duration": 5509.682000000001,
+        "expected": 2,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0,
+        "receipt": {
+          "path": ".artifacts/activity-redesign-20261009/connected-results.json",
+          "bytes": 4189,
+          "sha256": "27363ccebfa9773695899d694a5fa416de58e4f8a3e795236f8ae167d61293c1"
+        }
+      }
+    ]
+  },
+  "build": {
+    "status": "passed",
+    "typecheck": "passed",
+    "assetVerification": "passed",
+    "receipt": {
+      "path": ".artifacts/activity-redesign-20261009/build-results.log",
+      "bytes": 6860,
+      "sha256": "0045dfc7c94c865b91fc85eedbcba1f869d6f179c76568a500476e95b5f60f08"
+    },
+    "assetManifest": {
+      "path": ".artifacts/activity-redesign-20261009/web-asset-manifest.v1.json",
+      "bytes": 32383,
+      "sha256": "1fbea444d10395a74aa79588800d66332b33db9362240968a4e7c6b58dd251f5"
+    },
+    "initialJavaScriptGzipBytes": 157737,
+    "ceilingBytes": 256000,
+    "releaseInputManifest": {
+      "path": "release/certification/m12-sbom-inputs.v1.json",
+      "bytes": 6963,
+      "sha256": "f7f6c0634ee1ab217251f09c53ddfdf99d1d77880eccd36747c3bcf98383ca4f"
+    },
+    "verifiedReleaseInputs": 41
+  },
+  "visuals": {
+    "path": ".artifacts/activity-redesign-20261009/visual-comparison.json",
+    "bytes": 10515,
+    "sha256": "a527960c0ada95c54e9afbf927c7ee11d27428415aec825cea5bad66c3a74f80"
+  },
+  "nativeLab": {
+    "target": "dfb2b72c-4ad4-4765-9523-528c798482f0",
+    "syntheticData": false,
+    "tls": "validated",
+    "runId": "5ef3afa1e954407388fdaa988d61f47b",
+    "snapshotId": "0a40ec84-9005-44fb-9d55-78771ff872dc",
+    "observedUtc": "2026-10-09T17:17:02.679Z",
+    "pagesRead": 2,
+    "requestRows": 76,
+    "distinctSessions": 76,
+    "blocker": 75,
+    "blocked": 76,
+    "blockerRankedFirst": true,
+    "exactCapturePinned": true,
+    "explicitProtectedSqlHttpStatus": 200,
+    "protectedTextStored": false,
+    "boundedExecutionSeconds": 150,
+    "rollbackVerified": true,
+    "ownedSessionsRemaining": 0,
+    "servicesChanged": false,
+    "workloadReceipt": {
+      "path": ".artifacts/activity-redesign-20261009/native/workload-result.json",
+      "bytes": 640,
+      "sha256": "0c832e982d0ad6d7a7ebe210b8515b6dc42b4b19f8f5f44aa511d1b76a54c331"
+    },
+    "dashboardReceipt": {
+      "path": ".artifacts/activity-redesign-20261009/native/dashboard-evidence.json",
+      "bytes": 612,
+      "sha256": "c330285ae9e60c52d13fd34c7eef1b43d3034a632f14d9e2a2df857ec448e005"
+    },
+    "note": "The guarded workload was captured through the deployed collector, PostgreSQL repository and API. The final UI was verified by replaying that same retained native capture. This does not qualify a full deployment or migration of the newer backend."
+  },
+  "qualificationLimits": [
+    "Snapshots retain the native 24-hour retention and 512-row collection bound.",
+    "All metadata reads are pinned to one capture and bounded to 11 validated native pages.",
+    "Thresholds are local investigation preferences; alert rules are unchanged.",
+    "The existing lab API/collector compatibility limits documented in docs/development-lab-dashboard.md remain."
+  ]
+}

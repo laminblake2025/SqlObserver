@@ -18,7 +18,7 @@ jobs:
   browser:
     name: Browser behavior and accessibility
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -45,7 +45,9 @@ jobs:
         run: pnpm --dir web exec playwright install --with-deps chromium
 
       - name: Test browser behavior and accessibility
-        run: pnpm --dir web run test:browser
+        run: |
+          pnpm --dir web run build
+          pnpm --dir web exec playwright test --config playwright.ci.config.mjs
 
       - name: Publish browser evidence
         if: always()
@@ -59,7 +61,7 @@ jobs:
   validate:
     name: Windows validation
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     steps:
       - name: Check out source

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { TimeDisplayProvider } from "./TimeDisplayContext";
 import "./styles.css";
+import "./redesign.css";
 
 const rootElement = document.getElementById("root");
 

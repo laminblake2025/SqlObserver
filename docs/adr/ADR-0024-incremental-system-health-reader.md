@@ -1,6 +1,7 @@
 # ADR-0024: Read `system_health` incrementally without skipping XE buffers
 
-Status: proposed, 2026-09-29
+- Status: Proposed
+- Date: 2026-09-29
 
 ## Context
 

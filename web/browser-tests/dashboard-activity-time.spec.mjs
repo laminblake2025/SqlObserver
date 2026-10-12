@@ -8,7 +8,7 @@ const target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T11:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const state = new WeakMap();
 const scope = page => new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
-const sessions = page => page.locator('.live-sessions');
+const sessions = page => page.locator('.activity-capture-screen');
 const href = extra => '/#/activity?' + new URLSearchParams({ target, range: 'custom', from, to, databaseId: '5', ...extra });
 
 test.beforeEach(async ({ page }, info) => {
@@ -36,29 +36,29 @@ test.afterEach(async ({ page }) => expect(state.get(page).unexpected).toEqual([]
 
 test('Activity Live and History change shared time context and restore it through reload and browser history', async ({ page }) => {
   await page.goto(href());
-  await expect(sessions(page).getByRole('heading', { name: 'Session history', exact: true })).toBeVisible();
-  await expect(page.locator('.topbar-time-mode')).toHaveText('Rewind · fixed');
+  await expect(sessions(page).getByRole('heading', { name: 'Captured activity', exact: true })).toBeVisible();
+  await expect(page.locator('.time-mode-pill.frozen')).toHaveText('Frozen');
   await sessions(page).getByRole('button', { name: 'Live', exact: true }).click();
   await expect.poll(() => scope(page).get('range')).toBe('1h');
   expect(scope(page).has('from')).toBe(false); expect(scope(page).has('to')).toBe(false);
   expect(scope(page).get('databaseId')).toBe('5');
   await page.reload();
-  await expect(sessions(page).getByRole('heading', { name: 'Live sessions', exact: true })).toBeVisible();
+  await expect(sessions(page).getByRole('heading', { name: 'Current activity', exact: true })).toBeVisible();
   await sessions(page).getByRole('button', { name: 'History', exact: true }).click();
   await expect.poll(() => scope(page).get('range')).toBe('custom');
   const frozen = Object.fromEntries(scope(page));
   expect(frozen.from).toBe('2026-09-26T11:30:00.000Z'); expect(frozen.to).toBe('2026-09-26T12:30:00.000Z');
   await page.reload();
-  await expect(sessions(page).getByRole('heading', { name: 'Session history', exact: true })).toBeVisible();
+  await expect(sessions(page).getByRole('heading', { name: 'Captured activity', exact: true })).toBeVisible();
   expect(Object.fromEntries(scope(page))).toEqual(frozen);
   const latest = state.get(page).history.at(-1);
   expect(latest.searchParams.get('from')).toBe(frozen.from); expect(latest.searchParams.get('to')).toBe(frozen.to);
   await page.goBack();
   await expect.poll(() => scope(page).get('range')).toBe('1h');
-  await expect(sessions(page).getByRole('heading', { name: 'Live sessions', exact: true })).toBeVisible();
+  await expect(sessions(page).getByRole('heading', { name: 'Current activity', exact: true })).toBeVisible();
   await page.goForward();
   await expect.poll(() => scope(page).get('range')).toBe('custom');
-  await expect(sessions(page).getByRole('heading', { name: 'Session history', exact: true })).toBeVisible();
+  await expect(sessions(page).getByRole('heading', { name: 'Captured activity', exact: true })).toBeVisible();
 });
 
 test('returning captured or event-linked Activity to Live clears the exact evidence link in the shared URL', async ({ page }) => {
@@ -67,12 +67,12 @@ test('returning captured or event-linked Activity to Live clears the exact evide
     { at: '2026-09-26T11:30:00.123456Z', event: '33333333-3333-4333-8333-333333333333' },
   ]) {
     await page.goto(href(extra));
-    await expect(sessions(page)).toContainText(extra.sessionSnapshot ? 'This table is pinned' : 'Opened for the deadlock event');
+    await expect(sessions(page)).toContainText(extra.sessionSnapshot ? 'Selected capture pinned' : 'Opened for the deadlock event');
     await sessions(page).getByRole('button', { name: 'Live', exact: true }).click();
     await expect.poll(() => scope(page).get('range')).toBe('1h');
     for (const key of ['sessionSnapshot', 'sessionObserved', 'sessionIdentity', 'at', 'event', 'from', 'to']) expect(scope(page).has(key)).toBe(false);
     await page.reload();
-    await expect(sessions(page).getByRole('heading', { name: 'Live sessions', exact: true })).toBeVisible();
+    await expect(sessions(page).getByRole('heading', { name: 'Current activity', exact: true })).toBeVisible();
   }
 });
 
@@ -83,6 +83,7 @@ for (const width of [320, 768, 1024, 1440]) test(`shared Activity time controls 
   await history.focus(); await expect(history).toBeFocused();
   const geometry = await history.evaluate(node => { const box = node.getBoundingClientRect(); return { width: box.width, height: box.height, right: box.right }; });
   expect(geometry.width).toBeGreaterThanOrEqual(40); expect(geometry.height).toBeGreaterThanOrEqual(36); expect(geometry.right).toBeLessThanOrEqual(width);
+  await info.attach('layout-geometry', { body: JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('body *')].filter(element => element.getBoundingClientRect().right > innerWidth + 1 && element.getBoundingClientRect().height > 0).slice(0, 20).map(element => ({ tag: element.tagName, class: element.className, right: element.getBoundingClientRect().right, width: element.getBoundingClientRect().width })))), contentType: 'application/json' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.evaluate(() => { document.activeElement?.blur(); document.querySelectorAll('.table-scroll,.live-table-scroll').forEach(node => { node.scrollLeft = 0; }); window.scrollTo({ top: 0, behavior: 'instant' }); });

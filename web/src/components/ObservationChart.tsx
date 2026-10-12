@@ -4,6 +4,8 @@ import { formatDisplayTime } from "../timeDisplay";
 import { chartUtcAtX, chartSvgX } from "../features/overview/chartTimeModel";
 import { useChartGesture } from "./useChartGesture";
 import { ChartPlotViewport } from "./ChartPlotViewport.tsx";
+import { chartViewportIdentity } from "./chartViewportIdentity.ts";
+import { useResponsiveChart } from "./useResponsiveChart";
 import {
   nearestObservation, observationSegments, prepareObservationChart,
   type ObservationBand, type ObservationSeries, type ObservationThreshold,
@@ -29,6 +31,7 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
   readonly onSelectWindow?: (window: { readonly fromUtc: string; readonly toUtc: string }) => void;
 }) {
   const { mode } = useTimeDisplay();
+  const responsive = useResponsiveChart();
   const timeLabel = (value: string | number, compact = false) => formatDisplayTime(value, mode, compact);
   const [hoverUtc, setHoverUtc] = useState<string | null>(null);
   const gesture = useChartGesture(JSON.stringify([fromUtc, toUtc, label, series.map(entry => entry.id)]), fromUtc, toUtc, onSelectWindow);
@@ -54,12 +57,13 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
   });
   const viewLeft = Math.min(0,40 - (Math.max(...ticks.map(tick=>tick.label.length)) * 8 + 8));
   const viewWidth = 650 - viewLeft;
+  const longAxes = ticks.some(tick=>tick.label.length>10);
   const announceCrosshair = (utc: string | null) => { setHoverUtc(utc); onCrosshairChange?.(utc); };
 
-  return <figure className="observation-figure">
+  return <figure className="observation-figure" ref={responsive.ref}>
     <figcaption>{label} · {chart.pointCount} plotted values from loaded evidence · {mode === "local" ? "local time" : "UTC"}</figcaption>
-    <ChartPlotViewport label={`${label} plot`} contextKey={JSON.stringify([fromUtc,toUtc,label,series.map(entry=>entry.id)])} canSelectWindow={Boolean(onSelectWindow)} minWidth={viewWidth}>
-    <svg className={`chart observation-chart${onSelectWindow ? " chart-interactive" : ""}`} viewBox={`${viewLeft} 0 ${viewWidth} 225`}
+    <ChartPlotViewport label={`${label} plot`} contextKey={JSON.stringify([fromUtc,toUtc,label,series.map(entry=>entry.id)])} resetKey={chartViewportIdentity([label,...series.map(entry=>entry.id)], typeof location === 'undefined' ? '' : location.hash)} canSelectWindow={Boolean(onSelectWindow)} minWidth={viewWidth} adaptWidth={!longAxes}>
+    <svg style={{fontSize: longAxes ? 12 : responsive.fontSize * viewWidth / 650}} className={`chart observation-chart${onSelectWindow ? " chart-interactive" : ""}`} viewBox={`${viewLeft} 0 ${viewWidth} 225`}
       role="img" aria-label={`${label}. ${chart.series.length} series in the selected ${mode === "local" ? "local-time display" : "UTC"} window. Missing samples remain gaps.${onSelectWindow ? " Drag to select a shared time window." : ""}`}
       onPointerMove={event => {
         if (!event.isPrimary || !gesture.acceptsPointer(event.pointerId)) return;
@@ -94,13 +98,15 @@ export function ObservationChart({ label, series, fromUtc, toUtc, baselineBand, 
       </line>}
       {chart.series.map((entry, index) => {
         const color = colors[index % colors.length];
+        const segments = observationSegments(entry.items);
+        const connectedTimes = new Set(segments.filter(segment => segment.length > 1).flatMap(segment => segment.map(point => point.time)));
         return <g key={entry.id}>
-          {observationSegments(entry.items).map((segment, segmentIndex) =>
+          {segments.map((segment, segmentIndex) =>
             <path className="chart-series" key={segmentIndex} d={segmentPath(segment, x, y)} fill="none"
               stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />)}
           {entry.items.filter((item): item is PlottedObservation => item !== null).map((point, pointIndex) =>
-            <circle className="chart-marker" key={`${point.time}:${pointIndex}`} cx={x(point.timestamp)} cy={y(point.value)}
-              r="2" fill={color} stroke={color}><title>{entry.label} · {timeLabel(point.timestamp)} · {valueFormatter(point.value)}</title></circle>)}
+            <circle className={`chart-marker${connectedTimes.has(point.time) ? " chart-point-hit-target" : ""}`} key={`${point.time}:${pointIndex}`} cx={x(point.timestamp)} cy={y(point.value)}
+              r={connectedTimes.has(point.time) ? 4 : 2} fill={color} stroke={color}><title>{entry.label} · {timeLabel(point.timestamp)} · {valueFormatter(point.value)}</title></circle>)}
         </g>;
       })}
       {dragStart !== null && dragEnd !== null && <rect className="chart-selection" x={Math.min(dragStart, dragEnd)}

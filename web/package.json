@@ -21,7 +21,7 @@
     "test:browser:administration": "pnpm run build && playwright test --config playwright.dashboard-administration.config.mjs",
     "test:browser:development": "playwright test --config playwright.development.config.mjs",
     "assets:generate": "node tools/web-asset-manifest.mjs generate",
-    "assets:verify": "node tools/web-asset-manifest.mjs verify",
+    "assets:verify": "node tools/web-asset-manifest.mjs verify && node tools/verify-initial-budget.mjs",
     "build": "tsc --noEmit && vite build && pnpm run assets:generate && pnpm run assets:verify",
     "preview": "vite preview"
   },

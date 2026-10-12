@@ -1,6 +1,7 @@
 # ADR-0021: Canonical evidence and retention dependency graph
 
-- Status: Accepted for the revamp; implementation staged
+- Status: Accepted
+- Implementation: Accepted for the revamp; implementation staged
 - Date: 2026-09-28
 
 ## Context

@@ -117,6 +117,8 @@ test("rendered chart contains bands, median and threshold lines with accessible 
     "./chartTimeModel":new URL("../src/features/overview/chartTimeModel.ts",import.meta.url).href,
     "../../components/useChartGesture":new URL("../src/components/useChartGesture.ts",import.meta.url).href,
     "../../components/ChartPlotViewport.tsx":viewportModule,
+    "../../components/chartViewportIdentity.ts":new URL("../src/components/chartViewportIdentity.ts",import.meta.url).href,
+    "../../components/useResponsiveChart":new URL("../src/components/useResponsiveChart.ts",import.meta.url).href,
     "./overviewChartRange":new URL("../src/features/overview/overviewChartRange.ts",import.meta.url).href,
     "./chartReferenceModel.ts":new URL("../src/features/overview/chartReferenceModel.ts",import.meta.url).href,
     // This SSR loader omits the style-only module; mounted dark/keyboard/axe checks load the actual CSS.

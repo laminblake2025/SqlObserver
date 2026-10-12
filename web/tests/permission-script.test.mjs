@@ -95,7 +95,9 @@ test('browser output is byte-for-byte canonical PowerShell output for escaped op
       if (input.logicalFiles) args.push('-LogicalFiles');
       if (input.queryStoreDatabase) args.push('-QueryStoreDatabase', input.queryStoreDatabase);
       if (input.replication) args.push('-Replication', '-DistributionDatabase', input.distributionDatabase);
-      const expected = execFileSync('pwsh', args, { encoding: 'utf8', timeout: 15000, windowsHide: true });
+      const trustedPowerShell = process.env.SQLOBSERVER_M12_TRUSTED_PWSH_PATH;
+      assert.ok(trustedPowerShell, 'Permission parity requires an explicitly trusted PowerShell runtime.');
+      const expected = execFileSync(trustedPowerShell, args, { encoding: 'utf8', timeout: 15000, windowsHide: true });
       assert.equal(generatePermissionScript(input), expected);
     }
   });

@@ -1,6 +1,9 @@
 # ADR-0027: Version SQL metric analytics inputs
 
-Status: SQL metric activation implemented, 2026-09-30. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore and a synthetic SQL baseline fleet benchmark are verified on isolated PostgreSQL. Native core inputs are verified on SQL Server 2022 and browser behavior against the synthetic API fixture. SQL Server 2019/2025, the browser connected to the real API and production fleet validation remain open.
+- Status: Accepted (local implementation)
+- Date: 2026-09-30
+
+Implementation: SQL metric activation implemented. Source, rollup/baseline workers, read API, chart references and MCP discovery/read are active. Retention backup/restore and a synthetic SQL baseline fleet benchmark are verified on isolated PostgreSQL. Native core inputs are verified on SQL Server 2022 and browser behavior against the synthetic API fixture. SQL Server 2019/2025, the browser connected to the real API and production fleet validation remain open.
 
 ## Context
 

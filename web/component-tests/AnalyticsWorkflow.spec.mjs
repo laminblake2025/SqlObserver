@@ -197,7 +197,7 @@ test('job inventory remains truthful when native requested times predate the evi
 test('native diagnostic metadata renders inertly and unknown evidence confidence stays unavailable', async ({ page }) => {
   await mount(page); await select(page, 'diagnostics/search'); await receipt(page, 1);
   const details = owner(page).locator('details').first(); await details.getByText('Evidence details', { exact: true }).click();
-  expect(JSON.parse(await details.locator('pre').textContent()).description).toBe(malicious);
+  expect(JSON.parse(await details.locator('pre').textContent()).safeMetadata.description).toBe(malicious);
   await expect(owner(page).locator('img,script')).toHaveCount(0);
   expect(await page.evaluate(() => window.analyticsInjected)).toBeUndefined(); await select(page, 'evidence-packets'); await receipt(page, 1);
   await expect(owner(page).getByRole('table').locator('tbody tr').first()).toContainText('Unavailable');

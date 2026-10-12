@@ -100,8 +100,9 @@ export function aggregateValue(evidence: readonly OverviewEvidence[], key: 'acti
   const incomplete = known.length !== values.length || known.some(v => v.state === 'partial');
   return {text:`${known.reduce((sum,v) => sum + v.value!,0).toLocaleString()}${incomplete ? '+' : ''}`, note:`${known.length}/${values.length} servers · ${incomplete ? 'partial count' : key === 'deadlocks' ? 'observed events in window' : 'latest snapshots'}`};
 }
-export function rankedIssues(snapshot: OverviewSnapshot) {
-  return snapshot.evidence.flatMap(e => e.issues).sort((a,b) => a.priority-b.priority || (a.observedAtUtc ?? '').localeCompare(b.observedAtUtc ?? '') || a.server.localeCompare(b.server)).slice(0,5);
+export function rankedIssues(snapshot: OverviewSnapshot, limit: number | null = 5) {
+  const issues = snapshot.evidence.flatMap(e => e.issues).sort((a,b) => a.priority-b.priority || (a.observedAtUtc ?? '').localeCompare(b.observedAtUtc ?? '') || a.server.localeCompare(b.server));
+  return limit === null ? issues : issues.slice(0,limit);
 }
 export function displayMetric(value: number | null): string { return value === null ? '—' : value.toLocaleString(undefined, {maximumFractionDigits:2}); }
 

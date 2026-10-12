@@ -1,5 +1,6 @@
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Deployment;
+using SqlObserver.Domain.Repository;
 
 namespace SqlObserver.PerformanceTests;
 
@@ -8,7 +9,7 @@ public sealed class M12LifecycleAssessmentBoundsTests
     [Fact]
     public void AssessmentCheckAndHistoryBoundsRemainFinite()
     {
-        Assert.Equal(256, MigrationAssessmentRequest.MaximumHistory);
+        Assert.Equal(MigrationNumber.MaximumValue, MigrationAssessmentRequest.MaximumHistory);
         Assert.Equal(256, DeploymentLifecycleAssessment.MaximumChecks);
         var checks = Enumerable.Range(0, 256)
             .Select(i => new LifecycleAssessmentCheck($"check-{i}", LifecycleCheckStatus.NotEvaluated, "not_evaluated"))

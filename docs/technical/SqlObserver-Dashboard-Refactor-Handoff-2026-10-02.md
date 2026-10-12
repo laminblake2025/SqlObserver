@@ -112,7 +112,7 @@ Next-source inventory: SQL Agent activity has a bounded staged reader and a nati
 | Native CPU qualification and admission | Independent `cpu.components` vertical slice implemented; actual-monitor SQL 2025 native run passes 3/3. Independently timed values are available while exact pair eligibility remains false. Collection defaults off; original process DACL restored. Historical strict paired qualification remains incomplete. | Recorded-native canonical/API/Resources replay passes. Establish durable process access, broader source/load/restart qualification and continuously deployed acceptance. |
 | Running/long-running SQL Agent activity | Bounded staged capture and corrected service predicate exist; actual monitor observes Agent stopped. Session SELECT fails with error 229; discovery evidence is missing. Signed-module trial and independent DBA comparison passed: all 12 observed rows matched, including differing-owner-SID rows; baseline restored after removal. Stopped-Agent evidence retains Unknown candidates. Guarded public module reader and revocable enrollment are qualified. Fenced canonical observations, default-off controls, retention and scoped summary/exact history with observations UI are qualified against disposable PostgreSQL and synthetic browser fixtures. | Qualify running/session/time evidence and continuously deployed acceptance separately; retained local timestamps do not establish elapsed duration. |
 | Passive AG transitions and lifecycle | AG access recovery and retained snapshot history complete. Lifecycle default-off production admission is implemented; stable-engine source passes 3/3 and fresh recorded-native canonical replay passes 1/1. | Qualify continuous deployment and physical transition evidence on an identified AG topology; sampled changes alone do not prove physical failover, cause or uninterrupted coverage. |
-| Final dashboard acceptance | Completed feature checkpoints retain their recorded local evidence; final acceptance remains open. | Close required native dependencies, then qualify representative cross-screen Live/Rewind, URL restoration and access recovery, supported browsers and manual accessibility. |
+| Final dashboard acceptance | The bounded existing-feature milestone passes50 representative built-App Chromium cases, zero failures/skips/retries/flaky results; fresh320/390/768/1440 responsive/axe evidence and screenshots are preserved. Product code is unchanged; the single final review accepted with zero blocking findings. [Current checklist](../../artifacts/dashboard-acceptance-2026-10-07/requirement-checklist.md). | Dashboard milestone complete; stopped without starting another milestone. Native CPU, Agent duration, physical AG, deployed acceptance and broader certification are separate unsupported/deferred work; they do not gate this fixture milestone. |
 | Optional assistant | Deferred and nonblocking. | Revisit only after required dashboard acceptance or a new scope instruction. |
 
 Immediate execution follows the [native qualification guide](../../tools/qualification/paired-cpu/native-sql-qualification.md). Next work is durable CPU provisioning/qualification, lifecycle continuous-deployment acceptance and SQL Agent native running/session/time qualification and connected acceptance. Agent canonical observations, default-off collection, retention and scoped history/API/UI are qualified for their stated local boundaries. The guarded public reader and revocable enrollment are qualified; running/session/time semantics remain open. Recorded-native CPU connected acceptance, lifecycle default-off admission and stable lifecycle canonical replay are complete for their stated scopes; deployment to existing services, production migration execution and GitHub publication have not occurred. Preserve the untracked original planning documents and design directory. Use non-overlapping owners with one integration lead, and run complete affected validation after any implementation changes.
@@ -2004,3 +2004,38 @@ monitor-existing-station-security-observation-v3.json; and the running-Collector
 Next implementation evaluates a fresh private desktop or Collector-hosted launch path;
 no existing ACL, account right, privilege, service or SQL state was changed by these queries.
 The two-root cleanup, both SQL drains and broader qualification goal remain open.
+
+
+### Protected staging fixed; private station trial remains partial (2026-10-07)
+
+ServiceTokenWithTokenV2 now validates the same unmanaged credential buffer for UTF-16
+and embedded NUL before authentication. Its pinned DLL passes 115 pure cases / 143
+assertions; no native WithToken call has run. The private desktop lease source passes
+93 pure cases / 116 assertions. These source checks do not qualify native worker launch.
+
+The first setup wrapper refused at TransferredBundlePins with zero diagnostic starts.
+An independent current readback found correct transferred bytes but unprotected file
+ACLs that failed the exact protected-file gate; scope and runtime directory ACLs passed.
+That readback does not reconstruct the original exception or precise copy mutation.
+The fresh V2 wrapper passes 79 local assertions, transfers separate ingress files,
+pins both held contents, then creates explicit protected CREATE_NEW final files.
+
+The fresh VM trial verified all 194 runtime files / 80,431,091 bytes, flushed its guest
+reservation and started original diagnostic PID19540, which joined with exit95. The
+private station was created and its name/type/flags/security readback verified. Desktop
+enumeration returned FALSE with cached error0 and zero callbacks, so the owner refused
+before desktop creation. Empty inventory and the cause of that return remain unknown.
+Both original associations were restored and re-queried; the owned station close was
+acknowledged and wrapper file leases were disposed. This does not prove global object
+destruction, private desktop setup completion, Collector access or worker qualification.
+
+Both setup nonces are retired: 86d7125e-e030-4830-9ea1-1676c0d3f17a and
+160ab79c-3aa2-479a-ab20-b580427df15a. Used source, payloads and raw results remain
+immutable under artifacts/dashboard-agent-interruption-2026-10-07. Evidence records:
+monitor-private-desktop-staging-current-observation-v1.json and
+monitor-private-desktop-setup-partial-observation-v2.json, with independent reviews.
+Next work resolves the native enumeration/target freshness boundary on a distinct
+candidate, then integrates same-token access checks and original-thread desktop lifetime
+with custody before the sole worker resume. No Monitor worker, SQL, SCM, account-right,
+privilege or existing-ACL change occurred in these trials. Recovery and production
+admission remain unqualified; two-root cleanup and both SQL drains remain required.

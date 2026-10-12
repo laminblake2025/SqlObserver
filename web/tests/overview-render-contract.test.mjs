@@ -16,7 +16,7 @@ test('overview rejects invalid resource display fields and native observed insta
   const original = globalThis.fetch;
   try {
     for (const patch of [{ server: {} }, { unit: [] }, { state: {} }, { observedAtUtc: {} },
-      { observedAtUtc: undefined }, { observedAtUtc: '2026-02-30T12:00:00Z' }, { observedAtUtc: '2026-10-02T12:00:00.1234561Z' }]) {
+      { observedAtUtc: undefined }, { observedAtUtc: '2026-02-30T12:00:00Z' }, { observedAtUtc: '2026-10-02T12:00:00.12345618Z' }]) {
       const body = sample(); Object.assign(body.evidence[0].resources[0], patch);
       globalThis.fetch = async () => Response.json(body);
       await assert.rejects(getOverview(target, window, new AbortController().signal), { message: 'Invalid Overview resource.' });

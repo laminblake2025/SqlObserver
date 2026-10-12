@@ -1,0 +1,947 @@
+[WebServer] (node:184432) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 207 tests using 1 worker
+
+(node:202708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   1 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:60:1 › received investigation pages survive polling and cached first/previous/next restore without network reads (903ms)
+  ok   2 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:71:1 › failed explicit latest retains received rows; retry repeats fresh first page and resets only on success (628ms)
+  ok   3 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:79:1 › failed continuation retries the identical native cursor and does not append duplicate evidence (550ms)
+  ok   4 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:87:1 › one held navigation owns the read through refresh ticks; cancel retains receipt and retry resumes the same cursor (707ms)
+  ok   5 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:96:1 › idle polling replaces an older automatic read and fences its late receipt (524ms)
+  ok   6 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:102:34 › native HTTP 401 removes all received pages and permits explicit recovery (630ms)
+  ok   7 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:102:34 › native HTTP 403 removes all received pages and permits explicit recovery (712ms)
+  ok   8 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:110:83 › continuation generation drift fails safely and preserves the received page (490ms)
+  ok   9 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:110:83 › continuation targetRevision drift fails safely and preserves the received page (474ms)
+  ok  10 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:110:83 › continuation snapshotUtc drift fails safely and preserves the received page (444ms)
+  ok  11 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:110:83 › continuation cutoffUtc drift fails safely and preserves the received page (426ms)
+  ok  12 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:120:1 › an expired unread cursor preserves cached pages and fresh latest recovers the new generation (810ms)
+  ok  13 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:126:1 › moving live windows preserve an investigated native window until explicit latest (908ms)
+  ok  14 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:135:56 › target context change hides old evidence before effects and aborts a held old continuation (517ms)
+  ok  15 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:135:56 › revision context change hides old evidence before effects and aborts a held old continuation (523ms)
+  ok  16 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:135:56 › window context change hides old evidence before effects and aborts a held old continuation (482ms)
+  ok  17 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:145:1 › target ABA does not allow an aborted first target read to overwrite its newer receipt (536ms)
+  ok  18 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:152:1 › unmount aborts an owned continuation and late completion cannot seed the remount (494ms)
+  ok  19 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:158:1 › real AnalyticsPage keeps independent surface trails; leaving a held read cancels only that owner (863ms)
+  ok  20 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:166:1 › category ABA cannot let a cancelled prior category read overwrite its restored trail (706ms)
+  ok  21 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:174:1 › target-wide native denial purges retained evidence across categories without automatic denial loops (909ms)
+  ok  22 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:185:1 › legacy incidents disclose bounded native evidence without fabricated paging or provenance (412ms)
+  ok  23 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:191:1 › job inventory remains truthful when native requested times predate the evidence window (510ms)
+  x   24 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:197:1 › native diagnostic metadata renders inertly and unknown evidence confidence stays unavailable (535ms)
+(node:201268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  25 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:206:1 › the bounded browser investigation limit retains its final page and makes no further unread request (2.5s)
+  ok  26 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:214:44 › retained analytics is dark, accessible, keyboard operable and locally bounded at 320px (1.6s)
+  ok  27 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:214:44 › retained analytics is dark, accessible, keyboard operable and locally bounded at 390px (1.7s)
+  ok  28 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:214:44 › retained analytics is dark, accessible, keyboard operable and locally bounded at 768px (1.7s)
+  ok  29 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:214:44 › retained analytics is dark, accessible, keyboard operable and locally bounded at 1440px (1.8s)
+  ok  30 [chromium] › component-tests\FleetServerGrid.spec.mjs:85:1 › native grouping save works with Enter and normalizes the accepted labels (367ms)
+  ok  31 [chromium] › component-tests\FleetServerGrid.spec.mjs:94:1 › an abandoned Alpha receipt cannot close or replace Beta’s newer pending editor (498ms)
+  ok  32 [chromium] › component-tests\FleetServerGrid.spec.mjs:108:1 › unmount aborts a save and refuses its late error or refresh callback (506ms)
+  ok  33 [chromium] › component-tests\FleetServerGrid.spec.mjs:116:1 › rapid repeated Enter submissions issue only one native mutation (362ms)
+  ok  34 [chromium] › component-tests\FleetServerGrid.spec.mjs:126:1 › a routine same-revision overview refresh preserves the unfinished draft (444ms)
+  ok  35 [chromium] › component-tests\FleetServerGrid.spec.mjs:134:1 › a newer native grouping revision cancels the old attempt and requires an explicit fresh editor (589ms)
+  ok  36 [chromium] › component-tests\FleetServerGrid.spec.mjs:146:1 › conflict locks saving until explicit readback, and a fresh editor uses the new revision (593ms)
+  ok  37 [chromium] › component-tests\FleetServerGrid.spec.mjs:161:1 › permission removal aborts pending changes, and regrant does not resurrect a draft (561ms)
+  ok  38 [chromium] › component-tests\FleetServerGrid.spec.mjs:172:1 › pending Cancel is usable, aborts the request and requires explicit target readback (526ms)
+  ok  39 [chromium] › component-tests\FleetServerGrid.spec.mjs:182:1 › an indeterminate save failure refuses a blind retry and keeps provider text inert (410ms)
+  ok  40 [chromium] › component-tests\FleetServerGrid.spec.mjs:194:44 › long grouping labels support keyboard, dark layout and accessible scrolling at 320px (988ms)
+  ok  41 [chromium] › component-tests\FleetServerGrid.spec.mjs:194:44 › long grouping labels support keyboard, dark layout and accessible scrolling at 390px (1.0s)
+  ok  42 [chromium] › component-tests\FleetServerGrid.spec.mjs:194:44 › long grouping labels support keyboard, dark layout and accessible scrolling at 768px (1.0s)
+  ok  43 [chromium] › component-tests\FleetServerGrid.spec.mjs:194:44 › long grouping labels support keyboard, dark layout and accessible scrolling at 1440px (1.0s)
+  ok  44 [chromium] › component-tests\HealthNavigation.spec.mjs:54:1 › Back and Forward restore an absent Health section during the first committed render (716ms)
+  ok  45 [chromium] › component-tests\HealthNavigation.spec.mjs:65:1 › reloading a bare route gives the same default section as history restoration (848ms)
+  ok  46 [chromium] › component-tests\HealthNavigation.spec.mjs:72:1 › bare database context retains Dashboard while clearing and restoring the database filter (541ms)
+  ok  47 [chromium] › component-tests\HealthNavigation.spec.mjs:82:94 › explicit summary wins over database default through database additions and clearing (508ms)
+  ok  48 [chromium] › component-tests\HealthNavigation.spec.mjs:82:94 › explicit collection wins over database default through database additions and clearing (493ms)
+  ok  49 [chromium] › component-tests\HealthNavigation.spec.mjs:90:1 › returning from an explicit section to a bare database URL restores Dashboard and survives reload (776ms)
+  ok  50 [chromium] › component-tests\HealthNavigation.spec.mjs:98:1 › explicit section survives target changes and refresh while native source reads follow the new target (593ms)
+  ok  51 [chromium] › component-tests\HealthNavigation.spec.mjs:112:44 › Health history navigation remains accessible in dark layout at 320px (1.1s)
+  ok  52 [chromium] › component-tests\HealthNavigation.spec.mjs:112:44 › Health history navigation remains accessible in dark layout at 390px (1.1s)
+  ok  53 [chromium] › component-tests\HealthNavigation.spec.mjs:112:44 › Health history navigation remains accessible in dark layout at 768px (1.1s)
+  ok  54 [chromium] › component-tests\HealthNavigation.spec.mjs:112:44 › Health history navigation remains accessible in dark layout at 1440px (1.1s)
+  ok  55 [chromium] › component-tests\HealthPanel.spec.mjs:106:1 › discloses native pending, stale and degraded collector evidence with loss and counters (586ms)
+  ok  56 [chromium] › component-tests\HealthPanel.spec.mjs:137:1 › unavailable collector reasons offer scoped recovery guidance without granting administrator actions (3.9s)
+  ok  57 [chromium] › component-tests\HealthPanel.spec.mjs:173:1 › the explicit administrator UI fixture exposes the scoped permission destination and partial-metric guidance (2.2s)
+  ok  58 [chromium] › component-tests\HealthPanel.spec.mjs:199:1 › empty rows establish absence only for a current succeeded loss-free collection (1.8s)
+  ok  59 [chromium] › component-tests\HealthPanel.spec.mjs:222:1 › keeps exact large file counters, bounded page evidence and database context (676ms)
+  x   60 [chromium] › component-tests\HealthPanel.spec.mjs:257:1 › sanitizes a denied native response and requires an explicit access retry (426ms)
+(node:209236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   61 [chromium] › component-tests\HealthPanel.spec.mjs:278:1 › definitive denied outer Health poll drops all retained inventory and file receipts (590ms)
+(node:184940) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  62 [chromium] › component-tests\HealthPanel.spec.mjs:292:1 › preserves the first page on paging failure and allows a sanitized retry (673ms)
+  ok  63 [chromium] › component-tests\HealthPanel.spec.mjs:313:1 › aborts the old server request and prevents its late result from replacing the new context (612ms)
+  ok  64 [chromium] › component-tests\HealthPanel.spec.mjs:343:1 › renders provider-controlled names as inert text and uses the real time provider (540ms)
+  ok  65 [chromium] › component-tests\HealthPanel.spec.mjs:359:1 › keeps health inventory usable and accessible at 320 and 1440 pixels (1.7s)
+  x   66 [chromium] › component-tests\HealthPanel.spec.mjs:380:1 › embedded navigation and independent dashboard remain available when the latest health snapshot fails (5.5s)
+(node:191876) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   67 [chromium] › component-tests\HealthPanel.spec.mjs:406:1 › switching sections preserves the mounted dashboard disclosure and owned source receipts (5.5s)
+(node:187116) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  68 [chromium] › component-tests\HealthPanel.spec.mjs:420:51 › a databases outage keeps core and independently readable change history visible (580ms)
+  ok  69 [chromium] › component-tests\HealthPanel.spec.mjs:420:51 › a files outage keeps core and independently readable change history visible (493ms)
+  ok  70 [chromium] › component-tests\HealthPanel.spec.mjs:441:1 › a pending file read does not hold successfully validated core or database evidence hostage (513ms)
+  x   71 [chromium] › component-tests\HealthPanel.spec.mjs:457:34 › file HTTP401 has priority over core503 and aborts a held peer without automatic recovery (612ms)
+(node:202816) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   72 [chromium] › component-tests\HealthPanel.spec.mjs:457:34 › file HTTP403 has priority over core503 and aborts a held peer without automatic recovery (561ms)
+(node:186056) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   73 [chromium] › component-tests\HealthPanel.spec.mjs:488:1 › independent option-history denial clears all retained health siblings until explicit access recovery (703ms)
+(node:181468) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   74 [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › primary analytics HTTP401 clears protected health siblings while ordinary source failures remain independent (577ms)
+(node:203724) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   75 [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › primary analytics HTTP403 clears protected health siblings while ordinary source failures remain independent (626ms)
+(node:208928) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   76 [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › comparison analytics HTTP401 clears protected health siblings while ordinary source failures remain independent (612ms)
+(node:201884) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   77 [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › comparison analytics HTTP403 clears protected health siblings while ordinary source failures remain independent (611ms)
+(node:186024) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  78 [chromium] › component-tests\IndependentBlocking.spec.mjs:70:51 › current blocking survives 503 analytics without fabricating historical charts (570ms)
+  ok  79 [chromium] › component-tests\IndependentBlocking.spec.mjs:70:51 › current blocking survives malformed analytics without fabricating historical charts (476ms)
+  ok  80 [chromium] › component-tests\IndependentBlocking.spec.mjs:70:51 › current blocking survives empty analytics without fabricating historical charts (509ms)
+  ok  81 [chromium] › component-tests\IndependentBlocking.spec.mjs:89:1 › pending and failed current refresh retain disclosed evidence and explicit retry recovers independently (596ms)
+  x   82 [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 401 purges current blocking and holds the source until explicit access retry (5.7s)
+(node:186992) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   83 [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 403 purges current blocking and holds the source until explicit access retry (6.1s)
+(node:187316) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  84 [chromium] › component-tests\IndependentBlocking.spec.mjs:125:1 › an aborted previous-target forbidden response cannot notify or deny the current health parent (658ms)
+  ok  85 [chromium] › component-tests\IndependentBlocking.spec.mjs:143:1 › a pending previous target is aborted and cannot publish into the current target (601ms)
+  ok  86 [chromium] › component-tests\IndependentBlocking.spec.mjs:154:1 › inactive generation aborts old current read and reactivation reads fresh evidence (645ms)
+  ok  87 [chromium] › component-tests\IndependentBlocking.spec.mjs:165:1 › caller revision fences unconfirmed graph roots and a fresh matching receipt restores inspection (627ms)
+  ok  88 [chromium] › component-tests\IndependentBlocking.spec.mjs:174:1 › an absent native collection receipt stays unknown while analytics is unavailable (444ms)
+  ok  89 [chromium] › component-tests\IndependentBlocking.spec.mjs:185:44 › independent current blocking is accessible in dark mode at 320 (1.5s)
+  ok  90 [chromium] › component-tests\IndependentBlocking.spec.mjs:185:44 › independent current blocking is accessible in dark mode at 390 (1.5s)
+  ok  91 [chromium] › component-tests\IndependentBlocking.spec.mjs:185:44 › independent current blocking is accessible in dark mode at 768 (1.5s)
+  ok  92 [chromium] › component-tests\IndependentBlocking.spec.mjs:185:44 › independent current blocking is accessible in dark mode at 1440 (1.5s)
+  ok  93 [chromium] › component-tests\ObservationChart.spec.mjs:121:3 › observation ignores right and middle mouse drags and secondary touch starts (711ms)
+  ok  94 [chromium] › component-tests\ObservationChart.spec.mjs:145:3 › observation preserves the owning drag across foreign starts, movement and termination (1.0s)
+  ok  95 [chromium] › component-tests\ObservationChart.spec.mjs:176:63 › observation cancels only the owning pointercancel (600ms)
+  ok  96 [chromium] › component-tests\ObservationChart.spec.mjs:176:63 › observation cancels only the owning lostpointercapture (554ms)
+  ok  97 [chromium] › component-tests\ObservationChart.spec.mjs:193:3 › observation selects a shared window with native primary touch input (494ms)
+  ok  98 [chromium] › component-tests\ObservationChart.spec.mjs:215:36 › observation maps the actual visible plot bounds to the full UTC window at 320px (584ms)
+  ok  99 [chromium] › component-tests\ObservationChart.spec.mjs:215:36 › observation maps the actual visible plot bounds to the full UTC window at 1440px (541ms)
+  ok 100 [chromium] › component-tests\ObservationChart.spec.mjs:240:5 › observation cancels a captured drag when advance chart window (803ms)
+  ok 101 [chromium] › component-tests\ObservationChart.spec.mjs:240:5 › observation cancels a captured drag when replace chart target (810ms)
+  ok 102 [chromium] › component-tests\ObservationChart.spec.mjs:121:3 › overview ignores right and middle mouse drags and secondary touch starts (760ms)
+  ok 103 [chromium] › component-tests\ObservationChart.spec.mjs:145:3 › overview preserves the owning drag across foreign starts, movement and termination (844ms)
+  ok 104 [chromium] › component-tests\ObservationChart.spec.mjs:176:63 › overview cancels only the owning pointercancel (523ms)
+  ok 105 [chromium] › component-tests\ObservationChart.spec.mjs:176:63 › overview cancels only the owning lostpointercapture (511ms)
+  ok 106 [chromium] › component-tests\ObservationChart.spec.mjs:193:3 › overview selects a shared window with native primary touch input (457ms)
+  ok 107 [chromium] › component-tests\ObservationChart.spec.mjs:215:36 › overview maps the actual visible plot bounds to the full UTC window at 320px (554ms)
+  ok 108 [chromium] › component-tests\ObservationChart.spec.mjs:215:36 › overview maps the actual visible plot bounds to the full UTC window at 1440px (554ms)
+  ok 109 [chromium] › component-tests\ObservationChart.spec.mjs:240:5 › overview cancels a captured drag when advance chart window (803ms)
+  ok 110 [chromium] › component-tests\ObservationChart.spec.mjs:240:5 › overview cancels a captured drag when replace chart target (964ms)
+  ok 111 [chromium] › component-tests\ObservationChart.spec.mjs:271:1 › retains a numeric zero and excludes missing samples from accessible evidence (391ms)
+  ok 112 [chromium] › component-tests\ObservationChart.spec.mjs:287:1 › renders one observation and two distinct runs without inventing evidence across a gap (410ms)
+  ok 113 [chromium] › component-tests\ObservationChart.spec.mjs:310:1 › updates reference legends and formatted values in the accessible table (482ms)
+  ok 114 [chromium] › component-tests\ObservationChart.spec.mjs:329:1 › shares controlled pointer time between charts and clears both on leave (491ms)
+  ok 115 [chromium] › component-tests\ObservationChart.spec.mjs:349:1 › selects a normalized shared time window and cancels or ignores incomplete drags (1.1s)
+  ok 116 [chromium] › component-tests\ObservationChart.spec.mjs:378:1 › replaces mounted chart content when props become unavailable and restores evidence (477ms)
+  ok 117 [chromium] › component-tests\ObservationChart.spec.mjs:395:1 › uses the real time provider for local and UTC chart labels without changing evidence timestamps (410ms)
+  ok 118 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › observation plot keeps readable axes and full-window touch/keyboard access at 320px (1.7s)
+  ok 119 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › observation plot keeps readable axes and full-window touch/keyboard access at 390px (1.5s)
+  ok 120 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › observation plot keeps readable axes and full-window touch/keyboard access at 768px (1.1s)
+  ok 121 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › observation plot keeps readable axes and full-window touch/keyboard access at 1440px (1.1s)
+  ok 122 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 320px (1.9s)
+  ok 123 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 390px (1.6s)
+  x  124 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 768px (439ms)
+(node:191112) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  125 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 1440px (700ms)
+(node:195516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 126 [chromium] › component-tests\ObservationChart.spec.mjs:494:82 › observation long exact axis values fit their gutter and preserve CTM selection at 320px (795ms)
+  ok 127 [chromium] › component-tests\ObservationChart.spec.mjs:494:82 › observation long exact axis values fit their gutter and preserve CTM selection at 1440px (752ms)
+  ok 128 [chromium] › component-tests\ObservationChart.spec.mjs:494:82 › overview long exact axis values fit their gutter and preserve CTM selection at 320px (716ms)
+  ok 129 [chromium] › component-tests\ObservationChart.spec.mjs:494:82 › overview long exact axis values fit their gutter and preserve CTM selection at 1440px (761ms)
+  ok 130 [chromium] › component-tests\ObservationChart.spec.mjs:531:49 › observation native touch drag after local scrolling respects cancel and replacement ownership (810ms)
+  ok 131 [chromium] › component-tests\ObservationChart.spec.mjs:531:49 › overview native touch drag after local scrolling respects cancel and replacement ownership (827ms)
+  ok 132 [chromium] › component-tests\ObservationChart.spec.mjs:574:1 › keeps chart values accessible at four dashboard widths (2.7s)
+  ok 133 [chromium] › component-tests\ReportsPanel.spec.mjs:75:1 › renders the four fixed report kinds and inert server text; Instance Health remains a current snapshot in Rewind (412ms)
+  ok 134 [chromium] › component-tests\ReportsPanel.spec.mjs:103:1 › submits UTC half-open bounded windows and selects each fixed export section (1.0s)
+  ok 135 [chromium] › component-tests\ReportsPanel.spec.mjs:123:1 › rejects an oversized window before IO and retries a safe failure with the unchanged operation payload (610ms)
+  ok 136 [chromium] › component-tests\ReportsPanel.spec.mjs:150:1 › changing report kind and unmounting abort pending generation and exclude late exports (507ms)
+  ok 137 [chromium] › component-tests\ReportsPanel.spec.mjs:175:1 › changing target clears pending generation and allows the new target to generate (411ms)
+  ok 138 [chromium] › component-tests\ReportsPanel.spec.mjs:194:1 › changing target removes a completed old-target result before any new export (326ms)
+  ok 139 [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 320px (1.4s)
+  ok 140 [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 390px (1.3s)
+  ok 141 [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 768px (1.3s)
+  x  142 [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 1440px (449ms)
+(node:202320) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 143 [chromium] › component-tests\ReportsPanel.spec.mjs:276:1 › invalid success receipts retry the identical accepted operation and recover its existing run without duplicates (1.1s)
+  ok 144 [chromium] › component-tests\ReportsPanel.spec.mjs:307:1 › a lost Live receipt freezes its first window through clock, refresh and display changes; verified success permits a fresh window (559ms)
+  ok 145 [chromium] › component-tests\ReportsPanel.spec.mjs:342:1 › kind, From, To, range and server edits each release an uncertain operation instead of replaying another context (1.1s)
+  ok 146 [chromium] › component-tests\ReportsPanel.spec.mjs:382:1 › Enter submits the report form and duplicate pending submissions materialize only one operation (394ms)
+  ok 147 [chromium] › component-tests\ReportsPanel.spec.mjs:407:1 › the shared custom editor preserves exact microsecond scope bounds into native report payloads and displayed provenance (443ms)
+  ok 148 [chromium] › component-tests\ReportsPanel.spec.mjs:429:1 › unknown and duplicate URL report selections refuse generation until the picker repairs the selection (394ms)
+  ok 149 [chromium] › component-tests\ReportsPanel.spec.mjs:454:1 › invalid, reversed, future and over-31-day shared windows refuse native IO and can be repaired through global controls (511ms)
+  ok 150 [chromium] › component-tests\ReportsPanel.spec.mjs:481:1 › shared scope edits abort pending work and fence late exports and late safe-error receipts (444ms)
+  ok 151 [chromium] › component-tests\ReportsPanel.spec.mjs:514:1 › exports retire at the native half-open expiry boundary without an unrelated render or automatic POST (379ms)
+  ok 152 [chromium] › component-tests\ReportsPanel.spec.mjs:528:1 › a native submillisecond expiry stays usable before its instant and expires on the first representable later millisecond (321ms)
+  ok 153 [chromium] › component-tests\ReportsPanel.spec.mjs:540:3 › an already expired native receipt at 2026-09-24T13:00:00.000000+00:00 never advertises export links (357ms)
+  ok 154 [chromium] › component-tests\ReportsPanel.spec.mjs:540:3 › an already expired native receipt at 2026-09-24T12:59:59.999999+00:00 never advertises export links (311ms)
+  ok 155 [chromium] › component-tests\ReportsPanel.spec.mjs:556:51 › focus wake retires stale exports after the browser clock passes expiry (375ms)
+  ok 156 [chromium] › component-tests\ReportsPanel.spec.mjs:556:51 › visibilitychange wake retires stale exports after the browser clock passes expiry (358ms)
+  ok 157 [chromium] › component-tests\ReportsPanel.spec.mjs:569:1 › export activation rechecks expiry before dispatch even when a throttled timer has not rendered the expired state (361ms)
+  ok 158 [chromium] › component-tests\ReportsPanel.spec.mjs:583:1 › an uncertain Live attempt keeps its operation and exact window through expiry; verified expiry permits a fresh generation (531ms)
+  ok 159 [chromium] › component-tests\ReportsPanel.spec.mjs:608:1 › target ABA cannot revive a held old receipt or its export expiry timer (423ms)
+  ok 160 [chromium] › component-tests\ReportsPanel.spec.mjs:624:1 › unmounting cancels pending generation and prevents late receipt recovery after remount (479ms)
+  ok 161 [chromium] › component-tests\ReportsPanel.spec.mjs:639:44 › expired report recovery is accessible in dark layout at 320px (1.2s)
+  ok 162 [chromium] › component-tests\ReportsPanel.spec.mjs:639:44 › expired report recovery is accessible in dark layout at 390px (1.3s)
+  ok 163 [chromium] › component-tests\ReportsPanel.spec.mjs:639:44 › expired report recovery is accessible in dark layout at 768px (1.2s)
+  ok 164 [chromium] › component-tests\ReportsPanel.spec.mjs:639:44 › expired report recovery is accessible in dark layout at 1440px (1.2s)
+  ok 165 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:33:1 › Rewind history is separate from the latest forecast, follows the exact shared window and keeps bytes/source times distinct (513ms)
+  ok 166 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:39:1 › older exact revision/key restores from URL through reload and Back/Forward without latest inventory substitution (708ms)
+  ok 167 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:43:1 › clear or invalid exact selection never chooses another received volume (475ms)
+  ok 168 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:47:1 › catalogue full25 paging is explicit and cached First/Previous/Next dispatch no extra GETs (543ms)
+  ok 169 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:51:1 › selected full250 paging and native cutoff/epoch drift retain received pages until verified explicit refresh (1.7s)
+  ok 170 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:56:1 › failed refresh and cancel preserve exact same-context receipts and retry intent without workspace polling replacement (641ms)
+  ok 171 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:62:1 › complete same-source comparison reads the previous window independently and plots eligible dashed gauges (359ms)
+  ok 172 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:67:1 › equivalent UTC spellings retain full250 pages, failed continuation and exact recovery without implicit reads (1.6s)
+  ok 173 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:85:1 › a true one-microsecond window change aborts the pending continuation and retires its exact receipt (1.0s)
+  ok 174 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:93:1 › failed previous read never replaces current evidence or substitutes current values for comparison (431ms)
+  ok 175 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:97:90 › gap keeps truthful source evidence and declines comparison (344ms)
+  ok 176 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:97:90 › loss keeps truthful source evidence and declines comparison (360ms)
+  ok 177 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:97:90 › unknown keeps truthful source evidence and declines comparison (346ms)
+  ok 178 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:97:90 › skew keeps truthful source evidence and declines comparison (372ms)
+  ok 179 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:97:90 › capacity_changed keeps truthful source evidence and declines comparison (343ms)
+  ok 180 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:97:90 › revision_boundary keeps truthful source evidence and declines comparison (341ms)
+  ok 181 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:100:57 › mount_point charts actual singleton gauges without cross-run continuity or comparison (360ms)
+  ok 182 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:100:57 › file_scoped_unknown charts actual singleton gauges without cross-run continuity or comparison (361ms)
+  ok 183 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:103:83 › catalog HTTP401 purges all protected history and requires explicit same-grant recovery (539ms)
+  ok 184 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:103:83 › catalog HTTP403 purges all protected history and requires explicit same-grant recovery (548ms)
+  ok 185 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:103:83 › selected HTTP401 purges all protected history and requires explicit same-grant recovery (508ms)
+  ok 186 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:103:83 › selected HTTP403 purges all protected history and requires explicit same-grant recovery (532ms)
+  ok 187 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:103:83 › previous HTTP401 purges all protected history and requires explicit same-grant recovery (541ms)
+  ok 188 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:103:83 › previous HTTP403 purges all protected history and requires explicit same-grant recovery (533ms)
+  ok 189 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:108:1 › parallel history200 cannot recover a definitive catalogue403; changing to independently authorized target clears only its denial fence (474ms)
+  ok 190 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:113:88 › held selected read is aborted and late receipt fenced on target (375ms)
+  ok 191 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:113:88 › held selected read is aborted and late receipt fenced on revision (398ms)
+  ok 192 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:113:88 › held selected read is aborted and late receipt fenced on window (506ms)
+  ok 193 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:113:88 › held selected read is aborted and late receipt fenced on selection (522ms)
+  ok 194 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:113:88 › held selected read is aborted and late receipt fenced on comparison (432ms)
+  ok 195 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:113:88 › held selected read is aborted and late receipt fenced on unmount (639ms)
+  ok 196 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:119:1 › window ABA retires the original owner even when the exact string context returns (613ms)
+  ok 197 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:123:1 › catalogue40-page limit retains valid prior evidence and never dispatches an overflow continuation (3.2s)
+  x  198 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 320px (667ms)
+(node:181132) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  199 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 390px (1.1s)
+(node:207612) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 200 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 768px (662ms)
+  ok 201 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 1440px (621ms)
+  ok 202 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:142:1 › volume native touch drag after scrolling preserves exact identity and cancels without a window mutation (573ms)
+  ok 203 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:150:1 › shared crosshair and pointer drag use completion-axis window while preserving exact volume selection (500ms)
+  ok 204 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:153:39 › dark completion-time history is keyboard/axe/responsive accessible at 320px (1.6s)
+  ok 205 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:153:39 › dark completion-time history is keyboard/axe/responsive accessible at 390px (1.6s)
+  ok 206 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:153:39 › dark completion-time history is keyboard/axe/responsive accessible at 768px (1.6s)
+  ok 207 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:153:39 › dark completion-time history is keyboard/axe/responsive accessible at 1440px (1.5s)
+
+
+  1) [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:197:1 › native diagnostic metadata renders inertly and unknown evidence confidence stays unavailable 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "<img src=\"https://analytics.invalid/native\" onerror=\"window.analyticsInjected=true\">"
+    Received: undefined
+
+      198 |   await mount(page); await select(page, 'diagnostics/search'); await receipt(page, 1);
+      199 |   const details = owner(page).locator('details').first(); await details.getByText('Evidence details', { exact: true }).click();
+    > 200 |   expect(JSON.parse(await details.locator('pre').textContent()).description).toBe(malicious);
+          |                                                                              ^
+      201 |   await expect(owner(page).locator('img,script')).toHaveCount(0);
+      202 |   expect(await page.evaluate(() => window.analyticsInjected)).toBeUndefined(); await select(page, 'evidence-packets'); await receipt(page, 1);
+      203 |   await expect(owner(page).getByRole('table').locator('tbody tr').first()).toContainText('Unavailable');
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\AnalyticsWorkflow.spec.mjs:200:78
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\AnalyticsWorkflow-native-d-de66e-onfidence-stays-unavailable-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\AnalyticsWorkflow-native-d-de66e-onfidence-stays-unavailable-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\AnalyticsWorkflow-native-d-de66e-onfidence-stays-unavailable-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\AnalyticsWorkflow-native-d-de66e-onfidence-stays-unavailable-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › component-tests\HealthPanel.spec.mjs:257:1 › sanitizes a denied native response and requires an explicit access retry 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert')
+    Expected: "You are not authorized to view health for this target."
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert') resolved to 2 elements:
+        1) <p role="alert">…</p> aka getByText('Health read access was denied. Protected evidence was removed. Retry health')
+        2) <p role="alert" class="status-message">You are not authorized to view health for this ta…</p> aka getByText('You are not authorized to')
+
+    Call log:
+      - Expect "toHaveText" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert') with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert')
+
+
+      263 |   };
+      264 |   await page.goto('/component-tests/health.html');
+    > 265 |   await expect(panel(page).getByRole('alert')).toHaveText('You are not authorized to view health for this target.');
+          |                                                ^
+      266 |   await expect(panel(page).getByRole('tab')).toHaveCount(3);
+      267 |   await expect(panel(page).getByRole('tab', { name: 'Collection health', exact: true })).toHaveAttribute('aria-selected', 'true');
+      268 |   await expect(page.locator('body')).not.toContainText('synthetic-secret');
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:265:48
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-sanitizes-a-de-6580a-es-an-explicit-access-retry-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-sanitizes-a-de-6580a-es-an-explicit-access-retry-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-sanitizes-a-de-6580a-es-an-explicit-access-retry-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-sanitizes-a-de-6580a-es-an-explicit-access-retry-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › component-tests\HealthPanel.spec.mjs:278:1 › definitive denied outer Health poll drops all retained inventory and file receipts 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert')
+    Expected substring: "not authorized"
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert') resolved to 2 elements:
+        1) <p role="alert">…</p> aka getByText('Health read access was denied. Protected evidence was removed. Retry health')
+        2) <p role="alert" class="status-message">You are not authorized to view health for this ta…</p> aka getByText('You are not authorized to')
+
+    Call log:
+      - Expect "toContainText" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert') with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('alert')
+
+
+      285 |   };
+      286 |   await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+    > 287 |   await expect(panel(page).getByRole('alert')).toContainText('not authorized');
+          |                                                ^
+      288 |   await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      289 |   await expect(panel(page)).not.toContainText('Protected database'); await expect(panel(page)).not.toContainText('SECRET_DENIAL');
+      290 | });
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:287:48
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-definitive-den-8102e-inventory-and-file-receipts-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-definitive-den-8102e-inventory-and-file-receipts-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-definitive-den-8102e-inventory-and-file-receipts-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-definitive-den-8102e-inventory-and-file-receipts-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [chromium] › component-tests\HealthPanel.spec.mjs:380:1 › embedded navigation and independent dashboard remain available when the latest health snapshot fails 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('tablist', { name: 'Server summary sections', exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('tablist', { name: 'Server summary sections', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('tablist', { name: 'Server summary sections', exact: true })
+
+
+      388 |   await expect(panel(page).getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
+      389 |   const navigation = panel(page).getByRole('tablist', { name: 'Server summary sections', exact: true });
+    > 390 |   await expect(navigation).toBeVisible();
+          |                            ^
+      391 |   await expect(panel(page).getByRole('alert').filter({ hasText: 'The health request failed safely.' })).toBeVisible();
+      392 |   await expect(panel(page).getByText('No latest core and collector health snapshot has been received for this server. Independent database, file and history sources can still be available; missing evidence is not an all-clear signal.', { exact: true })).toBeVisible();
+      393 |   await expect(panel(page).locator('.health-dashboard-pane')).toBeVisible();
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:390:28
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-embedded-navig-9730c-atest-health-snapshot-fails-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-embedded-navig-9730c-atest-health-snapshot-fails-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-embedded-navig-9730c-atest-health-snapshot-fails-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-embedded-navig-9730c-atest-health-snapshot-fails-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [chromium] › component-tests\HealthPanel.spec.mjs:406:1 › switching sections preserves the mounted dashboard disclosure and owned source receipts 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).locator('summary').filter({ hasText: /^Browse alert lifecycle events$/ })
+    Expected: visible
+    Received: hidden
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).locator('summary').filter({ hasText: /^Browse alert lifecycle events$/ }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).locator('summary').filter({ hasText: /^Browse alert lifecycle events$/ })
+        13 × locator resolved to <summary>Browse alert lifecycle events</summary>
+           - unexpected value "hidden"
+
+
+      407 |   await open(page, 'Dashboard');
+      408 |   const summary = panel(page).locator('summary').filter({ hasText: /^Browse alert lifecycle events$/ });
+    > 409 |   await expect(summary).toBeVisible();
+          |                         ^
+      410 |   await summary.focus(); await page.keyboard.press('Enter');
+      411 |   await expect(summary.locator('..')).toHaveAttribute('open', '');
+      412 |   const reads = sessions.get(page).requests.filter(path => path.includes('/alerts/history')).length;
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:409:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-switching-sect-42b6c-e-and-owned-source-receipts-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-switching-sect-42b6c-e-and-owned-source-receipts-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-switching-sect-42b6c-e-and-owned-source-receipts-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-switching-sect-42b6c-e-and-owned-source-receipts-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [chromium] › component-tests\HealthPanel.spec.mjs:457:34 › file HTTP401 has priority over core503 and aborts a held peer without automatic recovery 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+    Expected: visible
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) resolved to 2 elements:
+        1) <button type="button">Retry health access</button> aka getByRole('alert').filter({ hasText: 'Health read access was denied' }).getByRole('button')
+        2) <button type="button" class="secondary-button">Retry health access</button> aka getByRole('group').getByRole('button', { name: 'Retry health access' })
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+
+
+      470 |   };
+      471 |   await open(page, 'Databases'); await started;
+    > 472 |   await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+          |                                                                                               ^
+      473 |   await expect.poll(() => heldRequest.failure()?.errorText).toContain('ERR_ABORTED');
+      474 |   await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      475 |   await expect(panel(page).getByRole('region', { name: 'Database option changes', exact: true })).toHaveCount(0);
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:472:95
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP401-h-d0495--without-automatic-recovery-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP401-h-d0495--without-automatic-recovery-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP401-h-d0495--without-automatic-recovery-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP401-h-d0495--without-automatic-recovery-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [chromium] › component-tests\HealthPanel.spec.mjs:457:34 › file HTTP403 has priority over core503 and aborts a held peer without automatic recovery 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+    Expected: visible
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) resolved to 2 elements:
+        1) <button type="button">Retry health access</button> aka getByRole('alert').filter({ hasText: 'Health read access was denied' }).getByRole('button')
+        2) <button type="button" class="secondary-button">Retry health access</button> aka getByRole('group').getByRole('button', { name: 'Retry health access' })
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+
+
+      470 |   };
+      471 |   await open(page, 'Databases'); await started;
+    > 472 |   await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+          |                                                                                               ^
+      473 |   await expect.poll(() => heldRequest.failure()?.errorText).toContain('ERR_ABORTED');
+      474 |   await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      475 |   await expect(panel(page).getByRole('region', { name: 'Database option changes', exact: true })).toHaveCount(0);
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:472:95
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP403-h-fcd28--without-automatic-recovery-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP403-h-fcd28--without-automatic-recovery-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP403-h-fcd28--without-automatic-recovery-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-file-HTTP403-h-fcd28--without-automatic-recovery-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [chromium] › component-tests\HealthPanel.spec.mjs:488:1 › independent option-history denial clears all retained health siblings until explicit access recovery 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+    Expected: visible
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) resolved to 2 elements:
+        1) <button type="button">Retry health access</button> aka getByRole('alert').filter({ hasText: 'Health read access was denied' }).getByRole('button')
+        2) <button type="button" class="secondary-button">Retry health access</button> aka getByRole('group').getByRole('button', { name: 'Retry health access' })
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+
+
+      496 |   };
+      497 |   await panel(page).getByRole('tab', { name: 'Databases', exact: true }).click();
+    > 498 |   await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+          |                                                                                               ^
+      499 |   await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      500 |   await expect(panel(page)).not.toContainText('Protected independent database');
+      501 |   await expect(panel(page)).not.toContainText('PRIVATE_OPTIONS');
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:498:95
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-independent-op-b579b-il-explicit-access-recovery-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-independent-op-b579b-il-explicit-access-recovery-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-independent-op-b579b-il-explicit-access-recovery-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-independent-op-b579b-il-explicit-access-recovery-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › primary analytics HTTP401 clears protected health siblings while ordinary source failures remain independent 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+    Expected: visible
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) resolved to 2 elements:
+        1) <button type="button">Retry health access</button> aka getByRole('alert').filter({ hasText: 'Health read access was denied' }).getByRole('button')
+        2) <button type="button" class="secondary-button">Retry health access</button> aka getByRole('group').getByRole('button', { name: 'Retry health access' })
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+
+
+      511 |     session.overviewDenied = { period, status };
+      512 |     await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+    > 513 |     await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+          |                                                                                                 ^
+      514 |     await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      515 |     await expect(panel(page).locator('.server-dashboard')).toHaveCount(0);
+      516 |     await expect(panel(page)).not.toContainText('Protected analytics sibling');
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:513:97
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-93e20-failures-remain-independent-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-93e20-failures-remain-independent-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-93e20-failures-remain-independent-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-93e20-failures-remain-independent-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  10) [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › primary analytics HTTP403 clears protected health siblings while ordinary source failures remain independent 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+    Expected: visible
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) resolved to 2 elements:
+        1) <button type="button">Retry health access</button> aka getByRole('alert').filter({ hasText: 'Health read access was denied' }).getByRole('button')
+        2) <button type="button" class="secondary-button">Retry health access</button> aka getByRole('group').getByRole('button', { name: 'Retry health access' })
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+
+
+      511 |     session.overviewDenied = { period, status };
+      512 |     await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+    > 513 |     await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+          |                                                                                                 ^
+      514 |     await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      515 |     await expect(panel(page).locator('.server-dashboard')).toHaveCount(0);
+      516 |     await expect(panel(page)).not.toContainText('Protected analytics sibling');
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:513:97
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-25080-failures-remain-independent-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-25080-failures-remain-independent-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-25080-failures-remain-independent-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-primary-analyt-25080-failures-remain-independent-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  11) [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › comparison analytics HTTP401 clears protected health siblings while ordinary source failures remain independent 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+    Expected: visible
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) resolved to 2 elements:
+        1) <button type="button">Retry health access</button> aka getByRole('alert').filter({ hasText: 'Health read access was denied' }).getByRole('button')
+        2) <button type="button" class="secondary-button">Retry health access</button> aka getByRole('group').getByRole('button', { name: 'Retry health access' })
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+
+
+      511 |     session.overviewDenied = { period, status };
+      512 |     await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+    > 513 |     await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+          |                                                                                                 ^
+      514 |     await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      515 |     await expect(panel(page).locator('.server-dashboard')).toHaveCount(0);
+      516 |     await expect(panel(page)).not.toContainText('Protected analytics sibling');
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:513:97
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-2b9ee-failures-remain-independent-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-2b9ee-failures-remain-independent-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-2b9ee-failures-remain-independent-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-2b9ee-failures-remain-independent-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  12) [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › comparison analytics HTTP403 clears protected health siblings while ordinary source failures remain independent 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+    Expected: visible
+    Error: strict mode violation: getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) resolved to 2 elements:
+        1) <button type="button">Retry health access</button> aka getByRole('alert').filter({ hasText: 'Health read access was denied' }).getByRole('button')
+        2) <button type="button" class="secondary-button">Retry health access</button> aka getByRole('group').getByRole('button', { name: 'Retry health access' })
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: /^(Server summary for|Server diagnostics for)/ }).getByRole('button', { name: 'Retry health access', exact: true })
+
+
+      511 |     session.overviewDenied = { period, status };
+      512 |     await page.getByRole('button', { name: 'Refresh health evidence', exact: true }).click();
+    > 513 |     await expect(panel(page).getByRole('button', { name: 'Retry health access', exact: true })).toBeVisible();
+          |                                                                                                 ^
+      514 |     await expect(inventory(page)).toHaveCount(0); await expect(files(page)).toHaveCount(0);
+      515 |     await expect(panel(page).locator('.server-dashboard')).toHaveCount(0);
+      516 |     await expect(panel(page)).not.toContainText('Protected analytics sibling');
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\HealthPanel.spec.mjs:513:97
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-e9312-failures-remain-independent-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-e9312-failures-remain-independent-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-e9312-failures-remain-independent-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\HealthPanel-comparison-ana-e9312-failures-remain-independent-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13) [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 401 purges current blocking and holds the source until explicit access retry 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: 'Blocking chains', exact: true }).getByRole('button', { name: 'Retry current blocking access', exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: 'Blocking chains', exact: true }).getByRole('button', { name: 'Retry current blocking access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: 'Blocking chains', exact: true }).getByRole('button', { name: 'Retry current blocking access', exact: true })
+
+
+      115 |   await expect(graph(page)).toHaveCount(0);
+      116 |   await page.getByRole('button', { name: 'Activate dashboard', exact: true }).click();
+    > 117 |   await expect(graph(page).getByRole('button', { name: 'Retry current blocking access', exact: true })).toBeVisible();
+          |                                                                                                         ^
+      118 |   expect(blockingReads(page)).toHaveLength(2);
+      119 |   await expect(page.getByLabel('Parent blocking denial notifications', { exact: true })).toHaveText(JSON.stringify([status]));
+      120 |   await graph(page).getByRole('button', { name: 'Retry current blocking access', exact: true }).click();
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\IndependentBlocking.spec.mjs:117:105
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--51880-until-explicit-access-retry-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--51880-until-explicit-access-retry-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--51880-until-explicit-access-retry-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--51880-until-explicit-access-retry-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  14) [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 403 purges current blocking and holds the source until explicit access retry 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('region', { name: 'Blocking chains', exact: true }).getByRole('button', { name: 'Retry current blocking access', exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('region', { name: 'Blocking chains', exact: true }).getByRole('button', { name: 'Retry current blocking access', exact: true }) with timeout 5000ms
+      - waiting for getByRole('region', { name: 'Blocking chains', exact: true }).getByRole('button', { name: 'Retry current blocking access', exact: true })
+
+
+      115 |   await expect(graph(page)).toHaveCount(0);
+      116 |   await page.getByRole('button', { name: 'Activate dashboard', exact: true }).click();
+    > 117 |   await expect(graph(page).getByRole('button', { name: 'Retry current blocking access', exact: true })).toBeVisible();
+          |                                                                                                         ^
+      118 |   expect(blockingReads(page)).toHaveLength(2);
+      119 |   await expect(page.getByLabel('Parent blocking denial notifications', { exact: true })).toHaveText(JSON.stringify([status]));
+      120 |   await graph(page).getByRole('button', { name: 'Retry current blocking access', exact: true }).click();
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\IndependentBlocking.spec.mjs:117:105
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--23b71-until-explicit-access-retry-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--23b71-until-explicit-access-retry-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--23b71-until-explicit-access-retry-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\IndependentBlocking-typed--23b71-until-explicit-access-retry-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  15) [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 768px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 658
+    Received:    650
+
+      441 |   expect(geometry.outlineStyle).not.toBe('none');
+      442 |   expect(geometry.outlineWidth).toBeGreaterThanOrEqual(2);
+    > 443 |   expect(geometry.svgWidth).toBeGreaterThanOrEqual(geometry.viewWidth);
+          |                             ^
+      444 |   expect(geometry.axisFont).toBeGreaterThanOrEqual(11.5);
+      445 |   expect(Math.abs(geometry.svgHeight - geometry.svgWidth * geometry.viewHeight / geometry.viewWidth)).toBeLessThan(1);
+      446 |   if (geometry.scroll > geometry.client + 1) {
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\ObservationChart.spec.mjs:443:29
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ec493-ch-keyboard-access-at-768px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ec493-ch-keyboard-access-at-768px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ec493-ch-keyboard-access-at-768px-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ec493-ch-keyboard-access-at-768px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  16) [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 1440px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 658
+    Received:    650
+
+      441 |   expect(geometry.outlineStyle).not.toBe('none');
+      442 |   expect(geometry.outlineWidth).toBeGreaterThanOrEqual(2);
+    > 443 |   expect(geometry.svgWidth).toBeGreaterThanOrEqual(geometry.viewWidth);
+          |                             ^
+      444 |   expect(geometry.axisFont).toBeGreaterThanOrEqual(11.5);
+      445 |   expect(Math.abs(geometry.svgHeight - geometry.svgWidth * geometry.viewHeight / geometry.viewWidth)).toBeLessThan(1);
+      446 |   if (geometry.scroll > geometry.client + 1) {
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\ObservationChart.spec.mjs:443:29
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ff969-h-keyboard-access-at-1440px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ff969-h-keyboard-access-at-1440px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ff969-h-keyboard-access-at-1440px-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\ObservationChart-overview--ff969-h-keyboard-access-at-1440px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  17) [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 1440px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 140
+    Received:    123
+
+      218 |   for (const [control, minimumWidth] of [[sharedRange, 140], [sharedEditorToggle, 100]]) {
+      219 |     const bounds = await control.boundingBox();
+    > 220 |     expect(bounds.width).toBeGreaterThanOrEqual(minimumWidth);
+          |                          ^
+      221 |     expect(bounds.height).toBeGreaterThanOrEqual(40);
+      222 |   }
+      223 |   await expect(panel(page).getByRole('form', { name: 'Generate server report', exact: true })).toBeVisible();
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\ReportsPanel.spec.mjs:220:26
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  18) [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 320px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 39
+    Received:    -17.164581298828125
+
+      133 |   await expect(earlier).toBeDisabled();await expect(later).toBeEnabled();
+      134 |   await touchScrollToEdge(page,viewport,later,'later');
+    > 135 |   await expect(later).toBeDisabled();const rightAxis=await chart(page).locator('text').last().boundingBox(),rightBox=await viewport.boundingBox();expect(rightAxis.x).toBeGreaterThanOrEqual(rightBox.x);expect(rightAxis.x+rightAxis.width).toBeLessThanOrEqual(rightBox.x+rightBox.width+1);
+          |                                                                                                                                                                       ^
+      136 |   await touchScrollToEdge(page,viewport,earlier,'earlier');
+      137 |   await expect(earlier).toBeDisabled();const texts=chart(page).locator('text'),leftAxis=await texts.nth(await texts.count()-2).boundingBox(),leftBox=await viewport.boundingBox();expect(leftAxis.x).toBeGreaterThanOrEqual(leftBox.x);expect(leftAxis.x+leftAxis.width).toBeLessThanOrEqual(leftBox.x+leftBox.width+1);
+      138 |  }else{await expect(earlier).toHaveCount(0);await expect(later).toHaveCount(0);}
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\SqlVolumeHistory.spec.mjs:135:167
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-dfd9f-selection-or-reads-at-320px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-dfd9f-selection-or-reads-at-320px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-dfd9f-selection-or-reads-at-320px-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-dfd9f-selection-or-reads-at-320px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  19) [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 390px 
+
+    Error: expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 352
+    Received:    352.04852294921875
+
+      135 |   await expect(later).toBeDisabled();const rightAxis=await chart(page).locator('text').last().boundingBox(),rightBox=await viewport.boundingBox();expect(rightAxis.x).toBeGreaterThanOrEqual(rightBox.x);expect(rightAxis.x+rightAxis.width).toBeLessThanOrEqual(rightBox.x+rightBox.width+1);
+      136 |   await touchScrollToEdge(page,viewport,earlier,'earlier');
+    > 137 |   await expect(earlier).toBeDisabled();const texts=chart(page).locator('text'),leftAxis=await texts.nth(await texts.count()-2).boundingBox(),leftBox=await viewport.boundingBox();expect(leftAxis.x).toBeGreaterThanOrEqual(leftBox.x);expect(leftAxis.x+leftAxis.width).toBeLessThanOrEqual(leftBox.x+leftBox.width+1);
+          |                                                                                                                                                                                                                                                                          ^
+      138 |  }else{await expect(earlier).toHaveCount(0);await expect(later).toHaveCount(0);}
+      139 |  expect(sessions.get(page).reads).toHaveLength(before);expect(new URL(page.url()).hash).toBe(hash);await expect(chart(page).locator('.chart-selection')).toHaveCount(0);await expect(selected(page)).toContainText('107374182400');expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+      140 | });
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\SqlVolumeHistory.spec.mjs:137:266
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-6ce17-selection-or-reads-at-390px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-6ce17-selection-or-reads-at-390px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-6ce17-selection-or-reads-at-390px-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\SqlVolumeHistory-volume-pl-6ce17-selection-or-reads-at-390px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  19 failed
+    [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:197:1 › native diagnostic metadata renders inertly and unknown evidence confidence stays unavailable 
+    [chromium] › component-tests\HealthPanel.spec.mjs:257:1 › sanitizes a denied native response and requires an explicit access retry 
+    [chromium] › component-tests\HealthPanel.spec.mjs:278:1 › definitive denied outer Health poll drops all retained inventory and file receipts 
+    [chromium] › component-tests\HealthPanel.spec.mjs:380:1 › embedded navigation and independent dashboard remain available when the latest health snapshot fails 
+    [chromium] › component-tests\HealthPanel.spec.mjs:406:1 › switching sections preserves the mounted dashboard disclosure and owned source receipts 
+    [chromium] › component-tests\HealthPanel.spec.mjs:457:34 › file HTTP401 has priority over core503 and aborts a held peer without automatic recovery 
+    [chromium] › component-tests\HealthPanel.spec.mjs:457:34 › file HTTP403 has priority over core503 and aborts a held peer without automatic recovery 
+    [chromium] › component-tests\HealthPanel.spec.mjs:488:1 › independent option-history denial clears all retained health siblings until explicit access recovery 
+    [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › primary analytics HTTP401 clears protected health siblings while ordinary source failures remain independent 
+    [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › primary analytics HTTP403 clears protected health siblings while ordinary source failures remain independent 
+    [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › comparison analytics HTTP401 clears protected health siblings while ordinary source failures remain independent 
+    [chromium] › component-tests\HealthPanel.spec.mjs:505:3 › comparison analytics HTTP403 clears protected health siblings while ordinary source failures remain independent 
+    [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 401 purges current blocking and holds the source until explicit access retry 
+    [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 403 purges current blocking and holds the source until explicit access retry 
+    [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 768px 
+    [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 1440px 
+    [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 1440px 
+    [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 320px 
+    [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 390px 
+  188 passed (3.3m)

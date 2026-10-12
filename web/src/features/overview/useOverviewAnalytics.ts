@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getOverview, OverviewRequestError } from './overviewApi';
-import { overviewWindow } from './overviewModel';
+import { useResolvedOverviewWindow } from './WorkspaceRefreshWindow';
 import type { OverviewScope, OverviewSnapshot } from './overviewTypes';
 import { utcMicroseconds } from '../../utcTimestamp.ts';
 
@@ -13,6 +13,7 @@ function formatUtc(value: bigint): string {
 }
 
 export function useOverviewAnalytics(scope: OverviewScope, refresh: number, targetRevision?: number, onAccessDenied?: (status: 401 | 403) => void) {
+  const resolvedWindow = useResolvedOverviewWindow(scope, refresh);
   const denialCallback = useRef(onAccessDenied); denialCallback.current = onAccessDenied;
   // This is the caller's known configuration boundary, not a revision supplied by the Overview DTO.
   const boundary = JSON.stringify([scope.target.toLowerCase(), targetRevision, scope.compare, scope.databaseId]);
@@ -38,7 +39,8 @@ export function useOverviewAnalytics(scope: OverviewScope, refresh: number, targ
       : {key,scopeKey,readScopeKey,loading:true});
     void (async () => {
       try {
-        const window = overviewWindow(scope,Date.now());
+        const window = resolvedWindow;
+        if (!window) throw new Error('Choose a valid retained time window.');
         const data = await getOverview(scope.target,window,controller.signal);
         if (!current()) return;
         setResult({key,scopeKey,readScopeKey,data,loading:false});

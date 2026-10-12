@@ -1,6 +1,7 @@
 # ADR-0023: Collect exact server configuration and database-option evidence
 
-Status: proposed, 2026-09-29
+- Status: Proposed
+- Date: 2026-09-29
 
 ## Context
 

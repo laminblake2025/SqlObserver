@@ -16,7 +16,7 @@ const guid = (value: unknown): value is string => typeof value === "string" &&
 const identity = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{64}$/iu.test(value);
 export function validActivityChain(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  const match = /^(session|cycle|ambiguous|special):(-?[1-9]\d{0,4})$/u.exec(value);
+  const match = /^(session|cycle|ambiguous|lifetime|special):(-?[1-9]\d{0,4})$/u.exec(value);
   if (!match) return false;
   const number = Number(match[2]);
   return match[1] === "special" ? number < 0 && number >= -32768 : number > 0 && number <= 32767;
@@ -78,8 +78,8 @@ export function retainActivitySelectionHref(href: string, currentHash: string): 
   if (href.split("?")[0] !== "#/activity") return href;
   const parameters = new URLSearchParams(href.split("?")[1]);
   if (parameters.has("at") || parameters.has("event")) return href;
-  const scope = readOverviewScope(href), previousScope = readOverviewScope(currentHash);
-  if (scope.databaseId !== previousScope.databaseId) return href;
+  // Database filtering changes presentation; the capture still covers the same server.
+  const scope = readOverviewScope(href);
   const selection = readActivitySelection(currentHash, scope.target);
   if (!selection) return href;
   try { return activitySelectionHref(scope, selection); } catch { return href; }
@@ -104,7 +104,7 @@ export function validateActivitySelectionPage(page: LivePage, selection: Activit
     if (!row || !identity(row.identity) || identities.has(row.identity.toLowerCase()) ||
         !Number.isSafeInteger(row.sessionId) || row.sessionId < 1 || row.sessionId > 32767 ||
         row.requestId !== null && (!Number.isSafeInteger(row.requestId) || row.requestId < 0) ||
-        row.databaseId !== null && (!Number.isSafeInteger(row.databaseId) || row.databaseId < 1 || row.databaseId > 32767))
+        row.databaseId !== null && (!Number.isSafeInteger(row.databaseId) || row.databaseId < (row.isUser === false ? 0 : 1) || row.databaseId > 32767))
       throw new Error("Session snapshot contained invalid or duplicate request identities.");
     identities.add(row.identity.toLowerCase());
   }

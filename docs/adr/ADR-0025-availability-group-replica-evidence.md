@@ -1,6 +1,7 @@
 # ADR-0025: Preserve per-replica availability-group evidence
 
-Status: proposed, 2026-09-29
+- Status: Proposed
+- Date: 2026-09-29
 
 ## Context
 

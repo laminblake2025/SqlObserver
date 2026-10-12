@@ -63,6 +63,26 @@ test("nullable legacy evidence and never-collected configuration states remain v
   assert.equal(parseServerConfigurationChangesResponse(noChanges, target, window).items.length, 0);
 });
 
+test("older database inventory omits log reuse wait without losing inventory or fabricating an observation", async () => {
+  const legacy = database(); delete legacy.logReuseWaitDescription;
+  const inventory = page(legacy);
+  const parsed = parseDatabaseHealthResponse(inventory, target);
+  assert.equal(parsed.items[0].name, "Orders");
+  assert.equal(parsed.items[0].logReuseWaitDescription, null);
+  assert.equal(parsed.items[0].collector.lastSuccessAtUtc, at);
+  assert.equal(parseDatabaseHealthResponse(page({ ...legacy, logReuseWaitDescription: null }), target).items[0].logReuseWaitDescription, null);
+  for (const invalid of ["", 0, false, {}, "NO WAIT", "x".repeat(61)])
+    assert.throws(() => parseDatabaseHealthResponse(page({ ...legacy, logReuseWaitDescription: invalid }), target));
+  assert.throws(() => parseDatabaseHealthResponse(inventory, other));
+  assert.throws(() => parseDatabaseHealthResponse(page({ ...legacy, databaseId: 0 }), target));
+  assert.throws(() => parseDatabaseHealthResponse(page({ ...legacy, collector: { state: "current" } }), target));
+  await withFetch(async () => response(inventory), async () => {
+    const fetched = await getDatabaseHealth(target, new AbortController().signal);
+    assert.equal(fetched.items[0].name, "Orders");
+    assert.equal(fetched.items[0].logReuseWaitDescription, null);
+  });
+});
+
 test("all six native collector loss kinds remain visible while unknown loss enums are rejected", () => {
   for (const sampleLossKind of ["source_row_limit", "response_byte_limit", "output_validation_failure", "ingestion_rejection", "duplicate_overlap", "visibility_incomplete"]) {
     const payload = targetPayload();

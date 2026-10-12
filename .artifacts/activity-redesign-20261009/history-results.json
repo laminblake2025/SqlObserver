@@ -1,0 +1,520 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "G:\\Adams SQL Diagnostic Manager\\web\\node_modules\\.pnpm\\@playwright+test@1.63.0\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.activity-history.config.mjs"
+    ],
+    "configFile": "G:\\Adams SQL Diagnostic Manager\\web\\playwright.activity-history.config.mjs",
+    "rootDir": "G:/Adams SQL Diagnostic Manager/web/browser-tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "G:/Adams SQL Diagnostic Manager/.artifacts/activity-redesign-20261009/history",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "G:/Adams SQL Diagnostic Manager/web/browser-tests",
+        "testIgnore": [],
+        "testMatch": [
+          "dashboard-activity-time.spec.mjs",
+          "dashboard-activity-calendar.spec.mjs"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "../.artifacts/activity-redesign-20261009/history-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": {
+      "command": "node tools/overview-fixture-server.mjs",
+      "url": "http://127.0.0.1:4338",
+      "reuseExistingServer": false,
+      "env": {
+        "SQLOBSERVER_OVERVIEW_FIXTURE_PORT": "4338"
+      },
+      "timeout": 15000
+    }
+  },
+  "suites": [
+    {
+      "title": "dashboard-activity-calendar.spec.mjs",
+      "file": "dashboard-activity-calendar.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "calendar selects an exact retained capture and preserves scope through reload",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1139,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:21.922Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "98fb8c1ac61e9f4f7657-e1a990c2bbf76c6cac38",
+          "file": "dashboard-activity-calendar.spec.mjs",
+          "line": 17,
+          "column": 1
+        },
+        {
+          "title": "calendar gaps and invalid dates never substitute another capture",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 638,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:23.159Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "98fb8c1ac61e9f4f7657-91338daca26d2b07ce1d",
+          "file": "dashboard-activity-calendar.spec.mjs",
+          "line": 30,
+          "column": 1
+        },
+        {
+          "title": "calendar is labeled, keyboard reachable and fits at 390px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 898,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:23.805Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "98fb8c1ac61e9f4f7657-b6870e0c5824e1aa79ac",
+          "file": "dashboard-activity-calendar.spec.mjs",
+          "line": 43,
+          "column": 31
+        },
+        {
+          "title": "calendar is labeled, keyboard reachable and fits at 1440px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 884,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:24.711Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "98fb8c1ac61e9f4f7657-a8c4f649b1222c21db17",
+          "file": "dashboard-activity-calendar.spec.mjs",
+          "line": 43,
+          "column": 31
+        }
+      ]
+    },
+    {
+      "title": "dashboard-activity-time.spec.mjs",
+      "file": "dashboard-activity-time.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "Activity Live and History change shared time context and restore it through reload and browser history",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1544,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:25.659Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "provenance",
+                      "contentType": "text/plain",
+                      "body": "QnVpbHQgQXBwIHdpdGggZmluaXRlIGxvb3BiYWNrIHN5bnRoZXRpYyBuYXRpdmUgYWN0aXZpdHkgZGF0YS4gTm8gU1FMIG9yIGNvbm5lY3RlZCBWTSBleGVjdXRpb24u"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5c08789e14c7a1bf3409-8db3b072d4a8f7bd22ee",
+          "file": "dashboard-activity-time.spec.mjs",
+          "line": 37,
+          "column": 1
+        },
+        {
+          "title": "returning captured or event-linked Activity to Live clears the exact evidence link in the shared URL",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1474,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:27.212Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "provenance",
+                      "contentType": "text/plain",
+                      "body": "QnVpbHQgQXBwIHdpdGggZmluaXRlIGxvb3BiYWNrIHN5bnRoZXRpYyBuYXRpdmUgYWN0aXZpdHkgZGF0YS4gTm8gU1FMIG9yIGNvbm5lY3RlZCBWTSBleGVjdXRpb24u"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5c08789e14c7a1bf3409-dd1eb4db1653c4c11114",
+          "file": "dashboard-activity-time.spec.mjs",
+          "line": 64,
+          "column": 1
+        },
+        {
+          "title": "shared Activity time controls stay accessible in dark Rewind at 320px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1695,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:28.696Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "provenance",
+                      "contentType": "text/plain",
+                      "body": "QnVpbHQgQXBwIHdpdGggZmluaXRlIGxvb3BiYWNrIHN5bnRoZXRpYyBuYXRpdmUgYWN0aXZpdHkgZGF0YS4gTm8gU1FMIG9yIGNvbm5lY3RlZCBWTSBleGVjdXRpb24u"
+                    },
+                    {
+                      "name": "layout-geometry",
+                      "contentType": "application/json",
+                      "body": "W3sidGFnIjoiQSIsImNsYXNzIjoiIiwicmlnaHQiOjMyOS4zNDM3NSwid2lkdGgiOjYwLjU2MjV9LHsidGFnIjoiQSIsImNsYXNzIjoiIiwicmlnaHQiOjQwMy43NSwid2lkdGgiOjc0LjQwNjI1fSx7InRhZyI6IkEiLCJjbGFzcyI6IiIsInJpZ2h0Ijo0ODIuMjk2ODc1LCJ3aWR0aCI6NzguNTQ2ODc1fSx7InRhZyI6IkJVVFRPTiIsImNsYXNzIjoiIiwicmlnaHQiOjM5MC4xMDkzNzUsIndpZHRoIjo3NS41MzEyNX0seyJ0YWciOiJTUEFOIiwiY2xhc3MiOiIiLCJyaWdodCI6Mzc5LjEwOTM3NSwid2lkdGgiOjE1LjkzNzV9LHsidGFnIjoiQlVUVE9OIiwiY2xhc3MiOiIiLCJyaWdodCI6NDU5Ljg3NSwid2lkdGgiOjYzLjc2NTYyNX0seyJ0YWciOiJTUEFOIiwiY2xhc3MiOiIiLCJyaWdodCI6NDQ4Ljg3NSwid2lkdGgiOjE1LjkzNzV9LHsidGFnIjoiQlVUVE9OIiwiY2xhc3MiOiIiLCJyaWdodCI6NTQ2LjI4MTI1LCJ3aWR0aCI6ODAuNDA2MjV9LHsidGFnIjoiU1BBTiIsImNsYXNzIjoiIiwicmlnaHQiOjUzNS4yODEyNSwid2lkdGgiOjE1LjkzNzV9LHsidGFnIjoiVEFCTEUiLCJjbGFzcyI6IiIsInJpZ2h0Ijo1NjAuMjk2ODc1LCJ3aWR0aCI6NTQ0LjI5Njg3NX0seyJ0YWciOiJDQVBUSU9OIiwiY2xhc3MiOiIiLCJyaWdodCI6NTYwLjI5Njg3NSwid2lkdGgiOjU0NC4yOTY4NzV9LHsidGFnIjoiVEhFQUQiLCJjbGFzcyI6IiIsInJpZ2h0Ijo1NjAuMjk2ODc1LCJ3aWR0aCI6NTQ0LjI5Njg3NX0seyJ0YWciOiJUUiIsImNsYXNzIjoiIiwicmlnaHQiOjU2MC4yOTY4NzUsIndpZHRoIjo1NDQuMjk2ODc1fSx7InRhZyI6IlRIIiwiY2xhc3MiOiIiLCJyaWdodCI6MzgyLjIzNDM3NSwid2lkdGgiOjExMS42NTYyNX0seyJ0YWciOiJUSCIsImNsYXNzIjoiIiwicmlnaHQiOjQ0NC45MjE4NzUsIndpZHRoIjo2Mi42ODc1fSx7InRhZyI6IlRIIiwiY2xhc3MiOiIiLCJyaWdodCI6NTYwLjI5Njg3NSwid2lkdGgiOjExNS4zNzV9LHsidGFnIjoiVEJPRFkiLCJjbGFzcyI6IiIsInJpZ2h0Ijo1NjAuMjk2ODc1LCJ3aWR0aCI6NTQ0LjI5Njg3NX0seyJ0YWciOiJUUiIsImNsYXNzIjoiIiwicmlnaHQiOjU2MC4yOTY4NzUsIndpZHRoIjo1NDQuMjk2ODc1fSx7InRhZyI6IlREIiwiY2xhc3MiOiIiLCJyaWdodCI6MzgyLjIzNDM3NSwid2lkdGgiOjExMS42NTYyNX0seyJ0YWciOiJURCIsImNsYXNzIjoiIiwicmlnaHQiOjQ0NC45MjE4NzUsIndpZHRoIjo2Mi42ODc1fV0="
+                    },
+                    {
+                      "name": "activity-shared-time-320",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\history\\dashboard-activity-time-sh-c81c8-ble-in-dark-Rewind-at-320px-chromium\\attachments\\activity-shared-time-320-c1ab1fecb5a20f4630129b617363311855779cbd.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5c08789e14c7a1bf3409-094dd4d6e6c265a9a773",
+          "file": "dashboard-activity-time.spec.mjs",
+          "line": 79,
+          "column": 45
+        },
+        {
+          "title": "shared Activity time controls stay accessible in dark Rewind at 768px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1664,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:30.399Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "provenance",
+                      "contentType": "text/plain",
+                      "body": "QnVpbHQgQXBwIHdpdGggZmluaXRlIGxvb3BiYWNrIHN5bnRoZXRpYyBuYXRpdmUgYWN0aXZpdHkgZGF0YS4gTm8gU1FMIG9yIGNvbm5lY3RlZCBWTSBleGVjdXRpb24u"
+                    },
+                    {
+                      "name": "layout-geometry",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-shared-time-768",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\history\\dashboard-activity-time-sh-2abe2-ble-in-dark-Rewind-at-768px-chromium\\attachments\\activity-shared-time-768-e91bdd1adfbb17adc8ca3c0e05a944060ba1cc37.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5c08789e14c7a1bf3409-b73d16e64d152991f269",
+          "file": "dashboard-activity-time.spec.mjs",
+          "line": 79,
+          "column": 45
+        },
+        {
+          "title": "shared Activity time controls stay accessible in dark Rewind at 1024px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1686,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:32.070Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "provenance",
+                      "contentType": "text/plain",
+                      "body": "QnVpbHQgQXBwIHdpdGggZmluaXRlIGxvb3BiYWNrIHN5bnRoZXRpYyBuYXRpdmUgYWN0aXZpdHkgZGF0YS4gTm8gU1FMIG9yIGNvbm5lY3RlZCBWTSBleGVjdXRpb24u"
+                    },
+                    {
+                      "name": "layout-geometry",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-shared-time-1024",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\history\\dashboard-activity-time-sh-fabc1-le-in-dark-Rewind-at-1024px-chromium\\attachments\\activity-shared-time-1024-47c18fac90b7f203523ba8db92f2daf516c5d955.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5c08789e14c7a1bf3409-7df0bd497087f0777309",
+          "file": "dashboard-activity-time.spec.mjs",
+          "line": 79,
+          "column": 45
+        },
+        {
+          "title": "shared Activity time controls stay accessible in dark Rewind at 1440px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1680,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:40:33.764Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "provenance",
+                      "contentType": "text/plain",
+                      "body": "QnVpbHQgQXBwIHdpdGggZmluaXRlIGxvb3BiYWNrIHN5bnRoZXRpYyBuYXRpdmUgYWN0aXZpdHkgZGF0YS4gTm8gU1FMIG9yIGNvbm5lY3RlZCBWTSBleGVjdXRpb24u"
+                    },
+                    {
+                      "name": "layout-geometry",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-shared-time-1440",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\history\\dashboard-activity-time-sh-eac80-le-in-dark-Rewind-at-1440px-chromium\\attachments\\activity-shared-time-1440-b56742a0b7bcc86b17a665167ccdf68f1cb1e362.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5c08789e14c7a1bf3409-5fe2205bb31d589fd244",
+          "file": "dashboard-activity-time.spec.mjs",
+          "line": 79,
+          "column": 45
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-09T17:40:21.256Z",
+    "duration": 16381.457,
+    "expected": 10,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

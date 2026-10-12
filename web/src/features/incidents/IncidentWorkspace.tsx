@@ -56,6 +56,8 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, c
   const currentError = saveError?.context === context ? saveError : undefined;
   const write = useRef<IncidentWrite | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const legacyOpener = useRef<HTMLButtonElement>(null);
+  const draftOpener = useRef<"compact" | "legacy">("compact");
   const titleInput = useRef<HTMLInputElement>(null);
   const restoreFocus = useRef(false);
   const headingId = useId(); const titleHelp = useId(); const notesHelp = useId();
@@ -101,7 +103,7 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, c
   }, [targetId, selectedId, readKey, canRead]);
   useEffect(() => {
     if (draft && canSave && selectedId === undefined) titleInput.current?.focus();
-    else if (restoreFocus.current) { restoreFocus.current = false; opener.current?.focus(); }
+    else if (restoreFocus.current) { restoreFocus.current = false; (compact && draftOpener.current === "compact" ? opener.current : legacyOpener.current)?.focus(); }
   }, [draft?.id]);
 
   const open = () => {
@@ -140,6 +142,7 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, c
   };
   const className = `incident-workspace${compact ? " incident-workspace-compact" : ""}`;
   const presentWorkspace = (content: ReactNode) => !compact ? content : <div className="incident-disclosure-frame">
+    {canSave && <button ref={opener} className="primary save-investigation" type="button" disabled={!draft && (!window || !Number.isSafeInteger(targetRevision) || targetRevision < 1)} onClick={() => { draftOpener.current = "compact"; if (draft) setExpanded(disclosureKey); else open(); }}>{draft ? "Continue investigation" : "Save investigation"}</button>}
     {currentError && <p role="alert">{currentError.message}</p>}
     {pending && <p role="status">Saving the frozen incident draft. Closing the workspace keeps this request in progress.</p>}
     {!window && contextMessage && <p className="evidence-footer" role="status">{contextMessage}</p>}
@@ -172,7 +175,7 @@ export function IncidentWorkspace({ targetId, targetRevision, window, canSave, c
       <button type="button" onClick={close}>Close investigation</button></section>;
   }
   if (!draft || !canSave) return presentWorkspace(<div className={className}>
-    {canSave ? <div className="incident-actions"><button ref={opener} type="button" disabled={!window || !Number.isSafeInteger(targetRevision) || targetRevision < 1} onClick={open}>Open incident</button>
+    {canSave ? <div className="incident-actions"><button ref={legacyOpener} type="button" disabled={!window || !Number.isSafeInteger(targetRevision) || targetRevision < 1} onClick={() => { draftOpener.current = "legacy"; open(); }}>Open incident</button>
       <small>Save the selected window, notes and existing server-wide analytics evidence.</small>{!compact && currentError && <p role="alert">{currentError.message}</p>}</div>
       : <p className="evidence-footer">Operator or Target Administrator access unlocks saving an incident for this server.</p>}
     <SavedIncidentList key={context} targetId={targetId} targetRevision={targetRevision} compact={compact} scope={scope} formatTime={formatTime} onReadStateChange={reportListStatus}/>

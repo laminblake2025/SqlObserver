@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readResourceSelection, resourceSelectionHref, retainResourceSelectionHref, resourceWindowMatches } from '../src/features/resources/resourceSelectionModel.ts';
-import { readActivitySelection, activitySelectionHref, retainActivitySelectionHref, loadActivitySelection } from '../src/features/activity/activitySelectionModel.ts';
+import { readActivitySelection, activitySelectionHref, retainActivitySelectionHref, loadActivitySelection, validActivityChain } from '../src/features/activity/activitySelectionModel.ts';
 
 const target = '11111111-1111-4111-8111-000000000001';
 const snapshotId = '22222222-2222-4222-8222-000000000001';
@@ -34,15 +34,25 @@ test('Resources rejects ambiguous context and invalid selections without choosin
   assert.equal(readResourceSelection(href.replace(encodeURIComponent(observedUtc), encodeURIComponent(scope.to))).inspectionUtc, undefined);
 });
 
-test('Activity links bind exact capture identity and clear incompatible target, database or window', () => {
+test('Activity links bind exact capture identity across database filters and clear incompatible target or window', () => {
   const href = activitySelectionHref(scope, selection);
   assert.deepEqual(readActivitySelection(href, target), selection);
-  for (const changed of [{ ...scope, databaseId: 5 }, { ...scope, target: '11111111-1111-4111-8111-000000000002' }, { ...scope, from: '2026-09-26T11:00:00Z' }]) {
+  const filtered = retainActivitySelectionHref(activitySelectionHref({ ...scope, databaseId: 5 }), href);
+  assert.deepEqual(readActivitySelection(filtered, target), selection);
+  assert.equal(new URLSearchParams(filtered.split('?')[1]).get('databaseId'), '5');
+  for (const changed of [{ ...scope, target: '11111111-1111-4111-8111-000000000002' }, { ...scope, from: '2026-09-26T11:00:00Z' }]) {
     const destination = activitySelectionHref(changed);
     assert.equal(retainActivitySelectionHref(destination, href), destination);
   }
   for (const suffix of ['&sessionIdentity=' + 'b'.repeat(64), '&range=1h', '&databaseId=0', '&at=' + observedUtc]) assert.equal(readActivitySelection(href + suffix), null);
   assert.equal(readActivitySelection(href.replace(encodeURIComponent(observedUtc), encodeURIComponent(scope.to))), null);
+});
+
+test('Activity links retain unresolved session lifetime groups within native session bounds', () => {
+  const ambiguous = { ...selection, chain: 'lifetime:52' };
+  assert.deepEqual(readActivitySelection(activitySelectionHref(scope, ambiguous), target), ambiguous);
+  for (const chain of ['lifetime:0', 'lifetime:-1', 'lifetime:32768', 'lifetime:052', 'lifetime:52:1']) assert.equal(validActivityChain(chain), false);
+  assert.equal(validActivityChain('lifetime:32767'), true);
 });
 
 test('Activity restoration pages metadata by request identity even when session IDs are reused', async () => {

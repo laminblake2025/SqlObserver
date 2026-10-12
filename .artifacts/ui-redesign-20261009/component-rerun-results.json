@@ -1,0 +1,251 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "G:\\Adams SQL Diagnostic Manager\\web\\node_modules\\.pnpm\\@playwright+test@1.63.0\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.redesign-components.config.mjs",
+      "--last-failed"
+    ],
+    "configFile": "G:\\Adams SQL Diagnostic Manager\\web\\playwright.redesign-components.config.mjs",
+    "rootDir": "G:/Adams SQL Diagnostic Manager/web/component-tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "G:/Adams SQL Diagnostic Manager/.artifacts/ui-redesign-20261009/component-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "G:/Adams SQL Diagnostic Manager/web/component-tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.mjs"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "../.artifacts/ui-redesign-20261009/component-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": {
+      "command": "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4328 --strictPort",
+      "url": "http://127.0.0.1:4328/component-tests/index.html",
+      "reuseExistingServer": false,
+      "timeout": 20000
+    }
+  },
+  "suites": [
+    {
+      "title": "ContextDiagnostics.spec.mjs",
+      "file": "ContextDiagnostics.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "an explicit 401 authorization refusal clears previously retained wait data",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 480,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:35:35.752Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4527c074d61d76baa7aa-cb794660601144a7c845",
+          "file": "ContextDiagnostics.spec.mjs",
+          "line": 209,
+          "column": 34
+        }
+      ]
+    },
+    {
+      "title": "DeadlockRetained.spec.mjs",
+      "file": "DeadlockRetained.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "cancelled continuation read retains received evidence and exact retry ownership",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 550,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:35:36.332Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6f76c11dbeec55ef35b9-23982e7d931d5b5b75f0",
+          "file": "DeadlockRetained.spec.mjs",
+          "line": 144,
+          "column": 53
+        }
+      ]
+    },
+    {
+      "title": "IncidentWorkspace.spec.mjs",
+      "file": "IncidentWorkspace.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "closing the workspace preserves a frozen draft through context refresh and a shared-window change",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 5488,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeFocused\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('button', { name: 'Open incident', exact: true })\nExpected: focused\nReceived: inactive\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeFocused\" getByRole('button', { name: 'Open incident', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Open incident', exact: true })\u001b[22m\n\u001b[2m    14 × locator resolved to <button type=\"button\">Open incident</button>\u001b[22m\n\u001b[2m       - unexpected value \"inactive\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeFocused\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('button', { name: 'Open incident', exact: true })\nExpected: focused\nReceived: inactive\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeFocused\" getByRole('button', { name: 'Open incident', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Open incident', exact: true })\u001b[22m\n\u001b[2m    14 × locator resolved to <button type=\"button\">Open incident</button>\u001b[22m\n\u001b[2m       - unexpected value \"inactive\"\u001b[22m\n\n    at G:\\Adams SQL Diagnostic Manager\\web\\component-tests\\IncidentWorkspace.spec.mjs:336:82",
+                    "location": {
+                      "file": "G:\\Adams SQL Diagnostic Manager\\web\\component-tests\\IncidentWorkspace.spec.mjs",
+                      "column": 82,
+                      "line": 336
+                    },
+                    "snippet": "  334 |   await expect(page.locator('.incident-form > p').first()).toHaveText(frozen);\n  335 |   await page.getByRole('button', { name: 'Close draft', exact: true }).press('Enter');\n> 336 |   await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeFocused();\n      |                                                                                  ^\n  337 |   await expect(workspaceSummary(page).locator('..')).toHaveAttribute('open', '');\n  338 |   expect(contexts.get(page).requests).toHaveLength(0);\n  339 | });"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "G:\\Adams SQL Diagnostic Manager\\web\\component-tests\\IncidentWorkspace.spec.mjs",
+                        "column": 82,
+                        "line": 336
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeFocused\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('button', { name: 'Open incident', exact: true })\nExpected: focused\nReceived: inactive\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeFocused\" getByRole('button', { name: 'Open incident', exact: true }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: 'Open incident', exact: true })\u001b[22m\n\u001b[2m    14 × locator resolved to <button type=\"button\">Open incident</button>\u001b[22m\n\u001b[2m       - unexpected value \"inactive\"\u001b[22m\n\n\n  334 |   await expect(page.locator('.incident-form > p').first()).toHaveText(frozen);\n  335 |   await page.getByRole('button', { name: 'Close draft', exact: true }).press('Enter');\n> 336 |   await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeFocused();\n      |                                                                                  ^\n  337 |   await expect(workspaceSummary(page).locator('..')).toHaveAttribute('open', '');\n  338 |   expect(contexts.get(page).requests).toHaveLength(0);\n  339 | });\n    at G:\\Adams SQL Diagnostic Manager\\web\\component-tests\\IncidentWorkspace.spec.mjs:336:82"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:35:36.904Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\ui-redesign-20261009\\component-results\\IncidentWorkspace-closing--19d00--and-a-shared-window-change-chromium\\test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\ui-redesign-20261009\\component-results\\IncidentWorkspace-closing--19d00--and-a-shared-window-change-chromium\\error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\ui-redesign-20261009\\component-results\\IncidentWorkspace-closing--19d00--and-a-shared-window-change-chromium\\trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "G:\\Adams SQL Diagnostic Manager\\web\\component-tests\\IncidentWorkspace.spec.mjs",
+                    "column": 82,
+                    "line": 336
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-57b75845040608c4e314",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 322,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-09T04:35:34.063Z",
+    "duration": 9554.8,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

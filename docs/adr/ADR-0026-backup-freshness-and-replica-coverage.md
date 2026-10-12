@@ -1,6 +1,7 @@
 # ADR-0026: Assess backup freshness with explicit policy and replica coverage
 
-Status: proposed, 2026-09-30
+- Status: Proposed
+- Date: 2026-09-30
 
 ## Context
 

@@ -240,7 +240,7 @@ createServer(async(req,res)=>{try{
      if(cursor&&cursor!=='cGFnZTI=')return send(res,{},400);
      const row=(id,identity,requestId,blocker)=>({identity:identity.repeat(64),sessionId:id,requestId,databaseId:5,databaseName:'Orders',login:'synthetic_dba',clientHost:'synthetic-app.invalid',application:'SYNTHETIC Orders',status:blocker?'suspended':'running',command:'SELECT',isUser:true,waitType:blocker?'LCK_M_X':null,blocker,cpuMs:'1200',memoryBytes:'1048576',reads:'100',writes:'0',logicalReads:'1000',elapsedMs:'12000',queryId:'d'.repeat(64),queryState:'available',engineStartup:'2026-09-25T00:00:00',sessionLogin:'2026-09-26T00:00:00',requestStart:'2026-09-26T11:00:00',delta:null});
      const newer=requested===newerId;
-     return send(res,{snapshotId:newer?newerId:snapshotId,observedUtc:newer?newerObserved:observedUtc,repositoryTimeUtc:now,state:'current',truncated:false,rows:cursor?[row(51,'c',1,null)]:[row(51,newer?'e':'a',0,null),row(72,'b',0,51)],databases:[{id:5,name:'Orders'}],nextCursor:cursor?null:'cGFnZTI='});
+     return send(res,{snapshotId:newer?newerId:snapshotId,observedUtc:newer?newerObserved:observedUtc,repositoryTimeUtc:'2026-09-26T12:30:00Z',state:'available',truncated:false,rows:cursor?[row(51,'c',1,null)]:[row(51,newer?'e':'a',0,null),row(72,'b',0,51)],databases:[{id:5,name:'Orders'}],nextCursor:cursor?null:'cGFnZTI='});
     }
    }
    if(surface==='activity/live/history')return send(res,[]);
@@ -254,7 +254,7 @@ createServer(async(req,res)=>{try{
     if(databaseScoped)rows.push({...row(81,null),databaseId:6,databaseName:name('Warehouse')});
     if(databaseScoped&&url.searchParams.has('databaseId'))rows=rows.filter(item=>item.databaseId===Number(url.searchParams.get('databaseId')));
     if(url.searchParams.get('blockedOnly')==='true')rows=rows.filter(item=>item.blocker!==null);
-    return send(res,{snapshotId:evidence.runId,observedUtc:ordinaryLiveCapturedUtc,repositoryTimeUtc:now,state:'current',truncated:false,rows,databases:databaseScoped?[{id:5,name:name('Orders')},{id:6,name:name('Warehouse')}]:[{id:5,name:'Orders'}],nextCursor:null});
+    return send(res,{snapshotId:evidence.runId,observedUtc:ordinaryLiveCapturedUtc,repositoryTimeUtc:now,state:'available',truncated:false,rows,databases:databaseScoped?[{id:5,name:name('Orders')},{id:6,name:name('Warehouse')}]:[{id:5,name:'Orders'}],nextCursor:null});
    }
    if(surface.startsWith('activity/'))return send(res,{instanceId,repositoryTimeUtc:now,evidence,items:surface==='activity/blocking/current'?[edge]:[],nextCursor:null,...(url.searchParams.has('fromUtc')?{fromUtc:url.searchParams.get('fromUtc'),toUtc:url.searchParams.get('toUtc')}:{})});
   }
@@ -262,6 +262,7 @@ createServer(async(req,res)=>{try{
 
  if(await handleSavedIncidentFixture(url,res,req,targets))return;
  if(await handleAgentHistoryFixture(url,res,targets,send))return;
+ if(url.pathname==='/__redesign-preview') {res.writeHead(302,{'set-cookie':['dashboardRefactor=1; SameSite=Strict; Path=/','databaseScopeFixture=1; SameSite=Strict; Path=/','chartReferenceRole=viewer; SameSite=Strict; Path=/'],location:`/#/health?target=${targets[1].instanceId}&range=1h`});res.end();return;}
  if(url.pathname==='/__fixture') {const mode=url.searchParams.get('mode');if(!['empty','partial','error','loading','ready','backup-expiry'].includes(mode))return send(res,{},400);res.writeHead(302,{'set-cookie':`overviewMode=${mode}; SameSite=Strict; Path=/`,location:'/'});res.end();return;}
  if(url.pathname==='/api/v1/observation-targets')return send(res,{items:targets,nextCursor:null});
  const directTarget=/^\/api\/v1\/observation-targets\/([^/]+)$/.exec(url.pathname);
@@ -289,13 +290,15 @@ createServer(async(req,res)=>{try{
   if(mode==='loading')await new Promise(r=>setTimeout(r,2500));
   const targetId=url.searchParams.get('targetId');const fromUtc=url.searchParams.get('fromUtc'),toUtc=url.searchParams.get('toUtc');
   const from=Date.parse(fromUtc),to=Date.parse(toUtc),at=new Date(to-30000).toISOString();
+  // Match the production overview bucket cadence so complete synthetic series form lines.
+  const bucket=to-from>86400000?3600000:to-from>21600000?900000:300000;
   const selected=mode==='empty'?[]:targets.filter(t=>!targetId||t.instanceId===targetId);
   const refreshedAtUtc=new Date().toISOString();
   const evidence=selected.map((t,index)=>{
    const i=targets.indexOf(t),gap=mode==='partial'&&index===0;
    const value=n=>({value:gap?null:n,state:gap?'unavailable':'current',observedAtUtc:gap?null:at});
    const issues=i===1?[{targetId:t.instanceId,server:t.displayName,title:'Sessions blocked',detail:'12 distinct sessions waiting on SQL 02',destination:'activity',priority:1,observedAtUtc:at}]:i===4?[{targetId:t.instanceId,server:t.displayName,title:'SQL Agent failures',detail:'2 jobs affected in selected window',destination:'operations',priority:2,observedAtUtc:at}]:[];
-   const metric=(key,unit,base,dimension=null)=>({targetId:t.instanceId,label:t.displayName,metric:key,unit,state:gap||key==='engine.sql_scheduler_cpu_percent'&&req.headers.cookie?.includes('dashboardObservationState=partial')?'partial':'observed',dimension,points:gap?[]:(key==='engine.sql_scheduler_cpu_percent'?dashboardSummaryCpuPoints(req,from,to,i):undefined)??Array.from({length:48},(_,j)=>({timeUtc:new Date(from+(to-from)*j/48).toISOString(),value:Math.max(0,base*(1+.25*Math.sin(j/5+i))+(i===1&&j>27&&j<34?base*.7:0)),samples:10}))});
+   const metric=(key,unit,base,dimension=null)=>({targetId:t.instanceId,label:t.displayName,metric:key,unit,state:gap||key==='engine.sql_scheduler_cpu_percent'&&req.headers.cookie?.includes('dashboardObservationState=partial')?'partial':'observed',dimension,points:gap?[]:(key==='engine.sql_scheduler_cpu_percent'?dashboardSummaryCpuPoints(req,from,to,i):undefined)??Array.from({length:Math.ceil((to-from)/bucket)},(_,j)=>({timeUtc:new Date(from+j*bucket).toISOString(),value:Math.max(0,base*(1+.25*Math.sin(j*48/Math.ceil((to-from)/bucket)/5+i))+(i===1&&j*bucket/(to-from)>27/48&&j*bucket/(to-from)<34/48?base*.7:0)),samples:10}))});
    const resource=(label,n,unit)=>({targetId:t.instanceId,server:t.displayName,label,value:gap?null:n,unit,state:gap?'unavailable':'observed',observedAtUtc:gap?null:at});
    const databaseSeries=targetId?[metric('activity.user_sessions','sessions',14+i*4,'Orders'),metric('activity.user_sessions','sessions',8+i*3,'Reporting')]:[];
    const backupSummary=gap?null:overviewBackupFixture(t.instanceId,refreshedAtUtc,i,mode==='backup-expiry');

@@ -1,5 +1,8 @@
 * text=auto eol=lf
 
+# Retained verification receipts bind raw file hashes; preserve their bytes.
+/.artifacts/** -text whitespace=-trailing-space,-blank-at-eof,cr-at-eol
+
 *.sql text eol=lf
 database/migrations/checksums.sha256 text eol=lf
 collectors/manifests/*.json text eol=lf

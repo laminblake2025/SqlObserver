@@ -1,0 +1,17 @@
+[WebServer] (node:218700) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 8 tests using 1 worker
+
+(node:218660) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 1600×1000 (4.5s)
+  ok 2 [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 1440×900 (4.5s)
+  ok 3 [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 390×844 (4.1s)
+  ok 4 [chromium] › browser-tests\redesign.spec.mjs:50:1 › detail navigation avoids fleet reads, saves an exact frozen investigation, and restores deep links (1.9s)
+  ok 5 [chromium] › browser-tests\redesign.spec.mjs:66:1 › custom editor follows display timezone and untouched UTC bounds retain microseconds (681ms)
+  ok 6 [chromium] › browser-tests\redesign.spec.mjs:78:1 › viewer cannot save investigations and narrow navigation is keyboard accessible (1.4s)
+  ok 7 [chromium] › browser-tests\redesign.spec.mjs:86:1 › chart inspection survives refresh and resets on explicit metric change (1.3s)
+  ok 8 [chromium] › browser-tests\redesign.spec.mjs:99:1 › existing diagnostic and administration bookmarks load inside the shared shell (6.5s)
+
+  8 passed (26.9s)

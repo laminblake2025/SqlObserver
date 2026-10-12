@@ -212,6 +212,16 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
           Close
         </button>
       </div>}
+      {embedded && denied && <p role="alert">Health read access was denied. Protected evidence was removed. <button type="button" disabled={loading} onClick={retryHealth}>Retry health access</button></p>}
+      {!denied && <div className="health-dashboard-pane" key={`dashboard:${evidenceKey}`} hidden={tab !== "summary"}>
+        <ServerDashboard active={tab === "summary"} instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
+          targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
+          canManageLifecycleCollection={canManageLifecycleCollection} accessContext={accessContext}
+          onAccessDenied={dashboardAccessDenied}
+          blockingRefresh={blockingRefresh}
+          configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
+      </div>}
+      <details className="supporting-evidence latest-health-disclosure" open={!embedded||tab!=="summary"||selectedConfigurationRunId!==undefined?true:undefined}><summary>Latest health, databases & configuration</summary>
       <div className="health-navigation-frame">
         <Tabs
             label="Server summary sections"
@@ -233,17 +243,9 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
               : "No validated snapshot is available for this source. Missing evidence is not an all-clear signal."}</p>}
           </div>;
         })}
-        {(denied || message || latestHealthSources.some(source => evidence?.errors[source])) && <button type="button" className="secondary-button" disabled={loading} onClick={retryHealth}>{denied ? "Retry health access" : "Retry latest health evidence"}</button>}
+        {(!embedded || !denied) && (denied || message || latestHealthSources.some(source => evidence?.errors[source])) && <button type="button" className="secondary-button" disabled={loading} onClick={retryHealth}>{denied ? "Retry health access" : "Retry latest health evidence"}</button>}
         {!denied && !snapshot && !loading && <p role="status">No latest core and collector health snapshot has been received for this server. Independent database, file and history sources can still be available; missing evidence is not an all-clear signal.</p>}
       </div>
-      {!denied && <div className="health-dashboard-pane" key={`dashboard:${evidenceKey}`} hidden={tab !== "summary"}>
-        <ServerDashboard active={tab === "summary"} instanceId={instanceId} displayName={displayName} scope={scope} refresh={refresh}
-          targetRevision={targetRevision} selectionHash={selectionHash} canReadRules={canManageConfiguration}
-          canManageLifecycleCollection={canManageLifecycleCollection} accessContext={accessContext}
-          onAccessDenied={dashboardAccessDenied}
-          blockingRefresh={blockingRefresh}
-          configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
-      </div>}
       {!denied && <section className="health-latest-pane" key={`latest:${evidenceKey}`} aria-labelledby="health-latest-heading">
         <h3 id="health-latest-heading">{tab === "summary" ? "Latest server snapshots" : tab === "databases" ? "Latest database and logical-file snapshots" : "Latest collection health"}</h3>
         <p className="table-note">{tab === "summary"
@@ -280,7 +282,7 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
           {evidence?.databases && <DatabaseHealth targetRevision={targetRevision} instanceId={instanceId} firstPage={evidence.databases} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} onSelectDatabase={onSelectDatabase} />}
           {evidence?.files && <DatabaseFileHealth page={evidence.files} recoveryContext={recoveryContext} selectedDatabaseId={selectedDatabaseId} />}
         </>}
-      </section>}
+      </section>}</details>
     </section>
   );
 }

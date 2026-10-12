@@ -64,7 +64,7 @@ test.afterEach(async ({ page }) => {
 });
 async function mount(page) {
   await page.goto('/component-tests/fleet-grid.html');
-  await expect(page.getByRole('heading', { name: 'Server grid', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Server fleet', exact: true })).toBeVisible();
   await expect(edit(page)).toBeEnabled();
 }
 async function open(page, name) {

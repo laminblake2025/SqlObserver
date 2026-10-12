@@ -1,6 +1,7 @@
 # ADR-0022: Precompute latest Overview status per target
 
-Status: proposed, 2026-09-29
+- Status: Proposed
+- Date: 2026-09-29
 
 ## Context
 

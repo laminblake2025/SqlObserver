@@ -58,6 +58,7 @@ test.afterEach(async ({ page }) => expect(contexts.get(page).unexpected, 'Fixed 
 async function mount(page, mode = '503') {
   contexts.get(page).analytics = mode;
   await page.goto('/component-tests/independent-blocking.html');
+  await page.getByText('Current blocking graph evidence', { exact: true }).click();
   await expect(answer(page).getByRole('button', { name: 'Inspect head blocker 50', exact: true })).toBeVisible();
   await expect(graph(page)).toContainText('Session 61');
 }
@@ -173,6 +174,7 @@ test('caller revision fences unconfirmed graph roots and a fresh matching receip
 test('an absent native collection receipt stays unknown while analytics is unavailable', async ({ page }) => {
   contexts.get(page).blocking = (route, target) => json(route, { ...payload(target), evidence: null, items: [] });
   await page.goto('/component-tests/independent-blocking.html');
+  await page.getByText('Current blocking graph evidence', { exact: true }).click();
   await expect(answer(page)).toContainText('collection time unavailable; repository checked');
   await expect(answer(page)).toContainText('not an all-clear');
   await expect(graph(page)).toContainText('Collection time unavailable; repository checked');

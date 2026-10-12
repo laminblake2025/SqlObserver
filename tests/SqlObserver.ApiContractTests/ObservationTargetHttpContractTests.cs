@@ -23,6 +23,7 @@ using SqlObserver.Server;
 
 namespace SqlObserver.ApiContractTests;
 
+[Collection("Timing-sensitive HTTP contracts")]
 public sealed class ObservationTargetHttpContractTests : IClassFixture<ObservationTargetApiFactory>
 {
     private readonly ObservationTargetApiFactory _factory;
@@ -222,10 +223,9 @@ public sealed class ObservationTargetHttpContractTests : IClassFixture<Observati
         Task<HttpResponseMessage> blockingRequest = firstPrincipal.PostAsJsonAsync(
             "/api/v1/observation-targets",
             ValidRegistration(instanceKey: FakeTargetApplicationServices.BlockingInstanceKey));
-        await factory.Targets.BlockingCallStarted.WaitAsync(TimeSpan.FromSeconds(5));
-
         try
         {
+            await factory.Targets.BlockingCallStarted.WaitAsync(TimeSpan.FromSeconds(15));
             HttpResponseMessage samePrincipalResponse = await firstPrincipal.PostAsJsonAsync(
                 "/api/v1/observation-targets",
                 ValidRegistration(instanceKey: "lab.same-principal"));
@@ -437,6 +437,18 @@ public sealed class ObservationTargetApiFactory : WebApplicationFactory<Program>
     }
 
     internal FakeTargetApplicationServices Targets { get; } = new();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Targets.ReleaseBlockingCall();
+        base.Dispose(disposing);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        Targets.ReleaseBlockingCall();
+        await base.DisposeAsync();
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

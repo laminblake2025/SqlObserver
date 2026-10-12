@@ -38,6 +38,7 @@ async function open(page) {
   await page.getByText('Open supporting waits, blocking, and history evidence', { exact: true }).click();
   await expect(page.getByRole('region', { name: 'Server wait history', exact: true }).getByRole('table')).toBeVisible();
   await live(page).getByRole('button', { name: 'Inspect 71/0', exact: true }).click();
+  await live(page).getByRole('button', { name: 'Captured SQL', exact: true }).click();
   await live(page).getByRole('button', { name: 'Load captured SQL', exact: true }).click();
   await expect(page.locator('pre.query-text')).toContainText(secret);
 }
@@ -53,7 +54,7 @@ for (const status of [401, 403]) for (const source of ['activity/live', 'activit
   test(`${source} HTTP${status} removes retained metadata, SQL and supporting siblings until explicit recovery`, async ({ page }) => {
     await open(page); const session = sessions.get(page);
     session.handler = async (route, item) => item.source === source ? (await json(route, {}, status), true) : false;
-    if (source.endsWith('/history')) await live(page).getByRole('button', { name: 'History', exact: true }).click(); else await poll(page);
+    if (source.endsWith('/history')) await live(page).getByRole('button', { name: 'History', exact: true }).click(); else await live(page).getByRole('button', { name: 'Live', exact: true }).click();
     await removed(page); const count = session.reads.length; await poll(page); await poll(page); expect(session.reads).toHaveLength(count);
     session.handler = undefined;
     await page.getByRole('button', { name: 'Retry session access', exact: true }).click();
@@ -70,7 +71,7 @@ test('live metadata denial aborts a held supporting success that cannot republis
     if (item.source === 'activity/waits/history') { request = route.request(); started(); await gate; try { await json(route, value); } catch { expect(request.failure()?.errorText).toContain('ERR_ABORTED'); } return true; }
     if (item.source === 'activity/live') { await began; await json(route, {}, 403); return true; } return false;
   };
-  await poll(page); await began; await removed(page); await expect.poll(() => request.failure()?.errorText).toContain('ERR_ABORTED'); release(); await removed(page);
+  await live(page).getByRole('button', { name: 'Live', exact: true }).click(); await poll(page); await began; await removed(page); await expect.poll(() => request.failure()?.errorText).toContain('ERR_ABORTED'); release(); await removed(page);
 });
 test('protected SQL-only403 retains authorized metadata and supporting evidence', async ({ page }) => {
   await open(page); const session = sessions.get(page); session.queryStatus = 403;
@@ -83,6 +84,17 @@ test('captured SQL authentication401 clears the whole activity boundary', async 
   await open(page); sessions.get(page).queryStatus = 401;
   await live(page).getByRole('button', { name: 'Load captured SQL', exact: true }).click();
   await removed(page); const count = sessions.get(page).reads.length; await poll(page); expect(sessions.get(page).reads).toHaveLength(count);
+});
+test('QueryTextReader revocation immediately clears protected text; restoration requires a new deliberate load', async ({ page }) => {
+  await open(page); const session = sessions.get(page), count = session.reads.filter(item => item.source === 'activity/live/query').length;
+  await page.getByRole('button', { name: 'Revoke query text access', exact: true }).click();
+  await expect(page.locator('body')).not.toContainText(secret); await expect(live(page)).toContainText('Query Text Reader access is required');
+  await expect(live(page).getByRole('button', { name: 'Load captured SQL', exact: true })).toHaveCount(0);
+  await expect(live(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Restore query text access', exact: true }).click();
+  await expect(live(page).getByRole('button', { name: 'Load captured SQL', exact: true })).toBeVisible();
+  expect(session.reads.filter(item => item.source === 'activity/live/query')).toHaveLength(count); await expect(page.locator('body')).not.toContainText(secret);
+  await live(page).getByRole('button', { name: 'Load captured SQL', exact: true }).click(); await expect(page.locator('pre.query-text')).toContainText(secret);
 });
 test('missing linked deadlock never automatically substitutes another event capture from the same minute', async ({ page }) => {
   await open(page); const session = sessions.get(page), before = session.reads.filter(item => item.source === 'activity/live').length;
@@ -117,6 +129,7 @@ test('live failure discloses backoff only while polling is active and paused rec
   await open(page);
   const session = sessions.get(page);
   session.handler = async (route, item) => item.source === 'activity/live' ? (await json(route, {}, 503), true) : false;
+  await live(page).getByRole('button', { name: 'Live', exact: true }).click();
   await poll(page);
   await expect(live(page).getByRole('alert')).toHaveText('Refresh failed for the current request. Automatic live retries use backoff.');
   const count = session.reads.filter(item => item.source === 'activity/live').length;
@@ -130,4 +143,28 @@ test('live failure discloses backoff only while polling is active and paused rec
   await expect(live(page).getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(live(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
   expect(session.reads.filter(item => item.source === 'activity/live')).toHaveLength(count + 1);
+});
+
+test('inclusive metadata loads system database zero across every pinned page; filters are local', async ({ page }) => {
+  const session = sessions.get(page);
+  session.handler = async (route, item, value) => {
+    if (item.source !== 'activity/live') return false;
+    const url = new URL(item.url); expect(url.searchParams.get('includeSystem')).toBe('true'); expect(url.searchParams.get('includeIdle')).toBe('true');
+    const next = url.searchParams.has('cursor');
+    await json(route, { ...value, nextCursor: next ? null : 'cGFnZTI=', rows: next ? [{ ...value.rows[0], identity: 'e'.repeat(64), sessionId: 33, isUser: false, databaseId: 0, databaseName: null, status: 'background', command: 'LAZY WRITER', queryId: null, queryState: 'omitted' }] : [value.rows[0], { ...value.rows[0], identity: 'd'.repeat(64), sessionId: 32, isUser: false, databaseId: 0, databaseName: null, status: 'background', command: 'LAZY WRITER', queryId: null, queryState: 'omitted' }] }); return true;
+  };
+  await page.goto('/component-tests/live-sessions-access.html');
+  await expect(live(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  await expect(live(page).getByRole('button', { name: 'Inspect 32/0', exact: true })).toBeVisible();
+  await expect(live(page).getByRole('button', { name: 'Inspect 33/0', exact: true })).toBeVisible();
+  await live(page).getByText('Advanced session filters', { exact: true }).click();
+  const count = session.reads.filter(item => item.source === 'activity/live').length;
+  await live(page).getByRole('checkbox', { name: 'Include system sessions', exact: true }).uncheck();
+  await expect(live(page).getByRole('button', { name: 'Inspect 71/0', exact: true })).toBeVisible();
+  await expect(live(page).getByRole('button', { name: 'Inspect 32/0', exact: true })).toHaveCount(0);
+  expect(session.reads.filter(item => item.source === 'activity/live')).toHaveLength(count);
+  await live(page).getByRole('checkbox', { name: 'Include system sessions', exact: true }).check();
+  await live(page).getByRole('button', { name: 'Refresh now', exact: true }).click();
+  await expect(live(page).getByRole('alert')).toHaveCount(0);
+  await expect(live(page).getByRole('button', { name: 'Inspect 33/0', exact: true })).toBeVisible();
 });

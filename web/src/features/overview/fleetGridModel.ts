@@ -28,7 +28,7 @@ export function groupFleetServerRows(rows: readonly FleetServerRow[], by: FleetG
   if (by === 'none') return [{ label: null, rows }];
   const groups = new Map<string, FleetServerRow[]>();
   for (const row of rows) {
-    const labels = by === 'environment' ? [row.target.environment ?? 'Unassigned']
+    const labels = row.target.groupingAvailable === false ? ['Grouping unavailable'] : by === 'environment' ? [row.target.environment ?? 'Unassigned']
       : row.target.tags.length ? row.target.tags : ['Untagged'];
     for (const label of labels) {
       const group = groups.get(label) ?? [];

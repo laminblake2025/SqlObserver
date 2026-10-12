@@ -45,7 +45,7 @@ export function RankingTrend({ request, metric, category = null, label, onInspec
         {count > 0 ? <svg viewBox="0 0 160 48" role="img" aria-labelledby={detailsId}><title id={detailsId}>{label}: {preview.unit}. {count} plotted points; gaps and excluded comparisons break lines.</title>
           {preview.segments.map(segment => <g key={segment.id}>
             {segment.points.length > 1 && <path d={segment.points.map((point, index) => `${index === 0 ? "M" : "L"}${x(point.timeUtc).toFixed(3)},${y(point.value).toFixed(3)}`).join(" ")} />}
-            {segment.points.map((point, index) => <circle key={`${point.timeUtc}:${index}`} cx={x(point.timeUtc)} cy={y(point.value)} r="2.4" />)}
+            {segment.points.map((point, index) => <circle className={`chart-marker${segment.points.length > 1 ? " chart-point-hit-target" : ""}`} key={`${point.timeUtc}:${index}`} cx={x(point.timeUtc)} cy={y(point.value)} r={segment.points.length > 1 ? 4 : 2.4}><title>{formatTime(point.timeUtc)} · {point.value} {preview.unit}</title></circle>)}
           </g>)}
           {crosshair && <g className="ranking-trend-crosshair"><line x1={x(crosshair)} x2={x(crosshair)} y1="4" y2="44" /><title>Shared chart inspection: {crosshair}. Missing observations remain unavailable.</title></g>}
         </svg> : <small>No qualified comparable trend points in this loaded history.</small>}

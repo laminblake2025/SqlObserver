@@ -229,6 +229,7 @@ function indexReferences(htmlBytes) {
 function graphFromManifest(manifest) {
   const reachable = new Set();
   const byKey = new Map(manifest.entries.map((entry) => [entry.key, entry]));
+  const byFile = new Map(manifest.entries.map((entry) => [entry.file, entry]));
   const visit = (entry) => {
     if (reachable.has(entry.key)) return;
     reachable.add(entry.key);
@@ -236,6 +237,12 @@ function graphFromManifest(manifest) {
       const target = byKey.get(imported);
       if (!target) fail(`Vite graph reference has no manifest entry: ${imported}`);
       visit(target);
+    }
+    // Vite 8 emits standalone stylesheet records referenced by file, rather
+    // than by an imports key. They must still be reachable from this graph.
+    for (const file of [...entry.css, ...entry.assets]) {
+      const resource = byFile.get(file);
+      if (resource) visit(resource);
     }
   };
   visit(manifest.entryPoint);

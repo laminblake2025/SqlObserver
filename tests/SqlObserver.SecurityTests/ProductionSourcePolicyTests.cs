@@ -118,8 +118,18 @@ public sealed partial class ProductionSourcePolicyTests
     [GeneratedRegex(@"\bExecuteSql(?:Async)?\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ArbitrarySqlMethodPattern();
 
+    [Theory]
+    [InlineData("var connection = \"Host=localhost;Username=admin;Password=secret\";", true)]
+    [InlineData("Password = \"embedded-secret\",", true)]
+    [InlineData("Pwd = 'embedded-secret';", true)]
+    [InlineData("host = Host(value.Host),", false)]
+    [InlineData("issue with { Server = target.DisplayName.Value }", false)]
+    [InlineData("Password = supplied.Password,", false)]
+    public void ConnectionSecretPolicyDistinguishesLiteralsFromForwardedFields(string source, bool forbidden)
+        => Assert.Equal(forbidden, EmbeddedConnectionSecretPattern().IsMatch(source));
+
     [GeneratedRegex(
-        @"\b(?:Host|Server|Database|Username|User\s+ID|Password|Pwd)\s*=\s*[^;\r\n]+",
+        "(?:[\"']\\s*\\b(?:Host|Server|Database|Username|User\\s+ID|Password|Pwd)\\s*=\\s*[^;\"'\\r\\n]+|\\b(?:Host|Server|Database|Username|User\\s+ID|Password|Pwd)\\s*=\\s*[\"'][^\"'\\r\\n]+[\"'])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex EmbeddedConnectionSecretPattern();
 

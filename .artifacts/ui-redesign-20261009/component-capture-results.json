@@ -1,0 +1,1147 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "G:\\Adams SQL Diagnostic Manager\\web\\node_modules\\.pnpm\\@playwright+test@1.63.0\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.redesign-components.config.mjs",
+      "IncidentWorkspace.spec.mjs"
+    ],
+    "configFile": "G:\\Adams SQL Diagnostic Manager\\web\\playwright.redesign-components.config.mjs",
+    "rootDir": "G:/Adams SQL Diagnostic Manager/web/component-tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "G:/Adams SQL Diagnostic Manager/.artifacts/ui-redesign-20261009/component-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "G:/Adams SQL Diagnostic Manager/web/component-tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.mjs"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "../.artifacts/ui-redesign-20261009/component-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": {
+      "command": "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4328 --strictPort",
+      "url": "http://127.0.0.1:4328/component-tests/index.html",
+      "reuseExistingServer": false,
+      "timeout": 20000
+    }
+  },
+  "suites": [
+    {
+      "title": "IncidentWorkspace.spec.mjs",
+      "file": "IncidentWorkspace.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "native health references and full provenance show recorded identities without invented diagnostic facts or links",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 551,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:35.914Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-cc74300cddfc4eab9e81",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 94,
+          "column": 1
+        },
+        {
+          "title": "unknown inner schemas preserve opaque raw HTML as inert text and never fabricate source summaries",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 343,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:36.554Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-37d0e1084104f9468508",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 117,
+          "column": 1
+        },
+        {
+          "title": "empty, partial, unavailable and globally truncated captures retain separate truthful coverage disclosures",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 628,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:36.903Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-f58d6ebe1c87c12d1184",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 130,
+          "column": 1
+        },
+        {
+          "title": "the saved exact microsecond window and share link remain frozen while shared scope, clock and display change",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 461,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:37.536Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-b8b2f982bc9eb1c1c204",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 147,
+          "column": 1
+        },
+        {
+          "title": "lost report receipt preserves one native operation across uncertain retry and guards duplicate pending activation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 442,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:38.004Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-ae088dc9c8a9e86a078d",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 170,
+          "column": 44
+        },
+        {
+          "title": "invalid report receipt preserves one native operation across uncertain retry and guards duplicate pending activation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 446,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:38.451Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-92c3ab98a86c86770ba9",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 170,
+          "column": 44
+        },
+        {
+          "title": "at the exact 24-hour report expiry stale exports disappear and renewal uses one fresh operation across failure and retry",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 577,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:38.903Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-73a75721ece19d5611cc",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 196,
+          "column": 1
+        },
+        {
+          "title": "Viewer-to-unverified read loss hides saved data and aborts a pending report before a fresh permitted read",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 444,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:39.486Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-9cacd90a9c11001ebb71",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 226,
+          "column": 1
+        },
+        {
+          "title": "a report receipt delivered after target cannot expose stale exports or errors",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 375,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:39.938Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-14f5fd83586657f97981",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 243,
+          "column": 45
+        },
+        {
+          "title": "a report receipt delivered after unmount cannot expose stale exports or errors",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 375,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:40.320Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-388126d5aed85f882f60",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 243,
+          "column": 45
+        },
+        {
+          "title": "saved list paging retains its native snapshot and a stale cursor requires explicit refresh without a substituted investigation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 544,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:40.701Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-ef812e0d2640b880f26c",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 257,
+          "column": 1
+        },
+        {
+          "title": "direct saved-view props cannot expose title, notes, evidence or actions before read access is verified",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 290,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:41.252Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-e685b5b0ee04ba832dcf",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 282,
+          "column": 1
+        },
+        {
+          "title": "the optional workspace exposes the role hint without fetching or changing the shared URL",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 313,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:41.548Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-cb86e57e2f4788946215",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 310,
+          "column": 1
+        },
+        {
+          "title": "closing the workspace preserves a frozen draft through context refresh and a shared-window change",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 464,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:41.867Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-57b75845040608c4e314",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 322,
+          "column": 1
+        },
+        {
+          "title": "a collapsed pending save remains owned and its uncertain retry preserves the exact original command",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 474,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:42.337Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-59c535b16584658f4c95",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 341,
+          "column": 1
+        },
+        {
+          "title": "collapsing the outer workspace preserves a pending saved-list continuation and exposes its failure for explicit recovery",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 560,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:42.819Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-c95675bfe5e48f8e7601",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 370,
+          "column": 1
+        },
+        {
+          "title": "a invalid selected investigation stays discoverable outside the optional workspace",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 277,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:43.384Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-1ceb0c31f2e9bb724d84",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 394,
+          "column": 55
+        },
+        {
+          "title": "a missing selected investigation stays discoverable outside the optional workspace",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 293,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:43.667Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-acd66902cbe8a541da18",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 394,
+          "column": 55
+        },
+        {
+          "title": "a denied selected investigation stays discoverable outside the optional workspace",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 293,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:43.967Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-869913d1915fb84520dc",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 394,
+          "column": 55
+        },
+        {
+          "title": "an invalid shared window stays visible outside the closed workspace and cannot create a draft",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 314,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:44.267Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-2bab1a47a1e9efa8817a",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 408,
+          "column": 1
+        },
+        {
+          "title": "opening a draft retires a held saved-list owner without leaving a collapsed loading announcement",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 391,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:44.587Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-f96219305f6d045336a9",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 417,
+          "column": 1
+        },
+        {
+          "title": "the compact investigation disclosure preserves keyboard focus and a draft at 320px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1057,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:44.984Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "incident-disclosure-320-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-320a5a9bab18d01831e2",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 440,
+          "column": 44
+        },
+        {
+          "title": "the compact investigation disclosure preserves keyboard focus and a draft at 390px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1103,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:46.047Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "incident-disclosure-390-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-3c806e88382cbc4704c5",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 440,
+          "column": 44
+        },
+        {
+          "title": "the compact investigation disclosure preserves keyboard focus and a draft at 768px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1176,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:47.156Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "incident-disclosure-768-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-71d331147d686ade605f",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 440,
+          "column": 44
+        },
+        {
+          "title": "the compact investigation disclosure preserves keyboard focus and a draft at 1440px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1155,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:48.339Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "incident-disclosure-1440-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-7f89b983b8629e5444e5",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 440,
+          "column": 44
+        },
+        {
+          "title": "populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 320px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2485,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:49.501Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "saved-evidence-mounted-320-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "saved-evidence-exports-320-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-741e0d6b30982bba6126",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 465,
+          "column": 44
+        },
+        {
+          "title": "populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 390px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2362,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:51.994Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "saved-evidence-mounted-390-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "saved-evidence-exports-390-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-84863b167dd7b0310e84",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 465,
+          "column": 44
+        },
+        {
+          "title": "populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 768px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2472,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:54.363Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "saved-evidence-mounted-768-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "saved-evidence-exports-768-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-936bc17484a0baa0cfd7",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 465,
+          "column": 44
+        },
+        {
+          "title": "populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 1440px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2632,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T04:36:56.842Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "saved-evidence-mounted-1440-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "saved-evidence-exports-1440-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0f06e95d47512ae0c734-54ce38bd362bf9dbd6eb",
+          "file": "IncidentWorkspace.spec.mjs",
+          "line": 465,
+          "column": 44
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-09T04:36:34.990Z",
+    "duration": 25439.499,
+    "expected": 29,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

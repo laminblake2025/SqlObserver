@@ -10,3 +10,6 @@
   .chart-plot-scroll:focus-visible,
   .chart-plot-scroll-controls button:focus-visible { outline-color: Highlight; }
 }
+
+.chart-plot-scroll > svg.chart text { font-size:inherit; }
+.time-range-editor > button { min-width:140px; }

@@ -588,3 +588,38 @@ monitor-existing-station-security-observation-v3.json; and the running-Collector
 Next implementation evaluates a fresh private desktop or Collector-hosted launch path;
 no existing ACL, account right, privilege, service or SQL state was changed by these queries.
 The two-root cleanup, both SQL drains and broader qualification goal remain open.
+
+
+### Protected staging fixed; private station trial remains partial (2026-10-07)
+
+ServiceTokenWithTokenV2 now validates the same unmanaged credential buffer for UTF-16
+and embedded NUL before authentication. Its pinned DLL passes 115 pure cases / 143
+assertions; no native WithToken call has run. The private desktop lease source passes
+93 pure cases / 116 assertions. These source checks do not qualify native worker launch.
+
+The first setup wrapper refused at TransferredBundlePins with zero diagnostic starts.
+An independent current readback found correct transferred bytes but unprotected file
+ACLs that failed the exact protected-file gate; scope and runtime directory ACLs passed.
+That readback does not reconstruct the original exception or precise copy mutation.
+The fresh V2 wrapper passes 79 local assertions, transfers separate ingress files,
+pins both held contents, then creates explicit protected CREATE_NEW final files.
+
+The fresh VM trial verified all 194 runtime files / 80,431,091 bytes, flushed its guest
+reservation and started original diagnostic PID19540, which joined with exit95. The
+private station was created and its name/type/flags/security readback verified. Desktop
+enumeration returned FALSE with cached error0 and zero callbacks, so the owner refused
+before desktop creation. Empty inventory and the cause of that return remain unknown.
+Both original associations were restored and re-queried; the owned station close was
+acknowledged and wrapper file leases were disposed. This does not prove global object
+destruction, private desktop setup completion, Collector access or worker qualification.
+
+Both setup nonces are retired: 86d7125e-e030-4830-9ea1-1676c0d3f17a and
+160ab79c-3aa2-479a-ab20-b580427df15a. Used source, payloads and raw results remain
+immutable under artifacts/dashboard-agent-interruption-2026-10-07. Evidence records:
+monitor-private-desktop-staging-current-observation-v1.json and
+monitor-private-desktop-setup-partial-observation-v2.json, with independent reviews.
+Next work resolves the native enumeration/target freshness boundary on a distinct
+candidate, then integrates same-token access checks and original-thread desktop lifetime
+with custody before the sole worker resume. No Monitor worker, SQL, SCM, account-right,
+privilege or existing-ACL change occurred in these trials. Recovery and production
+admission remain unqualified; two-root cleanup and both SQL drains remain required.

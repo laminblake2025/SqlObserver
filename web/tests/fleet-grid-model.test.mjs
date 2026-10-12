@@ -29,6 +29,16 @@ test('fleet grouping uses persisted environment and tags without losing severity
   assert.deepEqual(fleetServerRows(fleet, 'production').map(row => row.target.targetId), ['a']);
 });
 
+test('unavailable legacy grouping is distinct from known unassigned and untagged labels', () => {
+  const fleet = snapshot([['a', 'Legacy'], ['b', 'Modern']]);
+  fleet.targets[0].groupingAvailable = false;
+  const rows = fleetServerRows(fleet, '');
+  for (const by of ['environment', 'tag']) {
+    const groups = groupFleetServerRows(rows, by);
+    assert.deepEqual(groups.find(group => group.label === 'Grouping unavailable').rows.map(row => row.target.targetId), ['a']);
+    assert.equal(groups.find(group => group.label === (by === 'tag' ? 'Untagged' : 'Unassigned')).rows[0].target.targetId, 'b');
+  }
+});
 test('fleet grid ranks observed exceptions before inventory order without treating gaps as healthy', () => {
   const fleet = snapshot([['a', 'Alpha'], ['b', 'Beta'], ['c', 'Charlie'], ['d', 'Delta']]);
   fleet.evidence = [

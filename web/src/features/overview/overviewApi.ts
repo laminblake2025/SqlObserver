@@ -18,7 +18,10 @@ function nullableUtc(value: unknown): boolean {
   if (value === null) return true;
   try {
     if (typeof value !== 'string') return false;
-    utcMicroseconds(value.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u, '$1'));
+    // Repository observations have microseconds; source-check clocks can carry
+    // .NET's seventh fractional digit. Validate its UTC calendar without
+    // changing the exact received string or relaxing request-bound identities.
+    utcMicroseconds(value.replace(/(\.\d{6})\d(?=Z$|\+00:00$)/u, '$1'));
     return true;
   } catch { return false; }
 }
@@ -49,13 +52,21 @@ export async function getOverview(target: string, window: {fromUtc: string; toUt
     throw new Error('Overview evidence exceeded the response limit or could not be decoded.');
   }
   if (!record(value) || !Array.isArray(value.targets) || !Array.isArray(value.evidence) || (value.targetId ?? '') !== target || !sameUtc(value.fromUtc, window.fromUtc) || !sameUtc(value.toUtc, window.toUtc) || !Number.isFinite(Date.parse(value.refreshedAtUtc))) throw new Error('Overview returned a mismatched scope or time range.');
+  // The legacy API has no grouping contract. Accept only complete omission;
+  // never repair partial metadata or infer permission to edit server labels.
+  value.targets = value.targets.map(item => {
+    if (!record(item)) return item;
+    const legacy = ['environment', 'tags', 'groupingRevision', 'canManageGrouping'].every(key => !Object.hasOwn(item, key));
+    return legacy ? { ...item, environment: null, tags: [], groupingRevision: 0, canManageGrouping: false, groupingAvailable: false }
+      : { ...item, groupingAvailable: true };
+  });
   if (value.targets.some(item => !record(item) || typeof item.targetId !== 'string' || typeof item.displayName !== 'string'
     || typeof item.lifecycle !== 'string' || (item.environment !== null && typeof item.environment !== 'string')
     || !Array.isArray(item.tags) || item.tags.length > 16 || item.tags.some((tag: unknown) => typeof tag !== 'string')
     || typeof item.groupingRevision !== 'number' || !Number.isSafeInteger(item.groupingRevision) || item.groupingRevision < 0
     || typeof item.canManageGrouping !== 'boolean')) throw new Error('Overview returned invalid target grouping.');
-  const ids = new Set(value.targets.map(t => t.targetId));
-  if (value.evidence.some(e => !record(e) || !ids.has(e.targetId) || (target && e.targetId !== target) || !Array.isArray(e.series) || !Array.isArray(e.resources) || !Array.isArray(e.issues))) throw new Error('Overview returned invalid server evidence.');
+  const ids = new Set<string>(value.targets.map(t => t.targetId as string));
+  if (value.evidence.some(e => !record(e) || typeof e.targetId !== 'string' || !ids.has(e.targetId) || (target && e.targetId !== target) || !Array.isArray(e.series) || !Array.isArray(e.resources) || !Array.isArray(e.issues))) throw new Error('Overview returned invalid server evidence.');
   const timestamp = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.parse(v));
   const numeric = (v: unknown) => v === null || typeof v === 'number' && Number.isFinite(v) && v >= 0;
     for (const evidence of value.evidence) {

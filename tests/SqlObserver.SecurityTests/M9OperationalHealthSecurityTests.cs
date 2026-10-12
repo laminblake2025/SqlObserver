@@ -20,7 +20,7 @@ public sealed class M9OperationalHealthSecurityTests
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../collectors/sql"));
         foreach (string path in Directory.EnumerateFiles(root, "*.v1.sql", SearchOption.TopDirectoryOnly))
         {
-            string sql = File.ReadAllText(path);
+            string sql = SqlPolicyTokens.WithoutQuotedTextAndComments(File.ReadAllText(path));
             Assert.DoesNotContain("CREATE ", sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("ALTER ", sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("DROP ", sql, StringComparison.OrdinalIgnoreCase);
@@ -32,6 +32,18 @@ public sealed class M9OperationalHealthSecurityTests
         Assert.Contains("server.view-state", backupManifest, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("server.view-performance-state", backupManifest, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("msdb.backupset.select", backupManifest, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("SELECT HAS_PERMS_BY_NAME(NULL, NULL, N'ALTER ANY LOGIN');", false)]
+    [InlineData("SELECT 'it''s ALTER TABLE'; /* CREATE TABLE ignored */ -- DROP TABLE ignored\nSELECT 1;", false)]
+    [InlineData("/* outer /* nested */ done */ ALTER TABLE actual ADD x int;", true)]
+    [InlineData("SELECT 'safe'; CREATE TABLE actual(x int);", true)]
+    [InlineData("DROP TABLE actual;", true)]
+    public void ReadOnlyPolicyChecksExecutableTokens(string source, bool forbidden)
+    {
+        string tokens = SqlPolicyTokens.WithoutQuotedTextAndComments(source);
+        Assert.Equal(forbidden, System.Text.RegularExpressions.Regex.IsMatch(tokens, @"\b(?:CREATE|ALTER|DROP)\s+", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
     }
 
     [Fact]

@@ -102,7 +102,9 @@ function database(value: unknown): DatabaseHealthSummary {
     recoveryModel: oneOf(row.recoveryModel, ["full", "bulk_logged", "simple", "other"] as const),
     userAccess: oneOf(row.userAccess, ["multi_user", "restricted_user", "single_user", "other"] as const),
     isReadOnly: boolean(row.isReadOnly), compatibilityLevel: integer(row.compatibilityLevel, 0, 999),
-    logReuseWaitDescription: nullable(row.logReuseWaitDescription, item => token(item, 60, /^[a-z][a-z0-9_]*$/iu)),
+    // Older inventory APIs omit this optional observation; absence is not evidence of no log reuse wait.
+    logReuseWaitDescription: row.logReuseWaitDescription === undefined ? null
+      : nullable(row.logReuseWaitDescription, item => token(item, 60, /^[a-z][a-z0-9_]*$/iu)),
     observedAtUtc: timestamp(row.observedAtUtc), collector: collector(row.collector) };
 }
 export function parseDatabaseHealthResponse(value: unknown, expectedTarget: string): DatabaseHealthPage {

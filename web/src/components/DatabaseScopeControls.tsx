@@ -14,11 +14,12 @@ type InventoryState = {
   readonly denied?: boolean;
 };
 
-export function DatabaseScopeControls({ targetId, databaseId, onChange, refresh }: {
+export function DatabaseScopeControls({ targetId, databaseId, onChange, refresh, compact = false }: {
   readonly targetId: string;
   readonly databaseId?: number;
   readonly onChange: (databaseId: number | undefined) => void;
   readonly refresh: number;
+  readonly compact?: boolean;
 }) {
   const descriptionId = useId();
   const missingDescriptionId = useId();
@@ -58,7 +59,7 @@ export function DatabaseScopeControls({ targetId, databaseId, onChange, refresh 
     return () => controller.abort();
   }, [targetId, requestKey]);
   const selectionMissing = databaseId !== undefined && !choices.items.some(item => item.databaseId === databaseId);
-  return <div className="database-scope-controls">
+  return <div className={`database-scope-controls${compact ? " database-scope-compact" : ""}`}>
     <label className="scope-control">Workspace database
       <select value={databaseId === undefined ? "" : String(databaseId)} aria-describedby={selectionMissing ? `${descriptionId} ${missingDescriptionId}` : descriptionId} disabled={current?.denied === true}
         onChange={event => onChange(event.target.value === "" ? undefined : Number(event.target.value))}>
@@ -73,6 +74,7 @@ export function DatabaseScopeControls({ targetId, databaseId, onChange, refresh 
           : `${choices.complete ? "Loaded inventory" : "Partial inventory"} · ${choices.items.length} databases loaded.`}
     </p>
     <details className="database-inventory-details"><summary>Inventory details</summary>
+      {compact && <p>{current?.error ?? (loading ? "Refreshing database inventory…" : `${choices.complete ? "Loaded" : "Partial"} inventory · ${choices.items.length} databases loaded.`)}</p>}
       {choices.repositoryTimeUtc && <p>Repository snapshot: {timeLabel(choices.repositoryTimeUtc)}.</p>}
       <p>Inventory lists observed databases; missing entries do not mean a database is absent. Reads are bounded to 20 pages.{!loading && !current?.error && !choices.complete && " The 20-page limit was reached; more inventory may be available."}</p>
     </details></div>

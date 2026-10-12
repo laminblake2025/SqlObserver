@@ -564,6 +564,9 @@ figure { margin: 0; }
 .chart-gridline { stroke: var(--gridline); stroke-width: 1; }
 .chart-gridline-vertical { stroke-opacity: .78; }
 .chart-series, .chart-marker { vector-effect: non-scaling-stroke; }
+/* Connected observations use lines; retain point targets for value tooltips. */
+.chart-marker.chart-point-hit-target { opacity: 0; pointer-events: all; }
+.chart-marker.chart-point-hit-target:hover { opacity: 1; }
 .chart-baseline-band rect { fill: var(--series-3); fill-opacity: .14; }
 .chart-baseline-band line { stroke: var(--series-3); stroke-opacity: .6; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart-threshold line { stroke: var(--amber-border); stroke-width: 1.75; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; }
@@ -715,6 +718,9 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .drawer > .toolbar { margin-bottom: 22px; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .toolbar span { color: var(--muted); font-size: 12px; }
+.snapshot-calendar { display: grid; gap: 6px; max-width: 100%; }
+.snapshot-calendar input { min-width: 0; max-width: 100%; }
+.snapshot-calendar small { max-width: 42ch; color: var(--muted); }
 .app-footer { padding: 18px 36px 24px; color: var(--muted); background: var(--canvas); border-top: 1px solid var(--border); font-size: 12px; }
 .app-footer span { margin: 0 5px; color: var(--footer-muted); }
 
@@ -898,3 +904,9 @@ pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .incident-summary-list { display: grid; gap: 1rem; padding-inline-start: 1.25rem; }
 .incident-summary-list li { overflow-wrap: anywhere; }
 .incident-summary-list span, .incident-summary-list small { display: block; margin-block-start: .25rem; }
+
+.time-range-editor > button { min-width:140px; }
+
+
+
+.time-range-select[aria-label="Time range"] { min-width:140px; }

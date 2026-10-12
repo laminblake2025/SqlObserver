@@ -9,9 +9,11 @@ interface PlotScrollState {
 }
 
 /** Keep the full date and value axes readable without widening the page. */
-export function ChartPlotViewport({ label, contextKey, canSelectWindow = false, minWidth = 650, children }: {
+export function ChartPlotViewport({ label, contextKey, resetKey, adaptWidth = false, canSelectWindow = false, minWidth = 650, children }: {
   readonly label: string;
   readonly contextKey: string;
+  readonly resetKey?: string;
+  readonly adaptWidth?: boolean;
   readonly canSelectWindow?: boolean;
   readonly minWidth?: number;
   readonly children: ReactNode;
@@ -33,7 +35,6 @@ export function ChartPlotViewport({ label, contextKey, canSelectWindow = false, 
         && previous.overflowing === next.overflowing && previous.earlier === next.earlier
         && previous.later === next.later ? previous : next);
     };
-    element.scrollLeft = 0;
     element.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
@@ -47,6 +48,7 @@ export function ChartPlotViewport({ label, contextKey, canSelectWindow = false, 
       window.removeEventListener("resize", measure);
     };
   }, [contextKey]);
+  useLayoutEffect(() => { if (viewport.current) viewport.current.scrollLeft = 0; }, [resetKey ?? contextKey]);
 
   const scroll = (direction: -1 | 1) => {
     const element = viewport.current;
@@ -56,7 +58,7 @@ export function ChartPlotViewport({ label, contextKey, canSelectWindow = false, 
 
   return <div className="chart-plot-viewport">
     <div ref={viewport} id={viewportId} className="chart-plot-scroll" role="region" aria-label={label} tabIndex={0}
-      style={{ "--chart-plot-min-width": `${Math.max(650,minWidth)}px` } as CSSProperties}>
+      style={{ "--chart-plot-min-width": adaptWidth ? `min(100%, ${Math.max(300,minWidth)}px)` : `${Math.max(300,minWidth)}px` } as CSSProperties}>
       {children}
     </div>
     {current?.overflowing && <>

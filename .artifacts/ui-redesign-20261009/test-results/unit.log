@@ -1,0 +1,19 @@
+  SqlObserver.Domain -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Domain\bin\Release\net10.0\SqlObserver.Domain.dll
+  SqlObserver.Collector.Abstractions -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Collector.Abstractions\bin\Release\net10.0\SqlObserver.Collector.Abstractions.dll
+  SqlObserver.Reporting -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Reporting\bin\Release\net10.0\SqlObserver.Reporting.dll
+  SqlObserver.Application -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Application\bin\Release\net10.0\SqlObserver.Application.dll
+  SqlObserver.Collectors -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Collectors\bin\Release\net10.0\SqlObserver.Collectors.dll
+  SqlObserver.Alerting -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Alerting\bin\Release\net10.0\SqlObserver.Alerting.dll
+  SqlObserver.Analytics -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Analytics\bin\Release\net10.0\SqlObserver.Analytics.dll
+  SqlObserver.Infrastructure.Windows -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Infrastructure.Windows\bin\Release\net10.0\SqlObserver.Infrastructure.Windows.dll
+  SqlObserver.Observability -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Observability\bin\Release\net10.0\SqlObserver.Observability.dll
+  SqlObserver.Audit -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Audit\bin\Release\net10.0\SqlObserver.Audit.dll
+  SqlObserver.Infrastructure.SqlServer -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Infrastructure.SqlServer\bin\Release\net10.0\SqlObserver.Infrastructure.SqlServer.dll
+  SqlObserver.Infrastructure.PostgreSql -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Infrastructure.PostgreSql\bin\Release\net10.0\SqlObserver.Infrastructure.PostgreSql.dll
+  SqlObserver.Collector -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Collector\bin\Release\net10.0\SqlObserver.Collector.dll
+  SqlObserver.UnitTests -> G:\Adams SQL Diagnostic Manager\tests\SqlObserver.UnitTests\bin\Release\net10.0\SqlObserver.UnitTests.dll
+Test run for G:\Adams SQL Diagnostic Manager\tests\SqlObserver.UnitTests\bin\Release\net10.0\SqlObserver.UnitTests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: G:\Adams SQL Diagnostic Manager\.artifacts\ui-redesign-20261009\test-results\redesign-unit.trx
+
+Passed!  - Failed:     0, Passed:  2513, Skipped:     0, Total:  2513, Duration: 7 s - SqlObserver.UnitTests.dll (net10.0)

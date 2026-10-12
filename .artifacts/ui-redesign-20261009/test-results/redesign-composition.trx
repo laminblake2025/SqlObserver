@@ -1,0 +1,201 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="e541c91a-b19a-451e-be09-3d8db792307d" name="ars51@DESKTOP-IORRV3E 2026-10-08 23:21:51" runUser="DESKTOP-IORRV3E\ars51" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-08T23:21:51.7512809-04:00" queuing="2026-10-08T23:21:51.7512810-04:00" start="2026-10-08T23:21:49.6145152-04:00" finish="2026-10-08T23:21:52.2297133-04:00" />
+  <TestSettings name="default" id="58c94382-3954-4447-b6f6-c63e86953c57">
+    <Deployment runDeploymentRoot="ars51_DESKTOP-IORRV3E_2026-10-08_23_21_51" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="16f19881-d5ac-4c00-a362-673c30e76210" testId="537e524f-2988-6914-1420-909320d39c75" testName="SqlObserver.EndToEndTests.M10AnalyticsCompositionEndToEndTests.ContractTestingCompositionDoesNotStartAnalyticsWorkers" computerName="DESKTOP-IORRV3E" duration="00:00:00.0080525" startTime="2026-10-08T23:21:51.9480933-04:00" endTime="2026-10-08T23:21:51.9480933-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="16f19881-d5ac-4c00-a362-673c30e76210" />
+    <UnitTestResult executionId="860024f1-3b55-4ed4-8b24-448567ed1420" testId="dbd43775-730d-d246-42b7-4f661f8de4ad" testName="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.PostgreSqlResolverKeepsLocalAndReleaseContractsSeparate" computerName="DESKTOP-IORRV3E" duration="00:00:00.0003790" startTime="2026-10-08T23:21:51.6944697-04:00" endTime="2026-10-08T23:21:51.6944697-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="860024f1-3b55-4ed4-8b24-448567ed1420" />
+    <UnitTestResult executionId="25783f0e-b6f4-4394-884b-31800bbbab41" testId="fed9b046-fc3a-6c1a-9bab-bcd78ddb62d9" testName="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.ProductionKestrelCompositionServesAllSixOperationalRoutes" computerName="DESKTOP-IORRV3E" duration="00:00:00.4895385" startTime="2026-10-08T23:21:52.1841175-04:00" endTime="2026-10-08T23:21:52.1841175-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="25783f0e-b6f4-4394-884b-31800bbbab41" />
+    <UnitTestResult executionId="c2824670-868b-4271-8467-074b29e6a811" testId="e3e57fed-1898-006f-7310-6854429f278c" testName="SqlObserver.EndToEndTests.M12LifecycleAssessmentCompositionTests.CompositionUsesAssessmentOnlyPortAndNeverAuthorizesMutation" computerName="DESKTOP-IORRV3E" duration="00:00:00.1950898" startTime="2026-10-08T23:21:51.1881965-04:00" endTime="2026-10-08T23:21:51.1881966-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c2824670-868b-4271-8467-074b29e6a811" />
+    <UnitTestResult executionId="cb667b18-9dd0-4354-85be-e6db2cb9859a" testId="2d9620b9-9fa1-edfd-f3ae-ccd4616b724d" testName="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.EnvironmentBackedPostgreSqlTestIsDiscoverableWithExplicitCertificationTrait" computerName="DESKTOP-IORRV3E" duration="00:00:00.0013209" startTime="2026-10-08T23:21:51.7117368-04:00" endTime="2026-10-08T23:21:51.7117371-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cb667b18-9dd0-4354-85be-e6db2cb9859a" />
+    <UnitTestResult executionId="693c4770-9039-4bac-9a2f-cd3c73839048" testId="3120099f-f1bb-b4ca-2c3a-6c7f2f19daa0" testName="SqlObserver.EndToEndTests.CollectorCompositionEndToEndTests.CollectorHostResolvesRestrictedDataPlaneSchedulerAndWorkersWithoutIo" computerName="DESKTOP-IORRV3E" duration="00:00:00.9709808" startTime="2026-10-08T23:21:51.9640926-04:00" endTime="2026-10-08T23:21:51.9640927-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="693c4770-9039-4bac-9a2f-cd3c73839048" />
+    <UnitTestResult executionId="3d862b84-c0e9-41a4-aaeb-3b704fbcae49" testId="f80a0df4-0a43-29ca-8e89-e80b35f79528" testName="SqlObserver.EndToEndTests.M7QueryPerformanceCompositionEndToEndTests.QueryPerformanceIsReachableAtOrderNineAndProductionProtectorIsUnavailable" computerName="DESKTOP-IORRV3E" duration="00:00:00.9436090" startTime="2026-10-08T23:21:51.9365904-04:00" endTime="2026-10-08T23:21:51.9365905-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3d862b84-c0e9-41a4-aaeb-3b704fbcae49" />
+    <UnitTestResult executionId="f64b371b-7c56-4683-85bb-52b9ea2e83e6" testId="fc4a7ef6-045d-ce5d-893b-1f6ab43a283c" testName="SqlObserver.EndToEndTests.OnboardingDiscoveryEndToEndTests.RegisterDiscoverProjectAndRetirePreservesFencesAndAudit" computerName="DESKTOP-IORRV3E" duration="00:00:00.1385184" startTime="2026-10-08T23:21:51.1317194-04:00" endTime="2026-10-08T23:21:51.1317199-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f64b371b-7c56-4683-85bb-52b9ea2e83e6" />
+    <UnitTestResult executionId="850402cd-38d6-457a-bfcc-8717e3612f86" testId="622ad508-c51a-3b0a-8484-12a0b77c4325" testName="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.ProductionQueryCompositionEnforcesRoleAndTargetScopeAndAgentPrivacy" computerName="DESKTOP-IORRV3E" duration="00:00:00.0014365" startTime="2026-10-08T23:21:52.1878112-04:00" endTime="2026-10-08T23:21:52.1878113-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="850402cd-38d6-457a-bfcc-8717e3612f86" />
+    <UnitTestResult executionId="e3fdaa73-4613-4475-ba9b-14a0c3cf4c73" testId="77834f2a-aad2-88e9-dce4-cec649099f5b" testName="SqlObserver.EndToEndTests.M10AnalyticsCompositionEndToEndTests.CollectorOwnsAnalyticsWorkersAndRestrictedRepositoryPorts" computerName="DESKTOP-IORRV3E" duration="00:00:00.9469039" startTime="2026-10-08T23:21:51.9399708-04:00" endTime="2026-10-08T23:21:51.9399709-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e3fdaa73-4613-4475-ba9b-14a0c3cf4c73" />
+    <UnitTestResult executionId="2a925161-d672-4418-b0bc-853dd87d1a19" testId="ac929e9e-e5e0-6e6f-b341-9671bbe2e6e0" testName="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection" computerName="DESKTOP-IORRV3E" duration="00:00:00.5923437" startTime="2026-10-08T23:21:51.6943386-04:00" endTime="2026-10-08T23:21:51.6943388-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2a925161-d672-4418-b0bc-853dd87d1a19">
+      <Output>
+        <ErrorInfo>
+          <Message>RequiresPostgreSql certification precondition: set SQLOBSERVER_RELEASE_POSTGRES (Release) or SQLOBSERVER_LOCAL_POSTGRES (Local).</Message>
+          <StackTrace>   at SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection() in G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\M9OperationalHealthEndToEndTests.cs:line 75&#xD;
+--- End of stack trace from previous location ---</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="0510dace-e499-45d3-99aa-6b5f12c7949a" testId="6cc947e9-ac44-262a-b21a-613f7c2b6e3d" testName="SqlObserver.EndToEndTests.M12ReportsCompositionTests.ServerAndCollectorComposeReportBoundaries" computerName="DESKTOP-IORRV3E" duration="00:00:00.0683595" startTime="2026-10-08T23:21:51.0637700-04:00" endTime="2026-10-08T23:21:51.0638481-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0510dace-e499-45d3-99aa-6b5f12c7949a" />
+    <UnitTestResult executionId="9b6049c5-1cb0-4f24-a250-763b579e23b3" testId="33e2894f-0253-6074-a0eb-b1f30da7eaab" testName="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.ProductionQueryCompositionExposesSixBoundedSurfacesAndCursors" computerName="DESKTOP-IORRV3E" duration="00:00:00.0012201" startTime="2026-10-08T23:21:52.1863386-04:00" endTime="2026-10-08T23:21:52.1863386-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9b6049c5-1cb0-4f24-a250-763b579e23b3" />
+    <UnitTestResult executionId="892cc8fe-9ff0-4ea1-8ac1-ac1eeb25457e" testId="f30f78f3-ca8a-cb15-159d-c6948da15620" testName="SqlObserver.EndToEndTests.M12DeploymentSecurityCompositionTests.SafeExistingTargetMcpAndSensitiveFactsDoNotAuthorizeActivation" computerName="DESKTOP-IORRV3E" duration="00:00:00.1949239" startTime="2026-10-08T23:21:51.1880471-04:00" endTime="2026-10-08T23:21:51.1880471-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="892cc8fe-9ff0-4ea1-8ac1-ac1eeb25457e" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SqlObserver.EndToEndTests.CollectorCompositionEndToEndTests.CollectorHostResolvesRestrictedDataPlaneSchedulerAndWorkersWithoutIo" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="3120099f-f1bb-b4ca-2c3a-6c7f2f19daa0">
+      <Execution id="693c4770-9039-4bac-9a2f-cd3c73839048" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.CollectorCompositionEndToEndTests" name="CollectorHostResolvesRestrictedDataPlaneSchedulerAndWorkersWithoutIo" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.ProductionQueryCompositionEnforcesRoleAndTargetScopeAndAgentPrivacy" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="622ad508-c51a-3b0a-8484-12a0b77c4325">
+      <Execution id="850402cd-38d6-457a-bfcc-8717e3612f86" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests" name="ProductionQueryCompositionEnforcesRoleAndTargetScopeAndAgentPrivacy" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.PostgreSqlResolverKeepsLocalAndReleaseContractsSeparate" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="dbd43775-730d-d246-42b7-4f661f8de4ad">
+      <Execution id="860024f1-3b55-4ed4-8b24-448567ed1420" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests" name="PostgreSqlResolverKeepsLocalAndReleaseContractsSeparate" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M10AnalyticsCompositionEndToEndTests.CollectorOwnsAnalyticsWorkersAndRestrictedRepositoryPorts" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="77834f2a-aad2-88e9-dce4-cec649099f5b">
+      <Execution id="e3fdaa73-4613-4475-ba9b-14a0c3cf4c73" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M10AnalyticsCompositionEndToEndTests" name="CollectorOwnsAnalyticsWorkersAndRestrictedRepositoryPorts" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.ProductionKestrelCompositionServesAllSixOperationalRoutes" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="fed9b046-fc3a-6c1a-9bab-bcd78ddb62d9">
+      <Execution id="25783f0e-b6f4-4394-884b-31800bbbab41" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests" name="ProductionKestrelCompositionServesAllSixOperationalRoutes" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="ac929e9e-e5e0-6e6f-b341-9671bbe2e6e0">
+      <Execution id="2a925161-d672-4418-b0bc-853dd87d1a19" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests" name="EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.ProductionQueryCompositionExposesSixBoundedSurfacesAndCursors" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="33e2894f-0253-6074-a0eb-b1f30da7eaab">
+      <Execution id="9b6049c5-1cb0-4f24-a250-763b579e23b3" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests" name="ProductionQueryCompositionExposesSixBoundedSurfacesAndCursors" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.EnvironmentBackedPostgreSqlTestIsDiscoverableWithExplicitCertificationTrait" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="2d9620b9-9fa1-edfd-f3ae-ccd4616b724d">
+      <Execution id="cb667b18-9dd0-4354-85be-e6db2cb9859a" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests" name="EnvironmentBackedPostgreSqlTestIsDiscoverableWithExplicitCertificationTrait" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M10AnalyticsCompositionEndToEndTests.ContractTestingCompositionDoesNotStartAnalyticsWorkers" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="537e524f-2988-6914-1420-909320d39c75">
+      <Execution id="16f19881-d5ac-4c00-a362-673c30e76210" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M10AnalyticsCompositionEndToEndTests" name="ContractTestingCompositionDoesNotStartAnalyticsWorkers" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M12ReportsCompositionTests.ServerAndCollectorComposeReportBoundaries" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="6cc947e9-ac44-262a-b21a-613f7c2b6e3d">
+      <Execution id="0510dace-e499-45d3-99aa-6b5f12c7949a" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M12ReportsCompositionTests" name="ServerAndCollectorComposeReportBoundaries" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M7QueryPerformanceCompositionEndToEndTests.QueryPerformanceIsReachableAtOrderNineAndProductionProtectorIsUnavailable" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="f80a0df4-0a43-29ca-8e89-e80b35f79528">
+      <Execution id="3d862b84-c0e9-41a4-aaeb-3b704fbcae49" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M7QueryPerformanceCompositionEndToEndTests" name="QueryPerformanceIsReachableAtOrderNineAndProductionProtectorIsUnavailable" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M12LifecycleAssessmentCompositionTests.CompositionUsesAssessmentOnlyPortAndNeverAuthorizesMutation" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="e3e57fed-1898-006f-7310-6854429f278c">
+      <Execution id="c2824670-868b-4271-8467-074b29e6a811" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M12LifecycleAssessmentCompositionTests" name="CompositionUsesAssessmentOnlyPortAndNeverAuthorizesMutation" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.OnboardingDiscoveryEndToEndTests.RegisterDiscoverProjectAndRetirePreservesFencesAndAudit" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="fc4a7ef6-045d-ce5d-893b-1f6ab43a283c">
+      <Execution id="f64b371b-7c56-4683-85bb-52b9ea2e83e6" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.OnboardingDiscoveryEndToEndTests" name="RegisterDiscoverProjectAndRetirePreservesFencesAndAudit" />
+    </UnitTest>
+    <UnitTest name="SqlObserver.EndToEndTests.M12DeploymentSecurityCompositionTests.SafeExistingTargetMcpAndSensitiveFactsDoNotAuthorizeActivation" storage="g:\adams sql diagnostic manager\tests\sqlobserver.endtoendtests\bin\release\net10.0\sqlobserver.endtoendtests.dll" id="f30f78f3-ca8a-cb15-159d-c6948da15620">
+      <Execution id="892cc8fe-9ff0-4ea1-8ac1-ac1eeb25457e" />
+      <TestMethod codeBase="G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0\SqlObserver.EndToEndTests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SqlObserver.EndToEndTests.M12DeploymentSecurityCompositionTests" name="SafeExistingTargetMcpAndSensitiveFactsDoNotAuthorizeActivation" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="537e524f-2988-6914-1420-909320d39c75" executionId="16f19881-d5ac-4c00-a362-673c30e76210" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="dbd43775-730d-d246-42b7-4f661f8de4ad" executionId="860024f1-3b55-4ed4-8b24-448567ed1420" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fed9b046-fc3a-6c1a-9bab-bcd78ddb62d9" executionId="25783f0e-b6f4-4394-884b-31800bbbab41" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e3e57fed-1898-006f-7310-6854429f278c" executionId="c2824670-868b-4271-8467-074b29e6a811" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2d9620b9-9fa1-edfd-f3ae-ccd4616b724d" executionId="cb667b18-9dd0-4354-85be-e6db2cb9859a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3120099f-f1bb-b4ca-2c3a-6c7f2f19daa0" executionId="693c4770-9039-4bac-9a2f-cd3c73839048" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f80a0df4-0a43-29ca-8e89-e80b35f79528" executionId="3d862b84-c0e9-41a4-aaeb-3b704fbcae49" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fc4a7ef6-045d-ce5d-893b-1f6ab43a283c" executionId="f64b371b-7c56-4683-85bb-52b9ea2e83e6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="622ad508-c51a-3b0a-8484-12a0b77c4325" executionId="850402cd-38d6-457a-bfcc-8717e3612f86" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="77834f2a-aad2-88e9-dce4-cec649099f5b" executionId="e3fdaa73-4613-4475-ba9b-14a0c3cf4c73" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ac929e9e-e5e0-6e6f-b341-9671bbe2e6e0" executionId="2a925161-d672-4418-b0bc-853dd87d1a19" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6cc947e9-ac44-262a-b21a-613f7c2b6e3d" executionId="0510dace-e499-45d3-99aa-6b5f12c7949a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="33e2894f-0253-6074-a0eb-b1f30da7eaab" executionId="9b6049c5-1cb0-4f24-a250-763b579e23b3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f30f78f3-ca8a-cb15-159d-c6948da15620" executionId="892cc8fe-9ff0-4ea1-8ac1-ac1eeb25457e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="14" executed="14" passed="13" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.7)&#xD;
+[xUnit.net 00:00:00.49]   Discovering: SqlObserver.EndToEndTests&#xD;
+[xUnit.net 00:00:00.52]   Discovered:  SqlObserver.EndToEndTests&#xD;
+[xUnit.net 00:00:00.52]   Starting:    SqlObserver.EndToEndTests&#xD;
+[xUnit.net 00:00:01.25]       RequiresPostgreSql certification precondition: set SQLOBSERVER_RELEASE_POSTGRES (Release) or SQLOBSERVER_LOCAL_POSTGRES (Local).&#xD;
+[xUnit.net 00:00:01.25]       Stack Trace:&#xD;
+[xUnit.net 00:00:01.25]         G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\M9OperationalHealthEndToEndTests.cs(75,0): at SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection()&#xD;
+[xUnit.net 00:00:01.25]         --- End of stack trace from previous location ---&#xD;
+info: Microsoft.AspNetCore.DataProtection.KeyManagement.XmlKeyManager[63]&#xD;
+      User profile is available. Using 'C:\Users\ars51\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.&#xD;
+info: Microsoft.Hosting.Lifetime[14]&#xD;
+      Now listening on: http://127.0.0.1:58804&#xD;
+info: Microsoft.Hosting.Lifetime[0]&#xD;
+      Application started. Press Ctrl+C to shut down.&#xD;
+info: Microsoft.Hosting.Lifetime[0]&#xD;
+      Hosting environment: Production&#xD;
+info: Microsoft.Hosting.Lifetime[0]&#xD;
+      Content root path: G:\Adams SQL Diagnostic Manager\tests\SqlObserver.EndToEndTests\bin\Release\net10.0&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]&#xD;
+      Request starting HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/backups - - -&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]&#xD;
+      Executing endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/backups =&gt; BackupsAsync'&#xD;
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]&#xD;
+      Writing value of type 'OperationalHealthPageDto' as Json.&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]&#xD;
+      Executed endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/backups =&gt; BackupsAsync'&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]&#xD;
+      Request finished HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/backups - 200 - application/json;+charset=utf-8 87.2900ms&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]&#xD;
+      Request starting HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sql-agent/failures - - -&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]&#xD;
+      Executing endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/sql-agent/failures =&gt; AgentAsync'&#xD;
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]&#xD;
+      Writing value of type 'OperationalHealthPageDto' as Json.&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]&#xD;
+      Executed endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/sql-agent/failures =&gt; AgentAsync'&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]&#xD;
+      Request finished HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sql-agent/failures - 200 - application/json;+charset=utf-8 13.5957ms&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]&#xD;
+      Request starting HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/tempdb - - -&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]&#xD;
+      Executing endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/tempdb =&gt; TempDbAsync'&#xD;
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]&#xD;
+      Writing value of type 'OperationalHealthPageDto' as Json.&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]&#xD;
+      Executed endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/tempdb =&gt; TempDbAsync'&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]&#xD;
+      Request finished HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/tempdb - 200 - application/json;+charset=utf-8 8.8232ms&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]&#xD;
+      Request starting HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/tempdb/files - - -&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]&#xD;
+      Executing endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/tempdb/files =&gt; TempDbFilesAsync'&#xD;
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]&#xD;
+      Writing value of type 'OperationalHealthPageDto' as Json.&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]&#xD;
+      Executed endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/tempdb/files =&gt; TempDbFilesAsync'&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]&#xD;
+      Request finished HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/tempdb/files - 200 - application/json;+charset=utf-8 2.2069ms&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]&#xD;
+      Request starting HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/availability-groups/replicas - - -&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]&#xD;
+      Executing endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/availability-groups/replicas =&gt; ReplicasAsync'&#xD;
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]&#xD;
+      Writing value of type 'OperationalHealthPageDto' as Json.&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]&#xD;
+      Executed endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/availability-groups/replicas =&gt; ReplicasAsync'&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]&#xD;
+      Request finished HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/availability-groups/replicas - 200 - application/json;+charset=utf-8 7.4538ms&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]&#xD;
+      Request starting HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/availability-groups/databases - - -&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]&#xD;
+      Executing endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/availability-groups/databases =&gt; DatabasesAsync'&#xD;
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]&#xD;
+      Writing value of type 'OperationalHealthPageDto' as Json.&#xD;
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]&#xD;
+      Executed endpoint 'HTTP: GET /api/v1/observation-targets/{instanceId:guid}/availability-groups/databases =&gt; DatabasesAsync'&#xD;
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]&#xD;
+      Request finished HTTP/1.1 GET http://127.0.0.1:58804/api/v1/observation-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/availability-groups/databases - 200 - application/json;+charset=utf-8 2.1332ms&#xD;
+info: Microsoft.Hosting.Lifetime[0]&#xD;
+      Application is shutting down...&#xD;
+[xUnit.net 00:00:01.75]   Finished:    SqlObserver.EndToEndTests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="DESKTOP-IORRV3E" outcome="Error" timestamp="2026-10-08T23:21:51.6931134-04:00">
+        <Text>[xUnit.net 00:00:01.25]     SqlObserver.EndToEndTests.M9OperationalHealthEndToEndTests.EnvironmentBackedPostgreSqlControlPlaneServesSeededM9Projection [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

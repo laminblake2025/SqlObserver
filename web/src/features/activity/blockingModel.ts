@@ -31,6 +31,11 @@ export function formatBlockingTarget(value: BlockerValue): string {
 // cyclic evidence visible without inventing a head blocker.
 export function buildBlockingTree(rows: readonly LiveRow[]): readonly BlockingTreeGroup[] {
   const relationships = rows.filter(row => isBlockingRelationship(row.blocker));
+  const lifetimes = new Map<number, Set<string>>();
+  for (const row of rows) {
+    const known = lifetimes.get(row.sessionId) ?? new Set<string>();
+    known.add(JSON.stringify([row.engineStartup, row.sessionLogin])); lifetimes.set(row.sessionId, known);
+  }
   const bySession = new Map<number, LiveRow[]>();
   for (const row of relationships) {
     const current = bySession.get(row.sessionId) ?? [];
@@ -58,6 +63,11 @@ export function buildBlockingTree(rows: readonly LiveRow[]): readonly BlockingTr
         break;
       }
       path.push(current);
+      if ((lifetimes.get(current)?.size ?? 0) > 1) {
+        key = `lifetime:${current}`; label = `Session ${current} lifetime unresolved`;
+        issue = "Multiple captured lifetimes share this session ID; the blocking relationship cannot be assigned to an exact lifetime.";
+        break;
+      }
       const blocker = blockerFor(current);
       if (blocker === undefined) {
         key = `ambiguous:${current}`;
@@ -68,6 +78,11 @@ export function buildBlockingTree(rows: readonly LiveRow[]): readonly BlockingTr
       if (blocker < 0) {
         key = `special:${blocker}`;
         label = formatBlockingTarget(blocker);
+        break;
+      }
+      if ((lifetimes.get(blocker)?.size ?? 0) > 1) {
+        key = `lifetime:${blocker}`; label = `Session ${blocker} lifetime unresolved`;
+        issue = "Multiple captured lifetimes share this session ID; the blocking relationship cannot be assigned to an exact lifetime.";
         break;
       }
       if (!bySession.has(blocker)) {

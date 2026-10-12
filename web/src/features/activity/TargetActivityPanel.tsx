@@ -12,6 +12,7 @@ import type { ActivityPage, ActivityWait, BlockingHistoryItem, ServerWaitHistory
 import type { OverviewScope } from "../overview/overviewTypes";
 
 export interface TargetActivityPanelProps {
+  readonly embedded?: boolean;
   readonly instanceId: string;
   readonly displayName: string;
   readonly onClose: () => void;
@@ -29,13 +30,13 @@ export interface TargetActivityPanelProps {
   readonly onSelectTimeMode?: (mode: "live" | "history") => void;
 }
 
-export function TargetActivityPanel({ instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused, onSelectDatabase, selectionHash, canReadText = false, onSelectTimeMode, targetRevision }: TargetActivityPanelProps) {
+export function TargetActivityPanel({ embedded = false, instanceId, displayName, onClose, initialHistoryAtUtc, initialHistoryEventId, scope, refresh, manualRefresh, sessionTick, livePaused, onSelectDatabase, selectionHash, canReadText = false, onSelectTimeMode, targetRevision }: TargetActivityPanelProps) {
   const { mode } = useTimeDisplay();
   const selected = useMemo(() => resolveActivityWindow(scope, Date.now()), [scope.range, scope.from, scope.to, refresh]);
   const window = selected.state === "available" ? selected.window : undefined;
   const historyUnavailableReason = selected.state === "unavailable" ? selected.message : selected.liveSnapshotsAvailable ? undefined : "Session snapshots are retained for 24 hours; this selected window is older. Wait and blocking history may still be available below.";
   const historySelection = window ?? null;
-  const historyContext = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to, scope.databaseId]);
+  const historyContext = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range, scope.from, scope.to]);
   const access = useActivityBoundary(historyContext);
   const supportingSource = useActivitySource(access, "supporting", historyContext, refresh,
     async (signal, explicit) => {
@@ -63,8 +64,8 @@ export function TargetActivityPanel({ instanceId, displayName, onClose, initialH
 
   return (
     <section className="activity-screen" aria-labelledby="activity-heading">
-      <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Wait and blocking history follow the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>
-      <LiveSessionsPanel access={access} key={`${historyContext}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}`} instanceId={instanceId} displayName={displayName} scope={scope} selectionHash={selectionHash} canReadText={canReadText} selectedDatabaseId={scope.databaseId} onSelectDatabase={onSelectDatabase} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} onSelectTimeMode={onSelectTimeMode} />
+      {embedded ? <h2 id="activity-heading" className="visually-hidden">Activity evidence for {displayName}</h2> : <div className="screen-intro"><div><p className="eyebrow">Activity · supporting snapshot evidence</p><h2 id="activity-heading">Activity evidence for {displayName}</h2><p>Current sessions, requests, waits, and blocking are live snapshots. Wait and blocking history follow the selected time range when it is 24 hours or shorter.</p></div><button className="secondary-button" onClick={onClose} type="button">Close</button></div>}
+      <LiveSessionsPanel compact={embedded} access={access} key={`${historyContext}:${initialHistoryAtUtc ?? "live"}:${initialHistoryEventId ?? ""}`} instanceId={instanceId} displayName={displayName} scope={scope} selectionHash={selectionHash} canReadText={canReadText} selectedDatabaseId={scope.databaseId} onSelectDatabase={onSelectDatabase} initialHistoryAtUtc={initialHistoryAtUtc} initialHistoryEventId={initialHistoryEventId} selectedWindow={window} historyUnavailableReason={historyUnavailableReason} defaultHistorical={scope.range === "custom"} refreshToken={manualRefresh} clockTick={sessionTick} workspacePaused={livePaused} onSelectTimeMode={onSelectTimeMode} />
       <details className="supporting-evidence"><summary>Open supporting waits, blocking, and history evidence</summary><div className="supporting-evidence-content">
       <p className="activity-evidence">{window ? `Selected activity-history window: ${formatDisplayTime(window.fromUtc, mode)} to ${formatDisplayTime(window.toUtc, mode)}.` : selected.state === "unavailable" ? selected.message : null}</p>
       {scope.databaseId !== undefined ? <p className="table-note">Supporting sessions and requests are filtered within their loaded pages for database ID {scope.databaseId}. Server wait and blocking summaries remain server-wide; they have no database attribution.</p> : null}

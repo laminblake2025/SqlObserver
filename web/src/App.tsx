@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RouteLoadBoundary } from "./components/RouteLoadBoundary";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiRequestError, clearApiCache } from "./apiClient";
 import { TargetCatalogAccess } from "./features/targets/targetCatalogAccess";
-import { AnalyticsPage } from "./features/analytics/AnalyticsPage";
+const AnalyticsPage = lazy(() => import("./features/analytics/AnalyticsPage").then(module => ({ default: module.AnalyticsPage })));
 import type { AnalyticsSurface } from "./features/analytics/analyticsTypes";
 import { analyticsSurfaceCatalog } from "./features/analytics/analyticsSurfaceCatalog";
 import { Drawer } from "./components/Drawer";
@@ -27,20 +28,20 @@ import { resolveWorkspaceIncidentWindow } from "./features/incidents/workspaceIn
 import { formatDisplayTime } from "./timeDisplay";
 import { useTimeDisplay } from "./TimeDisplayContext";
 import { resolveActivityWindow } from "./features/activity/activityWindowModel";
-import { TargetActivityPanel } from "./features/activity/TargetActivityPanel";
-import { TargetWaitsPanel } from "./features/activity/TargetWaitsPanel";
-import { TargetAlertsPanel } from "./features/alerts/TargetAlertsPanel";
-import { TargetAlertRulesPanel } from "./features/alerts/TargetAlertRulesPanel";
-import { TargetMaintenancePanel } from "./features/alerts/TargetMaintenancePanel";
-import { TargetDestinationsPanel } from "./features/alerts/TargetDestinationsPanel";
-import { FleetAlertsPage } from "./features/alerts/FleetAlertsPage";
-import { RuleTemplatesPage } from "./features/alerts/RuleTemplatesPage";
+const TargetActivityPanel = lazy(() => import("./features/activity/TargetActivityPanel").then(module => ({ default: module.TargetActivityPanel })));
+const TargetWaitsPanel = lazy(() => import("./features/activity/TargetWaitsPanel").then(module => ({ default: module.TargetWaitsPanel })));
+const TargetAlertsPanel = lazy(() => import("./features/alerts/TargetAlertsPanel").then(module => ({ default: module.TargetAlertsPanel })));
+const TargetAlertRulesPanel = lazy(() => import("./features/alerts/TargetAlertRulesPanel").then(module => ({ default: module.TargetAlertRulesPanel })));
+const TargetMaintenancePanel = lazy(() => import("./features/alerts/TargetMaintenancePanel").then(module => ({ default: module.TargetMaintenancePanel })));
+const TargetDestinationsPanel = lazy(() => import("./features/alerts/TargetDestinationsPanel").then(module => ({ default: module.TargetDestinationsPanel })));
+const FleetAlertsPage = lazy(() => import("./features/alerts/FleetAlertsPage").then(module => ({ default: module.FleetAlertsPage })));
+const RuleTemplatesPage = lazy(() => import("./features/alerts/RuleTemplatesPage").then(module => ({ default: module.RuleTemplatesPage })));
 import { readRuleTemplateSelection, ruleTemplateSelectionHref } from "./features/alerts/ruleTemplateSelection.ts";
 import "./features/alerts/ruleTemplates.css";
-import { TargetDeadlockPanel } from "./features/deadlocks/TargetDeadlockPanel";
+const TargetDeadlockPanel = lazy(() => import("./features/deadlocks/TargetDeadlockPanel").then(module => ({ default: module.TargetDeadlockPanel })));
 import { deadlockSelectionHref, readDeadlockSelection, retainDeadlockSelectionHref } from "./features/deadlocks/deadlockSelectionModel.ts";
-import { TargetHealthPanel } from "./features/health/TargetHealthPanel";
-import { OverviewPage } from "./features/overview/OverviewPage";
+const TargetHealthPanel = lazy(() => import("./features/health/TargetHealthPanel").then(module => ({ default: module.TargetHealthPanel })));
+const OverviewPage = lazy(() => import("./features/overview/OverviewPage").then(module => ({ default: module.OverviewPage })));
 import { overviewHref, readOverviewScope } from "./features/overview/overviewModel";
 import { healthCheckHref } from "./features/operations/agentHistoryModel.ts";
 import { readTempDbSelection, tempDbSelectionHref, clearTempDbSelectionHref, retainedTempDbSelectionHref, retainTempDbSelectionHref } from "./features/operations/tempDbSelectionModel.ts";
@@ -48,41 +49,28 @@ import { readReplicationSelection, replicationSelectionHref, clearReplicationSel
 import { readAgentActivitySelection, agentActivitySelectionHref, clearAgentActivitySelectionHref, retainedAgentActivitySelectionHref, retainAgentActivitySelectionHref } from "./features/operations/agentActivitySelectionModel.ts";
 import { readBackupAvailabilitySelection, backupAvailabilitySelectionHref, clearBackupAvailabilitySelectionHref,
   retainedBackupAvailabilitySelectionHref, retainBackupAvailabilitySelectionHref, retainBackupAvailabilityRawPin } from "./features/operations/backupAvailabilitySelectionModel.ts";
-import { OperationsPanel } from "./features/operations/OperationsPanel";
+const OperationsPanel = lazy(() => import("./features/operations/OperationsPanel").then(module => ({ default: module.OperationsPanel })));
 import { queryViewHref, readQueryViewSelection } from "./features/queries/queryViewModel";
 import { retainChartInspectionHref } from "./components/chartInspectionModel.ts";
-import { TargetQueryPerformancePanel } from "./features/queries/TargetQueryPerformancePanel";
-import { TargetResourcesPanel } from "./features/resources/TargetResourcesPanel";
+const TargetQueryPerformancePanel = lazy(() => import("./features/queries/TargetQueryPerformancePanel").then(module => ({ default: module.TargetQueryPerformancePanel })));
+const TargetResourcesPanel = lazy(() => import("./features/resources/TargetResourcesPanel").then(module => ({ default: module.TargetResourcesPanel })));
 import { queryPerformanceDefaultHref, resolveQueryWindow, type QueryWindowResult } from "./features/queries/queryWindowModel";
-import { ReportsPanel } from "./features/reports/ReportsPanel";
+const ReportsPanel = lazy(() => import("./features/reports/ReportsPanel").then(module => ({ default: module.ReportsPanel })));
 import { readReportSelection, reportSelectionHref, retainReportSelectionHref } from "./features/reports/reportsWorkspaceModel.ts";
 import { TargetOnboarding } from "./features/targets/TargetOnboarding";
-import { TargetPermissionScriptPanel } from "./features/targets/TargetPermissionScriptPanel";
+const TargetPermissionScriptPanel = lazy(() => import("./features/targets/TargetPermissionScriptPanel").then(module => ({ default: module.TargetPermissionScriptPanel })));
 import "./features/targets/permissionScript.css";
-import { ServersPage } from "./features/targets/ServersPage";
-import { TargetManagementPanel } from "./features/targets/TargetManagementPanel";
+const ServersPage = lazy(() => import("./features/targets/ServersPage").then(module => ({ default: module.ServersPage })));
+const TargetManagementPanel = lazy(() => import("./features/targets/TargetManagementPanel").then(module => ({ default: module.TargetManagementPanel })));
 import { mergeManagedTarget, readServerManagementSelection, serverSettingsHref } from "./features/targets/serverManagementSelection.ts";
 import { getObservationTarget, listObservationTargets } from "./features/targets/targetApi";
 import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canManageBackupPolicies, canReadIncident, canReadQueryText, canRegisterTarget, canSaveIncident, getMyAccess, type MyAccess } from "./features/targets/meApi";
 import type { ObservationTargetSummary } from "./features/targets/targetTypes";
 import { useFleetEvidence } from "./features/targets/useFleetEvidence";
-import { WorkspaceFleetStrip } from "./features/overview/WorkspaceFleetStrip";
-import { activityHistoryHref, analyticsSurfaceHref, retainAnalyticsSurfaceHref, healthSectionHref, destinations, navigationDestinations, readRoute, type Destination } from "./dashboardModel";
+import { WorkspaceNavigation, ServerNavigation } from "./components/WorkspaceNavigation";
+import { WorkspaceRefreshWindow } from "./features/overview/WorkspaceRefreshWindow";
+import { activityHistoryHref, analyticsSurfaceHref, retainAnalyticsSurfaceHref, healthSectionHref, destinations, readRoute, type Destination } from "./dashboardModel";
 import { refreshCadence, startWorkspaceClock, wakeLiveTick } from "./liveRefreshSchedule";
-
-const navigationIcons: Readonly<Record<(typeof navigationDestinations)[number], string>> = {
-  overview: "⌂",
-  servers: "▦",
-  activity: "⌁",
-  waits: "◷",
-  resources: "◫",
-  queries: "▥",
-  deadlocks: "↔",
-  alerts: "♢",
-  operations: "⚙",
-  analytics: "◔",
-  reports: "▤",
-};
 
 type DirectTargetLookup =
   | { readonly targetId: string; readonly refresh: number; readonly state: "loading"; readonly target?: ObservationTargetSummary }
@@ -322,8 +310,6 @@ export function App() {
     () => resolveQueryWindow(scope, Date.now()),
     [route.page, scope.target, scope.range, scope.from, scope.to, slowRefresh],
   );
-  const currentNavigation = route.page === "health" || route.page === "permissions" ? "servers" :
-    route.page === "rules" || route.page === "rule-templates" || route.page === "maintenance" || route.page === "destinations" ? "alerts" : route.page;
   const routeHref = (page: Destination, target = route.target) => {
     if (page === "alerts" && route.page === "alerts" && alertSelection && target.toLowerCase() === route.target.toLowerCase())
       return target ? targetAlertHref(scope, target, alertSelection.alertId) : alertJumpHref(scope, alertSelection);
@@ -388,28 +374,7 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">◉</span>
           <div><strong>SQL Observer</strong><span>SQL Server diagnostics</span></div>
         </div>
-        <p className="nav-label">MONITOR</p>
-        <nav aria-label="Main navigation" onFocus={event => {
-          const link = event.target;
-          const scroller = event.currentTarget;
-          if (!(link instanceof HTMLAnchorElement) || scroller.scrollWidth <= scroller.clientWidth) return;
-          const viewport = scroller.getBoundingClientRect(), bounds = link.getBoundingClientRect();
-          const left = viewport.left + scroller.clientLeft, right = left + scroller.clientWidth;
-          // Preserve native keyboard/vertical focus scrolling, then reveal the complete link locally.
-          if (bounds.left < left) scroller.scrollLeft -= Math.ceil(left - bounds.left);
-          else if (bounds.right > right) scroller.scrollLeft += Math.ceil(bounds.right - right);
-        }}>
-          {navigationDestinations.map((key) => (
-            <a
-              key={key}
-              aria-current={currentNavigation === key ? "page" : undefined}
-              href={routeHref(key, key === "alerts" && scope.databaseId === undefined ? "" : route.target)}
-            >
-              <span aria-hidden="true">{navigationIcons[key]}</span>
-              {destinations[key]}
-            </a>
-          ))}
-        </nav>
+        <WorkspaceNavigation page={route.page} surface={surface} scope={scope} href={routeHref} />
         <div className="sidebar-footer">
           <span><i aria-hidden="true" /> Passive monitoring</span>
           <span><i aria-hidden="true" /> Pre-release</span>
@@ -417,71 +382,37 @@ export function App() {
       </aside>
 
       <div className="workspace">
-        <header className="topbar">
-          <div className="topbar-context"><span>Diagnostics workspace <span className="topbar-separator">/</span> {selected?.displayName ?? "Fleet"}</span><span className="topbar-meta">{timeDisplayMode === "local" ? "Local time" : "UTC"} <span className="topbar-separator">·</span> Read-only evidence</span></div>
-          <button className="secondary-button topbar-search" type="button" disabled={catalogDenied} onClick={() => setCommandPaletteOpen(true)} aria-keyshortcuts="Control+K Meta+K">Search <kbd>Ctrl+K</kbd></button>
-          <button className="secondary-button" type="button" aria-label={timeDisplayMode === "local" ? "Show UTC time" : "Show local time"}
-            onClick={() => setTimeDisplayMode(timeDisplayMode === "local" ? "utc" : "local")}>
-            {timeDisplayMode === "local" ? "Show UTC time" : "Show local time"}
-          </button>
-          {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context">
-            <TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={maxTimeRangeDays} />
-            <span className="topbar-time-mode">{isRewind ? "Rewind · fixed" : livePaused ? "Live · paused" : "Live · moving"}</span>
-          </div>}
-          {!isRewind && <button className="secondary-button" type="button" aria-pressed={livePaused} onClick={() => {
-            if (livePaused) setLiveTick(wakeLiveTick);
-            setLivePaused(value => !value);
-          }}>{livePaused ? "Resume live updates" : "Pause live updates"}</button>}
+        <header className="topbar" aria-label="Workspace context">
+          <label className="topbar-server"><span className="visually-hidden">Server</span><select aria-label="Target server" disabled={catalogDenied} value={route.target} onChange={event => { location.hash = routeHref(route.page, event.target.value); }}>
+            <option value="">{targetPage ? "Select server" : "All servers"}</option>
+            {targetOptions.map(target => <option key={target.instanceId} value={target.instanceId.toLowerCase()}>{target.displayName}</option>)}
+          </select></label>
+          {selected && <DatabaseScopeControls targetId={selected.instanceId} databaseId={scope.databaseId} onChange={changeDatabaseContext} refresh={slowRefresh} compact />}
+          {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context"><TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={maxTimeRangeDays} /></div>}
+          {!isRewind ? <button className="time-mode-pill" type="button" aria-pressed={livePaused} onClick={() => { if (livePaused) setLiveTick(wakeLiveTick); setLivePaused(value => !value); }} title={livePaused ? "Resume live updates" : "Pause live updates"}><i aria-hidden="true"/>{livePaused ? "Paused" : "Live"}</button> : <><span className="time-mode-pill frozen">Frozen</span><button className="secondary-button return-live" onClick={() => changeTimeContext({range: "1h", from: undefined, to: undefined})}>Return to Live</button></>}
+          <button className="timezone-button" type="button" aria-label={timeDisplayMode === "local" ? "Show UTC time" : "Show local time"} onClick={() => setTimeDisplayMode(timeDisplayMode === "local" ? "utc" : "local")}>{timeDisplayMode === "utc" ? "UTC" : new Intl.DateTimeFormat(undefined, {timeZoneName: "short"}).formatToParts(new Date()).find(part => part.type === "timeZoneName")?.value ?? "Local"}</button>
+          <button className="secondary-button workspace-refresh" type="button" disabled={loading} onClick={refreshWorkspace}>↻ Refresh</button>
+          <button className="secondary-button topbar-search" type="button" disabled={catalogDenied} onClick={() => setCommandPaletteOpen(true)} aria-label="Search" aria-keyshortcuts="Control+K Meta+K"><span aria-hidden="true">⌕</span></button>
         </header>
+        <WorkspaceRefreshWindow scope={scope} refresh={slowRefresh}>
         <main id="main-content" tabIndex={-1} className="shell">
-          {!catalogDenied && <WorkspaceFleetStrip scope={scope} refresh={slowRefresh} />}
-          <PageHeading
-            eyebrow={route.page === "overview" ? "SQL OBSERVER / OVERVIEW" : `SQL OBSERVER / ${destinations[route.page].toUpperCase()}`}
-            title={pageTitle}
-            subtitle={pageSubtitle}
-          />
-          <section className="workspace-context-frame" aria-label="Workspace server and database context">
-              <div className="workspace-context-controls page-actions">
-                {targetPage ? (
-                  <label className="scope-control">
-                    <span>Target</span>
-                    <select
-                      aria-label="Target server"
-                      disabled={catalogDenied}
-                      value={route.target}
-                      onChange={(event) => { location.hash = routeHref(route.page, event.target.value); }}
-                    >
-                      <option value="">Select server</option>
-                      {targetOptions.map((target) => <option key={target.instanceId.toLowerCase()} value={target.instanceId.toLowerCase()}>{target.displayName}</option>)}
-                    </select>
-                  </label>
-                ) : null}
-                {selected && <DatabaseScopeControls targetId={selected.instanceId} databaseId={scope.databaseId} onChange={changeDatabaseContext} refresh={slowRefresh} />}
-                <button className="secondary-button" type="button" disabled={loading} onClick={refreshWorkspace}>
-                  ↻ <span>Refresh</span>
-                </button>
-                {selected && route.page === "health" && canManageRules
-                  ? <a className="secondary-button" href={overviewHref(scope, "permissions", selected.instanceId)}>Generate permission script</a> : null}
-                {canUseRuleTemplates && (route.page === "servers" || route.page === "alerts" || route.page === "rules")
-                  ? <a className="secondary-button" href="#/rule-templates">Rule templates</a> : null}
-                {canAddServer ? <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button> : null}
-              </div>
-              {selected && <p className="workspace-context-scope">{scope.databaseId === undefined ? "All databases · server-wide monitoring evidence." : `Database ID ${scope.databaseId} · supported rows filtered; server-wide evidence remains server-wide.`}</p>}
-              {scope.databaseId !== undefined && selected && <details className="workspace-context-details"><summary>Context details</summary><p className="muted database-context-notice" data-testid="database-context-notice">
-            Database ID {scope.databaseId} stays selected across this server’s views. Supported session, query and file rows follow this context; server-wide metrics, waits, blocking history, deadlocks, alerts and health checks remain server-wide.
-          </p></details>}
-          </section>
-
+          <PageHeading title={route.page === "activity" ? "Activity" : route.page === "analytics" ? surface === "incidents" ? "Investigations" : "Collection & evidence" : pageTitle} subtitle={route.page === "activity" ? "Sessions & blocking" : route.page === "health" ? `Fleet / ${selected?.displayName ?? "Select server"}` : pageSubtitle}
+            actions={<>
+              {(route.page === "overview" || route.page === "servers") && <a className="secondary-button" href={routeHref(route.page === "overview" ? "servers" : "overview", "")}>{route.page === "overview" ? "Server inventory" : "Fleet overview"}</a>}
+              {canAddServer && <button className="primary" type="button" onClick={() => setAdding(true)}>+ Add server</button>}
+              {selected && route.page === "health" && canManageRules && <a className="secondary-button" href={overviewHref(scope, "permissions", selected.instanceId)}>Permission script</a>}
+              {canUseRuleTemplates && (route.page === "servers" || route.page === "alerts" || route.page === "rules") && <a className="secondary-button" href="#/rule-templates">Rule templates</a>}
+              {selected && incidentPage && <section className="workspace-investigations" aria-label={`Investigations for ${selected.displayName}`}><IncidentWorkspace key={selected.instanceId} compact targetId={selected.instanceId} targetRevision={selected.configurationRevision}
+                canSave={canSaveIncident(myAccess, selected.instanceId)} canRead={canReadIncident(myAccess, selected.instanceId)} scope={scope} selectionHash={location.hash}
+                window={incidentContext?.window} contextMessage={incidentContext?.message} formatTime={value => formatDisplayTime(value, timeDisplayMode)} /></section>}
+            </>} />
+          {selected && ["health", "activity", "waits", "resources", "queries", "deadlocks", "operations"].includes(route.page) && <ServerNavigation page={route.page} href={page => page === "health" ? healthSectionHref(scope, selected.instanceId, "summary") : routeHref(page)} />}
+          {scope.databaseId !== undefined && selected && <details className="workspace-context-details"><summary>Database scope details</summary><p className="muted database-context-notice" data-testid="database-context-notice">Database ID {scope.databaseId} stays selected across this server’s views. Supported session, query and file rows follow this context; server-wide metrics, waits, blocking history, deadlocks, alerts and health checks remain server-wide.</p></details>}
+          <RouteLoadBoundary key={route.page}><Suspense fallback={<p role="status" className="route-loading">Loading diagnostic workspace…</p>}>
           {route.page !== "overview" && route.page !== "rule-templates" && !fleetAlertsPage && loading && !props ? <p role="status" className="empty-state">Loading authorized targets…</p> : null}
           {message ? <p role="alert" className="status-message">{message}</p> : null}
           {targetPage && !props && currentDirectTargetLookup?.state === "loading" ? <p role="status" className="empty-state">Loading selected target…</p> : null}
           {targetPage && currentDirectTargetLookup?.state === "error" ? <p role="alert" className="status-message">{currentDirectTargetLookup.message}</p> : null}
-
-          {selected && incidentPage && <section className="workspace-investigations" aria-label={`Investigations for ${selected.displayName}`}>
-            <IncidentWorkspace key={selected.instanceId} compact targetId={selected.instanceId} targetRevision={selected.configurationRevision}
-              canSave={canSaveIncident(myAccess, selected.instanceId)} canRead={canReadIncident(myAccess, selected.instanceId)} scope={scope} selectionHash={location.hash}
-              window={incidentContext?.window} contextMessage={incidentContext?.message} formatTime={value => formatDisplayTime(value, timeDisplayMode)} />
-          </section>}
 
           {!catalogDenied && route.page === "overview" ? <OverviewPage refresh={slowRefresh} canAddServer={canAddServer} onAdd={() => setAdding(true)} /> : null}
           {!catalogDenied && fleetAlertsPage ? <FleetAlertsPage refresh={slowRefresh} selection={alertSelection} /> : null}
@@ -526,7 +457,7 @@ export function App() {
                 }}
                 canManageConfiguration={canManageRules} canManageLifecycleCollection={myAccess?.active === true && myAccess.targetId?.toLowerCase() === props.instanceId.toLowerCase() && myAccess.targetRoles.includes("TargetAdministrator")}
                 accessContext={JSON.stringify(myAccess)} targetRevision={selected!.configurationRevision} selectionHash={location.hash} />}
-              {route.page === "activity" && <TargetActivityPanel {...props} scope={scope} targetRevision={selected!.configurationRevision} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
+              {route.page === "activity" && <TargetActivityPanel embedded {...props} scope={scope} targetRevision={selected!.configurationRevision} selectionHash={location.hash} canReadText={canReadQueryText(myAccess, props.instanceId)} onSelectDatabase={changeDatabaseContext} refresh={slowRefresh} manualRefresh={refresh} sessionTick={liveTick} livePaused={livePaused} onSelectTimeMode={changeActivityTimeMode} initialHistoryAtUtc={route.activityAtUtc} initialHistoryEventId={route.activityEventId} />}
               {route.page === "waits" && <TargetWaitsPanel {...props} scope={scope} refresh={slowRefresh} targetRevision={selected!.configurationRevision} selectionHash={location.hash}
                 onSelectWindow={window => changeTimeContext({ range: "custom", from: window.fromUtc, to: window.toUtc })} />}
               {route.page === "resources" && <TargetResourcesPanel {...props} scope={scope} refresh={slowRefresh} manualRefresh={refresh} accessContext={JSON.stringify(myAccess)} targetRevision={selected!.configurationRevision} canReadRules={canManageRules} canManageCpuCollection={canManageRules}
@@ -670,7 +601,9 @@ export function App() {
               }} />)}
             </div>
           ) : null}
+          </Suspense></RouteLoadBoundary>
         </main>
+        </WorkspaceRefreshWindow>
         <footer className="app-footer">SQL Observer <span>·</span> Bounded evidence <span>·</span> Stored in UTC <span>·</span> Pre-release validation</footer>
       </div>
 

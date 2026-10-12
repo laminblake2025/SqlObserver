@@ -425,6 +425,11 @@ for (const kind of ['observation', 'overview']) for (const width of [320, 390, 7
   await page.getByRole('button', { name: 'Replace chart target', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(viewport).toBeFocused();
+  // Ordinary plots fit their container with readable axes. Exercise deliberate
+  // enlargement too, so touch panning and CTM selection retain full coverage.
+  const normal = await svg.evaluate(element => { const text = element.querySelector('text'), matrix = text.getScreenCTM(); return { width: element.getBoundingClientRect().width, container: element.parentElement.clientWidth, font: parseFloat(getComputedStyle(text).fontSize) * Math.hypot(matrix.a, matrix.b) }; });
+  expect(normal.width).toBeLessThanOrEqual(normal.container + 1); expect(normal.font).toBeGreaterThanOrEqual(11.5);
+  await svg.evaluate(element => { element.style.width = `${element.viewBox.baseVal.width}px`; });
   const geometry = await viewport.evaluate(element => {
     const svg = element.querySelector('svg'), text = svg.querySelector('text'), matrix = text.getScreenCTM();
     const outline = getComputedStyle(element), box = svg.getBoundingClientRect();

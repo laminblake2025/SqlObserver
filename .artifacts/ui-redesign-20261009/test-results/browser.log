@@ -1,0 +1,56 @@
+[WebServer] (node:191928) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 7 tests using 1 worker
+
+(node:204904) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 1600×1000 (4.3s)
+  ok 2 [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 1440×900 (4.7s)
+  x  3 [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 390×844 (8.7s)
+(node:178120) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 4 [chromium] › browser-tests\redesign.spec.mjs:49:1 › detail navigation avoids fleet reads, saves an exact frozen investigation, and restores deep links (1.7s)
+  ok 5 [chromium] › browser-tests\redesign.spec.mjs:61:1 › custom editor follows display timezone and untouched UTC bounds retain microseconds (630ms)
+  ok 6 [chromium] › browser-tests\redesign.spec.mjs:73:1 › viewer cannot save investigations and narrow navigation is keyboard accessible (1.4s)
+  ok 7 [chromium] › browser-tests\redesign.spec.mjs:81:1 › chart inspection survives refresh and resets on explicit metric change (1.2s)
+
+
+  1) [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 390×844 
+
+    Error: expect(locator).toBeInViewport() failed
+
+    Locator:  getByRole('button', { name: 'Inspect captured session 51/0', exact: true })
+    Expected: in viewport
+    Received: viewport ratio 0
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toBeInViewport" getByRole('button', { name: 'Inspect captured session 51/0', exact: true }) with timeout 5000ms
+      - waiting for getByRole('button', { name: 'Inspect captured session 51/0', exact: true })
+        14 × locator resolved to <button type="button" aria-pressed="false" class="blocking-node root" aria-label="Inspect captured session 51/0">…</button>
+           - unexpected value "viewport ratio 0"
+
+
+      37 |     await page.evaluate(() => window.scrollTo(0, 0)); await geometryAndAxe(page); await page.screenshot({ path: resolve(shotDir, `server-${size.width}.png`) });
+      38 |     await page.getByRole('link', { name: 'Activity', exact: true }).click(); await expect(page.getByRole('button', { name: 'Inspect captured session 51/0', exact: true })).toBeVisible(); await settled(page); await page.evaluate(() => window.scrollTo(0, 0));
+    > 39 |     await expect(page.getByRole('button', { name: 'Inspect captured session 51/0', exact: true })).toBeInViewport();
+         |                                                                                                    ^
+      40 |     await page.getByRole('button', { name: 'Inspect captured session 51/0', exact: true }).click();
+      41 |     await expect(page.getByRole('complementary', { name: 'Session details' })).toContainText('Session 51 / 0');
+      42 |     await expect(page.getByRole('region', { name: 'Blocking tree · loaded snapshot' })).toContainText('same captured snapshot');
+        at G:\Adams SQL Diagnostic Manager\web\browser-tests\redesign.spec.mjs:39:100
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\browser-results\redesign-three-redesign-sc-7a2de-ccessible-layout-at-390×844-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\browser-results\redesign-three-redesign-sc-7a2de-ccessible-layout-at-390×844-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\browser-results\redesign-three-redesign-sc-7a2de-ccessible-layout-at-390×844-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › browser-tests\redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 390×844 
+  6 passed (25.6s)

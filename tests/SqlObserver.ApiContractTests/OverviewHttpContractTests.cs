@@ -11,6 +11,7 @@ using SqlObserver.Application.Ports;
 
 namespace SqlObserver.ApiContractTests;
 
+[Collection("Timing-sensitive HTTP contracts")]
 public sealed class OverviewHttpContractTests : IClassFixture<OverviewApiFactory>
 {
     private readonly OverviewApiFactory factory;

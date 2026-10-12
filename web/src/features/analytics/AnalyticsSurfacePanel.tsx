@@ -1,5 +1,6 @@
+import { analyticsSummaryRow } from "./analyticsSummaryModel";
 import { EvidenceTable } from "../../components/EvidenceTable";
-import { useTimeDisplay, useTimeFormatter } from "../../TimeDisplayContext";
+import { useTimeFormatter } from "../../TimeDisplayContext";
 import { analyticsEmptyStateText, analyticsScopeText } from "./analyticsScope";
 import { panelStateForSurface } from "./analyticsState";
 import { analyticsSurfaceLabel } from "./analyticsSurfaceCatalog";
@@ -23,7 +24,6 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, targetRev
   targetId: string; surface: AnalyticsSurface; timeWindow?: AnalyticsWindow; targetRevision?: number;
   contextKey?: string; refresh?: number; active?: boolean; denialEpoch?: number; onAccessDenied?: () => void;
 }) {
-  const { mode } = useTimeDisplay();
   const formatTime = useTimeFormatter();
   // Direct callers get a strict explicit-window boundary. AnalyticsPage supplies a stable
   // workspace context so computed Live windows can move without disturbing held reads.
@@ -35,16 +35,7 @@ export function AnalyticsSurfacePanel({ targetId, surface, timeWindow, targetRev
   const page = inbox.receipt?.page;
   const state = page ? panelStateForSurface(page.state, page.items.length > 0) : "loading";
   const surfaceLabel = analyticsSurfaceLabel(surface);
-  const rows = !page ? [] : surface.startsWith("replication/") ? page.items.map(item => ({
-    "Observed": formatTime(String(item.observedAtUtc)),
-    "Agent state": item.synchronizationState === "disabled" ? "Stopped" : item.synchronizationState,
-    "Pending commands": item.pendingCommands,
-    "Latency (seconds)": item.latencySeconds,
-    "Coverage": item.coverage,
-    "Evidence": { runId: item.runId, role: item.role, targetRevision: item.targetRevision, visibilityGap: item.visibilityGap },
-  })) : page.items.map(item => Object.fromEntries(Object.entries(item).map(([key, value]) =>
-    [key.endsWith("Utc") && typeof value === "string" ? `${key.slice(0, -3)} (${mode === "local" ? "local" : "UTC"})` : key,
-      key.endsWith("Utc") && typeof value === "string" ? formatTime(value) : value])));
+  const rows = page?.items.map(item => analyticsSummaryRow(surface, item, formatTime)) ?? [];
   return <section className="panel analytics-surface" aria-label={surfaceLabel}>
     <div className="analytics-workflow-heading"><h2>{surfaceLabel}</h2>
       <span className="analytics-workflow-mode">{inbox.retained ? "Retained analytics evidence" : "Latest received analytics evidence"}</span>
